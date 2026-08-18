@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: safe-synthesizer
 description: "Use NeMo Safe Synthesizer from the NMP plugin through task-specific routing: host-local GPU runs, platform job submission, configuration, troubleshooting, artifacts, privacy settings, PII replacement, and evaluation reports. Use when the user asks about safe-synthesizer, NeMo Safe Synthesizer, synthetic tabular data, DP settings, generation failures, plugin-local runs, filesets, model filesets, or `nemo safe-synthesizer` CLI commands."
 license: Apache-2.0

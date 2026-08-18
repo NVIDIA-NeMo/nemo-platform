@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: Release
 run-name: >-
   Release ${{ github.event_name == 'schedule' && 'nightly' || inputs['release-type'] }}
@@ -721,6 +724,10 @@ jobs:
                 cadence: process.env.RELEASE_TYPE,
                 version: process.env.RELEASE_LABEL,
                 containers: JSON.parse(process.env.CONTAINER_IDS),
+                collect_sources: true,
+                bake_env: {
+                  NMP_COLLECT_SOURCES: "1",
+                },
               },
             });
 

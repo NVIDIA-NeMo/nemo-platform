@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Execute and Troubleshoot CPU Jobs
 
 This task tests your ability to create jobs, monitor their lifecycle, and diagnose issues. You will create multiple jobs including one that intentionally fails, and demonstrate understanding of the jobs system by investigating the failure.

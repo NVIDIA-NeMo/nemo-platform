@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nooa
 description: Build, modify, debug, or optimize agents using NVIDIA-labs OO Agents (NOOA). Use for nooa.Agent subclasses, ellipsis generation methods, CodeAct or Predict strategies, ShellTools, Skill/TextSkill, context and persistence, MCP, tracing, middleware, channels, or trace analysis.
 compatibility: Python >= 3.12,<3.14; uv; nooa at the revision pinned in the workspace root pyproject.toml

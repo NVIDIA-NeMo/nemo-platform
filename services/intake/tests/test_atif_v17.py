@@ -510,7 +510,7 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
 
     root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
-    assert root.attributes_string["nemo.experiment.id"] == EVALUATION_CONTEXT["evaluation_id"]
+    assert root.attributes_string["nemo.evaluation.name"] == EVALUATION_CONTEXT["evaluation_id"]
     # sha/run_id/metadata are dropped by the trimmed ingest EvaluationContext, so they never
     # reach the span from the JSON evaluation_context path.
     assert "nemo.experiment.sha" not in root.attributes_string
@@ -532,7 +532,7 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     child_response = Span.from_domain(child)
     assert child_response.evaluation_context is None
     assert "evaluation.id" not in child.attributes_string
-    assert "nemo.experiment.id" not in child.attributes_string
+    assert "nemo.evaluation.name" not in child.attributes_string
     assert "nemo.test_case.id" not in child.attributes_string
 
 

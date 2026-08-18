@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-customizer
 description: >-
   Fine-tune models on NeMo Platform with `automodel`, `unsloth`, or `rl` (all

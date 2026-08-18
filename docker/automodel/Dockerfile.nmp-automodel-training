@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # nmp-automodel training - GPU finetune step (nemo_automodel recipes + nmp-automodel package).
 # Same platform glue as tasks; separate image tag for the compiler training step.
 
@@ -26,6 +29,8 @@ WORKDIR /app
 RUN mkdir -p /home/${USERNAME}/.cache && \
     chown -R ${USER_UID}:${USER_GID} /home/${USERNAME} /app/services/automodel
 
+RUN uv pip freeze --python ${VIRTUAL_ENV}/bin/python --exclude-editable > /tmp/base-python-freeze.txt
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --overrides /app/docker/automodel/no_override_requirements.txt \
@@ -39,6 +44,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps \
     -e /opt/Automodel
+
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    python /usr/local/bin/collect-python-sdists.py \
+        --python ${VIRTUAL_ENV}/bin/python \
+        --output /usr/share/nemo-platform/source-distributions/nmp-automodel-training \
+        --baseline-freeze /tmp/base-python-freeze.txt \
+        --label platform-glue
+
+# Codec cleanup for release image scans.
+RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/automodel/codec-file-removals.txt
 
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 ENTRYPOINT ["/opt/venv/bin/python"]

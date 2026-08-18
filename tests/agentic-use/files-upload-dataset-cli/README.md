@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Upload Dataset to Files Service (CLI)
 
 Tests the agent's ability to create JSONL dataset files and upload them to the NeMo Platform Files service using the CLI.

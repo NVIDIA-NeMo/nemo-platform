@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # NMP CPU Tasks - CPU-only batch task execution
 
 ARG NMP_PYTHON_BASE=nmp-python-base
@@ -11,17 +14,36 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # upstream cpu-tasks group includes nemo-evaluator-plugin directly.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --inexact --package nemo-evaluator-plugin --no-editable
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-workspace-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-cpu-tasks && \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-python-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-cpu-tasks \
+        --lock-file /app/uv.lock \
+        --label app-venv && \
+    bash /usr/local/bin/collect-apt-sources.sh /app/.source-distributions/nmp-cpu-tasks/apt --installed && \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-cpython-source.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-cpu-tasks
 
 FROM ${NMP_PYTHON_BASE} AS runtime
 ENV USERNAME=nvs \
     HOME=/home/nvs
 COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
+COPY --chown=nvs:nvs --from=builder /app/.source-distributions/nmp-cpu-tasks/ /usr/share/nemo-platform/source-distributions/nmp-cpu-tasks/
 COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
 ENV PATH="/app/.venv/bin:$PATH"
 USER 0
 COPY docker/scripts/cve-cleanup.sh /bin/
-RUN bash /bin/cve-cleanup.sh
+RUN sh /bin/cve-cleanup.sh
 ENTRYPOINT ["nemo-platform"]
 # Override CMD with "run" in orchestration (e.g., Helm, docker-compose)
 CMD ["--help"]

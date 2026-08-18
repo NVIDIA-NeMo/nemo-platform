@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 #######
 # NeMo Platform Docker build target configuration.
 #######
@@ -26,6 +29,10 @@ variable "BASE_REGISTRY" {
 
 variable "USE_PREBUILT_BASES" {
   default = ""
+}
+
+variable "NMP_COLLECT_SOURCES" {
+  default = "0"
 }
 
 variable "NMP_PYTHON_IMAGE" {
@@ -116,7 +123,7 @@ variable "RL_BASE_CONTEXT" {
 
 # The tag for base images if needed
 variable "WHEELS_TAG" {
-  default = "2c1a9ef2535a6648a272d9b74dae97fb672b8234"
+  default = "54ae40bf653127f1300399912e6c1083f0b96771"
 }
 
 variable "BAKE_CACHE_SOURCE_BRANCH" {
@@ -387,6 +394,9 @@ target "nmp-customizer-tasks" {
     causal-conv1d-wheel-src  = causal_conv1d_wheel_context()
     mamba-ssm-wheel-src      = mamba_ssm_wheel_context()
   }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   cache-to   = maybe_registry_cache_to("nmp-customizer-tasks")
   cache-from = maybe_registry_cache_from("nmp-customizer-tasks")
   tags       = sha_and_maybe_latest_tags("nmp-customizer-tasks")
@@ -404,7 +414,8 @@ target "nmp-customizer-tasks-smoke-test" {
     mamba-ssm-wheel-src      = mamba_ssm_wheel_context()
   }
   args = {
-    SMOKE_MARKER = "smoke_nmp_customizer_tasks"
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    SMOKE_MARKER         = "smoke_nmp_customizer_tasks"
   }
   cache-from = maybe_registry_cache_from("nmp-customizer-tasks")
   output     = ["type=cacheonly"]
@@ -428,8 +439,9 @@ target "nmp-rl-base-builder" {
   context    = "."
   dockerfile = "docker/rl/Dockerfile.nmp-rl-base"
   args = {
-    NEMO_RL_REPO = NEMO_RL_REPO
-    NEMO_RL_REF  = NEMO_RL_REF
+    NEMO_RL_REPO        = NEMO_RL_REPO
+    NEMO_RL_REF         = NEMO_RL_REF
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-rl-base")
   cache-from = maybe_registry_cache_from("nmp-rl-base")
@@ -448,6 +460,9 @@ target "nmp-rl-training" {
     platform-workspace = "target:rl-platform-workspace"
     nmp-rl-base        = rl_base_context()
   }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")
   tags       = sha_and_maybe_latest_tags("nmp-rl-training")
@@ -465,7 +480,8 @@ target "nmp-rl-training-smoke-test" {
     nmp-rl-base        = rl_base_context()
   }
   args = {
-    SMOKE_MARKER = "smoke_nmp_rl_training"
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    SMOKE_MARKER         = "smoke_nmp_rl_training"
   }
   cache-from = maybe_registry_cache_from("nmp-rl-training")
   output     = ["type=cacheonly"]
@@ -615,8 +631,9 @@ target "nmp-api-docker" {
   }
   args = {
     NMP_PLATFORM_VERSION = notequal(BAKE_TAG, "") ? BAKE_TAG : "dev"
-    NMP_CODE_REVISION   = notequal(CI_COMMIT_SHA, "") ? CI_COMMIT_SHA : "dev"
+    NMP_CODE_REVISION    = notequal(CI_COMMIT_SHA, "") ? CI_COMMIT_SHA : "dev"
     NMP_API_RUNTIME_BASE = NMP_API_RUNTIME_BASE
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-api")
   cache-from = maybe_registry_cache_from("nmp-api")
@@ -640,6 +657,7 @@ target "nmp-core-docker" {
   }
   args = {
     NMP_CORE_RUNTIME_BASE = NMP_CORE_RUNTIME_BASE
+    NMP_COLLECT_SOURCES   = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-core")
   cache-from = maybe_registry_cache_from("nmp-core")
@@ -656,6 +674,9 @@ target "nmp-cpu-tasks-docker" {
   contexts = {
     nmp-python-base           = "target:nmp-python-base"
     nmp-workspace             = "target:nmp-workspace"
+  }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-cpu-tasks")
   cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
@@ -715,7 +736,8 @@ target "safe-synthesizer-tasks-docker" {
   context    = "."
   dockerfile = "docker/Dockerfile.safe-synthesizer-tasks"
   args = {
-    CONTAINER_VARIANT = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    CONTAINER_VARIANT    = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("safe-synthesizer-tasks")
   cache-from = maybe_registry_cache_from("safe-synthesizer-tasks")
@@ -732,7 +754,8 @@ target "safe-synthesizer-tasks-smoke-test" {
   context    = "."
   dockerfile = "docker/Dockerfile.safe-synthesizer-tasks"
   args = {
-    CONTAINER_VARIANT = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    CONTAINER_VARIANT    = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
   }
   cache-from = maybe_registry_cache_from("safe-synthesizer-tasks")
   output     = ["type=cacheonly"]
@@ -891,6 +914,9 @@ target "nmp-automodel-base-builder" {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
   }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   platforms = get_platforms()
 }
 
@@ -901,6 +927,9 @@ target "nmp-automodel-training-docker" {
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = automodel_base_context()
+  }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-automodel-training")
   cache-from = maybe_registry_cache_from("nmp-automodel-training")
@@ -918,7 +947,8 @@ target "nmp-automodel-training-smoke-test" {
     nmp-automodel-base = automodel_base_context()
   }
   args = {
-    SMOKE_MARKER       = "smoke_nmp_automodel_training"
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    SMOKE_MARKER         = "smoke_nmp_automodel_training"
   }
   cache-from = maybe_registry_cache_from("nmp-automodel-training")
   output     = ["type=cacheonly"]
@@ -941,6 +971,9 @@ target "nmp-unsloth-training" {
     platform-workspace        = "target:unsloth-platform-workspace"
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+  }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-unsloth-training")
   cache-from = maybe_registry_cache_from("nmp-unsloth-training")
@@ -999,6 +1032,9 @@ target "auditor-tasks-docker" {
     root-busybox              = "target:root-busybox"
   }
   dockerfile = "docker/Dockerfile.auditor-tasks"
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   cache-to   = maybe_registry_cache_to("auditor-tasks")
   cache-from = maybe_registry_cache_from("auditor-tasks")
   tags       = sha_and_maybe_latest_tags("auditor-tasks")

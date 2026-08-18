@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # harbor — run a Harbor job through the agent-eval SDK
 
 Run a Harbor **local dataset directory**,
@@ -41,7 +44,7 @@ folders:
 
 ```
 hello_world_dataset/
-  hello-world/          # [task] name = "harbor/hello-world"
+  hello-world/                 # [task] name = "harbor/hello-world"
     task.toml
     instruction.md
     environment/Dockerfile
@@ -92,10 +95,10 @@ From the repository root:
 
 ```bash
 # Native path: run and print the SDK summary.
-python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
+uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
 
 # Optimizer path: run, then rebuild NeMo Optimizer's legacy reward payload.
-python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
+uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
 ```
 
 Both modes call `run_harbor_eval`; the only difference is what they print.

@@ -1,0 +1,33 @@
+{
+  "span_count": 1,
+  "span": {
+    "span_id": "67f6740bbe1ddc3f",
+    "trace_id": "df570c035a034cea8df0c162d05127ac",
+    "kind": "LLM",
+    "status": "success",
+    "input": {"question": "What is the capital of France?"},
+    "output": {"answer": "Paris"}
+  },
+  "read_fields": {"project": "fixture", "model": "fixture-model"},
+  "raw_paths": [
+    {"path": ["fixture.nested"], "value": {"enabled": true, "count": 0}},
+    {"path": ["phoenix.raw", "trace_state"], "value": "fixture=1"},
+    {"path": ["phoenix.signals", 0, "result", "label"], "value": "correct"}
+  ],
+  "signals": [
+    {
+      "annotator_kind": "HUMAN",
+      "identifier": "user-123",
+      "metadata": {"confidence": "high", "model": "gpt-4", "threshold_ms": 500},
+      "name": "correctness",
+      "result": {
+        "explanation": "The response answered the question I asked",
+        "label": "correct",
+        "score": 0.85
+      },
+      "span_id": "67f6740bbe1ddc3f"
+    }
+  ],
+  "evaluator_names": [],
+  "annotation_kinds": ["label", "note", "label", "metadata"]
+}

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 # Smoke fixture profile. Everything is local: a "./" prefix classifies as a local
 # path, so no registry_url is needed and nothing is downloaded.
 #

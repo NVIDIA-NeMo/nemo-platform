@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Auditor Service Agentic Flows
 
 The Auditor service provides model safety testing, bias detection, and adversarial robustness evaluation using tools like Garak for red-teaming.

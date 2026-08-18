@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # nemo-platform-plugin — Agent Instructions
 
 `nemo-platform-plugin` is the **only package plugin authors install** to build a fully-featured NeMo Platform plugin. It re-exports all abstract base classes, configuration, entity, schema, and CLI utilities needed to contribute services, CLI commands, jobs, controllers, and more to the NeMo Platform.

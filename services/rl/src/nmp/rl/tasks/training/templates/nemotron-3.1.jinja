@@ -1,3 +1,6 @@
+{# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. #}
+{# SPDX-License-Identifier: Apache-2.0 #}
+
 {%- if messages[0]['role'] == 'system' %}
     {%- set system_message = messages[0]['content'] | trim %}
     {%- set messages = messages[1:] %}

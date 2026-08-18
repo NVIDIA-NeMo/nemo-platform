@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 #
 # Wait for the platform API /cluster-info endpoint to respond.
 # Use after starting port-forward so tests don't run before the API is ready.

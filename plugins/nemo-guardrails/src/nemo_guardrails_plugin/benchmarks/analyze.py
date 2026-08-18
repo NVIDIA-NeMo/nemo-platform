@@ -30,8 +30,8 @@ VARIANT_WITHOUT_GUARDRAILS = "without-guardrails"
 # For each concurrency level we list:
 #   - The expected p50 latency delta between requests with guardrails vs.
 #     without guardrails.
-#   - The allowed plus/minus tolerance in CI. Benchmark jobs whose p50
-#     latency exceeds this tolerance will fail.
+#   - The allowed regression tolerance in CI. Benchmark jobs whose p50
+#     latency exceeds the baseline by more than this tolerance will fail.
 
 # Concurrency levels we check in CI.
 CONCURRENCIES_TO_VALIDATE: list[int] = [1, 2, 4, 8, 16, 32]
@@ -293,9 +293,10 @@ class LatencyReport:
 
     Each instance represents a single concurrency level from the benchmark
     run: what we measured (observed_ms), what we expected from the
-    baseline (baseline_ms), and how much they're allowed to differ
+    baseline (baseline_ms), and how much slower it is allowed to be
     (tolerance_ms).
-    The check passes when |observed_ms - baseline_ms| <= tolerance_ms.
+    The check passes when observed_ms - baseline_ms <= tolerance_ms, so
+    improvements over the baseline do not fail the regression gate.
     """
 
     concurrency: int
@@ -310,7 +311,7 @@ class LatencyReport:
 
     @property
     def passed(self) -> bool:
-        return abs(self.diff_ms) <= self.tolerance_ms
+        return self.diff_ms <= self.tolerance_ms
 
 
 def check_against_baseline(rows: list[ComparisonRow]) -> tuple[str, int]:
@@ -357,7 +358,7 @@ def check_against_baseline(rows: list[ComparisonRow]) -> tuple[str, int]:
                 f"{report.baseline_ms:.0f}",
                 f"{report.observed_ms:.0f}",
                 f"{report.diff_ms:+.0f}",
-                f"±{report.tolerance_ms:.0f}ms",
+                f"+{report.tolerance_ms:.0f}ms",
                 status,
             )
         )
@@ -366,7 +367,7 @@ def check_against_baseline(rows: list[ComparisonRow]) -> tuple[str, int]:
         lines.append(f"Skipped (missing from results or baseline): {skipped_concurrencies}")
     if failed_count:
         lines.append("")
-        lines.append(f"FAIL: {failed_count} of {len(latency_reports)} check(s) exceeded tolerance.")
+        lines.append(f"FAIL: {failed_count} of {len(latency_reports)} check(s) exceeded regression tolerance.")
 
     return "\n".join(lines), failed_count
 

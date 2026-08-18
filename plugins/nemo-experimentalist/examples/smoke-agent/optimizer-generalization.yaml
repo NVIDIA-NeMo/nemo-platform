@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 #
 # The generalization scenario's profile. Identical to optimizer.yaml except for
 # the datasets, which is the whole point: what separates a repair scenario from a

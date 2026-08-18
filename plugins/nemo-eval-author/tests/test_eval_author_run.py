@@ -14,6 +14,8 @@ from nemo_eval_author_plugin.eval_author import run as eval_author_run
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, ResourceRef, Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_insights_plugin.entities import Insight
 
 
@@ -110,6 +112,22 @@ class FakeEvalAuthor:
         )
 
 
+def _write_minimal_harbor_task(task_dir: Path, *, name: str, instruction: str) -> None:
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text(f'[task]\nname = "{name}"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text(instruction, encoding="utf-8")
+
+
+def _dataset_snapshot(dataset: Dataset) -> dict[str, Any]:
+    return {
+        "type": f"{type(dataset).__module__}.{type(dataset).__qualname__}",
+        "id": dataset.id,
+        "source": dataset.source.model_dump(mode="json") if dataset.source is not None else None,
+        "tasks": [task.model_dump(mode="json") for task in dataset.list_tasks()],
+        "metadata": dict(dataset.metadata),
+    }
+
+
 @pytest.mark.asyncio
 async def test_run_eval_author_fails_before_side_effects_when_model_configuration_is_missing(
     monkeypatch: pytest.MonkeyPatch,
@@ -140,11 +158,13 @@ async def test_run_eval_author_fails_before_side_effects_when_model_configuratio
     make_client.assert_not_called()
 
 
+@pytest.mark.parametrize("evaluator_type", ["harbor-native", "harbor-runner"])
 @pytest.mark.asyncio
 async def test_run_eval_author_resolves_inputs_and_returns_datasets(
     monkeypatch: pytest.MonkeyPatch,
     model_clients: ClosingModelClients,
     tmp_path: Path,
+    evaluator_type: EvaluatorType,
 ) -> None:
     client = ClosingClient()
     insight = Insight(
@@ -178,6 +198,7 @@ async def test_run_eval_author_resolves_inputs_and_returns_datasets(
         workspace="workspace-a",
         base_url="http://platform.test",
         config=EvalAuthorConfig(),
+        evaluator_type=evaluator_type,
     )
 
     experiment_dir = (tmp_path / "experiment").resolve()
@@ -190,8 +211,8 @@ async def test_run_eval_author_resolves_inputs_and_returns_datasets(
     assert backend.agent_calls == [
         ("workspace-a", "insight-agent", experiment_dir / "eval_author" / "source-agent"),
     ]
-    assert [call[0] for call in dataset_factory.dataset_calls] == ["harbor", "harbor"]
-    assert dataset_factory.template_calls[0][0] == "harbor"
+    assert [call[0] for call in dataset_factory.dataset_calls] == [evaluator_type, evaluator_type]
+    assert dataset_factory.template_calls[0][0] == evaluator_type
     assert eval_author.call == (
         insight,
         experiment_dir / "eval_author" / "source-agent",
@@ -225,10 +246,121 @@ def test_public_apis_accept_train_validation_and_generated_task_inputs() -> None
 
 
 @pytest.mark.asyncio
+async def test_run_eval_author_builds_equivalent_real_harbor_inputs_for_both_evaluator_types(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    train_dir = tmp_path / "train"
+    validation_dir = tmp_path / "validation"
+    template_dir = tmp_path / "task-template"
+    _write_minimal_harbor_task(
+        train_dir / "train-task",
+        name="parity/train-task",
+        instruction="Complete the training task.\n",
+    )
+    _write_minimal_harbor_task(
+        validation_dir / "validation-task",
+        name="parity/validation-task",
+        instruction="Complete the validation task.\n",
+    )
+    _write_minimal_harbor_task(
+        template_dir,
+        name="parity/task-template",
+        instruction="Complete {{ instruction }}.\n",
+    )
+
+    insight = Insight(
+        workspace="workspace-a",
+        title="failure",
+        description="description",
+        agent=str(tmp_path / "agent-src"),
+        trace_refs=["trace-1"],
+    )
+    clients: list[ClosingClient] = []
+    model_client_sets: list[ClosingModelClients] = []
+    eval_authors: list[FakeEvalAuthor] = []
+    refs = eval_author_run.ConfiguredModelRefs(
+        default="workspace-a/default-model",
+        fast="workspace-a/fast-model",
+    )
+
+    def make_client(_base_url: str | None) -> ClosingClient:
+        client = ClosingClient()
+        clients.append(client)
+        return client
+
+    def make_backend(**_: object) -> FakeBackend:
+        return FakeBackend(insight)
+
+    def build_eval_author_agent(**_: object) -> FakeEvalAuthor:
+        eval_author = FakeEvalAuthor()
+        eval_authors.append(eval_author)
+        return eval_author
+
+    async def resolve_model_clients(*_: object) -> ClosingModelClients:
+        model_clients = ClosingModelClients()
+        model_client_sets.append(model_clients)
+        return model_clients
+
+    monkeypatch.setattr(eval_author_run, "make_client", make_client)
+    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", make_backend)
+    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", build_eval_author_agent)
+    monkeypatch.setattr(eval_author_run, "configured_model_refs", lambda: refs)
+    monkeypatch.setattr(eval_author_run, "resolve_model_clients", resolve_model_clients)
+
+    train_ref = DatasetRef(uri=str(train_dir), metadata={"id": "train"})
+    validation_ref = DatasetRef(uri=str(validation_dir), metadata={"id": "validation"})
+    template_ref = DatasetRef(uri=str(template_dir), metadata={"id": "task-template"})
+    experiment_dir = tmp_path / "eval-author"
+    results: list[EvalAuthorResult] = []
+    calls: list[tuple[Insight, Path, Task, Dataset, Dataset, ClosingClient]] = []
+
+    for evaluator_type in ("harbor-native", "harbor-runner"):
+        results.append(
+            await eval_author_run.run_eval_author(
+                insight="insight-remote-123",
+                train_dataset=train_ref,
+                validation_dataset=validation_ref,
+                task_template=template_ref,
+                experiment_dir=experiment_dir,
+                workspace="workspace-a",
+                base_url="http://platform.test",
+                config=EvalAuthorConfig(),
+                evaluator_type=evaluator_type,
+            )
+        )
+        call = eval_authors[-1].call
+        assert call is not None
+        calls.append(call)
+
+    native_call, sdk_call = calls
+    _, _, native_template, native_train, native_validation, _ = native_call
+    _, _, sdk_template, sdk_train, sdk_validation, _ = sdk_call
+    for call in calls:
+        assert isinstance(call[3], HarborDataset)
+        assert isinstance(call[4], HarborDataset)
+
+    assert _dataset_snapshot(native_train) == _dataset_snapshot(sdk_train)
+    assert _dataset_snapshot(native_validation) == _dataset_snapshot(sdk_validation)
+    assert native_template.model_dump(mode="json") == sdk_template.model_dump(mode="json")
+
+    native_result, sdk_result = results
+    assert _dataset_snapshot(native_result.train_dataset) == _dataset_snapshot(sdk_result.train_dataset)
+    assert _dataset_snapshot(native_result.validation_dataset) == _dataset_snapshot(sdk_result.validation_dataset)
+    assert native_result.summary == sdk_result.summary == "Eval Author complete."
+    assert len(clients) == 2
+    assert all(client.closed for client in clients)
+    assert len(model_client_sets) == 2
+    assert all(model_clients.closed for model_clients in model_client_sets)
+
+
+@pytest.mark.parametrize("evaluator_type", ["harbor-native", "harbor-runner"])
+@pytest.mark.asyncio
 async def test_run_eval_author_hydrates_fileset_task_template(
     monkeypatch: pytest.MonkeyPatch,
     model_clients: ClosingModelClients,
     tmp_path: Path,
+    evaluator_type: EvaluatorType,
 ) -> None:
     downloads: list[tuple[str, str, str]] = []
 
@@ -263,12 +395,14 @@ async def test_run_eval_author_hydrates_fileset_task_template(
         workspace="workspace-a",
         base_url=None,
         config=EvalAuthorConfig(),
+        evaluator_type=evaluator_type,
     )
 
     staged = (tmp_path / "experiment").resolve() / "dataset" / "task-template"
     assert downloads == [(template_ref.uri, str(staged), "workspace-a")]
-    assert dataset_factory.template_calls == [("harbor", template_ref.model_copy(update={"uri": str(staged)}))]
+    assert dataset_factory.template_calls == [(evaluator_type, template_ref.model_copy(update={"uri": str(staged)}))]
     assert [Path(ref.uri).name for _, ref in dataset_factory.dataset_calls] == ["train", "validation"]
+    assert [call[0] for call in dataset_factory.dataset_calls] == [evaluator_type, evaluator_type]
     assert client.closed
     assert model_clients.closed
 

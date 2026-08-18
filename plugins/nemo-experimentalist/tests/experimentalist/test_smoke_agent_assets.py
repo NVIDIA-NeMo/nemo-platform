@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
 _HASHED = ("Dockerfile", "records.json")
-_RENDERED_TASK_TREE_SHA256 = "3fabb557da0cd6f4cda6c713b261e591bf52ed5ad936f2d3ee7bd6b12431099a"
+_RENDERED_TASK_TREE_SHA256 = "d8d4face3d4aa0f5697faaea2bd6146a73573290910c216146a3753ced4b7906"
 
 
 def _root_nooa_rev() -> str:
@@ -338,3 +338,73 @@ def test_combined_group_matches_its_sources(tmp_path: Path) -> None:
             assert (actual[rel] / name).read_bytes() == (src / name).read_bytes(), (
                 f"combined {rel}/{name} differs from its source; run scripts/build_all_group.py"
             )
+
+
+def test_every_shipped_config_validates() -> None:
+    """A shipped config the schema rejects fails here, not minutes into a run.
+
+    This refactor renamed run-config keys. `main` still carries the old spelling, so
+    every merge re-introduces it, and the failure surfaces only after the sandbox, the
+    image build and a 271-package resolve have already happened.
+
+    The two files need *different* migrations, which is why this is a test rather than a
+    one-time fix: `short.yaml` had the convergence check off, so its terminator becomes
+    null; `full.yaml` had it on, so the key is dropped and the terminator keeps its
+    default. Translating both the same way silently disables the one thing the combined
+    scenario exists to exercise.
+    """
+    import yaml
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    configs = sorted((_EXAMPLE_DIR / "configs").glob("*.yaml"))
+    assert configs, "no shipped configs found; the glob is wrong"
+
+    for path in configs:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        EvolutionaryOptimizerConfig(**data)  # raises with the offending key named
+
+
+def test_the_combined_scenario_keeps_its_terminator() -> None:
+    """`full.yaml` is the only scenario that exercises early stopping.
+
+    Pinned separately from the validation check above because the mistake it guards
+    against -- turning the terminator off while migrating the key -- produces a config
+    that still validates.
+    """
+    import yaml
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    full = EvolutionaryOptimizerConfig(
+        **(yaml.safe_load((_EXAMPLE_DIR / "configs" / "full.yaml").read_text(encoding="utf-8")) or {})
+    )
+    short = EvolutionaryOptimizerConfig(
+        **(yaml.safe_load((_EXAMPLE_DIR / "configs" / "short.yaml").read_text(encoding="utf-8")) or {})
+    )
+
+    assert full.terminator is not None, "the combined scenario lost the terminator it exists to test"
+    assert short.terminator is None, "the per-group gates want a fixed round count, not early stopping"
+
+
+def test_every_source_file_opens_with_its_licence_header() -> None:
+    """The header must be the first thing in the file, not merely present somewhere.
+
+    `script/copyright_fixer.py` checks presence, so a header that drifts into the middle
+    of a file passes every local hook. One did: an import rewrite detached it from the
+    import block and isort reordered around it, leaving it stranded at line 3 between two
+    imports, green the whole way.
+    """
+    package = _REPO_ROOT / "plugins" / "nemo-experimentalist"
+    sources = [
+        path
+        for path in package.rglob("*.py")
+        if "/tmp/" not in str(path) and "__pycache__" not in str(path) and ".venv" not in str(path)
+    ]
+    assert sources, "found no python files; the glob is wrong"
+
+    misplaced = [
+        str(path.relative_to(package))
+        for path in sources
+        if "SPDX-FileCopyrightText" not in "".join(path.read_text(encoding="utf-8").splitlines(keepends=True)[:2])
+    ]
+
+    assert not misplaced, f"licence header is not in the first two lines of: {misplaced}"

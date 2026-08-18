@@ -23,6 +23,7 @@ from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
+from nmp.intake.spans.ingest import spans as span_ingest
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class IntakeService(Service[IntakeConfig]):
             ),
             RouterConfig(otlp.router, tag="Ingest", description="OTLP/HTTP trace ingest endpoints"),
             RouterConfig(atif.router, tag="Ingest", description="ATIF trajectory ingest endpoints"),
+            RouterConfig(span_ingest.router, tag="Ingest", description="Provider-neutral JSON span ingest endpoint"),
             RouterConfig(
                 chat_completions.router,
                 tag="Ingest",

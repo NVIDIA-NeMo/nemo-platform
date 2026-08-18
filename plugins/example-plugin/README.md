@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Example Plugin
 
 The `nemo-example-plugin` is a reference implementation that demonstrates NeMo Platform plugin surfaces in a single installable package.

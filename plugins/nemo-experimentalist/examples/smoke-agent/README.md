@@ -169,8 +169,8 @@ schema has no dataset field at all.
 `full.yaml` is the only one that exercises the evolutionary machinery — survivors
 carried between rounds, ranking over more than two candidates, and the
 convergence check. It runs against `dataset/groups/_all`, which is **generated
-and gitignored**; build it first, or the run loads zero tasks and reports
-`No tasks matched the filter(s)` rather than erroring:
+and gitignored**; build it first, or the run stops on the unbuilt dataset before
+it evaluates anything:
 
 ```bash
 sbx exec --workdir "$repo" nemo-experimentalist bash -lc \

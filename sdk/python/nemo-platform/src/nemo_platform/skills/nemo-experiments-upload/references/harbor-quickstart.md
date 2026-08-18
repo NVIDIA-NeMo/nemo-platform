@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Harbor quickstart
 
 Harbor is the most common producer. A Harbor run executes tasks (test cases); with `n_attempts > 1`

@@ -18,6 +18,9 @@ export interface EvalJobRow {
   kind: EvalJobKind;
   agentName: string | null;
   configLabel: string | null;
+  /** Intake Evaluation the run publishes to, when it asked to. The join key between a job and its
+   *  published results — absent for a run submitted without `publication.intake`. */
+  evaluationName: string | null;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -71,6 +74,11 @@ export const EVAL_JOB_KIND_LABEL: Record<EvalJobKind, string> = {
   dataset: 'Dataset-Driven',
 };
 
+export const publishedEvaluationName = (job: PlatformJobResponse): string | null => {
+  const intake = asRecord(asRecord(specOf(job).publication)?.intake);
+  return asNonEmptyString(intake?.evaluation_id) ?? null;
+};
+
 export const toEvalJobRow = (job: PlatformJobResponse): EvalJobRow => ({
   id: job.id || job.name,
   name: job.name,
@@ -79,6 +87,7 @@ export const toEvalJobRow = (job: PlatformJobResponse): EvalJobRow => ({
   kind: evalJobKind(job),
   agentName: targetNameForEvalJob(job),
   configLabel: evalJobConfigLabel(job),
+  evaluationName: publishedEvaluationName(job),
 });
 
 /** Task result shape with metrics and scores for evaluation results. */

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Ingest formats
 
 Full request schemas for the three intake ingest endpoints. All are under
@@ -128,11 +131,11 @@ the root span:
 
 | Meaning | Span attribute key |
 |---|---|
-| Evaluation (by name) | **`nemo.experiment.id`** |
+| Evaluation (by name) | **`nemo.evaluation.name`** |
 | Test case | **`nemo.test_case.id`** |
 
-> Note the key is `nemo.experiment.id` (still "experiment"), even though the REST body field elsewhere
-> is `evaluation_context`. Set `nemo.experiment.id` to the Evaluation's **name**.
+> Set `nemo.evaluation.name` to the Evaluation's **name** (not its id), matching the `evaluation_id`
+> field used by the JSON `evaluation_context` on the other endpoints.
 
 Cost/token/model attributes are read from standard GenAI / OpenInference keys (first match wins):
 
@@ -158,7 +161,48 @@ export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${NMP_BASE_URL}/apis/intake/v2/worksp
 export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL="http/protobuf"
 ```
 
-Then set `nemo.experiment.id` (+ `nemo.test_case.id`) on the root span of each run.
+Then set `nemo.evaluation.name` (+ `nemo.test_case.id`) on the root span of each run.
+
+---
+
+## 4. Direct spans (historical imports)
+
+`POST .../ingest/spans` with JSON → empty `201`. The strict body is one source plus 1–1000 spans:
+
+```json
+{
+  "source": "my-trace-store",
+  "spans": [
+    {
+      "span_id": "provider-span-id",
+      "trace_id": "provider-trace-id",
+      "session_id": "conversation-id",
+      "parent_span_id": null,
+      "name": "agent-run",
+      "kind": "AGENT",
+      "status": "success",
+      "started_at": "2026-08-01T00:00:00Z",
+      "ended_at": "2026-08-01T00:00:01Z",
+      "input": {"question": "Hello"},
+      "output": {"answer": "Hi"},
+      "attributes": {"gen_ai.request.model": "example-model", "provider.raw": {"native": true}}
+    }
+  ]
+}
+```
+
+IDs are arbitrary non-empty strings; a missing session ID defaults to the trace ID, and a parent may
+be outside the batch. Timestamps require an offset. Structured inputs, outputs, and unknown
+attributes retain native JSON types. Known semantic attributes populate queryable fields; other
+attributes appear in detailed reads under `raw_attributes`. Reposting the same
+`(source, trace_id, span_id)` updates the existing logical span.
+
+The default ClickHouse TTL is 90 days from `started_at`. If any span is outside that window, Intake
+returns `422` before writing the batch and instructs the operator to increase the `spans` and
+`trace_index` TTLs. Provider timestamps are never rewritten by the endpoint.
+
+Use the bundled provider scripts instead of manually translating MLflow, LangSmith, Phoenix, or
+Braintrust exports.
 
 ---
 

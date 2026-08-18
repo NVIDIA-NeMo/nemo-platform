@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 import yaml
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.profile import load_profile
 from nemo_experimentalist_plugin.resolve import (
     ResolveError,
@@ -814,11 +814,8 @@ def test_config_unknown_top_level_key_is_tolerated(tmp_path: Path) -> None:
     [
         {"storage": {"publish_winer": True}},
         {"source": {"clone_dept": 1}},
-        {"coder": {"max_fix_atempts": 1}},
-        {"analyzer": {"rationalizer": {"max_summary_token": 100}}},
-        {"goal_config": {"max_dept": 2}},
     ],
-    ids=["storage", "source", "coder", "deep-analyzer", "goal-config"],
+    ids=["storage", "source"],
 )
 def test_config_unknown_typed_nested_key_is_tolerated(tmp_path: Path, config_payload: dict) -> None:
     profile = load_profile(make_profile_tree(tmp_path))
@@ -843,11 +840,11 @@ def test_evaluator_payload_remains_intentionally_open(tmp_path: Path) -> None:
             profile=profile,
             scratch_dir=tmp_path / "s",
             insight="ins-1",
-            config_payload={"evaluator": {"plugin_specific_option": {"nested": True}}},
+            config_payload={"outcome_evaluator_config": {"plugin_specific_option": {"nested": True}}},
         )
     )
 
-    assert inputs.config.evaluator == {"plugin_specific_option": {"nested": True}}
+    assert inputs.config.outcome_evaluator_config == {"plugin_specific_option": {"nested": True}}
 
 
 def test_config_invalid_value_is_wrapped_with_source(tmp_path: Path) -> None:
@@ -932,16 +929,103 @@ def test_run_config_takes_no_environment_override(monkeypatch) -> None:
     assert EvolutionaryOptimizerConfig.model_validate({"max_rounds": 15}).max_rounds == 15
 
 
-def test_component_configs_are_the_component_owned_classes() -> None:
-    """The tree must hold the components' own classes, not re-declared twins."""
-    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-    from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
-    from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
-    from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+def test_a_components_settings_are_validated_against_its_own_model() -> None:
+    """Each `<role>_config` is a plain mapping, validated by the component that reads it.
 
-    cfg = EvolutionaryOptimizerConfig()
-    assert type(cfg.coder) is CoderConfig
-    assert type(cfg.analyzer) is AnalyzerConfig
-    assert type(cfg.proposer) is ProposerConfig
-    assert type(cfg.goal_config) is GoalTreeConfig
+    Pinning these fields to first-party classes made a third-party component selectable
+    but not configurable: `builder: acme-random` resolved, and there was no way to pass
+    acme's settings, because the run-config schema decided the type. The component owns
+    its schema instead, and declares it as `config_type`.
+    """
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, load_plugins
+
+    load_plugins()
+    config = EvolutionaryOptimizerConfig()
+    for field in (
+        "builder_config",
+        "analyzer_config",
+        "proposer_config",
+        "trajectory_scorer_config",
+        "selector_config",
+        "terminator_config",
+        "outcome_evaluator_config",
+    ):
+        assert isinstance(getattr(config, field), dict), f"{field} must stay open for a third-party component"
+
+    undeclared = {
+        f"{role}:{name}"
+        for (role, name), cls in Component._registry.items()
+        if cls.__module__.startswith("nemo_experimentalist_plugin.") and cls.config_type is None
+    }
+    # `import` is the one component that genuinely takes no settings: it forks the agent
+    # under test and commits it unchanged.
+    assert undeclared == {"builder:import"}, f"components with settings but no config_type: {undeclared}"
+
+
+def test_a_third_party_components_settings_reach_it_unchanged() -> None:
+    """The point of the mapping: a component this schema has never heard of is configurable."""
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, get_component
+    from pydantic import BaseModel
+
+    class AcmeSettings(BaseModel):
+        beam_width: int = 1
+
+    class AcmeSelector(Component):
+        role = "selector"
+        name = "acme-beam"
+        config_type = AcmeSettings
+
+        def __init__(self, config: AcmeSettings | None = None) -> None:
+            self.config = config
+
+    try:
+        built = get_component("selector", "acme-beam", config={"beam_width": 7})
+        assert isinstance(built.config, AcmeSettings), "settings were not validated by the component's own model"
+        assert built.config.beam_width == 7
+    finally:
+        Component._registry.pop(("selector", "acme-beam"), None)
+
+
+def test_both_construction_paths_validate_a_components_settings(tmp_path: Path) -> None:
+    """`get_component` and `ctx.component` must agree, or the check is decorative.
+
+    The context builds components its own way -- it narrows the run-scoped arguments to
+    those the constructor names -- so validation added to one path silently skipped the
+    other. The terminator and trajectory-scorer are built through the context, so their
+    settings reached them as raw mappings and a misspelled option was never rejected.
+    """
+    import pytest
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, get_component
+    from pydantic import BaseModel
+
+    class Strict(BaseModel):
+        model_config = {"extra": "forbid"}
+        depth: int = 1
+
+    class Probe(Component):
+        role = "terminator"
+        name = "probe-strict"
+        config_type = Strict
+
+        def __init__(self, config: Strict | None = None, **_: object) -> None:
+            self.config = config
+
+    try:
+        ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+        direct = get_component("terminator", "probe-strict", config={"depth": 3})
+        through_context = ctx.component("terminator", "probe-strict", config={"depth": 3})
+
+        assert isinstance(direct.config, Strict), "get_component did not validate"
+        assert isinstance(through_context.config, Strict), "ctx.component did not validate"
+
+        for build in (
+            lambda: get_component("terminator", "probe-strict", config={"depht": 3}),
+            lambda: ctx.component("terminator", "probe-strict", config={"depht": 3}),
+        ):
+            with pytest.raises(Exception, match="depht|extra"):
+                build()
+    finally:
+        Component._registry.pop(("terminator", "probe-strict"), None)

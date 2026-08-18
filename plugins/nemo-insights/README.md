@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Insights
 
 NeMo Platform plugin for analyzing agent telemetry and persisting actionable insights.
@@ -157,9 +160,9 @@ uv run pytest plugins/nemo-insights/tests
 uv run ruff check plugins/nemo-insights
 ```
 
-## Testbed
+## Evaluation
 
-The analyst-only testbed is in [`testbed/`](testbed/). It can replay pinned
+The analyst-only evaluation is in [`evaluation/`](evaluation/). It can replay pinned
 Intake traces or run Tau2 benchmarks before invoking `nemo agents analyst run`.
 
 ## What consumes an Insight

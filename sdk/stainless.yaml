@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # yaml-language-server: $schema=https://app.stainlessapi.com/config-internal.schema.json
 organization:
   name: NeMo Platform
@@ -854,6 +857,12 @@ resources:
               chat_message_role: ChatMessageRole
             methods:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions
+          spans:
+            models:
+              direct_span_input: DirectSpanInput
+              direct_spans_ingest_param: DirectSpansIngestRequest
+            methods:
+              create: post /apis/intake/v2/workspaces/{workspace}/ingest/spans
           otlp:
             subresources:
               v1:

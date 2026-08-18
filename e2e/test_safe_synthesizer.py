@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """E2E coverage for the Safe Synthesizer plugin.
 
 Smoke coverage runs in the local subprocess harness and verifies the API,
@@ -61,6 +64,54 @@ NssJobFactory = Callable[[str, str, dict[str, Any]], dict[str, Any]]
 
 def _unique_name(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _deterministic_pii_replacement_config() -> dict[str, Any]:
+    # Select fixture columns explicitly so this e2e does not depend on an
+    # external LLM column-classification provider being configured in CI.
+    return {
+        "enable_synthesis": False,
+        "enable_replace_pii": True,
+        "replace_pii": {
+            "globals": {
+                "classify": {"enable_classify": False},
+                "seed": 7,
+                "locales": ["en_US"],
+            },
+            "steps": [
+                {
+                    "vars": {"row_seed": "random.random()"},
+                    "rows": {
+                        "update": [
+                            {"name": "email", "value": "fake.persona(row_index=vars.row_seed + index).email"},
+                            {"name": "phone_number", "value": "fake.msisdn()"},
+                            {"name": "review", "value": "this | fake_entities"},
+                        ]
+                    },
+                }
+            ],
+        },
+    }
+
+
+def test_safe_synthesizer_pii_replacement_config_validates() -> None:
+    from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig
+
+    spec = SafeSynthesizerJobConfig.model_validate(
+        {
+            "data_source": "default/data#file.csv",
+            "config": _deterministic_pii_replacement_config(),
+        }
+    )
+
+    assert spec.enable_synthesis is False
+    assert spec.config.replace_pii is not None
+    assert spec.config.replace_pii.globals.classify.enable_classify is False
+    rows = spec.config.replace_pii.steps[0].rows
+    assert rows is not None
+    updates = rows.update
+    assert updates is not None
+    assert {rule.name for rule in updates} == {"email", "phone_number", "review"}
 
 
 def _string_headers(sdk: NeMoPlatform) -> dict[str, str]:
@@ -549,10 +600,7 @@ def test_safe_synthesizer_pii_replacement_job_completes(
     job = nss_job(
         "nss-pii",
         data_source,
-        {
-            "enable_synthesis": False,
-            "enable_replace_pii": True,
-        },
+        _deterministic_pii_replacement_config(),
     )
     job_name = str(job["name"])
 

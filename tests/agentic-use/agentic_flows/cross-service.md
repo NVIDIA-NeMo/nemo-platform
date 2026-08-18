@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Cross-Service Integration Flows
 
 These flows explicitly test the integration between multiple services and cannot be attributed to a single service. They represent complete ML pipelines and workflows that demonstrate the full value of the NeMo Platform.

@@ -25,6 +25,14 @@ from .atif import (
     AtifResourceWithStreamingResponse,
     AsyncAtifResourceWithStreamingResponse,
 )
+from .spans import (
+    SpansResource,
+    AsyncSpansResource,
+    SpansResourceWithRawResponse,
+    AsyncSpansResourceWithRawResponse,
+    SpansResourceWithStreamingResponse,
+    AsyncSpansResourceWithStreamingResponse,
+)
 from .otlp.otlp import (
     OtlpResource,
     AsyncOtlpResource,
@@ -55,6 +63,10 @@ class IngestResource(SyncAPIResource):
     @cached_property
     def chat_completions(self) -> ChatCompletionsResource:
         return ChatCompletionsResource(self._client)
+
+    @cached_property
+    def spans(self) -> SpansResource:
+        return SpansResource(self._client)
 
     @cached_property
     def otlp(self) -> OtlpResource:
@@ -88,6 +100,10 @@ class AsyncIngestResource(AsyncAPIResource):
     @cached_property
     def chat_completions(self) -> AsyncChatCompletionsResource:
         return AsyncChatCompletionsResource(self._client)
+
+    @cached_property
+    def spans(self) -> AsyncSpansResource:
+        return AsyncSpansResource(self._client)
 
     @cached_property
     def otlp(self) -> AsyncOtlpResource:
@@ -126,6 +142,10 @@ class IngestResourceWithRawResponse:
         return ChatCompletionsResourceWithRawResponse(self._ingest.chat_completions)
 
     @cached_property
+    def spans(self) -> SpansResourceWithRawResponse:
+        return SpansResourceWithRawResponse(self._ingest.spans)
+
+    @cached_property
     def otlp(self) -> OtlpResourceWithRawResponse:
         return OtlpResourceWithRawResponse(self._ingest.otlp)
 
@@ -141,6 +161,10 @@ class AsyncIngestResourceWithRawResponse:
     @cached_property
     def chat_completions(self) -> AsyncChatCompletionsResourceWithRawResponse:
         return AsyncChatCompletionsResourceWithRawResponse(self._ingest.chat_completions)
+
+    @cached_property
+    def spans(self) -> AsyncSpansResourceWithRawResponse:
+        return AsyncSpansResourceWithRawResponse(self._ingest.spans)
 
     @cached_property
     def otlp(self) -> AsyncOtlpResourceWithRawResponse:
@@ -160,6 +184,10 @@ class IngestResourceWithStreamingResponse:
         return ChatCompletionsResourceWithStreamingResponse(self._ingest.chat_completions)
 
     @cached_property
+    def spans(self) -> SpansResourceWithStreamingResponse:
+        return SpansResourceWithStreamingResponse(self._ingest.spans)
+
+    @cached_property
     def otlp(self) -> OtlpResourceWithStreamingResponse:
         return OtlpResourceWithStreamingResponse(self._ingest.otlp)
 
@@ -175,6 +203,10 @@ class AsyncIngestResourceWithStreamingResponse:
     @cached_property
     def chat_completions(self) -> AsyncChatCompletionsResourceWithStreamingResponse:
         return AsyncChatCompletionsResourceWithStreamingResponse(self._ingest.chat_completions)
+
+    @cached_property
+    def spans(self) -> AsyncSpansResourceWithStreamingResponse:
+        return AsyncSpansResourceWithStreamingResponse(self._ingest.spans)
 
     @cached_property
     def otlp(self) -> AsyncOtlpResourceWithStreamingResponse:

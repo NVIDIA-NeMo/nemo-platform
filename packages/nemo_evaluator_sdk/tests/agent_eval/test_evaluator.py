@@ -28,7 +28,13 @@ from nemo_evaluator_sdk.agent_eval.tasks import (
     SemanticView,
     ViewSignal,
 )
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
+from nemo_evaluator_sdk.agent_eval.trials import (
+    AgentEvalTrial,
+    AgentEvalTrialStatus,
+    AgentOutput,
+    RunnerInfo,
+    TrialError,
+)
 from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import (
@@ -861,3 +867,57 @@ async def test_run_rejects_tasks_without_trials() -> None:
 
     with pytest.raises(ValueError, match=r"no trials produced for tasks: \['task-2'\]"):
         await AgentEvaluator().run(tasks=[_task(), other_task], trials=[_candidate_trial()])
+
+
+class _ErroringTaskRunner(_TaskRunner):
+    """A runner whose trials carry a typed error, as the Harbor adapter's do."""
+
+    async def run_tasks(
+        self,
+        tasks: Sequence[AgentEvalTask],
+        config: AgentEvalRunConfig | None = None,
+    ) -> list[AgentEvalTrial]:
+        trials = await super().run_tasks(tasks, config)
+        return [trial.model_copy(update={"error": TrialError(type="RuntimeError", message="boom")}) for trial in trials]
+
+
+@pytest.mark.asyncio
+async def test_run_threads_trials_into_the_summary_error_rollup() -> None:
+    """Guards the one line wiring ``trials=`` into ``from_scores``.
+
+    Every other rollup test builds the summary directly, so dropping that argument would leave them
+    all green while silently emptying the rollup for every real run.
+    """
+    result = await AgentEvaluator().run(tasks=[_task()], target=_ErroringTaskRunner())
+
+    assert result.summary.error_trial_ids == {"RuntimeError": [trial.id for trial in result.trials]}
+    assert result.summary.error_count == len(result.trials)
+
+
+def test_metric_row_exposes_the_typed_trial_error() -> None:
+    """The replacement for reading ``metadata["exception_type"]``.
+
+    Harbor no longer writes that key at all (``test_harbor_runtime.py`` asserts its absence), so this
+    is the only path by which a metric can grade on *how* a trial failed. A pre-``TrialError`` bundle
+    still carries the old key in its metadata, but nothing reads it.
+    """
+    task = AgentEvalTask(id="task-1", intent="Fix it.", inputs={"instruction": "Q?"})
+    trial = _candidate_trial().model_copy(
+        update={"error": TrialError(type="RuntimeError", message="boom", traceback="Traceback...\n")}
+    )
+
+    row = _metric_row(task, trial)
+
+    assert row["trial"]["error"] == {
+        "type": "RuntimeError",
+        "message": "boom",
+        "traceback": "Traceback...\n",
+        "occurred_at": None,
+    }
+
+
+def test_metric_row_error_is_none_for_a_trial_that_did_not_fail() -> None:
+    # Always present, so a metric can read it unconditionally rather than probing for the key.
+    row = _metric_row(AgentEvalTask(id="task-1", intent="Fix it.", inputs={}), _candidate_trial())
+
+    assert row["trial"]["error"] is None

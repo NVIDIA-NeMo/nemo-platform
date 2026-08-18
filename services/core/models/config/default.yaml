@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Default configuration for Models service
 models:
   huggingface_model_puller: "nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10"

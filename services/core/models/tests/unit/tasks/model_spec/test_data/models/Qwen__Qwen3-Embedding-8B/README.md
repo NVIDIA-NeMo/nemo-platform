@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 license: apache-2.0
 base_model:
 - Qwen/Qwen3-8B-Base
@@ -111,7 +114,6 @@ import torch.nn.functional as F
 from torch import Tensor
 from transformers import AutoTokenizer, AutoModel
 
-
 def last_token_pool(last_hidden_states: Tensor,
                  attention_mask: Tensor) -> Tensor:
     left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
@@ -121,7 +123,6 @@ def last_token_pool(last_hidden_states: Tensor,
         sequence_lengths = attention_mask.sum(dim=1) - 1
         batch_size = last_hidden_states.shape[0]
         return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
-
 
 def get_detailed_instruct(task_description: str, query: str) -> str:
     return f'Instruct: {task_description}\nQuery:{query}'
@@ -269,7 +270,6 @@ curl http://localhost:8080/embed \
 | **Qwen3-Embedding-0.6B** | 0.6B   | 66.33      | 67.45      | 71.40  | 68.74  | 76.42       | 62.58   | 71.03 | 54.52 |
 | **Qwen3-Embedding-4B**   | 4B     | 72.27      | 73.51      | 75.46  | 77.89  | 83.34       | 66.05   | 77.03 | 61.26 |
 | **Qwen3-Embedding-8B**   | 8B     | **73.84**  | **75.00**  | **76.97**  | **80.08**  | 84.23       | 66.99   | **78.21** | 63.53 |
-
 
 ## Citation
 

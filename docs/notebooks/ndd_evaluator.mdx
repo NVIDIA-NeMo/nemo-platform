@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Emergency Triage LLM Evaluation"
 description: ""
 ---
@@ -28,7 +31,6 @@ description: ""
  │ +-----------------------+ │
  └─────────────────────────────┘
 ```
-
 
 - **What happens below**:
  - 🏗️ Generate realistic, privacy-safe triage notes, score their quality with LLM-as-a-Judge, and filter for high-signal examples using Data Designer.
@@ -85,7 +87,6 @@ Create a `DataDesignerConfigBuilder` with the models you intend to use.
 
 ```python
 import data_designer.config as dd
-
 
 MODEL_ALIAS_GENERATOR = "content_generator"
 MODEL_ID_GENERATOR = "nvidia/nemotron-3-nano-30b-a3b"
@@ -430,7 +431,6 @@ def show_example_triage_notes(filtered_df, num_examples=5):
         console.print(panel)
         console.print()  # Extra newline for separation
 
-
 # Show some example records from the bottom using rich
 show_example_triage_notes(filtered_df, num_examples=3)
 ```
@@ -516,7 +516,6 @@ EVALUATOR_CONFIG = {
         ],
     }
 }
-
 
 ```
 
@@ -638,7 +637,6 @@ for complexity in COMPLEXITIES:
  )
  results_dict[spec['name']][complexity.capitalize()] = 100 * accuracy # Store as percentage
  print(f" --> DONE: {spec['name']}, {complexity.capitalize()} (Accuracy: {100*accuracy:.2f}%)\n")
-
 
 ```
 

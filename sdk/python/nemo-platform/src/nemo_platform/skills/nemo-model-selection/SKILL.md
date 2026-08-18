@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-model-selection
 description: Recommends an LLM for a NeMo Platform agent based on what the agent actually has to do, explained in plain English before any benchmark name appears. Use when the user is choosing a model for a new agent, assessing a model they already selected, or deciding what belongs in AGENT-SPEC.md or Platform agent.yaml. Invoked by nemo-explore at the model question; also runs standalone when the user starts mid-flow.
 triggers:

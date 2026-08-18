@@ -3,12 +3,13 @@
 
 import { AppBar, Button, Flex, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Breadcrumbs } from '@studio/components/Breadcrumbs';
+import { DocumentationLink } from '@studio/components/Layouts/GlobalNav/components/DocumentationLink';
+import { ThemeSwitch } from '@studio/components/Layouts/GlobalNav/components/ThemeSwitch';
 import { UserPopover } from '@studio/components/UserPopover';
 import { TOUR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { AssistantTopBarChat } from '@studio/routes/agents/AssistantChatRoute/AssistantTopBarChat';
-import { ThemeSwitch } from '@studio/routes/PageLayout/ThemeSwitch';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useSidebarState } from '@studio/util/hooks/useSidebarState';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -88,6 +89,7 @@ const GlobalNavContent: FC<GlobalNavContentProps> = ({
             )}
             {shouldMountAssistantTopBarChat && <AssistantTopBarChat />}
             <ThemeSwitch />
+            <DocumentationLink />
             <span data-tour="nav-user">
               <UserPopover />
             </span>

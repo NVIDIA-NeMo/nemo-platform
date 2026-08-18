@@ -28,6 +28,7 @@ import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakeP
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
+import { formatInteger } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Columns3 } from 'lucide-react';
@@ -264,7 +265,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         cell: ({ row }) => {
           const { input_tokens, output_tokens } = row.original;
           if (input_tokens == null && output_tokens == null) return <Text>-</Text>;
-          return <Text>{String((input_tokens ?? 0) + (output_tokens ?? 0))}</Text>;
+          return <Text>{formatInteger((input_tokens ?? 0) + (output_tokens ?? 0))}</Text>;
         },
       }
     ),

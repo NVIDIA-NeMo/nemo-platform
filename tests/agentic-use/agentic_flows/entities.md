@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Entities Service Agentic Flows
 
 The Entities service provides a generic storage layer for metadata about resources in NeMo Platform. Entities can represent models, datasets, and other platform objects.

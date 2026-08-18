@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 #
 # Dev-only: install the `nemo-relay` GATEWAY BINARY, the one Fabric eval dependency that cannot come
 # from a wheel. It is required for live ATIF trajectory capture on out-of-process harnesses (codex).

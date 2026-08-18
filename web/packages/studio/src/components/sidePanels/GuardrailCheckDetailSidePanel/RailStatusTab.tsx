@@ -32,7 +32,12 @@ export const RailStatusTab: FC<RailStatusTabProps> = ({ latestRun, configData })
   // Not gated on a run: the guardrails below come from the config, so a check
   // that has never run still shows its declared coverage, all of it inactive.
   const railEntries = Object.entries(latestRun?.rails_status ?? {});
-  const guardrails = getActivatedGuardrails(configData, latestRun?.rails_status);
+  // The snapshot describes the config that actually ran — which for a draft no longer
+  // exists, and for a saved run may since have been edited. Deriving from `configData`
+  // is the fallback for runs recorded before snapshots existed, and for checks with no
+  // runs at all (where declared coverage is still worth showing).
+  const guardrails =
+    latestRun?.activated_guardrails ?? getActivatedGuardrails(configData, latestRun?.rails_status);
 
   return (
     <Stack gap="density-xl">

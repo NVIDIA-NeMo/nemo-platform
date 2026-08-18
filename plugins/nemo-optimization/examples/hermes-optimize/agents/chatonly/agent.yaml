@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Platform agent for --agent optimize (nemo-agents-spec-v1).
 # Defaults match optimize-chatonly.yaml (inference-api). For a local IGW, edit
 # model + base_url before `nemo agents create` — see README.md.
