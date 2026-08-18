@@ -225,3 +225,47 @@ def test_adapter_integrations_from_automodel_job_output() -> None:
     assert spec.integrations is not None
     assert spec.integrations.wandb is not None
     assert spec.integrations.wandb.project == "plugin-project"
+
+
+def test_adapter_plumbs_activation_checkpointing() -> None:
+    """`parallelism.activation_checkpointing` must survive into the v2 training spec."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {"training_type": "sft", "finetuning_type": "lora"},
+            "parallelism": {"num_gpus_per_node": 8, "activation_checkpointing": True},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.parallelism.activation_checkpointing is True
+
+
+def test_adapter_activation_checkpointing_accepts_selective() -> None:
+    """Automodel takes bool | 'full' | 'selective'; the string modes must pass through."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {"training_type": "sft", "finetuning_type": "lora"},
+            "parallelism": {"num_gpus_per_node": 8, "activation_checkpointing": "selective"},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.parallelism.activation_checkpointing == "selective"
+
+
+def test_adapter_activation_checkpointing_defaults_to_none() -> None:
+    """Unset means "don't emit", preserving Automodel's own default of disabled."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {"training_type": "sft", "finetuning_type": "lora"},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.parallelism.activation_checkpointing is None

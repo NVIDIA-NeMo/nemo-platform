@@ -127,6 +127,14 @@ class ParallelismSpec(AutomodelSchema):
     context_parallel_size: int = Field(default=1, gt=0)
     expert_parallel_size: int | None = Field(default=None, gt=0)
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
+    activation_checkpointing: bool | Literal["full", "selective"] | None = Field(
+        default=None,
+        description=(
+            "Recompute activations during the backward pass to cut peak memory at the cost of "
+            "speed. 'selective' checkpoints only the most memory-heavy ops. Left unset, Automodel "
+            "defaults to disabled."
+        ),
+    )
 
 
 class OutputRequest(AutomodelSchema):

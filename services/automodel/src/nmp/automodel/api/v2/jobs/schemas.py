@@ -136,6 +136,14 @@ class ParallelismParams(BaseModel):
     context_parallel_size: int = Field(default=1, gt=0, description="Context parallel size.")
     expert_parallel_size: Optional[int] = Field(default=None, gt=0, description="Expert parallel size (MoE models).")
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
+    activation_checkpointing: Optional[Union[bool, Literal["full", "selective"]]] = Field(
+        default=None,
+        description=(
+            "Recompute activations during the backward pass to reduce peak memory at the cost of "
+            "speed. 'selective' checkpoints only the most memory-heavy ops. Unset leaves Automodel's "
+            "default (disabled)."
+        ),
+    )
 
 
 # ============================================================

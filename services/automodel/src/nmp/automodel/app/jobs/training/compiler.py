@@ -178,6 +178,7 @@ def compile_training_step(
             context_parallel_size=p.context_parallel_size,
             expert_parallel_size=p.expert_parallel_size,
             sequence_parallel=p.sequence_parallel,
+            activation_checkpointing=p.activation_checkpointing,
         ),
         integrations=job_spec.integrations,
         output_model=job_spec.output.name,

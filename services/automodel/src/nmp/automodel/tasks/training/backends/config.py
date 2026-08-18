@@ -146,7 +146,11 @@ def compile_automodel_config(
         "ep_size": p.expert_parallel_size,
         "sequence_parallel": p.sequence_parallel,
     }
-    if _is_embedding_model and embedding_config.do_gradient_checkpointing:
+    # Explicit parallelism setting wins; embedding jobs keep their own toggle as the
+    # fallback so `do_gradient_checkpointing` behaves as before when nothing is set.
+    if p.activation_checkpointing is not None:
+        cfg["distributed"]["activation_checkpointing"] = p.activation_checkpointing
+    elif _is_embedding_model and embedding_config.do_gradient_checkpointing:
         cfg["distributed"]["activation_checkpointing"] = True
     if p.pipeline_parallel_size > 1:
         cfg["distributed"]["pipeline"] = {
