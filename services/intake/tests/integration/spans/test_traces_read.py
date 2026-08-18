@@ -70,7 +70,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
         "/apis/intake/v2/workspaces/default/traces",
         params={
             "filter[session_id]": "trace-session",
-            "filter[evaluation_id]": "experiment-a",
+            "filter[evaluation_name]": "experiment-a",
             "page_size": 20,
         },
     )

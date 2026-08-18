@@ -87,7 +87,7 @@ At read time, each Evaluation is enriched with rollups derived from its sessions
 
 | Rollup | Meaning |
 |--------|---------|
-| `test_case_count` | Number of distinct test cases (distinct non-empty `test_case_id` values). Sessions with no `test_case_id` do not count toward it or the rollups. |
+| `test_case_count` | Number of distinct test cases (distinct non-empty `test_case_name` values). Sessions with no `test_case_name` do not count toward it or the rollups. |
 | `cost_usd` | Cost aggregate across the Evaluation's sessions. |
 | `latency_ms` | Latency aggregate across the Evaluation's sessions. |
 | `tokens` | Average total tokens (input + output) per test case. |
@@ -233,7 +233,7 @@ session with the Evaluation's identity:
 
 - For Agent Trajectory Interchange Format (ATIF) and chat-completions, add a **top-level**
   `evaluation_context` object to the ingest payload
-  carrying `evaluation_id` (the Evaluation's **name**) and `test_case_id`.
+  carrying `evaluation_name` and `test_case_name`.
 - For OpenTelemetry Protocol (OTLP), set the `nemo.evaluation.name` and
   `nemo.test_case.name` root-span attributes.
 
@@ -501,7 +501,7 @@ window.
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| **Rows show zero metrics** | Three causes: no sessions have been ingested for that Evaluation yet; the sessions were ingested without `test_case_id`, so they do not count toward `test_case_count` or the rollups; or ClickHouse is unreachable. Confirm ingestion in Intake, confirm that sessions carry `test_case_id`, and run the explicit metric-sort health check. |
+| **Rows show zero metrics** | Three causes: no sessions have been ingested for that Evaluation yet; the sessions were ingested without `test_case_name`, so they do not count toward `test_case_count` or the rollups; or ClickHouse is unreachable. Confirm ingestion in Intake, confirm that sessions carry `test_case_name`, and run the explicit metric-sort health check. |
 | **A metric sort or filter returns `503`** | Rollups cannot be computed because ClickHouse is down. Retry after the read path is healthy, or use an entity-column sort. |
 | **A list returns `413`** | The Experiment selected more than 1,000 Evaluations for an in-memory sort. Add filters to narrow the set. |
 | **An Evaluation is not in the Experiment** | Confirm that you created it with the correct Experiment `id` in `experiment_ids` and that you are querying the correct workspace (`filter[experiment_id]=<experiment-id>`). |

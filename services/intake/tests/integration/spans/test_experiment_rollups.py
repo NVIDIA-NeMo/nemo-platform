@@ -292,7 +292,7 @@ def test_deprecated_evaluation_context_hydrates_evaluation_rollups(client: TestC
                 latency_ms=100,
                 offset_seconds=0,
             ),
-            "evaluation_context": {"evaluation_name": evaluation_id, "test_case_name": "case-1"},
+            "evaluation_context": {"evaluation_id": evaluation_id, "test_case_id": "case-1"},
         },
     )
 
