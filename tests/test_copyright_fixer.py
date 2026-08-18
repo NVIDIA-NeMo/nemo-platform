@@ -52,7 +52,8 @@ def test_add_header_uses_syntax_safe_styles_for_missing_osrb_file_types(tmp_path
 
     files = {
         "test_case.py": ('print("ok")\n', copyright_fixer._HASH_HEADER + "\n"),
-        "nemo-helm-readme.md.gotmpl": ("# title\n", copyright_fixer._HELM_TEMPLATE_HEADER + "\n"),
+        "nemo-helm-readme.md.gotmpl": ("# title\n", copyright_fixer._HTML_HEADER + "\n"),
+        "serviceaccount.gotmpl": ("{{ .Values.name }}\n", copyright_fixer._HELM_TEMPLATE_HEADER + "\n"),
         "values.yaml": ("apiVersion: v1\n", copyright_fixer._HASH_HEADER + "\n"),
         "chart/templates/serviceaccount.yaml": (
             "{{- if .Values.enabled -}}\napiVersion: v1\n{{- end }}\n",
@@ -91,6 +92,16 @@ def test_fix_style_converts_helm_template_yaml_to_non_rendering_comment(tmp_path
     assert chart_template.read_text(encoding="utf-8").startswith(copyright_fixer._HELM_TEMPLATE_HEADER + "\n")
 
 
+def test_fix_style_preserves_markdown_helm_template_html_header(tmp_path: Path) -> None:
+    readme_template = tmp_path / "nemo-helm-readme.md.gotmpl"
+    content = copyright_fixer._HTML_HEADER + '\n# {{ template "chart.description" . }}\n'
+    readme_template.write_text(content, encoding="utf-8")
+
+    assert not copyright_fixer._needs_style_fix(str(readme_template))
+    assert not copyright_fixer._fix_header_style(str(readme_template))
+    assert readme_template.read_text(encoding="utf-8") == content
+
+
 def test_plain_yaml_keeps_hash_comment_header(tmp_path: Path) -> None:
     values = tmp_path / "chart" / "values.yaml"
     values.parent.mkdir()
@@ -104,6 +115,22 @@ def test_plain_yaml_keeps_hash_comment_header(tmp_path: Path) -> None:
 def test_helm_template_header_keeps_spdx_identifier_on_own_line() -> None:
     assert "\nSPDX-License-Identifier: Apache-2.0\n*/}}\n" in copyright_fixer._HELM_TEMPLATE_HEADER
     assert "SPDX-License-Identifier: Apache-2.0 */}}" not in copyright_fixer._HELM_TEMPLATE_HEADER
+
+
+def test_helm_docs_readme_template_emits_markdown_spdx_header() -> None:
+    template = (
+        Path(__file__).resolve().parents[1] / "k8s" / "helm" / "helm-docs-template" / "nemo-helm-readme.md.gotmpl"
+    )
+    content = template.read_text(encoding="utf-8")
+
+    assert content.startswith(copyright_fixer._HTML_HEADER + '\n# {{ template "chart.description" . }}\n')
+
+
+def test_generated_helm_readme_has_single_blank_line_after_spdx_header() -> None:
+    readme = Path(__file__).resolve().parents[1] / "k8s" / "helm" / "README.md"
+    content = readme.read_text(encoding="utf-8")
+
+    assert content.startswith(copyright_fixer._HTML_HEADER + "\n# NeMo Platform Helm Chart\n")
 
 
 def test_inline_helm_template_header_is_not_accepted() -> None:

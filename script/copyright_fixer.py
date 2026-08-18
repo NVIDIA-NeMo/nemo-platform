@@ -468,6 +468,10 @@ def _has_frontmatter(content: str) -> bool:
     return content.startswith("---\n") or content.startswith("---\r\n")
 
 
+def _is_markdown_helm_template(path: Path) -> bool:
+    return path.suffix in {".gotmpl", ".tpl"} and Path(path.stem).suffix in {".md", ".mdx"}
+
+
 def _is_helm_template_yaml(path: Path) -> bool:
     """Return True for YAML files under a Helm chart templates directory."""
     if path.suffix not in {".yaml", ".yml"}:
@@ -518,6 +522,9 @@ def _get_header_for_file(filepath: str, content: str) -> str:
 
     if ext in {".md", ".mdx"} and _has_frontmatter(content):
         return _HASH_HEADER
+
+    if _is_markdown_helm_template(path):
+        return _HTML_HEADER + "\n"
 
     if _is_helm_template_yaml(path):
         return _HELM_TEMPLATE_HEADER + "\n"
