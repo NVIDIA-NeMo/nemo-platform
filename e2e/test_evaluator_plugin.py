@@ -801,7 +801,7 @@ def test_gym_agent_evaluate_job_completes(
         resources_server="mcqa",
         num_repeats=1,
         concurrency=2,
-        env_overrides={
+        hydra_params={
             "policy_base_url": _internal_model_route(evaluator_workspace, model_name),
             "policy_api_key": "not-used-mock-provider",
             "policy_model_name": model_name,
@@ -856,7 +856,7 @@ def test_gym_agent_evaluate_job_invalid_config_fails(
         resources_server="missing-e2e-resources-server",
         num_repeats=1,
         concurrency=1,
-        env_overrides={
+        hydra_params={
             "policy_base_url": "http://unused.invalid/v1",
             "policy_api_key": "not-used",
             "policy_model_name": "not-used",

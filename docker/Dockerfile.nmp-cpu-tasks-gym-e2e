@@ -6,7 +6,7 @@
 #
 # This image is intentionally excluded from release targets. Production Gym packaging remains a
 # separate decision because Gym requires Ray, which the platform workspace excludes for an unfixed
-# critical CVE. Test model configuration is supplied per job through GymRunnerTarget.env_overrides.
+# critical CVE. Test model configuration is supplied per job through GymRunnerTarget.hydra_params.
 
 ARG NMP_CPU_TASKS_BASE=nmp-cpu-tasks
 FROM ${NMP_CPU_TASKS_BASE}
