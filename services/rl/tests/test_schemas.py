@@ -186,3 +186,33 @@ def test_grpo_lora_accepts_adapter_output() -> None:
     )
     assert job.output.type is OutputNameType.ADAPTER
     job.validate_for_training()
+
+
+def test_grpo_sampling_defaults_preserve_previous_behaviour() -> None:
+    """These were hardcoded in the compiler; the defaults must reproduce them exactly."""
+    t = GRPOTraining(type="grpo")
+    assert t.temperature == 1.0
+    # None means "use the whole context", which is what max_seq_length gave before.
+    assert t.max_new_tokens is None
+
+
+def test_grpo_rejects_greedy_temperature() -> None:
+    """Temperature 0 makes every rollout in a group identical.
+
+    GRPO's advantage is the spread of rewards within a prompt group. With no spread the
+    advantage is zero for every sample and the run trains on nothing -- silently, since
+    rewards still look plausible. Cheaper to reject at submit time than to discover after
+    150 steps of flat loss.
+    """
+    with pytest.raises(ValueError):
+        GRPOTraining(type="grpo", temperature=0.0)
+
+
+def test_grpo_rejects_max_new_tokens_larger_than_context() -> None:
+    with pytest.raises(ValueError, match="cannot exceed max_seq_length"):
+        GRPOTraining(type="grpo", max_seq_length=2048, max_new_tokens=4096)
+
+
+def test_grpo_accepts_max_new_tokens_up_to_the_context() -> None:
+    t = GRPOTraining(type="grpo", max_seq_length=2048, max_new_tokens=2048)
+    assert t.max_new_tokens == 2048

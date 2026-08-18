@@ -325,6 +325,8 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 num_generations_per_prompt=t.num_generations_per_prompt,
                 num_prompts_per_step=t.num_prompts_per_step,
                 num_val_generations_per_prompt=t.num_val_generations_per_prompt,
+                temperature=t.temperature,
+                max_new_tokens=t.max_new_tokens,
                 normalize_rewards=t.normalize_rewards,
                 max_rollout_turns=t.max_rollout_turns,
                 ref_policy_kl_penalty=t.ref_policy_kl_penalty,
