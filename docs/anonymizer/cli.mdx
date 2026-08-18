@@ -14,9 +14,7 @@ This reference covers the `nemo anonymizer` commands exposed by the Anonymizer p
 | Command                          | Source                          | Description                                                  |
 |----------------------------------|---------------------------------|--------------------------------------------------------------|
 | `nemo anonymizer validate`       | Manual Typer command            | Validate an `AnonymizerConfig` (and optional `model_configs`).|
-| `nemo anonymizer preview submit`    | Generated from `NemoFunction`   | Local streaming preview.                                     |
 | `nemo anonymizer preview submit` | Generated from `NemoFunction`   | Remote streaming preview against the plugin service.         |
-| `nemo anonymizer run submit`        | Generated from `NemoJob`        | Local job execution in the CLI process.                      |
 | `nemo anonymizer run submit`     | Generated from `NemoJob`        | Submit an `anonymizer.run` job to the NeMo Platform Jobs worker. |
 | `nemo anonymizer run explain`    | Generated from `NemoJob`        | Print the job key, submit endpoint, and JSON schemas.        |
 
@@ -39,13 +37,9 @@ The command does not accept `data.source`. Input-source validation happens durin
 
 ## `nemo anonymizer preview`
 
-Both `preview submit` and `preview submit` take a spec file matching `PreviewRequest`.
+`preview submit` takes a spec file matching `PreviewRequest`.
 
 ```bash
-nemo anonymizer preview submit \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}"
-
 nemo anonymizer preview submit \
   --spec-file /tmp/anonymizer-preview.yaml \
   --workspace "${NMP_WORKSPACE:-default}" \
@@ -60,11 +54,11 @@ nemo anonymizer preview submit \
 
 ### Preview source kinds
 
-| Form                                  | `preview submit` | `preview submit` |
-|---------------------------------------|---------------|------------------|
-| Local path (`/tmp/input.csv`)         | yes           | no               |
-| HTTP(S) URL (`https://.../input.csv`) | yes           | yes              |
-| Fileset reference (`fs#path`)         | yes           | yes              |
+| Form                                  | `preview submit` |
+|---------------------------------------|------------------|
+| Local path (`/tmp/input.csv`)         | no               |
+| HTTP(S) URL (`https://.../input.csv`) | yes              |
+| Fileset reference (`fs#path`)         | yes              |
 
 ### Preview output
 
@@ -152,7 +146,7 @@ Both preview and run specs use the shared `AnonymizerRequest` shape:
 | `data.text_column`| string                                          | no       | Defaults to `text`.                                                    |
 | `data.id_column`  | string                                          | no       | Optional record identifier column.                                     |
 | `data.data_summary` | string                                        | no       | Optional short description of the data.                                |
-| `model_configs`   | list of Data Designer `ModelConfig`             | depends  | Required for `preview submit` and `run submit`; optional for `preview submit` and `run submit`. |
+| `model_configs`   | list of Data Designer `ModelConfig`             | depends  | Required for `preview submit` and `run submit`. |
 | `selected_models` | object with `detection` / `replace` / `rewrite` | no       | Role overrides on top of bundled defaults. Requires `model_configs`.   |
 
 Preview-only:

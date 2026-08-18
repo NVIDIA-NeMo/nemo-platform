@@ -51,11 +51,10 @@ metric for a rubric, RAG workflow, or tool-calling evaluation.
 | Task-driven platform job | `client.evaluator.submit(tasks=..., target=<runner>)` or `nemo evaluator agent-evaluate submit` |
 | Reusable platform definitions and result indexes | `client.evaluator.metrics`, `.tasks`, `.tasksets`, `.eval_results`, `.agent_eval_results` |
 
-Default to `submit` for every plugin evaluation. The plugin's local execution
-path is being retired: the `nemo evaluator ... run` CLI verb still exists but
-should not be built on, even though `--help` still lists it. For fast metric
-iteration without the platform, use the standalone `nemo_evaluator_sdk.Evaluator`
-instead.
+Default to `submit` for every plugin evaluation. The plugin does not expose a
+local `run` path — use `client.evaluator.submit(...)` or
+`nemo evaluator … submit`. For fast metric iteration without the platform, use
+the standalone `nemo_evaluator_sdk.Evaluator` instead.
 
 - Read [SDK Execution](references/execution.md) for datasets, targets,
 configuration, field mapping, job lifecycle, and custom metric packaging.

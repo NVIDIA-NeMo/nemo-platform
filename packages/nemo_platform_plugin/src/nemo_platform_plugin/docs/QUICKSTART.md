@@ -146,12 +146,9 @@ class ProcessJob(NemoJob):
         ...
 ```
 
-The platform auto-generates three CLI verbs per job:
+The platform auto-generates two CLI verbs per job:
 
 ```bash
-nemo my-plugin process run --spec '{"input": "hello"}'
-# { "status": "done", "result": "HELLO" }
-
 nemo my-plugin process submit --profile default --spec '{"input": "hello"}'
 # Posts the job to the plugin service; the cluster runs it.
 

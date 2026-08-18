@@ -638,21 +638,20 @@ def test_authored_skill_guidance_uses_submit_for_plugin_jobs() -> None:
     examples = "\n".join(path.read_text(encoding="utf-8") for path in sorted((root / "assets/examples").glob("*.py")))
     guidance = "\n".join([*markdown.values(), examples])
 
-    # The plugin's local execution path is being retired. Prose may name it so the
-    # agent knows why to avoid it; runnable snippets must never demonstrate it.
+    # Local plugin `run` must not appear in runnable snippets.
     retiring = (
         "nemo evaluator evaluate run",
         "nemo evaluator agent-evaluate run",
-        "client.evaluator." + "run(",
+        "client.evaluator.run(",
     )
     for path, text in markdown.items():
         for block in _fenced_blocks(text):
-            assert not any(term in block for term in retiring), f"{path.name} demonstrates a retiring run path"
+            assert not any(term in block for term in retiring), f"{path.name} demonstrates a removed run path"
     assert not any(term in examples for term in retiring)
     assert "client.evaluator.create(" not in guidance
 
     normalized_skill = " ".join(markdown[root / "SKILL.md"].split())
-    assert "is being retired" in normalized_skill
+    assert "client.evaluator.submit" in normalized_skill or "evaluator.submit" in normalized_skill
     assert "`nemo_evaluator_sdk.Evaluator`" in normalized_skill
 
     assert "Evaluator().run_sync(" in guidance

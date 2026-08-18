@@ -12,7 +12,7 @@ Every plugin capability is a "surface" — a typed contract registered via a Pyt
 | **HTTP service** ★ | `nemo.services` | `NemoService` | `/apis/<name>/...` | wraps in `NemoServiceAdapter`, mounts FastAPI router |
 | **CLI** ★ | `nemo.cli` | `NemoCLI` | `nemo <name> <cmd>` | calls `get_cli()`, mounts as Typer subcommand |
 | **Agent CLI** | `nemo.cli.agents` | `NemoCLI` | `nemo agents <agent> <verb>` | mounts an agent command group under the shared `agents` namespace |
-| **Job** ★ | `nemo.jobs` | `NemoJob` | key: `<plugin>.<job>` | auto-generates `run` / `submit` / `explain` CLI verbs; the scheduler drives local runs and remote submission |
+| **Job** ★ | `nemo.jobs` | `NemoJob` | key: `<plugin>.<job>` | auto-generates `submit` / `explain` CLI verbs; the scheduler drives remote submission |
 | **Controller** ★ | `nemo.controllers` | `NemoController` | (background) | wraps in `NemoControllerAdapter`, runs reconcile loop |
 | SDK | `nemo.sdk` | (any class) | `nemo.<name>` on hub | instantiated as attribute on the `NeMo` hub |
 | MCP | `nemo.mcp` | `() -> list[dict]` | (MCP tool list) | returns MCP tool definitions |
@@ -97,7 +97,11 @@ from nemo_platform_plugin.discovery import discover_jobs
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 job_cls = discover_jobs()["example.say-hello"]
-NemoJobScheduler().submit_remote(job_cls, {"name": "Alice"})
+NemoJobScheduler().submit_remote(
+    job_cls,
+    {"name": "Alice"},
+    base_url="http://localhost:8080",
+)
 ```
 
 ## Auto-generated CLI for jobs

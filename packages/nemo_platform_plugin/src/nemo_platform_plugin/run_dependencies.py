@@ -20,6 +20,9 @@ class RunDependencyError(RuntimeError):
     """Raised when a required injected ``NemoJob.run`` parameter cannot be bound."""
 
 
+LocalRunError = RunDependencyError
+
+
 def resolve_run_kwargs(
     job_cls: type[NemoJob],
     run: Any,
@@ -124,4 +127,4 @@ def _resolve_run_param(
     return _UNBOUND
 
 
-__all__ = ["RunDependencyError", "resolve_run_kwargs"]
+__all__ = ["LocalRunError", "RunDependencyError", "resolve_run_kwargs"]
