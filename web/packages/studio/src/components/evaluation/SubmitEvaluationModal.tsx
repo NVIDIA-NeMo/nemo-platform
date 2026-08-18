@@ -23,6 +23,7 @@ import {
   filesDeleteFileset,
   filesDownloadFile,
   filesUploadFile,
+  useListEvaluations,
   useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
@@ -32,9 +33,8 @@ import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-
 import {
   createRunEvaluation,
   EVAL_CONFIG_FILENAME,
-  EVAL_CONFIG_FILESET_KEY,
-  experimentConfigError,
-  experimentFilesetName,
+  evaluationConfigError,
+  evaluationFilesetName,
 } from '@studio/components/evaluation/experimentEvalConfig';
 import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
 import {
@@ -63,17 +63,17 @@ import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
   { value: MODE_DEFAULT, children: 'Use Example' },
-  { value: MODE_EXPERIMENT, children: 'Choose Experiment' },
+  { value: MODE_EXPERIMENT, children: 'Use existing evaluation' },
 ];
 
 const DATASET_FILENAME = 'dataset.jsonl';
 
 /** Backend caps page_size at 100; the picker shows the most recent page. */
-const EXPERIMENT_PAGE_SIZE = 100;
+const LIST_PAGE_SIZE = 100;
 const README_FILENAME = 'README.md';
 
-const NO_EXPERIMENTS_MESSAGE =
-  'No experiments yet. Run one from "Use Example" first — it creates the experiment and its eval config, which you can then re-run here.';
+const NO_EVALUATIONS_MESSAGE =
+  'No evaluations with a reusable eval config yet. Create one to run and re-use it.';
 
 const NO_DEPLOYMENT_MESSAGE = 'This agent has no active deployment.';
 const DEPLOYMENT_CHECK_FAILED_MESSAGE =
@@ -88,8 +88,8 @@ const submitEvaluationBaseSchema = z.object({
   newName: z.string(),
   /** Fileset created alongside it, holding eval-config.json and any data artifacts. */
   filesetName: z.string(),
-  /** Name of the experiment to re-run in "Choose Experiment" mode. */
-  experimentName: z.string(),
+  /** Name of the existing evaluation whose eval config is reused in "Use existing evaluation" mode. */
+  evaluationName: z.string(),
 });
 
 type SubmitEvaluationFormData = z.infer<typeof submitEvaluationBaseSchema>;
@@ -121,11 +121,11 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
         });
       }
     }
-    if (data.mode === MODE_EXPERIMENT && !data.experimentName) {
+    if (data.mode === MODE_EXPERIMENT && !data.evaluationName) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Pick an experiment to run',
-        path: ['experimentName'],
+        message: 'Pick an evaluation to reuse',
+        path: ['evaluationName'],
       });
     }
   });
@@ -147,7 +147,7 @@ const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => {
     exampleKey: DATASET_EVAL_CONFIG_KEY,
     newName,
     filesetName: filesetNameForExperiment(newName),
-    experimentName: '',
+    evaluationName: '',
   };
 };
 
@@ -202,12 +202,12 @@ const discardSeeded = async (
 
 /** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
  *  it builds the spec from the sample template (fanning the metric onto every task with
- *  the picked judge baked in) and seeds it into a new fileset; in "Choose Fileset" mode
- *  it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
+ *  the picked judge baked in) and seeds it into a new fileset; in "Use existing evaluation"
+ *  mode it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
 const loadPersistedSpec = async (
   workspace: string,
   formData: SubmitEvaluationFormData,
-  experimentFileset: string | null
+  configFileset: string | null
 ): Promise<EvalSpec> => {
   if (formData.mode === MODE_DEFAULT) {
     const signal = new AbortController().signal;
@@ -277,14 +277,14 @@ const loadPersistedSpec = async (
     }
     return spec;
   }
-  if (!experimentFileset) throw new Error('The selected experiment has no eval config fileset');
+  if (!configFileset) throw new Error('The selected evaluation has no eval config fileset');
   const blob = await filesDownloadFile(
     workspace,
-    experimentFileset,
+    configFileset,
     EVAL_CONFIG_FILENAME,
     new AbortController().signal
   );
-  if (!blob) throw new Error("Failed to read the selected experiment's eval config");
+  if (!blob) throw new Error("Failed to read the selected evaluation's eval config");
   return parseEvalConfig(await blob.text());
 };
 
@@ -353,36 +353,57 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   const agentFieldError = errors.agent?.message ?? deploymentError;
   const exampleKey = useWatch({ control, name: 'exampleKey' });
-  const experimentName = useWatch({ control, name: 'experimentName' });
+  const evaluationName = useWatch({ control, name: 'evaluationName' });
 
-  const { data: experimentsResponse, isLoading: isExperimentsLoading } = useListExperiments(
+  const { data: evaluationsResponse, isLoading: isEvaluationsLoading } = useListEvaluations(
     workspace,
-    { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
+    { page_size: LIST_PAGE_SIZE, sort: '-created_at' },
     { query: { enabled: open && mode === MODE_EXPERIMENT } }
   );
-  const experiments = experimentsResponse?.data ?? [];
-  const selectedExperiment = experiments.find((item) => item.name === experimentName);
-  const hasNoExperiments = mode === MODE_EXPERIMENT && !isExperimentsLoading && !experiments.length;
-  const latestExperimentName = experiments[0]?.name;
+  const evaluations = evaluationsResponse?.data ?? [];
+  // The eval-config pointer lives in each Evaluation's own metadata (dict[str,str]) — the
+  // entity whose metadata is documented for a "config snapshot", not its ExperimentGroup.
+  // Approach A (metadata-only; the filter makes no extra calls): offer only evaluations that carry
+  // the pointer. Evaluations written before this change have empty metadata, so they won't
+  // appear until re-created or backfilled. Rejected alternatives if that bites: B — eager
+  // per-evaluation filesListFilesetFiles verification (too costly); C — a backend `runnable`
+  // flag. The select-time canRunSelectedEvaluation gate below is the safety net for an
+  // evaluation that names a fileset but is missing eval-config.json. Future upgrade: keep
+  // incompatible rows but disable them with an explanatory tooltip instead of hiding.
+  const compatibleEvaluations = evaluations.filter((item) => evaluationFilesetName(item) != null);
+  const selectedEvaluation = evaluations.find((item) => item.name === evaluationName);
+  const hasNoEvaluations =
+    mode === MODE_EXPERIMENT && !isEvaluationsLoading && !compatibleEvaluations.length;
+  const latestEvaluationName = compatibleEvaluations[0]?.name;
+
+  // Parent ExperimentGroups, loaded in reuse mode only to resolve a selected evaluation's group
+  // name — so a reused run is named after its experiment (flat) instead of nesting the prior
+  // run's random suffix. Used for the name stem only, not for the dropdown or the filter.
+  const { data: experimentGroupsResponse } = useListExperiments(
+    workspace,
+    { page_size: LIST_PAGE_SIZE, sort: '-created_at' },
+    { query: { enabled: open && mode === MODE_EXPERIMENT } }
+  );
+  const experimentGroups = experimentGroupsResponse?.data ?? [];
 
   useEffect(() => {
-    if (mode !== MODE_EXPERIMENT || experimentName || !latestExperimentName) return;
-    setValue('experimentName', latestExperimentName, { shouldValidate: true });
-  }, [mode, experimentName, latestExperimentName, setValue]);
+    if (mode !== MODE_EXPERIMENT || evaluationName || !latestEvaluationName) return;
+    setValue('evaluationName', latestEvaluationName, { shouldValidate: true });
+  }, [mode, evaluationName, latestEvaluationName, setValue]);
 
-  const { data: experimentConfigIssue, isFetching: isValidatingExperiment } = useQuery({
-    queryKey: ['experiment-eval-config', workspace, experimentName],
+  const { data: evaluationConfigIssue, isFetching: isValidatingEvaluation } = useQuery({
+    queryKey: ['evaluation-eval-config', workspace, evaluationName],
     queryFn: ({ signal }) =>
-      selectedExperiment ? experimentConfigError(workspace, selectedExperiment, signal) : null,
-    enabled: open && mode === MODE_EXPERIMENT && !!selectedExperiment,
+      selectedEvaluation ? evaluationConfigError(workspace, selectedEvaluation, signal) : null,
+    enabled: open && mode === MODE_EXPERIMENT && !!selectedEvaluation,
   });
 
-  const experimentFileset = selectedExperiment ? experimentFilesetName(selectedExperiment) : null;
-  const experimentFieldError = errors.experimentName?.message ?? experimentConfigIssue ?? undefined;
+  const evaluationFileset = selectedEvaluation ? evaluationFilesetName(selectedEvaluation) : null;
+  const evaluationFieldError = errors.evaluationName?.message ?? evaluationConfigIssue ?? undefined;
 
-  const canRunSelectedExperiment =
+  const canRunSelectedEvaluation =
     mode !== MODE_EXPERIMENT ||
-    (!isValidatingExperiment && !!selectedExperiment && !experimentConfigIssue);
+    (!isValidatingEvaluation && !!selectedEvaluation && !evaluationConfigIssue);
 
   // Fetch and parse the selected example config early to detect metric type and default model.
   const { data: exampleConfig } = useQuery({
@@ -439,27 +460,42 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     reset: resetMutation,
   } = useMutation({
     mutationFn: async (formData: SubmitEvaluationFormData) => {
-      const spec = await loadPersistedSpec(workspace, formData, experimentFileset);
+      const spec = await loadPersistedSpec(workspace, formData, evaluationFileset);
 
       const isNew = formData.mode === MODE_DEFAULT;
-      const filesetName = isNew ? formData.filesetName.trim() : (experimentFileset ?? '');
+      const filesetName = isNew ? formData.filesetName.trim() : (evaluationFileset ?? '');
 
       const seeded: SeededEntities = isNew ? { filesetName } : {};
 
       try {
-        const experiment = isNew
-          ? await createExperiment(workspace, {
-              name: formData.newName.trim(),
-              metadata: { [EVAL_CONFIG_FILESET_KEY]: filesetName },
-            })
-          : selectedExperiment;
-        if (!experiment) throw new Error('No experiment to run this evaluation under');
-        if (isNew) seeded.experimentName = experiment.name;
+        // "Use Example" creates a fresh ExperimentGroup to hold this run; "Use existing
+        // evaluation" reuses the picked evaluation's group(s) and records the lineage.
+        let experimentIds: string[];
+        let nameStem: string;
+        let parentEvaluationId: string | undefined;
+        if (isNew) {
+          const experiment = await createExperiment(workspace, { name: formData.newName.trim() });
+          seeded.experimentName = experiment.name;
+          experimentIds = [experiment.id];
+          nameStem = experiment.name;
+        } else {
+          if (!selectedEvaluation) throw new Error('No evaluation to reuse');
+          experimentIds = selectedEvaluation.experiment_ids;
+          // Name the run after its parent experiment (group), not the prior run — else the run's
+          // random suffix would nest and grow on every reuse. Fall back to the eval name with a
+          // trailing 8-char suffix stripped if the group isn't in the loaded page.
+          const parentGroup = experimentGroups.find(
+            (group) => group.id === selectedEvaluation.experiment_ids[0]
+          );
+          nameStem = parentGroup?.name ?? selectedEvaluation.name.replace(/-[a-z0-9]{8}$/, '');
+          parentEvaluationId = selectedEvaluation.id;
+        }
 
         const evaluationId = await createRunEvaluation(workspace, {
-          experimentId: experiment.id,
-          experimentName: experiment.name,
+          experimentIds,
+          nameStem,
           filesetName,
+          parentEvaluationId,
         });
         seeded.evaluationName = evaluationId;
 
@@ -467,7 +503,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
           workspace,
           agent: formData.agent,
           filesetName,
-          experimentName: experiment.name,
+          experimentName: nameStem,
           evaluationId,
         };
         const created = isDatasetEvalSpec(spec)
@@ -533,7 +569,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       submitButtonText="Submit"
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
-      submitDisabled={!deploymentVerified || !canRunSelectedExperiment}
+      submitDisabled={!deploymentVerified || !canRunSelectedEvaluation}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
@@ -576,7 +612,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                   setValue('mode', v as typeof MODE_DEFAULT | typeof MODE_EXPERIMENT, {
                     shouldValidate: false,
                   });
-                  clearErrors('experimentName');
+                  clearErrors('evaluationName');
                 }}
                 items={EVAL_CONFIG_MODE_ITEMS}
               />
@@ -612,22 +648,22 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                 </>
               ) : (
                 <>
-                  {hasNoExperiments ? (
+                  {hasNoEvaluations ? (
                     <Text kind="body/regular/md" color="secondary">
-                      {NO_EXPERIMENTS_MESSAGE}
+                      {NO_EVALUATIONS_MESSAGE}
                     </Text>
                   ) : (
                     <ControlledSelect
-                      useControllerProps={{ control, name: 'experimentName' }}
-                      loading={isExperimentsLoading}
-                      items={experiments.flatMap((item) =>
+                      useControllerProps={{ control, name: 'evaluationName' }}
+                      loading={isEvaluationsLoading}
+                      items={compatibleEvaluations.flatMap((item) =>
                         item.name ? [{ value: item.name, children: item.name }] : []
                       )}
                       formFieldProps={{
-                        slotLabel: 'Experiment',
-                        slotHelp: `Runs the ${EVAL_CONFIG_FILENAME} in the experiment's fileset.`,
-                        slotError: experimentFieldError,
-                        status: experimentFieldError ? 'error' : undefined,
+                        slotLabel: 'Evaluation',
+                        slotHelp: `Reuses the selected evaluation's ${EVAL_CONFIG_FILENAME}.`,
+                        slotError: evaluationFieldError,
+                        status: evaluationFieldError ? 'error' : undefined,
                       }}
                     />
                   )}
