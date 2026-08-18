@@ -280,9 +280,7 @@ describe('getTrainingTelemetry', () => {
 
   it('prefers the qualified name when a job carries both', () => {
     expect(
-      getTrainingTelemetry(
-        jobWithDetails({ train_lr: 0.000009, lr: 0.000005 })
-      ).learningRate
+      getTrainingTelemetry(jobWithDetails({ train_lr: 0.000009, lr: 0.000005 })).learningRate
     ).toBe(0.000009);
   });
 
