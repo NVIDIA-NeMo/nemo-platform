@@ -1,0 +1,48 @@
+{
+  "events": [
+    {
+      "id": "braintrust-event-1",
+      "_xact_id": "braintrust-xact-1",
+      "created": "2023-11-07T05:31:56Z",
+      "org_id": "3c90c3cc-0d44-4b50-8888-8dd25736052a",
+      "project_id": "3c90c3cc-0d44-4b50-8888-8dd25736052a",
+      "log_id": "g",
+      "span_id": "braintrust-span-1",
+      "root_span_id": "braintrust-span-1",
+      "_pagination_key": "braintrust-page-1",
+      "input": {"question": "What is the capital of France?"},
+      "output": {"answer": "Paris"},
+      "expected": {"answer": "Paris"},
+      "error": null,
+      "scores": {"correctness": 1.0, "grounded": true},
+      "metadata": {"model": "fixture-model", "provider": "fixture-provider", "nullable": null},
+      "tags": ["fixture"],
+      "metrics": {
+        "start": 1699335116.0,
+        "end": 1699335116.5,
+        "prompt_tokens": 12,
+        "completion_tokens": 3,
+        "tokens": 15,
+        "caller_functionname": "answer",
+        "caller_filename": "fixture.py",
+        "caller_lineno": 12
+      },
+      "context": {"caller_functionname": "answer", "caller_filename": "fixture.py", "caller_lineno": 12},
+      "span_parents": [],
+      "is_root": true,
+      "span_attributes": {"name": "answer", "type": "llm"},
+      "origin": {
+        "object_id": "3c90c3cc-0d44-4b50-8888-8dd25736052a",
+        "id": "origin-1",
+        "_xact_id": "origin-xact-1",
+        "created": "2023-11-07T05:31:55Z"
+      },
+      "comments": [{"text": "Verified by a reviewer", "user_id": "fixture-user"}],
+      "audit_data": [{"action": "created", "actor": "fixture-user"}],
+      "_async_scoring_state": null,
+      "facets": {"environment": "test"},
+      "classifications": {"topic": "geography"}
+    }
+  ],
+  "cursor": null
+}

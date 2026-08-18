@@ -46,6 +46,7 @@ from nemo_insights_plugin.contracts.profile import (
 )
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
+from nooa import GenerationError
 
 DEFAULT_WORKSPACE = "default"
 
@@ -312,6 +313,13 @@ class ExperimentalistCLI(NemoCLI):
 
             try:
                 output_text = asyncio.run(_flow())
+            except GenerationError as exc:
+                # The harness raises this for a model that will not follow a return
+                # contract, but also for API errors, timeouts, exhausted output
+                # tokens, and unusable type annotations. Report what it said rather
+                # than guessing which one it was.
+                typer.echo(f"Error: a model-driven step of the run failed.\n\n{exc}", err=True)
+                raise typer.Exit(code=1) from None
             except (OSError, ValueError, yaml.YAMLError) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from None

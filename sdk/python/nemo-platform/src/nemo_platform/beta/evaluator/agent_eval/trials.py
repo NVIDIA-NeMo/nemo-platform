@@ -8,9 +8,10 @@ the standard evidence-key builder)."""
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_platform.beta.evaluator.values import Agent, Model
@@ -26,7 +27,15 @@ from nemo_platform.beta.evaluator.values.evidence import (
     EvidenceDescriptor,
 )
 from nemo_platform.beta.evaluator.values.results import AggregateScore
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    WithJsonSchema,
+    field_validator,
+    model_validator,
+)
 
 
 class AgentEvalTrialStatus(str, Enum):
@@ -57,8 +66,73 @@ class AgentOutput(BaseModel):
     )
 
 
+# Type recorded when a producer reported a failure but named no usable type. This
+# fires only for hand-built or malformed payloads.
+UNKNOWN_ERROR_TYPE = "UnknownException"
+
+
+class TrialError(BaseModel):
+    """What went wrong producing one trial, as the producer reported it.
+
+    Present means the *producer* reported a failure. It does **not** imply ``status is FAILED``: an
+    errored trial can be marked as :attr:`AgentEvalTrialStatus.PARTIAL` so it is still scored (ex: HarborRuntime).
+    It is also unrelated to a score diagnostic's ``exception_type`` detail, which records that the
+    *metric* raised - a different event.
+
+    Frozen so callers cannot rewrite ``type`` after construction. These objects are returned as-is
+    (not copied), and ``AgentEvalSummary.error_trial_ids`` groups trial ids by that string. Mutating
+    ``type`` on a live object would leave the summary keyed on the old value while the trial reports
+    a new one.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: str = Field(
+        description=(
+            "Error class name as the producer reported it, e.g. 'RuntimeError'. Rollup key for "
+            f"AgentEvalSummary.error_trial_ids. Falls back to {UNKNOWN_ERROR_TYPE!r} when the "
+            "producer reported a failure without a usable type."
+        )
+    )
+    message: str | None = Field(
+        default=None,
+        description="Short error message, when the producer supplied one.",
+    )
+    traceback: str | None = Field(
+        default=None,
+        description=(
+            "Formatted traceback, when the producer supplied one. May be truncated by the adapter "
+            "that captured it. Note run bundles are portable: this can carry absolute filesystem "
+            "paths and other diagnostic text from the machine that ran the trial."
+        ),
+    )
+    # Schema is a bare string, deliberately not `format: date-time`. RFC 3339 date-time requires a
+    # UTC offset, and this field may legitimately carry a naive local timestamp (Harbor writes one),
+    # so claiming the format would be a promise the value cannot keep -- and a client that trusts it
+    # parses a zoneless string into its *own* zone, silently shifting the instant. A plain string
+    # says "timestamp as the producer wrote it"; Python callers still get a parsed datetime.
+    occurred_at: Annotated[datetime | None, WithJsonSchema({"type": "string"})] = Field(
+        default=None,
+        description=(
+            "When the producer recorded the failure, as it reported it. The SDK does not rewrite "
+            "this: an aware value (UTC, offset) is kept, and a naive value stays naive. Harbor's "
+            "clock is naive local, e.g. '2026-08-13T17:22:32', while that trial's start in "
+            "result.json is UTC ('2026-08-14T00:22:25Z') — the same instant on two clocks, so do "
+            "not subtract them or attach a zone Harbor never wrote. A runner that recorded an "
+            "offset keeps it. Not RFC 3339 date-time: the offset may be absent."
+        ),
+    )
+
+    @field_validator("type")
+    @classmethod
+    def _non_empty_type(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("trial error type must not be empty")
+        return value
+
+
 class AgentEvalTrial(BaseModel):
-    """Durable trial artifact for one task: output, evidence, status, and metadata."""
+    """Durable trial artifact for one task: output, evidence, status, error, and metadata."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -72,6 +146,13 @@ class AgentEvalTrial(BaseModel):
     evidence: CandidateEvidence | None = Field(
         default=None,
         description="Named evidence descriptors (final state, traces, logs, ...) captured for the trial.",
+    )
+    error: TrialError | None = Field(
+        default=None,
+        description=(
+            "What went wrong producing this trial, when the producer reported a failure. Populated "
+            "by a runner runtime. Drives AgentEvalSummary.error_trial_ids."
+        ),
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

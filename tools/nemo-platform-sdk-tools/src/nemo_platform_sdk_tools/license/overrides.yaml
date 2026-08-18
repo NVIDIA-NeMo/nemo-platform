@@ -85,6 +85,7 @@ overrides:
   nemollm: NVIDIA Proprietary Software
   nvidia-cudnn-frontend: NVIDIA Proprietary Software
   nvidia-nvshmem-cu12: NVIDIA Proprietary Software
+  nvidia-nat-config-optimizer: Apache-2.0 # NVIDIA NeMo Agent Toolkit config optimizer
   triton: MIT
   # NeMo Fabric — Apache-2.0 per PyPI (`license_expression`) and deps.dev, but osv-scanner reports
   # UNKNOWN for the 0.1.x rc series, the same way it does for safetensors 0.8.0rc1 above. Revisit

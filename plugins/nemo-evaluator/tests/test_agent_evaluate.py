@@ -858,3 +858,53 @@ class TestAgentEvalTask:
         assert exit_code == SDK_INITIALIZATION_EXIT_CODE
         get_task_sdk.assert_called_once_with("evaluator")
         run_task.assert_not_called()
+
+
+async def test_trial_error_survives_the_job_spec_wire_contract() -> None:
+    """AALGO-428: ``AgentEvalTrial.error`` is public API, not just an SDK-internal field.
+
+    Precomputed trials are accepted straight off the wire by ``AgentEvalInputSpec.trials``, and
+    ``AgentEvalTrial`` forbids extras — so a typed error has to survive JSON round-tripping through
+    the DTO. Regenerating the OpenAPI schema proves the shapes agree; only this proves a request
+    carrying one actually validates.
+    """
+    payload = {
+        "id": "debug-agent-runtime-error__KFtcHEw",
+        "task_id": "fix-bug",
+        "status": "partial",
+        "error": {
+            "type": "RuntimeError",
+            "message": "Agent process failed with exit code 127",
+            "traceback": "Traceback (most recent call last):\n",
+            "occurred_at": "2026-08-13T17:22:32.230852",
+        },
+    }
+
+    input_spec = AgentEvalInputSpec.model_validate(
+        {
+            "trials": [payload],
+            "tasks": [
+                {
+                    "id": "fix-bug",
+                    "intent": "Fix the bug.",
+                    "inputs": {"instruction": "Fix calculator.py."},
+                    "metrics": [_inline_metric().model_dump()],
+                }
+            ],
+        }
+    )
+
+    assert input_spec.trials is not None
+    error = input_spec.trials[0].error
+    assert error is not None
+    assert error.type == "RuntimeError"
+    assert error.message == "Agent process failed with exit code 127"
+
+    spec = await AgentEvalJob.to_spec(input_spec, workspace="dev", entity_client=None, async_sdk=None, is_local=True)
+    assert isinstance(spec, AgentEvalSpec)
+    assert spec.trials is not None
+    assert spec.trials[0].error == error
+    # And it survives a full serialize -> deserialize hop, which is how the job actually receives it.
+    round_tripped = AgentEvalSpec.model_validate(json.loads(json.dumps(spec.model_dump(mode="json"))))
+    assert round_tripped.trials is not None
+    assert round_tripped.trials[0].error == error
