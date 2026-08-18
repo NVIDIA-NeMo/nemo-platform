@@ -87,7 +87,7 @@ def test_candidate_evaluated_explains_an_na_when_the_caller_knows_why() -> None:
         metrics={"tokens": 100.0},
         objective_metrics=OBJECTIVES,
         artifacts=Path("/exp/results/agent-0-validation"),
-        reason="no trial completed (2 failed: RewardFileNotFoundError), so 'success' is absent",
+        reason="0/2 trials completed (RewardFileNotFoundError), so 'success' was never measured",
     )
     lines = sink.getvalue().splitlines()
     assert "success n/a" in lines[0]

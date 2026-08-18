@@ -344,43 +344,27 @@ def missing_objective_reason(
 ) -> str | None:
     """Explain why *metrics* omits a required target, or None when none is omitted.
 
-    An absent objective is indistinguishable from a measured one in every
-    downstream check: :func:`pareto_objectives` projects both an unmeasured and a
-    zero-scored candidate onto a dict, and only one of them is comparable. The
-    evidence for *which* happened lives in the trials, and by the time a caller
-    holds only the aggregate it is gone. This recovers it from the trials while
-    they are still in hand.
+    An aggregate cannot say whether a target is absent because nothing ran or
+    because nothing scored, and every later check reads the two the same way. The
+    trials still carry that difference, so it is read off them here rather than
+    inferred later from the aggregate alone.
 
-    Deliberately free of any evaluator's vocabulary: it names the absent target
-    and the trial statuses behind it. A caller that knows which harness produced
-    the trials is the one that can point at a directory.
-
-    Args:
-        trials: Trials the aggregate was computed from.
-        metrics: The aggregate, as ``Evaluator.aggregate_results`` returned it.
-        targets: Metrics the run is scored against.
-
-    Returns:
-        str | None: A one-line explanation, or None when every target is present.
+    Names only targets and trial statuses: evaluator-specific detail belongs to
+    whichever caller knows which harness ran.
     """
-    absent = [target.name for target in targets if target.name not in metrics]
+    absent = ", ".join(repr(target.name) for target in targets if target.name not in metrics)
     if not absent:
         return None
-
-    named = ", ".join(repr(name) for name in absent)
     if not trials:
-        return f"the evaluator produced no trials, so {named} was never measured"
+        return f"the evaluator produced no trials, so {absent} was never measured"
 
-    completed = [trial for trial in trials if trial.status == "completed"]
+    completed = sum(1 for trial in trials if trial.status == "completed")
     if not completed:
-        return f"no trial completed ({len(trials)} failed: {_trial_error_summary(trials)}), so {named} is absent"
-    return (
-        f"{len(completed)}/{len(trials)} trials completed but none reported {named}; "
-        "the verifier ran without emitting the metric"
-    )
+        return f"0/{len(trials)} trials completed ({_error_types(trials)}), so {absent} was never measured"
+    return f"{completed}/{len(trials)} trials completed, but none reported {absent}"
 
 
-def _trial_error_summary(trials: Sequence[TrialResult]) -> str:
-    """Name the error types across *trials*, most frequent first."""
+def _error_types(trials: Sequence[TrialResult]) -> str:
+    """Error types across *trials*, most frequent first."""
     counts = Counter(str((trial.error or {}).get("type") or "unknown") for trial in trials)
-    return ", ".join(name if count == 1 else f"{name} ×{count}" for name, count in counts.most_common())
+    return ", ".join(name if n == 1 else f"{name} ×{n}" for name, n in counts.most_common())

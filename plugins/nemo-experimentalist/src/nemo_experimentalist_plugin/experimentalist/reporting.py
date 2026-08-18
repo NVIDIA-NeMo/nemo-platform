@@ -128,10 +128,8 @@ class RunReporter:
         as improvements or declines. Regression metrics are guardrails and are
         intentionally not presented as progress dimensions.
 
-        *reason* explains an ``n/a`` when the caller could work out why one
-        happened. Without it the line states that a metric is missing and stops
-        there, which reads as a score of nothing rather than a measurement that
-        never occurred.
+        *reason* explains an ``n/a``, which otherwise reads as a score of nothing
+        rather than a measurement that never happened.
         """
         if self._verbosity is Verbosity.QUIET:
             return

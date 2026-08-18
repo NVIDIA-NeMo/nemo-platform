@@ -85,7 +85,7 @@ def _trial(status: TrialStatus, *, error_type: str | None = None) -> TrialResult
         (
             [_trial("failed", error_type="RewardFileNotFoundError")],
             {},
-            "no trial completed (1 failed: RewardFileNotFoundError), so 'reward' is absent",
+            "0/1 trials completed (RewardFileNotFoundError), so 'reward' was never measured",
         ),
         # Mixed failures are counted, most frequent first.
         (
@@ -95,20 +95,12 @@ def _trial(status: TrialStatus, *, error_type: str | None = None) -> TrialResult
                 _trial("failed"),
             ],
             {},
-            "no trial completed (3 failed: AgentTimeoutError ×2, unknown), so 'reward' is absent",
+            "0/3 trials completed (AgentTimeoutError ×2, unknown), so 'reward' was never measured",
         ),
         # The silent shape: the verifier ran, exited cleanly, and emitted no metric.
-        (
-            [_trial("completed"), _trial("completed")],
-            {},
-            "2/2 trials completed but none reported 'reward'; the verifier ran without emitting the metric",
-        ),
+        ([_trial("completed"), _trial("completed")], {}, "2/2 trials completed, but none reported 'reward'"),
         # A trial can carry other metrics and still miss the objective.
-        (
-            [_trial("completed")],
-            {"latency": 3.0},
-            "1/1 trials completed but none reported 'reward'; the verifier ran without emitting the metric",
-        ),
+        ([_trial("completed")], {"latency": 3.0}, "1/1 trials completed, but none reported 'reward'"),
     ],
 )
 def test_missing_objective_reason_names_the_evidence_behind_an_absent_metric(

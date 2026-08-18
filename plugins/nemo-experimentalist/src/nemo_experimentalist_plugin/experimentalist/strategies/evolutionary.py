@@ -648,13 +648,10 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
 
         Raises:
             ValueError: if the baseline measured here carries no objective metric.
-                Every later comparison is against this one measurement, so a run that
-                cannot score its own starting point has nothing to optimize toward,
-                and no later gate says so: `pareto_objectives` projects an unmeasured
-                candidate to `{}`, `_dominates` then returns False against every peer,
-                so one Pareto front holds the whole population and ranking silently
-                becomes a no-op. Failing here costs one evaluation instead of
-                `max_rounds` rounds of analysis, proposals, and builds.
+                Every later comparison is against this one measurement, and no later
+                gate notices its absence -- unmeasured candidates are mutually
+                incomparable, so ranking becomes a no-op and the run pays for every
+                round before reporting no winner.
         """
         measured = results.get(baseline.label)
         if measured is None:
@@ -662,9 +659,8 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         reason = missing_objective_reason(measured.trials, measured.aggregate_metrics, ctx.objective_metrics)
         if reason is not None:
             raise ValueError(
-                f"Baseline {baseline.label} produced no objective metric: {reason}. The run is scored "
-                "against this measurement, so there is nothing to optimize toward. Check that the "
-                "evaluation emits every objective metric for the unmodified agent before running again."
+                f"Baseline {baseline.label} produced no objective metric: {reason}. The run is scored against "
+                "this measurement, so fix the evaluation before running again."
             )
         await ctx.record_reward(baseline, channel="validation", result=measured)
 

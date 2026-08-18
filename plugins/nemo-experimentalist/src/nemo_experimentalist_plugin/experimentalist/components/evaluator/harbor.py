@@ -851,38 +851,21 @@ class HarborDataset(Dataset):
       Use only when the OTLP traces don't capture what you need.
     - ``/tests/``         — any helper files you place in ``tests/``
 
-    and must write to:
+    and must write **one of** (``reward.json`` wins when both exist):
 
     - ``/logs/verifier/reward.json`` — flat JSON object; **every value must be a
       plain number** (int or float).  Harbor calls ``float(value)`` on each entry
       and silently drops non-numeric values (nested objects, booleans, strings).
+    - ``/logs/verifier/reward.txt`` — one bare number, and nothing else.
+
+    Writing one is mandatory.  Exiting ``0`` without either scores *nothing* — not
+    zero: Harbor raises ``RewardFileNotFoundError`` and the trial is recorded as
+    failed.  So score every agent outcome, failures included; an agent that did
+    nothing scores ``0``, and that is a real measurement.
 
     Correct format::
 
         {"reward": 0.8, "my_metric": 1.0}
-
-    **Writing a reward file is mandatory, not optional.** Harbor accepts either
-    ``/logs/verifier/reward.json`` or ``/logs/verifier/reward.txt`` (one bare
-    number, and nothing else).  ``reward.json`` wins when both exist.  A
-    ``test.sh`` that exits ``0`` without writing either scores nothing at all —
-    it does **not** score zero.  Harbor raises ``RewardFileNotFoundError``, the
-    trial is recorded as failed, and the task contributes no metric to the run.
-    A run whose baseline emits no metric this way is refused outright, because
-    there is then no measurement to optimize toward.
-
-    So score **every agent outcome**, failures included: an agent that did
-    nothing scores ``0``, and that is a real measurement.  What must never
-    happen is a *task* that emits no number at all.
-
-    **Do not seed a placeholder reward to keep a trial alive.** Harbor ignores
-    ``test.sh``'s exit code and looks only for a reward file, so a pre-written
-    ``echo 0 > /logs/verifier/reward.txt`` turns a verifier that crashed
-    half-way into a confident score of ``0.0`` — indistinguishable from an agent
-    that genuinely earned zero, and comparable enough that nothing downstream
-    questions it.  That is the one distinction this contract exists to keep.
-    A verifier that could not finish should fail the trial; under ``set -e`` a
-    crashing check aborts before the merge step below, which is the intended
-    outcome and is reported as a failed trial naming the error.
 
     **To add a new metric** — write it as an additional key in ``reward.json``::
 
