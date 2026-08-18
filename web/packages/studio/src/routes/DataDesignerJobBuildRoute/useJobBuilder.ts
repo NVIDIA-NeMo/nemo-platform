@@ -63,6 +63,13 @@ export interface TemplateModelIssue {
   requested: string;
 }
 
+/** Outcome of a single model's auto-fill lookup: either it ran (with or without a match), or the
+ *  request itself rejected. */
+interface ModelLookupResult {
+  rejected: boolean;
+  resolved: { model: string; provider: string } | null;
+}
+
 /**
  * The issues that still apply: auto-fill records them once, but the user can resolve one by
  * picking an available model, which fills in the provider auto-fill could not.
@@ -129,40 +136,48 @@ export const useJobBuilder = (
   const [paletteTab, setPaletteTab] = useState<PaletteTab>('columns');
 
   const [templateModelIssues, setTemplateModelIssues] = useState<TemplateModelIssue[]>([]);
+  const [autoFillError, setAutoFillError] = useState(false);
   const autoFilled = useRef(false);
-  useEffect(() => {
-    if (autoFilled.current || !workspace) return;
+
+  const runAutoFill = useCallback(() => {
+    if (!workspace) return;
     const pending = getValues('models').filter((model) => !model.provider);
     if (pending.length === 0) return;
     autoFilled.current = true;
+    setAutoFillError(false);
 
     void (async () => {
-      const resolutions = await Promise.all(
+      const resolutions: (readonly [string, ModelLookupResult])[] = await Promise.all(
         pending.map(async (model) => {
           const preferred = model.model || undefined;
-          const candidates = await fetchAutoFillCandidates(workspace, preferred).catch(() => []);
-          // A template that names a model means it; only a spec that named none takes whatever
-          // the workspace offers.
-          return [
-            model.id,
-            preferred ? findWorkspaceModel(candidates, preferred) : firstAvailableModel(candidates),
-          ] as const;
+          try {
+            const candidates = await fetchAutoFillCandidates(workspace, preferred);
+            const resolved = preferred
+              ? findWorkspaceModel(candidates, preferred)
+              : firstAvailableModel(candidates);
+            return [model.id, { rejected: false, resolved }] as const;
+          } catch {
+            return [model.id, { rejected: true, resolved: null }] as const;
+          }
         })
       );
       const byId = new Map(resolutions);
-      // Unresolved models keep the name the template asked for — clearing it would hide which
-      // model the recipe was written against, and the banner has nothing left to name.
+      const anyRejected = resolutions.some(([, result]) => result.rejected);
+      if (anyRejected) autoFilled.current = false;
+      setAutoFillError(anyRejected);
       setTemplateModelIssues(
-        pending.flatMap((model) =>
-          model.model && !byId.get(model.id)
+        pending.flatMap((model) => {
+          const result = byId.get(model.id);
+          if (!result || result.rejected) return [];
+          return model.model && !result.resolved
             ? [{ id: model.id, alias: model.alias, requested: model.model }]
-            : []
-        )
+            : [];
+        })
       );
       setValue(
         'models',
         getValues('models').map((model) => {
-          const resolved = byId.get(model.id);
+          const resolved = byId.get(model.id)?.resolved;
           return resolved
             ? { ...model, model: resolved.model, provider: resolved.provider }
             : model;
@@ -170,6 +185,11 @@ export const useJobBuilder = (
       );
     })();
   }, [getValues, setValue, workspace]);
+
+  useEffect(() => {
+    if (autoFilled.current) return;
+    runAutoFill();
+  }, [runAutoFill]);
 
   const selectColumn = useCallback((id: string | null) => {
     setSelectedId(id);
@@ -256,6 +276,8 @@ export const useJobBuilder = (
     selectedModelId,
     focusId,
     templateModelIssues,
+    autoFillError,
+    retryAutoFill: runAutoFill,
     paletteTab,
     setPaletteTab,
     selectColumn,

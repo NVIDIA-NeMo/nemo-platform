@@ -5,7 +5,7 @@ import { modelsListModels } from '@nemo/sdk/generated/platform/api';
 import type { ModelEntity, ModelEntitysPage } from '@nemo/sdk/generated/platform/schema';
 import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
 import { useJobBuilder } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 
 vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
@@ -107,6 +107,29 @@ describe('useJobBuilder template auto-fill', () => {
       ])
     );
     expect(result.current.getBuilderValues().models[0].model).toBe(NEMOTRON);
+  });
+
+  it('surfaces a retryable error instead of a missing-model issue when the lookup rejects', async () => {
+    mockListModels.mockRejectedValue(new Error('network error'));
+
+    const { result } = renderHook(() => useJobBuilder(template, 'ws1'), { wrapper: StrictMode });
+
+    await waitFor(() => expect(result.current.autoFillError).toBe(true));
+    expect(result.current.templateModelIssues).toEqual([]);
+    expect(result.current.getBuilderValues().models[0]).toMatchObject({
+      model: NEMOTRON,
+      provider: '',
+    });
+
+    mockListModels.mockResolvedValue(makePage([model(NEMOTRON)]));
+    act(() => result.current.retryAutoFill());
+
+    await waitFor(() => expect(result.current.autoFillError).toBe(false));
+    expect(result.current.getBuilderValues().models[0]).toMatchObject({
+      model: `ws1/${NEMOTRON}`,
+      provider: 'ws1/build',
+    });
+    expect(result.current.templateModelIssues).toEqual([]);
   });
 
   it('leaves models that already carry a provider alone', async () => {
