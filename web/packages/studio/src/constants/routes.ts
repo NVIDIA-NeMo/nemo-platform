@@ -131,8 +131,6 @@ export const ROUTES = {
     agentDetail: `/workspaces/:${P.workspace}/agents/:${P.agentName}`,
     agentDeploymentsList: `/workspaces/:${P.workspace}/agent-deployments`,
     agentDeploymentDetail: `/workspaces/:${P.workspace}/agent-deployments/:${P.agentDeploymentName}`,
-    /** Agent-evaluation jobs list (Phase 2 of the agent-eval UX). */
-    agentEvaluationsList: `/workspaces/:${P.workspace}/agents/evaluations`,
     /** Detail view for a single agent-evaluation job. */
     agentEvaluationDetail: `/workspaces/:${P.workspace}/agents/evaluations/:${P.agentEvalJobName}`,
     modelCompare: `/workspaces/:${P.workspace}/playground`,

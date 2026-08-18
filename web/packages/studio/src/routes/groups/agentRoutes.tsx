@@ -7,10 +7,9 @@ import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import {
   agentsRoutes,
-  getAgentEvaluationsListRoute,
   getAgentMonitorRoute,
 } from '@studio/routes/utils';
-import { Form, DatabaseCheck } from 'lucide-react';
+import { DatabaseCheck } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -33,13 +32,6 @@ const AgentMonitorRoute = lazy(() =>
     default: m.AgentMonitorRoute,
   }))
 );
-const AgentEvaluationsListRoute =
-  AGENTS_ENABLED &&
-  lazy(() =>
-    import('@studio/routes/agents/AgentEvaluationsRoute').then((m) => ({
-      default: m.AgentEvaluationsListRoute,
-    }))
-  );
 const AgentEvaluationDetailRoute =
   AGENTS_ENABLED &&
   lazy(() =>
@@ -64,11 +56,6 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
       ]
     : []),
   {
-    path: ROUTES.workspace.agentEvaluationsList,
-    element: AgentEvaluationsListRoute ? <AgentEvaluationsListRoute /> : null,
-    errorElement: <ErrorPanel title="Agent Evaluations" />,
-  },
-  {
     path: ROUTES.workspace.agentEvaluationDetail,
     element: AgentEvaluationDetailRoute ? <AgentEvaluationDetailRoute /> : null,
     errorElement: <ErrorPanel title="Agent Evaluation" />,
@@ -83,13 +70,6 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
 export const getAgentSideNavItems = (workspace: string) =>
   AGENTS_ENABLED
     ? [
-        {
-          id: 'agent-evaluations',
-          slotIcon: <Form className={iconColorClass} />,
-          // Qualified: the rail hoists this out of Agents, next to the model evaluations link.
-          slotLabel: 'Agent Evaluations',
-          href: getAgentEvaluationsListRoute(workspace),
-        },
         ...(MONITOR_ENABLED
           ? [
               {

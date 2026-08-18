@@ -42,7 +42,7 @@ import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
-  getAgentEvaluationsListRoute,
+  getAgentEvaluationsTabRoute,
   getAgentsListRoute,
   getFilesetRoute,
 } from '@studio/routes/utils';
@@ -71,14 +71,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  useBreadcrumbs({
-    items: [
-      { slotLabel: 'Agents', href: getAgentsListRoute(workspace) },
-      { slotLabel: 'Evaluations', href: getAgentEvaluationsListRoute(workspace) },
-      { slotLabel: jobName },
-    ],
-  });
-
   // Job + status — refetched while the job is non-terminal so the badge stays
   // live without forcing a page reload.
   const { data: job, isLoading: isLoadingJob } = useQuery({
@@ -86,6 +78,17 @@ export const AgentEvaluationDetailRoute: FC = () => {
     queryFn: ({ signal }) => fetchAgentEvalJob(workspace, jobName, signal),
     enabled: !!workspace && !!jobName,
     refetchInterval: (query) => (isTerminal(query.state.data?.status) ? false : 5_000),
+  });
+
+  const agentName = job ? agentNameForJob(job) : null;
+  useBreadcrumbs({
+    items: [
+      { slotLabel: 'Agents', href: getAgentsListRoute(workspace) },
+      agentName
+        ? { slotLabel: 'Evaluations', href: getAgentEvaluationsTabRoute(workspace, agentName) }
+        : { slotLabel: 'Evaluations' },
+      { slotLabel: jobName },
+    ],
   });
 
   const isJobTerminal = isTerminal(job?.status);
