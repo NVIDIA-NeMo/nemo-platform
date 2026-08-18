@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Configure An Agent Target
 
 Use the local standalone Evaluator SDK to configure a mock agent endpoint as the evaluated target and run a one-row exact-match evaluation.

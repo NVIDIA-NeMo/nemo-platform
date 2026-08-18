@@ -40,8 +40,21 @@ const DEPLOYMENT_LINK_REPLACEMENT =
   "[Self-Managed Deployment](/documentation/self-managed-deployment/setup) " +
   "in the NeMo Platform documentation.";
 
+function stripLeadingSpdxComments(markdown) {
+  const lines = markdown.split("\n");
+
+  while (
+    lines.length &&
+    (lines[0].startsWith("<!-- SPDX-") || lines[0].trim() === "")
+  ) {
+    lines.shift();
+  }
+
+  return lines.join("\n");
+}
+
 function extractIntro(readme) {
-  const lines = readme.split("\n");
+  const lines = stripLeadingSpdxComments(readme).split("\n");
   const out = [];
   let skipH1 = true;
 

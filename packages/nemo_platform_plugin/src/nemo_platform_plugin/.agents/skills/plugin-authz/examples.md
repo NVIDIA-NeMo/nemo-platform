@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # plugin-authz recipes
 
 Copy-paste-correct recipes for every plugin authz surface. **The rule:** every plugin HTTP route MUST carry a `@path_rule` — attached directly on a hand-written handler, or via `authz=` on a route factory. A route with no rule is a validation error; under the default `on_invalid_plugin="hard_fail"` the auth service refuses to build the OPA bundle (the platform 502s) rather than silently fencing the route.

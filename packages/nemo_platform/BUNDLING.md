@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # nemo-platform wheel bundling
 
 > Internal developer docs for the `nemo-platform` wrapper distribution. For an end-user introduction to NeMo Platform, see the [repo root README](../../README.md) or the [PyPI page](https://pypi.org/project/nemo-platform/).

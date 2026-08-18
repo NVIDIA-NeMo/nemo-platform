@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Intake Service Agentic Flows
 
 The Intake service is the front door for LLM data collection, storing interactions, feedback, and providing APIs for data management. It's a new service in v2.

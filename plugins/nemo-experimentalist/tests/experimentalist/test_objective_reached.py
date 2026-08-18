@@ -15,39 +15,36 @@ that could win, stop. Absent targets, nothing changes.
 from __future__ import annotations
 
 import pytest
-from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig, MetricTarget
-from nemo_experimentalist_plugin.entities import Candidate, RewardRecord
-from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionNode, EvolutionTree
-from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, Proposal, ResourceRef, RewardRecord
+from nemo_experimentalist_plugin.experimentalist.components.terminator import ConvergenceTerminator
 
 SOLVED = [MetricTarget(name="reward", direction="maximize", target=1.0)]
 UNTARGETED = [MetricTarget(name="reward", direction="maximize")]
 
 
-def _node(label: str, round_: int, killed: int | None = None, **metrics: float) -> EvolutionNode:
+def _node(label: str, round_: int, killed: int | None = None, **metrics: float) -> Candidate:
+    description = "baseline" if round_ == 0 else "some change"
     candidate = Candidate(
         run_id="run-1",
         label=label,
-        round=round_,
-        optimization="baseline" if round_ == 0 else "some change",
+        generation=round_,
+        description=description,
+        generated_from=Proposal(ancestor=None, description=description, kind="import"),
+        artifact=ResourceRef(uri=f"file:///tmp/{label}"),
         rewards={"validation": RewardRecord(metrics=dict(metrics))},
     )
-    candidate.killed_round = killed
-    return EvolutionNode(candidate=candidate)
+    candidate.killed_generation = killed
+    return candidate
 
 
-def _tree(*nodes: EvolutionNode) -> EvolutionTree:
-    tree = EvolutionTree()
-    for node in nodes:
-        tree.add(node.candidate)
-    return tree
+def _tree(*candidates: Candidate) -> list[Candidate]:
+    """The population, in the shape this role's `run` receives it."""
+    return list(candidates)
 
 
-def _assess(tree: EvolutionTree, objectives: list[MetricTarget], **overrides: object):
-    config = EvolutionaryOptimizerConfig.model_validate(
-        {"objective_function": [target.model_dump() for target in objectives], **overrides}
-    )
-    return Terminator.assess_objective_reached(Terminator, evolution_tree=tree, config=config)  # type: ignore[arg-type]
+def _assess(candidates: list[Candidate], objectives: list[MetricTarget], **_overrides: object):
+    """Objectives reach the Terminator at construction, not through the role's signature."""
+    return ConvergenceTerminator(objective_metrics=objectives).assess_objective_reached(candidates)
 
 
 def test_a_solved_objective_stops_the_run() -> None:

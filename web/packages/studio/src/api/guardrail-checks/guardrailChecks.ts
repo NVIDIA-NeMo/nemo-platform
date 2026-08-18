@@ -25,6 +25,9 @@ import {
   type GuardrailChecksPage,
   type RunRecord,
 } from '@studio/api/guardrail-checks/types';
+// Layering wrinkle: this reaches into the components layer. Deliberate — it keeps one
+// definition of guardrail identity shared with the config editor's detector catalog.
+import { getActivatedGuardrails } from '@studio/components/sidePanels/GuardrailCheckDetailSidePanel/railLabels';
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -183,18 +186,32 @@ export function resolveConfigModel(config: RailsConfig | undefined, configLabel:
   return chosen.model;
 }
 
+/** What the run targeted, for stamping onto the record. */
+export interface RunRecordContext {
+  /** Parent config db_version. Omitted for a draft run — a draft has no version. */
+  configVersion?: number;
+  /** True when the run targeted an unsaved draft. */
+  isDraft?: boolean;
+  /** The config that actually ran, for the activated-guardrail snapshot. */
+  config?: RailsConfig;
+}
+
 /** Map a /checks response to a persisted run record. */
 export function responseToRunRecord(
   response: GuardrailCheckResponse,
   runAt: string,
-  configVersion?: number
+  context: RunRecordContext = {}
 ): RunRecord {
   return {
     run_at: runAt,
     status: response.status,
     rails_status: response.rails_status,
     config_ids: response.guardrails_data?.config_ids,
-    config_version: configVersion,
+    config_version: context.configVersion,
+    ...(context.isDraft ? { is_draft: true } : {}),
+    // Resolved now, not at render time: the config that produced this run may be edited
+    // (or, for a draft, cease to exist) before anyone opens the result panel.
+    activated_guardrails: getActivatedGuardrails(context.config, response.rails_status),
   };
 }
 
@@ -213,10 +230,15 @@ export function executeGuardrailCheck(
  *
  * Takes the check entity directly (rather than re-fetching by name) because checks are
  * child entities — name-based lookups must be scoped by `parent`, which the entity carries.
+ *
+ * `draftConfig` runs the check against an unsaved edit instead of the saved config: it is
+ * sent inline (the /checks endpoint accepts a whole RailsConfig, not just an id) and the
+ * resulting record is marked as a draft run with no config version.
  */
 export async function runGuardrailCheck(
   workspace: string,
-  check: GuardrailCheckEntity
+  check: GuardrailCheckEntity,
+  draftConfig?: RailsConfig
 ): Promise<{ entity: GuardrailCheckEntity; run: RunRecord }> {
   if (!check.parent) {
     throw new Error(
@@ -227,19 +249,32 @@ export async function runGuardrailCheck(
   const configEntity = await entitiesGetEntityById(check.parent);
   // A guardrail_config entity nests the rails config under `data.data`
   // (`data` also carries the config's description).
-  const configData = (configEntity.data as { data?: RailsConfig }).data;
-  const model = resolveConfigModel(configData, configEntity.name);
+  const savedData = (configEntity.data as { data?: RailsConfig }).data;
+  // Still fetched on the draft path: `persistRun` needs the entity, and its name is the
+  // label in error messages.
+  const effectiveConfig = draftConfig ?? savedData;
+  const model = resolveConfigModel(effectiveConfig, configEntity.name);
 
   const request: GuardrailCheckRequest = {
     model,
     messages: check.data.messages,
-    // The check references its config by name (the /checks endpoint resolves config_ids to
-    // `workspace/name`), unless the check carries explicit guardrails options.
-    guardrails: check.data.guardrails ?? { config_ids: [configEntity.name] },
+    // A draft has no id to reference, so it travels whole. Never both: the service's
+    // validator nulls out `config_ids` when `config` is an object, which would make the
+    // request's meaning non-obvious from the wire.
+    //
+    // Draft wins over a check's stored `guardrails`: the user explicitly chose the target,
+    // and silently running something else would be worse than ignoring the override.
+    guardrails: draftConfig
+      ? { config: draftConfig }
+      : (check.data.guardrails ?? { config_ids: [configEntity.name] }),
   };
 
   const response = await executeGuardrailCheck(workspace, request);
-  const run = responseToRunRecord(response, new Date().toISOString(), configEntity.db_version);
+  const run = responseToRunRecord(response, new Date().toISOString(), {
+    configVersion: draftConfig ? undefined : configEntity.db_version,
+    isDraft: Boolean(draftConfig),
+    config: effectiveConfig,
+  });
 
   const entity = await persistRun(workspace, check, run);
 
@@ -272,12 +307,13 @@ async function persistRun(
 /** Batch execution — backs the "Re-run N Tests" action. Failures are captured per check. */
 export function runGuardrailChecks(
   workspace: string,
-  checks: GuardrailCheckEntity[]
+  checks: GuardrailCheckEntity[],
+  draftConfig?: RailsConfig
 ): Promise<Array<{ name: string; run: RunRecord } | { name: string; error: Error }>> {
   return Promise.all(
     checks.map(async (check) => {
       try {
-        const { run } = await runGuardrailCheck(workspace, check);
+        const { run } = await runGuardrailCheck(workspace, check, draftConfig);
         return { name: check.name, run };
       } catch (error) {
         return {

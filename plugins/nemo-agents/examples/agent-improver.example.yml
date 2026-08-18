@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Template config for nemo agents optimize-skills.
 #
 # Copy this file into your own agent's repo as ``.agent-improver.yml``,

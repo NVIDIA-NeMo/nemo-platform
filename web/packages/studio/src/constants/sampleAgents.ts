@@ -65,27 +65,33 @@ export interface EvalConfigSample {
   readmePath?: string;
 }
 
+// These target the sample agent's output contract, so they move when the sample agent does. The
+// email-security-analyst configs remain on disk as the reference for that agent's capabilities
+// (thread indexing, default review, draft warning) — capabilities the triage agent does not have,
+// which is why they are not simply repointed.
 export const EVAL_CONFIG_SAMPLES: EvalConfigSample[] = [
   {
     key: 'task_driven',
     displayName: 'Task-Driven',
     description:
       'Inputs are varied tasks, each with its own metrics, so one suite can grade different kinds of work.',
-    configPath: 'sample-agents/email-security-analyst/eval-config.task-driven.json',
-    readmePath: 'sample-agents/email-security-analyst/eval-config.task-driven.README.md',
+    configPath: 'sample-agents/email-security-triage/eval-config.task-driven.json',
+    readmePath: 'sample-agents/email-security-triage/eval-config.task-driven.README.md',
   },
   {
     key: 'dataset_driven',
     displayName: 'Dataset-Driven',
     description:
       'Inputs are rows in a dataset, each with an ideal response, scored by a common metric set.',
-    configPath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.json',
-    datasetPath: 'sample-agents/email-security-analyst/dataset.jsonl',
-    readmePath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.README.md',
+    configPath: 'sample-agents/email-security-triage/eval-config.dataset-driven.json',
+    datasetPath: 'sample-agents/email-security-triage/dataset.jsonl',
+    readmePath: 'sample-agents/email-security-triage/eval-config.dataset-driven.README.md',
   },
 ];
 
 export const DEFAULT_EVAL_CONFIG_KEY = EVAL_CONFIG_SAMPLES[0].key;
+
+export const DATASET_EVAL_CONFIG_KEY = 'dataset_driven';
 
 export const getEvalConfigSample = (key: string): EvalConfigSample =>
   EVAL_CONFIG_SAMPLES.find((sample) => sample.key === key) ?? EVAL_CONFIG_SAMPLES[0];

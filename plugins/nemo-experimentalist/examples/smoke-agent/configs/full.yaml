@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 #
 # Full scenario: several groups at once, multiple rounds, terminator decides when
 # to stop. Point it at dataset/groups/_all.
@@ -79,12 +80,13 @@ max_train_batch_tasks: null
 # scenario. Multiple rounds, survivors, ranking, and the convergence check are.
 # Turning it on is worthwhile once it is dependable -- build_all_group.py holds
 # g5 out of the combined set for the same reason.
-disable_trajectory_scoring: true
+trajectory_scorer: null
 
 # The one that matters here: the terminator deciding when to stop is the point.
-disable_convergence_check: false
+# The terminator deciding when to stop is the point of this scenario, so it keeps
+# its default ('convergence') rather than being turned off.
 
-evaluator:
+outcome_evaluator_config:
   n_attempts: 1
   n_concurrent_trials: 5
   quiet: true

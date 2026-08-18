@@ -255,7 +255,7 @@ class InsightSuite:
             slug = self.task_slug(index, trace_ref)
             task_dir = self._candidate_suite / slug
             shutil.copytree(self.template_dir, task_dir)
-            task = list(HarborDataset.from_path(task_dir).list_tasks())[0]
+            task = list(HarborDataset.from_path(task_dir, single_task=True).list_tasks())[0]
             staged.append(StagedInsightTask(index=index, trace_ref=trace_ref, slug=slug, path=task_dir, task=task))
         return staged
 

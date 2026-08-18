@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: Setup Kind cluster with NeMo Platform
 description: >
   Creates a Kind cluster, installs tooling (kind, kubectl, Helm, uv),

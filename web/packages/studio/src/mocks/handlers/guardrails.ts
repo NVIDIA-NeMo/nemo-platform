@@ -281,9 +281,16 @@ export const guardrailsHandlers = [
         (message) =>
           typeof message.content === 'string' && /\d{3}-\d{2}-\d{4}/.test(message.content)
       );
+      // Mirrors the service's two addressing modes: a whole RailsConfig runs the rails it
+      // declares, an id runs the saved config's. Without this a draft that changes its
+      // rails would be indistinguishable from one that didn't.
+      const inline = body.guardrails?.config;
+      const inlineRail = typeof inline === 'object' ? inline.rails?.input?.flows?.[0] : undefined;
+      const railName = inlineRail ?? 'check pii';
       return HttpResponse.json({
         status: blocked ? 'blocked' : 'success',
-        rails_status: { 'check pii': { status: blocked ? 'blocked' : 'success' } },
+        rails_status: { [railName]: { status: blocked ? 'blocked' : 'success' } },
+        // The real service hardcodes this to null; the echo is a mock-only convenience.
         guardrails_data: { config_ids: body.guardrails?.config_ids },
       });
     }

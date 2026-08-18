@@ -11,8 +11,36 @@ from nmp.intake.spans.api.spans_schemas import SPAN_SUMMARY_ERROR_MESSAGE_CHAR_L
 from nmp.intake.spans.api.traces_schemas import Trace
 from nmp.intake.spans.domain import INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT, IntakeSpan, IntakeTrace, SpanKind, SpanStatus
 from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
+from nmp.intake.spans.ingest.spans import (
+    DIRECT_SPAN_IDENTIFIER_MAX_LENGTH,
+    DIRECT_SPAN_NAME_MAX_LENGTH,
+    DirectSpanInput,
+)
+from nmp.intake.spans.span_attribute_bags import DIRECT_INGEST_RAW_ATTRIBUTES_KEY, SpanAttributeBags
 from nmp.intake.spans.storage import json_dumps_preserve
 from pydantic import ValidationError
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("span_id", "x" * (DIRECT_SPAN_IDENTIFIER_MAX_LENGTH + 1)),
+        ("trace_id", "x" * (DIRECT_SPAN_IDENTIFIER_MAX_LENGTH + 1)),
+        ("session_id", "x" * (DIRECT_SPAN_IDENTIFIER_MAX_LENGTH + 1)),
+        ("parent_span_id", "x" * (DIRECT_SPAN_IDENTIFIER_MAX_LENGTH + 1)),
+        ("name", "x" * (DIRECT_SPAN_NAME_MAX_LENGTH + 1)),
+    ],
+)
+def test_direct_span_schema_rejects_unbounded_strings(field: str, value: str):
+    values = {
+        "span_id": "span-a",
+        "trace_id": "trace-a",
+        "started_at": datetime(2026, 8, 14, tzinfo=timezone.utc),
+        field: value,
+    }
+
+    with pytest.raises(ValidationError, match="String should have at most 1024 characters"):
+        DirectSpanInput.model_validate(values)
 
 
 def test_intake_span_rejects_empty_external_span_id():
@@ -62,6 +90,26 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         "custom.string": "value-a",
         "custom.number": 1.25,
         "custom.bool": True,
+    }
+
+
+def test_span_response_rehydrates_direct_ingest_raw_attributes_without_type_loss():
+    bags = SpanAttributeBags()
+    bags.put_json(
+        DIRECT_INGEST_RAW_ATTRIBUTES_KEY,
+        {
+            "provider.raw": {
+                "nested": [1, True, None, {"unicode": "雪"}],
+                "empty": "",
+            }
+        },
+    )
+
+    assert json.loads(bags.raw_attributes_json() or "{}") == {
+        "provider.raw": {
+            "nested": [1, True, None, {"unicode": "雪"}],
+            "empty": "",
+        }
     }
 
 

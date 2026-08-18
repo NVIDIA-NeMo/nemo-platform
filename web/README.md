@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Studio
 
 NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agents and making LLM customization much more accessible.

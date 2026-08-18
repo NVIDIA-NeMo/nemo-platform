@@ -32,7 +32,7 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ..._base_client import make_request_options
-from ...types.access_keys import access_key_create_params, access_key_list_params
+from ...types.access_keys import access_key_list_params, access_key_create_params
 from ...types.access_keys.access_key_list_response import AccessKeyListResponse
 from ...types.access_keys.access_key_create_response import AccessKeyCreateResponse
 from ...types.access_keys.access_key_revoke_response import AccessKeyRevokeResponse
@@ -147,7 +147,11 @@ class AccessKeysResource(SyncAPIResource):
                 extra_body=extra_body,
                 timeout=timeout,
                 query=maybe_transform(
-                    {"page": page, "page_size": page_size}, access_key_list_params.AccessKeyListParams
+                    {
+                        "page": page,
+                        "page_size": page_size,
+                    },
+                    access_key_list_params.AccessKeyListParams,
                 ),
             ),
             cast_to=AccessKeyListResponse,
@@ -296,7 +300,11 @@ class AsyncAccessKeysResource(AsyncAPIResource):
                 extra_body=extra_body,
                 timeout=timeout,
                 query=await async_maybe_transform(
-                    {"page": page, "page_size": page_size}, access_key_list_params.AccessKeyListParams
+                    {
+                        "page": page,
+                        "page_size": page_size,
+                    },
+                    access_key_list_params.AccessKeyListParams,
                 ),
             ),
             cast_to=AccessKeyListResponse,

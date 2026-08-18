@@ -1,0 +1,50 @@
+{
+  "span_count": 2,
+  "span": {
+    "span_id": "c1db39004862bb12",
+    "trace_id": "tr-mlflow-example",
+    "kind": "CHAIN",
+    "status": "success",
+    "input": {"question": "What is the capital of France?"},
+    "output": {"answer": "Paris"}
+  },
+  "read_fields": {"project": "fixture"},
+  "raw_paths": [
+    {"path": ["fixture.unmapped"], "value": {"unicode": "café", "null": null}},
+    {"path": ["mlflow.raw", "trace_metadata", "mlflow.trace_schema.version"], "value": "3"},
+    {"path": ["mlflow.signals", 0, "assessment_id"], "value": "a-mlflow-correctness"}
+  ],
+  "signals": [
+    {
+      "assessment_id": "a-mlflow-correctness",
+      "assessment_name": "correctness",
+      "create_time": "2026-08-14T06:25:32.880Z",
+      "feedback": {"value": 1.0},
+      "last_update_time": "2026-08-14T06:25:32.880Z",
+      "metadata": {"rubric": "exact-answer"},
+      "rationale": "The answer matches the reference.",
+      "source": {"source_id": "fixture-judge", "source_type": "LLM_JUDGE"},
+      "span_id": "c1db39004862bb12",
+      "trace_id": "tr-mlflow-example",
+      "valid": true
+    },
+    {
+      "assessment_id": "a-mlflow-expected",
+      "assessment_name": "expected_response",
+      "create_time": "2026-08-14T06:25:32.881Z",
+      "expectation": {
+        "serialized_value": {
+          "serialization_format": "JSON_FORMAT",
+          "value": "{\"answer\": \"Paris\"}"
+        }
+      },
+      "last_update_time": "2026-08-14T06:25:32.881Z",
+      "source": {"source_id": "fixture-author", "source_type": "HUMAN"},
+      "span_id": "c1db39004862bb12",
+      "trace_id": "tr-mlflow-example",
+      "valid": true
+    }
+  ],
+  "evaluator_names": ["mlflow.correctness"],
+  "annotation_kinds": ["metadata"]
+}

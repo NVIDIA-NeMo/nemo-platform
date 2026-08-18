@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # 🧰 Helper tools for NeMo Platform packages
 
 This directory contains helper tools for building and maintaining the NeMo Platform packages.

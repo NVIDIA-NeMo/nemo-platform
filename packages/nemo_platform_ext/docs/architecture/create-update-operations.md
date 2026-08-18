@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Create/Update Operations: Input Design
 
 **Status:** Implemented (Phase 1: stdin/@file support), In Progress (Phase 2: field overrides)

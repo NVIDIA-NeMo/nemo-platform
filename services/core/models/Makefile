@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 UV ?= uv
 CI_PROJECT_DIR ?= $(shell dirname $(shell dirname $(shell dirname $(shell pwd))))
 

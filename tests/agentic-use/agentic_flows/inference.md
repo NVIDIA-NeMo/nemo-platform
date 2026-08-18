@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Inference Gateway (IGW) & Models Agentic Flows
 
 The Inference Gateway (IGW) provides unified access to model inference, supporting both deployed NIMs and external providers like build.nvidia.com. The Models service manages model registration and metadata.

@@ -1,135 +1,130 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pin what `Proposer._filter_improvements` keeps, drops, and refuses.
+"""What the Proposer must reject before its output reaches a Builder.
 
-Imperfect output is salvaged: an unusable improvement is dropped on its own and
-the round continues with fewer candidates. Only an empty result is fatal.
+`ancestor` became a candidate id rather than a display handle, and survivors are handed
+to the model carrying both — so a plausible-looking `"agent-2"` is exactly what comes
+back. One rejected batch costs a retry; an unvalidated one costs the run, because the
+fork that resolves it happens outside the per-proposal error handling.
 """
 
-from __future__ import annotations
-
-import logging
-
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
-
-ALLOWED = {"edit_concrete_method", "edit_config", "add_concrete_method"}
+from nemo_experimentalist_plugin.experimentalist.components.proposer import CodeChangeProposer, Improvement
 
 
-def _improvement(optimization_type: str, optimization: str, ancestor: str = "agent-0") -> Improvement:
+def _improvement(ancestor: str, optimization_type: str = "add_method") -> Improvement:
     return Improvement(
         ancestor=ancestor,
-        root_cause="the agent underperforms because a handler is missing",
-        optimization=optimization,
+        optimization="add a retrieval step",
+        root_cause="the agent never retrieves",
         optimization_type=optimization_type,
+        task_ids=["task-1"],
     )
 
 
-def _filter(improvements: list[Improvement], max_candidates: int = 3) -> list[Improvement]:
-    return Proposer._filter_improvements(
-        improvements=improvements,
-        max_candidates=max_candidates,
-        allowed_types=ALLOWED,
-    )
+def test_an_ancestor_that_is_not_a_survivor_id_is_dropped_not_fatal() -> None:
+    """A label where an id belongs is one bad proposal, not a reason to end the run.
 
-
-def test_repeated_optimization_type_is_kept() -> None:
-    """Two candidates may legitimately need the same kind of edit in different places."""
-    kept = _filter(
-        [
-            _improvement("edit_concrete_method", "widen the name pattern"),
-            _improvement("edit_concrete_method", "reorder the dispatch chain"),
-        ]
-    )
-    assert len(kept) == 2
-
-
-def test_every_candidate_may_share_one_type() -> None:
-    """The degenerate case: late rounds often have only one kind of work left."""
-    kept = _filter(
-        [
-            _improvement("edit_config", "raise the input limit"),
-            _improvement("edit_config", "raise the retry budget"),
-            _improvement("edit_config", "raise the timeout"),
-        ]
-    )
-    assert len(kept) == 3
-
-
-def test_surplus_improvements_are_truncated() -> None:
-    """Keeping the first N assumes the Proposer ordered them by priority."""
-    kept = _filter(
-        [
-            _improvement("edit_config", "first"),
-            _improvement("edit_concrete_method", "second"),
-            _improvement("add_concrete_method", "third"),
-        ],
-        max_candidates=2,
-    )
-    assert [i.optimization for i in kept] == ["first", "second"]
-
-
-def test_surplus_is_counted_after_the_unusable_are_dropped() -> None:
-    """Cutting first would discard the only usable improvement and make the round fatal."""
-    kept = _filter(
-        [
-            _improvement("add_subagent", "delegate to a new agent"),
-            _improvement("add_subagent", "delegate to another new agent"),
-            _improvement("edit_config", "raise the input limit"),
-        ],
-        max_candidates=2,
-    )
-    assert [i.optimization for i in kept] == ["raise the input limit"]
-
-
-def test_type_outside_the_allowed_set_is_dropped() -> None:
-    """A valid OptimizationType the caller did not permit for this run.
-
-    `add_subagent` is a real member of the literal -- an invented string is
-    rejected by Pydantic at construction and never reaches this filter.
+    This check runs after the CodeAct loop, so raising buys no retry — it unwinds through
+    the strategy and fails a run that may have spent hours. The survivors carry both `id`
+    and `label`, so "agent-2" is exactly what a model returns.
     """
-    kept = _filter(
-        [
-            _improvement("edit_config", "raise the input limit"),
-            _improvement("add_subagent", "delegate to a new agent"),
-        ]
+    usable = CodeChangeProposer._usable_improvements(
+        [_improvement("agent-2"), _improvement("id-agent-2", optimization_type="add_tool")],
+        known_ancestors={"id-agent-2"},
+        allowed_types={"add_method", "add_tool"},
     )
-    assert [i.optimization for i in kept] == ["raise the input limit"]
+
+    assert [improvement.ancestor for improvement in usable] == ["id-agent-2"]
 
 
-def test_duplicate_optimization_text_is_dropped() -> None:
-    """Identical proposals are genuinely redundant; the first one survives."""
-    kept = _filter(
-        [
-            _improvement("edit_config", "raise the input limit"),
-            _improvement("edit_concrete_method", "raise the input limit"),
-            _improvement("add_concrete_method", "add a totals handler"),
-        ]
+def test_a_real_survivor_id_passes() -> None:
+    usable = CodeChangeProposer._usable_improvements(
+        [_improvement("id-agent-2")], known_ancestors={"id-agent-2"}, allowed_types={"add_method"}
     )
-    assert [i.optimization for i in kept] == ["raise the input limit", "add a totals handler"]
+
+    assert len(usable) == 1
+    CodeChangeProposer._validate_improvements(improvements=usable, max_candidates=3)
 
 
-def test_drops_are_logged(caplog: pytest.LogCaptureFixture) -> None:
-    """Silent degradation would let a consistently bad Proposer look healthy."""
-    with caplog.at_level(logging.WARNING):
-        _filter(
-            [
-                _improvement("edit_config", "raise the input limit"),
-                _improvement("add_subagent", "delegate to a new agent"),
-                _improvement("edit_concrete_method", "raise the input limit"),
-            ]
+def test_a_batch_where_every_ancestor_is_unknown_still_fails_loudly() -> None:
+    """Dropping them all would leave the round silently proposing nothing."""
+    with pytest.raises(ValueError, match="None of the Proposer's 1 improvements were usable"):
+        CodeChangeProposer._usable_improvements(
+            [_improvement("agent-2")], known_ancestors={"id-agent-2"}, allowed_types={"add_method"}
         )
-    assert "disallowed optimization_type" in caplog.text
-    assert "duplicate optimization text" in caplog.text
 
 
-def test_empty_input_is_fatal() -> None:
-    with pytest.raises(ValueError, match="no improvements"):
-        _filter([])
+def test_a_near_miss_optimization_type_is_dropped_not_fatal() -> None:
+    """`edit_method` for `edit_concrete_method` ended a real run at round two.
+
+    There are twenty valid types, so a near miss is as likely as a wrong ancestor, and
+    this check runs after the CodeAct loop where raising buys no retry.
+    """
+    usable = CodeChangeProposer._usable_improvements(
+        [_improvement("id-a", optimization_type="edit_method"), _improvement("id-a", optimization_type="add_method")],
+        known_ancestors={"id-a"},
+        allowed_types={"add_method", "edit_concrete_method"},
+    )
+
+    assert [improvement.optimization_type for improvement in usable] == ["add_method"]
 
 
-def test_everything_dropped_is_fatal() -> None:
-    """Nothing usable means nothing to build, so the round cannot continue."""
-    with pytest.raises(ValueError, match="none of them usable"):
-        _filter([_improvement("add_subagent", "delegate to a new agent")])
+def test_two_improvements_may_share_an_optimization_type() -> None:
+    """#1163: a repeated type is not evidence of a malformed batch.
+
+    There are twenty optimization types and two genuinely different edits to the same
+    method share one, so raising here ends a paid-for round over nothing. A real
+    duplicate is caught by the text check below instead. This killed a live
+    generalization run, where the Proposer returned two distinct fixes both typed
+    `edit_concrete_method`.
+    """
+    kept = CodeChangeProposer._validate_improvements(
+        improvements=[
+            _improvement("id-agent-0", optimization_type="edit_concrete_method"),
+            Improvement(
+                ancestor="id-agent-0",
+                optimization="reorder the dispatch chain",
+                root_cause="the list handler shadows the count handler",
+                optimization_type="edit_concrete_method",
+                task_ids=["task-2"],
+            ),
+        ],
+        max_candidates=2,
+    )
+
+    assert [improvement.optimization for improvement in kept] == [
+        "add a retrieval step",
+        "reorder the dispatch chain",
+    ]
+
+
+def test_the_same_optimization_text_twice_is_dropped_to_one() -> None:
+    """Identical text is a real duplicate: building it twice buys nothing."""
+    kept = CodeChangeProposer._validate_improvements(
+        improvements=[_improvement("id-agent-0"), _improvement("id-agent-0", optimization_type="add_tool")],
+        max_candidates=2,
+    )
+
+    assert len(kept) == 1
+
+
+def test_a_type_used_in_an_earlier_round_may_be_used_again() -> None:
+    """#1163: novelty is a preference in the prompt, never an allowlist in the validator.
+
+    `available_types` is `all_types - tried_types`, so enforcing it would forbid a type
+    the moment it worked. A real multi-round run died on exactly that: rounds 1 and 2
+    took the agent from 0.333 to 1.000 with `edit_concrete_method`, round 3 proposed
+    refining it, and the only proposal was rejected as unusable -- which raises and ends
+    a run mid-flight, precisely when the loop is succeeding.
+    """
+    all_types = {"add_method", "edit_concrete_method"}
+
+    usable = CodeChangeProposer._usable_improvements(
+        [_improvement("id-agent-0", optimization_type="edit_concrete_method")],
+        known_ancestors={"id-agent-0"},
+        allowed_types=all_types,  # the full vocabulary, not the untried remainder
+    )
+
+    assert [improvement.optimization_type for improvement in usable] == ["edit_concrete_method"]

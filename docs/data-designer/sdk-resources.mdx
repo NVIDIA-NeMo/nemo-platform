@@ -1,9 +1,11 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Data Designer SDK Resources"
 description: ""
 ---
 <a id="data-designer-nmp-sdk-resources"></a>
-
 
 The `data_designer.config` module provides a consistent, context-agnostic experience for building Data Designer configs.
 Once you are ready to execute that config through NeMo Services APIs, you use objects from the `nemo_platform` SDK.
@@ -24,7 +26,6 @@ A `DataDesignerResource` is accessed directly from a `NeMoPlatform` instance:
 ```python
 import os
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -54,7 +55,6 @@ Some of the most useful methods are described below.
 | `wait_until_done()` | Polls the job service until the job reaches a terminal state. Prints job logs along the way. |
 | `get_logs()` | Returns logs from the job as a list of dicts. Handles pagination automatically. |
 | `download_artifacts()` | Downloads the job results as a tar archive. Returns a `DataDesignerJobResults` object (see below). |
-
 
 ## DataDesignerJobResults
 

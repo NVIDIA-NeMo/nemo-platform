@@ -133,6 +133,75 @@ describe('runGuardrailCheck', () => {
     );
     expect(recordedCheckRequests).toHaveLength(0);
   });
+
+  it('snapshots the saved config coverage onto the run', async () => {
+    const { run } = await runGuardrailCheck(WORKSPACE, snapshot('benign-greeting'));
+
+    // cfg-1 declares two input and two output flows, none of which the registry
+    // recognizes — so each falls back to its raw name.
+    expect(run.activated_guardrails?.map((g) => g.label)).toEqual([
+      'check pii',
+      'check toxicity',
+      'mask pii output',
+      'check output facts',
+    ]);
+    expect(run.is_draft).toBeUndefined();
+  });
+});
+
+describe('runGuardrailCheck against a draft', () => {
+  /** A draft that differs from cfg-1 in both its model and its rails. */
+  const DRAFT: RailsConfig = {
+    models: [{ type: 'main', engine: 'openai', model: 'gpt-4o-draft' }],
+    instructions: [{ type: 'general', content: 'Be extremely cautious.' }],
+    rails: { input: { flows: ['jailbreak detection'] } },
+  };
+
+  it('sends the draft inline instead of referencing the saved config by id', async () => {
+    await runGuardrailCheck(WORKSPACE, snapshot('benign-greeting'), DRAFT);
+
+    expect(recordedCheckRequests).toEqual([
+      {
+        model: 'gpt-4o-draft',
+        messages: [{ role: 'user', content: 'Hello there' }],
+        guardrails: { config: DRAFT },
+      },
+    ]);
+    // Never both: the service's validator would silently discard config_ids.
+    expect(recordedCheckRequests[0]?.guardrails).not.toHaveProperty('config_ids');
+  });
+
+  it('records the run as a draft with no config version', async () => {
+    const { run } = await runGuardrailCheck(WORKSPACE, snapshot('benign-greeting'), DRAFT);
+
+    expect(run.is_draft).toBe(true);
+    expect(run.config_version).toBeUndefined();
+    expect(getMockGuardrailCheck('benign-greeting')?.data.runs).toEqual([run]);
+  });
+
+  it("snapshots the draft's coverage, not the saved config's", async () => {
+    const { run } = await runGuardrailCheck(WORKSPACE, snapshot('benign-greeting'), DRAFT);
+
+    const labels = run.activated_guardrails?.map((g) => g.label);
+    expect(labels).toContain('Jailbreak Detection');
+    expect(labels).not.toContain('check pii');
+  });
+
+  it("overrides a check's stored guardrails rather than silently ignoring the draft", async () => {
+    const check = snapshot('benign-greeting');
+    check.data.guardrails = { config_ids: ['some-other-config'] };
+
+    await runGuardrailCheck(WORKSPACE, check, DRAFT);
+
+    expect(recordedCheckRequests[0]?.guardrails).toEqual({ config: DRAFT });
+  });
+
+  it('rejects a draft with no usable model before calling /checks', async () => {
+    await expect(
+      runGuardrailCheck(WORKSPACE, snapshot('benign-greeting'), { models: [] })
+    ).rejects.toThrow("Guardrail config 'pii-filter' has no usable model to run checks against.");
+    expect(recordedCheckRequests).toHaveLength(0);
+  });
 });
 
 describe('runGuardrailChecks', () => {

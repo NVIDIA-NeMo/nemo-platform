@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: ui-design
 description: Reference hub for implementing UI changes in Studio. Use whenever building or modifying Studio frontend UI — pages, components, tables, panels, empty states, and other shared patterns. Routes to the standardized references below.
 ---

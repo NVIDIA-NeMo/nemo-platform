@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Platform seed task
 
 Platform-centric seeding for NeMo Platform: auth role bindings (platform admin, wildcard default/system/workspace-creator), guardrails config store, the default model provider, and plugin-contributed seed jobs discovered from `nemo.seed`. This codebase provides the **task** (run via `nemo-platform run task --task nmp.platform_seed` or as a K8s Job). Optionally, the platform API can run the same seed once at startup when `platform.seed_on_startup` is true in the platform config (or `NMP_SEED_ON_STARTUP=true`). There is no standalone seed service.

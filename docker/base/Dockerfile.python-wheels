@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 #######
 # Python Wheel Builder
 #
@@ -100,8 +103,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /usr/local/bin/uv
 
-# special builder for 13.2 cuda (automodel on NGC 26.05)
-FROM nvcr.io/nvidia/pytorch:26.05-py3 AS mamba-wheel-base-py312-cu13.2
+# special builder for CUDA 13.3 (Automodel/Customizer/Unsloth on NGC 26.07)
+FROM nvcr.io/nvidia/pytorch:26.07-py3 AS mamba-wheel-base-py312-cu13.3
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -155,9 +158,9 @@ RUN mkdir -p /wheels && \
     rm -rf /src/causal-conv1d
 
 # =============================================================================
-# causal-conv1d wheel — Python 3.12 (for Python 3.12 consumers) - Using CUDA 13.2
+# causal-conv1d wheel — Python 3.12 (for Python 3.12 consumers) - Using CUDA 13.3
 # =============================================================================
-FROM  mamba-wheel-base-py312-cu13.2 AS causal-conv1d-wheel-builder-py312-cu13.2
+FROM  mamba-wheel-base-py312-cu13.3 AS causal-conv1d-wheel-builder-py312-cu13.3
 
 ARG CAUSAL_CONV1D_VERSION=v1.5.3
 
@@ -176,7 +179,7 @@ FROM scratch AS causal-conv1d-wheel
 COPY --from=causal-conv1d-wheel-builder /wheels /wheels
 COPY --from=causal-conv1d-wheel-builder-py312 /wheels /wheels
 COPY --from=causal-conv1d-wheel-builder-py312-cu13.1.1 /wheels /wheels/cu13.1.1
-COPY --from=causal-conv1d-wheel-builder-py312-cu13.2 /wheels /wheels/cu13.2
+COPY --from=causal-conv1d-wheel-builder-py312-cu13.3 /wheels /wheels/cu13.3
 
 # =============================================================================
 # mamba-ssm 2.2.5 wheel — Python 3.11 (for safe-synthesizer-tasks)
@@ -247,9 +250,9 @@ RUN mkdir -p /wheels && \
 
 
 # =============================================================================
-# mamba-ssm 2.3.0 wheel — Python 3.12 (for Python 3.12 consumers) - Using CUDA 13.2
+# mamba-ssm 2.3.0 wheel — Python 3.12 (for Python 3.12 consumers) - Using CUDA 13.3
 # =============================================================================
-FROM mamba-wheel-base-py312-cu13.2 AS mamba-ssm-23-wheel-builder-py312-cu13.2
+FROM mamba-wheel-base-py312-cu13.3 AS mamba-ssm-23-wheel-builder-py312-cu13.3
 
 ARG MAMBA_23_COMMIT=v2.3.0
 
@@ -268,14 +271,14 @@ RUN mkdir -p /wheels && \
 #   - mamba_ssm-2.2.5-cp312-*.whl  (from MAMBA_22_COMMIT=6b32be06, for Python 3.12 consumers)
 #   - mamba_ssm-2.3.0-cp312-*.whl  (from v2.3.0, for Python 3.12 consumers)
 #   - cu13.1.1/mamba_ssm-2.3.0-cp312-*.whl  (from v2.3.0, for Unsloth on CUDA 13.1.1)
-#   - cu13.2/mamba_ssm-2.3.0-cp312-*.whl  (from v2.3.0, for Automodel on CUDA 13.2)
+#   - cu13.3/mamba_ssm-2.3.0-cp312-*.whl  (from v2.3.0, for Automodel/Customizer/Unsloth on CUDA 13.3)
 # Consumers must pin both version AND Python tag glob to select the correct wheel.
 FROM scratch AS mamba-ssm-wheel
 COPY --from=mamba-ssm-wheel-builder /wheels /wheels
 COPY --from=mamba-ssm-25-wheel-builder-py312 /wheels /wheels
 COPY --from=mamba-ssm-23-wheel-builder-py312 /wheels /wheels
 COPY --from=mamba-ssm-23-wheel-builder-py312-cu13.1.1 /wheels /wheels/cu13.1.1
-COPY --from=mamba-ssm-23-wheel-builder-py312-cu13.2 /wheels /wheels/cu13.2
+COPY --from=mamba-ssm-23-wheel-builder-py312-cu13.3 /wheels /wheels/cu13.3
 
 # =============================================================================
 # FFmpeg / VLM wheels (manylinux_2_28) — av + opencv-python-headless + decord2

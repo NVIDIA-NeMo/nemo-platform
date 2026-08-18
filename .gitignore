@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 AGENTS.local.md
 tmp
 .idea
@@ -157,3 +160,14 @@ docs/helm/index.mdx
 # nektos/act files commonly used
 .act-variables
 .act-secrets
+
+# iron-swarm CLI run artifacts (builds, policies, run-logs) written into the working dir
+.iron-swarm/
+iron-swarm.yaml
+# Playwright MCP session output
+.playwright-mcp/
+# superpowers skill scratch (local plans/state)
+.superpowers/
+docs/superpowers/
+# Per-worker fatal-signal tracebacks (PYTEST_CRASH_DUMP_DIR)
+crash-dumps/

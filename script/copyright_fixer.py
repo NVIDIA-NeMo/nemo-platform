@@ -31,7 +31,54 @@ app = typer.Typer(name="copyright-fixer", help="Copyright fixer tool for NeMo-Pl
 
 _CURRENT_YEAR = datetime.now().year
 
-_EXTENSIONS = frozenset({".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css"})
+_EXTENSIONS = frozenset(
+    {
+        ".bash",
+        ".css",
+        ".env",
+        ".go",
+        ".hcl",
+        ".html",
+        ".http",
+        ".j2",
+        ".jinja",
+        ".js",
+        ".jsx",
+        ".gotmpl",
+        ".mako",
+        ".md",
+        ".mdx",
+        ".mjs",
+        ".cjs",
+        ".py",
+        ".rego",
+        ".sh",
+        ".toml",
+        ".tpl",
+        ".ts",
+        ".tsx",
+        ".yaml",
+        ".yml",
+    }
+)
+
+_SPECIAL_FILENAMES = frozenset(
+    {
+        ".copyrightignore",
+        ".cursorignore",
+        ".dockerignore",
+        ".env.example",
+        ".gitattributes",
+        ".gitignore",
+        ".helmignore",
+        ".prettierignore",
+        "Brewfile",
+        "Dockerfile",
+        "Makefile",
+    }
+)
+
+_HTML_FILENAMES = frozenset({"README"})
 
 _COPYRIGHT_IGNORE_FILE = ".copyrightignore"
 
@@ -56,6 +103,23 @@ _HTML_HEADER = (
     "<!-- SPDX-License-Identifier: Apache-2.0 -->\n"
 )
 
+_MDX_HEADER = (
+    f"{{/* SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}}\n"
+    "{/* SPDX-License-Identifier: Apache-2.0 */}\n"
+)
+
+_JINJA_HEADER = (
+    f"{{# SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved. #}}\n"
+    "{# SPDX-License-Identifier: Apache-2.0 #}\n"
+)
+
+_HELM_TEMPLATE_HEADER = (
+    "{{/*\n"
+    f"SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
+    "SPDX-License-Identifier: Apache-2.0\n"
+    "*/}}\n"
+)
+
 # Cheap substring checks — no regex needed
 _HEADER_MARKERS = (
     "SPDX-FileCopyrightText",
@@ -66,6 +130,9 @@ _HEADER_MARKERS = (
 
 _PROPRIETARY_LICENSE = "LicenseRef-NvidiaProprietary"
 _CORRECT_LICENSE = "Apache-2.0"
+_PROPRIETARY_LICENSE_RE = re.compile(
+    rf"(?m)^(?:#|//|/\*| \*|<!--|{{{{/\*|\s+) ?SPDX-License-Identifier:\s*{_PROPRIETARY_LICENSE}\b"
+)
 
 # --- SPDX header regexes ---
 #
@@ -96,12 +163,41 @@ _CORRECT_SPDX_BLOCK_RE = re.compile(
     rf" \* SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT}\n"
     rf" \* SPDX-License-Identifier: {_APACHE_2}\n"
 )
+_CORRECT_SPDX_HTML_RE = re.compile(
+    rf"<!-- SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} -->\n"
+    rf"<!-- SPDX-License-Identifier: {_APACHE_2} -->\n"
+)
+_CORRECT_SPDX_HTML_BLOCK_RE = re.compile(
+    rf"<!--\n"
+    rf"\s*SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT}\n"
+    rf"\s*SPDX-License-Identifier: {_APACHE_2}\n"
+    rf"\s*-->\n"
+)
+_CORRECT_SPDX_MDX_RE = re.compile(
+    rf"\{{/\* SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} \*/\}}\n"
+    rf"\{{/\* SPDX-License-Identifier: {_APACHE_2} \*/\}}\n"
+)
+_CORRECT_SPDX_JINJA_RE = re.compile(
+    rf"{{# SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} #}}\n"
+    rf"{{# SPDX-License-Identifier: {_APACHE_2} #}}\n"
+)
+_CORRECT_SPDX_HELM_RE = re.compile(
+    rf"{{{{/\*\n"
+    rf"\s*SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT}\n"
+    rf"\s*SPDX-License-Identifier: {_APACHE_2}\n"
+    rf"\s*\*/}}}}\n"
+)
 
 _CORRECT_SPDX_PATTERNS = (
     _CORRECT_SPDX_HASH_RE,
     _CORRECT_SPDX_SLASH_RE,
     _CORRECT_SPDX_CSS_RE,
     _CORRECT_SPDX_BLOCK_RE,
+    _CORRECT_SPDX_HTML_RE,
+    _CORRECT_SPDX_HTML_BLOCK_RE,
+    _CORRECT_SPDX_MDX_RE,
+    _CORRECT_SPDX_JINJA_RE,
+    _CORRECT_SPDX_HELM_RE,
 )
 
 # -- any SPDX block (per comment style, for replacement) --
@@ -122,6 +218,30 @@ _ANY_SPDX_BLOCK_RE = re.compile(
     r" \* SPDX-FileCopyrightText:[^\n]*\n"
     r" \* SPDX-License-Identifier:[^\n]*\n"
 )
+_ANY_SPDX_HTML_RE = re.compile(
+    r"<!-- SPDX-FileCopyrightText:[^\n]* -->\n"
+    r"<!-- SPDX-License-Identifier:[^\n]* -->\n"
+)
+_ANY_SPDX_HTML_BLOCK_RE = re.compile(
+    r"<!--\n"
+    r"\s*SPDX-FileCopyrightText:[^\n]*\n"
+    r"\s*SPDX-License-Identifier:[^\n]*\n"
+    r"\s*-->\n"
+)
+_ANY_SPDX_MDX_RE = re.compile(
+    r"\{/\* SPDX-FileCopyrightText:[^\n]* \*/\}\n"
+    r"\{/\* SPDX-License-Identifier:[^\n]* \*/\}\n"
+)
+_ANY_SPDX_JINJA_RE = re.compile(
+    r"{# SPDX-FileCopyrightText:[^\n]* #}\n"
+    r"{# SPDX-License-Identifier:[^\n]* #}\n"
+)
+_ANY_SPDX_HELM_RE = re.compile(
+    r"{{/\*\n"
+    r"\s*SPDX-FileCopyrightText:[^\n]*\n"
+    r"\s*SPDX-License-Identifier:[^\n]*\n"
+    r"\s*\*/}}\n"
+)
 
 # -- legacy / proprietary patterns (not SPDX at all) --
 
@@ -134,6 +254,10 @@ _LEGACY_APACHE_SLASH_RE = re.compile(
     r"// Copyright \(c\) \d{4},?\s*NVIDIA CORPORATION\.?\s*All rights reserved\.\n"
     r"(?://[^\n]*\n)*?"
     r"// limitations under the License\.\n"
+)
+_LEGACY_SPDX_HASH_RE = re.compile(
+    r"# Copyright \(c\) \d{4}(?:-\d{4})?,?\s*NVIDIA CORPORATION & AFFILIATES\. All rights reserved\.\n"
+    r"# SPDX-License-Identifier:\s*Apache-2\.0\n"
 )
 _PROPRIETARY_BLOCK_RE = re.compile(
     r"/\*\n"
@@ -152,6 +276,12 @@ _NON_SPDX_PATTERNS = (
     _ANY_SPDX_SLASH_RE,
     _ANY_SPDX_CSS_RE,
     _ANY_SPDX_BLOCK_RE,
+    _ANY_SPDX_HTML_RE,
+    _ANY_SPDX_HTML_BLOCK_RE,
+    _ANY_SPDX_MDX_RE,
+    _ANY_SPDX_JINJA_RE,
+    _ANY_SPDX_HELM_RE,
+    _LEGACY_SPDX_HASH_RE,
 )
 
 
@@ -207,6 +337,8 @@ def _pat_matches(relpath: str, p: Path, pat: str) -> bool:
     """
     if pat.endswith("/"):
         prefix = pat.rstrip("/")
+        if "*" in prefix or "?" in prefix or "[" in prefix:
+            return fnmatch(relpath, prefix) or fnmatch(relpath, prefix + "/*")
         return relpath == prefix or relpath.startswith(prefix + "/")
     if "/" in pat:
         return fnmatch(relpath, pat)
@@ -254,7 +386,7 @@ def _has_non_spdx_header(filepath: str) -> bool:
     return _has_header(head) and not _has_correct_spdx_header(head)
 
 
-def _read_head(path: str, nbytes: int = 512) -> str:
+def _read_head(path: str, nbytes: int = 4096) -> str:
     """Read the first *nbytes* of a file (fast, no full-file read)."""
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -263,30 +395,94 @@ def _read_head(path: str, nbytes: int = 512) -> str:
         return ""
 
 
-def _collect_files_from_dir(root: str) -> list[str]:
-    """Collect files under *root* matching _EXTENSIONS, respecting .gitignore and .copyrightignore."""
+def _is_supported_file(path: str) -> bool:
+    """Return True if *path* can safely carry a SPDX comment header."""
+    p = Path(path)
+    name = p.name
+    suffix = p.suffix
+    return (
+        suffix in _EXTENSIONS
+        or name in _SPECIAL_FILENAMES
+        or name in _HTML_FILENAMES
+        or name.startswith("Dockerfile.")
+        or name.endswith(".Dockerfile")
+        or (suffix == "" and _has_shebang(p))
+    )
+
+
+def _has_shebang(path: Path) -> bool:
+    """Return True if *path* starts with a shebang."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(2) == b"#!"
+    except OSError:
+        return False
+
+
+def _is_explicitly_included(relpath: str, root_relpath: str, include: list[str]) -> bool:
+    """Return True if --include explicitly targets either relative path."""
+    return _matches_path_filter(relpath, include) or _matches_path_filter(root_relpath, include)
+
+
+def _collect_files_from_dir(root: str, include: list[str] | None = None) -> list[str]:
+    """Collect tracked files under *root* that can safely carry SPDX headers."""
     repo = _get_repo(root)
+    include = include or []
 
     if repo is not None:
         repo_root = str(repo.working_tree_dir)
         copyright_excludes = _load_copyright_excludes(repo_root)
-        raw = repo.git.ls_files("--cached", "--others", "--exclude-standard", "-z", "--", root)
+        raw = repo.git.ls_files("--cached", "-z", "--", root)
         git_files = [f for f in raw.split("\0") if f]
-        target_files = [os.path.join(repo_root, f) for f in git_files if os.path.splitext(f)[1] in _EXTENSIONS]
+        target_files = []
+        for relpath in git_files:
+            path = os.path.join(repo_root, relpath)
+            root_relpath = os.path.relpath(path, root)
+            if not _is_supported_file(path):
+                continue
+            if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
+                relpath, root_relpath, include
+            ):
+                continue
+            target_files.append(path)
     else:
         copyright_excludes = _load_copyright_excludes(None)
         target_files = []
         for dirpath, _, filenames in os.walk(root):
             for fname in filenames:
-                if os.path.splitext(fname)[1] in _EXTENSIONS:
-                    target_files.append(os.path.join(dirpath, fname))
-
-    target_files = [f for f in target_files if not _is_copyright_excluded(os.path.relpath(f, root), copyright_excludes)]
+                path = os.path.join(dirpath, fname)
+                relpath = os.path.relpath(path, root)
+                if _is_supported_file(path) and (
+                    not _is_copyright_excluded(relpath, copyright_excludes)
+                    or _is_explicitly_included(relpath, relpath, include)
+                ):
+                    target_files.append(path)
 
     return target_files
 
 
-_SLASH_EXTENSIONS = frozenset({".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
+_SLASH_EXTENSIONS = frozenset({".go", ".http", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
+
+
+def _has_frontmatter(content: str) -> bool:
+    return content.startswith("---\n") or content.startswith("---\r\n")
+
+
+def _is_helm_template_yaml(path: Path) -> bool:
+    """Return True for YAML files under a Helm chart templates directory."""
+    if path.suffix not in {".yaml", ".yml"}:
+        return False
+
+    parts = path.parts
+    for index, part in enumerate(parts):
+        if part != "templates":
+            continue
+
+        chart_dir = Path(*parts[:index])
+        if (chart_dir / "Chart.yaml").is_file():
+            return True
+
+    return False
 
 
 def _get_header_for_ext(ext: str) -> str:
@@ -295,16 +491,36 @@ def _get_header_for_ext(ext: str) -> str:
         return _SLASH_HEADER + "\n"
     if ext == ".css":
         return _CSS_HEADER + "\n"
-    if ext in {".py", ".sh", ".yaml", ".yml"}:
-        return _HASH_HEADER + "\n"
-    if ext == ".md":
+    if ext in {".j2", ".jinja"}:
+        return _JINJA_HEADER + "\n"
+    if ext in {".gotmpl", ".tpl"}:
+        return _HELM_TEMPLATE_HEADER + "\n"
+    if ext == ".mdx":
+        return _MDX_HEADER + "\n"
+    if ext in {".html", ".md"}:
         return _HTML_HEADER + "\n"
+    if ext in {".bash", ".env", ".hcl", ".mako", ".py", ".rego", ".sh", ".toml", ".yaml", ".yml"}:
+        return _HASH_HEADER + "\n"
     return _HASH_HEADER + "\n"
 
 
 def _get_header_for_file(filepath: str, content: str) -> str:
     """Return the appropriate copyright header, considering both extension and shebang."""
-    ext = os.path.splitext(filepath)[1]
+    path = Path(filepath)
+    name = path.name
+    ext = path.suffix
+
+    if name in _HTML_FILENAMES:
+        return _HTML_HEADER + "\n"
+
+    if name in _SPECIAL_FILENAMES or name.startswith("Dockerfile.") or name.endswith(".Dockerfile"):
+        return _HASH_HEADER + "\n"
+
+    if ext in {".md", ".mdx"} and _has_frontmatter(content):
+        return _HASH_HEADER
+
+    if _is_helm_template_yaml(path):
+        return _HELM_TEMPLATE_HEADER + "\n"
 
     # Check shebang for tsx/node — these files need // style comments
     if content.startswith("#!"):
@@ -318,16 +534,94 @@ def _get_header_for_file(filepath: str, content: str) -> str:
 
 def _needs_style_fix(filepath: str) -> bool:
     """Return True if the file has a copyright header with wrong comment style."""
-    head = _read_head(filepath)
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    head = content[:4096]
     if not _has_header(head):
         return False
     expected = _get_header_for_file(filepath, head)
-    return "# SPDX-FileCopyrightText" in head and expected.startswith("//")
+    header_start = _expected_header_start(filepath, content, head)
+    if content.startswith(expected, header_start):
+        return False
+    return _find_spdx_header_match(head, header_start) is not None
+
+
+def _find_spdx_header_match(head: str, header_start: int) -> re.Match[str] | None:
+    for pattern in _NON_SPDX_PATTERNS:
+        match = pattern.search(head, pos=header_start)
+        if match and match.start() == header_start:
+            return match
+    return None
+
+
+def _dockerfile_directive_end(content: str) -> int:
+    """Return the insertion point after leading Dockerfile parser directives."""
+    pos = 0
+    while True:
+        nl = content.find("\n", pos)
+        line_end = nl if nl != -1 else len(content)
+        line = content[pos:line_end]
+        if not re.match(r"#\s*(syntax|escape|check)=", line):
+            return pos
+        pos = line_end + 1 if nl != -1 else line_end
+
+
+def _expected_header_start(filepath: str, content: str, head: str) -> int:
+    """Return the index where a file-level header should begin."""
+    header_start = 0
+    if content.startswith("#!"):
+        nl = content.find("\n")
+        header_start = (nl + 1) if nl != -1 else len(content)
+    elif Path(filepath).suffix in {".md", ".mdx"} and _has_frontmatter(content):
+        header_start = len("---\r\n") if content.startswith("---\r\n") else len("---\n")
+    elif Path(filepath).name.startswith("Dockerfile") or Path(filepath).name.endswith(".Dockerfile"):
+        header_start = _dockerfile_directive_end(content)
+
+    while header_start < len(head) and head[header_start] == "\n":
+        header_start += 1
+
+    return header_start
+
+
+def _insert_header(filepath: str, content: str, header: str) -> str:
+    """Insert *header* at the syntax-safe file header position."""
+
+    def insert_at(index: int) -> str:
+        prefix = content[:index]
+        suffix = content[index:]
+        if not suffix.strip():
+            return prefix + header.rstrip("\n") + "\n"
+        return prefix + header + suffix
+
+    path = Path(filepath)
+    if content.startswith("#!"):
+        nl = content.find("\n")
+        newline_pos = nl + 1 if nl != -1 else len(content)
+        return insert_at(newline_pos)
+    if path.name.startswith("Dockerfile") or path.name.endswith(".Dockerfile"):
+        directive_end = _dockerfile_directive_end(content)
+        return insert_at(directive_end)
+    if path.suffix in {".md", ".mdx"} and _has_frontmatter(content):
+        sep = "---\r\n" if content.startswith("---\r\n") else "---\n"
+        return insert_at(len(sep))
+    return insert_at(0)
+
+
+def _strip_frontmatter_header_gap(content: str) -> str:
+    """Remove blank lines left after a frontmatter SPDX header replacement."""
+    if not _has_frontmatter(content):
+        return content
+    sep = "---\r\n" if content.startswith("---\r\n") else "---\n"
+    return sep + content[len(sep) :].lstrip("\n")
 
 
 def _has_proprietary_license(head: str) -> bool:
     """Return True if the file uses the disallowed NvidiaProprietary license."""
-    return _PROPRIETARY_LICENSE in head
+    return _PROPRIETARY_LICENSE_RE.search(head) is not None
 
 
 def _fix_proprietary_license(filepath: str) -> bool:
@@ -355,23 +649,30 @@ def _fix_header_style(filepath: str) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
 
-    if not _has_header(content[:512]):
+    head = content[:4096]
+    if not _has_header(head):
         return False
 
     expected_header = _get_header_for_file(filepath, content)
-    # Check if the file uses #-style when it should use //-style (or vice versa)
-    has_hash = "# SPDX-FileCopyrightText" in content[:512]
-    needs_slash = expected_header.startswith("//")
+    header_start = _expected_header_start(filepath, content, head)
+    if content.startswith(expected_header, header_start):
+        return False
 
-    if has_hash and needs_slash:
-        new_content = content.replace("# SPDX-FileCopyrightText", "// SPDX-FileCopyrightText", 1).replace(
-            "# SPDX-License-Identifier", "// SPDX-License-Identifier", 1
-        )
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(new_content)
-        return True
+    match = _find_spdx_header_match(head, header_start)
+    if match is None:
+        return False
 
-    return False
+    new_content = content[: match.start()] + content[match.end() :]
+    if Path(filepath).suffix in {".md", ".mdx"}:
+        new_content = _strip_frontmatter_header_gap(new_content)
+    new_content = _insert_header(filepath, new_content, expected_header)
+    new_content = re.sub(r"\n{3,}", "\n\n", new_content)
+    if new_content == content:
+        return False
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    return True
 
 
 def _fix_non_spdx_header(filepath: str) -> bool:
@@ -382,7 +683,7 @@ def _fix_non_spdx_header(filepath: str) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
 
-    head = content[:1024]
+    head = content[:4096]
     if not _has_header(head) or _has_correct_spdx_header(head):
         return False
 
@@ -391,13 +692,8 @@ def _fix_non_spdx_header(filepath: str) -> bool:
     # We search `head` (not the full content) and require the match to begin at
     # header_start so we never accidentally delete a copyright-like block that
     # appears later in the file body.  The match offsets are valid indices into
-    # content because head == content[:1024].
-    header_start = 0
-    if content.startswith("#!"):
-        nl = content.find("\n")
-        header_start = (nl + 1) if nl != -1 else len(content)
-    while header_start < len(head) and head[header_start] == "\n":
-        header_start += 1
+    # content because head is a slice from the start of content.
+    header_start = _expected_header_start(filepath, content, head)
 
     new_content = content
     for pattern in _NON_SPDX_PATTERNS:
@@ -411,12 +707,7 @@ def _fix_non_spdx_header(filepath: str) -> bool:
     # Strip leading blank lines left by header removal, then prepend correct header
     remaining = new_content.lstrip("\n")
     header = _get_header_for_file(filepath, remaining)
-    if remaining.startswith("#!"):
-        nl = remaining.find("\n")
-        pos = nl + 1 if nl != -1 else len(remaining)
-        new_content = remaining[:pos] + header + remaining[pos:]
-    else:
-        new_content = header + remaining
+    new_content = _insert_header(filepath, remaining, header)
 
     # Collapse runs of 3+ blank lines to 2
     new_content = re.sub(r"\n{3,}", "\n\n", new_content)
@@ -445,16 +736,7 @@ def _add_header(filepath: str) -> bool:
 
     header = _get_header_for_file(filepath, content)
 
-    if content.startswith("#!"):
-        nl = content.find("\n")
-        newline_pos = nl + 1 if nl != -1 else len(content)
-        new_content = content[:newline_pos] + header + content[newline_pos:]
-    elif os.path.splitext(filepath)[1] == ".md" and (content.startswith("---\n") or content.startswith("---\r\n")):
-        # Insert copyright as YAML comments right after opening ---
-        sep = "---\r\n" if content.startswith("---\r\n") else "---\n"
-        new_content = sep + _HASH_HEADER + content[len(sep) :]
-    else:
-        new_content = header + content
+    new_content = _insert_header(filepath, content, header)
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(new_content)
@@ -462,24 +744,46 @@ def _add_header(filepath: str) -> bool:
     return True
 
 
-def _resolve_targets(paths: list[Path]) -> tuple[list[str], str | None]:
+def _resolve_targets(paths: list[Path], include: list[str] | None = None) -> tuple[list[str], str | None]:
     """Return (file_list, display_root)."""
     if len(paths) == 1 and paths[0].is_dir():
         root = str(paths[0].resolve())
-        return _collect_files_from_dir(root), root
+        return _collect_files_from_dir(root, include=include), root
 
-    repo = _get_repo(str(paths[0].resolve()))
-    repo_root = str(repo.working_tree_dir) if repo else None
-    copyright_excludes = _load_copyright_excludes(repo_root)
-
-    files = [
-        str(p.resolve())
-        for p in paths
-        if p.is_file()
-        and os.path.splitext(str(p))[1] in _EXTENSIONS
-        and not _is_copyright_excluded(str(p), copyright_excludes)
-    ]
+    files = [str(p.resolve()) for p in paths if p.is_file() and _is_supported_file(str(p.resolve()))]
+    files = _filter_copyright_excluded(files, include=include)
     return files, None
+
+
+def _filter_copyright_excluded(files: list[str], include: list[str] | None = None) -> list[str]:
+    """Drop files matched by .copyrightignore, unless explicitly --include'd.
+
+    Mirrors the exclusion applied by ``_collect_files_from_dir`` for
+    directory scans, but for an explicit file list (e.g. filenames passed
+    by pre-commit).
+    """
+    if not files:
+        return files
+
+    repo = _get_repo(files[0])
+    if repo is None:
+        return files
+
+    repo_root = str(repo.working_tree_dir)
+    copyright_excludes = _load_copyright_excludes(repo_root)
+    if not copyright_excludes:
+        return files
+
+    include = include or []
+    kept = []
+    for filepath in files:
+        relpath = os.path.relpath(filepath, repo_root)
+        if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
+            relpath, relpath, include
+        ):
+            continue
+        kept.append(filepath)
+    return kept
 
 
 # --- CLI ---
@@ -521,7 +825,8 @@ def update_license_headers(
     style (e.g. ``# SPDX-...`` in TypeScript files instead of ``// SPDX-...``).
 
     Use --include / --exclude to selectively target directories so you
-    don't end up with a monster commit::
+    don't end up with a monster commit. Explicit --include patterns can
+    target files under .copyrightignore-excluded directories::
 
         # Only process two directories
         ./script/copyright_fixer.py . --include services/guardrails --include packages/models
@@ -537,7 +842,7 @@ def update_license_headers(
             typer.echo(f"Error: {p} does not exist", err=True)
             raise typer.Exit(code=1)
 
-    files, root = _resolve_targets(paths)
+    files, root = _resolve_targets(paths, include=include)
 
     # Apply --include / --exclude filters (include takes priority over exclude)
     if include or exclude:
@@ -623,12 +928,12 @@ def update_license_headers(
                 raise typer.Exit(code=1)
 
         for filepath in files:
-            if _add_header(filepath):
-                updated += 1
-                typer.echo(f"  + {_rel(filepath)}")
-            elif fix_style and _fix_header_style(filepath):
+            if fix_style and _needs_style_fix(filepath) and _fix_header_style(filepath):
                 updated += 1
                 typer.echo(f"  ~ {_rel(filepath)}")
+            elif _add_header(filepath):
+                updated += 1
+                typer.echo(f"  + {_rel(filepath)}")
         typer.echo(f"  Processed {len(files)} files, updated {updated}")
         if updated:
             typer.echo(f"Run 'git diff' to review {updated} changed file(s).")

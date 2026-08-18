@@ -2450,6 +2450,11 @@ components:
           - $ref: '#/components/schemas/CandidateEvidence'
           description: Named evidence descriptors (final state, traces, logs, ...)
             captured for the trial.
+        error:
+          allOf:
+          - $ref: '#/components/schemas/TrialError'
+          description: What went wrong producing this trial, when the producer reported
+            a failure. Populated by a runner runtime. Drives AgentEvalSummary.error_trial_ids.
         metadata:
           additionalProperties: true
           type: object
@@ -2463,7 +2468,7 @@ components:
       - status
       title: AgentEvalTrial
       description: 'Durable trial artifact for one task: output, evidence, status,
-        and metadata.'
+        error, and metadata.'
     AgentEvalTrialStatus:
       type: string
       enum:
@@ -3777,14 +3782,27 @@ components:
           description: Auto-bind the agent's `resources_server.name` via a Hydra override.
             Set False for self-contained agents that already bind their own resources-server.
           default: true
-        env_overrides:
+        hydra_params:
           additionalProperties: true
           type: object
-          title: Env Overrides
-          description: "Extra config overrides for `gym env start`, as nested data\
+          title: Hydra Params
+          description: "Parameters merged into Gym's Hydra config, as nested data\
             \ \u2014 {'model': {'temperature': 0.7}} rather than pre-serialized Hydra\
             \ strings \u2014 so a spec survives being sent as JSON. Flattened to Hydra's\
-            \ grammar at invocation, after the auto-derived resources-server binding."
+            \ grammar at invocation, after the auto-derived resources-server binding.\
+            \ Distinct from `env_vars`: these configure the Gym environment, not the\
+            \ OS environment."
+        env_vars:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env Vars
+          description: "Environment variables set on the `gym` invocation. Some Gym\
+            \ environments are configurable only this way \u2014 `wmt_translation`\
+            \ reads `WMT_TRANSLATION_COMET_PY_CACHE` for its model-cache root and\
+            \ defaults to a container-only path \u2014 and a job spec has no ambient\
+            \ environment to inherit from, so whatever the environment needs has to\
+            \ travel in the spec."
         num_repeats:
           type: integer
           minimum: 1.0
@@ -5503,6 +5521,12 @@ components:
           type: array
           title: Tasks
           description: References to the member tasks (set semantics; duplicates rejected).
+        files_ref:
+          title: Files Ref
+          description: "Files reference to the taskset's own files \u2014 shared by\
+            \ its members, owned by none."
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5586,6 +5610,15 @@ components:
             change underneath you when a member republishes. Because membership is
             a set, the stored order is canonical rather than the submitted order:
             reordering the same members is not a content change and publishes no revision.'
+        files_ref:
+          title: Files Ref
+          description: "Files reference to the taskset's own files \u2014 shared by\
+            \ its members, owned by none. Upload them to the Files service first and\
+            \ point here ('workspace/fileset#prefix'). The reference is part of the\
+            \ taskset's content, so repointing it publishes a revision; pin the content\
+            \ by referencing a location that is not rewritten."
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5658,6 +5691,66 @@ components:
       required:
       - data
       title: TasksetsPage
+    TrialError:
+      properties:
+        type:
+          type: string
+          title: Type
+          description: Error class name as the producer reported it, e.g. 'RuntimeError'.
+            Rollup key for AgentEvalSummary.error_trial_ids. Falls back to 'UnknownException'
+            when the producer reported a failure without a usable type.
+        message:
+          title: Message
+          description: Short error message, when the producer supplied one.
+          type: string
+        traceback:
+          title: Traceback
+          description: 'Formatted traceback, when the producer supplied one. May be
+            truncated by the adapter that captured it. Note run bundles are portable:
+            this can carry absolute filesystem paths and other diagnostic text from
+            the machine that ran the trial.'
+          type: string
+        occurred_at:
+          type: string
+          title: Occurred At
+          description: "When the producer recorded the failure, as it reported it.\
+            \ The SDK does not rewrite this: an aware value (UTC, offset) is kept,\
+            \ and a naive value stays naive. Harbor's clock is naive local, e.g. '2026-08-13T17:22:32',\
+            \ while that trial's start in result.json is UTC ('2026-08-14T00:22:25Z')\
+            \ \u2014 the same instant on two clocks, so do not subtract them or attach\
+            \ a zone Harbor never wrote. A runner that recorded an offset keeps it.\
+            \ Not RFC 3339 date-time: the offset may be absent."
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      title: TrialError
+      description: 'What went wrong producing one trial, as the producer reported
+        it.
+
+
+        Present means the *producer* reported a failure. It does **not** imply ``status
+        is FAILED``: an
+
+        errored trial can be marked as :attr:`AgentEvalTrialStatus.PARTIAL` so it
+        is still scored (ex: HarborRuntime).
+
+        It is also unrelated to a score diagnostic''s ``exception_type`` detail, which
+        records that the
+
+        *metric* raised - a different event.
+
+
+        Frozen so callers cannot rewrite ``type`` after construction. These objects
+        are returned as-is
+
+        (not copied), and ``AgentEvalSummary.error_trial_ids`` groups trial ids by
+        that string. Mutating
+
+        ``type`` on a live object would leave the summary keyed on the old value while
+        the trial reports
+
+        a new one.'
     ValidationError:
       properties:
         loc:

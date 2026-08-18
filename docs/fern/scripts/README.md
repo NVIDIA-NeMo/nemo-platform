@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Fern scripts
 
 Run these from the **repository root**. For local development, use `uv run` — dependencies are resolved via the workspace `pyproject.toml`.

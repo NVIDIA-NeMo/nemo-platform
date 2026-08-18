@@ -40,6 +40,11 @@ import { type FC, useEffect, useMemo, useState } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
+const EXAMPLE_ITEMS = SAMPLE_AGENTS.map((example) => ({
+  value: example.key,
+  children: example.displayName,
+}));
+
 // Since useForm is called in the component itself, key-based remount needs a thin outer wrapper
 // otherwise there's nothing to put the key on
 export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = (props) => (
@@ -62,11 +67,7 @@ const CreateExampleAgentModalInner: FC<CreateExampleAgentModalProps> = ({
     { query: { enabled: open && !!workspace } }
   );
   const models = useMemo(() => modelsPage?.data ?? [], [modelsPage?.data]);
-  const modelOptions = buildSuggestedModelOptions(models);
-  const exampleItems = SAMPLE_AGENTS.map((example) => ({
-    value: example.key,
-    children: example.displayName,
-  }));
+  const modelOptions = useMemo(() => buildSuggestedModelOptions(models), [models]);
 
   const {
     mutateAsync: createAgent,
@@ -145,7 +146,7 @@ const CreateExampleAgentModalInner: FC<CreateExampleAgentModalProps> = ({
     setLoadError(undefined);
     let config: Record<string, unknown>;
     try {
-      config = await loadSampleAgentConfig(example.agentConfigPath, formData.modelName);
+      config = await loadSampleAgentConfig(example.agentConfigPath, formData.modelName, workspace);
     } catch (err) {
       setLoadError(getErrorMessage(err as Error, 'Failed to load example agent config'));
       return;
@@ -186,8 +187,8 @@ const CreateExampleAgentModalInner: FC<CreateExampleAgentModalProps> = ({
     >
       <ControlledSelect
         useControllerProps={{ control, name: 'exampleKey' }}
-        items={exampleItems}
-        renderValue={(v) => exampleItems.find((item) => item.value === v)?.children}
+        items={EXAMPLE_ITEMS}
+        renderValue={(v) => EXAMPLE_ITEMS.find((item) => item.value === v)?.children}
         formFieldProps={{
           slotLabel: 'Example',
           slotError: errors.exampleKey?.message,

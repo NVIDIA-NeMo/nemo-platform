@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-try-agent
 description: Invokes an existing NeMo Platform agent through a named deployment or directly from a local agent YAML config. Use to try, test, or query an agent and inspect its response.
 triggers:

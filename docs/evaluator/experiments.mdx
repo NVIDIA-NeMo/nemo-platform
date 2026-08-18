@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Experiments"
 description: "Compare evaluation runs on a NeMo Experiments leaderboard with cost, latency, token, and evaluator rollups computed from NeMo Intake telemetry."
 ---
@@ -231,8 +234,8 @@ session with the Evaluation's identity:
 - For Agent Trajectory Interchange Format (ATIF) and chat-completions, add a **top-level**
   `evaluation_context` object to the ingest payload
   carrying `evaluation_id` (the Evaluation's **name**) and `test_case_id`.
-- For OpenTelemetry Protocol (OTLP), set the `nemo.experiment.id` and `nemo.test_case.id` root-span
-  attributes.
+- For OpenTelemetry Protocol (OTLP), set the `nemo.evaluation.name` and
+  `nemo.test_case.id` root-span attributes.
 
 The per-evaluator scores on the leaderboard come from **evaluator results** captured on those
 sessions, either automatically from ATIF verifier rewards or explicitly through the evaluator-results

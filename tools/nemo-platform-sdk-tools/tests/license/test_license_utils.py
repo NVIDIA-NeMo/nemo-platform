@@ -233,6 +233,39 @@ class TestOverrideAppliedForCu129Version:
 class TestFormatLicenses:
     """Tests for license report formatting."""
 
+    def test_reviewed_license_overrides_cover_corrected_inventory_values(self):
+        """Reviewed overrides keep generated license inventory from losing corrected SPDX expressions."""
+        import yaml
+
+        repo_root = Path(__file__).parents[4]
+        overrides_file = Path(__file__).parents[2] / "src" / "nemo_platform_sdk_tools" / "license" / "overrides.yaml"
+        inventory_file = repo_root / "third_party" / "licenses.jsonl"
+        overrides = yaml.safe_load(overrides_file.read_text(encoding="utf-8"))["overrides"]
+        normalized_overrides = {normalize_package_name(name): license for name, license in overrides.items()}
+        inventory_licenses = {
+            normalize_package_name(row["name"]): row["license"]
+            for row in (json.loads(line) for line in inventory_file.read_text(encoding="utf-8").splitlines())
+        }
+        # Only packages the workspace still resolves belong here: the inventory
+        # lists what we ship, so a name that leaves the dependency set (such as
+        # langchain-oci, dropped with the move to NAT 1.9) has no row to check.
+        expected_licenses = {
+            "certifi": "MPL-2.0",
+            "greenlet": "MIT AND Python-2.0",
+            "pathspec": "MPL-2.0",
+            "psycopg2-binary": "LGPL-3.0-or-later WITH openvpn-openssl-exception",
+            "regex": "Apache-2.0 AND CNRI-Python",
+            "tqdm": "MIT AND MPL-2.0",
+        }
+        normalized_expected = {
+            normalize_package_name(name): license_expression for name, license_expression in expected_licenses.items()
+        }
+
+        assert {name: normalized_overrides[name] for name in normalized_expected} == normalized_expected
+        assert {name: inventory_licenses[name] for name in normalized_expected} == {
+            name: license_expression.upper() for name, license_expression in normalized_expected.items()
+        }
+
     def test_format_licenses_fills_missing_osv_package_from_overrides(self, tmp_path):
         """A reviewed override fills an exported requirement omitted by OSV."""
         from nemo_platform_sdk_tools.license.generator import format_licenses

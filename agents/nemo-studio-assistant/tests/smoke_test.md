@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Studio Assistant Fabric smoke test
 
 The assistant is a `nemo-agents-spec-v1` Fabric agent using the preinstalled

@@ -59,7 +59,7 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
     from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.container_runtime import FabricContainerRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
-    from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
+    from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
     from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 
     async def _agent_fn(task):  # pragma: no cover - never called
@@ -96,7 +96,7 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
                 "model_type",
                 "num_repeats",
                 "bind_resources_server",
-                "env_overrides",
+                "hydra_params",
                 "reward_key",
             },
         ),
@@ -186,17 +186,17 @@ def test_harbor_records_the_effective_agent_when_a_custom_import_path_overrides_
     assert _info()["effective_agent"] == "oracle"
 
 
-def test_gym_redacts_credential_looking_env_overrides() -> None:
-    # env_overrides is a free-form Hydra escape hatch forwarded to `gym env start`, and RunnerInfo.config
+def test_gym_redacts_credential_looking_hydra_params() -> None:
+    # hydra_params is a free-form Hydra escape hatch forwarded to `gym env start`, and RunnerInfo.config
     # is persisted into the run bundle — so a value that looks like a credential must not be written there.
-    from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
+    from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
 
     runner = GymAgentTaskRunner(
         config=GymRuntimeConfig(
             agent="a",
             agent_config="c",
             resources_server="r",
-            env_overrides={
+            hydra_params={
                 "model": {"api_key": "sk-should-not-be-recorded", "temperature": 0.7},
                 "env": {"HF_TOKEN": "hf_should-not-be-recorded"},
                 "agent": {"nested": {"secret": "deep-should-not-be-recorded"}},
@@ -208,7 +208,7 @@ def test_gym_redacts_credential_looking_env_overrides() -> None:
         )
     )
 
-    recorded = runner.runner_info().config["env_overrides"]
+    recorded = runner.runner_info().config["hydra_params"]
 
     assert recorded == {
         "model": {
@@ -223,6 +223,40 @@ def test_gym_redacts_credential_looking_env_overrides() -> None:
         "models": [{"name": "m", "api_key": "<redacted>"}],
         # A credential-shaped key wins over descending into it — the whole list goes.
         "api_keys": "<redacted>",
+    }
+    assert "should-not-be-recorded" not in json.dumps(recorded)
+
+
+def test_gym_redacts_credential_looking_env_vars() -> None:
+    # env_vars needs redaction at least as much as hydra_params: an environment variable is the
+    # conventional way to hand a process an API key, so a caller doing the obvious thing would
+    # otherwise write one straight into the run bundle.
+    from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
+
+    runner = GymAgentTaskRunner(
+        config=GymRuntimeConfig(
+            agent="a",
+            agent_config="c",
+            resources_server="r",
+            env_vars={
+                "WMT_TRANSLATION_COMET_PY_CACHE": "/shared/cache",
+                "OPENAI_API_KEY": "sk-should-not-be-recorded",
+                "HF_TOKEN": "hf_should-not-be-recorded",
+                "AWS_SECRET_ACCESS_KEY": "should-not-be-recorded",
+                "DB_PASSWORD": "should-not-be-recorded",
+            },
+        )
+    )
+
+    recorded = runner.runner_info().config["env_vars"]
+
+    assert recorded == {
+        # The reason the field exists — a cache path is provenance worth keeping verbatim.
+        "WMT_TRANSLATION_COMET_PY_CACHE": "/shared/cache",
+        "OPENAI_API_KEY": "<redacted>",
+        "HF_TOKEN": "<redacted>",
+        "AWS_SECRET_ACCESS_KEY": "<redacted>",
+        "DB_PASSWORD": "<redacted>",
     }
     assert "should-not-be-recorded" not in json.dumps(recorded)
 

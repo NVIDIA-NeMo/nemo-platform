@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Run a NeMo Gym environment through NeMo Evaluator
 
 `run_gym_eval.py` runs an **existing** NeMo Gym environment (the `mcqa` benchmark by default) through the Evaluator's `GymAgentTaskRunner` and scores it with `AgentEvaluator`. Use it when you already have a Gym environment and want to run and score it through NeMo Evaluator without migrating it. Gym owns execution *and* scoring; the runner shells out to the `gym` CLI and adapts the rollout bundle into trials, and `GymRewardMetric` surfaces Gym's per-attempt reward.
@@ -39,7 +42,7 @@ Working from a Gym checkout also makes its components take precedence over the p
 
 Useful flags: `--resources-server`, `--agent`, `--model-type` (`inference_provider` for OpenAI-compatible **chat** endpoints; `openai_model` uses the OpenAI **Responses API** and 500s against chat-only endpoints), `--num-repeats`, `--dataset`, `--output-dir`.
 
-For the full set of knobs the underlying `gym env start` / `gym eval run` commands accept, see the [NeMo Gym documentation](https://github.com/NVIDIA-NeMo/Gym). Anything `GymRuntimeConfig` does not expose as a field can be passed through with its `env_overrides` escape hatch — nested data such as `{"model": {"temperature": 0.7}}`, flattened to Hydra's override grammar and applied to `gym env start`.
+For the full set of knobs the underlying `gym env start` / `gym eval run` commands accept, see the [NeMo Gym documentation](https://github.com/NVIDIA-NeMo/Gym). Anything `GymRuntimeConfig` does not expose as a field can be passed through with its `hydra_params` escape hatch — nested data such as `{"model": {"temperature": 0.7}}`, flattened to Hydra's override grammar and applied to `gym env start`.
 
 Each run writes its bundle to a fresh temporary directory by default. Pass `--output-dir` to choose one, but give every run its own: the runner refuses to reuse a directory that already holds Gym rollout output (Gym appends to its failures sidecar, so reusing one would mix runs) and raises rather than clearing a prior run's results.
 
@@ -95,10 +98,10 @@ The dataset handed to step 2 is not your source file. The runner **materializes*
 
 ### Logs
 
-Gym's subprocess output is streamed to files in the run's work directory — `gym_env.log` for `gym env start`, and `gym_eval.stdout.log` / `gym_eval.stderr.log` for the collection — and mirrored to the `nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime` logger at `DEBUG`. Startup and collection failures name the relevant files and inline the last lines. To watch Gym's output in your own terminal, turn that logger up:
+Gym's subprocess output is streamed to files in the run's work directory — `gym_env.log` for `gym env start`, and `gym_eval.stdout.log` / `gym_eval.stderr.log` for the collection — and mirrored to the `nemo_evaluator_sdk.agent_eval.runtimes.gym` logger at `DEBUG`. Startup and collection failures name the relevant files and inline the last lines. To watch Gym's output in your own terminal, turn that logger up:
 
 ```python
-logging.getLogger("nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime").setLevel(logging.DEBUG)
+logging.getLogger("nemo_evaluator_sdk.agent_eval.runtimes.gym").setLevel(logging.DEBUG)
 ```
 
 ## Notes & caveats

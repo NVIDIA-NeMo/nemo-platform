@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Eval Author Plugin
 
 Library-only plugin that owns the Eval Author agent (`eval_author/`).
@@ -54,7 +57,6 @@ For non-interactive and isolated environments, `NEMO_DEFAULT_MODEL` and
 `workspace/model-name` and refer to Model Entities on the target Platform.
 
 A `nemo agents eval-author` CLI is registered under `nemo.cli.agents` and
-mounted by the agents plugin. Verb scaffolding is in place
-(`discover`, `audit`, `propose`, `run`, `doctor`); bodies are still
-placeholders until ASE-673–678 land. The library runner already uses the
+mounted by the agents plugin. `discover` is implemented; `audit`, `propose`,
+`run`, and `doctor` remain placeholders. The library runner already uses the
 configured Platform model pair.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Gated (unready) feature navigation — REFERENCE ONLY, not built by Fern.
 #
 # These features are not shipped yet. Their .mdx files live in the repo (so they stay
@@ -79,24 +82,6 @@
     path: ../../safe-synthesizer/tutorials/safe-synthesizer-101.mdx
 - section: evaluator
   contents:
-  - page: Agentic Benchmarks
-    path: ../../evaluator/benchmarks/agentic.mdx
-  - page: Custom Benchmarks
-    path: ../../evaluator/benchmarks/custom.mdx
-  - page: Discover Industry Benchmarks
-    path: ../../evaluator/benchmarks/discover-industry-benchmarks.mdx
-  - page: HuggingFace Secret
-    path: ../../evaluator/benchmarks/hf-secret.mdx
-  - page: Overview
-    path: ../../evaluator/benchmarks/index.mdx
-  - page: Industry Benchmarks
-    path: ../../evaluator/benchmarks/industry.mdx
-  - page: Job Management
-    path: ../../evaluator/benchmarks/job-management.mdx
-  - page: Manage Benchmarks
-    path: ../../evaluator/benchmarks/manage-benchmarks.mdx
-  - page: Benchmark Results
-    path: ../../evaluator/benchmarks/results.mdx
   - page: Job Management
     path: ../../evaluator/metrics/job-management.mdx
   - page: Metric Results

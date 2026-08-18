@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 #
 # Self-hosted replacement for nvcr.io/nim/nvidia/nemoguard-jailbreak-detect.
 # uv-managed. Weights download at first start (not baked).

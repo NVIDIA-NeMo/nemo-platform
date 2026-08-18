@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # legal_agent_bench_fabric — evaluate an agent on LAB, the NeMo Platform way
 
 Run Harvey Labs' [Legal Agent Benchmark (LAB)](https://github.com/harveyai/harvey-labs) as **native

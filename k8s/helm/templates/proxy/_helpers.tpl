@@ -1,4 +1,9 @@
 {{/*
+SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{/*
 Create a named Envoy service name which can be included from parent chart
 */}}
 {{- define "nmp-envoy.servicename" }}

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Harbor CLI Eval Comparison: Standard vs Easy
 
 **Batch directory:** `jobs/batch-2026-02-12__10-59-58`

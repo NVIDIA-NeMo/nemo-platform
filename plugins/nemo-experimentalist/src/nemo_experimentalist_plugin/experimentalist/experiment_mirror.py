@@ -9,7 +9,7 @@ This module is the *only* place that talks to ``client.experiments`` /
 ``ExperimentRun → ExperimentGroup`` (1:1) and ``Candidate → Experiment[]`` (one per
 evaluated split). It mirrors **structure only** (identity/lineage/status/description);
 eval results (reward/trials) are NOT copied into ``Experiment.metadata`` — those arrive
-via the Intake rollup path later (spec §4.3).
+via the Intake rollup path (spec §4.3).
 """
 
 from __future__ import annotations
@@ -59,9 +59,11 @@ def pseudo_source_link(gname: str, label: str) -> str:
 
 def experiment_status(candidate: Candidate) -> str:
     """Derive the producer status string from candidate lineage (spec §4.1)."""
-    if candidate.killed_round is not None:
+    if candidate.discarded:
+        return "discarded"
+    if candidate.killed_generation is not None:
         return "killed"
-    if candidate.round == 0:
+    if candidate.is_baseline:
         return "baseline"
     return "survived"
 
@@ -70,26 +72,37 @@ def group_metadata(run: ExperimentRun) -> dict[str, str]:
     """The ExperimentRun fields with no first-class ExperimentGroup home (spec §4.1).
 
     Platform ``metadata`` is ``dict[str, str]``: every value must be a string. Non-string
-    fields are serialized (``config_snapshot`` as JSON, ``rounds_completed`` via ``str``);
+    fields are serialized (``config_snapshot`` as JSON, the progress counter via ``str``);
     ``winner_candidate`` is omitted until a winner exists rather than sent as ``None``.
     """
     md = {
         "agent": run.agent,
         "config_snapshot": json.dumps(run.config_snapshot, sort_keys=True),
         "status": run.status,
-        "rounds_completed": str(run.rounds_completed),
+        "progress_completed": str(run.progress_completed),
+        "progress_unit": run.progress_unit,
     }
+    if run.progress_total is not None:
+        md["progress_total"] = str(run.progress_total)
     if run.winner_agent is not None:
         md["winner_candidate"] = run.winner_agent
     return md
 
 
 def experiment_metadata(candidate: Candidate, split: str) -> dict[str, str]:
-    """Identity/grouping metadata only. Eval results (reward/trials) are NOT copied this
-    PR — scores/traces arrive via the Intake rollup path later (spec §4.3).
+    """Identity/grouping metadata only. Eval results (reward/trials) are not copied here;
+    scores and traces arrive via the Intake rollup path (spec §4.3).
 
-    Platform ``metadata`` is ``dict[str, str]``, so ``round`` is serialized via ``str``."""
-    return {"round": str(candidate.round), "candidate_id": candidate.label, "split": split}
+    Platform ``metadata`` is ``dict[str, str]``, so ``generation`` is serialized via ``str``.
+    Both the durable id and the display label are recorded: ``ancestor`` references are
+    ids, while Experiment names are built from labels, so a consumer reconstructing
+    lineage needs the pair."""
+    return {
+        "generation": str(candidate.generation),
+        "candidate_id": candidate.id,
+        "candidate_label": candidate.label,
+        "split": split,
+    }
 
 
 class ExperimentMirror:
@@ -100,7 +113,11 @@ class ExperimentMirror:
         self._client = client
         self._workspace = workspace
         self._group_ids: dict[str, str] = {}  # run_id -> ExperimentGroup id
-        self._experiment_ids: dict[tuple[str, str], str] = {}  # (label, split) -> Experiment id
+        # Keyed by candidate *id*, because that is what ``Candidate.ancestor`` holds. The
+        # Experiment *name* is built from the display label instead — it is meant to be
+        # greppable — so the two are kept side by side rather than derived from each other.
+        self._experiment_ids: dict[tuple[str, str], str] = {}  # (candidate id, split) -> Experiment id
+        self._labels: dict[str, str] = {}  # candidate id -> display label
 
     # -- ExperimentGroup ----------------------------------------------------
 
@@ -145,7 +162,7 @@ class ExperimentMirror:
         name (``opt-<run>-<label>-<split>``).
 
         The name — not the server-assigned id (``experiment-…``) — is what tags the trace's
-        ``nemo.experiment.id``: it is human-readable, greppable, and stable across resumes,
+        ``nemo.evaluation.name``: it is human-readable, greppable, and stable across resumes,
         and matches the Experiment's own ``name`` so the trace still joins back to it.
         """
         gname = group_name(candidate.run_id)
@@ -201,7 +218,7 @@ class ExperimentMirror:
                 workspace=self._workspace,
                 experiment_ids=[group_id],
                 source_link=link,
-                description=candidate.optimization,
+                description=candidate.description,
                 parent_evaluation_id=parent_id,
                 root_cause="",  # OQ-RC: left empty for now
                 status=st,
@@ -216,19 +233,21 @@ class ExperimentMirror:
                 body_name=name,
                 experiment_ids=[group_id],
                 source_link=link,
-                description=candidate.optimization,
+                description=candidate.description,
                 parent_evaluation_id=parent_id,
                 root_cause="",  # OQ-RC: left empty for now
                 status=st,
                 metadata=md,
             )
-        self._experiment_ids[(candidate.label, split)] = exp.id
+        if candidate.id:
+            self._experiment_ids[(candidate.id, split)] = exp.id
+            self._labels[candidate.id] = candidate.label
 
     def _dataset_name(self, split: str) -> str:
         return split  # OQ-8: derive a real dataset name/version later
 
     def _source_link(self, gname: str, candidate: Candidate, agent_source: Any) -> str:
-        if candidate.round == 0 and agent_source is not None:
+        if candidate.is_baseline and agent_source is not None:
             return f"{agent_source.repo_url}@{agent_source.ref}"
         return pseudo_source_link(gname, candidate.label)
 
@@ -247,19 +266,34 @@ class ExperimentMirror:
         return exp.source_link
 
     async def _parent_experiment_id(self, candidate: Candidate, gname: str) -> str | None:
+        """The ancestor's Experiment id, or None when this run cannot name it.
+
+        ``ancestor`` is a candidate id and Experiment names are built from labels, so the
+        ancestor's label has to be resolved before a name can be composed. Within a run
+        the ancestor is always projected first; across a resume it may not be, and an
+        omitted lineage link is the honest outcome rather than a guessed name.
+        """
         if not candidate.ancestor:
             return None
         cached = self._experiment_ids.get((candidate.ancestor, "train"))
         if cached is not None:
             return cached
+        ancestor_label = self._labels.get(candidate.ancestor)
+        if ancestor_label is None:
+            logger.debug(
+                "Ancestor %r of candidate %r has not been projected; lineage link omitted",
+                candidate.ancestor,
+                candidate.label,
+            )
+            return None
         try:  # resume / ancestor created earlier this run
             exp = await self._client.evaluations.retrieve(
-                experiment_name(gname, candidate.ancestor, "train"), workspace=self._workspace
+                experiment_name(gname, ancestor_label, "train"), workspace=self._workspace
             )
         except NotFoundError:
             logger.debug(
                 "Ancestor experiment %r not found for candidate %r; lineage link omitted",
-                experiment_name(gname, candidate.ancestor, "train"),
+                experiment_name(gname, ancestor_label, "train"),
                 candidate.label,
             )
             return None

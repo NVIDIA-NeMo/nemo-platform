@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Agentic-use Evals for NeMo Platform (AUT + NAT)
 
 This directory contains agentic benchmark tasks for evaluating a NeMo platform
