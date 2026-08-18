@@ -204,7 +204,7 @@ async def test_resolve_deployment_secret_env_collects_values_across_containers()
     config = DeploymentConfig(
         name="cfg",
         workspace="default",
-        init_containers=[
+        initContainers=[
             Container(
                 name="init",
                 image="busybox",
