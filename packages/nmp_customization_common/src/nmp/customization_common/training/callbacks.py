@@ -139,6 +139,7 @@ import math
 import numbers
 import time
 from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from typing import Any, ClassVar, cast
 
@@ -361,6 +362,22 @@ class ReportRateLimiter:
         return True
 
 
+@dataclass(frozen=True, slots=True)
+class _Progress:
+    """Where training was when a metric was last observed.
+
+    The part of a report that is not a metric. Metrics accumulate by name in
+    ``_metrics``; this is the envelope they are sent under, and unlike them it is
+    genuinely replaced rather than merged -- there is one current step, and a
+    newer observation supersedes an older one outright.
+    """
+
+    phase: str
+    step: int
+    epoch: int
+    backend: str | None
+
+
 class TrainingProgressCallback:
     """Report training progress to the Jobs service."""
 
@@ -389,27 +406,25 @@ class TrainingProgressCallback:
         """
         self._reporter = reporter
         self._limiter = ReportRateLimiter(min_report_interval_seconds, clock)
-        #: The most recent report the limiter withheld, replayed by ``close()``
-        #: so a run ends on its real final values rather than on whenever the
-        #: limiter last let one through.
-        self._pending_metrics: tuple[str, int, int, dict[str, float | int], str | None] | None = None
-        #: Whether any point has been recorded since the last send, which is what
-        #: decides whether the next report needs to carry the series at all.
-        self._unsent_points = False
+        #: Where training was when a metric was last observed, or None once that
+        #: observation has been sent. Doubles as the "something is owed" flag that
+        #: ``close()`` reads, so a run ends on its real final values rather than on
+        #: whenever the limiter last let a report through.
+        self._current_progress: _Progress | None = None
+        #: Whether any point has been appended since the last send, which is what
+        #: decides whether the next report needs to carry the series at all. Only
+        #: the series are gated this way: they are the expensive part of the
+        #: payload, and the scalars are a handful of numbers.
+        self._series_dirty = False
         #: Normalised to patterns so there is one code path: None becomes "*",
         #: which is what it already meant. An empty list stays empty and records
         #: nothing, which is a different and equally legitimate request. See
         #: :func:`_clean_patterns` for what else has to be normalised out.
         self._time_series_metrics: tuple[str, ...] = _clean_patterns(time_series_metrics)
-        #: Names already reported as current-value-only, so the explanation is
-        #: logged once per name rather than once per step.
-        self._excluded_seen: set[str] = set()
-        #: Every qualified name this run has reported, matched or not. Distinct
-        #: from ``_excluded_seen``, and the distinction matters: "did any metric
-        #: arrive" is what decides whether an unmatched pattern is worth warning
-        #: about, and asking ``_excluded_seen`` instead answered "did any metric
-        #: arrive *and fail to match*" -- false exactly when every metric matched
-        #: something, which is the common case a typo has to be caught in.
+        #: Every qualified name this run has reported, matched or not. Not the
+        #: same as ``_metrics``, which also holds names seeded from a previous
+        #: process and never seen again: "did any metric arrive *this run*" is
+        #: what decides whether an unmatched pattern is worth warning about.
         self._metrics_seen: set[str] = set()
         #: Patterns that have selected at least one metric, so close() can name
         #: the ones that never did.
@@ -432,22 +447,36 @@ class TrainingProgressCallback:
                 "values but will not update the accumulated curves, to avoid overwriting them."
             )
 
-        #: series name -> [{step, epoch, value}], seeded from the server so a
-        #: process taking over a task continues its curves instead of replacing
-        #: them, which is what an empty accumulator would do. A seeded point that
-        #: records no step is dropped here: nothing can place it on a curve, so
-        #: carrying it only defers the problem to whoever reads it.
-        self._series: dict[str, list[dict[str, float | int]]] = {
+        #: Qualified metric name -> what the server should hold for it. The one
+        #: store, and the shape of the payload rather than a log of events: a
+        #: send transmits this state, it does not replay what happened since the
+        #: last one. That is what makes a lost report self-healing, and what makes
+        #: it impossible for a validation report to erase a train metric.
+        #:
+        #: The **type is the discriminator**. A list is a series and a new value is
+        #: appended to it; a bare number is a scalar and a new value replaces it.
+        #: Which one a name is gets decided once, the first time it arrives, by
+        #: :meth:`_records_history` -- and never re-checked, so the patterns are
+        #: matched once per name rather than once per name per step.
+        #:
+        #: Seeded from the server so a process taking over a task continues its
+        #: curves instead of replacing them, which is what an empty accumulator
+        #: would do. Everything seeded arrives as a list and therefore stays a
+        #: series, including a name the current patterns would not select: its
+        #: history exists, and freezing it half-written serves nobody. A seeded
+        #: point that records no step is dropped -- nothing can place it on a
+        #: curve, so carrying it only defers the problem to whoever reads it.
+        self._metrics: dict[str, float | int | list[dict[str, float | int]]] = {
             name: [point for point in points if _point_step(point) is not None]
             for name, points in (seeded or {}).items()
         }
 
-        if any(self._series.values()):
+        if any(self._metrics.values()):
             logger.info(
                 "Seeded %d metric series from server (%d points): %s",
-                len(self._series),
-                sum(len(points) for points in self._series.values()),
-                ", ".join(sorted(self._series)),
+                len(self._metrics),
+                sum(len(cast(list, v)) for v in self._metrics.values()),
+                ", ".join(sorted(self._metrics)),
             )
 
     def _resolve_backend(self, backend: str | None) -> str | None:
@@ -475,78 +504,116 @@ class TrainingProgressCallback:
         metrics: Mapping[str, object],
         backend: str | None,
     ) -> None:
-        """Record every metric as a point and report them as current values.
+        """Fold every metric into the store, then send it if the limiter allows.
 
         The one path both ``report_train_step`` and ``report_validation`` take,
-        for all three backends. ``phase`` qualifies the series names
+        for all three backends. ``phase`` qualifies the metric names
         (``train``/``val``); ``report_phase`` is what the Jobs service records as
         the task's phase.
 
-        Every report a backend makes is *recorded*; the rate limiter decides only
-        which of them are *sent*. Nothing is discarded either way -- a withheld
-        report's points are already on their curves and ship with the next
-        request -- which is what separates this from the point cap it replaced.
+        Every report a backend makes is *recorded*; the limiter decides only which
+        of them are *sent*. Nothing is discarded either way, because recording
+        merges by metric name -- a withheld report's values are already in the
+        store and go out with the next send.
 
-        The payload is built at send time rather than at record time, so a
-        withheld report costs a dict of scalars rather than a copy of every
-        series. On a long run most reports are withheld.
+        That merge is the whole point. This used to hold one withheld report in a
+        single slot, so a second withheld report replaced the first wholesale and
+        its scalars were never sent at all. The ordinary end-of-run sequence hit
+        it: a final train step withheld, then a validation pass withheld, and the
+        validation report -- carrying ``val_`` names, a disjoint key set -- took
+        the slot. Keyed by name, that cannot happen.
         """
         qualified = _qualify_metric_names(phase, metrics)
-        recorded = self._time_series_subset(qualified)
-        for name, value in recorded.items():
-            self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
-        if recorded:
-            self._unsent_points = True
+        self._metrics_seen.update(qualified)
+        for name, value in qualified.items():
+            existing = self._metrics.get(name)
+            if isinstance(existing, list):
+                existing.append({"step": step, "epoch": epoch, "value": value})
+                self._series_dirty = True
+            elif existing is None and self._records_history(name):
+                self._metrics[name] = [{"step": step, "epoch": epoch, "value": value}]
+                self._series_dirty = True
+            else:
+                # A scalar: the newest value is the whole of what anyone reads.
+                self._metrics[name] = value
 
-        pending = (report_phase, step, epoch, qualified, backend)
+        self._current_progress = _Progress(report_phase, step, epoch, backend)
         if self._limiter.allow_request():
-            self._send_metrics(pending)
-        else:
-            # Superseded wholesale, and safely: the only thing a dropped pending
-            # report loses is its own scalars, and the newer one that replaced it
-            # carries fresher ones. The points it recorded are not in here.
-            self._pending_metrics = pending
+            self._flush()
 
-    def _send_metrics(self, pending: tuple[str, int, int, dict[str, float | int], str | None]) -> None:
-        """Build and send one metric report, clearing what it supersedes."""
-        report_phase, step, epoch, qualified, backend = pending
-        details: dict[str, object] = {
-            "step": step,
-            "epoch": epoch,
-            **qualified,
-        }
-        # Sent in full or not at all, so a report with no new point has nothing
-        # to say about the curves: the stored copy already matches, and the merge
-        # leaves a key that is not mentioned standing.
-        #
-        # Keyed on whether anything has been recorded *since the last send*, not
-        # on what this particular report added. Under a rate limit those differ:
-        # the report that happens to pass the limiter may itself be all
-        # current-value-only while several withheld before it added points, and
-        # asking only about this one would strand them until the next.
-        if not self._seed_unavailable and self._unsent_points:
-            details["metrics"] = self._build_metrics_summary()
-        self._pending_metrics = None
-        self._unsent_points = False
-        self._send(report_phase, details, backend)
+    def _flush(self) -> None:
+        """Send the store as it stands, under the latest progress.
 
-    def _time_series_subset(self, qualified: dict[str, float | int]) -> dict[str, float | int]:
-        """The entries of ``qualified`` that get a stored series, not just a value.
+        Declarative rather than a replay: this transmits the state the server
+        should hold, not the events since the last send. A report the transport
+        drops -- and ``update_task`` swallows its failures -- therefore costs
+        nothing permanently, because the next send restates everything.
 
-        The one bound on the payload this class still applies, and the one that
-        is a data-modelling choice rather than a workaround: a backend reporting
-        twenty metrics spends most of the blob on histories nobody reads. Throughput and
-        accounting counters -- ``tps``, ``mem``, ``num_label_tokens``,
-        ``global_valid_toks`` -- are worth a number on a status page and not two
-        hundred stored points each.
+        Scalars ride on every report. There are a handful of them and they are
+        single numbers, so restating them is what buys the self-healing above for
+        a cost too small to measure. The series are the expensive term, so they
+        ship only when a point has actually been added: the merge leaves a key
+        that is not mentioned standing, so an unchanged blob need not be resent.
+        """
+        progress = self._current_progress
+        if progress is None:
+            return
 
-        Leaving a metric out costs its history, never its visibility: every
-        chartable metric is still reported as a current value on every admitted
-        report. That is the distinction that makes this safe where the old
-        report-time allow-list was not -- that one dropped metrics outright, and
-        DPO's ``accuracy``, ``sft_loss`` and ``rewards_chosen_mean`` went missing
-        for a release because nobody had added them to it. Here the same omission
-        costs a chart, and says so in the log.
+        details: dict[str, object] = {"step": progress.step, "epoch": progress.epoch}
+        series: dict[str, list[dict[str, float | int]]] = {}
+        for name, value in self._metrics.items():
+            if isinstance(value, list):
+                # A series reports *both*: the history under `metrics`, and its
+                # newest point as a top-level current value like any other metric.
+                # Being a series adds a history; it does not cost the value.
+                series[name] = list(value)
+                if value and (latest := value[-1].get("value")) is not None:
+                    details[name] = latest
+            else:
+                details[name] = value
+
+        if not self._seed_unavailable and self._series_dirty:
+            details["metrics"] = self._series_payload(series)
+
+        self._current_progress = None
+        self._series_dirty = False
+        self._send(progress.phase, details, progress.backend)
+
+    @staticmethod
+    def _series_payload(
+        series: dict[str, list[dict[str, float | int]]],
+    ) -> dict[str, list[dict[str, float | int]]]:
+        """The ``metrics`` blob: every series, with the two Studio charts present.
+
+        ``train_loss``/``val_loss`` are always keys, even when empty, so the shape
+        stays stable for consumers that index them directly. The lists are already
+        copies by the time they arrive here -- the payload must not mutate after
+        it is handed over.
+        """
+        return {"train_loss": [], "val_loss": [], **series}
+
+    def _records_history(self, name: str) -> bool:
+        """Whether *name* gets a stored series rather than only a current value.
+
+        Asked once, the first time a metric arrives; the answer is then carried by
+        the metric's type in ``_metrics`` and never recomputed. That is why the
+        log below needs no seen-set to keep it to one line per name -- it is
+        reached once per name by construction.
+
+        The one bound on the payload this class still applies, and the one that is
+        a data-modelling choice rather than a workaround: a backend reporting
+        twenty metrics spends most of the blob on histories nobody reads.
+        Throughput and accounting counters -- ``tps``, ``mem``,
+        ``num_label_tokens``, ``global_valid_toks`` -- are worth a number on a
+        status page and not two hundred stored points each.
+
+        Answering no costs a metric its history, never its visibility: every
+        chartable metric is still reported as a current value on every report.
+        That is the distinction that makes this safe where the old report-time
+        allow-list was not -- that one dropped metrics outright, and DPO's
+        ``accuracy``, ``sft_loss`` and ``rewards_chosen_mean`` went missing for a
+        release because nobody had added them to it. Here the same omission costs
+        a chart, and says so in the log.
 
         Patterns match the **qualified** name, the one that appears in
         ``status_details``, so what a user writes is what they read back. Globs
@@ -556,31 +623,21 @@ class TrainingProgressCallback:
 
         Matching the qualified name is what makes NeMo-RL's second validation set
         expressible: its logger folds the dataloader name in, so that set's loss
-        arrives as ``val_heldout_loss``, which no unqualified spelling could
-        reach and which ``*_loss`` covers without knowing the dataset's name.
+        arrives as ``val_heldout_loss``, which no unqualified spelling could reach
+        and which ``*_loss`` covers without knowing the dataset's name.
         """
-        keep: dict[str, float | int] = {}
-        dropped: list[str] = []
-        self._metrics_seen.update(qualified)
-        for name, value in qualified.items():
-            matched = [p for p in self._time_series_metrics if fnmatchcase(name, p)]
-            if matched:
-                keep[name] = value
-                self._patterns_matched.update(matched)
-            else:
-                dropped.append(name)
-
-        unseen = sorted(set(dropped) - self._excluded_seen)
-        if unseen:
-            self._excluded_seen.update(unseen)
-            logger.info(
-                "Reporting as current values only, with no stored history: %s. Recording a series "
-                "for anything matching: %s. Add a name or pattern to "
-                "progress_reporting.time_series_metrics to record one of these too.",
-                ", ".join(unseen),
-                ", ".join(self._time_series_metrics) or "(nothing)",
-            )
-        return keep
+        matched = [p for p in self._time_series_metrics if fnmatchcase(name, p)]
+        if matched:
+            self._patterns_matched.update(matched)
+            return True
+        logger.info(
+            "Reporting %s as a current value only, with no stored history. Recording a series "
+            "for anything matching: %s. Add a name or pattern to "
+            "progress_reporting.time_series_metrics to record one of these too.",
+            name,
+            ", ".join(self._time_series_metrics) or "(nothing)",
+        )
+        return False
 
     def _warn_on_patterns_that_matched_nothing(self) -> None:
         """Say so when a configured pattern never matched a metric that arrived.
@@ -612,17 +669,6 @@ class TrainingProgressCallback:
             ", ".join(unmatched),
             ", ".join(sorted(self._metrics_seen)),
         )
-
-    def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
-        """Build the accumulated metrics payload for inclusion in status_details.
-
-        ``train_loss``/``val_loss`` are always present, even when empty, so the
-        shape stays stable for consumers that index them directly. Lists are
-        copied: the payload must not mutate after it is handed over.
-        """
-        summary: dict[str, list[dict[str, float | int]]] = {"train_loss": [], "val_loss": []}
-        summary.update({name: list(points) for name, points in self._series.items()})
-        return summary
 
     def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
         """Report that training has started with schedule information.
@@ -720,12 +766,12 @@ class TrainingProgressCallback:
         if self._closed:
             return
         self._closed = True
-        if self._pending_metrics is not None:
+        if self._current_progress is not None:
             # Load-bearing for data, not only for freshness: the points recorded
             # since the last send exist nowhere but this process until something
             # carries them.
             try:
-                self._send_metrics(self._pending_metrics)
+                self._flush()
             except Exception as exc:  # pragma: no cover - defensive, shutdown path
                 logger.warning(f"Failed to send the final metric report: {exc}")
         self._warn_on_patterns_that_matched_nothing()

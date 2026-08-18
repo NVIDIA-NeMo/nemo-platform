@@ -8,7 +8,8 @@ a metric is stored and reported as ``<phase>_<name>`` -- and no metric is
 privileged, so most of this file is about proving the rule holds with no
 exceptions hiding in it. The rest covers the transport: the Jobs service merges
 ``status_details`` key-wise but shallowly, so a report either resends a series in
-full or leaves the key out, and states a scalar only when it observed one.
+full or leaves the key out. Scalars ride on every report: they are a handful of
+numbers, and restating them is what makes a dropped report cost nothing.
 """
 
 from __future__ import annotations
@@ -999,6 +1000,19 @@ def test_a_typo_is_reported_even_when_every_metric_matched(
 # --------------------------------------------------------------------------- #
 
 
+def _merged(reporter: _RecordingReporter) -> dict[str, Any]:
+    """What the server ends up holding, applying its key-wise merge to the reports.
+
+    Asserting on the last report alone would miss the defect these tests cover:
+    a value lost from one report is not restored by a later one, so only the
+    merged view distinguishes "sent earlier and still standing" from "never sent".
+    """
+    merged: dict[str, Any] = {}
+    for report in reporter.reports:
+        merged.update(report)
+    return merged
+
+
 class _FakeClock:
     """A monotonic clock the test advances by hand."""
 
@@ -1050,6 +1064,68 @@ def test_a_withheld_report_loses_no_points(reporter: _RecordingReporter) -> None
     stored = reporter.reports[-1]["metrics"]["train_loss"]
     assert [p["step"] for p in stored] == [1, 2, 3, 4, 5, 6]
     assert [p["value"] for p in stored] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+
+def test_a_withheld_scalar_survives_a_validation_report(reporter: _RecordingReporter) -> None:
+    """The bug the single pending slot had: a disjoint key set took the slot.
+
+    A withheld report used to be held whole, so a second withheld report replaced
+    it outright. A validation report carries `val_` names -- a key set disjoint
+    from `train_` -- so it carried nothing fresher for the train scalars it
+    displaced, and they were never sent at all. The store merges by name now, so
+    the two cannot collide.
+
+    `tps` is a scalar here, not a series, which is what makes it vulnerable:
+    series points were always safe, because they accumulate by name already.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock, time_series_metrics=("*_loss",))
+
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 1.0})  # goes
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.9, "tps": 1234.0})  # withheld
+    callback.report_validation(step=2, epoch=1, metrics={"loss": 0.8})  # withheld
+    callback.close()
+
+    stored = _merged(reporter)
+    assert stored["train_tps"] == 1234.0, "the validation report displaced it"
+    assert stored["val_loss"] == 0.8
+
+
+def test_a_withheld_scalar_survives_a_later_report_that_omits_it(reporter: _RecordingReporter) -> None:
+    """Same defect without crossing phases: backends omit metrics on some steps.
+
+    Two withheld train reports where the second does not carry `tps`. Under a
+    whole-report slot the second replaced the first and the value was lost.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock, time_series_metrics=("*_loss",))
+
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 1.0})  # goes
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.9, "tps": 1234.0})  # withheld
+    callback.report_train_step(step=3, epoch=1, metrics={"loss": 0.8})  # withheld
+    callback.close()
+
+    assert _merged(reporter)["train_tps"] == 1234.0
+
+
+def test_the_end_of_a_run_reports_the_final_train_scalars(reporter: _RecordingReporter) -> None:
+    """The ordinary shutdown sequence, which is where this bug actually bit.
+
+    Last train step, then a final validation pass, then close() -- all inside one
+    interval. The train scalars sent must be the last ones the run produced, not
+    whichever the limiter last happened to admit.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock, time_series_metrics=("*_loss",))
+
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 1.0, "tps": 100.0})
+    clock.advance(10)
+    for step in (2, 3):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5, "tps": float(step)})
+    callback.report_validation(step=3, epoch=1, metrics={"loss": 0.4})
+    callback.close()
+
+    assert _merged(reporter)["train_tps"] == 3.0, "stale: an earlier admitted report's value"
 
 
 def test_close_sends_what_the_limiter_withheld(reporter: _RecordingReporter) -> None:

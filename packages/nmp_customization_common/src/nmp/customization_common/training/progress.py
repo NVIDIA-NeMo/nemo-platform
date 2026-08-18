@@ -11,8 +11,13 @@ their own ``service_name`` so the task SDK resolves the right credentials.
 The Jobs service MERGES ``status_details`` key-wise rather than replacing the
 blob -- ``JobDispatcher._update_status_details_object``, applied both to the task
 and to the copy propagated up to the job. A field therefore survives every later
-update that does not restate it, and each report sends only what it observed.
-The merge is shallow: a key that is sent replaces the stored value wholesale.
+update that does not restate it. The merge is shallow: a key that is sent
+replaces the stored value wholesale.
+
+That is what lets the callback restate every scalar on every report rather than
+only the ones a given step observed -- restating costs a handful of numbers and
+makes a dropped report self-healing, while a key left unmentioned is left alone.
+The accumulated series are the expensive term and are sent only when they change.
 
 For training-specific metrics (loss, validation, checkpoints) see the
 ``TrainingProgressCallback`` which composes this reporter.
