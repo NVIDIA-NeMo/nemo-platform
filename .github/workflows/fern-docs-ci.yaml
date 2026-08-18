@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - 'docs/**'
+      - 'k8s/helm/values.yaml'
       - '.github/workflows/fern-docs-ci.yaml'
 
 permissions:

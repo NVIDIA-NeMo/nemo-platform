@@ -3,7 +3,7 @@
 
 # OpenShift-friendly security context for restricted / restricted-v2 SCC.
 # Use with: helm template <release> k8s/helm -f k8s/helm/ci/13-openshift.yaml
-# See k8s/helm/README.md "OpenShift" section.
+# See docs/set-up/helm/openshift.mdx for the OpenShift deployment guide.
 
 podSecurityContext:
   runAsNonRoot: true

@@ -154,7 +154,7 @@ docs/fern/generated/
 docs/fern/versions/[0-9]*.yml
 docs/fern/versions/v[0-9]*.yml
 
-# Generated from k8s/helm/values.yaml + README.md at docs build time (docs/fern/scripts/sync-helm-docs.mjs)
+# Generated from k8s/helm/README.md + k8s/helm/values.yaml at docs build time (docs/fern/scripts/sync-helm-docs.mjs)
 docs/helm/index.mdx
 
 # nektos/act files commonly used
