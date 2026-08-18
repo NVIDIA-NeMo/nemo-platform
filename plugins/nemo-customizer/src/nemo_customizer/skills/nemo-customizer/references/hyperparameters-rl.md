@@ -106,7 +106,8 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 |-------|---------|-------|
 | `num_generations_per_prompt` | `8` | Group size for relative advantages. |
 | `num_prompts_per_step` | `null` | Derived from `batch_size / num_generations_per_prompt` when omitted. `num_prompts_per_step × num_generations_per_prompt` must be a multiple of `batch_size` (enforced by `validate_for_training`), so prefer a `num_generations_per_prompt` that divides `batch_size`. |
-| `num_val_generations_per_prompt` | `4` | Generations per prompt at validation. |
+| `num_val_generations_per_prompt` | `4` | Generations per prompt at validation. Set `1` when the validation set already repeats each prompt (e.g. an AIME24 mean@32 split), or you multiply the eval cost. |
+| `val_at_start` | `false` | Run validation **before** the first training step. Enable to measure uplift: baseline and result come from one job on the same data and generation settings, instead of a separate baseline run that must be kept in sync. Costs a full rollout pass, hence off by default. Ignored without a `validation.jsonl`. **GRPO only** — DPO always validates at step 0, since its validation needs no generation. |
 | `normalize_rewards` | `true` | |
 | `max_rollout_turns` | `1` | Multi-turn rollouts; most math envs use `1`. |
 | `ref_policy_kl_penalty` | `0.0` | KL coefficient in the GRPO loss. |

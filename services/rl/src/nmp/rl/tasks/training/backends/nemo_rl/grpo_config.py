@@ -276,8 +276,9 @@ def compile_grpo_config(
     # training.jsonl, so turn validation off entirely rather than assert in setup().
     has_validation = bool(val_samples)
     val_period = val_check_interval if has_validation else 0
+    val_at_start = customizer_config.schedule.val_at_start and has_validation
     val_at_end = customizer_config.schedule.val_at_end and has_validation
-    if not has_validation and customizer_config.schedule.val_at_end:
+    if not has_validation and (customizer_config.schedule.val_at_end or customizer_config.schedule.val_at_start):
         logger.warning(
             "No validation.jsonl in the Gym dataset; disabling validation and best-checkpoint selection for this run."
         )
@@ -293,7 +294,7 @@ def compile_grpo_config(
         "use_leave_one_out_baseline": True,
         "val_period": val_period,
         "val_start_at": -1,
-        "val_at_start": False,
+        "val_at_start": val_at_start,
         "val_at_end": val_at_end,
         "overlong_filtering": False,
         "max_val_samples": val_samples if val_samples else None,
