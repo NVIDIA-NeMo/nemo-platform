@@ -99,7 +99,10 @@ class HarborRunnerConfig(EvaluatorConfig):
     artifacts: list[str] = Field(default=[], description="Additional Harbor artifact sources to collect per trial.")
     trace_dir: str = Field(
         default=DEFAULT_TRACE_ARTIFACT_SOURCE,
-        description="Container path of agent traces, collected into the trial's 'traces' artifact directory.",
+        description=(
+            "Container path of agent traces, collected into the trial's 'traces' artifact directory "
+            "and published to each verifier as the TRACE_DIR environment variable."
+        ),
     )
     trace_format: Literal["otlp", "atif"] = Field(
         default="otlp",

@@ -259,6 +259,22 @@ class EvalAuthor(Agent):
         traces or agent outputs. Do not hard-code scores for the production traces that
         motivated the Insight.
 
+        Resolve the trace directory from ``os.environ["TRACE_DIR"]``. Never hard-code a
+        trace path and never supply a fallback default. When a metric's evidence source is
+        missing or empty, exit non-zero rather than writing a value: a ``0.0`` for absent
+        evidence is indistinguishable from a measured failure.
+
+        A task the metric cannot measure still needs a number, because the evaluator
+        rejects a round whose successful trials report different metric keys. Decide that
+        a task is out of scope from evidence you read, never from a read that returned
+        nothing, and keep that branch narrow: a metric that hands ``1.0`` to every task it
+        skips reports the suite as solved.
+
+        Only the verifier directory reaches the evaluation container, mounted at ``/tests``.
+        The task instruction is not there: it reaches the agent as a prompt, so no file for it
+        exists at scoring time. Read reference text from a file the task ships in its verifier
+        directory; ``validate()`` rejects a path that no file provides.
+
         In every task's configured verifier directory, write ``metric-contract.json``
         containing exactly ``{"metric_keys": ["key_one", "key_two"]}``. The list must
         contain the same newly authored keys for every task and must exactly match the

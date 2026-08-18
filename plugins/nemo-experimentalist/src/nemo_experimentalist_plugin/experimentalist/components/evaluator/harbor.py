@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import hashlib
 import json
@@ -107,6 +108,9 @@ _TASK_TREE_RESOURCES: tuple[TreeResourceSpec, ...] = (
 DEFAULT_TRACE_ARTIFACT_SOURCE = "/app/traces"
 _ATIF_TRACE_SUFFIX = ".atif.json"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
+_CONTAINER_TESTS_MOUNT = "/tests"
+_CONTAINER_TESTS_REFERENCE = re.compile(r"/tests/([A-Za-z0-9_.\-/]+)")
+_TRACE_DIR_FALLBACK = re.compile(r"""environ\.get\(\s*['"]TRACE_DIR['"]\s*,""")
 _TRIAL_LOG_DESCRIPTIONS = {
     "agent/oracle.txt": "Oracle-agent log captured when Harbor runs the reference solution.",
     "agent/setup/stdout.txt": "Agent setup stdout captured while Harbor uploads the agent and installs dependencies.",
@@ -332,18 +336,77 @@ def _resolve_verifier_dir(task_dir: Path, config: dict[str, Any]) -> Path:
     return task_dir / _VERIFIER_DIRNAME["name"]
 
 
-def _python_syntax_failure(source: str, path: Path) -> _VerifierSyntaxFailure | None:
+def _unresolvable_evidence_failures(source: str, verifier_dir: Path) -> list[tuple[str, int]]:
+    """Return ``(error, line)`` for verifier reads that cannot resolve at run time.
+
+    Harbor mounts the verifier directory read-only at ``/tests`` and nothing else
+    lands there, so a ``/tests`` path with no matching file is statically known to
+    be empty. Reading it yields no evidence, and a verifier that scores anyway
+    reports a measurement it never made.
+    """
+    failures: list[tuple[str, int]] = []
+    for line_number, line in enumerate(source.splitlines(), start=1):
+        for match in _CONTAINER_TESTS_REFERENCE.finditer(line):
+            relative = match.group(1).rstrip("/")
+            if not relative or (verifier_dir / relative).exists():
+                continue
+            failures.append(
+                (
+                    f"reads {_CONTAINER_TESTS_MOUNT}/{relative}, which no file provides: Harbor mounts only "
+                    f"{verifier_dir.name}/ there. Copy the file into {verifier_dir.name}/ or read another source.",
+                    line_number,
+                )
+            )
+        if _TRACE_DIR_FALLBACK.search(line):
+            failures.append(
+                (
+                    'resolves TRACE_DIR with a fallback default. Use os.environ["TRACE_DIR"] so an unset '
+                    "variable raises instead of silently reading an empty directory.",
+                    line_number,
+                )
+            )
+    return failures
+
+
+def _swallowed_evidence_failures(tree: ast.Module) -> list[tuple[str, int]]:
+    """Return ``(error, line)`` for handlers that turn a failed read into a default value.
+
+    ``except Exception: return ""`` is how a missing file becomes a score. The read
+    fails, the caller gets an empty string, and the metric reports a confident number
+    it never measured. Let the exception travel instead.
+    """
+    failures: list[tuple[str, int]] = []
+    for handler in ast.walk(tree):
+        if not isinstance(handler, ast.ExceptHandler):
+            continue
+        for statement in ast.walk(handler):
+            if not isinstance(statement, ast.Return):
+                continue
+            returned = statement.value
+            if isinstance(returned, ast.Constant) and not returned.value:
+                failures.append(
+                    (
+                        f"swallows a failed read and returns {returned.value!r}. Missing evidence is not a "
+                        "measurement: let the exception raise, or exit non-zero, and write no value.",
+                        statement.lineno,
+                    )
+                )
+    return failures
+
+
+def _python_findings(source: str, path: Path) -> tuple[_VerifierSyntaxFailure | None, list[tuple[str, int]]]:
+    """Parse one Python verifier once, and report its syntax and blind-scoring failures."""
     try:
-        compile(source, str(path), "exec")
+        tree = ast.parse(source, filename=str(path))
     except SyntaxError as exc:
         return _VerifierSyntaxFailure(
             error=f"{type(exc).__name__}: {exc.msg}",
             line=exc.lineno,
             column=exc.offset,
-        )
-    except RecursionError as exc:
-        return _VerifierSyntaxFailure(error=f"{type(exc).__name__}: {exc}")
-    return None
+        ), []
+    except (RecursionError, ValueError) as exc:
+        return _VerifierSyntaxFailure(error=f"{type(exc).__name__}: {exc}"), []
+    return None, _swallowed_evidence_failures(tree)
 
 
 async def _shell_syntax_failure(source: str) -> _VerifierSyntaxFailure | None:
@@ -811,7 +874,7 @@ class HarborDataset(Dataset):
 
         <task-id>/
           task.toml       # task config
-          instruction.md  # agent prompt
+          instruction.md  # agent prompt, host-side only; never in the container
           tests/
             test.sh       # verifier entry point (may be empty on live datasets)
           environment/    # container definition
@@ -837,25 +900,56 @@ class HarborDataset(Dataset):
     **How it runs:** after the agent finishes, Harbor copies ``tests/`` into the
     container at ``/tests`` and executes ``tests/test.sh``.  The script can read:
 
-    - ``/logs/artifacts/traces/`` — **primary signal source**: OTLP trace files
-      written by the agent as ``*.jsonl``.  Each line is an
+    - **Traces** — **primary signal source**.  The evaluator publishes the
+      container path in the ``TRACE_DIR`` environment variable for every verifier
+      run.  Read it with ``os.environ["TRACE_DIR"]``.  Never hardcode a trace path
+      and never supply a fallback default: a wrong path is an empty directory,
+      which scores like a real failure instead of raising.  The directory holds
+      OTLP trace files written by the agent as ``*.jsonl``.  Each line is an
       ``ExportTraceServiceRequest`` JSON object.  Spans live under
       ``resourceSpans[].scopeSpans[].spans[]``.  Span attributes are a list of
       ``{"key": str, "value": {"stringValue": str}}``.  Error spans carry
       ``error.type`` and ``error.message`` attributes.  Tool calls, LLM inputs/outputs,
       and execution results are all recorded here as structured spans — prefer this
-      over raw log files for reliable, parseable signal.  Resolve the path via
-      ``os.environ.get("TRACE_DIR", "/logs/artifacts/traces")`` so the script is
-      testable locally.
+      over raw log files for reliable, parseable signal.
     - ``/logs/agent/``    — raw agent process output (stdout/stderr, unstructured).
-      Use only when the OTLP traces don't capture what you need.
-    - ``/tests/``         — any helper files you place in ``tests/``
+      Use only when the OTLP traces don't capture what you need.  Whether an agent
+      writes anything here is up to that agent, so treat an empty directory as
+      missing evidence and exit non-zero instead of scoring.
+    - ``/tests/``         — the task's ``tests/`` directory, mounted read-only.  It
+      holds exactly the files the task ships in ``tests/`` and nothing more.
+
+    **``instruction.md`` is not readable at scoring time.**  Harbor mounts ``tests/``
+    and ``solution/`` into the container and nothing else.  The task instruction goes
+    to the agent as a prompt, so no file for it exists at ``/tests/instruction.md``,
+    at ``instruction.md`` beside the working directory, or anywhere else a verifier
+    can reach.  A metric needing reference text must read a file the task ships in
+    ``tests/``.  ``dataset.validate()`` rejects a ``/tests/`` path that no file
+    provides, so a guessed path fails before it can run and score.
 
     and must write to:
 
     - ``/logs/verifier/reward.json`` — flat JSON object; **every value must be a
       plain number** (int or float).  Harbor calls ``float(value)`` on each entry
       and silently drops non-numeric values (nested objects, booleans, strings).
+
+    **Missing evidence is not a score.**  When a metric's signal source is absent
+    or empty — no trace files, no log file, no expected artifact — exit non-zero
+    and write no value for that metric.  Writing ``0.0`` instead turns a broken
+    read into a confident failing measurement that nobody can tell apart from a
+    real one.  A trial that exits without a value is marked failed and drops out
+    of the aggregate, which is the outcome you want: a shrunken sample beats a
+    fabricated one.
+
+    **A task your metric cannot measure still needs a number.**  The evaluator
+    averages each metric over the trials that succeed, and it raises when those
+    trials disagree about which keys they report.  A metric covering a mixed task
+    set therefore emits a value for every task it scores.  Decide that a task is
+    out of scope from evidence you read — a file the task ships, a span in the
+    trace — never from a read that returned nothing.  Neutral credit dilutes the
+    aggregate: a metric that hands ``1.0`` to every task it skips reports the
+    suite as solved.  Keep that branch narrow and name the tasks it covers in a
+    comment.
 
     Correct format::
 
@@ -882,14 +976,18 @@ class HarborDataset(Dataset):
 
         #!/usr/bin/env python3
         # Measures: <describe what this script measures>
-        import json, pathlib, sys
+        import json, os, pathlib, sys
 
-        AGENT_DIR = pathlib.Path("/logs/agent")
+        TRACE_DIR = pathlib.Path(os.environ["TRACE_DIR"])
         OUT = pathlib.Path("/logs/verifier/metric_my_metric.json")
 
-        # Inspect AGENT_DIR for the behavior to measure.
+        traces = sorted(TRACE_DIR.glob("*.jsonl"))
+        if not traces:
+            sys.exit(f"no trace files in {TRACE_DIR}")
+
+        # Inspect the spans for the behavior to measure.
         score = 1.0
-        # ... compute score from files in AGENT_DIR ...
+        # ... compute score from traces ...
 
         OUT.write_text(json.dumps({"my_metric": score}))
         print(f"my_metric={score}", file=sys.stderr)  # captured in verifier stderr
@@ -921,23 +1019,31 @@ class HarborDataset(Dataset):
             result.update(json.load(open(f)))
         pathlib.Path("/logs/verifier/reward.json").write_text(json.dumps(result))
 
-    **LLM judge — ``tests/check_judge.py``**:
+    **LLM judge — ``tests/check_judge.py``**
+
+    A judge needs the criteria in a file the task ships in ``tests/``.  Write the
+    rubric next to the script as ``tests/judge_rubric.md``.  Do not reach for the task
+    instruction: it is a prompt, not a file, so there is nothing to read.
 
     .. code-block:: python
 
         #!/usr/bin/env python3
-        # Judge: scores agent response against the task instruction via LLM.
+        # Judge: scores the agent response against the shipped rubric via LLM.
         import json, pathlib, sys, openai
 
         AGENT_DIR = pathlib.Path("/logs/agent")
         OUT = pathlib.Path("/logs/verifier/metric_judge.json")
 
+        # read_text() raises on a missing file. Keep it that way: a judge with no
+        # rubric and no response scores confidence it has not earned.
+        rubric = pathlib.Path("/tests/judge_rubric.md").read_text()
         agent_log = AGENT_DIR / "agent_log.jsonl"
         turns = [json.loads(l) for l in agent_log.read_text().splitlines() if l.strip()]
         agent_response = next(
             (t["content"] for t in reversed(turns) if t.get("role") == "assistant"), ""
         )
-        instruction = pathlib.Path("/tests/instruction.md").read_text()
+        if not agent_response.strip():
+            sys.exit(f"no assistant turn in {agent_log}")
 
         # OPENAI_API_KEY injected via task.toml [verifier] env = { OPENAI_API_KEY = "sk-..." }
         client = openai.OpenAI()
@@ -949,7 +1055,7 @@ class HarborDataset(Dataset):
                     'Reply with JSON: {"score": <0.0-1.0>, "reason": "<one sentence>"}.'
                 )},
                 {"role": "user", "content": (
-                    f"Instruction:\n{instruction}\n\nAgent response:\n{agent_response}\n\n"
+                    f"Rubric:\n{rubric}\n\nAgent response:\n{agent_response}\n\n"
                     "Score 1.0 if fully satisfied, 0.0 if not."
                 )},
             ],
@@ -1302,9 +1408,9 @@ class HarborDataset(Dataset):
         self.tasks.extend(imported.values())
 
     async def validate(self) -> None:
-        """Validate selected task verifier syntax without executing verifier code."""
+        """Validate selected task verifier syntax and evidence paths without executing verifier code."""
         failures: list[HarborVerifierValidationFailure] = []
-        cache: dict[tuple[str, str], _VerifierSyntaxFailure | None] = {}
+        cache: dict[tuple[str, str], tuple[_VerifierSyntaxFailure | None, list[tuple[str, int]]]] = {}
 
         for task in self.list_tasks():
             if not task.uri:
@@ -1325,13 +1431,12 @@ class HarborDataset(Dataset):
                 source = path.read_text(encoding="utf-8")
                 verifier_type = "shell" if path == shell_entrypoint else "python"
                 cache_key = (verifier_type, hashlib.sha256(source.encode("utf-8")).hexdigest())
-                syntax_failure = cache.get(cache_key)
                 if cache_key not in cache:
                     if verifier_type == "shell":
-                        syntax_failure = await _shell_syntax_failure(source)
+                        cache[cache_key] = (await _shell_syntax_failure(source), [])
                     else:
-                        syntax_failure = _python_syntax_failure(source, path)
-                    cache[cache_key] = syntax_failure
+                        cache[cache_key] = _python_findings(source, path)
+                syntax_failure, swallowed = cache[cache_key]
 
                 if syntax_failure is not None:
                     failures.append(
@@ -1343,6 +1448,11 @@ class HarborDataset(Dataset):
                             column=syntax_failure.column,
                         )
                     )
+
+                failures.extend(
+                    HarborVerifierValidationFailure(task_id=task.id, path=path.resolve(), error=error, line=line)
+                    for error, line in [*_unresolvable_evidence_failures(source, verifier_dir), *swallowed]
+                )
 
         if failures:
             raise HarborVerifierValidationError(failures)

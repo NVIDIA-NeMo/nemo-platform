@@ -1127,12 +1127,18 @@ class _DriftConfig(BaseModel):
     quiet: bool = True
 
 
-def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object], Awaitable[object]]) -> None:
+def _stub_harbor(
+    monkeypatch: pytest.MonkeyPatch,
+    job_create: Callable[[object], Awaitable[object]],
+    verifier_calls: list[dict[str, object]] | None = None,
+) -> None:
     """Install a minimal fake ``harbor`` package so ``run_job`` can execute.
 
     Only the names ``_build_native_job``'s ``run_job`` imports are provided.
     ``job_create`` becomes ``Job.create``; every config class is a permissive stub,
     since what is under test is the control flow around Harbor, not the payload.
+    Pass ``verifier_calls`` to record the ``VerifierConfig`` kwargs, the one part of
+    the payload a caller cannot read back off the ``JobConfig`` stand-in.
     """
 
     def _module(name: str, **attrs: object) -> None:
@@ -1142,6 +1148,11 @@ def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object],
         monkeypatch.setitem(sys.modules, name, module)
 
     def _anything(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    def _verifier_config(**kwargs: object) -> object:
+        if verifier_calls is not None:
+            verifier_calls.append(kwargs)
         return object()
 
     class _Job:
@@ -1156,7 +1167,12 @@ def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object],
     _module("harbor.models.job")
     _module("harbor.models.job.config", RetryConfig=_anything)
     _module("harbor.models.trial")
-    _module("harbor.models.trial.config", AgentConfig=_anything, ArtifactConfig=_anything)
+    _module(
+        "harbor.models.trial.config",
+        AgentConfig=_anything,
+        ArtifactConfig=_anything,
+        VerifierConfig=_verifier_config,
+    )
 
 
 class _FakeJob:
@@ -1204,6 +1220,27 @@ async def test_harbor_refusing_to_resume_discards_and_reruns(
     assert not (job_dir / "old-trial").exists(), "the stale trial must be gone, not resumed onto"
     assert "refused to resume" in caplog.text, "silently deleting completed trials must be visible"
     assert "n_concurrent_trials: 10 -> 4" in caplog.text, "the warning must name what forced the discard"
+
+
+@pytest.mark.asyncio
+async def test_trace_dir_is_published_to_the_verifier_as_trace_dir_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Verifiers resolve the trace directory from TRACE_DIR, and nothing else tells them
+    # where it is. Drop this and every trace-reading metric reads an empty directory,
+    # which scores like a measured failure instead of raising.
+    verifier_calls: list[dict[str, object]] = []
+
+    async def create(_config: object) -> _FakeJob:
+        return _FakeJob()
+
+    _stub_harbor(monkeypatch, create, verifier_calls)
+    config = HarborRuntimeConfig(jobs_dir=tmp_path / "jobs", job_name="pinned", trace_dir="/app/traces")
+    _built, run_job = _build_native_job(config, tmp_path / "dataset", None, job_name="pinned", force_rerun=False)
+
+    await run_job()
+
+    assert verifier_calls == [{"env": {"TRACE_DIR": "/app/traces"}}]
 
 
 @pytest.mark.asyncio
@@ -1325,6 +1362,8 @@ def test_job_config_drift_is_silent_when_it_cannot_tell(tmp_path: Path) -> None:
 _STAMP_COVERED_HARBOR_FIELDS = {
     "n_attempts": {"n_attempts"},
     "artifacts": {"artifacts", "trace_dir"},
+    # Carries TRACE_DIR, the container trace path verifiers read.
+    "verifier": {"trace_dir"},
     "retry": {"max_retries"},
     "agents": {"agent_name", "agent_import_path", "agent_model_name"},
     "timeout_multiplier": {"timeout_multiplier"},
@@ -1336,7 +1375,7 @@ _STAMP_COVERED_HARBOR_FIELDS = {
 # Left at Harbor's defaults by _build_native_job, so two SDK-built configs can never
 # disagree on them. (A dir written by the Harbor CLI could, but it carries no SDK cache
 # stamp, so it is stale and gets discarded before Harbor ever sees it.)
-_SDK_NEVER_SETS = {"install_only", "environment", "verifier", "metrics", "tasks", "extra_instruction_paths"}
+_SDK_NEVER_SETS = {"install_only", "environment", "metrics", "tasks", "extra_instruction_paths"}
 # Compared by Harbor, deliberately *not* keyed by the SDK stamp. Harbor asks "can I
 # resume this directory?"; the stamp asks "did these inputs produce these results?".
 # Where the answers diverge, _build_native_job absorbs Harbor's refusal.

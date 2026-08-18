@@ -807,7 +807,11 @@ def _build_native_job(
         try:
             from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
             from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
-            from harbor.models.trial.config import AgentConfig, ArtifactConfig  # ty: ignore[unresolved-import]
+            from harbor.models.trial.config import (  # ty: ignore[unresolved-import]
+                AgentConfig,
+                ArtifactConfig,
+                VerifierConfig,
+            )
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 "the native Harbor runtime needs `harbor`, which is not an SDK dependency "
@@ -818,8 +822,12 @@ def _build_native_job(
             shutil.rmtree(job_dir)
 
         artifacts: list[str | ArtifactConfig] = list(config.artifacts)
+        verifier_kwargs: dict[str, Any] = {}
         if config.trace_dir is not None:
             artifacts = [ArtifactConfig(source=config.trace_dir, destination="traces"), *artifacts]
+            # Verifiers resolve traces from TRACE_DIR. Nothing else publishes the container-side
+            # path to them, so an unset value leaves every trace-reading metric blind.
+            verifier_kwargs["verifier"] = VerifierConfig(env={"TRACE_DIR": config.trace_dir})
 
         timeout_kwargs = {
             key: value
@@ -844,6 +852,7 @@ def _build_native_job(
                 artifacts=artifacts,
                 agents=[agent],
                 datasets=[DatasetConfig(path=dataset_path, task_names=list(task_names) if task_names else None)],
+                **verifier_kwargs,
                 **timeout_kwargs,
             )
 
