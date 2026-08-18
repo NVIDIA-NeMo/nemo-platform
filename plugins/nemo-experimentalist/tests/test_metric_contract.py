@@ -4,11 +4,11 @@
 import pytest
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
-    MetricTarget,
     has_metric_dimensions,
     pareto_objectives,
+    with_insight_objective,
 )
-from nemo_experimentalist_plugin.experimentalist.components.loop import _with_insight_objective
+from nemo_experimentalist_plugin.entities import MetricTarget
 
 
 def test_metric_contract_supports_multiple_objective_metrics() -> None:
@@ -93,7 +93,7 @@ def test_insight_metrics_become_objectives_and_existing_targets_become_guardrail
         }
     )
 
-    effective = _with_insight_objective(config, ("uses_required_tool", "cites_source"))
+    effective = with_insight_objective(config, ("uses_required_tool", "cites_source"))
 
     assert [target.name for target in effective.objective_function] == ["uses_required_tool", "cites_source"]
     assert all(target.direction == "maximize" for target in effective.objective_function)

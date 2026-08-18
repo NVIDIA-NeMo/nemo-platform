@@ -275,7 +275,6 @@ def find_node(root: GoalNode, node_id: str) -> GoalNode | None:
     return None
 
 
-# Standard Pydantic v2 pattern for recursive models
 GoalNode.model_rebuild()
 
 
@@ -289,7 +288,11 @@ class GoalTreeGenerator(Agent):
     """
 
     def __init__(
-        self, workspace: Path, config: GoalTreeConfig, framework_skills_dirs: list[Path] | None = None, **kwargs: Any
+        self,
+        workspace: Path,
+        config: GoalTreeConfig,
+        framework_skills_dirs: list[Path] | None = None,
+        **kwargs: Any,
     ):
         """Initialize the goal tree generator.
 
@@ -431,7 +434,7 @@ class GoalTreeGenerator(Agent):
         # IDs
 
         Use kebab-case identifiers stable across the run (e.g. "parse-input",
-        "reason-about-cues", "emit-schema"). They appear in metadata.json and selection logs,
+        "reason-about-cues", "emit-schema"). They appear in trajectory rewards and selection logs,
         so prefer descriptive over short.
 
         # Output

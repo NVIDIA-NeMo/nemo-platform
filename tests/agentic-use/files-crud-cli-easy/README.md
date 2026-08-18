@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Fileset CRUD Operations - CLI Harbor Test
 
 Tests fileset CRUD operations (create, upload, list, download, delete) using the NeMo Platform CLI.

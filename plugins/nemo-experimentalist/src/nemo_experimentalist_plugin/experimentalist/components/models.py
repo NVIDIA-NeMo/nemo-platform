@@ -10,12 +10,10 @@ analyzer, proposer, coder, and evaluator.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Iterable
-from pathlib import Path
 from typing import Literal, TypeVar
 
-from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
@@ -132,32 +130,35 @@ class EvolutionNode(BaseModel):
         return self.candidate.ancestor
 
     @property
-    def round(self) -> int:
-        return self.candidate.round
+    def generation(self) -> int:
+        return self.candidate.generation
 
     @property
     def optimization_type(self) -> str | None:
-        return self.candidate.optimization_type
+        """The kind of change this candidate's Proposal asked for, when it had one."""
+        origin = self.candidate.generated_from
+        value = origin.payload.get("optimization_type") if origin is not None else None
+        return value if isinstance(value, str) else None
 
     @property
-    def optimization(self) -> str:
-        return self.candidate.optimization
+    def description(self) -> str:
+        return self.candidate.description
 
     @property
     def train_reward(self) -> dict[str, float]:
-        return self.candidate.reward("train").metrics or {}
+        return self.candidate.rewards["train"].metrics or {}
 
     @property
     def val_reward(self) -> dict[str, float]:
-        return self.candidate.reward("validation").metrics or {}
+        return self.candidate.rewards["validation"].metrics or {}
 
     @property
     def trajectory_reward(self) -> dict[str, float]:
-        return self.candidate.reward("validation-trajectory").metrics or {}
+        return self.candidate.rewards["validation-trajectory"].metrics or {}
 
     @property
     def is_survivor(self) -> bool:
-        return self.candidate.killed_round is None
+        return self.candidate.killed_generation is None
 
     @property
     def reward_str(self) -> str:
@@ -183,50 +184,51 @@ class EvolutionTree:
         self._children: dict[str, list[str]] = {}
 
     @classmethod
-    def from_dir(cls, agents_dir: Path) -> EvolutionTree:
-        """Rebuild the full tree from agent directories on disk."""
+    def from_candidates(cls, candidates: Iterable[Candidate]) -> EvolutionTree:
+        """Rebuild the full tree from the run's persisted candidates.
+
+        The tree is a view over stored entities, not over a directory layout — which
+        is what lets a strategy resume without checkpointing its population.
+        """
         tree = cls()
-        if not agents_dir.exists():
-            return tree
-        for agent_dir in sorted(agents_dir.iterdir()):
-            meta_path = agent_dir / "metadata.json"
-            if not agent_dir.is_dir() or not meta_path.exists():
-                continue
-            try:
-                meta = json.loads(meta_path.read_text())
-            except (json.JSONDecodeError, OSError):
-                continue
-            candidate = Candidate.model_validate(meta)
-            entity_id = meta.get("id", "")
-            if entity_id:
-                candidate._id = entity_id  # type: ignore[attr-defined]
+        for candidate in candidates:
             tree.add(candidate)
         return tree
 
-    def survivors(self, max_round: int | None = None) -> list[Candidate]:
-        """Return alive candidates up to *max_round* (or all if None)."""
+    def survivors(self, max_generation: int | None = None) -> list[Candidate]:
+        """Return alive candidates up to *max_generation* (or all if None)."""
         return [
-            n.candidate for n in self.nodes.values() if n.is_survivor and (max_round is None or n.round <= max_round)
+            n.candidate
+            for n in self.nodes.values()
+            if n.is_survivor and (max_generation is None or n.generation <= max_generation)
         ]
 
     def add(self, candidate: Candidate) -> EvolutionNode:
-        """Add or update a candidate in the tree."""
-        if candidate.label in self.nodes:
-            node = self.nodes[candidate.label]
+        """Add or update a candidate in the tree, keyed by its durable id."""
+        key = candidate.id or candidate.label
+        if key in self.nodes:
+            node = self.nodes[key]
             node.candidate = candidate
             return node
         node = EvolutionNode(candidate=candidate)
-        self.nodes[candidate.label] = node
-        parent_key = candidate.ancestor or "__root__"
-        self._children.setdefault(parent_key, []).append(candidate.label)
+        self.nodes[key] = node
+        self._children.setdefault(candidate.ancestor or "__root__", []).append(key)
         return node
 
-    def mark_best(self, label: str) -> None:
-        """Designate the node with *label* as the best, clearing all other best flags."""
+    def mark_best(self, key: str) -> None:
+        """Designate the node under *key* as the best, clearing all other best flags.
+
+        *key* is a candidate id, which is what :meth:`add` files nodes under. Raising on
+        an unknown key is deliberate: a display label would otherwise no-op silently.
+
+        Raises:
+            KeyError: if no node is filed under *key*.
+        """
+        if key not in self.nodes:
+            raise KeyError(f"No candidate {key!r} in the evolution tree; keys are candidate ids")
         for node in self.nodes.values():
             node.is_best = False
-        if label in self.nodes:
-            self.nodes[label].is_best = True
+        self.nodes[key].is_best = True
 
     def get_best(self) -> list[EvolutionNode]:
         """Return the Pareto-optimal nodes by validation reward."""
@@ -250,27 +252,24 @@ class EvolutionTree:
         for channel in channels:
             dimensions[channel].sort()
 
-        fixed = ["round", "agent", "ancestor", "type"]
+        fixed = ["gen", "agent", "ancestor", "type"]
         reward_cols = [(channel, dimension) for channel in channels for dimension in dimensions[channel]]
-        all_cols = fixed + [f"{channel}:{dimension}" for channel, dimension in reward_cols] + ["optimization"]
+        all_cols = fixed + [f"{channel}:{dimension}" for channel, dimension in reward_cols] + ["description"]
         header = "| " + " | ".join(all_cols) + " |"
         sep = "| " + " | ".join("---" for _ in all_cols) + " |"
         lines = [header, sep]
 
-        for label in sorted(
-            self.nodes.keys(),
-            key=lambda x: int(x.split("-")[1]) if x.split("-")[-1].isdigit() else 0,
-        ):
-            n = self.nodes[label]
+        for key in sorted(self.nodes, key=lambda k: (self.nodes[k].generation, self.nodes[k].label)):
+            n = self.nodes[key]
             reward_vals = []
             for channel, dimension in reward_cols:
-                metrics = n.candidate.reward(channel).metrics
+                metrics = n.candidate.rewards[channel].metrics
                 reward_vals.append(f"{metrics[dimension]:.2f}" if dimension in metrics else "-")
-            opt = (n.optimization or "")[:50].replace("\n", " ")
+            opt = (n.description or "")[:50].replace("\n", " ")
             cells = [
-                str(n.round),
+                str(n.generation),
                 n.label,
-                n.ancestor or "-",
+                self._ancestor_label(n) or "-",
                 n.optimization_type or "-",
             ]
             cells += [*reward_vals, opt]
@@ -288,10 +287,17 @@ class EvolutionTree:
             lines.extend(self._build_tree_lines(root_id, "", i == len(roots) - 1))
         return "\n".join(lines)
 
+    def _ancestor_label(self, node: EvolutionNode) -> str | None:
+        """The ancestor's display handle, since ``ancestor`` is an id."""
+        if node.ancestor is None:
+            return None
+        parent = self.nodes.get(node.ancestor)
+        return parent.label if parent is not None else node.ancestor
+
     def _render_node(self, node: EvolutionNode) -> str:
         opt_type = f"[{node.optimization_type}]" if node.optimization_type else ""
-        opt_desc = (node.optimization or "")[:40].replace("\n", " ")
-        if opt_desc and len(node.optimization) > 40:
+        opt_desc = (node.description or "")[:40].replace("\n", " ")
+        if opt_desc and len(node.description) > 40:
             opt_desc += "..."
         markers = (" *BEST*" if node.is_best else "") + (" [S]" if node.is_survivor else "")
         return f"{node.label} ({node.reward_str}){markers} {opt_type} {opt_desc}".strip()
@@ -308,3 +314,23 @@ class EvolutionTree:
         for i, child_id in enumerate(sorted(children)):
             lines.extend(self._build_tree_lines(child_id, child_prefix, i == len(children) - 1))
         return lines
+
+
+def pareto_objectives(metrics: dict[str, float], objective_function: list[MetricTarget]) -> dict[str, float]:
+    """Project evaluator metrics onto the configured objectives for Pareto ranking.
+
+    The generic Pareto utility maximizes every dimension. Minimized objective
+    values are sign-inverted here; regression metrics are intentionally absent.
+    """
+    objectives: dict[str, float] = {}
+    for target in objective_function:
+        value = metrics.get(target.name)
+        if value is None:
+            return {}
+        objectives[target.name] = float(value) if target.direction == "maximize" else -float(value)
+    return objectives
+
+
+def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
+    """Return whether an evaluator result contains every required metric target."""
+    return all(target.name in metrics for target in targets)

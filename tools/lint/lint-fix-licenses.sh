@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 # Run license generation. If licenses.jsonl did not change, restore third_party to
 # discard osv-scanner noise (requirements*.txt, osv-licenses*.json).

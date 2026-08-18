@@ -1,15 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for AgentAnalyzer client/workspace plumbing.
+"""Regression tests for TraceRootCauseAnalyzer trace-loading plumbing.
 
-The Experimentalist round-N analysis path used to silently skip every
-``intake://`` trial trace because ``AgentAnalyzer`` never received (and never
-forwarded) a platform ``client`` or the Intake ``workspace`` name. These tests
-pin the plumbing: ``AgentAnalyzer.run`` must accept ``client`` / ``nmp_workspace``
-and thread them into ``TraceAnalyzer.run``.
+The round-N analysis path silently skips every ``intake://`` trial trace if the
+analyzer cannot load one, and a skipped trace is invisible: the round still
+produces a diagnosis, just one blind to the trajectory. These tests pin the
+plumbing: ``TraceRootCauseAnalyzer`` takes a ``load_trace`` from the context and threads it
+into ``TraceAnalyzer.run``.
 
-``AgentAnalyzer`` is built via ``object.__new__`` to skip its LLM-heavy
+It takes a loader rather than a platform client so no component signature names a
+platform type -- an analyzer shipped by another package reads traces through the
+same seam.
+
+``TraceRootCauseAnalyzer`` is built via ``object.__new__`` to skip its LLM-heavy
 ``__init__``, and the LLM-driven strategy methods (``select_trials``,
 ``classify_failures``, ``compare_with_peers``) are replaced by callable
 *objects* — the agent framework's method guard rejects attaching plain
@@ -21,13 +25,15 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
+from doubles import make_candidate
+from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
-    AgentAnalyzer,
     AnalyzerConfig,
     FailureClassification,
     PeerComparison,
+    TraceRootCauseAnalyzer,
     TrialSelection,
 )
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
@@ -75,7 +81,14 @@ class _RecordingTraceAnalyzer:
 
     calls: ClassVar[list[dict[str, Any]]] = []
 
-    def __init__(self, *, experiment_dir: Path, config: Any, framework_skills_dirs: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        experiment_dir: Path,
+        config: Any,
+        framework_skills_dirs: list[Path] | None = None,
+        models: Any = None,
+    ) -> None:
         self.experiment_dir = experiment_dir
         self.config = config
         self.framework_skills_dirs = framework_skills_dirs or []
@@ -91,12 +104,12 @@ class _RecordingTraceAnalyzer:
         selection_reason: str = "",
         objective_metrics: list[dict[str, Any]] | None = None,
         regression_metrics: list[dict[str, Any]] | None = None,
-        client: Any = None,
+        load_trace: Any = None,
         workspace: Any = None,
     ) -> Diagnostic:
         type(self).calls.append(
             {
-                "client": client,
+                "load_trace": load_trace,
                 "workspace": workspace,
                 "selection_reason": selection_reason,
                 "objective_metrics": objective_metrics,
@@ -107,7 +120,14 @@ class _RecordingTraceAnalyzer:
 
 
 class _FakeRationalizer:
-    def __init__(self, *, workspace: Path, config: Any, framework_skills_dirs: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        config: Any,
+        framework_skills_dirs: list[Path] | None = None,
+        models: Any = None,
+    ) -> None:
         self.workspace = workspace
         self.config = config
         self.framework_skills_dirs = framework_skills_dirs or []
@@ -160,12 +180,25 @@ class _CompareWithPeers:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
 
-def _make_analyzer(tmp_path: Path, trials: list[Any]) -> AgentAnalyzer:
-    """Build an AgentAnalyzer without the LLM-heavy __init__ and stub its strategies."""
-    analyzer = object.__new__(AgentAnalyzer)
+def _a_loader() -> Any:
+    """A distinct loader object; identity is what these tests assert on."""
+
+    async def _load(ref: Any) -> Any:  # pragma: no cover - never awaited here
+        raise AssertionError("not expected to load in this test")
+
+    return _load
+
+
+def _make_analyzer(tmp_path: Path, trials: list[Any], *, load_trace: Any = None) -> TraceRootCauseAnalyzer:
+    """Build an TraceRootCauseAnalyzer without the LLM-heavy __init__ and stub its strategies."""
+    analyzer = object.__new__(TraceRootCauseAnalyzer)
     analyzer._workspace_path = tmp_path
+    analyzer._load_trace = load_trace
+    analyzer._objective_metrics = []
+    analyzer._regression_metrics = []
     analyzer._config = AnalyzerConfig()
     analyzer._framework_skills_dirs = []
+    # sub-components it builds.
     analyzer.select_trials = _SelectTrials(trials)  # type: ignore[method-assign,assignment]
     analyzer.classify_failures = _ClassifyFailures()  # type: ignore[method-assign,assignment]
     analyzer.compare_with_peers = _CompareWithPeers()  # type: ignore[method-assign,assignment]
@@ -215,46 +248,52 @@ def test_peer_comparison_respects_minimize_metric_directions(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_run_threads_client_and_workspace_into_trace_analyzer(
+async def test_run_threads_the_trace_loader_into_trace_analyzer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AgentAnalyzer.run forwards client and nmp_workspace to TraceAnalyzer.run."""
+    """The platform handles the analyzer was built with reach TraceAnalyzer.run.
+
+    Taken at construction rather than per call, so the ``root-cause-analyzer`` role's
+    own signature names no platform types.
+    """
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
-    analyzer = _make_analyzer(tmp_path, [trial])
+    sentinel_loader = _a_loader()
+    analyzer = _make_analyzer(tmp_path, [trial], load_trace=sentinel_loader)
 
-    sentinel_client = object()
     result = await analyzer.run(
-        agent="agent-a",
+        candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
-        round=0,
-        client=cast(Any, sentinel_client),
-        nmp_workspace="tau2-airline-ws",
+        round_num=0,
     )
 
     assert result.agent_id == "agent-a"
     assert len(calls) == 1
-    assert calls[0]["client"] is sentinel_client
-    assert calls[0]["workspace"] == "tau2-airline-ws"
+    assert calls[0]["load_trace"] is sentinel_loader
     assert calls[0]["selection_reason"] == "Analyze trial-1 for this test."
     assert calls[0]["objective_metrics"] == []
     assert calls[0]["regression_metrics"] == []
 
 
 @pytest.mark.asyncio
-async def test_run_defaults_client_and_workspace_to_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Omitting client/nmp_workspace still runs and forwards None (backward compat)."""
+async def test_run_defaults_the_trace_loader_to_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Omitting the loader still runs and forwards None, so a run without traces works."""
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
     analyzer = _make_analyzer(tmp_path, [trial])
 
-    await analyzer.run(agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0)
+    await analyzer.run(
+        candidate=make_candidate(label="agent-a"),
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round_num=0,
+    )
 
     assert len(calls) == 1
-    assert calls[0]["client"] is None
+    assert calls[0]["load_trace"] is None
     assert calls[0]["workspace"] is None
 
 
@@ -264,68 +303,72 @@ async def test_run_threads_metric_contract_into_trace_analyzer(tmp_path: Path, m
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
+    objective_metrics = [MetricTarget(name="success_rate", direction="maximize")]
+    regression_metrics = [MetricTarget(name="tokens", direction="minimize")]
     analyzer = _make_analyzer(tmp_path, [trial])
-    objective_metrics = [{"name": "success_rate", "direction": "maximize"}]
-    regression_metrics = [{"name": "tokens", "direction": "minimize"}]
+    # Objectives arrive at construction, so the role's own signature names no run config.
+    analyzer._objective_metrics = objective_metrics
+    analyzer._regression_metrics = regression_metrics
 
     await analyzer.run(
-        agent="agent-a",
+        candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
-        round=0,
-        objective_metrics=objective_metrics,
-        regression_metrics=regression_metrics,
+        round_num=0,
     )
 
-    assert calls[0]["objective_metrics"] == objective_metrics
-    assert calls[0]["regression_metrics"] == regression_metrics
+    assert calls[0]["objective_metrics"] == [t.model_dump() for t in objective_metrics]
+    assert calls[0]["regression_metrics"] == [t.model_dump() for t in regression_metrics]
 
 
 @pytest.mark.asyncio
 async def test_run_threads_numeric_objective_targets_into_trace_analyzer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Check that trace analysis receives a numeric objective target."""
+    """The `target` travels too, so the analyzer can say how far short a run fell."""
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
+    objective_metrics = [MetricTarget(name="reward", direction="maximize", target=1.0)]
     analyzer = _make_analyzer(tmp_path, [trial])
-    objective_metrics = [{"name": "reward", "direction": "maximize", "target": 1.0}]
+    analyzer._objective_metrics = objective_metrics
 
     await analyzer.run(
-        agent="agent-a",
+        candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
-        round=0,
-        objective_metrics=objective_metrics,
+        round_num=0,
     )
 
-    assert calls[0]["objective_metrics"] == objective_metrics
+    assert calls[0]["objective_metrics"] == [{"name": "reward", "direction": "maximize", "target": 1.0}]
 
 
 @pytest.mark.asyncio
 async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A trace-skipped (no client) result must not be replayed once a client is available."""
+    """A trace-skipped result must not be replayed once a loader is available."""
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
 
     # Same workspace/tmp_path across both runs, so the on-disk cache persists.
-    analyzer_no_client = _make_analyzer(tmp_path, [trial])
-    await analyzer_no_client.run(agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0)
-
-    analyzer_with_client = _make_analyzer(tmp_path, [trial])
-    await analyzer_with_client.run(
-        agent="agent-a",
+    analyzer_without_loader = _make_analyzer(tmp_path, [trial])
+    await analyzer_without_loader.run(
+        candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
-        round=0,
-        client=cast(Any, object()),
-        nmp_workspace="ws-1",
+        round_num=0,
+    )
+
+    analyzer_with_loader = _make_analyzer(tmp_path, [trial], load_trace=_a_loader())
+    await analyzer_with_loader.run(
+        candidate=make_candidate(label="agent-a"),
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round_num=0,
     )
 
     # The second (intake-available) run must recompute rather than reuse the
     # trace-skipped cache entry from the first run.
     assert len(calls) == 2
-    assert calls[0]["client"] is None
-    assert calls[1]["client"] is not None
+    assert calls[0]["load_trace"] is None
+    assert calls[1]["load_trace"] is not None

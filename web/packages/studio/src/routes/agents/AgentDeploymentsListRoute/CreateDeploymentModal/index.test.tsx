@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 const workspace = workspace1.workspace;
-const agent = 'nemo-studio-copilot';
+const agent = 'nemo-studio-assistant';
 const deploymentsUrl = `${PLATFORM_BASE_URL}${getAgentsListDeploymentsQueryKey(':workspace')[0]}`;
 
 interface CapturedDeployment {
@@ -60,7 +60,7 @@ describe('CreateDeploymentModal', () => {
     await user.click(await screen.findByRole('option', { name: 'Docker' }));
     await user.type(
       within(dialog).getByRole('textbox', { name: 'Container Image' }),
-      'nvcr.io/example/nemo-studio-copilot:poc'
+      'nvcr.io/example/nemo-studio-assistant:poc'
     );
     await user.click(within(dialog).getByRole('button', { name: 'Deploy' }));
 
@@ -68,7 +68,7 @@ describe('CreateDeploymentModal', () => {
       expect(captured.body).toEqual({
         agent,
         deployment_mode: 'docker',
-        image: 'nvcr.io/example/nemo-studio-copilot:poc',
+        image: 'nvcr.io/example/nemo-studio-assistant:poc',
       })
     );
   });

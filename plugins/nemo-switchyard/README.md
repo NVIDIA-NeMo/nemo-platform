@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Switchyard Inference Middleware Plugin
 
 A NeMo Inference Middleware plugin wrapping [Switchyard](https://github.com/NVIDIA-NeMo/Switchyard) —

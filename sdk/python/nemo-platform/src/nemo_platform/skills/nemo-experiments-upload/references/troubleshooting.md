@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Troubleshooting
 
 Common failures across the create + ingest endpoints, and the fix. Most 4xx bodies include a `detail`
@@ -29,7 +32,7 @@ string — read it first.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Ingest returned 2xx but `run_count` stays 0 | `evaluation_context` missing, or `evaluation_id` ≠ the Evaluation's name | Attach `evaluation_context`; use the Evaluation **name**. For OTLP, set the span attribute `nemo.experiment.id` on the root span |
+| Ingest returned 2xx but `run_count` stays 0 | `evaluation_context` missing, or `evaluation_id` ≠ the Evaluation's name | Attach `evaluation_context`; use the Evaluation **name**. For OTLP, set the span attribute `nemo.evaluation.name` on the root span |
 | No scores on the evaluation | Rewards not under `extra.verifier_result.rewards` (ATIF), or wrong `data_type` (`/evaluator-results`) | ATIF: `extra.verifier_result.rewards = {criterion: value}`. Explicit: `NUMERIC`/`BOOLEAN` need `value`, `CATEGORICAL`/`TEXT` need `string_value` |
 | No cost on the rollup | The producer never emitted cost | Cost is pass-through — set `cost_usd` (chat-completions / ATIF step `metrics`) or `llm.cost.total` / `gen_ai.usage.cost` (OTLP) |
 | `503` on `GET .../evaluations/{name}` or `/sessions` | ClickHouse (telemetry store) not running | Start ClickHouse; rollups, sessions, and metric sorts/filters all need it |
@@ -39,5 +42,5 @@ string — read it first.
 
 - `evaluation_context.evaluation_id` → the Evaluation's **`name`**.
 - `experiment_ids` (on create evaluation) → a list with the Experiment's **`id`**.
-- OTLP evaluation attribute key → **`nemo.experiment.id`** (test case → `nemo.test_case.id`).
+- OTLP evaluation attribute key → **`nemo.evaluation.name`** (test case → `nemo.test_case.id`).
 - Parent → **`/experiments`** (`/experiment-groups` is a deprecated hidden alias); evaluations → **`/evaluations`**.

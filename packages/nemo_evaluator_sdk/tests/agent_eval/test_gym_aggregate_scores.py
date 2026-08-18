@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import _aggregate_scores_from_gym
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import _aggregate_scores_from_gym
 from nemo_evaluator_sdk.values.results import AggregateRangeScore, AggregateScalarScore, AggregateScore
 
 

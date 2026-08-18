@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform Development Tools MCP Server
 
 MCP server providing narrowly-scoped development operations for the NeMo Platform project. These tools execute specific commands via Python subprocess, providing a smoother development experience with dedicated, pre-defined operations.

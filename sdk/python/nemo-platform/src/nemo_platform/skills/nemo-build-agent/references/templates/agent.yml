@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # NAT workflow YAML for a NeMo Platform agent.
 # Required top-level keys: functions, llms, workflow.
 # Optional: intercepts, middleware.

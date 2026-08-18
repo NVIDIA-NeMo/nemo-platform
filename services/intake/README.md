@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Intake Service
 
 Intake is the telemetry ingestion and read API for NeMo Platform. It stores span
@@ -23,6 +26,7 @@ Active v2 workspace endpoints:
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/atif`
+- `POST /apis/intake/v2/workspaces/{workspace}/ingest/spans`
 
 ## Logging experiment data (end-to-end)
 
@@ -34,7 +38,7 @@ The Experiments feature captures evaluation runs as leaderboard rows. The flow:
 3. Log traces + evaluator results to an ingest endpoint. The Evaluation must exist first. Attach
    evaluation identity per endpoint: **ATIF/Harbor** and **chat-completions** carry it in the JSON body
    as `evaluation_context = {evaluation_id, test_case_id}`; **OTLP** carries it as root-span attributes
-   `nemo.experiment.id` (the Evaluation name) and `nemo.test_case.id`.
+   `nemo.evaluation.name` (the Evaluation name) and `nemo.test_case.id`.
 4. Read the rollups — `GET /evaluations/{name}` and `.../{name}/sessions` — or view them in Studio
    (behind the `VITE_FF_EXPERIMENT` flag).
 
@@ -43,8 +47,22 @@ mapping, and a troubleshooting table, see the **`nemo-experiments-upload`** agen
 `packages/nemo_platform_ext/src/nemo_platform_ext/skills/nemo-experiments-upload/`.
 
 > Naming note: the entity/API is mid-rename. The API surfaces "Evaluation" and "Experiment Group",
-> but the stored entity is still `Experiment` and the OTLP evaluation attribute key is
-> `nemo.experiment.id`. This doc follows the current in-code naming.
+> but the stored entity is still `Experiment`. The OTLP evaluation attribute key is
+> `nemo.evaluation.name`. This doc follows the current in-code naming.
+
+## Importing historical observability data
+
+`POST /apis/intake/v2/workspaces/{workspace}/ingest/spans` accepts a provider-neutral JSON batch of
+1–1000 spans. It supports arbitrary provider IDs, parent references outside the batch, structured
+input/output, semantic attributes, and lossless native JSON for unmodeled attributes. Reposting the
+same `(workspace, source, trace_id, span_id)` updates the logical span.
+
+Customers should use the `nemo-intake` skill's bundled MLflow, LangSmith, Phoenix, and Braintrust
+scripts. They page bounded provider exports, write spans before scores/annotations, retain native
+provider records under namespaced raw attributes, deduplicate annotations, and query imported IDs
+back before reporting success. Intake rejects spans outside its 90-day observation-time retention
+window with `422` before writing any part of the batch. Increase the ClickHouse `spans` and
+`trace_index` TTLs before importing older data.
 
 ## Local Development
 

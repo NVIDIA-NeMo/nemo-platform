@@ -33,9 +33,9 @@ class ExperimentalistResult(BaseModel):
         min_length=1,
         description="ExperimentRun entity id updated by persist_result.",
     )
-    rounds_completed: int = Field(
+    progress_completed: int = Field(
         ge=0,
-        description="Number of full optimization rounds that ran.",
+        description="Units of work the strategy reported finished — rounds, trials, whatever it counts.",
     )
     winner: Candidate | None = Field(
         default=None,

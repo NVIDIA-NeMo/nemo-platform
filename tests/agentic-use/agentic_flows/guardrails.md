@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Guardrails Service Agentic Flows
 
 The Guardrails service provides runtime safety controls for model inputs and outputs, including content safety checks, PII detection, and custom filtering rules.

@@ -41,4 +41,34 @@ describe('RailStatusTab', () => {
     expect(screen.getByText('No runs yet.')).toBeInTheDocument();
     expect(screen.getByText('Activated Guardrails')).toBeInTheDocument();
   });
+
+  // The config that produced a run may have been edited since — or, for a draft, never saved.
+  it("prefers the run's own coverage snapshot over the current config", () => {
+    render(
+      <RailStatusTab
+        latestRun={{
+          run_at: '2026-04-12T11:05:00.000Z',
+          status: 'success',
+          rails_status: {},
+          is_draft: true,
+          activated_guardrails: [{ id: 'jailbreak', label: 'Jailbreak Detection', active: true }],
+        }}
+        configData={COLLIDING_LABELS}
+      />
+    );
+
+    expect(screen.getByText('Jailbreak Detection')).toBeInTheDocument();
+    expect(screen.queryByText('Acme Guard')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the current config for a run recorded before snapshots existed', () => {
+    render(
+      <RailStatusTab
+        latestRun={{ run_at: '2026-04-12T11:05:00.000Z', status: 'success', rails_status: {} }}
+        configData={COLLIDING_LABELS}
+      />
+    );
+
+    expect(screen.getAllByText('Acme Guard')).toHaveLength(2);
+  });
 });

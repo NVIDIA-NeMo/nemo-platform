@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # useDeferredUnmount
 
 A React hook for managing deferred unmounting of panels, modals, sheets, or any component where you need content to persist during exit animations.

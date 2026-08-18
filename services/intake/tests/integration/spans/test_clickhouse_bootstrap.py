@@ -7,6 +7,7 @@ from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable, qualified_table
 from nmp.intake.service import IntakeService
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, bootstrap_schema
 from nmp.intake.spans.clickhouse_migrations import quote_clickhouse_identifier
@@ -40,7 +41,17 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
         ("ch_trace_index_0003",),
         ("ch_trace_index_0004_nemo_keys",),
         ("ch_trace_index_0005_evaluation_id",),
+        ("ch_trace_index_0006_nemo_evaluation_name",),
     ]
+    expected_ttl = {
+        ClickHouseTable.SPANS: "TTL toDate(start_time) + toIntervalDay(90)",
+        ClickHouseTable.TRACE_INDEX: "TTL toDate(root_started_at) + toIntervalDay(90)",
+    }
+    for table, ttl in expected_ttl.items():
+        create = run_async(
+            clickhouse_client.query(f"SHOW CREATE TABLE {qualified_table(clickhouse_client.database, table)}")
+        )
+        assert ttl in str(create.result_rows[0][0])
 
 
 def test_intake_service_readiness_does_not_bootstrap_service_owned_clickhouse(client: TestClient, run_async):

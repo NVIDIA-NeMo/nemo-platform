@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # FilesetFilePreviewPanel
 
 Fileset file preview side panel with automatic content rendering, data fetching, and breadcrumb navigation. Works for any fileset purpose (dataset, model, generic).

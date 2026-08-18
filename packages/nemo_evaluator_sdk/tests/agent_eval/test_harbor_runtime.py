@@ -10,28 +10,35 @@ import logging
 import os
 import sys
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
+    _MAX_TRACEBACK_CHARS,
     HarborAgentTaskRunner,
     HarborRewardMetric,
     HarborRuntimeConfig,
     HarborTasksetLoader,
     _build_native_job,
+    _trial_error,
     build_trials_from_job_dir,
     discover_harbor_tasks,
     reward_payload_from_result,
     scoped_harbor_agent_import,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
+from nemo_evaluator_sdk.agent_eval.trials import UNKNOWN_ERROR_TYPE, AgentEvalTrial, AgentEvalTrialStatus, TrialError
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from pydantic import BaseModel, ValidationError
 
 _HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbor" / "hello_world_dataset"
+_FIXTURES = Path(__file__).parent / "fixtures"
+# A verbatim Harbor result.json from a real agent-timeout run, host paths scrubbed.
+_HARBOR_ERROR_RESULT = _FIXTURES / "harbor_error_result.json"
 
 
 def _write_trial(
@@ -80,7 +87,10 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     assert trials["pass-task"].metadata["prompt_tokens"] == 100
     assert trials["pass-task"].evidence is not None
     assert trials["fail-task"].status == AgentEvalTrialStatus.PARTIAL
-    assert trials["fail-task"].metadata["exception_type"] == "NonZeroAgentExitCodeError"
+    assert trials["fail-task"].error is not None
+    assert trials["fail-task"].error.type == "NonZeroAgentExitCodeError"
+    # The typed field replaced the metadata stamp outright: one source of truth, no mirror to drift.
+    assert "exception_type" not in trials["fail-task"].metadata
     # Missing reward: no explicit reward -> PARTIAL, metadata reward is None, scores as 0.0.
     assert trials["noreward-task"].status == AgentEvalTrialStatus.PARTIAL
     assert trials["noreward-task"].metadata["reward"] is None
@@ -95,14 +105,174 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     assert rewards_by_task == {"pass-task": 1.0, "fail-task": 0.0, "noreward-task": 0.0}
 
     # Phase-1 legacy adapter reproduces the {reward, reward_details, exceptions} contract.
+    # Its `exceptions` block now reads AgentEvalTrial.error rather than the retired metadata key,
+    # while keeping its task-keyed shape -- switching that to trial ids is AALGO-441.
     payload = reward_payload_from_result(result)
     assert payload["reward"]["harbor_reward.reward"] == pytest.approx(1.0 / 3)
     assert payload["reward_details"]["reward"]["1.0"] == ["pass-task"]
     assert payload["exceptions"] == {"NonZeroAgentExitCodeError": ["fail-task"]}
 
+    # ...and the summary carries Harbor's own trial-keyed shape, with no reconstruction needed.
+    assert result.summary.error_trial_ids == {"NonZeroAgentExitCodeError": ["fail-task__bbb"]}
+    assert result.summary.error_count == 1
+
 
 async def _record(calls: list[str]) -> None:
     calls.append("ran")
+
+
+def _reward_details_from_summary(
+    summary: AgentEvalSummary,
+    *,
+    metric_type: str = "harbor_reward",
+    output_name: str = "reward",
+) -> dict[str, dict[str, list[str]]]:
+    """Rebuild ``reward_payload_from_result``'s ``reward_details`` from the summary alone.
+
+    Inverts ``{task_id: [value]}`` back into the legacy ``{output: {value_str: [task_id, ...]}}``.
+    Only numeric values are groupable: a dead trial has no value, and a label is not a reward.
+    The adapter drops both too (it skips ``FAILED`` scores and non-numeric outputs), so the two sides
+    agree on what is groupable.
+    """
+    key = f"{metric_type}.{output_name}"
+    details: dict[str, dict[str, list[str]]] = {}
+    for task_id, values_by_key in summary.task_metric_values.items():
+        for record in values_by_key.get(key, []):
+            if not isinstance(record.value, bool | int | float):
+                continue
+            details.setdefault(output_name, {}).setdefault(str(float(record.value)), []).append(task_id)
+    return details
+
+
+def _reward_stats_from_summary(
+    summary: AgentEvalSummary,
+    *,
+    metric_type: str = "harbor_reward",
+    output_name: str = "reward",
+) -> dict[str, dict[float, list[str]]]:
+    """Rebuild Harbor's *own* ``reward_stats`` — ``{reward_key: {value: [trial_name, ...]}}``.
+
+    Harbor builds it as ``reward_stats.setdefault(value, []).append(trial_result.trial_name)``: keyed
+    by the raw numeric value, listing trial names. ``_trial_from_harbor_result`` stamps Harbor's
+    ``trial_name`` straight onto ``AgentEvalTrial.id``, which is the ``trial_id`` each record now
+    carries, so this reproduces Harbor's shape rather than approximating it.
+
+    A ``None`` value is a trial that died before the verifier ran, and is skipped here — as is any
+    non-numeric value, since Harbor keys ``reward_stats`` by the reward value itself.
+
+    One caveat this does *not* reproduce: Harbor files a trial in ``reward_stats`` only when
+    ``verifier_result.rewards`` exists, so a trial that crashed before the verifier ran appears in
+    ``exception_stats`` alone. The SDK synthesises ``0.0`` for it (see ``HarborRewardMetric``), so it
+    also lands in ``task_metric_values`` — ``gamma__a`` below is exactly that case. Reconciling the
+    two is AALGO-441, not this helper.
+    """
+    key = f"{metric_type}.{output_name}"
+    stats: dict[str, dict[float, list[str]]] = {}
+    for values_by_key in summary.task_metric_values.values():
+        for record in values_by_key.get(key, []):
+            if not isinstance(record.value, bool | int | float):
+                continue
+            stats.setdefault(output_name, {}).setdefault(float(record.value), []).append(record.trial_id)
+    return stats
+
+
+@pytest.mark.asyncio
+async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_values(tmp_path: Path) -> None:
+    """The summary alone reproduces Harbor's ``reward_stats``, which is what AALGO-310 exists to enable.
+
+    Harbor groups rewards by ``trial_name`` and keys them by the raw ``float | int``. Both were out of
+    reach while values were bare numbers indexed by position; now that each record names its trial,
+    AALGO-441 can rebuild the real shape without re-walking ``result.scores``. The legacy
+    ``reward_details`` (task-keyed, stringified) stays derivable too, so the rewiring loses nothing.
+
+    ``exception_stats`` is now covered too, by
+    :func:`test_harbor_exception_stats_is_read_straight_off_the_summary` below (AALGO-428).
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    # Two trials each for alpha (flaky) and beta (solved); one for gamma, whose verifier emitted
+    # no reward at all -> PARTIAL trial that still scores 0.0.
+    _write_trial(job_dir, "alpha__a", "alpha", reward=1.0)
+    _write_trial(job_dir, "alpha__b", "alpha", reward=0.0)
+    _write_trial(job_dir, "beta__a", "beta", reward=1.0)
+    _write_trial(job_dir, "beta__b", "beta", reward=1.0)
+    _write_trial(job_dir, "gamma__a", "gamma", reward=None)
+
+    tasks = [
+        AgentEvalTask(id=task_id, intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
+        for task_id in ("alpha", "beta", "gamma")
+    ]
+    runner = HarborAgentTaskRunner(job_dir=job_dir, run_job=lambda: _record([]))
+    result = await AgentEvaluator().run(tasks=tasks, target=runner, config=AgentEvalRunConfig())
+
+    recorded = {
+        task_id: {key: [(a.trial_id, a.value) for a in records] for key, records in by_key.items()}
+        for task_id, by_key in result.summary.task_metric_values.items()
+    }
+    assert recorded == {
+        "alpha": {"harbor_reward.reward": [("alpha__a", 1.0), ("alpha__b", 0.0)]},
+        "beta": {"harbor_reward.reward": [("beta__a", 1.0), ("beta__b", 1.0)]},
+        "gamma": {"harbor_reward.reward": [("gamma__a", 0.0)]},
+    }
+
+    # Harbor's own shape: raw float keys, trial names in the lists.
+    assert _reward_stats_from_summary(result.summary) == {
+        "reward": {1.0: ["alpha__a", "beta__a", "beta__b"], 0.0: ["alpha__b", "gamma__a"]}
+    }
+
+    # ...and the legacy task-keyed, stringified payload the current adapter emits stays derivable.
+    payload = reward_payload_from_result(result)
+    assert payload["reward_details"] == {"reward": {"1.0": ["alpha", "beta", "beta"], "0.0": ["alpha", "gamma"]}}
+    assert _reward_details_from_summary(result.summary) == payload["reward_details"]
+
+
+@pytest.mark.asyncio
+async def test_harbor_exception_stats_is_read_straight_off_the_summary(tmp_path: Path) -> None:
+    """AALGO-428: ``summary.error_trial_ids`` *is* Harbor's ``exception_stats``, not an approximation.
+
+    The proof is the absence of a helper. ``reward_stats`` needs ``_reward_stats_from_summary`` above
+    to re-key task-major records into Harbor's shape; this needs nothing — the field is already
+    ``{exception type: [trial_name, ...]}``, because Harbor's ``trial_name`` is ``AgentEvalTrial.id``.
+
+    Two things this pins that a later refactor could plausibly "tidy" away:
+
+    - ``beta__a`` errored *and* scored 1.0. It appears in the rollup **and** counts as a pass in
+      ``task_metric_values`` — Harbor double-files it the same way, because its reward and exception
+      branches are independent.
+    - ``gamma__a`` is ``PARTIAL``, not ``FAILED`` (an errored Harbor trial stays scoreable). Filtering
+      this rollup by status would drop exactly the trials it exists to name.
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "alpha__a", "alpha", reward=1.0)  # clean
+    _write_trial(job_dir, "alpha__b", "alpha", reward=0.0, exception={"exception_type": "RuntimeError"})
+    _write_trial(job_dir, "beta__a", "beta", reward=1.0, exception={"exception_type": "RuntimeError"})
+    _write_trial(job_dir, "gamma__a", "gamma", reward=None, exception={"exception_type": "TimeoutError"})
+
+    tasks = [
+        AgentEvalTask(id=task_id, intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
+        for task_id in ("alpha", "beta", "gamma")
+    ]
+    runner = HarborAgentTaskRunner(job_dir=job_dir, run_job=lambda: _record([]))
+    result = await AgentEvaluator().run(tasks=tasks, target=runner, config=AgentEvalRunConfig())
+
+    assert result.summary.error_trial_ids == {
+        "RuntimeError": ["alpha__b", "beta__a"],
+        "TimeoutError": ["gamma__a"],
+    }
+    assert result.summary.error_count == 3
+
+    # The errored-but-rewarded trial keeps its reward and its pass, exactly as Harbor reports it.
+    assert _reward_stats_from_summary(result.summary)["reward"][1.0] == ["alpha__a", "beta__a"]
+    by_trial = {t.id: t for t in result.trials}
+    assert by_trial["beta__a"].status is AgentEvalTrialStatus.PARTIAL
+    assert by_trial["gamma__a"].status is AgentEvalTrialStatus.PARTIAL
+
+    # The legacy task-keyed payload stays derivable from the same typed source.
+    assert reward_payload_from_result(result)["exceptions"] == {
+        "RuntimeError": ["alpha", "beta"],
+        "TimeoutError": ["gamma"],
+    }
 
 
 def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path, caplog) -> None:
@@ -125,8 +295,9 @@ def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
     # Discovery reads the bundled hello-world dataset directory the same way Harbor
     # does: id comes from [task] name, and each task is scored by a reward metric.
     tasks = discover_harbor_tasks(_HELLO_WORLD_DATASET)
-    assert [task.id for task in tasks] == ["harbor/hello-world"]
-    task = tasks[0]
+    assert {task.id for task in tasks} == {"harbor/hello-world"}
+    by_id = {task.id: task for task in tasks}
+    task = by_id["harbor/hello-world"]
     # `intent` is the human-facing task name (metadata), NOT the instruction; the instruction the
     # agent acts on comes from instruction.md and lives in inputs["instruction"].
     assert task.intent == "harbor/hello-world"
@@ -141,10 +312,18 @@ def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
     loader = HarborTasksetLoader(_HELLO_WORLD_DATASET)
     assert loader.name == "harbor"
     taskset = loader.load()
-    assert [t.id for t in taskset.tasks] == ["harbor/hello-world"]
+    assert {t.id for t in taskset.tasks} == {"harbor/hello-world"}
     assert taskset.metadata["harbor_dataset_path"] == str(_HELLO_WORLD_DATASET)
     # A limit at/above the task count is a no-op (an empty taskset is invalid).
-    assert [t.id for t in loader.load(limit=5).tasks] == ["harbor/hello-world"]
+    assert {t.id for t in loader.load(limit=5).tasks} == {"harbor/hello-world"}
+
+
+def test_harbor_folder_names_prefer_task_directories() -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _harbor_folder_names
+
+    tasks = discover_harbor_tasks(_HELLO_WORLD_DATASET)
+    assert set(_harbor_folder_names(tasks) or []) == {"hello-world"}
+    assert _harbor_folder_names([AgentEvalTask(id="x", intent="x", inputs={}, metrics=[])]) is None
 
 
 def test_discovery_fails_loudly_on_malformed_task(tmp_path: Path) -> None:
@@ -1298,6 +1477,15 @@ def test_unreadable_result_json_is_skipped_without_raising(tmp_path: Path, caplo
         # Older/other writers put a bare value there.
         ("NonZeroAgentExitCodeError", "NonZeroAgentExitCodeError"),
         (17, "17"),
+        # Degenerate values must normalise, never raise: _trial_from_harbor_result runs outside the
+        # only try/except in build_trials_from_job_dir, so a ValidationError here would abandon every
+        # remaining trial in the job dir.
+        ("", "UnknownException"),
+        ("   ", "UnknownException"),
+        ({"exception_type": ""}, "UnknownException"),
+        ({"exception_type": "   "}, "UnknownException"),
+        ({"exception_type": 123}, "UnknownException"),
+        ({"exception_type": None}, "UnknownException"),
     ],
 )
 def test_exception_info_shapes_all_resolve_to_a_type(
@@ -1318,8 +1506,89 @@ def test_exception_info_shapes_all_resolve_to_a_type(
     )
 
     assert len(trials) == 1
-    assert trials[0].metadata["exception_type"] == expected_type
+    assert trials[0].error is not None
+    assert trials[0].error.type == expected_type
     assert trials[0].status is AgentEvalTrialStatus.PARTIAL
+
+
+def test_non_string_message_and_traceback_are_dropped_rather_than_carried(tmp_path: Path) -> None:
+    # Same totality requirement as the parametrization above: a producer that put a number (or a
+    # nested object) where a string belongs must not take down the whole job dir.
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(
+        job_dir,
+        "t__aaa",
+        "t",
+        reward=1.0,
+        exception={"exception_type": "RuntimeError", "exception_message": 42, "exception_traceback": {"a": 1}},
+    )
+
+    [trial] = build_trials_from_job_dir(
+        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    )
+
+    assert trial.error is not None
+    assert trial.error.type == "RuntimeError"
+    assert trial.error.message is None
+    assert trial.error.traceback is None
+
+
+def test_a_real_harbor_exception_payload_round_trips_every_field(tmp_path: Path) -> None:
+    """Shaped after a real Harbor result.json: an agent that died with exit 127.
+
+    ``occurred_at`` is naive local wall time while Harbor stamps trial start/finish in UTC, so it is
+    kept exactly as written rather than normalised — inventing an offset would fabricate precision.
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(
+        job_dir,
+        "debug-agent-runtime-error__KFtcHEw",
+        "t",
+        reward=None,
+        exception={
+            "exception_type": "RuntimeError",
+            "exception_message": "Agent process failed with exit code 127: python: command not found\n",
+            "exception_traceback": 'Traceback (most recent call last):\n  File "/Users/x/harbor/trial.py", line 354\n',
+            "occurred_at": "2026-08-13T17:22:32.230852",
+        },
+    )
+
+    [trial] = build_trials_from_job_dir(
+        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    )
+
+    assert trial.error is not None
+    assert trial.error.type == "RuntimeError"
+    assert trial.error.message is not None and "exit code 127" in trial.error.message
+    assert trial.error.traceback is not None and trial.error.traceback.startswith("Traceback")
+    occurred_at = trial.error.occurred_at
+    assert occurred_at is not None
+    assert occurred_at == datetime(2026, 8, 13, 17, 22, 32, 230852)
+    assert occurred_at.tzinfo is None  # naive, as Harbor wrote it
+
+
+def test_an_oversized_traceback_is_truncated(tmp_path: Path) -> None:
+    # Bundles are portable and a traceback is diagnostic text, not something anyone joins on, so it
+    # is bounded rather than faithful.
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(
+        job_dir,
+        "t__aaa",
+        "t",
+        reward=1.0,
+        exception={"exception_type": "RuntimeError", "exception_traceback": "x" * (_MAX_TRACEBACK_CHARS * 3)},
+    )
+
+    [trial] = build_trials_from_job_dir(
+        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    )
+
+    assert trial.error is not None
+    assert trial.error.traceback is not None
+    assert len(trial.error.traceback) == _MAX_TRACEBACK_CHARS
 
 
 def test_absent_exception_info_leaves_the_trial_completed(tmp_path: Path) -> None:
@@ -1332,5 +1601,91 @@ def test_absent_exception_info_leaves_the_trial_completed(tmp_path: Path) -> Non
         job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
     )
 
-    assert "exception_type" not in trials[0].metadata
+    assert trials[0].error is None
     assert trials[0].status is AgentEvalTrialStatus.COMPLETED
+
+
+def test_the_typed_error_is_the_only_carrier(tmp_path: Path) -> None:
+    """The adapter records the failure once, on ``error`` -- nothing is mirrored into metadata.
+
+    A pre-``TrialError`` bundle put the type in free-form metadata. That is not interpreted on load,
+    so the two paths do not converge: only a trial adapted by this code carries an error.
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "t__aaa", "t", reward=0.0, exception={"exception_type": "RuntimeError"})
+
+    [fresh] = build_trials_from_job_dir(
+        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    )
+    legacy = AgentEvalTrial.model_validate(
+        {"id": "t__aaa", "task_id": "t", "status": "partial", "metadata": {"exception_type": "RuntimeError"}}
+    )
+
+    assert fresh.error is not None and fresh.error.type == "RuntimeError"
+    assert "exception_type" not in fresh.metadata
+    assert legacy.error is None  # free-form metadata is never promoted to a typed error
+
+
+def test_a_degenerate_exception_type_normalises_to_the_fallback() -> None:
+    error = _trial_error({"exception_type": ""})
+    assert error is not None
+    assert error.type == UNKNOWN_ERROR_TYPE
+
+
+def test_occurred_at_is_not_advertised_as_rfc_3339() -> None:
+    # RFC 3339 date-time requires an offset, and Harbor writes a naive local clock. Advertising
+    # `format: date-time` would make a strict client parse a zoneless string into its own zone,
+    # silently shifting the instant.
+    schema = TrialError.model_json_schema()["properties"]["occurred_at"]
+    assert "format" not in schema
+    assert schema["type"] == "string"
+
+
+def test_both_naive_and_aware_timestamps_survive_a_round_trip() -> None:
+    naive = TrialError(type="E", occurred_at=datetime(2026, 8, 13, 17, 22, 32, 230852))
+    aware = TrialError(type="E", occurred_at=datetime(2026, 8, 14, 0, 22, 25, tzinfo=timezone.utc))
+
+    assert TrialError.model_validate(naive.model_dump(mode="json")).occurred_at == naive.occurred_at
+    assert TrialError.model_validate(aware.model_dump(mode="json")).occurred_at == aware.occurred_at
+    # The naive one serialises without an offset, which is exactly why the schema cannot claim one.
+    assert naive.model_dump(mode="json")["occurred_at"] == "2026-08-13T17:22:32.230852"
+
+
+def test_a_real_harbor_error_payload_reaches_the_summary_rollup(tmp_path: Path) -> None:
+    """The exception path against real Harbor bytes, not a hand-written dict.
+
+    Every other test here builds ``exception_info`` with :func:`_write_trial`, which means the whole
+    chain is only ever verified against payloads we wrote ourselves. This one replays a captured
+    ``result.json`` from an actual Harbor run whose agent blew a 1s timeout, so a change to Harbor's
+    on-disk shape shows up as a failure rather than as silently-empty rollups.
+
+    It also pins the case the synthetic tests can only assert by construction: Harbor ran the verifier
+    *after* recording the timeout, so this trial carries an error **and** a real reward. It therefore
+    appears in ``error_trial_ids`` and in ``task_metric_values`` at once.
+    """
+    payload = json.loads(_HARBOR_ERROR_RESULT.read_text(encoding="utf-8"))
+    trial_name, task_name = payload["trial_name"], payload["task_name"]
+
+    job_dir = tmp_path / "job"
+    (job_dir / trial_name).mkdir(parents=True)
+    (job_dir / trial_name / "result.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    task = AgentEvalTask(id=task_name, intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
+    [trial] = build_trials_from_job_dir(job_dir, [task])
+
+    assert trial.error is not None
+    assert trial.error.type == "AgentTimeoutError"
+    assert trial.error.message == "Agent execution timed out after 1.0 seconds"
+    assert trial.error.traceback is not None and "AgentTimeoutError" in trial.error.traceback
+    # Harbor stamps a naive local clock here while writing trial start/finish in UTC; the SDK keeps it
+    # exactly as written rather than inventing an offset.
+    occurred_at = trial.error.occurred_at
+    assert occurred_at is not None and occurred_at.tzinfo is None
+    # Errored, but still scored -- FAILED would exclude it from scoring entirely.
+    assert trial.status is AgentEvalTrialStatus.PARTIAL
+    assert trial.metadata["reward"] == 0.0
+
+    summary = AgentEvalSummary.from_scores([], trials=[trial])
+    assert summary.error_trial_ids == {"AgentTimeoutError": [trial_name]}
+    assert summary.error_count == 1

@@ -30,12 +30,10 @@ def stress_embedded_pdp_memory_limit():
     """Raise WASM memory for this module so large-scale policy data can load."""
     cfg = AuthServiceConfig(embedded_pdp_memory_limit_mb=_STRESS_PDP_MEMORY_MB)  # type: ignore[misc]
     Configuration.set_override(cfg)
-    embedded_pdp_engine._policy = None
-    embedded_pdp_engine._policy_data = {}
+    embedded_pdp_engine._reset_policy_state_for_testing()
     yield
     Configuration.clear_override(AuthServiceConfig)
-    embedded_pdp_engine._policy = None
-    embedded_pdp_engine._policy_data = {}
+    embedded_pdp_engine._reset_policy_state_for_testing()
 
 
 @pytest.fixture(scope="module")

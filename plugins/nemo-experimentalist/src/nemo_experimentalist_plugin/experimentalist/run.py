@@ -9,12 +9,12 @@ from typing import TextIO
 
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
+from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.nooa_model_client import (
     ConfiguredModelClients,
@@ -43,7 +43,7 @@ def build_run_reporter(
 
 async def run_experimentalist(
     *,
-    agent: Path | str | None = None,
+    agent: str | Path | None = None,
     agent_spec: str | None = None,
     insight: Path | str | None,
     train_dataset: DatasetRef,
@@ -51,16 +51,16 @@ async def run_experimentalist(
     experiment_dir: Path,
     workspace: str,
     client: AsyncNeMoPlatform | None,
+    model_refs: ConfiguredModelRefs | None = None,
     config: EvolutionaryOptimizerConfig,
     task_template: DatasetRef | None = None,
     framework_skills_dirs: list[Path] | None = None,
-    model_refs: ConfiguredModelRefs | None = None,
 ) -> str:
     """Build and run the Experimentalist against an agent and dataset.
 
     Args:
         agent: Optional baseline agent for Mode 2, or an override for the agent
-            referenced by ``insight``. A local directory or a git ``url@ref``; a git
+            referenced by ``insight``. A local directory path or a git ``url@ref``; a git
             source is fetched by the backend and enables opening a draft PR/MR for
             the winner against that ref.
         agent_spec: Optional URI of a markdown file describing the agent under test.
@@ -72,12 +72,12 @@ async def run_experimentalist(
         task_template: Evaluator-specific task template used for production traces.
         experiment_dir: Working directory for optimization artifacts.
         workspace: Platform workspace.
-        client: Optional caller-owned Platform client. When omitted, the run
-            creates one from the active Platform context for model resolution;
-            the data backend remains local-only.
+        model_refs: Optional explicit default/fast Model Entity IDs. Unset uses the
+            active Platform CLI context.
+        client: Optional caller-owned Platform client. Local-only Mode 2 runs
+            may pass ``None``; Platform Insight access, mirroring, and Intake
+            persistence require a client.
         config: Evolutionary optimizer configuration.
-        model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
-            the active Platform CLI context.
 
     Returns:
         Terminal optimization summary.
@@ -103,37 +103,32 @@ async def run_experimentalist(
         experiments_output=str(experiment_dir),
         storage=config.storage,
     )
+    # Every component resolves its models through the platform (#1159), so the resolved
+    # clients have to stay active for the whole run, not just while the runner is built.
     model_platform_client = client or AsyncNeMoPlatform()
     owns_model_platform_client = client is None
     model_clients: ConfiguredModelClients | None = None
     try:
         model_clients = await resolve_model_clients(model_platform_client, model_refs)
-        deps = ExperimentalistDeps(
-            workspace=workspace,
-            agent=agent,
-            agent_spec=agent_spec,
-            insight=insight,
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
-            task_template=task_template,
-            backend=backend,
-            reporter=reporter,
-            config=config,
-        )
         with activate_model_clients(model_clients):
-            experimentalist = build_experimentalist_agent(
-                working_dir=experiment_dir,
+            result = await ExperimentRunner(
+                backend=backend,
+                strategy=build_experimentalist_agent(
+                    working_dir=experiment_dir,
+                    config=config,
+                    framework_skills_dirs=framework_skills_dirs,
+                ),
                 config=config,
-                framework_skills_dirs=framework_skills_dirs,
-            )
-            result = await experimentalist.run(deps)
-        winner = result.winner
-        reporter.run_finished(
-            winner=winner.label if winner is not None else None,
-            scores=dict(winner.reward("validation").metrics) if winner and winner.reward("validation").metrics else {},
-            report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
-        )
-        return result.summary
+                workspace=workspace,
+                root=experiment_dir,
+                agent=agent,
+                agent_spec=agent_spec,
+                insight=insight,
+                train_dataset=train_dataset,
+                validation_dataset=validation_dataset,
+                task_template=task_template,
+                reporter=reporter,
+            ).run()
     finally:
         try:
             if model_clients is not None:
@@ -141,3 +136,11 @@ async def run_experimentalist(
         finally:
             if owns_model_platform_client:
                 await model_platform_client.close()
+
+    winner = result.winner
+    reporter.run_finished(
+        winner=winner.label if winner is not None else None,
+        scores=dict(winner.rewards["validation"].metrics) if winner and winner.rewards["validation"].metrics else {},
+        report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
+    )
+    return result.summary

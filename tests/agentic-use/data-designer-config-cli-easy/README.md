@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Data Designer Model Configuration - CLI Eval
 
 This Harbor eval tests the ability to configure model providers for Data Designer using the NeMo Platform CLI.

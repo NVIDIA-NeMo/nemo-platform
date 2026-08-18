@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # NAT ReAct agent for the OpenShell sandbox demo (see ../DEMO.ipynb).
 #
 # This file is the source of truth for the demo agent. `nemo agents package`

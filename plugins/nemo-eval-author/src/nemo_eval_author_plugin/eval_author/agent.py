@@ -23,7 +23,6 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -460,6 +459,13 @@ class EvalAuthor(Agent):
                 total=len(trials),
                 unit="trace",
             )
+
+        async def load_trace(reference: ResourceRef) -> TraceExplorer:
+            """Resolve a trace ref with this run's client, matching the Experimentalist's
+            `ctx.load_trace`: the analyzer takes a loader rather than a platform client,
+            so its signature names no platform type."""
+            return await TraceExplorer.from_ref(reference, client, insight.workspace)
+
         raw_diagnostics: list[Diagnostic | BaseException] = list(
             await asyncio.gather(
                 *[
@@ -468,8 +474,7 @@ class EvalAuthor(Agent):
                         task=task,
                         agent_path=resolved_agent,
                         insight=insight,
-                        client=client,
-                        workspace=insight.workspace,
+                        load_trace=load_trace,
                     )
                     for analyzer, trial, task in zip(analyzers, trials, tasks, strict=True)
                 ],
@@ -486,7 +491,6 @@ class EvalAuthor(Agent):
                     reporter.note(f"trace analysis failed for {ref}: {result}")
                 analysis_statuses[task.id] = ("failed", str(result))
                 continue
-            cache.store(self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result)
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)

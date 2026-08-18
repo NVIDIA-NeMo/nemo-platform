@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Discover the Standalone Evaluator SDK Surface
 
 Find the local standalone Evaluator SDK workflow for running a tiny exact-match evaluation.

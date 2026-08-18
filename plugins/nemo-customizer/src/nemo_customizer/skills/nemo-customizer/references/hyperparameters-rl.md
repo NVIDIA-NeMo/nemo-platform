@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- NeMo-RL (DPO) job JSON reference. Index + source-of-truth: `hyperparameters.md`. Preference dataset formats: `dataset-formats.md` § NeMo-RL. -->
 
 # NeMo-RL (DPO) job JSON

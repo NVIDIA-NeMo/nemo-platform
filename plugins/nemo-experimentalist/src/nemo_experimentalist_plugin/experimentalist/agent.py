@@ -1,32 +1,43 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experimentalist agent factory."""
+"""Resolve the configured optimization strategy."""
 
 from pathlib import Path
 
-from nemo_experimentalist_plugin.experimentalist.components.loop import (
-    EvolutionaryOptimizer,
-    EvolutionaryOptimizerConfig,
-)
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.registry import get_component
+from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 
 
 def build_experimentalist_agent(
     working_dir: Path,
     config: EvolutionaryOptimizerConfig | None = None,
     framework_skills_dirs: list[Path] | None = None,
-) -> EvolutionaryOptimizer:
-    """Build and return a configured :class:`EvolutionaryOptimizer`.
+) -> Strategy:
+    """Resolve ``config.strategy`` by name and construct it.
+
+    Nothing here names a strategy class. Ours is registered and looked up exactly the way
+    one from another package is, so pointing ``strategy:`` at a ``pip install``ed
+    implementation needs no change in this repository.
 
     Args:
-        working_dir: Local temp directory hydrated from the agent's fileset
-            before the run starts. The optimizer reads/writes all intermediate
-            artifacts here.
-        config: Optional optimizer config. When None the optimizer uses its
-            built-in defaults.
-        framework_skills_dirs: Optional list of directories containing framework
-            skills to load into all optimizer agents.
+        working_dir: Working directory for the run. The runner copies the agent under
+            test into it before the strategy starts, and the strategy reads and writes
+            its intermediate artifacts there.
+        config: Run configuration. When None the defaults select the evolutionary loop.
+        framework_skills_dirs: Directories of framework skills to load into the
+            strategy's agents.
+
+    Raises:
+        LookupError: if no strategy is registered under ``config.strategy`` — naming one
+            that is not installed fails here, before the run spends anything.
     """
-    return EvolutionaryOptimizer(
-        working_dir=working_dir, config=config, framework_skills_dirs=framework_skills_dirs or []
+    resolved = config or EvolutionaryOptimizerConfig()
+    return get_component(
+        "strategy",
+        resolved.strategy,
+        working_dir=working_dir,
+        config=resolved,
+        framework_skills_dirs=framework_skills_dirs or [],
     )

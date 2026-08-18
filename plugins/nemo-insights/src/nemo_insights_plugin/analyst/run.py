@@ -67,7 +67,7 @@ async def run_analyst(
         insights_output: Optional local YAML path. Receives a mirror of the
             insights the platform stored, or the only copy under *local_only*.
         local_only: Skip the platform and persist insights to *insights_output*
-            alone. Reserved for the insights testbed — no CLI flag sets it.
+            alone. Reserved for the insights evaluation — no CLI flag sets it.
             Requires *insights_output*.
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.

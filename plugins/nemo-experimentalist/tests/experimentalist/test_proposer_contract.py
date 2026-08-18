@@ -3,7 +3,7 @@
 
 """Pin the half of type reuse that lives in the prompt rather than the validator.
 
-`Proposer._run_with_context` is a CodeAct prompt, so its docstring is the
+`CodeChangeProposer._run_with_context` is a CodeAct prompt, so its docstring is the
 instruction the model follows. `_filter_improvements` accepting a repeated
 `optimization_type` only stops the run from dying on one; if the prompt still
 requires every type to be untried, the model never proposes one and the
@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import inspect
 
-from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
+from nemo_experimentalist_plugin.experimentalist.components.proposer import CodeChangeProposer
 
 
 def _proposal_contract() -> str:
     """The prompt with whitespace collapsed, so assertions do not hinge on where it wraps."""
-    doc = inspect.getdoc(Proposer._run_with_context)
-    assert doc is not None, "Proposer._run_with_context must keep its docstring; it is the prompt"
+    doc = inspect.getdoc(CodeChangeProposer._run_with_context)
+    assert doc is not None, "CodeChangeProposer._run_with_context must keep its docstring; it is the prompt"
     return " ".join(doc.lower().split())
 
 

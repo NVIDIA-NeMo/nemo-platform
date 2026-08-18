@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 description: Resolves `reviewme_` tags in the @sdk/openapi.stainless.yaml file
 argument-hint: [additional instructions (optional)]
 ---

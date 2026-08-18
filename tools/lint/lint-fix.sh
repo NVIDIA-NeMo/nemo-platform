@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 # Run all auto-fix commands in dependency order:
 #   1. OpenAPI spec regeneration (other steps depend on this)

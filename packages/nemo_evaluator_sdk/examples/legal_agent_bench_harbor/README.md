@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # legal_agent_bench_harbor — run Harvey Labs' LAB through the SDK's Harbor runner
 
 Run the public [Legal Agent Benchmark (LAB)](https://github.com/harveyai/harvey-labs) as a

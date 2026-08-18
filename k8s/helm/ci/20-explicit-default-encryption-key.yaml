@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Test explicit secrets.defaultEncryptionKey.value: render the chart-managed API env Secret
 # with a user-provided base64 key instead of the pre-install key generation hook.
 # CI validates by running: helm template nemo-platform . -f ci/20-explicit-default-encryption-key.yaml

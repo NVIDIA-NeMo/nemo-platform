@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Batch sizing
 
 VRAM tables, multi-GPU rules, and throughput tuning for **automodel** and **unsloth** on ≥48 GB GPUs. Field glossary and full JSON templates live in `hyperparameters.md`; the skill workflow lives in `SKILL.md`.

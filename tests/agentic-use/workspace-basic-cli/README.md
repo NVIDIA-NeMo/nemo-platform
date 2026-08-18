@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Workspace Basic CLI Test
 
 This Harbor test verifies that Claude Code can create and list workspaces using the `nemo` CLI.

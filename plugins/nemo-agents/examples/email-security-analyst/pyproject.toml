@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -8,7 +11,7 @@ version = "0.1.0"
 description = "NAT capability functions for the nemo-agents email-security-analyst example."
 requires-python = ">=3.11,<3.15"
 dependencies = [
-    "nvidia-nat-core>=1.8.0,<1.9",
+    "nvidia-nat-core>=1.9.0a20260811,<1.10",
 ]
 
 [project.entry-points."nat.components"]

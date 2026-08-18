@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-agent-config
 description: Author and validate Platform-managed NeMo Agents agent.yaml files using the nemo-agents-spec-v1 format. Use when the user wants to create, edit, validate, or adapt an agent.yaml file, choose a supported harness, add instructions, skills, MCP servers, tools, environment, or telemetry.
 triggers:

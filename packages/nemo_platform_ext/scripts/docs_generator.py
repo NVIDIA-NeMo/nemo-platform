@@ -13,6 +13,7 @@ This module provides a custom docs generator that:
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from functools import cache
 from importlib import import_module
 from types import ModuleType
@@ -20,6 +21,13 @@ from typing import Any
 
 import click
 import typer
+
+_CURRENT_YEAR = datetime.now().year
+_SPDX_FRONTMATTER = (
+    f"# SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} "
+    "NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
+    "# SPDX-License-Identifier: Apache-2.0\n"
+)
 
 
 def strip_rich_markup(text: str) -> str:
@@ -315,7 +323,7 @@ def generate_command_docs(
     # Header - use Fern MDX frontmatter for root, plain name for others
     # Markdown only supports up to 6 levels of headers, use bold for deeper nesting
     if is_root:
-        docs += '---\ntitle: "Full CLI Reference"\ndescription: ""\n---\n'
+        docs += f'---\n{_SPDX_FRONTMATTER}title: "Full CLI Reference"\ndescription: ""\n---\n'
     elif indent <= 6:
         docs += "#" * indent + f" {full_name}\n\n"
     else:
@@ -547,6 +555,7 @@ def generate_index_snippet(app: typer.Typer, name: str = "nemo") -> str:
 
     # Fern MDX frontmatter (snippet is included into other pages).
     lines.append("---")
+    lines.extend(_SPDX_FRONTMATTER.rstrip().splitlines())
     lines.append('title: ""')
     lines.append('description: ""')
     lines.append("---")

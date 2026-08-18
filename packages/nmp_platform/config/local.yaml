@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Local development for nemo services run (SQLite entity store, embedded auth).
 #
 #   set -a && source packages/nmp_platform/config/local.env && set +a
@@ -186,4 +189,4 @@ studio:
   static_files_path: web/packages/studio/dist
   sandbox_enabled: true
   feature_flags:
-    copilot_studio_enabled: true
+    assistant_studio_enabled: true

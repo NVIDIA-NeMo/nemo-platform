@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Example HTTP calls for the /v2/entities API:
 
 @base_url = http://localhost:8080

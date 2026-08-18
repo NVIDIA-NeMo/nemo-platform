@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Script: setup_local_minikube_gpu.sh
 # Description: Sets up a local minikube cluster with GPU support for e2e testing
 # Usage: ./setup_local_minikube_gpu.sh

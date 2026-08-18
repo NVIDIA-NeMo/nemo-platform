@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Data Designer Model Configuration (CLI)
 
 You have access to the `nemo` CLI for NeMo Platform operations. Your task is to configure model providers for use with Data Designer.

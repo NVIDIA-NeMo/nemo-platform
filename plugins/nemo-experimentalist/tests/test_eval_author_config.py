@@ -5,7 +5,7 @@
 
 import pytest
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 
 
 def test_evolutionary_optimizer_uses_top_level_eval_author_config() -> None:

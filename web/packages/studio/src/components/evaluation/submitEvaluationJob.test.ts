@@ -6,6 +6,8 @@ import {
   buildAgentEvalRequestBody,
   buildAgentTarget,
   buildDatasetAgentTarget,
+  buildDatasetEvalRequestBody,
+  type DatasetEvalSpec,
   buildEvalJobName,
   buildPersistedSpec,
   injectJudgeModel,
@@ -142,6 +144,63 @@ describe('buildAgentEvalRequestBody', () => {
     const body = buildAgentEvalRequestBody(persisted(), { workspace: 'ws-a', agent: 'a' });
     expect(body.spec.labels).toBeUndefined();
     expect(body.name).toBeUndefined();
+  });
+
+  it('names the job after the experiment, falling back to the fileset', () => {
+    const withExperiment = buildAgentEvalRequestBody(persisted(), {
+      workspace: 'ws-a',
+      agent: 'a',
+      filesetName: 'wise-blue-data',
+      experimentName: 'wise-blue',
+    });
+    expect(withExperiment.name).toMatch(/^wise-blue-[a-z0-9]{8}$/);
+
+    const filesetOnly = buildAgentEvalRequestBody(persisted(), {
+      workspace: 'ws-a',
+      agent: 'a',
+      filesetName: 'wise-blue-data',
+    });
+    expect(filesetOnly.name).toMatch(/^wise-blue-data-[a-z0-9]{8}$/);
+  });
+
+  it('publishes to the named evaluation when one is selected', () => {
+    const body = buildAgentEvalRequestBody(persisted(), {
+      workspace: 'ws-a',
+      agent: 'a',
+      evaluationId: 'nightly-eval-a3f2',
+    });
+    // agent_name is omitted deliberately: the backend derives it from the agent target.
+    expect(body.spec.publication).toEqual({ intake: { evaluation_id: 'nightly-eval-a3f2' } });
+  });
+
+  it('omits publication entirely when no evaluation is selected', () => {
+    const body = buildAgentEvalRequestBody(persisted(), { workspace: 'ws-a', agent: 'a' });
+    expect(body.spec.publication).toBeUndefined();
+    expect('publication' in body.spec).toBe(false);
+  });
+});
+
+describe('buildDatasetEvalRequestBody', () => {
+  const datasetConfig: DatasetEvalSpec = {
+    dataset: [{ prompt: '2+2?' }],
+    metrics: [metric],
+    prompt_template: '{{item.prompt}}',
+  };
+
+  it('carries publication through the dataset path too, and omits it otherwise', () => {
+    const withPublication = buildDatasetEvalRequestBody(
+      datasetConfig,
+      { workspace: 'ws-a', agent: 'a', evaluationId: 'eval-1' },
+      null
+    );
+    expect(withPublication.spec.publication).toEqual({ intake: { evaluation_id: 'eval-1' } });
+
+    const without = buildDatasetEvalRequestBody(
+      datasetConfig,
+      { workspace: 'ws-a', agent: 'a' },
+      null
+    );
+    expect(without.spec.publication).toBeUndefined();
   });
 });
 
