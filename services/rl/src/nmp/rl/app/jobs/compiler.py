@@ -242,6 +242,8 @@ def _build_dpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code:
             epochs=t.epochs,
             max_steps=t.max_steps,
             val_check_interval=t.val_check_interval,
+            # DPO validation is a logprob pass with no generation, so dpo_config always
+            # runs it at step 0. The knob is GRPO-only, where a baseline costs a rollout pass.
             val_at_end=t.val_at_end,
             keep_top_k=t.keep_top_k,
             progress_reporting=t.progress_reporting,
@@ -347,6 +349,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             epochs=t.epochs,
             max_steps=t.max_steps,
             val_check_interval=t.val_check_interval,
+            val_at_start=t.val_at_start,
             val_at_end=t.val_at_end,
             keep_top_k=t.keep_top_k,
         ),

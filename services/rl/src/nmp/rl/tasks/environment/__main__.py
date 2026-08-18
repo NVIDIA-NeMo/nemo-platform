@@ -34,7 +34,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "Invoke via: uv run --package nmp-rl pi-to-gym-conversion ..."
         ),
     )
-    parser.add_argument("--hub-id", required=True, help="Hub slug, e.g. primeintellect/ascii-tree")
+    # Not required: --validate-only checks a package that already exists on disk and never
+    # touches the hub, so demanding a hub slug there would be a lie. main() enforces both
+    # for the conversion path instead.
+    parser.add_argument("--hub-id", help="Hub slug, e.g. primeintellect/ascii-tree")
     parser.add_argument(
         "--hub-version",
         default=None,
@@ -48,7 +51,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        required=True,
         help="Output directory for environment package (nemo-environment.yaml + wheels + configs)",
     )
     parser.add_argument(
@@ -113,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
         validate_package_layout(root, manifest)
         print(json.dumps({"valid": True, "format": manifest.format, "name": manifest.metadata.name}))
         return 0
+
+    missing = [name for name, value in (("--hub-id", args.hub_id), ("--out-dir", args.out_dir)) if value is None]
+    if missing:
+        parser.error(f"the following arguments are required for conversion: {', '.join(missing)}")
 
     vf_env_args = json.loads(args.vf_env_args)
     spec = ConvertEnvironmentSpec(
