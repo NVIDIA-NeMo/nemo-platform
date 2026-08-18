@@ -84,6 +84,17 @@ def test_create_preserves_arbitrary_input_fields(client: TestClient) -> None:
     assert response.json()["spec"]["inputs"]["gym_row"] == gym_row
 
 
+def test_create_preserves_structured_metadata_value(client: TestClient) -> None:
+    body = _body()
+    extras = {"expected": "B", "scores": [1.0, None], "verified": True}
+    body["metadata"] = [{"key": "gym_row_extras", "value": extras}]
+
+    response = client.post(f"{_BASE}/task-1", json=body)
+
+    assert response.status_code == 201
+    assert response.json()["metadata"] == [{"key": "gym_row_extras", "value": extras}]
+
+
 def test_create_rejects_duplicate_metadata_keys(client: TestClient) -> None:
     # metadata is a key→value map as a list; duplicate keys are a 422, not a silent last-wins collapse.
     body = _body()

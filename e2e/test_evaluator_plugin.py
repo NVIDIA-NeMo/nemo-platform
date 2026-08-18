@@ -767,11 +767,7 @@ def _gym_task_payloads(limit: int) -> list[dict[str, object]]:
             "inputs": task.inputs or {},
             "reference": task.reference or {},
             "metrics": [bundled_reward],
-            "metadata": [
-                {"key": key, "value": value if isinstance(value, str) else json.dumps(value)}
-                for key, value in (task.metadata or {}).items()
-                if value is not None
-            ],
+            "metadata": [{"key": key, "value": value} for key, value in (task.metadata or {}).items()],
         }
         for task in tasks
     ]

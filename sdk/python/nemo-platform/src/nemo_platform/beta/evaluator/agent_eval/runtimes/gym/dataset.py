@@ -10,20 +10,20 @@ two directions of one translation: what breaks one silently breaks the other.
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import logging
-from typing import Any
-from pathlib import Path
 from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
 
-from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask
 from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.records import (
     _RUNTIME_KEYS,
     NG_TASK_INDEX,
     _read_jsonl,
 )
 from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.results import GymRewardMetric
+from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask
 
 logger = logging.getLogger(__name__)
 
@@ -208,21 +208,6 @@ def _source_datasets(tasks: Sequence[AgentEvalTask]) -> str:
     return ", ".join(sorted(stamped)) if stamped else "<tasks with no stamped dataset path>"
 
 
-def _coerce_gym_metadata_mapping(value: Any) -> Mapping[str, Any] | None:
-    """Normalize a ``gym_row_extras`` metadata value to a mapping, or ``None``.
-
-    In-process (:func:`discover_gym_tasks`) writes these as plain dicts. A task that has
-    round-tripped through a submitted job spec carries them as JSON strings instead — wire
-    metadata values are typed as ``str``.
-    """
-    if isinstance(value, Mapping):
-        return value
-    if isinstance(value, str):
-        decoded = json.loads(value)
-        return decoded if isinstance(decoded, Mapping) else None
-    return None
-
-
 def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int, str]:
     """Write the normalized dataset Gym will read, and return its ``_ng_task_index`` → task-id map.
 
@@ -232,10 +217,9 @@ def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int
 
     The row is reassembled from ``inputs['gym_row']`` (``responses_create_params``) and
     ``metadata['gym_row_extras']`` (everything else), which :func:`discover_gym_tasks` writes as
-    plain dicts in-process. A task that has round-tripped through a submitted job spec carries the
-    metadata value as a JSON-encoded string, so both shapes are accepted for the extras. Any
-    pre-existing ``_ng_*`` fields are stripped: ours is
-    authoritative, and Gym assigns ``_ng_rollout_index`` itself per attempt.
+    a plain dict that remains structured through submitted job specs. Any pre-existing ``_ng_*``
+    fields are stripped: ours is authoritative, and Gym assigns ``_ng_rollout_index`` itself per
+    attempt.
     """
     index_to_task_id: dict[int, str] = {}
     seen_task_ids: set[str] = set()
@@ -243,9 +227,9 @@ def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int
     for index, task in enumerate(tasks):
         # The source row is split across inputs and metadata so the run bundle doesn't persist
         # responses_create_params twice; reassemble it here.
-        extras = _coerce_gym_metadata_mapping(task.metadata.get("gym_row_extras"))
+        extras = task.metadata.get("gym_row_extras")
         params = task.inputs.get("gym_row")
-        if extras is None or not isinstance(params, Mapping):
+        if not isinstance(extras, Mapping) or not isinstance(params, Mapping):
             raise ValueError(
                 f"task {task.id!r} is missing inputs['gym_row'] and/or metadata['gym_row_extras']; build tasks "
                 "with discover_gym_tasks so the Gym dataset can be re-materialized for the run"

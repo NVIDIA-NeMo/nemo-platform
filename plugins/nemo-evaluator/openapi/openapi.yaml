@@ -4166,9 +4166,9 @@ components:
           title: Key
           description: Annotation key.
         value:
-          type: string
-          title: Value
-          description: Annotation value.
+          allOf:
+          - $ref: '#/components/schemas/JsonValue'
+          description: JSON-serializable annotation value.
       additionalProperties: false
       type: object
       required:

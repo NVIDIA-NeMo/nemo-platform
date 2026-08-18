@@ -16,6 +16,7 @@ import json
 import re
 from typing import Any
 
+import pytest
 from nemo_evaluator.api.schemas import (
     EvaluatorTaskDefinition,
     HarborTaskDefinition,
@@ -28,6 +29,7 @@ from nemo_evaluator.content_hash import DIGEST_PATTERN, canonical_payload, conte
 from nemo_evaluator.entities import TaskEntity, TasksetEntity
 from nemo_evaluator.revisions import head_digest
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticReducer, SemanticView, ViewSignal
+from pydantic import ValidationError
 
 _DEFAULT_VIEWS = {
     "correctness": SemanticView(
@@ -200,6 +202,11 @@ def test_empty_and_populated_metadata_value_differ() -> None:
     a = _task(metadata=[MetadataItem(key="suite", value="smoke")])
     b = _task(metadata=[MetadataItem(key="suite", value="")])
     assert content_hash(a) != content_hash(b)
+
+
+def test_metadata_rejects_non_json_value() -> None:
+    with pytest.raises(ValidationError):
+        MetadataItem.model_validate({"key": "invalid", "value": object()})
 
 
 def test_absent_field_collapses_onto_its_default() -> None:

@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TasksetRef
+from nemo_evaluator.api.schemas import MetadataItem, MetricInline, TaskInputs, TasksetRef
 from nemo_evaluator.jobs.agent_evaluate import (
     AGENT_BUNDLE_DIR,
     DEFAULT_RESULT_NAME,
@@ -175,6 +175,7 @@ async def test_reference_round_trips_from_input_spec_to_runtime_task() -> None:
 
 async def test_arbitrary_inputs_round_trip_from_input_spec_to_runtime_task() -> None:
     gym_row = {"input": [{"role": "user", "content": "Choose A"}], "temperature": 0.2}
+    gym_row_extras = {"expected": "A", "scores": [1.0, None], "verified": True}
     input_spec = AgentEvalInputSpec(
         tasks=[
             AgentEvalTaskInput(
@@ -182,6 +183,7 @@ async def test_arbitrary_inputs_round_trip_from_input_spec_to_runtime_task() -> 
                 intent="Run a Gym task.",
                 inputs=TaskInputs.model_validate({"gym_row": gym_row}),
                 metrics=[_inline_metric()],
+                metadata=[MetadataItem(key="gym_row_extras", value=gym_row_extras)],
             )
         ],
         target=GymRunnerTarget(
@@ -195,7 +197,9 @@ async def test_arbitrary_inputs_round_trip_from_input_spec_to_runtime_task() -> 
 
     assert isinstance(spec, AgentEvalSpec)
     assert spec.tasks[0].inputs.model_dump(exclude_none=True)["gym_row"] == gym_row
-    assert _to_runtime_task(spec.tasks[0]).inputs["gym_row"] == gym_row
+    runtime_task = _to_runtime_task(spec.tasks[0])
+    assert runtime_task.inputs["gym_row"] == gym_row
+    assert runtime_task.metadata["gym_row_extras"] == gym_row_extras
 
 
 def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, mocker: MockerFixture) -> None:
