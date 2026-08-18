@@ -49,9 +49,18 @@ def create_experiments(
     description: Annotated[
         str | None, typer.Option("--description", help="Human-readable purpose of the experiment.")
     ] = None,
+    evaluate_over_time: Annotated[
+        bool | None,
+        typer.Option(
+            "--evaluate-over-time", help="Whether this Experiment should display Evaluation results over time."
+        ),
+    ] = None,
     insight_id: Annotated[
         str | None,
         typer.Option("--insight-id", help="Reference to an external insight that seeded this experiment, if any."),
+    ] = None,
+    is_favorite: Annotated[
+        bool | None, typer.Option("--is-favorite", help="Whether this Experiment is marked as a favorite.")
     ] = None,
     metadata: Annotated[
         str | None, typer.Option("--metadata", help="Free-form producer metadata for the experiment. (JSON string)")
@@ -107,8 +116,12 @@ def create_experiments(
         input_payload["default_sort"] = default_sort
     if description is not None:
         input_payload["description"] = description
+    if evaluate_over_time is not None:
+        input_payload["evaluate_over_time"] = evaluate_over_time
     if insight_id is not None:
         input_payload["insight_id"] = insight_id
+    if is_favorite is not None:
+        input_payload["is_favorite"] = is_favorite
     if metadata is not None:
         input_payload["metadata"] = read_payload("metadata", metadata)
     if pareto is not None:
@@ -177,15 +190,24 @@ def list_experiments(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  metadata: dict[str, str]\n\nFilter experiments by name, insight_id, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  metadata: dict[str, str]\n\nFilter experiments by name, insight_id, is_favorite, evaluate_over_time, baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.",
             rich_help_panel="Filter Options",
         ),
+    ] = None,
+    filter_baseline_evaluation_name: Annotated[
+        str | None, typer.Option("--filter.baseline-evaluation-name", rich_help_panel="Filter Options")
+    ] = None,
+    filter_evaluate_over_time: Annotated[
+        bool | None, typer.Option("--filter.evaluate-over-time", rich_help_panel="Filter Options")
     ] = None,
     filter_insight_id: Annotated[
         str | None, typer.Option("--filter.insight-id", rich_help_panel="Filter Options")
     ] = None,
     filter_is_deleted: Annotated[
         bool | None, typer.Option("--filter.is-deleted", rich_help_panel="Filter Options")
+    ] = None,
+    filter_is_favorite: Annotated[
+        bool | None, typer.Option("--filter.is-favorite", rich_help_panel="Filter Options")
     ] = None,
     filter_name: Annotated[str | None, typer.Option("--filter.name", rich_help_panel="Filter Options")] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
@@ -217,7 +239,15 @@ def list_experiments(
 
     kwargs = build_kwargs(
         workspace=workspace,
-        filter=merge_filter_dict(filter, insight_id=filter_insight_id, is_deleted=filter_is_deleted, name=filter_name),
+        filter=merge_filter_dict(
+            filter,
+            baseline_evaluation_name=filter_baseline_evaluation_name,
+            evaluate_over_time=filter_evaluate_over_time,
+            insight_id=filter_insight_id,
+            is_deleted=filter_is_deleted,
+            is_favorite=filter_is_favorite,
+            name=filter_name,
+        ),
         page=page,
         page_size=page_size,
         sort=sort,
@@ -293,6 +323,13 @@ def update_experiments(
     body_name: Annotated[
         str | None, typer.Option("--body-name", help="Workspace-unique experiment name. (required)")
     ] = None,
+    baseline_evaluation_name: Annotated[
+        str | None,
+        typer.Option(
+            "--baseline-evaluation-name",
+            help="Name of this Experiment's baseline Evaluation. The Evaluation must already be a live member of the Experiment. Set null to clear the selected baseline.",
+        ),
+    ] = None,
     default_sort: Annotated[
         str | None,
         typer.Option(
@@ -303,9 +340,18 @@ def update_experiments(
     description: Annotated[
         str | None, typer.Option("--description", help="Human-readable purpose of the experiment.")
     ] = None,
+    evaluate_over_time: Annotated[
+        bool | None,
+        typer.Option(
+            "--evaluate-over-time", help="Whether this Experiment should display Evaluation results over time."
+        ),
+    ] = None,
     insight_id: Annotated[
         str | None,
         typer.Option("--insight-id", help="Reference to an external insight that seeded this experiment, if any."),
+    ] = None,
+    is_favorite: Annotated[
+        bool | None, typer.Option("--is-favorite", help="Whether this Experiment is marked as a favorite.")
     ] = None,
     metadata: Annotated[
         str | None, typer.Option("--metadata", help="Free-form producer metadata for the experiment. (JSON string)")
@@ -351,12 +397,18 @@ def update_experiments(
         input_payload["workspace"] = workspace
     if body_name is not None:
         input_payload["body_name"] = body_name
+    if baseline_evaluation_name is not None:
+        input_payload["baseline_evaluation_name"] = baseline_evaluation_name
     if default_sort is not None:
         input_payload["default_sort"] = default_sort
     if description is not None:
         input_payload["description"] = description
+    if evaluate_over_time is not None:
+        input_payload["evaluate_over_time"] = evaluate_over_time
     if insight_id is not None:
         input_payload["insight_id"] = insight_id
+    if is_favorite is not None:
+        input_payload["is_favorite"] = is_favorite
     if metadata is not None:
         input_payload["metadata"] = read_payload("metadata", metadata)
     if pareto is not None:

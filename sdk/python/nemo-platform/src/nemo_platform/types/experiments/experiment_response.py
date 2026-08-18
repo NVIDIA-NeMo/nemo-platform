@@ -35,14 +35,23 @@ class ExperimentResponse(BaseModel):
 
     workspace: str
 
+    baseline_evaluation_name: Optional[str] = None
+    """Name of this Experiment's selected baseline Evaluation, if any."""
+
     created_at: Optional[datetime] = None
 
     description: Optional[str] = None
+
+    evaluate_over_time: Optional[bool] = None
+    """Whether this Experiment should display Evaluation results over time."""
 
     evaluation_count: Optional[int] = None
     """Number of live (non-soft-deleted) evaluations in this experiment."""
 
     insight_id: Optional[str] = None
+
+    is_favorite: Optional[bool] = None
+    """Whether this Experiment is marked as a favorite."""
 
     metadata: Optional[Dict[str, str]] = None
 

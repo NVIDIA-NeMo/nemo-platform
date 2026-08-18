@@ -104,6 +104,50 @@ def test_experiment_group_update_description(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
+def test_experiment_flags_round_trip_and_preserve_omitted_values(client: TestClient) -> None:
+    created = client.post(
+        EXPERIMENTS,
+        json={"name": "flagged-experiment", "is_favorite": True, "evaluate_over_time": True},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["is_favorite"] is True
+    assert created.json()["evaluate_over_time"] is True
+
+    # Older clients do not know about these fields. Omitting them from a full update must not clear
+    # values that were written by a newer client.
+    updated = client.put(
+        f"{EXPERIMENTS}/flagged-experiment",
+        json={"name": "flagged-experiment", "description": "updated by an older client"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["is_favorite"] is True
+    assert updated.json()["evaluate_over_time"] is True
+
+    cleared = client.put(
+        f"{EXPERIMENTS}/flagged-experiment",
+        json={"name": "flagged-experiment", "is_favorite": False, "evaluate_over_time": False},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["is_favorite"] is False
+    assert cleared.json()["evaluate_over_time"] is False
+
+
+def test_filter_experiments_by_new_flags(client: TestClient) -> None:
+    assert client.post(EXPERIMENTS, json={"name": "flagged", "is_favorite": True}).status_code == 201
+    assert client.post(EXPERIMENTS, json={"name": "timeline", "evaluate_over_time": True}).status_code == 201
+    assert client.post(EXPERIMENTS, json={"name": "plain"}).status_code == 201
+
+    favorites = client.get(EXPERIMENTS, params={"filter[is_favorite]": "true"})
+    assert favorites.status_code == 200, favorites.text
+    assert {item["name"] for item in favorites.json()["data"]} == {"flagged"}
+
+    not_timeline = client.get(EXPERIMENTS, params={"filter[evaluate_over_time]": "false"})
+    assert not_timeline.status_code == 200, not_timeline.text
+    names = {item["name"] for item in not_timeline.json()["data"]}
+    assert "plain" in names
+    assert "timeline" not in names
+
+
 def test_experiment_group_pareto_defaults_and_round_trips(client: TestClient) -> None:
     # Omitting pareto defaults to cost (x) vs latency (y), so the chart always has something to render.
     created = client.post(EXPERIMENTS, json={"name": "pareto-cfg"})
@@ -191,6 +235,133 @@ def test_evaluation_crud_and_empty_rollups(client: TestClient) -> None:
     assert exp["agent_versions"] == []
     assert exp["aggregate_scores"] is None
     assert exp["run_count"] == 0
+
+
+def test_experiment_selects_one_baseline_evaluation(client: TestClient) -> None:
+    experiment = client.post(EXPERIMENTS, json={"name": "baseline-experiment"}).json()
+    first = client.post(
+        EVALUATIONS,
+        json=_evaluation_body(name="first-baseline", experiment_group_id=experiment["id"]),
+    ).json()
+    second = client.post(
+        EVALUATIONS,
+        json=_evaluation_body(name="second-baseline", experiment_group_id=experiment["id"]),
+    ).json()
+
+    selected = client.put(
+        f"{EXPERIMENTS}/baseline-experiment",
+        json={"name": "baseline-experiment", "baseline_evaluation_name": first["name"]},
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["baseline_evaluation_name"] == first["name"]
+
+    # Replacing the pointer leaves only one selected baseline by construction.
+    replaced = client.put(
+        f"{EXPERIMENTS}/baseline-experiment",
+        json={"name": "baseline-experiment", "baseline_evaluation_name": second["name"]},
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["baseline_evaluation_name"] == second["name"]
+
+
+def test_shared_evaluation_can_be_baseline_for_a_subset_of_experiments(client: TestClient) -> None:
+    experiment_a = client.post(EXPERIMENTS, json={"name": "baseline-a"}).json()
+    experiment_b = client.post(EXPERIMENTS, json={"name": "baseline-b"}).json()
+    body = _evaluation_body(name="shared-baseline", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = [experiment_a["id"], experiment_b["id"]]
+    evaluation = client.post(EVALUATIONS, json=body).json()
+
+    selected = client.put(
+        f"{EXPERIMENTS}/baseline-a",
+        json={"name": "baseline-a", "baseline_evaluation_name": evaluation["name"]},
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["baseline_evaluation_name"] == evaluation["name"]
+    assert client.get(f"{EXPERIMENTS}/baseline-b").json()["baseline_evaluation_name"] is None
+
+    also_selected = client.put(
+        f"{EXPERIMENTS}/baseline-b",
+        json={"name": "baseline-b", "baseline_evaluation_name": evaluation["name"]},
+    )
+    assert also_selected.status_code == 200, also_selected.text
+    assert also_selected.json()["baseline_evaluation_name"] == evaluation["name"]
+
+
+def test_experiment_rejects_invalid_baseline_evaluation(client: TestClient) -> None:
+    on_create = client.post(
+        EXPERIMENTS,
+        json={"name": "baseline-too-early", "baseline_evaluation_name": "evaluation-nope"},
+    )
+    assert on_create.status_code == 422, on_create.text
+
+    experiment = client.post(EXPERIMENTS, json={"name": "baseline-owner"}).json()
+    other = client.post(EXPERIMENTS, json={"name": "baseline-other"}).json()
+    non_member = client.post(
+        EVALUATIONS,
+        json=_evaluation_body(name="non-member", experiment_group_id=other["id"]),
+    ).json()
+
+    missing = client.put(
+        f"{EXPERIMENTS}/baseline-owner",
+        json={"name": "baseline-owner", "baseline_evaluation_name": "evaluation-nope"},
+    )
+    assert missing.status_code == 400, missing.text
+
+    wrong_experiment = client.put(
+        f"{EXPERIMENTS}/baseline-owner",
+        json={"name": "baseline-owner", "baseline_evaluation_name": non_member["name"]},
+    )
+    assert wrong_experiment.status_code == 400, wrong_experiment.text
+    assert experiment["baseline_evaluation_name"] is None
+
+
+def test_baseline_reference_blocks_membership_removal_and_deletion(client: TestClient) -> None:
+    experiment = client.post(EXPERIMENTS, json={"name": "protected-baseline"}).json()
+    other = client.post(EXPERIMENTS, json={"name": "protected-other"}).json()
+    body = _evaluation_body(name="protected-evaluation", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = [experiment["id"], other["id"]]
+    evaluation = client.post(EVALUATIONS, json=body).json()
+    selected = client.put(
+        f"{EXPERIMENTS}/protected-baseline",
+        json={"name": "protected-baseline", "baseline_evaluation_name": evaluation["name"]},
+    )
+    assert selected.status_code == 200, selected.text
+
+    removed = client.patch(
+        f"{EVALUATIONS}/protected-evaluation",
+        json={"experiment_ids": [other["id"]]},
+    )
+    assert removed.status_code == 409, removed.text
+    assert client.delete(f"{EVALUATIONS}/protected-evaluation").status_code == 409
+
+    cleared = client.put(
+        f"{EXPERIMENTS}/protected-baseline",
+        json={"name": "protected-baseline", "baseline_evaluation_name": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["baseline_evaluation_name"] is None
+    assert client.delete(f"{EVALUATIONS}/protected-evaluation").status_code == 204
+
+
+def test_filter_experiments_by_baseline_evaluation_name(client: TestClient) -> None:
+    experiment = client.post(EXPERIMENTS, json={"name": "filter-baseline"}).json()
+    evaluation = client.post(
+        EVALUATIONS,
+        json=_evaluation_body(name="filter-baseline-evaluation", experiment_group_id=experiment["id"]),
+    ).json()
+    assert (
+        client.put(
+            f"{EXPERIMENTS}/filter-baseline",
+            json={"name": "filter-baseline", "baseline_evaluation_name": evaluation["name"]},
+        ).status_code
+        == 200
+    )
+
+    filtered = client.get(EXPERIMENTS, params={"filter[baseline_evaluation_name]": evaluation["name"]})
+    assert filtered.status_code == 200, filtered.text
+    assert {item["name"] for item in filtered.json()["data"]} == {"filter-baseline"}
 
 
 def test_evaluation_read_degrades_when_rollup_hydration_fails(client: TestClient) -> None:

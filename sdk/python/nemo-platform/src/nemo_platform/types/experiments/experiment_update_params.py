@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 from typing_extensions import Required, Annotated, TypedDict
 
 from ..._utils import PropertyInfo
@@ -32,6 +32,13 @@ class ExperimentUpdateParams(TypedDict, total=False):
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
     """Workspace-unique experiment name."""
 
+    baseline_evaluation_name: Optional[str]
+    """Name of this Experiment's baseline Evaluation.
+
+    The Evaluation must already be a live member of the Experiment. Set null to
+    clear the selected baseline.
+    """
+
     default_sort: str
     """
     Default sort for this experiment's evaluations list, as a `sort`-param string: a
@@ -45,8 +52,14 @@ class ExperimentUpdateParams(TypedDict, total=False):
     description: str
     """Human-readable purpose of the experiment."""
 
+    evaluate_over_time: bool
+    """Whether this Experiment should display Evaluation results over time."""
+
     insight_id: str
     """Reference to an external insight that seeded this experiment, if any."""
+
+    is_favorite: bool
+    """Whether this Experiment is marked as a favorite."""
 
     metadata: Dict[str, str]
     """Free-form producer metadata for the experiment."""

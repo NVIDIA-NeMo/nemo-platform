@@ -113,6 +113,18 @@ Methods:
 
 - <code title="post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions">client.intake.ingest.chat_completions.<a href="./src/nemo_platform/resources/intake/ingest/chat_completions.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/ingest/chat_completion_create_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/ingest/chat_completions_ingest_response.py">ChatCompletionsIngestResponse</a></code>
 
+### Spans
+
+Types:
+
+```python
+from nemo_platform.types.intake.ingest import DirectSpanInput, DirectSpansIngestParam, JsonValue
+```
+
+Methods:
+
+- <code title="post /apis/intake/v2/workspaces/{workspace}/ingest/spans">client.intake.ingest.spans.<a href="./src/nemo_platform/resources/intake/ingest/spans.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/ingest/span_create_params.py">params</a>) -> None</code>
+
 ### Otlp
 
 #### V1

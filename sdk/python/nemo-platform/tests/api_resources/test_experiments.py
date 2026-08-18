@@ -52,7 +52,9 @@ class TestExperiments:
             name="name",
             default_sort="default_sort",
             description="description",
+            evaluate_over_time=True,
             insight_id="insight_id",
+            is_favorite=True,
             metadata={"foo": "string"},
             pareto={
                 "x_metric": "x_metric",
@@ -168,9 +170,12 @@ class TestExperiments:
             path_name="name",
             workspace="workspace",
             body_name="name",
+            baseline_evaluation_name="baseline_evaluation_name",
             default_sort="default_sort",
             description="description",
+            evaluate_over_time=True,
             insight_id="insight_id",
+            is_favorite=True,
             metadata={"foo": "string"},
             pareto={
                 "x_metric": "x_metric",
@@ -241,8 +246,11 @@ class TestExperiments:
         experiment = client.experiments.list(
             workspace="workspace",
             filter={
+                "baseline_evaluation_name": "baseline_evaluation_name",
+                "evaluate_over_time": True,
                 "insight_id": "insight_id",
                 "is_deleted": True,
+                "is_favorite": True,
                 "metadata": {"foo": "string"},
                 "name": "name",
             },
@@ -361,7 +369,9 @@ class TestAsyncExperiments:
             name="name",
             default_sort="default_sort",
             description="description",
+            evaluate_over_time=True,
             insight_id="insight_id",
+            is_favorite=True,
             metadata={"foo": "string"},
             pareto={
                 "x_metric": "x_metric",
@@ -477,9 +487,12 @@ class TestAsyncExperiments:
             path_name="name",
             workspace="workspace",
             body_name="name",
+            baseline_evaluation_name="baseline_evaluation_name",
             default_sort="default_sort",
             description="description",
+            evaluate_over_time=True,
             insight_id="insight_id",
+            is_favorite=True,
             metadata={"foo": "string"},
             pareto={
                 "x_metric": "x_metric",
@@ -550,8 +563,11 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.list(
             workspace="workspace",
             filter={
+                "baseline_evaluation_name": "baseline_evaluation_name",
+                "evaluate_over_time": True,
                 "insight_id": "insight_id",
                 "is_deleted": True,
+                "is_favorite": True,
                 "metadata": {"foo": "string"},
                 "name": "name",
             },

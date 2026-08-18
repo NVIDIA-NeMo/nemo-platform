@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 from typing_extensions import Literal
 
 import httpx
@@ -74,7 +74,9 @@ class ExperimentsResource(SyncAPIResource):
         name: str,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
+        evaluate_over_time: bool | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
@@ -101,7 +103,11 @@ class ExperimentsResource(SyncAPIResource):
 
           description: Human-readable purpose of the experiment.
 
+          evaluate_over_time: Whether this Experiment should display Evaluation results over time.
+
           insight_id: Reference to an external insight that seeded this experiment, if any.
+
+          is_favorite: Whether this Experiment is marked as a favorite.
 
           metadata: Free-form producer metadata for the experiment.
 
@@ -138,7 +144,9 @@ class ExperimentsResource(SyncAPIResource):
                         "name": name,
                         "default_sort": default_sort,
                         "description": description,
+                        "evaluate_over_time": evaluate_over_time,
                         "insight_id": insight_id,
+                        "is_favorite": is_favorite,
                         "metadata": metadata,
                         "pareto": pareto,
                         "summary": summary,
@@ -199,9 +207,12 @@ class ExperimentsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
+        baseline_evaluation_name: Optional[str] | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
+        evaluate_over_time: bool | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
@@ -218,6 +229,9 @@ class ExperimentsResource(SyncAPIResource):
         Args:
           body_name: Workspace-unique experiment name.
 
+          baseline_evaluation_name: Name of this Experiment's baseline Evaluation. The Evaluation must already be a
+              live member of the Experiment. Set null to clear the selected baseline.
+
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
@@ -227,7 +241,11 @@ class ExperimentsResource(SyncAPIResource):
 
           description: Human-readable purpose of the experiment.
 
+          evaluate_over_time: Whether this Experiment should display Evaluation results over time.
+
           insight_id: Reference to an external insight that seeded this experiment, if any.
+
+          is_favorite: Whether this Experiment is marked as a favorite.
 
           metadata: Free-form producer metadata for the experiment.
 
@@ -263,9 +281,12 @@ class ExperimentsResource(SyncAPIResource):
             body=maybe_transform(
                 {
                     "body_name": body_name,
+                    "baseline_evaluation_name": baseline_evaluation_name,
                     "default_sort": default_sort,
                     "description": description,
+                    "evaluate_over_time": evaluate_over_time,
                     "insight_id": insight_id,
+                    "is_favorite": is_favorite,
                     "metadata": metadata,
                     "pareto": pareto,
                     "summary": summary,
@@ -297,7 +318,8 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+          filter: Filter experiments by name, insight_id, is_favorite, evaluate_over_time,
+              baseline_evaluation_name, is_deleted, or a metadata key/value
               (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
               soft-deleted experiments; omit to see only live ones.
 
@@ -407,7 +429,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
         name: str,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
+        evaluate_over_time: bool | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
@@ -434,7 +458,11 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           description: Human-readable purpose of the experiment.
 
+          evaluate_over_time: Whether this Experiment should display Evaluation results over time.
+
           insight_id: Reference to an external insight that seeded this experiment, if any.
+
+          is_favorite: Whether this Experiment is marked as a favorite.
 
           metadata: Free-form producer metadata for the experiment.
 
@@ -471,7 +499,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
                         "name": name,
                         "default_sort": default_sort,
                         "description": description,
+                        "evaluate_over_time": evaluate_over_time,
                         "insight_id": insight_id,
+                        "is_favorite": is_favorite,
                         "metadata": metadata,
                         "pareto": pareto,
                         "summary": summary,
@@ -532,9 +562,12 @@ class AsyncExperimentsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
+        baseline_evaluation_name: Optional[str] | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
+        evaluate_over_time: bool | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
@@ -551,6 +584,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Args:
           body_name: Workspace-unique experiment name.
 
+          baseline_evaluation_name: Name of this Experiment's baseline Evaluation. The Evaluation must already be a
+              live member of the Experiment. Set null to clear the selected baseline.
+
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
@@ -560,7 +596,11 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           description: Human-readable purpose of the experiment.
 
+          evaluate_over_time: Whether this Experiment should display Evaluation results over time.
+
           insight_id: Reference to an external insight that seeded this experiment, if any.
+
+          is_favorite: Whether this Experiment is marked as a favorite.
 
           metadata: Free-form producer metadata for the experiment.
 
@@ -596,9 +636,12 @@ class AsyncExperimentsResource(AsyncAPIResource):
             body=await async_maybe_transform(
                 {
                     "body_name": body_name,
+                    "baseline_evaluation_name": baseline_evaluation_name,
                     "default_sort": default_sort,
                     "description": description,
+                    "evaluate_over_time": evaluate_over_time,
                     "insight_id": insight_id,
+                    "is_favorite": is_favorite,
                     "metadata": metadata,
                     "pareto": pareto,
                     "summary": summary,
@@ -630,7 +673,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+          filter: Filter experiments by name, insight_id, is_favorite, evaluate_over_time,
+              baseline_evaluation_name, is_deleted, or a metadata key/value
               (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
               soft-deleted experiments; omit to see only live ones.
 

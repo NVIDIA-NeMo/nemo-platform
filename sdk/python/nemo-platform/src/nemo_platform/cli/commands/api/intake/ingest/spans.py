@@ -25,7 +25,12 @@ app = create_typer_app(name="spans", help="Manage spans")
 def create_spans(
     ctx: typer.Context,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    source: Annotated[str | None, typer.Option("--source", help="(required)")] = None,
+    source: Annotated[
+        str | None,
+        typer.Option(
+            "--source", help="Stable name for the source trace store, such as `langsmith` or `mlflow`. (required)"
+        ),
+    ] = None,
     spans: Annotated[str | None, typer.Option("--spans", help="JSON string (required)")] = None,
     input_file: Annotated[
         str | None,
@@ -66,7 +71,7 @@ def create_spans(
         ["source", "spans"],
         "intake ingest spans create",
         {
-            "source": "(required)",
+            "source": "Stable name for the source trace store, such as `langsmith` or `mlflow`. (required)",
             "spans": "JSON string (required)",
         },
     )

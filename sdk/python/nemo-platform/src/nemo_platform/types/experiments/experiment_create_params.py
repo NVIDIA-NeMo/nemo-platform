@@ -44,8 +44,14 @@ class ExperimentCreateParams(TypedDict, total=False):
     description: str
     """Human-readable purpose of the experiment."""
 
+    evaluate_over_time: bool
+    """Whether this Experiment should display Evaluation results over time."""
+
     insight_id: str
     """Reference to an external insight that seeded this experiment, if any."""
+
+    is_favorite: bool
+    """Whether this Experiment is marked as a favorite."""
 
     metadata: Dict[str, str]
     """Free-form producer metadata for the experiment."""

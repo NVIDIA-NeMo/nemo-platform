@@ -16,6 +16,9 @@ It is generated with [Stainless](https://www.stainless.com/) from the [NeMo Plat
 You can find the platform documentation at [NeMo Platform Documentation](https://docs.nvidia.com/nemo/microservices/latest/about/index.html).
 The [NVIDIA NeMo Platform APIs](https://docs.nvidia.com/nemo/microservices/latest/api/index.html) section documents the REST API.
 
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 ## Installation
 
 This project downloads and installs additional third-party open source software projects. Review the license terms of these open source projects before use.
@@ -23,6 +26,9 @@ This project downloads and installs additional third-party open source software 
 ```sh
 pip install nemo-platform[all]
 ```
+
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 ## Usage
 
@@ -435,6 +441,9 @@ with NeMoPlatform() as client:
 
 # HTTP client is now closed
 ```
+
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 ## Versioning
 

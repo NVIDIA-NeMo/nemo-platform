@@ -26,6 +26,12 @@ __all__ = ["ExperimentFilterParam"]
 class ExperimentFilterParam(TypedDict, total=False):
     """Filter for listing Experiments."""
 
+    baseline_evaluation_name: str
+    """Filter experiments by the name of their selected baseline Evaluation."""
+
+    evaluate_over_time: bool
+    """Filter experiments by whether results should be evaluated over time."""
+
     insight_id: str
     """Filter experiments by the id of the insight that seeded them."""
 
@@ -34,6 +40,9 @@ class ExperimentFilterParam(TypedDict, total=False):
 
     Omit (or false) to see only live experiments.
     """
+
+    is_favorite: bool
+    """Filter experiments by favorite status."""
 
     metadata: Dict[str, str]
     """Filter by a metadata key/value pair, e.g.

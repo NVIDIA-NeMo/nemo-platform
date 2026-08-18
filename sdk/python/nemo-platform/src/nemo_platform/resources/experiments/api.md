@@ -11,6 +11,7 @@ from nemo_platform.types.experiments import (
     ExperimentRequest,
     ExperimentResponse,
     ExperimentResponsesPage,
+    ExperimentUpdateRequest,
     ParetoConfig,
 )
 ```
