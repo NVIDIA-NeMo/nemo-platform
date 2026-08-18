@@ -13,9 +13,9 @@ The layers, in order:
 1. **on disk** — what the verifier left in the trial directory.
 2. ``trials_from_job_dir`` — the ``TrialResult`` status and metrics parsed from it.
 3. ``Evaluator.aggregate_results`` — the per-candidate aggregate the loop stores.
-4. ``reward_scalar`` / ``RunReporter`` — the line an operator reads. ``reward_scalar``
-   is printed alongside it because it looks like the loop's scalar reward, but no
-   caller in the loop uses it.
+4. ``missing_objective_reason`` / ``RunReporter`` — the lines an operator reads.
+   ``reward_scalar`` is printed alongside them because it looks like the loop's
+   scalar reward, but no caller in the loop uses it.
 5. ``pareto_objectives`` / ``has_metric_dimensions`` — the projection the selector
    ranks on and the predicate the selector and terminator share, which together
    decide whether the loop can compare candidates or stop early.
@@ -26,14 +26,14 @@ plugin; this is a read-only inspector for humans.
 Usage::
 
     # Compare synthetic trial shapes side by side.
-    uv run python plugins/nemo-experimentalist/tools/reward_pipeline_inspector.py
+    uv run plugins/nemo-experimentalist/tools/reward_pipeline_inspector.py
 
     # One shape only.
-    uv run python plugins/nemo-experimentalist/tools/reward_pipeline_inspector.py \
+    uv run plugins/nemo-experimentalist/tools/reward_pipeline_inspector.py \
         --scenario verifier-silent
 
     # Inspect a real Harbor job directory from a run that reported `reward n/a`.
-    uv run python plugins/nemo-experimentalist/tools/reward_pipeline_inspector.py \
+    uv run plugins/nemo-experimentalist/tools/reward_pipeline_inspector.py \
         --job-dir eval-and-optimize/results/agent-0-validation
 """
 
@@ -56,6 +56,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import trials_from_job_dir
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     has_metric_dimensions,
+    missing_objective_reason,
     pareto_objectives,
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
@@ -69,7 +70,17 @@ class _AggregateOnlyEvaluator(Evaluator):
     evaluator_type = "reward-pipeline-inspector"
 
     async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
+        """Never called: the inspector adapts a job directory that already exists."""
         raise NotImplementedError("The inspector reads an existing job directory; it never runs an evaluation.")
+
+
+@dataclass(frozen=True)
+class TrialSpec:
+    """One synthetic trial: its task, the reward it wrote, and any Harbor exception."""
+
+    task: str
+    reward_text: str | None = None
+    exception_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -78,24 +89,14 @@ class Scenario:
 
     name: str
     verifier_behaviour: str
-    trials: tuple[dict, ...]
-
-
-def _trial(
-    task: str,
-    *,
-    reward_text: str | None = None,
-    exception_type: str | None = None,
-) -> dict:
-    """Describe one trial: its task, whether a reward file exists, and any Harbor exception."""
-    return {"task": task, "reward_text": reward_text, "exception_type": exception_type}
+    trials: tuple[TrialSpec, ...]
 
 
 SCENARIOS = (
     Scenario(
         name="reward-written",
         verifier_behaviour="test.sh writes /logs/verifier/reward.txt. The control case.",
-        trials=(_trial("task-a", reward_text="1.0"), _trial("task-b", reward_text="0.0")),
+        trials=(TrialSpec("task-a", reward_text="1.0"), TrialSpec("task-b", reward_text="0.0")),
     ),
     Scenario(
         name="verifier-raised",
@@ -103,7 +104,7 @@ SCENARIOS = (
             "test.sh exits 0 without writing a reward file, so Harbor's verifier raises "
             "RewardFileNotFoundError and the trial records exception_info."
         ),
-        trials=(_trial("task-a", exception_type="RewardFileNotFoundError"),),
+        trials=(TrialSpec("task-a", exception_type="RewardFileNotFoundError"),),
     ),
     Scenario(
         name="verifier-silent",
@@ -111,12 +112,12 @@ SCENARIOS = (
             "The trial finishes with no exception and no reward file — a disabled verifier, "
             "a bind mount that never reflected the write, or a reward stripped during log collection."
         ),
-        trials=(_trial("task-a"), _trial("task-b")),
+        trials=(TrialSpec("task-a"), TrialSpec("task-b")),
     ),
     Scenario(
         name="partial",
         verifier_behaviour="One task writes a reward and another does not.",
-        trials=(_trial("task-a", reward_text="1.0"), _trial("task-b")),
+        trials=(TrialSpec("task-a", reward_text="1.0"), TrialSpec("task-b")),
     ),
     Scenario(
         name="thin-denominator",
@@ -125,10 +126,10 @@ SCENARIOS = (
             "The reward survives; the sample it was averaged over does not."
         ),
         trials=(
-            _trial("task-easy", reward_text="1.0"),
-            _trial("task-hard-1", exception_type="AgentTimeoutError"),
-            _trial("task-hard-2", exception_type="AgentTimeoutError"),
-            _trial("task-hard-3", exception_type="NonZeroAgentExitCodeError"),
+            TrialSpec("task-easy", reward_text="1.0"),
+            TrialSpec("task-hard-1", exception_type="AgentTimeoutError"),
+            TrialSpec("task-hard-2", exception_type="AgentTimeoutError"),
+            TrialSpec("task-hard-3", exception_type="NonZeroAgentExitCodeError"),
         ),
     ),
 )
@@ -138,20 +139,19 @@ def materialize(scenario: Scenario, root: Path) -> Path:
     """Write *scenario* as a Harbor job directory and return it."""
     job_dir = root / scenario.name
     for index, spec in enumerate(scenario.trials):
-        trial_dir = job_dir / f"{spec['task']}__{index}"
+        trial_dir = job_dir / f"{spec.task}__{index}"
         trial_dir.mkdir(parents=True)
-        exception_type = spec["exception_type"]
         (trial_dir / "result.json").write_text(
             json.dumps(
                 {
-                    "task_name": f"harbor/{spec['task']}",
+                    "task_name": f"harbor/{spec.task}",
                     "trial_name": trial_dir.name,
                     "verifier_result": None,
                     "exception_info": (
                         None
-                        if exception_type is None
+                        if spec.exception_type is None
                         else {
-                            "exception_type": exception_type,
+                            "exception_type": spec.exception_type,
                             "exception_message": "No reward file found at /logs/verifier/reward.txt",
                             "exception_traceback": "<elided>",
                         }
@@ -163,12 +163,13 @@ def materialize(scenario: Scenario, root: Path) -> Path:
         verifier_dir = trial_dir / "verifier"
         verifier_dir.mkdir()
         (verifier_dir / "test-stdout.txt").write_text("tests passed\n", encoding="utf-8")
-        if spec["reward_text"] is not None:
-            (verifier_dir / "reward.txt").write_text(spec["reward_text"], encoding="utf-8")
+        if spec.reward_text is not None:
+            (verifier_dir / "reward.txt").write_text(spec.reward_text, encoding="utf-8")
     return job_dir
 
 
 def _describe_on_disk(job_dir: Path) -> list[str]:
+    """One line per trial directory: its reward files, recorded rewards, and exception."""
     lines = []
     for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
         result_path = trial_dir / "result.json"
@@ -191,7 +192,8 @@ def _describe_on_disk(job_dir: Path) -> list[str]:
     return lines
 
 
-def _reporter_line(metrics: dict[str, float | int]) -> str:
+def _reporter_lines(metrics: dict[str, float | int], reason: str | None) -> list[str]:
+    """The lines `ExperimentContext.evaluate` would narrate for this aggregate."""
     sink = io.StringIO()
     RunReporter(sink=sink).candidate_evaluated(
         label="agent-0",
@@ -199,8 +201,9 @@ def _reporter_line(metrics: dict[str, float | int]) -> str:
         metrics=metrics,
         objective_metrics=_OBJECTIVES,
         artifacts=Path("eval-and-optimize/results/agent-0-validation"),
+        reason=reason,
     )
-    return sink.getvalue().strip()
+    return [line.strip() for line in sink.getvalue().splitlines()]
 
 
 async def inspect(job_dir: Path, *, behaviour: str | None = None) -> None:
@@ -232,24 +235,29 @@ async def inspect(job_dir: Path, *, behaviour: str | None = None) -> None:
     completed = [trial for trial in trials if trial.status == "completed"]
     print(f"    completed trials={len(completed)}/{len(trials)} · aggregate={aggregate or '{}'}")
 
+    reason = missing_objective_reason(trials, aggregate, _OBJECTIVES)
     print("\n[4] reward_scalar / RunReporter")
     print(f"    reward_scalar={reward_scalar(aggregate)!r}   (defined in reporting.py; no caller in the loop)")
-    print(f"    operator sees: {_reporter_line(aggregate)}")
-    if "reward" not in aggregate:
-        print("    ^ no reward reached the loop, and nothing on this path said so")
+    print("    operator sees:")
+    for line in _reporter_lines(aggregate, reason):
+        print(f"      {line}")
 
     metrics = {name: float(value) for name, value in aggregate.items()}
     print("\n[5] pareto_objectives / has_metric_dimensions (what the loop really ranks on)")
     print(f"    pareto_objectives={pareto_objectives(metrics, _OBJECTIVES) or '{}'}")
     print(f"    has_metric_dimensions={has_metric_dimensions(metrics, _OBJECTIVES)}")
-    if pareto_objectives(metrics, _OBJECTIVES):
+    if reason is None:
         print("    the selector can rank, the terminator can detect a stagnant front, and a winner exists")
-    else:
-        print("    every candidate projects to {}, so _dominates is always False and one front holds them all;")
-        print("    ranking is a no-op, the terminator never stops early, and finalization finds no winner")
+        return
+    # Which of these applies depends on whose evaluation this is, and the job
+    # directory alone cannot say.
+    print("    as the baseline's validation: the run stops here, because nothing measured the starting point")
+    print("    as a later candidate:         it projects to {}, so _dominates is False against every peer")
+    print("                                  and it can never be ranked or win, but the run continues")
 
 
 async def main() -> None:
+    """Inspect a real job directory, or the synthetic scenarios when none is given."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--job-dir",
