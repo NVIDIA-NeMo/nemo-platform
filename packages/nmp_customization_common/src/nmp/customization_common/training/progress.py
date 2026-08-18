@@ -23,6 +23,7 @@ import os
 from collections.abc import Mapping
 from typing import Any, cast
 
+import httpx
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.jobs.client import JobsClient
@@ -33,13 +34,27 @@ from nmp.customization_common.service.context import NMPJobContext
 
 logger = logging.getLogger(__name__)
 
+# The SDK defaults to a 60s read/write timeout and retries twice, so one wedged
+# report can hold the training thread for roughly three minutes. That trade is
+# wrong here: a healthy update costs 46ms plus 0.31ms/KB, and a lost one costs
+# almost nothing, because every report carries the whole series -- the next one
+# supersedes it. Fail fast and let training continue.
+#
+# Retries stay at the SDK default. They are cheap once the timeout is short, and
+# the final flush from close() is the one report with no successor to repair it.
+_REPORT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
 
 class JobsServiceProgressReporter:
     """Reports high-level progress to the Jobs service."""
 
     def __init__(self, job_ctx: NMPJobContext, service_name: str):
         self._job_ctx = job_ctx
-        self._sdk = get_task_sdk(service_name)
+        # with_options rather than handing get_task_sdk a client: that function
+        # skips its workload-identity branch entirely when passed one, so
+        # supplying a client just to set a timeout would quietly change how the
+        # task authenticates.
+        self._sdk = get_task_sdk(service_name).with_options(timeout=_REPORT_TIMEOUT)
         self._is_main_rank = int(os.environ.get("RANK", "0")) == 0
         self._max_steps = 0
         self._num_epochs = 0

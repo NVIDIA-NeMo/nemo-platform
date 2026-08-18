@@ -44,12 +44,20 @@ STORED: dict[str, Any] = {
 
 
 class _JobCtx:
-    """The four identifiers update_task reads off the job context."""
+    """What the reporter reads off a job context.
+
+    The four identifiers `update_task` sends, plus `is_configured`, which the
+    real constructor gates reporting on. Only the tests that go through that
+    constructor need the last one -- `_Reporter` below bypasses `__init__` -- but
+    a stub that answers everything the real object does is one fewer thing to
+    trip over.
+    """
 
     normalized_task = "training"
     workspace = "default"
     job_id = "job-1"
     step = "train"
+    is_configured = True
 
 
 class _Reporter(JobsServiceProgressReporter):
@@ -375,3 +383,72 @@ def test_reporting_survives_a_failure_and_resumes(jobs: _Jobs) -> None:
     reporter.report_running(phase="training", step=2)
 
     assert [sent["body"].status_details["step"] for sent in jobs.sent] == [2]
+
+
+# --------------------------------------------------------------------------- #
+# How long an update may block the training loop
+# --------------------------------------------------------------------------- #
+
+
+def test_progress_updates_use_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The SDK default is tuned for a call someone is waiting on; this is not one.
+
+    These updates are made synchronously between optimizer steps, so the timeout
+    is how long a struggling Jobs service may hold the GPU idle. At the SDK's
+    60s read timeout with two retries that is roughly three minutes per report,
+    repeated for the rest of the run.
+
+    Asserted against the SDK the reporter actually built, not against the
+    constant, so that wiring the constant to nothing would fail here.
+    """
+    built: dict[str, Any] = {}
+
+    class _Sdk:
+        def __init__(self, optioned: bool = False) -> None:
+            self.optioned = optioned
+
+        def with_options(self, **kwargs: Any) -> "_Sdk":
+            built.update(kwargs)
+            return _Sdk(optioned=True)
+
+        def close(self) -> None: ...
+
+    monkeypatch.setattr(
+        "nmp.customization_common.training.progress.get_task_sdk",
+        lambda service_name: _Sdk(),
+    )
+    reporter = JobsServiceProgressReporter(_JobCtx(), service_name="customizer")  # ty: ignore[invalid-argument-type] # duck-typed stub
+
+    timeout = built["timeout"]
+    # A 12 MB blob -- far past anything a real run produces -- costs 46ms plus
+    # 0.31ms/KB, so about 4s on the wire. 15s leaves room and still bounds the stall.
+    assert timeout.read <= 15, "long enough for a 12 MB blob, short enough to give the step back"
+    assert timeout.write <= 15
+    assert timeout.connect <= 5
+    assert reporter._sdk.optioned, "kept the un-optioned SDK, so the timeout never applies"
+
+
+def test_the_sdk_is_not_rebuilt_with_a_custom_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`get_task_sdk` skips its workload-identity branch when handed a client.
+
+    Setting the timeout by passing our own `http_client` would therefore change
+    how a task authenticates, silently and only in the deployment that uses
+    workload identity -- which is the one hardest to test. `with_options` leaves
+    that path alone.
+    """
+    seen: dict[str, Any] = {}
+
+    class _Sdk:
+        def with_options(self, **kwargs: Any) -> "_Sdk":
+            return self
+
+        def close(self) -> None: ...
+
+    def _factory(service_name: str, http_client: Any = None) -> _Sdk:
+        seen["http_client"] = http_client
+        return _Sdk()
+
+    monkeypatch.setattr("nmp.customization_common.training.progress.get_task_sdk", _factory)
+    JobsServiceProgressReporter(_JobCtx(), service_name="customizer")  # ty: ignore[invalid-argument-type] # duck-typed stub
+
+    assert seen["http_client"] is None, "no client passed, so the auth path is untouched"
