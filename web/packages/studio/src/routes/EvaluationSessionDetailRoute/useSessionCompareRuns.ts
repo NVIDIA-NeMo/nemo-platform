@@ -40,8 +40,7 @@ export function useSessionCompareRuns(
   const { runs, isLoading: isRunsLoading } = useTestCaseRuns({
     workspace,
     evaluationNames,
-    // Evaluation sessions still expose this lookup through their test_case_id field.
-    testCaseId: testCaseName,
+    testCaseName,
   });
 
   return { testCaseName, runs, isRunsLoading };

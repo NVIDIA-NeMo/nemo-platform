@@ -82,6 +82,7 @@ _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"
 # expression in the ClickHouse repository.
 _SESSION_SORT_FIELDS = frozenset(
     {
+        "test_case_name",
         "test_case_id",
         "started_at",
         "ended_at",
@@ -746,7 +747,7 @@ async def unpin_evaluation(
     },
     openapi_extra=generate_openapi_extra_params(
         filter_schema=EvaluationSessionFilter,
-        filter_description="Filter sessions by test_case_id and status.",
+        filter_description="Filter sessions by test_case_name and status.",
     ),
 )
 async def list_evaluation_sessions(
@@ -769,21 +770,21 @@ async def list_evaluation_sessions(
         description=(
             "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
             "prefix a field with '-' for descending — e.g. '-cost_total_usd,latency_ms'. Fields: "
-            "test_case_id, started_at, ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, "
+            "test_case_name, started_at, ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, "
             "sessions are ordered by started_at ascending."
         ),
     ),
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
     sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
-    test_case_id: str | None = parsed.extract("test_case_id")
+    test_case_name = _session_test_case_name(parsed)
     status_raw: str | None = parsed.extract("status")
     try:
         result = await read_service.list_sessions(
             workspace=workspace,
             evaluation_name=name,
             status=status_raw,
-            test_case_id=test_case_id,
+            test_case_name=test_case_name,
             page=page,
             page_size=page_size,
             mode=mode,
@@ -803,7 +804,7 @@ async def list_evaluation_sessions(
                 f"This query selects {exc.total} sessions, exceeding the maximum of "
                 f"{exc.limit} that can be sorted by cost or tokens in one request. "
                 "Narrow the result with a filter (e.g. filter[status]=success) or sort by a "
-                "different field (started_at, latency_ms, status, test_case_id)."
+                "different field (started_at, latency_ms, status, test_case_name)."
             ),
         ) from exc
     except EvaluationTelemetryUnavailableError as exc:
@@ -1300,6 +1301,8 @@ def _parse_session_sort_keys(sort: str) -> list[tuple[str, bool]]:
         sort_field = field_token[1:] if descending else field_token
         if sort_field not in _SESSION_SORT_FIELDS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {sort_field}")
+        if sort_field == "test_case_id":
+            sort_field = "test_case_name"
         sort_keys.append((sort_field, descending))
     if not sort_keys:
         raise HTTPException(
@@ -1307,6 +1310,17 @@ def _parse_session_sort_keys(sort: str) -> list[tuple[str, bool]]:
             detail="The 'sort' parameter must contain at least one field.",
         )
     return sort_keys
+
+
+def _session_test_case_name(parsed: ParsedFilter) -> str | None:
+    test_case_name: str | None = parsed.extract("test_case_name")
+    deprecated_test_case_id: str | None = parsed.extract("test_case_id")
+    if test_case_name is not None and deprecated_test_case_id is not None and test_case_name != deprecated_test_case_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Conflicting evaluation session filters for test_case_name",
+        )
+    return test_case_name if test_case_name is not None else deprecated_test_case_id
 
 
 def _is_metric_field(field: str) -> bool:

@@ -77,8 +77,9 @@ def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient
     assert body["pagination"]["total_results"] == 3
     assert len(body["data"]) == 3
 
-    rows_by_case = {row["test_case_id"]: row for row in body["data"]}
+    rows_by_case = {row["test_case_name"]: row for row in body["data"]}
     assert set(rows_by_case) == {"case-a", "case-b", "case-c"}
+    assert all(row["test_case_id"] == row["test_case_name"] for row in body["data"])
 
     case_a = rows_by_case["case-a"]
     assert case_a["evaluation_name"] == evaluation_name
@@ -105,7 +106,7 @@ def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient
         params={"mode": "preview", "page_size": 3},
     )
     assert preview.status_code == 200, preview.text
-    preview_by_case = {row["test_case_id"]: row for row in preview.json()["data"]}
+    preview_by_case = {row["test_case_name"]: row for row in preview.json()["data"]}
     assert preview_by_case["case-a"]["output"] == "solved case-a"
 
     paged = client.get(f"{EVALUATIONS}/{evaluation_name}/sessions", params={"page": 2, "page_size": 1})
@@ -113,7 +114,7 @@ def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient
     paged_body = paged.json()
     assert paged_body["pagination"]["total_results"] == 3
     assert len(paged_body["data"]) == 1
-    assert paged_body["data"][0]["test_case_id"] == "case-b"
+    assert paged_body["data"][0]["test_case_name"] == "case-b"
     assert paged_body["data"][0]["evaluator_scores"] == {"reward": pytest.approx(0.5)}
 
     latency_sorted = client.get(
@@ -121,21 +122,35 @@ def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient
         params={"sort": "-latency_ms", "page_size": 3},
     )
     assert latency_sorted.status_code == 200, latency_sorted.text
-    assert [row["test_case_id"] for row in latency_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
+    assert [row["test_case_name"] for row in latency_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
 
     cost_sorted = client.get(
         f"{EVALUATIONS}/{evaluation_name}/sessions",
         params={"sort": "-cost_total_usd", "page_size": 3},
     )
     assert cost_sorted.status_code == 200, cost_sorted.text
-    assert [row["test_case_id"] for row in cost_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
+    assert [row["test_case_name"] for row in cost_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
 
     tokens_sorted = client.get(
         f"{EVALUATIONS}/{evaluation_name}/sessions",
         params={"sort": "tokens", "page_size": 3},
     )
     assert tokens_sorted.status_code == 200, tokens_sorted.text
-    assert [row["test_case_id"] for row in tokens_sorted.json()["data"]] == ["case-a", "case-b", "case-c"]
+    assert [row["test_case_name"] for row in tokens_sorted.json()["data"]] == ["case-a", "case-b", "case-c"]
+
+    test_case_sorted = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"sort": "-test_case_name", "page_size": 3},
+    )
+    assert test_case_sorted.status_code == 200, test_case_sorted.text
+    assert [row["test_case_name"] for row in test_case_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
+
+    deprecated_sort = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"sort": "-test_case_id", "page_size": 3},
+    )
+    assert deprecated_sort.status_code == 200, deprecated_sort.text
+    assert [row["test_case_name"] for row in deprecated_sort.json()["data"]] == ["case-c", "case-b", "case-a"]
 
 
 def test_list_evaluation_sessions_filter_by_test_case(client: TestClient) -> None:
@@ -174,13 +189,30 @@ def test_list_evaluation_sessions_filter_by_test_case(client: TestClient) -> Non
 
     filtered = client.get(
         f"{EVALUATIONS}/{evaluation_name}/sessions",
-        params={"filter[test_case_id]": adversarial_test_case_id},
+        params={"filter[test_case_name]": adversarial_test_case_id},
     )
     assert filtered.status_code == 200, filtered.text
     body = filtered.json()
     assert body["pagination"]["total_results"] == 1
     assert len(body["data"]) == 1
-    assert body["data"][0]["test_case_id"] == adversarial_test_case_id
+    assert body["data"][0]["test_case_name"] == adversarial_test_case_id
+
+    deprecated_filter = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"filter[test_case_id]": adversarial_test_case_id},
+    )
+    assert deprecated_filter.status_code == 200, deprecated_filter.text
+    assert deprecated_filter.json()["data"][0]["test_case_name"] == adversarial_test_case_id
+
+    conflicting_filters = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={
+            "filter[test_case_name]": adversarial_test_case_id,
+            "filter[test_case_id]": "beta",
+        },
+    )
+    assert conflicting_filters.status_code == 400, conflicting_filters.text
+    assert conflicting_filters.json()["detail"] == "Conflicting evaluation session filters for test_case_name"
 
 
 def test_list_evaluation_sessions_filter_by_status(client: TestClient) -> None:

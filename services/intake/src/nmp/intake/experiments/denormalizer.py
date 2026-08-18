@@ -111,7 +111,7 @@ class EvaluationDenormalizer(BackgroundWorker):
                     self.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)
 
     async def _refresh_workspace(self, workspace: str, evaluation_names: list[str]) -> None:
-        rollups = await self._rollup_repository.get_rollups(workspace=workspace, evaluation_ids=evaluation_names)
+        rollups = await self._rollup_repository.get_rollups(workspace=workspace, evaluation_names=evaluation_names)
         for evaluation_name in evaluation_names:
             rollup = rollups.get(evaluation_name)
             if rollup is None:

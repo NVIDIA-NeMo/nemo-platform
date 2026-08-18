@@ -4083,16 +4083,16 @@ paths:
         schema:
           description: "Comma-separated list of fields to sort by, applied in order\
             \ (the first field dominates); prefix a field with '-' for descending\
-            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at,\
             \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
             \ sessions are ordered by started_at ascending."
           title: Sort
           type: string
         description: "Comma-separated list of fields to sort by, applied in order\
           \ (the first field dominates); prefix a field with '-' for descending \u2014\
-          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
-          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
-          \ ordered by started_at ascending."
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at,\
+          \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, sessions\
+          \ are ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
@@ -4100,7 +4100,7 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/EvaluationSessionFilter'
-        description: Filter sessions by test_case_id and status.
+        description: Filter sessions by test_case_name and status.
       responses:
         '200':
           description: Successful Response
@@ -11393,7 +11393,7 @@ components:
           type: integer
           title: Test Case Count
           description: Number of distinct test cases in the evaluation, i.e. distinct
-            test_case_id values (sessions with no test_case_id each count as their
+            test_case_name values (sessions with no test_case_name each count as their
             own). A test case run k times counts once; the rollup metrics are averaged
             per test case before pooling across test cases.
           default: 0
@@ -11452,8 +11452,13 @@ components:
       additionalProperties: false
       description: Filter for listing EvaluationSessions.
       properties:
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         test_case_id:
-          description: Filter by producer-supplied test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
         status:
@@ -11473,10 +11478,14 @@ components:
         session_id:
           type: string
           title: Session Id
+        test_case_name:
+          title: Test Case Name
+          description: Test case name; null when the producer did not set one.
+          type: string
         test_case_id:
           title: Test Case Id
-          description: Producer-supplied test case identifier; null when the producer
-            did not set one.
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
         trace_id:
           type: string

@@ -49,7 +49,7 @@ def _rollup(
     name: str, *, agent_names: list[str], agent_versions: list[str], model_names: list[str]
 ) -> EvaluationRollup:
     return EvaluationRollup(
-        evaluation_id=name,
+        evaluation_name=name,
         agent_names=agent_names,
         agent_versions=agent_versions,
         model_names=model_names,

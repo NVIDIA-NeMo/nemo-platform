@@ -26,7 +26,7 @@ class EvaluationSessionRow:
     workspace: str
     evaluation_name: str
     session_id: str
-    test_case_id: str | None
+    test_case_name: str | None
     trace_id: str
     root_span_id: str
     started_at: datetime
@@ -58,7 +58,7 @@ class EvaluationSessionRepository(ABC):
         workspace: str,
         evaluation_name: str,
         status: SpanStatus | None = None,
-        test_case_id: str | None = None,
+        test_case_name: str | None = None,
         page: int,
         page_size: int,
         mode: IntakeResponseMode,

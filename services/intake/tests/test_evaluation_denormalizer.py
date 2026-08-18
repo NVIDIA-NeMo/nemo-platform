@@ -15,9 +15,9 @@ from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.repository.evaluation_rollup import EvaluationRollup, EvaluationRollupRepository
 
 
-def _sample_rollup(evaluation_id: str) -> EvaluationRollup:
+def _sample_rollup(evaluation_name: str) -> EvaluationRollup:
     return EvaluationRollup(
-        evaluation_id=evaluation_id,
+        evaluation_name=evaluation_name,
         model_names=["provider/model-a", "provider/model-b"],
         agent_names=["agent-x"],
         agent_versions=["1.0", "1.1"],
@@ -29,11 +29,11 @@ class _FakeRollupRepo:
         self.calls: list[tuple[str, list[str]]] = []
         self._error = error
 
-    async def get_rollups(self, *, workspace: str, evaluation_ids: list[str]) -> dict[str, EvaluationRollup]:
-        self.calls.append((workspace, list(evaluation_ids)))
+    async def get_rollups(self, *, workspace: str, evaluation_names: list[str]) -> dict[str, EvaluationRollup]:
+        self.calls.append((workspace, list(evaluation_names)))
         if self._error is not None:
             raise self._error
-        return {evaluation_id: _sample_rollup(evaluation_id) for evaluation_id in evaluation_ids}
+        return {evaluation_name: _sample_rollup(evaluation_name) for evaluation_name in evaluation_names}
 
 
 class _FakeEntityClient:
