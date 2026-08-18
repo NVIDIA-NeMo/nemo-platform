@@ -2079,42 +2079,25 @@ components:
       additionalProperties: false
       type: object
       title: ProgressReportingConfig
-      description: 'How much detail training progress is reported to the Jobs service
-        with.
+      description: 'How much detail a training job reports as it runs.
 
 
-        One knob. Every point the training library logs is recorded and sent -- there
+        A run produces two kinds of metric. A few are worth a history -- the loss,
 
-        is no sampling of our own, and the cost of a long run is the Jobs service''s
+        the learning rate, the gradient norm -- because their shape over time is the
 
-        to solve rather than something to hide behind a cap here (see the payload
+        point. The rest are throughput and accounting counters like `tps` and `mem`,
 
-        note in :mod:`nmp.customization_common.training.callbacks`).
-
-
-        What this does express is that a training run produces two kinds
-
-        of metric. A few are worth a *history* -- the loss, the learning rate, the
-
-        gradient norm -- because their shape over time is the whole point. The rest
-
-        are throughput and accounting counters (``tps``, ``mem``, ``num_label_tokens``,
-
-        ``global_valid_toks``) whose *current* value is all anyone reads. Both kinds
-
-        are always reported; only the first kind is accumulated.
+        whose current value is all anyone reads.
 
 
-        There is no second list for the scalars, and deliberately: the set of metric
+        Both kinds are always reported. `time_series_metrics` chooses which of them
 
-        names comes from the training framework at runtime, not from this config,
-        so
+        also accumulate a history; nothing is sampled away. There is no second list
 
-        any pair of lists would leave a third category of names in neither. Naming
+        for the scalars, because metric names come from the training framework at
 
-        the series and letting everything else be a scalar is the only partition that
-
-        stays correct when a framework adds a metric.'
+        runtime, so any pair of lists would leave a third category in neither.'
     RlDPOTraining:
       properties:
         optimizer_type:

@@ -34,42 +34,29 @@ ALL_METRICS = ("*",)
 #: Least time between metric reports reaching the Jobs service. Points are always
 #: recorded; this only bounds how often the accumulator is sent.
 #:
-#: Ten seconds is chosen against what it costs and what it buys, both measured: a
-#: 594-step run over half an hour drops from 594 requests to 180 and from 36s to
-#: 11s blocked inside the training loop, while a progress bar that moves every
-#: ten seconds is as live as anyone reads one.
+#: Ten seconds is about as often as anyone reads a progress bar, and rare enough
+#: that a run is not spending its time reporting.
 DEFAULT_MIN_REPORT_INTERVAL_SECONDS = 10.0
 
 
 class ProgressReportingConfig(BaseModel):
-    """How much detail training progress is reported to the Jobs service with.
+    """How much detail a training job reports as it runs.
 
-    One knob. Every point the training library logs is recorded and sent -- there
-    is no sampling of our own, and the cost of a long run is the Jobs service's
-    to solve rather than something to hide behind a cap here (see the payload
-    note in :mod:`nmp.customization_common.training.callbacks`).
+    A run produces two kinds of metric. A few are worth a history -- the loss,
+    the learning rate, the gradient norm -- because their shape over time is the
+    point. The rest are throughput and accounting counters like `tps` and `mem`,
+    whose current value is all anyone reads.
 
-    What this does express is that a training run produces two kinds
-    of metric. A few are worth a *history* -- the loss, the learning rate, the
-    gradient norm -- because their shape over time is the whole point. The rest
-    are throughput and accounting counters (``tps``, ``mem``, ``num_label_tokens``,
-    ``global_valid_toks``) whose *current* value is all anyone reads. Both kinds
-    are always reported; only the first kind is accumulated.
-
-    There is no second list for the scalars, and deliberately: the set of metric
-    names comes from the training framework at runtime, not from this config, so
-    any pair of lists would leave a third category of names in neither. Naming
-    the series and letting everything else be a scalar is the only partition that
-    stays correct when a framework adds a metric.
+    Both kinds are always reported. `time_series_metrics` chooses which of them
+    also accumulate a history; nothing is sampled away. There is no second list
+    for the scalars, because metric names come from the training framework at
+    runtime, so any pair of lists would leave a third category in neither.
     """
 
-    # Every model this is embedded in forbids extras, inheriting it from
-    # NamespacedModel, and unsloth's schema module states the contract outright:
-    # "typos in the JSON shape become validation errors, not silently-ignored
-    # fields". This model is not a NamespacedModel -- deliberately, so it emits
-    # one shared OpenAPI component rather than three -- and so it did not inherit
-    # that, which made it the one place in the request body where
-    # `time_series_metric` was accepted and quietly did nothing.
+    # Not a NamespacedModel (see above), so this does not inherit the
+    # extra="forbid" that the models embedding it set. Without it, this is the one
+    # place in the request body where a typo -- `time_series_metric` -- is
+    # accepted and silently does nothing.
     model_config = ConfigDict(extra="forbid")
 
     min_report_interval_seconds: float = Field(
