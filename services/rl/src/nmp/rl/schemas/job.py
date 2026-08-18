@@ -182,6 +182,23 @@ class GRPOTraining(_TrainingBase):
     num_val_generations_per_prompt: int = Field(
         default=4, gt=0, description="Rollouts sampled per prompt during validation."
     )
+    temperature: float = Field(
+        default=1.0,
+        gt=0.0,
+        le=2.0,
+        description="Sampling temperature for rollout generation. Must be greater than 0: "
+        "GRPO's advantage is the spread of rewards inside a prompt group, so greedy sampling "
+        "makes every rollout in a group identical, the spread zero, and the whole run a no-op. "
+        "Applies to validation rollouts too, which are generated with the same settings.",
+    )
+    max_new_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        description="Cap on tokens generated per rollout turn. Defaults to max_seq_length, "
+        "which lets a rollout run until the context is exhausted; vLLM clamps it to whatever "
+        "the prompt leaves. Set it lower to bound response length and rollout duration. "
+        "Cannot exceed max_seq_length.",
+    )
     normalize_rewards: bool = Field(default=True, description="Normalize rewards within each prompt group.")
     max_rollout_turns: int = Field(
         default=1, gt=0, description="Maximum agent turns per rollout. Single-turn environments use 1."
@@ -199,6 +216,18 @@ class GRPOTraining(_TrainingBase):
             self.lora = LoRAParams()
         if self.finetuning_type == "all_weights" and self.lora is not None:
             raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
+
+    @model_validator(mode="after")
+    def _generation_length_fits_context(self) -> Self:
+        # max_seq_length is the whole context, prompt included. Asking for more generated
+        # tokens than that is always unsatisfiable, and vLLM would silently clamp it
+        # rather than say so.
+        if self.max_new_tokens is not None and self.max_new_tokens > self.max_seq_length:
+            raise ValueError(
+                f"max_new_tokens ({self.max_new_tokens}) cannot exceed max_seq_length "
+                f"({self.max_seq_length}); max_seq_length is the total prompt + generation budget"
+            )
         return self
 
 

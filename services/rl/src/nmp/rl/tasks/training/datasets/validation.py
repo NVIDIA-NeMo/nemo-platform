@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional
 import jsonschema
 from jsonschema import exceptions
 from nmp.rl.entities.values import FinetuningType, TrainingType
-from nmp.rl.schemas.environment import GymVerifiersDatasetRow
+from nmp.rl.schemas.environment import GymDatasetRow
 from nmp.rl.tasks.training.datasets.preparation import DatasetFormatError
 from nmp.rl.tasks.training.datasets.schemas import (
     DPOPreferenceDatasetSchemaType,
@@ -111,10 +111,15 @@ def SFT_SCHEMA(prompt_template: str | None = None):
 
 
 def GRPO_SCHEMA(_: str | None = None) -> dict:
-    """JSON schema for NeMo Gym GRPO dataset rows."""
+    """JSON schema for NeMo Gym GRPO dataset rows.
+
+    Validates the agent-agnostic fields only. Agent-specific keys (``vf_env_id`` for
+    verifiers_agent, ``expected_answer`` for the math resources servers) are passed
+    through, so a dataset is not rejected for targeting a different Gym agent.
+    """
     from pydantic import TypeAdapter
 
-    adapter = TypeAdapter(GymVerifiersDatasetRow)
+    adapter = TypeAdapter(GymDatasetRow)
     schema = adapter.json_schema()
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
     return schema

@@ -57,6 +57,7 @@ def _make_grpo_step(
     finetuning_type: FinetuningType = FinetuningType.ALL_WEIGHTS,
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
+    grpo: GRPOConfig | None = None,
 ) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
     env_root.mkdir(exist_ok=True)
@@ -79,7 +80,7 @@ def _make_grpo_step(
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
             finetuning_type=finetuning_type,
-            grpo=GRPOConfig(num_generations_per_prompt=4),
+            grpo=grpo or GRPOConfig(num_generations_per_prompt=4),
             lora=lora,
         ),
         schedule=TrainingStepConfig.ScheduleConfig(epochs=1),
@@ -100,6 +101,7 @@ def _prepared_step(
     finetuning_type: FinetuningType = FinetuningType.ALL_WEIGHTS,
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
+    grpo: GRPOConfig | None = None,
 ) -> tuple[TrainingStepConfig, Path]:
     dataset_pvc = tmp_path / "dataset"
     dataset_pvc.mkdir(exist_ok=True)
@@ -112,6 +114,7 @@ def _prepared_step(
             finetuning_type=finetuning_type,
             lora=lora,
             tensor_parallel_size=tensor_parallel_size,
+            grpo=grpo,
         ),
         dataset_pvc,
     )
@@ -538,3 +541,62 @@ def test_sandbox_server_protocol_reaches_the_host_provider(
     step.gym.sandbox_server_protocol = "http"
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert sandbox["host_provider_options"] == {"connection": {"protocol": "http"}}
+
+
+def test_generation_sampling_comes_from_the_grpo_hyperparameters(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Temperature has to reach policy.generation, which is what stamps every Gym row.
+
+    ``_prepare_nemo_gym_rows`` copies temperature/top_p/max_output_tokens from that block
+    onto each row before it is POSTed, so this is the single point that decides how both
+    colocated and sandboxed rollouts sample.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, temperature=0.7))
+
+    generation = compile_grpo_config(step, job_ctx)["policy"]["generation"]
+    assert generation["temperature"] == 0.7
+    # Neutral values, not knobs: only temperature is exposed on the job schema.
+    assert generation["top_p"] == 1.0
+    assert generation["top_k"] is None
+
+
+def test_generation_temperature_defaults_to_one(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The previous hardcoded value stays the default, so existing jobs do not shift."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    assert compile_grpo_config(step, job_ctx)["policy"]["generation"]["temperature"] == 1.0
+
+
+def test_max_new_tokens_is_independent_of_max_seq_length(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Generation length must be settable without shrinking the context.
+
+    max_seq_length sizes the context in three places (total sequence, vLLM max_model_len,
+    and previously the generation cap). Bounding response length by lowering it would also
+    shrink the prompt budget, so the two have to be separate fields.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, max_new_tokens=128))
+
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert policy["generation"]["max_new_tokens"] == 128
+    # Context is untouched: max_seq_length still sizes both of these.
+    assert policy["max_total_sequence_length"] == 512
+    assert policy["generation"]["vllm_cfg"]["max_model_len"] == 512
+
+
+def test_max_new_tokens_defaults_to_the_full_context(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset keeps NeMo-RL's own recipe convention: generate until the context runs out."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert policy["generation"]["max_new_tokens"] == policy["max_total_sequence_length"]

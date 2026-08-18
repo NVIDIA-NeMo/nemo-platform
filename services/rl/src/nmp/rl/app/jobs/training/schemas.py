@@ -61,6 +61,11 @@ class GRPOConfig(BaseModel):
     num_generations_per_prompt: int = Field(default=8, gt=0)
     num_prompts_per_step: int | None = Field(default=None, gt=0)
     num_val_generations_per_prompt: int = Field(default=4, gt=0)
+    # Rollout sampling. Both land in NeMo-RL's policy.generation block, which is what
+    # _prepare_nemo_gym_rows stamps onto every Gym row, so they reach colocated and
+    # sandboxed rollouts alike.
+    temperature: float = Field(default=1.0, gt=0.0)
+    max_new_tokens: int | None = Field(default=None, gt=0)
     normalize_rewards: bool = True
     max_rollout_turns: int = Field(default=1, gt=0)
     ref_policy_kl_penalty: float = Field(default=0.0, ge=0.0)
