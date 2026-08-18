@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Keep the smoke agent's task image, its NOOA version range, and its verifier honest.
+"""Keep the smoke agent's task image, its NOOA pin, and its verifier honest.
 
 No Docker here on purpose: the image tag is a content hash, so a forgotten
 rebuild is a string comparison rather than something only a container run can
