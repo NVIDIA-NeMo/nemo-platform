@@ -57,10 +57,19 @@ class ExperimentRequest(BaseModel):
             "update; on create, defaults to cost vs. latency."
         ),
     )
-    is_favorite: bool = Field(default=False, description="Whether this Experiment is marked as a favorite.")
-    evaluate_over_time: bool = Field(
+    is_favorite: bool = Field(
         default=False,
-        description="Whether this Experiment should display Evaluation results over time.",
+        description=(
+            "Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to "
+            "preserve the existing value."
+        ),
+    )
+    show_evaluations_over_time: bool = Field(
+        default=False,
+        description=(
+            "Whether Studio should display this Experiment's Evaluation results over time. Defaults to false "
+            "on create; omit on update to preserve the existing value."
+        ),
     )
 
 
@@ -177,9 +186,9 @@ class ExperimentResponse(BaseModel):
     default_sort: str
     pareto: ParetoConfig = Field(default_factory=ParetoConfig)
     is_favorite: bool = Field(default=False, description="Whether this Experiment is marked as a favorite.")
-    evaluate_over_time: bool = Field(
+    show_evaluations_over_time: bool = Field(
         default=False,
-        description="Whether this Experiment should display Evaluation results over time.",
+        description="Whether Studio should display this Experiment's Evaluation results over time.",
     )
     baseline_evaluation_name: str | None = Field(
         default=None,
@@ -205,7 +214,7 @@ class ExperimentResponse(BaseModel):
             default_sort=entity.default_sort,
             pareto=entity.pareto,
             is_favorite=entity.is_favorite,
-            evaluate_over_time=entity.evaluate_over_time,
+            show_evaluations_over_time=entity.show_evaluations_over_time,
             baseline_evaluation_name=entity.baseline_evaluation_name,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -346,9 +355,9 @@ class ExperimentFilter(Filter):
         description="Filter experiments by the id of the insight that seeded them.",
     )
     is_favorite: bool | None = Field(default=None, description="Filter experiments by favorite status.")
-    evaluate_over_time: bool | None = Field(
+    show_evaluations_over_time: bool | None = Field(
         default=None,
-        description="Filter experiments by whether results should be evaluated over time.",
+        description="Filter experiments by whether Studio should display Evaluation results over time.",
     )
     baseline_evaluation_name: str | None = Field(
         default=None,

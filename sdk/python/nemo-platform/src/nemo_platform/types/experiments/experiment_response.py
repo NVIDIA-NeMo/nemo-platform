@@ -42,9 +42,6 @@ class ExperimentResponse(BaseModel):
 
     description: Optional[str] = None
 
-    evaluate_over_time: Optional[bool] = None
-    """Whether this Experiment should display Evaluation results over time."""
-
     evaluation_count: Optional[int] = None
     """Number of live (non-soft-deleted) evaluations in this experiment."""
 
@@ -63,6 +60,9 @@ class ExperimentResponse(BaseModel):
     latency (y): both exist for every group, so the chart always has something to
     render before anyone customizes it.
     """
+
+    show_evaluations_over_time: Optional[bool] = None
+    """Whether Studio should display this Experiment's Evaluation results over time."""
 
     summary: Optional[str] = None
 

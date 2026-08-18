@@ -29,9 +29,6 @@ class ExperimentFilterParam(TypedDict, total=False):
     baseline_evaluation_name: str
     """Filter experiments by the name of their selected baseline Evaluation."""
 
-    evaluate_over_time: bool
-    """Filter experiments by whether results should be evaluated over time."""
-
     insight_id: str
     """Filter experiments by the id of the insight that seeded them."""
 
@@ -52,3 +49,9 @@ class ExperimentFilterParam(TypedDict, total=False):
 
     name: str
     """Filter experiments by name."""
+
+    show_evaluations_over_time: bool
+    """
+    Filter experiments by whether Studio should display Evaluation results over
+    time.
+    """

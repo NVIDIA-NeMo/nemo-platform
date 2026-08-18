@@ -118,7 +118,7 @@ class ExperimentGroup(EntityBase):
         default=False,
         description="Whether this Experiment is marked as a favorite.",
     )
-    evaluate_over_time: bool = Field(
+    show_evaluations_over_time: bool = Field(
         default=False,
         description="Whether this Experiment should display Evaluation results over time.",
     )

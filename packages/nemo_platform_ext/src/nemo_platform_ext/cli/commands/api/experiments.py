@@ -49,18 +49,16 @@ def create_experiments(
     description: Annotated[
         str | None, typer.Option("--description", help="Human-readable purpose of the experiment.")
     ] = None,
-    evaluate_over_time: Annotated[
-        bool | None,
-        typer.Option(
-            "--evaluate-over-time", help="Whether this Experiment should display Evaluation results over time."
-        ),
-    ] = None,
     insight_id: Annotated[
         str | None,
         typer.Option("--insight-id", help="Reference to an external insight that seeded this experiment, if any."),
     ] = None,
     is_favorite: Annotated[
-        bool | None, typer.Option("--is-favorite", help="Whether this Experiment is marked as a favorite.")
+        bool | None,
+        typer.Option(
+            "--is-favorite",
+            help="Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to preserve the existing value.",
+        ),
     ] = None,
     metadata: Annotated[
         str | None, typer.Option("--metadata", help="Free-form producer metadata for the experiment. (JSON string)")
@@ -70,6 +68,13 @@ def create_experiments(
         typer.Option(
             "--pareto",
             help="Default X/Y metrics for a group's cost-vs-accuracy Pareto view.Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)",
+        ),
+    ] = None,
+    show_evaluations_over_time: Annotated[
+        bool | None,
+        typer.Option(
+            "--show-evaluations-over-time",
+            help="Whether Studio should display this Experiment's Evaluation results over time. Defaults to false on create; omit on update to preserve the existing value.",
         ),
     ] = None,
     summary: Annotated[
@@ -116,8 +121,6 @@ def create_experiments(
         input_payload["default_sort"] = default_sort
     if description is not None:
         input_payload["description"] = description
-    if evaluate_over_time is not None:
-        input_payload["evaluate_over_time"] = evaluate_over_time
     if insight_id is not None:
         input_payload["insight_id"] = insight_id
     if is_favorite is not None:
@@ -126,6 +129,8 @@ def create_experiments(
         input_payload["metadata"] = read_payload("metadata", metadata)
     if pareto is not None:
         input_payload["pareto"] = read_payload("pareto", pareto)
+    if show_evaluations_over_time is not None:
+        input_payload["show_evaluations_over_time"] = show_evaluations_over_time
     if summary is not None:
         input_payload["summary"] = summary
     if exist_ok is not None:
@@ -190,15 +195,12 @@ def list_experiments(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  metadata: dict[str, str]\n\nFilter experiments by name, insight_id, is_favorite, evaluate_over_time, baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  metadata: dict[str, str]\n\nFilter experiments by name, insight_id, is_favorite, show_evaluations_over_time, baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
     filter_baseline_evaluation_name: Annotated[
         str | None, typer.Option("--filter.baseline-evaluation-name", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluate_over_time: Annotated[
-        bool | None, typer.Option("--filter.evaluate-over-time", rich_help_panel="Filter Options")
     ] = None,
     filter_insight_id: Annotated[
         str | None, typer.Option("--filter.insight-id", rich_help_panel="Filter Options")
@@ -210,6 +212,9 @@ def list_experiments(
         bool | None, typer.Option("--filter.is-favorite", rich_help_panel="Filter Options")
     ] = None,
     filter_name: Annotated[str | None, typer.Option("--filter.name", rich_help_panel="Filter Options")] = None,
+    filter_show_evaluations_over_time: Annotated[
+        bool | None, typer.Option("--filter.show-evaluations-over-time", rich_help_panel="Filter Options")
+    ] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
     sort: Annotated[
@@ -242,11 +247,11 @@ def list_experiments(
         filter=merge_filter_dict(
             filter,
             baseline_evaluation_name=filter_baseline_evaluation_name,
-            evaluate_over_time=filter_evaluate_over_time,
             insight_id=filter_insight_id,
             is_deleted=filter_is_deleted,
             is_favorite=filter_is_favorite,
             name=filter_name,
+            show_evaluations_over_time=filter_show_evaluations_over_time,
         ),
         page=page,
         page_size=page_size,
@@ -340,18 +345,16 @@ def update_experiments(
     description: Annotated[
         str | None, typer.Option("--description", help="Human-readable purpose of the experiment.")
     ] = None,
-    evaluate_over_time: Annotated[
-        bool | None,
-        typer.Option(
-            "--evaluate-over-time", help="Whether this Experiment should display Evaluation results over time."
-        ),
-    ] = None,
     insight_id: Annotated[
         str | None,
         typer.Option("--insight-id", help="Reference to an external insight that seeded this experiment, if any."),
     ] = None,
     is_favorite: Annotated[
-        bool | None, typer.Option("--is-favorite", help="Whether this Experiment is marked as a favorite.")
+        bool | None,
+        typer.Option(
+            "--is-favorite",
+            help="Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to preserve the existing value.",
+        ),
     ] = None,
     metadata: Annotated[
         str | None, typer.Option("--metadata", help="Free-form producer metadata for the experiment. (JSON string)")
@@ -361,6 +364,13 @@ def update_experiments(
         typer.Option(
             "--pareto",
             help="Default X/Y metrics for a group's cost-vs-accuracy Pareto view.Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)",
+        ),
+    ] = None,
+    show_evaluations_over_time: Annotated[
+        bool | None,
+        typer.Option(
+            "--show-evaluations-over-time",
+            help="Whether Studio should display this Experiment's Evaluation results over time. Defaults to false on create; omit on update to preserve the existing value.",
         ),
     ] = None,
     summary: Annotated[
@@ -403,8 +413,6 @@ def update_experiments(
         input_payload["default_sort"] = default_sort
     if description is not None:
         input_payload["description"] = description
-    if evaluate_over_time is not None:
-        input_payload["evaluate_over_time"] = evaluate_over_time
     if insight_id is not None:
         input_payload["insight_id"] = insight_id
     if is_favorite is not None:
@@ -413,6 +421,8 @@ def update_experiments(
         input_payload["metadata"] = read_payload("metadata", metadata)
     if pareto is not None:
         input_payload["pareto"] = read_payload("pareto", pareto)
+    if show_evaluations_over_time is not None:
+        input_payload["show_evaluations_over_time"] = show_evaluations_over_time
     if summary is not None:
         input_payload["summary"] = summary
     # Validate required fields are present after merging

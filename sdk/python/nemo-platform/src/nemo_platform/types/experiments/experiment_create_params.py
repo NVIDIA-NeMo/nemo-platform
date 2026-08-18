@@ -44,14 +44,14 @@ class ExperimentCreateParams(TypedDict, total=False):
     description: str
     """Human-readable purpose of the experiment."""
 
-    evaluate_over_time: bool
-    """Whether this Experiment should display Evaluation results over time."""
-
     insight_id: str
     """Reference to an external insight that seeded this experiment, if any."""
 
     is_favorite: bool
-    """Whether this Experiment is marked as a favorite."""
+    """Whether this Experiment is marked as a favorite.
+
+    Defaults to false on create; omit on update to preserve the existing value.
+    """
 
     metadata: Dict[str, str]
     """Free-form producer metadata for the experiment."""
@@ -63,6 +63,12 @@ class ExperimentCreateParams(TypedDict, total=False):
     `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
     latency (y): both exist for every group, so the chart always has something to
     render before anyone customizes it.
+    """
+
+    show_evaluations_over_time: bool
+    """Whether Studio should display this Experiment's Evaluation results over time.
+
+    Defaults to false on create; omit on update to preserve the existing value.
     """
 
     summary: str

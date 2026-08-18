@@ -52,7 +52,6 @@ class TestExperiments:
             name="name",
             default_sort="default_sort",
             description="description",
-            evaluate_over_time=True,
             insight_id="insight_id",
             is_favorite=True,
             metadata={"foo": "string"},
@@ -60,6 +59,7 @@ class TestExperiments:
                 "x_metric": "x_metric",
                 "y_metric": "y_metric",
             },
+            show_evaluations_over_time=True,
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -173,7 +173,6 @@ class TestExperiments:
             baseline_evaluation_name="baseline_evaluation_name",
             default_sort="default_sort",
             description="description",
-            evaluate_over_time=True,
             insight_id="insight_id",
             is_favorite=True,
             metadata={"foo": "string"},
@@ -181,6 +180,7 @@ class TestExperiments:
                 "x_metric": "x_metric",
                 "y_metric": "y_metric",
             },
+            show_evaluations_over_time=True,
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -247,12 +247,12 @@ class TestExperiments:
             workspace="workspace",
             filter={
                 "baseline_evaluation_name": "baseline_evaluation_name",
-                "evaluate_over_time": True,
                 "insight_id": "insight_id",
                 "is_deleted": True,
                 "is_favorite": True,
                 "metadata": {"foo": "string"},
                 "name": "name",
+                "show_evaluations_over_time": True,
             },
             page=1,
             page_size=1,
@@ -369,7 +369,6 @@ class TestAsyncExperiments:
             name="name",
             default_sort="default_sort",
             description="description",
-            evaluate_over_time=True,
             insight_id="insight_id",
             is_favorite=True,
             metadata={"foo": "string"},
@@ -377,6 +376,7 @@ class TestAsyncExperiments:
                 "x_metric": "x_metric",
                 "y_metric": "y_metric",
             },
+            show_evaluations_over_time=True,
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -490,7 +490,6 @@ class TestAsyncExperiments:
             baseline_evaluation_name="baseline_evaluation_name",
             default_sort="default_sort",
             description="description",
-            evaluate_over_time=True,
             insight_id="insight_id",
             is_favorite=True,
             metadata={"foo": "string"},
@@ -498,6 +497,7 @@ class TestAsyncExperiments:
                 "x_metric": "x_metric",
                 "y_metric": "y_metric",
             },
+            show_evaluations_over_time=True,
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -564,12 +564,12 @@ class TestAsyncExperiments:
             workspace="workspace",
             filter={
                 "baseline_evaluation_name": "baseline_evaluation_name",
-                "evaluate_over_time": True,
                 "insight_id": "insight_id",
                 "is_deleted": True,
                 "is_favorite": True,
                 "metadata": {"foo": "string"},
                 "name": "name",
+                "show_evaluations_over_time": True,
             },
             page=1,
             page_size=1,

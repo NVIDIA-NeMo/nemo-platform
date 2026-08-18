@@ -29,7 +29,7 @@ class ExperimentListParams(TypedDict, total=False):
 
     filter: ExperimentFilterParam
     """
-    Filter experiments by name, insight_id, is_favorite, evaluate_over_time,
+    Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time,
     baseline_evaluation_name, is_deleted, or a metadata key/value
     (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
     soft-deleted experiments; omit to see only live ones.

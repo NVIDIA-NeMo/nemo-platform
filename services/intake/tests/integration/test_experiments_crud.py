@@ -107,41 +107,46 @@ def test_experiment_group_update_description(client: TestClient) -> None:
 def test_experiment_flags_round_trip_and_preserve_omitted_values(client: TestClient) -> None:
     created = client.post(
         EXPERIMENTS,
-        json={"name": "flagged-experiment", "is_favorite": True, "evaluate_over_time": True},
+        json={
+            "name": "flagged-experiment",
+            "default_sort": "name",
+            "is_favorite": True,
+            "show_evaluations_over_time": True,
+        },
     )
     assert created.status_code == 201, created.text
     assert created.json()["is_favorite"] is True
-    assert created.json()["evaluate_over_time"] is True
+    assert created.json()["show_evaluations_over_time"] is True
 
-    # Older clients do not know about these fields. Omitting them from a full update must not clear
-    # values that were written by a newer client.
+    # Omitting defaulted settings from a full update must not reset values that were already customized.
     updated = client.put(
         f"{EXPERIMENTS}/flagged-experiment",
         json={"name": "flagged-experiment", "description": "updated by an older client"},
     )
     assert updated.status_code == 200, updated.text
+    assert updated.json()["default_sort"] == "name"
     assert updated.json()["is_favorite"] is True
-    assert updated.json()["evaluate_over_time"] is True
+    assert updated.json()["show_evaluations_over_time"] is True
 
     cleared = client.put(
         f"{EXPERIMENTS}/flagged-experiment",
-        json={"name": "flagged-experiment", "is_favorite": False, "evaluate_over_time": False},
+        json={"name": "flagged-experiment", "is_favorite": False, "show_evaluations_over_time": False},
     )
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["is_favorite"] is False
-    assert cleared.json()["evaluate_over_time"] is False
+    assert cleared.json()["show_evaluations_over_time"] is False
 
 
 def test_filter_experiments_by_new_flags(client: TestClient) -> None:
     assert client.post(EXPERIMENTS, json={"name": "flagged", "is_favorite": True}).status_code == 201
-    assert client.post(EXPERIMENTS, json={"name": "timeline", "evaluate_over_time": True}).status_code == 201
+    assert client.post(EXPERIMENTS, json={"name": "timeline", "show_evaluations_over_time": True}).status_code == 201
     assert client.post(EXPERIMENTS, json={"name": "plain"}).status_code == 201
 
     favorites = client.get(EXPERIMENTS, params={"filter[is_favorite]": "true"})
     assert favorites.status_code == 200, favorites.text
     assert {item["name"] for item in favorites.json()["data"]} == {"flagged"}
 
-    not_timeline = client.get(EXPERIMENTS, params={"filter[evaluate_over_time]": "false"})
+    not_timeline = client.get(EXPERIMENTS, params={"filter[show_evaluations_over_time]": "false"})
     assert not_timeline.status_code == 200, not_timeline.text
     names = {item["name"] for item in not_timeline.json()["data"]}
     assert "plain" in names
@@ -286,6 +291,7 @@ def test_shared_evaluation_can_be_baseline_for_a_subset_of_experiments(client: T
     )
     assert also_selected.status_code == 200, also_selected.text
     assert also_selected.json()["baseline_evaluation_name"] == evaluation["name"]
+    assert client.get(f"{EXPERIMENTS}/baseline-a").json()["baseline_evaluation_name"] == evaluation["name"]
 
 
 def test_experiment_rejects_invalid_baseline_evaluation(client: TestClient) -> None:
@@ -342,6 +348,11 @@ def test_baseline_reference_blocks_membership_removal_and_deletion(client: TestC
     )
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["baseline_evaluation_name"] is None
+    removed_after_clear = client.patch(
+        f"{EVALUATIONS}/protected-evaluation",
+        json={"experiment_ids": [other["id"]]},
+    )
+    assert removed_after_clear.status_code == 200, removed_after_clear.text
     assert client.delete(f"{EVALUATIONS}/protected-evaluation").status_code == 204
 
 

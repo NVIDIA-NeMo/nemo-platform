@@ -4341,7 +4341,7 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, insight_id, is_favorite, evaluate_over_time,
+        description: Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time,
           baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>).
           Pass is_deleted=true to return only soft-deleted experiments; omit to see
           only live ones.
@@ -11819,10 +11819,10 @@ components:
           description: Filter experiments by favorite status.
           title: Is Favorite
           type: boolean
-        evaluate_over_time:
-          description: Filter experiments by whether results should be evaluated over
-            time.
-          title: Evaluate Over Time
+        show_evaluations_over_time:
+          description: Filter experiments by whether Studio should display Evaluation
+            results over time.
+          title: Show Evaluations Over Time
           type: boolean
         baseline_evaluation_name:
           description: Filter experiments by the name of their selected baseline Evaluation.
@@ -11885,13 +11885,15 @@ components:
         is_favorite:
           type: boolean
           title: Is Favorite
-          description: Whether this Experiment is marked as a favorite.
+          description: Whether this Experiment is marked as a favorite. Defaults to
+            false on create; omit on update to preserve the existing value.
           default: false
-        evaluate_over_time:
+        show_evaluations_over_time:
           type: boolean
-          title: Evaluate Over Time
-          description: Whether this Experiment should display Evaluation results over
-            time.
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time. Defaults to false on create; omit on update to preserve
+            the existing value.
           default: false
       additionalProperties: false
       type: object
@@ -11934,11 +11936,11 @@ components:
           title: Is Favorite
           description: Whether this Experiment is marked as a favorite.
           default: false
-        evaluate_over_time:
+        show_evaluations_over_time:
           type: boolean
-          title: Evaluate Over Time
-          description: Whether this Experiment should display Evaluation results over
-            time.
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time.
           default: false
         baseline_evaluation_name:
           title: Baseline Evaluation Name
@@ -12034,13 +12036,15 @@ components:
         is_favorite:
           type: boolean
           title: Is Favorite
-          description: Whether this Experiment is marked as a favorite.
+          description: Whether this Experiment is marked as a favorite. Defaults to
+            false on create; omit on update to preserve the existing value.
           default: false
-        evaluate_over_time:
+        show_evaluations_over_time:
           type: boolean
-          title: Evaluate Over Time
-          description: Whether this Experiment should display Evaluation results over
-            time.
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time. Defaults to false on create; omit on update to preserve
+            the existing value.
           default: false
         baseline_evaluation_name:
           title: Baseline Evaluation Name

@@ -127,7 +127,7 @@ async def create_experiment(
         default_sort=body.default_sort,
         pareto=body.pareto,
         is_favorite=body.is_favorite,
-        evaluate_over_time=body.evaluate_over_time,
+        show_evaluations_over_time=body.show_evaluations_over_time,
     )
     try:
         created = await entity_client.create(entity)
@@ -146,7 +146,7 @@ async def create_experiment(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
         filter_description=(
-            "Filter experiments by name, insight_id, is_favorite, evaluate_over_time, "
+            "Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time, "
             "baseline_evaluation_name, is_deleted, or a metadata key/value "
             "(filter[metadata.<key>]=<value>). "
             "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones."
@@ -165,7 +165,7 @@ async def list_experiments(
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     _apply_default_false_boolean_filter(parsed, "is_favorite")
-    _apply_default_false_boolean_filter(parsed, "evaluate_over_time")
+    _apply_default_false_boolean_filter(parsed, "show_evaluations_over_time")
     result = await entity_client.list(
         ExperimentGroup,
         workspace=workspace,
@@ -248,7 +248,8 @@ async def update_experiment(
     existing.insight_id = body.insight_id
     existing.summary = body.summary
     existing.metadata = body.metadata
-    existing.default_sort = body.default_sort
+    if "default_sort" in body.model_fields_set:
+        existing.default_sort = body.default_sort
     # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
     # clients) must not silently reset customized axes to the cost/latency default.
     if body.pareto is not None:
@@ -257,8 +258,8 @@ async def update_experiment(
     # fields it does not know about.
     if "is_favorite" in body.model_fields_set:
         existing.is_favorite = body.is_favorite
-    if "evaluate_over_time" in body.model_fields_set:
-        existing.evaluate_over_time = body.evaluate_over_time
+    if "show_evaluations_over_time" in body.model_fields_set:
+        existing.show_evaluations_over_time = body.show_evaluations_over_time
     if "baseline_evaluation_name" in body.model_fields_set:
         await _validate_baseline_evaluation(
             entity_client,
