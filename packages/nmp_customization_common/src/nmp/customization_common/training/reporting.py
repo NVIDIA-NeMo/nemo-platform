@@ -40,23 +40,14 @@ DEFAULT_MIN_REPORT_INTERVAL_SECONDS = 10.0
 
 
 class ProgressReportingConfig(BaseModel):
-    """How much detail a training job reports as it runs.
+    """How a training job reports its progress to the Jobs service.
 
-    A run produces two kinds of metric. A few are worth a history -- the loss,
-    the learning rate, the gradient norm -- because their shape over time is the
-    point. The rest are throughput and accounting counters like `tps` and `mem`,
-    whose current value is all anyone reads.
-
-    Both kinds are always reported. `time_series_metrics` chooses which of them
-    also accumulate a history; nothing is sampled away. There is no second list
-    for the scalars, because metric names come from the training framework at
-    runtime, so any pair of lists would leave a third category in neither.
+    Two controls over what lands in the job's status details: how often an update
+    is sent, and which metrics keep a full history rather than just their latest
+    value. Both have defaults that suit most jobs.
     """
 
-    # Not a NamespacedModel (see above), so this does not inherit the
-    # extra="forbid" that the models embedding it set. Without it, this is the one
-    # place in the request body where a typo -- `time_series_metric` -- is
-    # accepted and silently does nothing.
+    # Validates and ensures that only the fields we define below are accepted.
     model_config = ConfigDict(extra="forbid")
 
     min_report_interval_seconds: float = Field(

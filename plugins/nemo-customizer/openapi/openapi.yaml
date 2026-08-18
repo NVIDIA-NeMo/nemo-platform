@@ -2079,25 +2079,14 @@ components:
       additionalProperties: false
       type: object
       title: ProgressReportingConfig
-      description: 'How much detail a training job reports as it runs.
+      description: 'How a training job reports its progress to the Jobs service.
 
 
-        A run produces two kinds of metric. A few are worth a history -- the loss,
+        Two controls over what lands in the job''s status details: how often an update
 
-        the learning rate, the gradient norm -- because their shape over time is the
+        is sent, and which metrics keep a full history rather than just their latest
 
-        point. The rest are throughput and accounting counters like `tps` and `mem`,
-
-        whose current value is all anyone reads.
-
-
-        Both kinds are always reported. `time_series_metrics` chooses which of them
-
-        also accumulate a history; nothing is sampled away. There is no second list
-
-        for the scalars, because metric names come from the training framework at
-
-        runtime, so any pair of lists would leave a third category in neither.'
+        value. Both have defaults that suit most jobs.'
     RlDPOTraining:
       properties:
         optimizer_type:
