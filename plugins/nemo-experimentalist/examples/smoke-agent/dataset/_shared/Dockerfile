@@ -17,9 +17,9 @@ RUN apt-get update \
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
 
 # `uv pip install --system` rather than `uv sync`: there is no project here, just
-# one dependency going into the image's own interpreter.
+# one pinned dependency going into the image's own interpreter.
 RUN uv pip install --system --no-cache \
-    "nooa[tracing]>=0.0.9"
+    "nooa[tracing]==0.0.9"
 
 WORKDIR /app
 RUN groupadd --gid 10001 smoke-agent \

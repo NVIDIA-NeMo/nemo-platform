@@ -17,25 +17,38 @@ import re
 import shutil
 import sys
 import tomllib
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import SpecifierSet
+from packaging.utils import canonicalize_name
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
 _HASHED = ("Dockerfile", "records.json")
-_RENDERED_TASK_TREE_SHA256 = "246b50d218d80fec7b030f93347cebe2f9b2563bb4d4d71103cf5f282e80d41a"
+_RENDERED_TASK_TREE_SHA256 = "f46c78735a97e31185ce9b17250c9d97389cd8e8068590e2a658e54db4e95308"
 
 
-def _plugin_nooa_specifier() -> str:
-    """Return the version specifier the plugin declares for nooa, e.g. ">=0.0.9"."""
+def _nooa_requirement(candidates: Iterable[str]) -> Requirement:
+    """Return the nooa requirement among *candidates*, skipping anything unparseable."""
+    for candidate in candidates:
+        try:
+            requirement = Requirement(candidate)
+        except InvalidRequirement:
+            continue
+        if canonicalize_name(requirement.name) == "nooa":
+            return requirement
+    raise AssertionError("no nooa requirement found")
+
+
+def _plugin_nooa_specifier() -> SpecifierSet:
+    """Return the nooa version range the plugin declares for itself."""
     plugin_pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     data = tomllib.loads(plugin_pyproject.read_text(encoding="utf-8"))
-    for dep in data["project"]["dependencies"]:
-        found = re.fullmatch(r"nooa(?:\[[^\]]*\])?\s*(?P<spec>.+)", dep.strip())
-        if found:
-            return found.group("spec").strip()
-    raise AssertionError("the plugin must declare a versioned nooa dependency")
+    return _nooa_requirement(data["project"]["dependencies"]).specifier
 
 
 def _expected_tag() -> str:
@@ -186,18 +199,26 @@ def test_verifier_does_not_echo_answers() -> None:
         assert forbidden not in code, f"{forbidden} publishes ground truth to the trial log"
 
 
-def test_dockerfile_nooa_version_matches_the_plugin() -> None:
-    """Check that the task image resolves the same NOOA range as the plugin.
+def test_dockerfile_pins_one_nooa_the_plugin_accepts() -> None:
+    """Check that the task image pins a single NOOA release from the plugin's range.
 
-    The agent under test runs inside this image, so a floor that drifts from the
-    plugin's own lets the two pick up different NOOA releases.
+    The tag is a hash of this Dockerfile, so a version range would let the installed
+    NOOA drift while the tag stayed put -- exactly the stale-content case the
+    content-addressed tag exists to catch. The pin also has to satisfy the plugin's
+    own range, or the agent under test runs against a different framework build.
     """
     dockerfile_path = _SHARED / "Dockerfile"
     if not dockerfile_path.is_file():
         return  # Task 4 creates it.
-    found = re.search(r"nooa\[[^\]]*\]\s*(?P<spec>[<>=!~][^\"']+)", dockerfile_path.read_text(encoding="utf-8"))
-    assert found is not None, "Dockerfile must constrain NOOA to a version range"
-    assert found.group("spec").strip() == _plugin_nooa_specifier()
+    # Requirements reach `uv pip install` as double-quoted arguments.
+    quoted = dockerfile_path.read_text(encoding="utf-8").split('"')[1::2]
+    pins = [spec for spec in _nooa_requirement(quoted).specifier if spec.operator == "=="]
+
+    assert len(pins) == 1, f"Dockerfile must pin NOOA to one exact version, got {pins}"
+    plugin_range = _plugin_nooa_specifier()
+    assert pins[0].version in plugin_range, (
+        f"image pins nooa=={pins[0].version}, which the plugin's {plugin_range} rejects"
+    )
 
 
 def test_task_image_runs_as_a_non_root_user() -> None:
