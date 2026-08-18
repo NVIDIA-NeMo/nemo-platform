@@ -2385,6 +2385,17 @@ components:
           - $ref: '#/components/schemas/RlLoRAParams'
           description: LoRA hyperparameters. Defaults applied when finetuning_type
             is lora.
+        val_at_start:
+          type: boolean
+          title: Val At Start
+          description: 'Run a validation pass before the first training step. Enable
+            it to measure uplift: the baseline and the trained result then come from
+            one job, on the same data with the same generation settings, instead of
+            a separate baseline run that has to be kept in sync. Off by default because
+            a GRPO baseline costs a full rollout pass. Ignored when the dataset ships
+            no validation.jsonl. DPO always validates at step 0 and has no such knob,
+            since its validation needs no generation.'
+          default: false
         num_generations_per_prompt:
           type: integer
           exclusiveMinimum: 0.0
@@ -2405,6 +2416,25 @@ components:
           title: Num Val Generations Per Prompt
           description: Rollouts sampled per prompt during validation.
           default: 4
+        temperature:
+          type: number
+          maximum: 2.0
+          exclusiveMinimum: 0.0
+          title: Temperature
+          description: 'Sampling temperature for rollout generation. Must be greater
+            than 0: GRPO''s advantage is the spread of rewards inside a prompt group,
+            so greedy sampling makes every rollout in a group identical, the spread
+            zero, and the whole run a no-op. Applies to validation rollouts too, which
+            are generated with the same settings.'
+          default: 1.0
+        max_new_tokens:
+          title: Max New Tokens
+          description: Cap on tokens generated per rollout turn. Defaults to max_seq_length,
+            which lets a rollout run until the context is exhausted; vLLM clamps it
+            to whatever the prompt leaves. Set it lower to bound response length and
+            rollout duration. Cannot exceed max_seq_length.
+          type: integer
+          exclusiveMinimum: 0.0
         normalize_rewards:
           type: boolean
           title: Normalize Rewards

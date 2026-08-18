@@ -128,15 +128,27 @@ class AgentRef(BaseModel):
     name: str
 
 
-class GymVerifiersDatasetRow(BaseModel):
+class GymDatasetRow(BaseModel):
+    """Fields every NeMo-Gym rollout row carries, whatever agent runs it.
+
+    NeMo-RL reads ``agent_ref.name`` to route the row and ``responses_create_params`` to
+    apply sampling settings; everything else is agent-specific and passed through.
+    """
+
     model_config = ConfigDict(extra="allow")
 
-    task_idx: int
-    vf_env_id: str
     responses_create_params: dict
     agent_ref: AgentRef
+    task_idx: int | None = None
     answer: str = ""
     task: str = ""
     example_id: int | str = 0
     info: dict = Field(default_factory=dict)
     question: str | None = None
+
+
+class GymVerifiersDatasetRow(GymDatasetRow):
+    """A row targeting ``verifiers_agent``, which resolves its environment by id."""
+
+    task_idx: int
+    vf_env_id: str

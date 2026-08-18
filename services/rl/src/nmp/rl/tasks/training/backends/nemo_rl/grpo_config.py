@@ -372,8 +372,13 @@ def compile_grpo_config(
             "port_range_low": 3000,
             "port_range_high": 4999,
             "backend": "vllm",
-            "max_new_tokens": customizer_config.model.max_seq_length,
-            "temperature": 1.0,
+            # Defaulting to the full context matches NeMo-RL's own recipes: it means "run
+            # until the context is exhausted", and the vLLM worker clamps it to what the
+            # prompt leaves. An explicit value bounds response length instead.
+            "max_new_tokens": grpo_hp.max_new_tokens or customizer_config.model.max_seq_length,
+            "temperature": grpo_hp.temperature,
+            # top_p/top_k stay neutral: these are their disabled values, and temperature is
+            # the one sampling knob the job schema exposes.
             "top_p": 1.0,
             "top_k": None,
             "stop_token_ids": None,
