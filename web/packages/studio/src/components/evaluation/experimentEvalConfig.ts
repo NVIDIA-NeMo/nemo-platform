@@ -15,9 +15,13 @@ export const EVAL_CONFIG_FILESET_KEY = 'eval_config_fileset';
  *  evaluation's fileset carries one at the root — there is no per-run file picker. */
 export const EVAL_CONFIG_FILENAME = 'eval-config.json';
 
-/** The fileset an Evaluation stores its eval config in, or null when it names none. */
-export const evaluationFilesetName = (evaluation: EvaluationResponse): string | null =>
-  evaluation.metadata?.[EVAL_CONFIG_FILESET_KEY] ?? null;
+/** The fileset an Evaluation stores its eval config in, or null when it names none. A blank
+ *  or whitespace-only metadata value counts as "none": it would otherwise pass the picker's
+ *  filter and even become the default, only to be rejected by evaluationConfigError. */
+export const evaluationFilesetName = (evaluation: EvaluationResponse): string | null => {
+  const name = evaluation.metadata?.[EVAL_CONFIG_FILESET_KEY]?.trim();
+  return name ? name : null;
+};
 
 /** Why an Evaluation cannot be reused, or null when it can. Two ways to be invalid:
  *  it names no fileset, or the fileset it names has no eval-config.json at the root. */
