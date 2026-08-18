@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Gym-enabled task image for NeMo Evaluator agent-evaluation jobs.
+#
+# This image is built and exercised in CI but remains excluded from release targets until the
+# critical Ray CVE has been resolved or approved through the security exception process. Test and
+# model configuration is supplied per job through GymRunnerTarget.env_overrides.
+
+ARG NMP_CPU_TASKS_BASE=nmp-cpu-tasks
+FROM ${NMP_CPU_TASKS_BASE} AS runtime
+
+COPY docker/locks/nmp-gym-tasks /opt/nmp-gym-tasks-lock
+
+RUN uv venv --python /usr/local/bin/python3.13 /opt/gym-venv \
+    && UV_PROJECT_ENVIRONMENT=/opt/gym-venv uv sync \
+        --project /opt/nmp-gym-tasks-lock \
+        --locked \
+        --no-dev \
+        --no-install-project \
+    && ln -s /opt/gym-venv/bin/gym /usr/local/bin/gym
+
+LABEL com.nvidia.nemo-platform.ci-only="true"
+LABEL com.nvidia.nemo-platform.release-blocked="ray-security-review"
+
+FROM runtime AS smoke-test
+RUN gym --help >/dev/null \
+    && /opt/gym-venv/bin/python -c \
+        'import importlib.metadata as m; import nemo_gym, ray, tiktoken; print({"nemo-gym": m.version("nemo-gym"), "ray": m.version("ray"), "tiktoken": m.version("tiktoken")})'
+
+FROM runtime

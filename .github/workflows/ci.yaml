@@ -127,6 +127,24 @@ jobs:
       - name: Check lock with platform uv
         run: bash script/uv-lock.sh --check
 
+      - name: Check Gym task image lock
+        run: |
+          uv python install 3.13.14
+          uv lock \
+            --check \
+            --project docker/locks/nmp-gym-tasks \
+            --python 3.13.14
+          for platform in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            uv sync \
+              --project docker/locks/nmp-gym-tasks \
+              --locked \
+              --no-dev \
+              --no-install-project \
+              --dry-run \
+              --python 3.13.14 \
+              --python-platform "${platform}"
+          done
+
   uv-compatibility:
     name: Check configured uv compatibility
     runs-on: ubuntu-latest
@@ -330,14 +348,6 @@ jobs:
         if: env.PUBLISH_IMAGES == 'true'
         shell: bash
         run: make docker-push TARGET=docker-cpu-ci
-
-      - name: Publish Gym e2e API tag
-        if: env.PUBLISH_IMAGES == 'true'
-        shell: bash
-        run: |
-          docker buildx imagetools create \
-            --tag "${IMAGE_REGISTRY}/nmp-api:${BAKE_TAG}-gym-e2e" \
-            "${IMAGE_REGISTRY}/nmp-api:${BAKE_TAG}"
 
       - name: Save fastembed model cache
         if: steps.fastembed-cache.outputs.cache-hit != 'true'
@@ -608,21 +618,29 @@ jobs:
       packages: read
     env:
       KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-gym-e2e
-      NMP_GYM_E2E_IMAGE_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}-gym-e2e
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
-      - name: Setup Kind cluster with Gym-enabled CPU tasks
+      - name: Setup Kind cluster
         uses: ./.github/actions/setup-kind-cluster
         with:
           kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
           image-registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
-          image-tag: ${{ env.NMP_GYM_E2E_IMAGE_TAG }}
+          image-tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
           kind-image-pull-token: ${{ github.token }}
           kind-image-pull-user: ${{ github.actor }}
+
+      - name: Pre-pull Gym task image into Kind
+        shell: bash
+        env:
+          KIND_IMAGE_PULL_TOKEN: ${{ github.token }}
+          KIND_IMAGE_PULL_USER: ${{ github.actor }}
+          NMP_E2E_REGISTRY: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          NMP_E2E_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+        run: e2e/k8s/scripts/prepull_kind_images.sh "${NMP_E2E_REGISTRY}/nmp-gym-tasks:${NMP_E2E_TAG}"
 
       - name: Run Gym agent-evaluate e2e test
         shell: bash
