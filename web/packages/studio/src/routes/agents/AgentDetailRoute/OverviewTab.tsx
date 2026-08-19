@@ -9,45 +9,50 @@ import { bucketAdverbForRange } from '@studio/components/AgentTraceStatistics/ut
 import { INTAKE_ENABLED, OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { AgentSummaryPanel } from '@studio/routes/agents/AgentDetailRoute/overview/AgentSummaryPanel';
 import { OpenInsightsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightsPanel';
+import { toRecentExperiments } from '@studio/routes/agents/AgentDetailRoute/overview/recentExperiments';
+import { RecentExperimentsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/RecentExperimentsPanel';
 import { useAgentTraceMetrics } from '@studio/routes/agents/AgentDetailRoute/overview/useAgentTraceMetrics';
 import { useOpenInsights } from '@studio/routes/agents/AgentDetailRoute/overview/useOpenInsights';
+import { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import {
+  getExperimentDetailRoute,
   getIntakeTracesRoute,
   getOptimizerInsightRoute,
   getOptimizerRoute,
 } from '@studio/routes/utils';
-import { type FC, useState } from 'react';
+import { type FC, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface OverviewTabProps {
   workspace: string;
-  /**
-   * From the route params, so the rollup query starts on the first render. Waiting on `agent.name`
-   * would leave the statistics looking empty until the agent fetch lands.
-   */
-  agentName?: string;
   agent?: Agent;
   modelNames: string[];
+  /** The agent's published evaluations, which the experiment cards are rolled up from. */
+  evals: AgentEvaluationRow[];
   /** Jump to the chat tab so the agent emits its first traces. */
   onRunAgent: () => void;
+  /** Open the submit-evaluation modal from the experiments empty state. */
+  onRunEvaluation?: () => void;
 }
 
 /** Landing view for an agent: how it has been running, next to what it is. */
 export const OverviewTab: FC<OverviewTabProps> = ({
   workspace,
-  agentName,
   agent,
   modelNames,
+  evals,
   onRunAgent,
+  onRunEvaluation,
 }) => {
   const navigate = useNavigate();
   const [range, setRange] = useState<TraceStatisticsRange>('week');
   const { summary, buckets, isPending } = useAgentTraceMetrics({
     workspace,
-    agentName,
+    agentName: agent?.name,
     range,
     enabled: INTAKE_ENABLED,
   });
+  const experiments = useMemo(() => toRecentExperiments(evals), [evals]);
   const {
     insights,
     totalCount: insightCount,
@@ -66,15 +71,24 @@ export const OverviewTab: FC<OverviewTabProps> = ({
   return (
     <Flex gap="density-2xl" align="start" wrap="wrap" className="w-full pb-6">
       <Stack gap="density-2xl" className="min-w-0 flex-1 basis-[32rem]">
-        <AgentTraceStatistics
-          summary={summary}
-          buckets={buckets}
-          range={range}
-          onRangeChange={setRange}
-          onViewTraces={() => navigate(getIntakeTracesRoute(workspace))}
-          onRunAgent={onRunAgent}
-          isPending={isPending}
-          caption={bucketAdverbForRange(range)}
+        {INTAKE_ENABLED && (
+          <AgentTraceStatistics
+            summary={summary}
+            buckets={buckets}
+            range={range}
+            onRangeChange={setRange}
+            onViewTraces={() => navigate(getIntakeTracesRoute(workspace))}
+            onRunAgent={onRunAgent}
+            isPending={isPending}
+            caption={bucketAdverbForRange(range)}
+          />
+        )}
+        <RecentExperimentsPanel
+          experiments={experiments}
+          onOpenExperiment={(experiment) =>
+            experiment.name && navigate(getExperimentDetailRoute(workspace, experiment.name))
+          }
+          onRunEvaluation={onRunEvaluation}
         />
       </Stack>
       <Stack gap="density-2xl" className="w-full shrink-0 lg:w-90">

@@ -6,7 +6,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getAgentsListDeploymentsQueryKey,
   useAgentsDeleteDeployment,
-  useAgentsListAgents,
+  useAgentsGetAgent,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
 import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
@@ -23,8 +23,13 @@ const EXPERIMENT_PAGE_SIZE = 100;
 /** Statuses that will not change again, so polling can stop. */
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'error', 'cancelled']);
 
-/** A published evaluation plus the experiment name its detail route is nested under. */
-export type AgentEvaluationRow = EvaluationResponse & { experimentName: string | null };
+/** A published evaluation plus the experiment it belongs to — the name its detail route is nested
+ *  under, and the description the overview cards label it with. Both are null when the experiment
+ *  falls outside the fetched page. */
+export type AgentEvaluationRow = EvaluationResponse & {
+  experimentName: string | null;
+  experimentDescription: string | null;
+};
 
 interface UseAgentPanelParams {
   workspace: string;
@@ -40,8 +45,8 @@ export const useAgentDetails = ({
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const { data: agentsResponse } = useAgentsListAgents(workspace, undefined, {
-    query: { enabled: !!agentName },
+  const { data: agent } = useAgentsGetAgent(workspace, agentName ?? '', {
+    query: { enabled: !!agentName && !!workspace },
   });
 
   const { data: deploymentsResponse, isLoading: isDeploymentsLoading } = useAgentsListDeployments(
@@ -66,7 +71,6 @@ export const useAgentDetails = ({
     }
   );
 
-  const agentsData = agentsResponse?.data;
   const deploymentsData = deploymentsResponse?.data;
 
   const { data: agentEvalsResponse } = useListEvaluations(
@@ -107,7 +111,6 @@ export const useAgentDetails = ({
     },
   });
 
-  const agent = agentName ? (agentsData ?? []).find((a) => a.name === agentName) : undefined;
   const agentDeployments = useMemo(
     () => (deploymentsData ?? []).filter((d) => d.agent === agentName),
     [deploymentsData, agentName]
@@ -121,13 +124,17 @@ export const useAgentDetails = ({
 
   const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    const namesById = new Map(
-      (experimentsResponse?.data ?? []).map((experiment) => [experiment.id, experiment.name])
+    const byId = new Map(
+      (experimentsResponse?.data ?? []).map((experiment) => [experiment.id, experiment])
     );
-    return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
-      ...evaluation,
-      experimentName: namesById.get(evaluation.experiment_ids[0] ?? '') ?? null,
-    }));
+    return (agentEvalsResponse?.data ?? []).map((evaluation) => {
+      const experiment = byId.get(evaluation.experiment_ids[0] ?? '');
+      return {
+        ...evaluation,
+        experimentName: experiment?.name ?? null,
+        experimentDescription: experiment?.description ?? null,
+      };
+    });
   }, [agentEvalsResponse, experimentsResponse, agentName]);
 
   const agentJobs: EvalJobRow[] = useMemo(() => {

@@ -38,7 +38,9 @@ describe('AgentDetailRoute', () => {
     expect(screen.getByRole('tab', { name: 'Details' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Configuration' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open traces' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Run evaluation' })).toBeInTheDocument();
+    // The overview's experiments empty state offers the same action, so this label appears twice:
+    // once in the header, once in that empty state.
+    expect(screen.getAllByRole('button', { name: 'Run evaluation' })).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
