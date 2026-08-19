@@ -32,8 +32,17 @@ export interface RailDefinition {
   label: string;
   /** Stages this rail can run at, in pipeline order. Shown whether or not it is on. */
   scopes: readonly RailScope[];
-  /** True when the rail is currently running, i.e. any of its flows are present. */
-  isEnabled: (data: RailsConfig) => boolean;
+  /**
+   * True when the rail is running at this stage.
+   *
+   * The rail-level "is this on at all" is exactly `scopes.some(isScopeEnabled)`, so it is
+   * derived by the list rather than declared here — two independent answers could
+   * disagree, and the switch and the stage badges would then contradict each other.
+   *
+   * Total over {@link RailScope}: the list asks only about the rail's own `scopes`, but a
+   * definition must answer `false` for any other stage rather than throw.
+   */
+  isScopeEnabled: (data: RailsConfig, scope: RailScope) => boolean;
   /**
    * Switch the rail on or off.
    *

@@ -51,8 +51,16 @@ export const SELF_CHECK_SCOPES: Record<SelfCheckScope, SelfCheckBinding> = {
 
 export const SELF_CHECK_SCOPE_ORDER: SelfCheckScope[] = ['input', 'output'];
 
-export const isSelfCheckScopeEnabled = (data: RailsConfig, scope: SelfCheckScope): boolean =>
-  hasFlow(data, scope, SELF_CHECK_SCOPES[scope].flow);
+const isSelfCheckScope = (scope: RailScope): scope is SelfCheckScope => scope in SELF_CHECK_SCOPES;
+
+/**
+ * Whether this stage's flow is present.
+ *
+ * Total over every {@link RailScope}, not just the two self check binds, so the rail can
+ * satisfy `RailDefinition.isScopeEnabled` without a cast.
+ */
+export const isSelfCheckScopeEnabled = (data: RailsConfig, scope: RailScope): boolean =>
+  isSelfCheckScope(scope) && hasFlow(data, scope, SELF_CHECK_SCOPES[scope].flow);
 
 /**
  * Turn one stage on or off.

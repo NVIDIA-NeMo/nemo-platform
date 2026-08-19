@@ -25,7 +25,7 @@ export const selfCheckRail: RailDefinition = {
   label: 'Self Checks',
   scopes: SELF_CHECK_SCOPE_ORDER,
 
-  isEnabled: (data) => SELF_CHECK_SCOPE_ORDER.some((scope) => isSelfCheckScopeEnabled(data, scope)),
+  isScopeEnabled: isSelfCheckScopeEnabled,
 
   setEnabled: (data, enabled) =>
     SELF_CHECK_SCOPE_ORDER.reduce(

@@ -41,7 +41,9 @@ interface RailRowProps extends RailsListProps {
 }
 
 const RailRow: FC<RailRowProps> = ({ rail, data, onChange }) => {
-  const enabled = rail.isEnabled(data);
+  // Derived, not declared: a rail is running exactly when one of its stages is. Deriving it
+  // is what keeps the switch and the stage badges from ever contradicting each other.
+  const enabled = rail.scopes.some((scope) => rail.isScopeEnabled(data, scope));
   // Offered only when switching off left settings behind, so the row stays quiet in the
   // common case and the action appears exactly when there is something to discard.
   const canDiscard = !enabled && rail.hasStoredSettings(data);
@@ -63,14 +65,30 @@ const RailRow: FC<RailRowProps> = ({ rail, data, onChange }) => {
         {rail.label}
       </Text>
 
-      {/* The stages this rail is capable of running at — they describe the rail, not the
-          current setting, so they stay visible when it is switched off. */}
-      <Flex align="center" gap="density-xs" wrap="wrap" className="flex-1">
-        {rail.scopes.map((scope) => (
-          <Badge key={scope} color="gray" kind="outline">
-            {SCOPE_LABELS[scope]}
-          </Badge>
-        ))}
+      {/*
+        Every stage the rail can run at, coloured by whether it currently does. Both are
+        always listed — a rail running on input only has to be distinguishable from one
+        running on both, and that difference is the whole point of the rail, so it must be
+        legible without opening the settings panel.
+
+        Read-only: the switches that change this live in the rail's own settings.
+      */}
+      <Flex align="center" gap="density-md" wrap="wrap" className="flex-1">
+        {rail.scopes.map((scope) => {
+          const scopeEnabled = rail.isScopeEnabled(data, scope);
+          return (
+            <Badge
+              key={scope}
+              kind="solid"
+              color={scopeEnabled ? 'green' : 'gray'}
+              // The visible text is the stage name either way, so the state is colour-only
+              // without this.
+              aria-label={`${SCOPE_LABELS[scope]} ${scopeEnabled ? 'enabled' : 'disabled'}`}
+            >
+              {SCOPE_LABELS[scope]}
+            </Badge>
+          );
+        })}
       </Flex>
 
       {canDiscard ? (

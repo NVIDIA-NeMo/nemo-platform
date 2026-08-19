@@ -4,7 +4,10 @@
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { findPrompt } from '@studio/routes/guardrails/rails/configOps';
 import { selfCheckRail } from '@studio/routes/guardrails/rails/selfCheck';
-import { setSelfCheckScopeEnabled } from '@studio/routes/guardrails/rails/selfCheck/bindings';
+import {
+  SELF_CHECK_SCOPE_ORDER,
+  setSelfCheckScopeEnabled,
+} from '@studio/routes/guardrails/rails/selfCheck/bindings';
 import {
   SELF_CHECK_INPUT_PROMPT,
   SELF_CHECK_OUTPUT_PROMPT,
@@ -89,16 +92,28 @@ describe('selfCheckRail.setEnabled', () => {
   });
 });
 
-describe('selfCheckRail.isEnabled', () => {
-  it('is true when either stage is running', () => {
-    expect(selfCheckRail.isEnabled(setSelfCheckScopeEnabled({}, 'input', true))).toBe(true);
-    expect(selfCheckRail.isEnabled(setSelfCheckScopeEnabled({}, 'output', true))).toBe(true);
+describe('selfCheckRail.isScopeEnabled', () => {
+  it('answers per stage, so one stage running does not imply the other', () => {
+    const inputOnly = setSelfCheckScopeEnabled({}, 'input', true);
+
+    expect(selfCheckRail.isScopeEnabled(inputOnly, 'input')).toBe(true);
+    expect(selfCheckRail.isScopeEnabled(inputOnly, 'output')).toBe(false);
   });
 
   it('is false for a config that only has the prompts', () => {
     const promptsOnly = selfCheckRail.setEnabled(selfCheckRail.setEnabled({}, true), false);
 
-    expect(selfCheckRail.isEnabled(promptsOnly)).toBe(false);
+    for (const scope of SELF_CHECK_SCOPE_ORDER) {
+      expect(selfCheckRail.isScopeEnabled(promptsOnly, scope)).toBe(false);
+    }
+  });
+
+  // The list asks about every scope a rail declares; a rail must not throw on one it does
+  // not bind, so the predicate stays total over RailScope.
+  it('is false for a stage self check does not bind', () => {
+    expect(selfCheckRail.isScopeEnabled(selfCheckRail.setEnabled({}, true), 'retrieval')).toBe(
+      false
+    );
   });
 });
 

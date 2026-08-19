@@ -67,6 +67,19 @@ export const SelfCheckEnabled: Story = {
 };
 
 /**
+ * Running on input only — the state the row could not previously express, and the reason
+ * the stage badges carry state at all.
+ */
+export const SelfCheckInputOnly: Story = {
+  args: {
+    config: {
+      rails: { input: { flows: ['self check input'] } },
+      prompts: [{ task: 'self_check_input', content: 'Should the user message be blocked?' }],
+    },
+  },
+};
+
+/**
  * Switched off but still holding prompts, which is when the list offers to discard them.
  */
 export const DisabledWithStoredSettings: Story = {

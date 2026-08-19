@@ -33,13 +33,35 @@ const mountPanel = (data?: RailsConfig) => {
 };
 
 describe('GuardrailConfigurationPanel', () => {
-  it('lists the configurable rails with the stages they run at', () => {
+  it('lists the configurable rails with every stage they can run at', () => {
     mountPanel();
 
     expect(screen.getByText('Guardrails')).toBeInTheDocument();
     expect(screen.getByText('Self Checks')).toBeInTheDocument();
-    expect(screen.getByText('Input')).toBeInTheDocument();
-    expect(screen.getByText('Output')).toBeInTheDocument();
+    // Off, but still listed: a stage the rail could run at is part of what the rail is.
+    expect(screen.getByLabelText('Input disabled')).toBeInTheDocument();
+    expect(screen.getByLabelText('Output disabled')).toBeInTheDocument();
+  });
+
+  it('shows which stages are running, not just which exist', () => {
+    mountPanel({
+      rails: { input: { flows: ['self check input'] } },
+      prompts: [{ task: 'self_check_input', content: 'Block?' }],
+    });
+
+    // The state the row previously could not express: on for input, off for output.
+    expect(screen.getByLabelText('Input enabled')).toBeInTheDocument();
+    expect(screen.getByLabelText('Output disabled')).toBeInTheDocument();
+  });
+
+  it('switching the rail on turns every stage badge on', async () => {
+    const user = userEvent.setup();
+    mountPanel();
+
+    await user.click(screen.getByRole('switch', { name: 'Self Checks' }));
+
+    expect(await screen.findByLabelText('Input enabled')).toBeInTheDocument();
+    expect(screen.getByLabelText('Output enabled')).toBeInTheDocument();
   });
 
   it('reflects a config that already has the rail switched on', () => {
