@@ -500,7 +500,7 @@
               },
               "details": "A norm.Iter can enter an infinite loop when handling input containing invalid UTF-8 bytes.",
               "id": "GO-2026-5970",
-              "modified": "2026-08-11T10:27:02.848217875Z",
+              "modified": "2026-08-14T10:42:20.494473428Z",
               "published": "2026-07-14T17:29:56Z",
               "references": [
                 {
@@ -546,7 +546,9 @@
                 "RHSA-2026:49317",
                 "RHSA-2026:49360",
                 "RHSA-2026:51065",
-                "RHSA-2026:52912"
+                "RHSA-2026:52912",
+                "RHSA-2026:54364",
+                "RHSA-2026:54549"
               ],
               "schema_version": "1.8.0",
               "summary": "Infinite loop on invalid input in golang.org/x/text"
@@ -880,6 +882,22 @@
             },
             {
               "ids": [
+                "GO-2026-5026"
+              ],
+              "aliases": [
+                "CVE-2026-39821",
+                "GO-2026-5026"
+              ],
+              "experimental_analysis": {
+                "GO-2026-5026": {
+                  "called": true,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
                 "GO-2026-5037"
               ],
               "aliases": [
@@ -940,6 +958,108 @@
               ],
               "experimental_analysis": {
                 "GO-2026-5856": {
+                  "called": true,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
+                "GO-2026-5972"
+              ],
+              "aliases": [
+                "BIT-golang-2026-33818",
+                "CVE-2026-33818",
+                "GO-2026-5972"
+              ],
+              "experimental_analysis": {
+                "GO-2026-5972": {
+                  "called": true,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
+                "GO-2026-6088"
+              ],
+              "aliases": [
+                "BIT-golang-2026-56859",
+                "CVE-2026-56859",
+                "GO-2026-6088"
+              ],
+              "experimental_analysis": {
+                "GO-2026-6088": {
+                  "called": false,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
+                "GO-2026-6089"
+              ],
+              "aliases": [
+                "BIT-golang-2026-56853",
+                "CVE-2026-56853",
+                "GO-2026-6089"
+              ],
+              "experimental_analysis": {
+                "GO-2026-6089": {
+                  "called": true,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
+                "GO-2026-6090"
+              ],
+              "aliases": [
+                "BIT-golang-2026-56862",
+                "CVE-2026-56862",
+                "GO-2026-6090"
+              ],
+              "experimental_analysis": {
+                "GO-2026-6090": {
+                  "called": true,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
+                "GO-2026-6091"
+              ],
+              "aliases": [
+                "BIT-golang-2026-56858",
+                "CVE-2026-56858",
+                "GO-2026-6091"
+              ],
+              "experimental_analysis": {
+                "GO-2026-6091": {
+                  "called": true,
+                  "unimportant": false
+                }
+              },
+              "max_severity": ""
+            },
+            {
+              "ids": [
+                "GO-2026-6218"
+              ],
+              "aliases": [
+                "BIT-golang-2026-56860",
+                "CVE-2026-56860",
+                "GO-2026-6218"
+              ],
+              "experimental_analysis": {
+                "GO-2026-6218": {
                   "called": true,
                   "unimportant": false
                 }
@@ -1011,7 +1131,7 @@
               },
               "details": "On Linux, if the target of Root.Chmod is replaced with a symlink while the chmod operation is in progress, Chmod can operate on the target of the symlink, even when the target lies outside the root.\n\nThe Linux fchmodat syscall silently ignores the AT_SYMLINK_NOFOLLOW flag, which Root.Chmod uses to avoid symlink traversal. Root.Chmod checks its target before acting and returns an error if the target is a symlink lying outside the root, so the impact is limited to cases where the target is replaced with a symlink between the check and operation.",
               "id": "GO-2026-4864",
-              "modified": "2026-08-03T10:45:58.606098953Z",
+              "modified": "2026-08-14T10:42:12.639761490Z",
               "published": "2026-04-07T22:53:49Z",
               "references": [
                 {
@@ -1107,6 +1227,8 @@
                 "RHSA-2026:48790",
                 "RHSA-2026:49509",
                 "RHSA-2026:49600",
+                "RHSA-2026:54191",
+                "RHSA-2026:54757",
                 "RHSA-2026:7291",
                 "RHSA-2026:7385"
               ],
@@ -1371,7 +1493,7 @@
               },
               "details": "If one side of the TLS connection sends multiple key update messages post-handshake in a single record, the connection can deadlock, causing uncontrolled consumption of resources. This can lead to a denial of service.\n\nThis only affects TLS 1.3.",
               "id": "GO-2026-4870",
-              "modified": "2026-08-07T10:42:58.423861746Z",
+              "modified": "2026-08-18T10:44:11.352332310Z",
               "published": "2026-04-07T22:53:49Z",
               "references": [
                 {
@@ -1456,6 +1578,10 @@
                 "RHSA-2026:24470",
                 "RHSA-2026:24761",
                 "RHSA-2026:24762",
+                "RHSA-2026:25248",
+                "RHSA-2026:25250",
+                "RHSA-2026:25251",
+                "RHSA-2026:25252",
                 "RHSA-2026:26447",
                 "RHSA-2026:27076",
                 "RHSA-2026:28038",
@@ -1486,6 +1612,8 @@
                 "RHSA-2026:49600",
                 "RHSA-2026:49944",
                 "RHSA-2026:51288",
+                "RHSA-2026:54191",
+                "RHSA-2026:54757",
                 "RHSA-2026:7291",
                 "RHSA-2026:7385"
               ],
@@ -1701,7 +1829,7 @@
               },
               "details": "Validating certificate chains which use policies is unexpectedly inefficient when certificates in the chain contain a very large number of policy mappings, possibly causing denial of service.\n\nThis only affects validation of otherwise trusted certificate chains, issued by a root CA in the VerifyOptions.Roots CertPool, or in the system certificate pool.",
               "id": "GO-2026-4946",
-              "modified": "2026-08-07T10:42:58.102931532Z",
+              "modified": "2026-08-18T10:44:11.281425070Z",
               "published": "2026-04-07T22:53:49Z",
               "references": [
                 {
@@ -1724,6 +1852,7 @@
                 "RHSA-2026:16021",
                 "RHSA-2026:16024",
                 "RHSA-2026:16101",
+                "RHSA-2026:17287",
                 "RHSA-2026:18027",
                 "RHSA-2026:18032",
                 "RHSA-2026:19135",
@@ -1737,6 +1866,9 @@
                 "RHSA-2026:20569",
                 "RHSA-2026:20570",
                 "RHSA-2026:20571",
+                "RHSA-2026:20607",
+                "RHSA-2026:20608",
+                "RHSA-2026:20609",
                 "RHSA-2026:22141",
                 "RHSA-2026:22309",
                 "RHSA-2026:22713",
@@ -1745,6 +1877,10 @@
                 "RHSA-2026:24337",
                 "RHSA-2026:24470",
                 "RHSA-2026:24716",
+                "RHSA-2026:25248",
+                "RHSA-2026:25250",
+                "RHSA-2026:25251",
+                "RHSA-2026:25252",
                 "RHSA-2026:26054",
                 "RHSA-2026:26447",
                 "RHSA-2026:27076",
@@ -1780,6 +1916,7 @@
                 "RHSA-2026:49838",
                 "RHSA-2026:49944",
                 "RHSA-2026:51288",
+                "RHSA-2026:54757",
                 "RHSA-2026:7291",
                 "RHSA-2026:7385"
               ],
@@ -1844,7 +1981,7 @@
               },
               "details": "During chain building, the amount of work that is done is not correctly limited when a large number of intermediate certificates are passed in VerifyOptions.Intermediates, which can lead to a denial of service. This affects both direct users of crypto/x509 and users of crypto/tls.",
               "id": "GO-2026-4947",
-              "modified": "2026-08-07T10:42:57.566663355Z",
+              "modified": "2026-08-18T10:44:11.213360963Z",
               "published": "2026-04-07T22:53:49Z",
               "references": [
                 {
@@ -1915,6 +2052,11 @@
                 "RHSA-2026:24761",
                 "RHSA-2026:24762",
                 "RHSA-2026:25180",
+                "RHSA-2026:25248",
+                "RHSA-2026:25250",
+                "RHSA-2026:25251",
+                "RHSA-2026:25252",
+                "RHSA-2026:25253",
                 "RHSA-2026:26447",
                 "RHSA-2026:27076",
                 "RHSA-2026:28038",
@@ -1950,7 +2092,9 @@
                 "RHSA-2026:49600",
                 "RHSA-2026:49838",
                 "RHSA-2026:49944",
-                "RHSA-2026:51288"
+                "RHSA-2026:51288",
+                "RHSA-2026:54191",
+                "RHSA-2026:54757"
               ],
               "schema_version": "1.7.5",
               "summary": "Unexpected work during chain building in crypto/x509"
@@ -2472,7 +2616,7 @@
               },
               "details": "When using LookupCNAME with the cgo DNS resolver, a very long CNAME response can trigger a double-free of C memory and a crash.",
               "id": "GO-2026-4981",
-              "modified": "2026-08-07T10:42:57.711075692Z",
+              "modified": "2026-08-14T10:42:16.677296862Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2515,7 +2659,13 @@
                 "RHSA-2026:49703",
                 "RHSA-2026:50319",
                 "RHSA-2026:50336",
-                "RHSA-2026:51187"
+                "RHSA-2026:51187",
+                "RHSA-2026:53412",
+                "RHSA-2026:53413",
+                "RHSA-2026:53415",
+                "RHSA-2026:54168",
+                "RHSA-2026:54191",
+                "RHSA-2026:54757"
               ],
               "schema_version": "1.7.5",
               "summary": "Crash when handling long CNAME response in net"
@@ -2695,6 +2845,203 @@
               "affected": [
                 {
                   "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-5026.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "net/http",
+                        "symbols": [
+                          "Client.CloseIdleConnections",
+                          "Client.Do",
+                          "Client.Get",
+                          "Client.Head",
+                          "Client.Post",
+                          "Client.PostForm",
+                          "ClientConn.Close",
+                          "ClientConn.RoundTrip",
+                          "Get",
+                          "Head",
+                          "Post",
+                          "PostForm",
+                          "Transport.CloseIdleConnections",
+                          "Transport.NewClientConn",
+                          "Transport.RoundTrip",
+                          "http1ClientConn.Close",
+                          "http1ClientConn.RoundTrip",
+                          "http2ClientConn.RoundTrip",
+                          "http2RoundTripper.RoundTrip",
+                          "idnaASCII"
+                        ]
+                      },
+                      {
+                        "path": "net/http/internal/http2",
+                        "symbols": [
+                          "Transport.AddConn",
+                          "Transport.RoundTrip",
+                          "Transport.RoundTripOpt",
+                          "authorityAddr"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                },
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-5026.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "golang.org/x/net/idna",
+                        "symbols": [
+                          "Profile.ToASCII",
+                          "Profile.ToUnicode",
+                          "Profile.process",
+                          "ToASCII",
+                          "ToUnicode"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "golang.org/x/net",
+                    "purl": "pkg:golang/golang.org/x/net"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "0.55.0"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "CVE-2026-39821"
+              ],
+              "credits": [
+                {
+                  "name": "KC1zs4 (https://github.com/KC1zs4)"
+                }
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-5026"
+              },
+              "details": "The ToASCII and ToUnicode functions incorrectly accept Punycode-encoded labels that decode to an ASCII-only label. For example, ToUnicode(\"xn--example-.com\") incorrectly returns the name \"example.com\" rather than an error.\n\nThis behavior can lead to privilege escalation in programs using the idna package. For example, a program which performs privilege checks on the ASCII hostname may reject \"example.com\" but permit \"xn--example-.com\". If that program subsequently converts the ASCII hostname to Unicode, it will inadvertently permits access to the Unicode name \"example.com\".",
+              "id": "GO-2026-5026",
+              "modified": "2026-08-19T10:45:05.842303854Z",
+              "published": "2026-05-22T02:46:43Z",
+              "references": [
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/767220"
+                },
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/78760"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/iI-mYSI0lu8"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                }
+              ],
+              "related": [
+                "CGA-frmm-xgw5-xmhr",
+                "RHSA-2026:23262",
+                "RHSA-2026:23264",
+                "RHSA-2026:30853",
+                "RHSA-2026:30854",
+                "RHSA-2026:30855",
+                "RHSA-2026:34357",
+                "RHSA-2026:34359",
+                "RHSA-2026:34789",
+                "RHSA-2026:35826",
+                "RHSA-2026:35827",
+                "RHSA-2026:35828",
+                "RHSA-2026:35829",
+                "RHSA-2026:35830",
+                "RHSA-2026:35831",
+                "RHSA-2026:36796",
+                "RHSA-2026:37435",
+                "RHSA-2026:37436",
+                "RHSA-2026:38995",
+                "RHSA-2026:39005",
+                "RHSA-2026:39573",
+                "RHSA-2026:39879",
+                "RHSA-2026:41019",
+                "RHSA-2026:41930",
+                "RHSA-2026:42078",
+                "RHSA-2026:42079",
+                "RHSA-2026:42080",
+                "RHSA-2026:42082",
+                "RHSA-2026:42150",
+                "RHSA-2026:42151",
+                "RHSA-2026:42240",
+                "RHSA-2026:46395",
+                "RHSA-2026:51112",
+                "RHSA-2026:51187",
+                "RHSA-2026:52826",
+                "RHSA-2026:53374",
+                "RHSA-2026:53412",
+                "RHSA-2026:53413",
+                "RHSA-2026:53415",
+                "RHSA-2026:54191",
+                "RHSA-2026:54401",
+                "RHSA-2026:54580",
+                "RHSA-2026:54757",
+                "RHSA-2026:56143",
+                "RHSA-2026:56223"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Invoking failure to reject ASCII-only Punycode-encoded labels in golang.org/x/net/idna"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
                     "source": "https://vuln.go.dev/ID/GO-2026-5037.json"
                   },
                   "ecosystem_specific": {
@@ -2751,7 +3098,7 @@
               },
               "details": "(*x509.Certificate).VerifyHostname previously called matchHostnames in a loop over all DNS Subject Alternative Name (SAN) entries. This caused strings.Split(host, \".\") to execute repeatedly on the same input hostname.\n\nWith a large DNS SAN list, verification costs scaled quadratically based on the number of SAN entries multiplied by the hostname's label count. Because x509.Verify validates hostnames before building the certificate chain, this overhead occurred even for untrusted certificates.",
               "id": "GO-2026-5037",
-              "modified": "2026-08-07T10:42:57.776859230Z",
+              "modified": "2026-08-14T10:42:13.010975475Z",
               "published": "2026-06-02T21:39:47Z",
               "references": [
                 {
@@ -2793,7 +3140,15 @@
                 "RHSA-2026:46395",
                 "RHSA-2026:49703",
                 "RHSA-2026:50319",
-                "RHSA-2026:51187"
+                "RHSA-2026:51187",
+                "RHSA-2026:53374",
+                "RHSA-2026:53412",
+                "RHSA-2026:53413",
+                "RHSA-2026:53415",
+                "RHSA-2026:53416",
+                "RHSA-2026:54168",
+                "RHSA-2026:54401",
+                "RHSA-2026:54757"
               ],
               "schema_version": "1.7.5",
               "summary": "Inefficient candidate hostname parsing in crypto/x509"
@@ -3066,6 +3421,548 @@
               ],
               "schema_version": "1.7.5",
               "summary": "Invoking Encrypted Client Hello privacy leak in crypto/tls"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-5972.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "encoding/asn1",
+                        "symbols": [
+                          "Unmarshal",
+                          "UnmarshalWithParams",
+                          "parseField",
+                          "parseSequenceOf"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-golang-2026-33818",
+                "CVE-2026-33818"
+              ],
+              "credits": [
+                {
+                  "name": "Marwan Atia (marwansamir688@gmail.com) "
+                }
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-5972"
+              },
+              "details": "Enforce a recursion limit in Unmarshal to prevent stack exhaustion when parsing deeply-nested, recursive structures.",
+              "id": "GO-2026-5972",
+              "modified": "2026-08-19T12:25:48.032126533Z",
+              "published": "2026-08-13T21:43:54Z",
+              "references": [
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/80405"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/814980"
+                }
+              ],
+              "related": [
+                "CGA-qffm-j2p3-c942",
+                "RHSA-2026:54835",
+                "RHSA-2026:54836"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Enforce maximum recursion depth in encoding/asn1"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-6088.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "encoding/xml",
+                        "symbols": [
+                          "Decoder.Decode",
+                          "Decoder.DecodeElement",
+                          "Decoder.RawToken",
+                          "Decoder.Skip",
+                          "Decoder.Token",
+                          "Decoder.pop",
+                          "Decoder.push",
+                          "Decoder.unmarshal",
+                          "Decoder.unmarshalPath",
+                          "Unmarshal"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-golang-2026-56859",
+                "CVE-2026-56859"
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-6088"
+              },
+              "details": "Previously, DecodeElement would reset the depth counter causing it to never fire; this could lead to stack exhaustion.",
+              "id": "GO-2026-6088",
+              "modified": "2026-08-19T12:26:03.215683596Z",
+              "published": "2026-08-13T21:43:54Z",
+              "references": [
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/80481"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/803320"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                }
+              ],
+              "related": [
+                "CGA-6mxx-fmwg-96cr",
+                "RHSA-2026:54835",
+                "RHSA-2026:54836"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Add recursion depth guard during decode in encoding/xml"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-6089.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "net/http",
+                        "symbols": [
+                          "ListenAndServe",
+                          "ListenAndServeTLS",
+                          "Serve",
+                          "ServeTLS",
+                          "Server.ListenAndServe",
+                          "Server.ListenAndServeTLS",
+                          "Server.Serve",
+                          "Server.ServeTLS",
+                          "conn.readRequest",
+                          "conn.serve"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-golang-2026-56853",
+                "CVE-2026-56853"
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-6089"
+              },
+              "details": "When a server is configured to support unencrypted HTTP/2, it reads a few bytes from each new connection to see if they contain the HTTP/2 client preface. ReadHeaderTimeout is unexpectedly not being applied when doing this.",
+              "id": "GO-2026-6089",
+              "modified": "2026-08-19T12:25:57.945812448Z",
+              "published": "2026-08-13T21:43:54Z",
+              "references": [
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/80205"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/795540"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                }
+              ],
+              "related": [
+                "CGA-gx4x-f625-2c45",
+                "RHSA-2026:54835",
+                "RHSA-2026:54836"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Apply ReadHeaderTimeout when doing unencrypted HTTP/2 check in net/http"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-6090.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "crypto/tls",
+                        "symbols": [
+                          "Conn.Handshake",
+                          "Conn.HandshakeContext",
+                          "Conn.Read",
+                          "Conn.Write",
+                          "Conn.readRecordOrCCS",
+                          "Dial",
+                          "DialWithDialer",
+                          "Dialer.Dial",
+                          "Dialer.DialContext",
+                          "QUICConn.HandleData",
+                          "QUICConn.Start"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-golang-2026-56862",
+                "CVE-2026-56862"
+              ],
+              "credits": [
+                {
+                  "name": "Qi Deng of Aurascape.ai"
+                }
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-6090"
+              },
+              "details": "Handshake messages, such as KeyUpdate, are always considered as state-advancing, regardless of whether a handshake has been completed or not. As a result, a malicious client can keep sending KeyUpdate messages to force the server to keep performing key derivation operations indefinitely.",
+              "id": "GO-2026-6090",
+              "modified": "2026-08-19T12:25:46.851852657Z",
+              "published": "2026-08-13T21:43:54Z",
+              "references": [
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/80528"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/804261"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                }
+              ],
+              "related": [
+                "CGA-j6x6-9m4j-6xmr",
+                "RHSA-2026:54835",
+                "RHSA-2026:54836"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Limit handshake messages we are willing to accept post-handshake in crypto/tls"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-6091.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "html/template",
+                        "symbols": [
+                          "Template.Execute",
+                          "Template.ExecuteTemplate",
+                          "tJS"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-golang-2026-56858",
+                "CVE-2026-56858"
+              ],
+              "credits": [
+                {
+                  "name": "Ali Sherif"
+                }
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-6091"
+              },
+              "details": "Previously, pathological inputs could close an unescaped '/' early, allowing for attack-controlled data to inject arbitrary content, potentially leading to XSS.",
+              "id": "GO-2026-6091",
+              "modified": "2026-08-19T12:25:41.152910625Z",
+              "published": "2026-08-13T21:43:54Z",
+              "references": [
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/80435"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/807100"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                }
+              ],
+              "related": [
+                "CGA-rch4-p96c-xj2v",
+                "RHSA-2026:54835",
+                "RHSA-2026:54836"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Fix Javascript regexp context tracking in html/template"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://vuln.go.dev/ID/GO-2026-6218.json"
+                  },
+                  "ecosystem_specific": {
+                    "imports": [
+                      {
+                        "path": "net/url",
+                        "symbols": [
+                          "URL.Parse",
+                          "URL.ResolveReference",
+                          "resolvePath"
+                        ]
+                      }
+                    ]
+                  },
+                  "package": {
+                    "ecosystem": "Go",
+                    "name": "stdlib",
+                    "purl": "pkg:golang/stdlib"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.25.13"
+                        },
+                        {
+                          "introduced": "1.26.0-0"
+                        },
+                        {
+                          "fixed": "1.26.6"
+                        },
+                        {
+                          "introduced": "1.27.0-0"
+                        },
+                        {
+                          "fixed": "1.27.0-rc.3"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-golang-2026-56860",
+                "CVE-2026-56860"
+              ],
+              "database_specific": {
+                "review_status": "REVIEWED",
+                "url": "https://pkg.go.dev/vuln/GO-2026-6218"
+              },
+              "details": "Previously, resolving relative paths containing parent directory ('..') segments performed string conversions and buffer rewrites on each step, resulting in quadratic time complexity and high memory allocation overhead.\n\nNow, path resolution operates on a byte buffer using index-based backtracking for '..' segments, eliminating the quadratic time complexity and significantly reducing memory allocations.",
+              "id": "GO-2026-6218",
+              "modified": "2026-08-19T12:26:00.041064446Z",
+              "published": "2026-08-13T21:43:54Z",
+              "references": [
+                {
+                  "type": "FIX",
+                  "url": "https://go.dev/cl/803681"
+                },
+                {
+                  "type": "REPORT",
+                  "url": "https://go.dev/issue/80494"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+                }
+              ],
+              "related": [
+                "CGA-9mpc-jg3h-hrj4",
+                "RHSA-2026:54835",
+                "RHSA-2026:54836"
+              ],
+              "schema_version": "1.9.0",
+              "summary": "Avoid quadratic complexity in resolvePath in net/url"
             }
           ]
         }

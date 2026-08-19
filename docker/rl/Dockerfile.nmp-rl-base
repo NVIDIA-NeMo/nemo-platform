@@ -8,7 +8,7 @@
 # from source (rather than the prebuilt NGC nemo-rl image) lets us pin any RL commit via
 # NEMO_RL_REF; Gym follows as RL's submodule pin.
 #
-# DPO trains on `fsdp`. GRPO (a future release) trains on `automodel` (DTensor V2) or `mcore`
+# DPO trains on `fsdp`. GRPO trains on `automodel` (DTensor V2) or `mcore`
 # (Megatron) and generates on `vllm`. sglang and trtllm are deliberately not built.
 #
 # Two things drive most of what follows, both covered in README.md:
