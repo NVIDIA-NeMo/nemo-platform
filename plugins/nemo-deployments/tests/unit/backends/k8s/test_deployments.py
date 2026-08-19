@@ -28,7 +28,14 @@ from nemo_deployments_plugin.backends.labels import (
     k8s_deployment_resource_name,
     k8s_deployment_secret_name,
 )
-from nemo_deployments_plugin.entities import ConfigFile, Container, ContainerPort, EnvVar, SecretRef
+from nemo_deployments_plugin.entities import (
+    ConfigFile,
+    Container,
+    ContainerPort,
+    DeploymentConfig,
+    EnvVar,
+    SecretRef,
+)
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
@@ -265,7 +272,7 @@ async def test_create_deployment_adopted_service_failure_keeps_configmap(
     mock_k8s_clients.core_v1.delete_namespaced_config_map.assert_not_called()
 
 
-def _config_with_secret_env():
+def _config_with_secret_env() -> DeploymentConfig:
     base = sample_always_config()
     container = base.containers[0].model_copy(
         update={"env": [EnvVar(name="APP_TOKEN", secretRef=SecretRef(workspace="default", name="app-token"))]}

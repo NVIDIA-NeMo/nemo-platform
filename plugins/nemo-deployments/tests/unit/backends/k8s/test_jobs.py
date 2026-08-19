@@ -14,7 +14,7 @@ from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.jobs import job_backoff_limit, trim_log_text, validate_config_for_job
 from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY, k8s_deployment_secret_name
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import EnvVar, SecretRef
+from nemo_deployments_plugin.entities import DeploymentConfig, EnvVar, SecretRef
 from nemo_deployments_plugin.types import RestartPolicy
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
@@ -212,7 +212,7 @@ async def test_delete_job_rejects_foreign(job_ops_clients: MagicMock, mock_k8s_c
     mock_k8s_clients.batch_v1.delete_namespaced_job.assert_not_called()
 
 
-def _job_config_with_secret_env():
+def _job_config_with_secret_env() -> DeploymentConfig:
     config = sample_config(restart_policy="Never")
     config.containers[0].env = [EnvVar(name="APP_TOKEN", secretRef=SecretRef(workspace="default", name="app-token"))]
     return config

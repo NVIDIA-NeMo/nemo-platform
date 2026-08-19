@@ -108,7 +108,8 @@ async def _resolve_secret_value(sdk: AsyncNeMoPlatform, item: EnvVar) -> str | N
     references are resolved via the Secrets service; a missing secret is a hard
     error, as is any secret-service access failure.
     """
-    assert item.secret_ref is not None
+    if item.secret_ref is None:
+        raise SecretResolutionError(f"Environment variable {item.name!r} has no secret reference to resolve")
     ngc_secret_ref = platform_ngc_secret_ref()
     is_ngc = item.name == "NGC_API_KEY" and item.secret_ref == ngc_secret_ref
     value = await resolve_secret_ref(sdk, item.secret_ref)

@@ -269,7 +269,9 @@ async def create_deployment(
         apps_v1 = clients.apps_v1
         core_v1 = clients.core_v1
 
-        def _rollback_partial_create(*, deployment_created: bool, delete_configmap: bool, delete_secret_: bool) -> None:
+        def _rollback_partial_create(
+            *, deployment_created: bool, should_delete_configmap: bool, should_delete_secret: bool
+        ) -> None:
             if deployment_created:
                 try:
                     apps_v1.delete_namespaced_deployment(
@@ -280,7 +282,7 @@ async def create_deployment(
                     )
                 except ApiException as cleanup_exc:
                     _log_cleanup_ignored(resource_name, cleanup_exc)
-            if delete_configmap:
+            if should_delete_configmap:
                 delete_configmap_best_effort(
                     core_v1,
                     namespace=namespace,
@@ -288,7 +290,7 @@ async def create_deployment(
                     expected_labels=identity_labels,
                     timeout=timeout,
                 )
-            if delete_secret_:
+            if should_delete_secret:
                 delete_secret_best_effort(
                     core_v1,
                     namespace=namespace,
@@ -363,13 +365,13 @@ async def create_deployment(
             if not resource_labels_match(deployment, identity_labels):
                 _rollback_partial_create(
                     deployment_created=deployment_created,
-                    delete_configmap=configmap_written,
-                    delete_secret_=secret_written,
+                    should_delete_configmap=configmap_written,
+                    should_delete_secret=secret_written,
                 )
                 return deployment
 
-            delete_configmap_on_service_failure = deployment_created and configmap_written
-            delete_secret_on_service_failure = deployment_created and secret_written
+            should_delete_configmap_on_service_failure = deployment_created and configmap_written
+            should_delete_secret_on_service_failure = deployment_created and secret_written
             try:
                 core_v1.create_namespaced_service(
                     namespace=namespace,
@@ -386,15 +388,15 @@ async def create_deployment(
                     if not resource_labels_match(existing_service, identity_labels):
                         _rollback_partial_create(
                             deployment_created=deployment_created,
-                            delete_configmap=delete_configmap_on_service_failure,
-                            delete_secret_=delete_secret_on_service_failure,
+                            should_delete_configmap=should_delete_configmap_on_service_failure,
+                            should_delete_secret=should_delete_secret_on_service_failure,
                         )
                         raise
                     return deployment
                 _rollback_partial_create(
                     deployment_created=deployment_created,
-                    delete_configmap=delete_configmap_on_service_failure,
-                    delete_secret_=delete_secret_on_service_failure,
+                    should_delete_configmap=should_delete_configmap_on_service_failure,
+                    should_delete_secret=should_delete_secret_on_service_failure,
                 )
                 raise
             return deployment
