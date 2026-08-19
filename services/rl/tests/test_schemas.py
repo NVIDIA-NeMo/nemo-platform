@@ -216,3 +216,90 @@ def test_grpo_rejects_max_new_tokens_larger_than_context() -> None:
 def test_grpo_accepts_max_new_tokens_up_to_the_context() -> None:
     t = GRPOTraining(type="grpo", max_seq_length=2048, max_new_tokens=2048)
     assert t.max_new_tokens == 2048
+
+
+def _grpo_job(training: GRPOTraining) -> RlJobOutput:
+    return RlJobOutput(
+        model="default/base",
+        dataset="default/gym-data",
+        environment="default/env",
+        training=training,
+        output=_make_output(),
+    )
+
+
+def test_expert_parallel_size_joins_the_model_parallel_divisor() -> None:
+    """EP draws from the same world as TP/CP: NeMo-RL derives dp = world // (tp * cp * ep)."""
+    job = _grpo_job(
+        GRPOTraining(type="grpo", parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=3)),
+    )
+    with pytest.raises(ValueError, match="expert_parallel_size"):
+        job.validate_for_training()
+
+
+def test_expert_parallel_size_accepted_when_it_divides_the_world() -> None:
+    job = _grpo_job(
+        GRPOTraining(
+            type="grpo",
+            parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=8),
+            batch_size=8,
+            num_generations_per_prompt=8,
+        ),
+    )
+    job.validate_for_training()
+
+
+def test_expert_parallel_size_defaults_to_one() -> None:
+    assert ParallelismParams().expert_parallel_size == 1
+
+
+def test_vllm_tensor_parallel_size_cannot_span_nodes() -> None:
+    """One vLLM engine lives inside a node; TP above the node size is unsatisfiable."""
+    job = _grpo_job(
+        GRPOTraining(
+            type="grpo",
+            parallelism=ParallelismParams(num_nodes=2, num_gpus_per_node=4),
+            vllm_tensor_parallel_size=8,
+            batch_size=8,
+            num_generations_per_prompt=8,
+        ),
+    )
+    with pytest.raises(ValueError, match="cannot exceed num_gpus_per_node"):
+        job.validate_for_training()
+
+
+def test_vllm_tensor_parallel_size_must_divide_total_gpus() -> None:
+    job = _grpo_job(
+        GRPOTraining(
+            type="grpo",
+            parallelism=ParallelismParams(num_gpus_per_node=6),
+            vllm_tensor_parallel_size=4,
+            batch_size=6,
+            num_generations_per_prompt=6,
+        ),
+    )
+    with pytest.raises(ValueError, match="vllm_tensor_parallel_size"):
+        job.validate_for_training()
+
+
+def test_backend_settings_default_to_unset() -> None:
+    """Unset means the compiler picks, so a plain job compiles without any of these."""
+    t = GRPOTraining(type="grpo")
+    assert t.vllm_tensor_parallel_size is None  # falls back to min(training tp, gpus per node)
+    assert t.vllm_gpu_memory_utilization == 0.5
+    assert t.automodel_kwargs is None
+    assert t.router_aux_loss_coef is None
+
+
+def test_router_aux_loss_coef_accepts_zero() -> None:
+    """0.0 is the value an MoE RL run actually wants, so it must survive validation."""
+    assert GRPOTraining(type="grpo", router_aux_loss_coef=0.0).router_aux_loss_coef == 0.0
+
+
+def test_no_validation_generations_knob_is_exposed() -> None:
+    """NeMo-RL's validate() runs one rollout per validation row and has no per-prompt fan-out.
+
+    ``grpo.GRPOConfig`` is ``extra="allow"``, so a ``num_val_generations_per_prompt`` key would
+    be accepted and read by nothing. mean@k comes from repeating rows in validation.jsonl.
+    """
+    assert "num_val_generations_per_prompt" not in GRPOTraining.model_fields
