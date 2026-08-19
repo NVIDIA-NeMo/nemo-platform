@@ -1203,7 +1203,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
 def _register_ethos_commands(app: typer.Typer) -> None:
     """Register the ``ethos`` sub-group onto *app*.
 
-    Glue only: planning, validation, and the transaction live in
+    Glue only: migration validation and changes live in
     :mod:`nemo_agents_plugin.ethos_migrate`.
     """
     ethos_app = typer.Typer(name="ethos", help="Manage an agent's Ethos artifacts.", no_args_is_help=True)
@@ -1227,32 +1227,26 @@ def _register_ethos_commands(app: typer.Typer) -> None:
                 "agent's package; pass every other one explicitly."
             ),
         ),
-        experiment_dir: Optional[list[str]] = typer.Option(
-            None,
-            "--experiment-dir",
-            help=(
-                "Experiment directory to check for unfinished runs. Repeatable. The command also "
-                "checks the default tree each affected profile reserves."
-            ),
-        ),
         dry_run: bool = typer.Option(
             False,
             "--dry-run",
-            help="Report the outcome, both gate results, and every location read or written, then exit.",
+            help="Assess the migration without writing or deleting artifacts.",
+        ),
+        cleanup: bool = typer.Option(
+            False,
+            "--cleanup",
+            help="Delete matching legacy artifacts after you verify completed targets.",
         ),
         base_url: BaseUrlOption = None,
     ) -> None:
         """Move an agent's Ethos package, Fileset, and profile keys to their final names.
 
-        Safe to rerun in any state: with nothing to migrate it is a read-only
-        no-op, an already-migrated agent verifies and exits 0, and a conflict or
-        active work exits non-zero with an explanation.
+        Additive migration preserves legacy artifacts. Cleanup deletes them only
+        after matching targets and converted profiles are verified.
         """
         from nemo_agents_plugin.ethos_migrate import (
             MigrationError,
             MigrationRequest,
-            SdkFilesetStore,
-            SdkJobStore,
             run_migration,
             validate_agent_name,
         )
@@ -1271,19 +1265,17 @@ def _register_ethos_commands(app: typer.Typer) -> None:
             workspace=workspace,
             agents_root=agents_root,
             profiles=tuple(Path(value) for value in profile or ()),
-            experiment_dirs=tuple(Path(value) for value in experiment_dir or ()),
             dry_run=dry_run,
+            cleanup=cleanup,
         )
         try:
-            report = run_migration(request, filesets=SdkFilesetStore(sdk), jobs=SdkJobStore(sdk))
+            report = run_migration(request, sdk=sdk)
         except MigrationError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
         for line in report.lines:
             typer.echo(line)
-        if not report.ok:
-            raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
