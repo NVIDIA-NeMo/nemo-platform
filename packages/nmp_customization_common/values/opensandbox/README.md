@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # OpenSandbox values — nemo-dev-blue (OCI)
 
 Target cluster: `nv-prd-nemo.teleport.sh-nemo-dev-blue`  
