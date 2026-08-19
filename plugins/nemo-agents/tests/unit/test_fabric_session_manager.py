@@ -172,7 +172,7 @@ async def test_resolve_session_opens_session_when_id_is_absent(
 
 
 @pytest.mark.asyncio
-async def test_resolve_session_lazily_opens_runtime_with_platform_id(
+async def test_resolve_session_lazily_opens_and_reuses_runtime_with_platform_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -187,34 +187,13 @@ async def test_resolve_session_lazily_opens_runtime_with_platform_id(
         fabric=cast(Any, fabric),
     )
 
-    session = await manager.resolve_session("platform-session-1")
-
-    assert session.session_id == "platform-session-1"
-    assert session.runtime is runtime
-    assert await registry.get("platform-session-1") is session
-    assert len(fabric.start_calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_resolve_session_reuses_lazily_opened_runtime(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
-    runtime = _FakeRuntime()
-    fabric = _FakeFabric(runtime)
-    manager = FabricSessionManager(
-        _agent_config(),
-        base_dir=tmp_path,
-        session_registry=FabricSessionRegistry(),
-        fabric=cast(Any, fabric),
-    )
-
     first = await manager.resolve_session("platform-session-1")
     second = await manager.resolve_session("platform-session-1")
 
+    assert first.session_id == "platform-session-1"
+    assert first.runtime is runtime
     assert second is first
-    assert second.runtime is runtime
+    assert await registry.get("platform-session-1") is first
     assert len(fabric.start_calls) == 1
 
 

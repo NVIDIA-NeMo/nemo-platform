@@ -64,17 +64,27 @@ def test_crud_binding_deployment_read_covers_logs() -> None:
 
 
 def test_session_lifecycle_bindings() -> None:
+    expected_bindings = [
+        (f"{_BASE}/sessions", "post", "agents.sessions.create", ["agents:write", "platform:write"]),
+        (f"{_BASE}/sessions", "get", "agents.sessions.list", ["agents:read", "platform:read"]),
+        (f"{_BASE}/sessions/{{name}}", "get", "agents.sessions.read", ["agents:read", "platform:read"]),
+        (f"{_BASE}/sessions/{{name}}", "delete", "agents.sessions.delete", ["agents:write", "platform:write"]),
+        (
+            f"{_BASE}/sessions/{{name}}/close",
+            "post",
+            "agents.sessions.close",
+            ["agents:write", "platform:write"],
+        ),
+    ]
     contrib = _contribution()
 
-    create = contrib.endpoints[f"{_BASE}/sessions"]["post"]
-    assert create.permissions == ["agents.sessions.create"]
-    assert create.scopes == ["agents:write", "platform:write"]
-    assert create.callers == ["principal"]
-
-    close = contrib.endpoints[f"{_BASE}/sessions/{{name}}/close"]["post"]
-    assert close.permissions == ["agents.sessions.close"]
-    assert close.scopes == ["agents:write", "platform:write"]
-    assert close.callers == ["principal"]
+    for path, method, permission, scopes in expected_bindings:
+        binding = contrib.endpoints[path][method]
+        assert binding.permissions == [permission], (path, method)
+        assert binding.scopes == scopes, (path, method)
+        assert binding.callers == ["principal"], (path, method)
+        assert not binding.deny, (path, method)
+        assert permission in contrib.permissions
 
 
 def test_gateway_proxy_binding() -> None:

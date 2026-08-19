@@ -346,26 +346,22 @@ class TestProxyByDeploymentName:
 
 
 class TestProxyByAgentName:
-    @pytest.mark.asyncio
-    async def test_resolver_returns_selected_deployment_entity(self, mock_entity_client: AsyncMock) -> None:
-        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
-        failed = _make_deployment(name="failed-dep", agent="calc", status="failed")
-        selected = _make_deployment(name="running-dep", agent="calc", status="running")
-        later = _make_deployment(name="later-dep", agent="calc", status="running")
-        mock_entity_client.list = AsyncMock(return_value=_list_response([failed, selected, later]))
-
-        resolved = await gateway_module._resolve_agent_deployment(  # noqa: SLF001
-            "calc",
-            "default",
-            mock_entity_client,
-        )
-
-        assert resolved is selected
-
     def test_resolves_running_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
-        dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
-        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        failed = _make_deployment(name="failed-dep", agent="calc", status="failed")
+        selected = _make_deployment(
+            name="running-dep",
+            agent="calc",
+            status="running",
+            endpoint="http://localhost:9001",
+        )
+        later = _make_deployment(
+            name="later-dep",
+            agent="calc",
+            status="running",
+            endpoint="http://localhost:9002",
+        )
+        mock_entity_client.list = AsyncMock(return_value=_list_response([failed, selected, later]))
 
         httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
 
@@ -377,6 +373,8 @@ class TestProxyByAgentName:
 
         assert resp.status_code == 200
         mock_entity_client.find_one.assert_not_awaited()
+        stream_call = httpx_mock.__aenter__.return_value.stream.call_args
+        assert stream_call.kwargs["url"] == "http://localhost:9001/v1/chat/completions"
 
     def test_agent_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("not found"))

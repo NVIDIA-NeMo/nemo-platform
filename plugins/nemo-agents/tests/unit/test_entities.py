@@ -221,7 +221,7 @@ class TestAgentSessionEntity:
                 }
             )
 
-    def test_utc_lifecycle_timestamps(self) -> None:
+    def test_lifecycle_timestamps_round_trip(self) -> None:
         session = AgentSession(
             name="session",
             workspace="default",
