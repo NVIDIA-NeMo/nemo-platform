@@ -44,7 +44,7 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
     split_agent_spec,
     split_git_ref,
 )
-from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror
+from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror, experiment_name, group_name
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id, spans_to_protobuf
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_insights_plugin.entities import Insight
@@ -222,8 +222,9 @@ class ExperimentalistBackend(ABC):
     async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
         """Best-effort Evaluation name for *candidate* × *split* in *workspace*.
 
-        Returns "" when there is no projection (offline) or it fails — the name only
-        tags Intake resource attributes, so a run must not break on it.
+        Returns "" only when there is no Platform client (offline). With a client,
+        returns a deterministic name even when the optional native projection fails,
+        so Intake trace persistence can continue.
         """
         ...
 
@@ -819,16 +820,28 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         raise last_exc
 
     async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
+        """Return a stable Intake evaluation name and repair its optional mirror.
+
+        Trace ingestion must not depend on the native Experiment/Evaluation
+        projection. In particular, a Platform restart can make the original
+        best-effort Experiment-group creation fail even though Intake is back
+        by the time Harbor returns its traces. Recreate the group before the
+        evaluation upsert when possible, but retain the deterministic name if
+        that projection is still unavailable.
+        """
         if self.client is None:
             return ""
+        name = experiment_name(group_name(candidate.run_id), candidate.label, split)
         mirror = self._mirrors.get(workspace)
         if mirror is None:
             mirror = self._mirrors[workspace] = ExperimentMirror(self.client, workspace)
         try:
-            return await mirror.ensure_experiment(candidate, split=split)
+            run = _load_entity(ExperimentRun, self._eo / "run.json")
+            await mirror.ensure_group(run)
+            await mirror.ensure_experiment(candidate, split=split)
         except Exception as exc:  # noqa: BLE001 - projection is best-effort
-            logger.warning("[MIRROR] ensure_experiment failed: %s", exc)
-            return ""
+            logger.warning("[MIRROR] ensure_experiment failed; uploading Intake traces without it: %s", exc)
+        return name
 
     async def persist_result(self, *, workspace: str, result: ExperimentalistResult) -> None:
         report_path = self._eo / "OPTIMIZATION.md"
