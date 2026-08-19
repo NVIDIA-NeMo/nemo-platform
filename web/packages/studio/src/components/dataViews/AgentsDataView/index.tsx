@@ -40,6 +40,15 @@ import { useNavigate } from 'react-router';
 
 export type { Agent, AgentDeployment };
 
+/** A model entry in a `nemo-agents-spec-v1` config, under `models` or on a harness. */
+export interface AgentSpecModel {
+  provider?: string;
+  model?: string;
+  api_key_env?: string;
+  temperature?: number;
+  settings?: Record<string, unknown>;
+}
+
 export interface AgentConfig {
   functions?: Record<string, { _type: string }>;
   llms?: Record<
@@ -52,6 +61,9 @@ export interface AgentConfig {
       base_url?: string;
     }
   >;
+  /** `nemo-agents-spec-v1` named models, e.g. `{ default: { model: 'nvidia-…' } }`. */
+  models?: Record<string, AgentSpecModel>;
+  harnesses?: Record<string, { kind?: string; model?: AgentSpecModel }>;
   workflow?: {
     _type: string;
     tool_names?: string[];
