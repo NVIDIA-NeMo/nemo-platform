@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # OpenSandbox server — kata-qemu profile for nemo-dev-blue.
 #
 # Pins every sandbox to RuntimeClass/kata-qemu. Scheduling is enforced both by

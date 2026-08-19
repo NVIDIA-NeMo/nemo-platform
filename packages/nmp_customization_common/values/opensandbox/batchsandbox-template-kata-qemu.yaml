@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # ConfigMap mounted by opensandbox-server-kata.
 # Pins BatchSandbox pods onto kata-deploy-labeled H100 nodes.
 # RuntimeClass/kata-qemu already carries the same scheduling.nodeSelector;

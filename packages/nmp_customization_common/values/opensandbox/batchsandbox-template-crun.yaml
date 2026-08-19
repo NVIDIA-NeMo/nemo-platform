@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # ConfigMap mounted by opensandbox-server-crun.
 # Shared-kernel profile: no runtimeClassName → cluster default (crun on this CRI-O cluster).
 apiVersion: v1

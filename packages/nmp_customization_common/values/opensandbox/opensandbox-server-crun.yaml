@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # OpenSandbox server — shared-kernel / crun profile for nemo-dev-blue.
 #
 # OpenSandbox [secure_runtime] is server-global, so crun and kata-qemu each get

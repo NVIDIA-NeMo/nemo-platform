@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Verify the kata-qemu OpenSandbox profile on nemo-dev-blue.
 #
 # Checks: RuntimeClass + kata nodes, server Ready + Secret, /health,
