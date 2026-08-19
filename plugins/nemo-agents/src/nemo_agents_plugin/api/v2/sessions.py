@@ -15,11 +15,14 @@ import logging
 import secrets
 from collections.abc import Awaitable
 from typing import cast
+from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import SessionPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
+from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
 from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
 from nemo_agents_plugin.schema import CreateSessionRequest, SessionFilter, SessionPage
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
@@ -32,6 +35,8 @@ from starlette.requests import Request
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_FABRIC_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 _raw_session_filter_dep = make_filter_obj_dep(SessionFilter)
 
@@ -166,11 +171,12 @@ async def close_session(
         raise HTTPException(status_code=500, detail="Failed to get session.") from exc
 
     if session.status is SessionStatus.CLOSED:
+        await _cleanup_fabric_runtime(entity_client, session)
         return session
 
     session.status = SessionStatus.CLOSED
     try:
-        return await entity_client.update(session)
+        updated_session = await entity_client.update(session)
     except NemoEntityNotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -184,6 +190,9 @@ async def close_session(
     except Exception as exc:
         logger.exception("Failed to close session '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to close session.") from exc
+
+    await _cleanup_fabric_runtime(entity_client, updated_session)
+    return updated_session
 
 
 @router.delete("/sessions/{name}", status_code=204, tags=["Agent Sessions"])
@@ -199,6 +208,17 @@ async def delete_session(
 ) -> None:
     """Permanently delete a session by name."""
     try:
+        session = await entity_client.get(AgentSession, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to get session '%s' before deleting", name)
+        raise HTTPException(status_code=500, detail="Failed to get session.") from exc
+
+    try:
         await entity_client.delete(AgentSession, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
         raise HTTPException(
@@ -213,6 +233,8 @@ async def delete_session(
     except Exception as exc:
         logger.exception("Failed to delete session '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete session.") from exc
+
+    await _cleanup_fabric_runtime(entity_client, session)
 
 
 async def _get_deployment_for_session(
@@ -243,4 +265,66 @@ def _deployment_not_found(workspace: str, deployment_id: str) -> HTTPException:
     return HTTPException(
         status_code=404,
         detail=f"Deployment ID '{deployment_id}' not found in workspace '{workspace}'.",
+    )
+
+
+async def _cleanup_fabric_runtime(
+    entity_client: NemoEntitiesClient,
+    session: AgentSession,
+) -> None:
+    """Best-effort removal of a session's process-local Fabric runtime."""
+    try:
+        deployment = await entity_client.find_one(
+            AgentDeployment,
+            workspace=session.workspace,
+            filter_obj={"id": session.deployment_id},
+        )
+    except Exception:
+        logger.warning(
+            "Could not resolve deployment ID '%s' while cleaning up session ID '%s'.",
+            session.deployment_id,
+            session.id,
+            exc_info=True,
+        )
+        return
+
+    if deployment.id != session.deployment_id or deployment.workspace != session.workspace:
+        logger.warning(
+            "Resolved deployment did not match session ID '%s'; skipping Fabric runtime cleanup.",
+            session.id,
+        )
+        return
+
+    endpoint = get_deployment_endpoint(deployment)
+    if endpoint is None:
+        logger.warning(
+            "Deployment ID '%s' has no endpoint; skipping cleanup for session ID '%s'.",
+            deployment.id,
+            session.id,
+        )
+        return
+
+    cleanup_url = f"{endpoint.rstrip('/')}/v1/sessions/{quote(session.id, safe='')}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=_FABRIC_CLEANUP_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        ) as client:
+            response = await client.delete(cleanup_url)
+    except Exception:
+        logger.warning(
+            "Fabric runtime cleanup request failed for session ID '%s'.",
+            session.id,
+            exc_info=True,
+        )
+        return
+
+    # A missing runtime is already clean: the session may never have been invoked or may
+    # have expired from the deployment's process-local registry.
+    if response.status_code == 404 or 200 <= response.status_code < 300:
+        return
+    logger.warning(
+        "Fabric runtime cleanup returned HTTP %s for session ID '%s'.",
+        response.status_code,
+        session.id,
     )

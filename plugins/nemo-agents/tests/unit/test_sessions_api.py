@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import sessions as sessions_router_module
@@ -223,23 +224,27 @@ class TestCloseSession:
         mock_entity_client.update.side_effect = lambda session: session
         client = _test_client(mock_entity_client)
 
-        response = client.post(f"{BASE}/session-one/close")
+        with patch.object(sessions_router_module, "_cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+            response = client.post(f"{BASE}/session-one/close")
 
         assert response.status_code == 200
         assert response.json()["status"] == "closed"
         updated: AgentSession = mock_entity_client.update.await_args.args[0]
         assert updated.status is SessionStatus.CLOSED
+        cleanup.assert_awaited_once_with(mock_entity_client, updated)
 
     def test_close_is_idempotent(self) -> None:
         mock_entity_client = AsyncMock()
         mock_entity_client.get.return_value = _make_session(status=SessionStatus.CLOSED)
         client = _test_client(mock_entity_client)
 
-        response = client.post(f"{BASE}/session-one/close")
+        with patch.object(sessions_router_module, "_cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+            response = client.post(f"{BASE}/session-one/close")
 
         assert response.status_code == 200
         assert response.json()["status"] == "closed"
         mock_entity_client.update.assert_not_awaited()
+        cleanup.assert_awaited_once_with(mock_entity_client, mock_entity_client.get.return_value)
 
     def test_close_returns_404(self) -> None:
         mock_entity_client = AsyncMock()
@@ -264,27 +269,83 @@ class TestCloseSession:
 class TestDeleteSession:
     def test_delete_session(self) -> None:
         mock_entity_client = AsyncMock()
+        mock_entity_client.get.return_value = _make_session()
         client = _test_client(mock_entity_client)
 
-        response = client.delete(f"{BASE}/session-one")
+        with patch.object(sessions_router_module, "_cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+            response = client.delete(f"{BASE}/session-one")
 
         assert response.status_code == 204
+        mock_entity_client.get.assert_awaited_once_with(AgentSession, name="session-one", workspace="default")
         mock_entity_client.delete.assert_awaited_once_with(AgentSession, name="session-one", workspace="default")
+        cleanup.assert_awaited_once_with(mock_entity_client, mock_entity_client.get.return_value)
 
     def test_delete_returns_404(self) -> None:
         mock_entity_client = AsyncMock()
-        mock_entity_client.delete.side_effect = NemoEntityNotFoundError("not found")
+        mock_entity_client.get.side_effect = NemoEntityNotFoundError("not found")
         client = _test_client(mock_entity_client)
 
         response = client.delete(f"{BASE}/missing")
 
         assert response.status_code == 404
+        mock_entity_client.delete.assert_not_awaited()
 
     def test_delete_returns_409_for_concurrent_update(self) -> None:
         mock_entity_client = AsyncMock()
+        mock_entity_client.get.return_value = _make_session()
         mock_entity_client.delete.side_effect = NemoEntityConflictError("conflict")
         client = _test_client(mock_entity_client)
 
         response = client.delete(f"{BASE}/session-one")
 
         assert response.status_code == 409
+
+
+class TestFabricRuntimeCleanup:
+    async def test_cleanup_calls_bound_deployment_session_endpoint(self) -> None:
+        mock_entity_client = AsyncMock()
+        deployment = _make_deployment()
+        deployment.endpoint = "http://localhost:9001"
+        mock_entity_client.find_one.return_value = deployment
+        session = _make_session(name="session/one")
+        requests: list[httpx.Request] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(sessions_router_module.httpx, "AsyncClient", return_value=cleanup_client):
+            await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
+
+        assert len(requests) == 1
+        assert requests[0].method == "DELETE"
+        assert str(requests[0].url) == "http://localhost:9001/v1/sessions/session-session%2Fone-id"
+
+    async def test_cleanup_ignores_missing_runtime(self) -> None:
+        mock_entity_client = AsyncMock()
+        deployment = _make_deployment()
+        deployment.endpoint = "http://localhost:9001"
+        mock_entity_client.find_one.return_value = deployment
+        session = _make_session()
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404)
+
+        cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(sessions_router_module.httpx, "AsyncClient", return_value=cleanup_client):
+            await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
+
+    async def test_cleanup_ignores_connection_failure(self) -> None:
+        mock_entity_client = AsyncMock()
+        deployment = _make_deployment()
+        deployment.endpoint = "http://localhost:9001"
+        mock_entity_client.find_one.return_value = deployment
+        session = _make_session()
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("refused", request=request)
+
+        cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(sessions_router_module.httpx, "AsyncClient", return_value=cleanup_client):
+            await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
