@@ -16,6 +16,7 @@ NemoEntitiesClient, 404/409 mapping).
 from __future__ import annotations
 
 import logging
+from typing import TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import ComputeSpecPerms, EnvironmentPerms, EnvironmentSpecPerms
@@ -35,10 +36,17 @@ from nemo_agents_plugin.schema import (
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.entity import NemoEntity
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
-from nemo_platform_plugin.schema import PaginationData
+from nemo_platform_plugin.schema import NemoFilter, NemoListResponse, PaginationData
 
 logger = logging.getLogger(__name__)
+
+# Generics for the shared CRUD helpers below: one entity type, its list-response
+# page type, and its query filter type.
+EntityT = TypeVar("EntityT", bound=NemoEntity)
+PageT = TypeVar("PageT", bound=NemoListResponse)
+FilterT = TypeVar("FilterT", bound=NemoFilter)
 
 router = APIRouter()
 
@@ -263,7 +271,14 @@ async def delete_compute_spec(
 # ---------------------------------------------------------------------------
 
 
-async def _create_entity(entity_client, entity, *, kind: str, name: str, workspace: str):
+async def _create_entity(
+    entity_client: NemoEntitiesClient,
+    entity: EntityT,
+    *,
+    kind: str,
+    name: str,
+    workspace: str,
+) -> EntityT:
     try:
         return await entity_client.create(entity)
     except NemoEntityConflictError as exc:
@@ -276,7 +291,18 @@ async def _create_entity(entity_client, entity, *, kind: str, name: str, workspa
         raise HTTPException(status_code=500, detail=f"Failed to create agent {kind}.") from exc
 
 
-async def _list_entities(entity_client, entity_type, page_type, *, workspace, page, page_size, sort, filter, kind):
+async def _list_entities(
+    entity_client: NemoEntitiesClient,
+    entity_type: type[EntityT],
+    page_type: type[PageT],
+    *,
+    workspace: str,
+    page: int,
+    page_size: int,
+    sort: str,
+    filter: FilterT,
+    kind: str,
+) -> PageT:
     filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
     try:
         result = await entity_client.list(
@@ -295,7 +321,14 @@ async def _list_entities(entity_client, entity_type, page_type, *, workspace, pa
     return page_type(data=result.data, pagination=pagination, sort=sort, filter=filter)
 
 
-async def _get_entity(entity_client, entity_type, *, name: str, workspace: str, kind: str):
+async def _get_entity(
+    entity_client: NemoEntitiesClient,
+    entity_type: type[EntityT],
+    *,
+    name: str,
+    workspace: str,
+    kind: str,
+) -> EntityT:
     try:
         return await entity_client.get(entity_type, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
@@ -308,7 +341,14 @@ async def _get_entity(entity_client, entity_type, *, name: str, workspace: str, 
         raise HTTPException(status_code=500, detail=f"Failed to get agent {kind}.") from exc
 
 
-async def _delete_entity(entity_client, entity_type, *, name: str, workspace: str, kind: str) -> None:
+async def _delete_entity(
+    entity_client: NemoEntitiesClient,
+    entity_type: type[EntityT],
+    *,
+    name: str,
+    workspace: str,
+    kind: str,
+) -> None:
     try:
         await entity_client.delete(entity_type, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:

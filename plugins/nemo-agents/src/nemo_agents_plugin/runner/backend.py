@@ -98,6 +98,7 @@ class RunnerBackend(ABC):
         deployment_mode: DeploymentMode = "subprocess",
         created_by: str | None = None,
         resources: ComputeResources | None = None,
+        secrets: dict[str, str] | None = None,
     ) -> DeploymentInfo:
         """Start the agent process; returns status="starting".
 
@@ -111,6 +112,11 @@ class RunnerBackend(ABC):
         requests/limits. Container backends compile it into the execute
         container's resources (k8s passes both; docker consolidates to limits).
         Subprocess mode ignores it.
+
+        ``secrets`` maps ENV_VAR_NAME -> "workspace/secret-name" from the
+        resolved environment. Container backends compile these into secret-backed
+        container env vars (never plaintext); the deployments-plugin substrate
+        materializes/mounts them. Subprocess mode ignores it.
         """
         ...
 

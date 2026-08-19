@@ -50,11 +50,13 @@ from nemo_deployments_plugin.entities import (
     HTTPGetAction,
     Probe,
     ResourceRequirements,
+    SecretRef,
     VolumeMount,
 )
 from nemo_platform_plugin.auth import platform_auth_enabled
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
+from nemo_platform_plugin.entities.base import parse_qualified_name
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
@@ -248,6 +250,23 @@ def build_container_resources(resources: ComputeResources | None, *, mode: Deplo
     return ResourceRequirements(limits=dict(resources.limits), requests=dict(resources.requests))
 
 
+def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[EnvVar]:
+    """Compile resolved secret references into secret-backed container env vars.
+
+    ``secrets`` maps ENV_VAR_NAME -> "workspace/secret-name" (an unqualified
+    name resolves against the deployment ``workspace``). Each entry becomes an
+    ``EnvVar`` carrying a ``secret_ref`` (never a plaintext value); the
+    deployments-plugin substrate materializes the value at deploy time.
+    """
+    if not secrets:
+        return []
+    env_vars: list[EnvVar] = []
+    for env_name, ref in secrets.items():
+        secret_workspace, secret_name = parse_qualified_name(ref, default_workspace=workspace)
+        env_vars.append(EnvVar(name=env_name, secretRef=SecretRef(workspace=secret_workspace, name=secret_name)))
+    return env_vars
+
+
 def _fabric_config_mount_path(config_mount_path: str) -> str:
     parent = str(PurePosixPath(config_mount_path).parent)
     if parent in ("", "."):
@@ -318,6 +337,7 @@ def build_deployment_config(
     auth_proxy_on_behalf_of: str | None = None,
     config_files: list[ConfigFile] | None = None,
     resources: ComputeResources | None = None,
+    secrets: dict[str, str] | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -355,6 +375,10 @@ def build_deployment_config(
         )
     else:
         env.append(EnvVar(name=_NAT_CONFIG_ENV, value=config_mount_path))
+    # Secret-backed env vars from the resolved environment: emitted as
+    # secret_ref (never plaintext). The deployments-plugin substrate resolves
+    # them (docker) or mounts a managed Secret via envFrom (k8s).
+    env.extend(_secret_env_vars(secrets, workspace=workspace))
     volume_mounts: list[VolumeMount] = []
     init_containers: list[Container] = []
 
@@ -463,6 +487,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         deployment_mode: DeploymentMode = "docker",
         created_by: str | None = None,
         resources: ComputeResources | None = None,
+        secrets: dict[str, str] | None = None,
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container."""
         del port  # Host port is allocated by the deployments executor, not agents.
@@ -567,6 +592,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             auth_proxy_on_behalf_of=auth_proxy_on_behalf_of,
             config_files=staged_config_files,
             resources=resources,
+            secrets=secrets,
         )
         await entities.create(deployment_config)
         try:

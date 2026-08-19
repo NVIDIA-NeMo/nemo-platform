@@ -317,6 +317,46 @@ def test_build_deployment_config_no_resources_is_empty() -> None:
     assert cfg.containers[0].resources.requests == {}
 
 
+def test_build_deployment_config_emits_secret_ref_env_vars() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+        secrets={"APP_TOKEN": "default/app-token", "OTHER": "prod/other-secret"},
+    )
+    by_name = {e.name: e for e in cfg.containers[0].env}
+    # Secret-backed env vars carry a secret_ref, never a plaintext value.
+    assert by_name["APP_TOKEN"].value is None
+    assert by_name["APP_TOKEN"].secret_ref is not None
+    assert by_name["APP_TOKEN"].secret_ref.workspace == "default"
+    assert by_name["APP_TOKEN"].secret_ref.name == "app-token"
+    # A workspace-qualified reference keeps its explicit workspace.
+    assert by_name["OTHER"].secret_ref is not None
+    assert by_name["OTHER"].secret_ref.workspace == "prod"
+    assert by_name["OTHER"].secret_ref.name == "other-secret"
+    # The plaintext secret value never appears in the rendered config.
+    assert "app-token" not in yaml.safe_dump([e.model_dump() for e in cfg.containers[0].env if e.value])
+
+
+def test_build_deployment_config_no_secrets_adds_no_secret_env() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+    )
+    assert all(e.secret_ref is None for e in cfg.containers[0].env)
+
+
 def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
     cfg = build_deployment_config(
         name="hello-dep",

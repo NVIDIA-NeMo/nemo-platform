@@ -6,19 +6,28 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TypeVar
 from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import environments as environments_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.entities import AgentComputeSpec, AgentEnvironment, AgentEnvironmentSpec
+from nemo_agents_plugin.entities import (
+    AgentComputeSpec,
+    AgentEnvironment,
+    AgentEnvironmentSpec,
+    EnvironmentSpecInline,
+)
+from nemo_platform_plugin.entity import NemoEntity
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 NOW = datetime.now(timezone.utc)
 
+EntityT = TypeVar("EntityT", bound=NemoEntity)
 
-def _stamp(entity):
+
+def _stamp(entity: EntityT) -> EntityT:
     entity._id = f"{entity.__entity_type__}-{entity.name}-id"
     entity._created_at = NOW
     return entity
@@ -125,6 +134,7 @@ class TestEnvironmentRoutes:
 
         assert resp.status_code == 201
         created: AgentEnvironment = client_mock.create.call_args[0][0]
+        assert isinstance(created.environment_spec, EnvironmentSpecInline)
         assert created.environment_spec.env == {"A": "1"}
 
     def test_get(self) -> None:

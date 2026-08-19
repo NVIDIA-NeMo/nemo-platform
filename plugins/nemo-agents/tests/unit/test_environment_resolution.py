@@ -176,7 +176,8 @@ def test_merge_mcp_fulfills_by_name_agent_url_wins() -> None:
     spec = EnvironmentSpecInline(
         mcp={
             "search": McpFulfillment(url="http://env-url", env={"E": "1"}, secrets={"TOKEN": "secret-ref"}),
-            "new": McpFulfillment(url="http://new-url"),
+            # Fulfillment for a server the Agent did not declare — must be ignored.
+            "undeclared": McpFulfillment(url="http://new-url"),
         }
     )
     merged = merge_environment_spec_into_agent_config(config, spec)
@@ -184,8 +185,8 @@ def test_merge_mcp_fulfills_by_name_agent_url_wins() -> None:
     # Agent-provided url wins; env + secrets merged in.
     assert servers["search"]["url"] == "http://agent-url"
     assert servers["search"]["env"] == {"E": "1", "TOKEN": "secret-ref"}
-    # New server contributed entirely by the spec.
-    assert servers["new"]["url"] == "http://new-url"
+    # An environment cannot add MCP servers the Agent never declared.
+    assert "undeclared" not in servers
 
 
 def test_merge_no_environment_reference_is_identical_to_today() -> None:

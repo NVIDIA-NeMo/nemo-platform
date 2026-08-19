@@ -124,7 +124,12 @@ class TestCreateDeployment:
             environment_spec="default/espec",
             compute_spec="default/cspec",
         )
-        espec = AgentEnvironmentSpec(name="espec", workspace="default", env={"CUSTOM": "from-spec"})
+        espec = AgentEnvironmentSpec(
+            name="espec",
+            workspace="default",
+            env={"CUSTOM": "from-spec"},
+            secrets={"APP_TOKEN": "default/app-token"},
+        )
         cspec = AgentComputeSpec(name="cspec", workspace="default", resources={"limits": {"cpu": "2"}})
 
         mock_entity_client = AsyncMock()
@@ -153,6 +158,9 @@ class TestCreateDeployment:
         # Compute spec snapshotted onto the deployment.
         assert created.compute is not None
         assert created.compute.resources.limits == {"cpu": "2"}
+        # Secret env references snapshotted (never merged into config as plaintext).
+        assert created.secrets == {"APP_TOKEN": "default/app-token"}
+        assert "APP_TOKEN" not in created.config.get("environment", {}).get("env", {})
 
     def test_create_with_inline_environment(self) -> None:
         agent = _make_agent()

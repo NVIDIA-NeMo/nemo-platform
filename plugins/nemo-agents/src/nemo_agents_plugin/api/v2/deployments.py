@@ -28,6 +28,7 @@ from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import (
     Agent,
     AgentDeployment,
+    AgentEnvironmentInline,
     is_container_deployment_mode,
 )
 from nemo_agents_plugin.environment_resolution import (
@@ -90,13 +91,16 @@ async def create_deployment(
     resolved_config = _resolve_deployment_config(agent, workspace=workspace)
 
     # 4. Resolve and snapshot the referenced AgentEnvironment. The environment
-    # spec is merged into the resolved config (Agent-config-wins precedence) and
-    # the compute spec is snapshotted for the container backend. Once created, a
-    # deployment is not kept in sync with the underlying environment entities.
+    # spec is merged into the resolved config (Agent-config-wins precedence); the
+    # compute spec and secret-env references are snapshotted for the container
+    # backend. Once created, a deployment is not kept in sync with the underlying
+    # environment entities.
     resolved_environment = await _resolve_deployment_environment(
         body.environment, workspace=workspace, entity_client=entity_client
     )
     resolved_config = merge_environment_spec_into_agent_config(resolved_config, resolved_environment.environment_spec)
+    env_spec = resolved_environment.environment_spec
+    resolved_secrets = dict(env_spec.secrets) if env_spec is not None else {}
 
     # 5. Create the entity with status "pending"
     deployment = AgentDeployment(
@@ -106,6 +110,7 @@ async def create_deployment(
         config=resolved_config,
         environment=body.environment,
         compute=resolved_environment.compute_spec,
+        secrets=resolved_secrets,
         status="pending",
         deployment_mode=body.deployment_mode,
         image=body.image,
@@ -138,7 +143,7 @@ def _resolve_deployment_config(agent: Agent, *, workspace: str) -> dict[str, Any
 
 
 async def _resolve_deployment_environment(
-    environment: Any,
+    environment: str | AgentEnvironmentInline | None,
     *,
     workspace: str,
     entity_client: NemoEntitiesClient,

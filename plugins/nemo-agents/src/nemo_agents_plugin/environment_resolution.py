@@ -217,7 +217,13 @@ def _merge_model_provider_override(config: dict[str, Any], env_spec: Environment
 
 
 def _merge_mcp(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
-    """Fulfill Agent-declared MCP servers by name (Agent keys win)."""
+    """Fulfill Agent-declared MCP servers by name (Agent keys win).
+
+    McpFulfillment is a request/fulfill contract: the Agent DECLARES an MCP
+    server by name and the EnvironmentSpec PROVIDES its url/env/secrets. A
+    fulfillment whose name the Agent did not declare is ignored - an environment
+    must not add MCP servers the Agent never requested.
+    """
     if not env_spec.mcp:
         return
     mcp = config.setdefault("mcp", {})
@@ -229,7 +235,9 @@ def _merge_mcp(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
 
     for name, fulfillment in env_spec.mcp.items():
         server = servers.get(name)
-        server = server if isinstance(server, dict) else {}
+        # Only fulfill servers the Agent declared; skip undeclared names.
+        if not isinstance(server, dict):
+            continue
         # url: fill only when the Agent did not provide one.
         if "url" not in server:
             server["url"] = fulfillment.url

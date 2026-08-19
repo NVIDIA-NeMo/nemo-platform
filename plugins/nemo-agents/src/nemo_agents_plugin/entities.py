@@ -374,14 +374,15 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
     )
     # AgentEnvironment is snapshotted at create time: ``environment`` records the
     # raw request input for provenance, environment-spec content is merged into
-    # ``config``, and ``compute`` holds the resolved compute snapshot threaded to
-    # the container backend. A deployment is not kept in sync with the underlying
+    # ``config``, ``compute`` holds the resolved compute snapshot, and ``secrets``
+    # holds the resolved secret-env references — all threaded to the container
+    # backend. A deployment is not kept in sync with the underlying
     # AgentEnvironment/spec entities after creation.
     environment: str | AgentEnvironmentInline | None = Field(
         default=None,
         description=(
             '"workspace/name" ref to an AgentEnvironment, an inline environment, or None. '
-            "Snapshotted at create time for provenance; the resolved values live in config/compute."
+            "Snapshotted at create time for provenance; the resolved values live in config/compute/secrets."
         ),
     )
     compute: ComputeSpecInline | None = Field(
@@ -389,6 +390,14 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
         description=(
             "Resolved compute snapshot from the referenced environment. Compiled into the container "
             "resources for docker/k8s modes; ignored for subprocess."
+        ),
+    )
+    secrets: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Resolved secret env references from the referenced environment, as "
+            "ENV_VAR_NAME -> 'workspace/secret-name'. Compiled into secret-backed container env "
+            "vars (never plaintext) for docker/k8s modes; ignored for subprocess."
         ),
     )
     status: DeploymentStatus = Field(
