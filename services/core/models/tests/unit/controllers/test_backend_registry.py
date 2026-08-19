@@ -182,13 +182,13 @@ def test_deployments_plugin_missing_package_raises_guidance(mock_nmp_sdk):
 
     with (
         patch("builtins.__import__", side_effect=mock_import),
-        pytest.raises(ImportError, match="nemo-deployments-plugin"),
+        pytest.raises(ImportError, match=r'pip install "nemo-platform\[all\]"'),
     ):
         _resolve_backend_class("deployments_plugin", backend_classes)
 
     with (
         patch("builtins.__import__", side_effect=mock_import),
-        pytest.raises(ImportError, match="nemo-deployments-plugin"),
+        pytest.raises(ImportError, match=r'pip install "nemo-platform\[all\]"'),
     ):
         BackendRegistry.from_config(
             nmp_sdk=mock_nmp_sdk,
