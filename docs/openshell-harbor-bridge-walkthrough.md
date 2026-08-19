@@ -254,6 +254,15 @@ tail -f path/to/experiment/openshell-runtime/host/bridge/bridge.log
 find path/to/experiment/openshell-runtime/host/bridge/jobs -maxdepth 3 -name result.json
 ```
 
+The wrapper also downloads a best-effort snapshot of the sandbox's public
+`/sandbox/output` directory every 15 seconds to
+`<experiment-dir>/openshell-live/`. This is useful for following generated
+candidates and reports before the run finishes. It may lag by one interval or
+contain a file that was being written during the snapshot; the final download
+to the experiment directory remains the authoritative completed result. Set
+`NEMO_EXPERIMENTALIST_OUTPUT_SYNC_INTERVAL` to a larger positive number to
+reduce transfer overhead.
+
 Use Ctrl-C or `kill <experimentalist-pid>` for normal cancellation. The
 launcher terminates the bridge, deletes its ephemeral provider, and lets the
 OpenShell wrapper delete the temporary sandbox. Avoid `kill -9`: it prevents
@@ -272,6 +281,7 @@ left unset. The supported diagnostic overrides are:
 | `NEMO_EXPERIMENTALIST_IMAGE` | `local/nmp-experimentalist:local` | Selects the image used for the OpenShell sandbox. Set it only to test a rebuilt or alternate runtime image. |
 | `NEMO_EXPERIMENTALIST_KEEP_SANDBOX` | `0` | Set to `1` only while debugging to preserve the sandbox after the run. Normal runs delete it. |
 | `NEMO_EXPERIMENTALIST_SANDBOX_NAME` | generated `nemo-exp-…` name | Overrides the temporary sandbox name for debugging. |
+| `NEMO_EXPERIMENTALIST_OUTPUT_SYNC_INTERVAL` | `15` seconds | Frequency for best-effort snapshots of `/sandbox/output` in `<experiment-dir>/openshell-live/`. |
 | `NEMO_EXPERIMENTALIST_POLICY_MODE` | `strict` | Selects the normal restrictive policy. `docker-desktop` is a macOS/Docker Desktop compatibility mode with weaker filesystem enforcement. |
 
 ### Policy modes
