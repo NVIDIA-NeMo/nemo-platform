@@ -146,7 +146,9 @@ async def _resolve_deployment_environment(
     try:
         return await resolve_environment(environment, workspace=workspace, entity_client=entity_client)
     except EnvironmentResolutionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # 422: the request is syntactically valid but references an environment
+        # (or one of its specs) that cannot be resolved (e.g. a missing entity).
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Agent Deployments"])

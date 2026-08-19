@@ -59,7 +59,7 @@ class Endpoint(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# AgentEnvironment composition (RFC-122)
+# AgentEnvironment composition
 # ---------------------------------------------------------------------------
 #
 # An AgentDeployment (and, later, an AgentInvocationJob) runs against an
@@ -173,10 +173,11 @@ class EnvironmentSpecInline(BaseModel):
     # Fabric environment mirror -> compiles into FabricConfig.environment.
     # NOTE: ``workspace_path`` (the harness workspace path) is deliberately named
     # to avoid colliding with the NeMo entity ``workspace`` (tenant) field that
-    # AgentEnvironmentSpec inherits from EntityBase.
+    # AgentEnvironmentSpec inherits from EntityBase. ``artifacts_path`` carries a
+    # matching ``_path`` suffix for symmetry.
     provider: str = Field(default="local", description="local | docker | opensandbox | k8s.")
     workspace_path: str | None = Field(default=None, description="Workspace path visible to the harness.")
-    artifacts: str | None = Field(default=None, description="Provider-specific artifact output location.")
+    artifacts_path: str | None = Field(default=None, description="Provider-specific artifact output location.")
     control_location: str | None = Field(
         default=None,
         description="external_control | in_env_control.",
@@ -201,7 +202,7 @@ class AgentEnvironmentInline(BaseModel):
 
     Each part is a ``ref | inline | None`` union: a ``"workspace/name"`` string
     references a stored spec entity, an object provides the spec inline, and
-    ``None`` omits it. (``sandbox_spec`` is out of scope for RFC-122 and omitted.)
+    ``None`` omits it. (A ``sandbox_spec`` is out of scope for now and omitted.)
     """
 
     description: str = Field(default="", description="Human-readable description.")
@@ -324,8 +325,8 @@ class AgentEnvironment(NemoEntity, AgentEnvironmentInline, entity_type="agent_en
     """
 
 
-# TODO: RFC-122 will add specs for environment, sandbox, and harness. Add those
-# specs to this object once finalized.
+# TODO: first-class environment, sandbox, and harness specs are planned for the
+# Agent entity. Add those specs to this object once the contract is finalized.
 class Agent(NemoEntity, entity_type="agent"):
     """An agent definition — stores agent config and metadata.
 

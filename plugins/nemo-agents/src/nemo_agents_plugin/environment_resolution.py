@@ -163,12 +163,13 @@ def _merge_environment_block(config: dict[str, Any], env_spec: EnvironmentSpecIn
         return
 
     # Scalar mirror fields: only fill when the Agent did not set them. The spec's
-    # ``workspace_path`` maps onto the config's ``workspace`` (the harness path);
-    # the entity/tenant ``workspace`` is unrelated and never merged here.
+    # ``workspace_path``/``artifacts_path`` map onto the config's
+    # ``workspace``/``artifacts`` (the harness paths); the entity/tenant
+    # ``workspace`` is unrelated and never merged here.
     scalar_fields = {
         "provider": "provider",
         "workspace_path": "workspace",
-        "artifacts": "artifacts",
+        "artifacts_path": "artifacts",
         "control_location": "control_location",
         "ownership": "ownership",
     }

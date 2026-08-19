@@ -137,7 +137,7 @@ def test_merge_environment_mirror_fields_fill_only_when_unset() -> None:
     spec = EnvironmentSpecInline(
         provider="k8s",
         workspace_path="/ws",
-        artifacts="/artifacts",
+        artifacts_path="/artifacts",
         control_location="in_env_control",
         ownership="fabric_owned",
         connection={"url": "http://x"},
@@ -146,7 +146,8 @@ def test_merge_environment_mirror_fields_fill_only_when_unset() -> None:
     env = merged["environment"]
     # Agent explicitly set provider -> preserved.
     assert env["provider"] == "docker"
-    # Agent left these unset -> filled from spec (workspace_path -> workspace).
+    # Agent left these unset -> filled from spec (workspace_path/artifacts_path
+    # -> workspace/artifacts).
     assert env["workspace"] == "/ws"
     assert env["artifacts"] == "/artifacts"
     assert env["control_location"] == "in_env_control"

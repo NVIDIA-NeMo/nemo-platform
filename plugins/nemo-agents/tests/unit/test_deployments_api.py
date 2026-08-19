@@ -198,7 +198,7 @@ class TestCreateDeployment:
             json={"agent": "fabric-agent", "name": "fabric-dep", "environment": "default/missing"},
         )
 
-        assert resp.status_code == 400
+        assert resp.status_code == 422
         assert "AgentEnvironment 'missing' not found" in resp.json()["detail"]
         mock_entity_client.create.assert_not_called()
 
