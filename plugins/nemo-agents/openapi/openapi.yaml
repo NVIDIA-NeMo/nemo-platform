@@ -2876,6 +2876,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/AgentWorkdir'
           description: Optional working directory configuration for the invocation.
+        timeout_seconds:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Timeout Seconds
+          description: Maximum time to wait for Fabric to return an invocation result.
+          default: 3600
       type: object
       required:
       - agent

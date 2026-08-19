@@ -53,6 +53,7 @@ FABRIC_ERROR_RESULT_NAME = "fabric_error"
 FABRIC_RUN_RESULT_FILENAME = "fabric_run_result.json"
 FABRIC_ERROR_FILENAME = "fabric_error.json"
 SUCCESSFUL_FABRIC_STATUSES = {"succeeded"}
+DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS = 60 * 60
 
 
 class AgentInvocationJobConfig(BaseModel):
@@ -63,6 +64,11 @@ class AgentInvocationJobConfig(BaseModel):
     workdir: AgentWorkdir | None = Field(
         default=None,
         description="Optional working directory configuration for the invocation.",
+    )
+    timeout_seconds: float = Field(
+        default=DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS,
+        gt=0,
+        description="Maximum time to wait for Fabric to return an invocation result.",
     )
 
 
@@ -199,6 +205,7 @@ class AgentInvocationJob(NemoJob):
                             "job_workspace": ctx.workspace,
                             "agent": f"{step_config.agent.workspace}/{step_config.agent.name}",
                         },
+                        timeout_seconds=step_config.request.timeout_seconds,
                     )
                 )
             )
