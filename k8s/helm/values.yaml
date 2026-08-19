@@ -606,6 +606,11 @@ basePlatformConfig: |
     # the sandbox can read the downloaded environment and dataset. Must match the claim the
     # Jobs controller mounts for job storage.
     job_storage_pvc_claim: {{ (include "nmp-core.persistentVolumeClaim" . ) }}
+    # -- sandbox_cluster_capable declares that OpenSandbox is installed on this cluster.
+    # GRPO defaults to sandboxed Gym rollouts, so while this is false those jobs fail at
+    # compile time rather than running the user's environment code unsandboxed. Set it to
+    # false if OpenSandbox is not deployed.
+    sandbox_cluster_capable: true
 
   # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
   safe_synthesizer:

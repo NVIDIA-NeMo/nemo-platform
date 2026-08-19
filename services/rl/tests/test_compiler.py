@@ -346,6 +346,23 @@ def test_grpo_compile_fails_closed_without_sandbox_capability(monkeypatch: pytes
         )
 
 
+def test_dpo_compiles_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sandbox capability gates GRPO only; DPO must compile on a cluster without OpenSandbox.
+
+    DPO runs no Gym environment, so the fail-closed check above must not reach it. If the
+    gate ever moves somewhere shared, every DPO job on a sandbox-less cluster stops
+    compiling -- and DPO is the path that has no need of a sandbox at all.
+    """
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", None, raising=False)
+
+    sc = _build_training_step_config(_make_job_output(), trust_remote_code=False)
+
+    assert sc.training.training_type is TrainingType.DPO
+    assert sc.gym is None
+
+
 def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)

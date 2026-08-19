@@ -139,9 +139,10 @@ def test_compile_grpo_config_sandboxed_paths(
     # even though the sandbox sees the same file at /job/dataset.
     assert cfg["data"]["train"]["data_path"] == str(dataset_pvc / "training.jsonl")
     assert nemo_gym["sandbox"]["network_policy"]["egress_allow"]
-    assert "host_work_path" in nemo_gym
-    assert nemo_gym["bootstrap_env"]["NMP_JOB_ID"] == "job-123"
-    assert "/nmp-rl/job-123/work" in nemo_gym["bootstrap_env"]["NMP_WORK_PATH"]
+    # The Gym actor builds the sandbox's own env inside the sandbox pod, where paths differ
+    # from the training pod's. Emitting them here would conflict, and nothing reads them.
+    assert "bootstrap_env" not in nemo_gym
+    assert "host_work_path" not in nemo_gym
     # config_paths must reach Gym in sandboxed mode too, or no servers start — and they must
     # be anchored to the SANDBOX mount. The manifest stores them relative to the package root;
     # Gym resolves relative paths against its CWD (the runtime image's WORKDIR), so a relative
