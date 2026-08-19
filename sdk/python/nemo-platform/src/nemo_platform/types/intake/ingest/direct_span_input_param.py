@@ -24,31 +24,34 @@ from typing_extensions import Required, Annotated, TypedDict
 from ...._utils import PropertyInfo
 from ..span_kind import SpanKind
 from ..span_status import SpanStatus
+from .json_value_param import JsonValueParam
 
 __all__ = ["DirectSpanInputParam"]
 
 
 class DirectSpanInputParam(TypedDict, total=False):
-    attributes: Dict[str, object]
-
-    ended_at: Annotated[Union[str, datetime], PropertyInfo(format="iso8601")]
-
-    input: object
-
-    kind: SpanKind
-
-    name: str
-
-    output: object
-
-    parent_span_id: str
-
-    session_id: str
+    """One provider-neutral span supplied by a historical trace importer."""
 
     span_id: Required[str]
 
     started_at: Required[Annotated[Union[str, datetime], PropertyInfo(format="iso8601")]]
 
-    status: SpanStatus
-
     trace_id: Required[str]
+
+    attributes: Dict[str, JsonValueParam]
+
+    ended_at: Annotated[Union[str, datetime], PropertyInfo(format="iso8601")]
+
+    input: JsonValueParam
+
+    kind: SpanKind
+
+    name: str
+
+    output: JsonValueParam
+
+    parent_span_id: str
+
+    session_id: str
+
+    status: SpanStatus

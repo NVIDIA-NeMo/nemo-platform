@@ -57,6 +57,33 @@ class ExperimentRequest(BaseModel):
             "update; on create, defaults to cost vs. latency."
         ),
     )
+    is_favorite: bool = Field(
+        default=False,
+        description=(
+            "Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to "
+            "preserve the existing value."
+        ),
+    )
+    show_evaluations_over_time: bool = Field(
+        default=False,
+        description=(
+            "Whether Studio should display this Experiment's Evaluation results over time. Defaults to false "
+            "on create; omit on update to preserve the existing value."
+        ),
+    )
+
+
+class ExperimentUpdateRequest(ExperimentRequest):
+    """Request body for updating an Experiment."""
+
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description=(
+            "Name of this Experiment's baseline Evaluation. The Evaluation must already be a live member "
+            "of the Experiment. Set null to clear the selected baseline."
+        ),
+        json_schema_extra={"nullable": True},
+    )
 
 
 class EvaluationRequest(BaseModel):
@@ -158,6 +185,15 @@ class ExperimentResponse(BaseModel):
     metadata: dict[str, str] | None = None
     default_sort: str
     pareto: ParetoConfig = Field(default_factory=ParetoConfig)
+    is_favorite: bool = Field(default=False, description="Whether this Experiment is marked as a favorite.")
+    show_evaluations_over_time: bool = Field(
+        default=False,
+        description="Whether Studio should display this Experiment's Evaluation results over time.",
+    )
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description="Name of this Experiment's selected baseline Evaluation, if any.",
+    )
     created_at: datetime | None = None
     updated_at: datetime | None = None
     evaluation_count: int = Field(
@@ -177,6 +213,9 @@ class ExperimentResponse(BaseModel):
             metadata=entity.metadata,
             default_sort=entity.default_sort,
             pareto=entity.pareto,
+            is_favorite=entity.is_favorite,
+            show_evaluations_over_time=entity.show_evaluations_over_time,
+            baseline_evaluation_name=entity.baseline_evaluation_name,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -314,6 +353,15 @@ class ExperimentFilter(Filter):
     insight_id: str | None = Field(
         default=None,
         description="Filter experiments by the id of the insight that seeded them.",
+    )
+    is_favorite: bool | None = Field(default=None, description="Filter experiments by favorite status.")
+    show_evaluations_over_time: bool | None = Field(
+        default=None,
+        description="Filter experiments by whether Studio should display Evaluation results over time.",
+    )
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description="Filter experiments by the name of their selected baseline Evaluation.",
     )
     is_deleted: bool | None = Field(
         default=None,
