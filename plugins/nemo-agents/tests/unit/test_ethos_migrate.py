@@ -49,6 +49,10 @@ LEGACY_CONTRACT_FILENAME = "AGENT-SPEC.md"
 LEGACY_PACKAGE = f"{AGENT}-spec"
 TARGET_PACKAGE = f"{AGENT}-ethos"
 LEGACY_PROFILE_KEY = "agent_spec"
+LOCAL_OWNER_MARKER = ".nemo-ethos-migration-owner"
+FILESET_OWNER_FIELD = "nemo_agents_ethos_migration_owner"
+OWNER_TOKEN = "a" * 64
+OTHER_OWNER_TOKEN = "b" * 64
 
 SECTION_TITLES = (
     "Role",
@@ -136,13 +140,23 @@ class FakeFilesets:
     # Another writer wins the create race: create installs their tree and reports
     # that this caller did not create the Fileset.
     steal_on_create: dict[str, dict[str, bytes]] = field(default_factory=dict)
+    steal_on_create_owner: dict[str, str | None] = field(default_factory=dict)
+    owner_tokens: dict[tuple[str, str], str | None] = field(default_factory=dict)
     creates: list[str] = field(default_factory=list)
     uploads: list[str] = field(default_factory=list)
     deletes: list[str] = field(default_factory=list)
     observer: Callable[[str, str], None] | None = None
 
-    def seed(self, name: str, tree: dict[str, bytes], *, workspace: str = WORKSPACE) -> None:
+    def seed(
+        self,
+        name: str,
+        tree: dict[str, bytes],
+        *,
+        workspace: str = WORKSPACE,
+        owner_token: str | None = None,
+    ) -> None:
         self.trees[(workspace, name)] = dict(tree)
+        self.owner_tokens[(workspace, name)] = owner_token
 
     def _observe(self, operation: str, name: str) -> None:
         if self.observer is not None:
@@ -151,19 +165,26 @@ class FakeFilesets:
     def exists(self, *, workspace: str, name: str) -> bool:
         return (workspace, name) in self.trees
 
-    def create(self, *, workspace: str, name: str) -> bool:
+    def create(self, *, workspace: str, name: str, owner_token: str | None = None) -> bool:
         self._observe("create", name)
         self.creates.append(name)
         if name in self.fail_create:
             raise OSError(f"injected create failure for {name}")
         stolen = self.steal_on_create.get(name)
         if stolen is not None:
-            self.trees.setdefault((workspace, name), dict(stolen))
+            key = (workspace, name)
+            if key not in self.trees:
+                self.trees[key] = dict(stolen)
+                self.owner_tokens[key] = self.steal_on_create_owner.get(name)
             return False
         if (workspace, name) in self.trees:
             return False
         self.trees[(workspace, name)] = {}
+        self.owner_tokens[(workspace, name)] = owner_token
         return True
+
+    def owner_token(self, *, workspace: str, name: str) -> str | None:
+        return self.owner_tokens.get((workspace, name))
 
     def download(self, *, workspace: str, name: str, dest: Path) -> None:
         tree = self.trees.get((workspace, name))
@@ -196,6 +217,7 @@ class FakeFilesets:
         if name in self.fail_delete:
             raise OSError(f"injected delete failure for {name}")
         self.trees.pop((workspace, name), None)
+        self.owner_tokens.pop((workspace, name), None)
 
 
 @dataclass
@@ -302,6 +324,17 @@ def fail_copy_tree_into(monkeypatch: pytest.MonkeyPatch, destination: Path) -> N
     monkeypatch.setattr(ethos_migrate, "_copy_tree", guarded)
 
 
+def fail_staged_copy_into(monkeypatch: pytest.MonkeyPatch, destination: Path) -> None:
+    real = ethos_migrate._copy_staged_into_target
+
+    def guarded(source: Path, target: Path, manifest: Any) -> None:
+        if target == destination:
+            raise OSError(f"injected copy failure for {target}")
+        real(source, target, manifest)
+
+    monkeypatch.setattr(ethos_migrate, "_copy_staged_into_target", guarded)
+
+
 def fail_remove_tree(monkeypatch: pytest.MonkeyPatch, victim: Path) -> None:
     real = ethos_migrate._remove_tree
 
@@ -374,7 +407,7 @@ def inject_step_failure(
     elif step == "verify-target-fileset":
         filesets.drop_on_upload[TARGET_PACKAGE] = {"data/logo.bin"}
     elif step == "write-target-package":
-        fail_copy_tree_into(monkeypatch, agents_root / TARGET_PACKAGE)
+        fail_staged_copy_into(monkeypatch, agents_root / TARGET_PACKAGE)
     elif step == "rewrite-profiles":
         fail_profile_write(monkeypatch, profile)
     elif step == "delete-old-fileset":
@@ -728,6 +761,7 @@ def assert_target_package_is_complete(agents_root: Path, filesets: FakeFilesets)
     assert (target / "agent.yaml").read_text(encoding="utf-8") == "config_format: nemo-agents-spec-v1\nname: acme-bot\n"
     assert (target / "data" / "logo.bin").read_bytes() == b"\x00\x01\x02\xff\xfe"
     assert not (target / LEGACY_CONTRACT_FILENAME).exists()
+    assert not (target / LOCAL_OWNER_MARKER).exists()
     assert not (agents_root / LEGACY_PACKAGE).exists()
 
     remote = filesets.trees[(WORKSPACE, TARGET_PACKAGE)]
@@ -1076,16 +1110,20 @@ def test_a_profile_written_to_the_wrong_target_value_fails_verification(
 # ---------------------------------------------------------------------------
 
 
-def make_target_package(
-    agents_root: Path, filesets: FakeFilesets, *, complete: bool = True, extra: dict[str, bytes | str] | None = None
-) -> None:
-    """Write the exact output a successful migration leaves behind."""
-    files: dict[str, bytes | str] = {
+def target_package_files() -> dict[str, bytes | str]:
+    return {
         "ETHOS.md": target_contract(),
         "agent.yaml": "config_format: nemo-agents-spec-v1\nname: acme-bot\n",
         "skills/triage/SKILL.md": "# Triage skill\n\nagent-specific guidance.\n",
         "data/logo.bin": b"\x00\x01\x02\xff\xfe",
     }
+
+
+def make_target_package(
+    agents_root: Path, filesets: FakeFilesets, *, complete: bool = True, extra: dict[str, bytes | str] | None = None
+) -> None:
+    """Write the exact output a successful migration leaves behind."""
+    files = target_package_files()
     if not complete:
         files.pop("data/logo.bin")
     if extra:
@@ -1474,14 +1512,14 @@ def test_a_target_package_that_appears_mid_run_is_not_replaced(tmp_path: Path, m
     filesets = FakeFilesets()
     target = agents_root / TARGET_PACKAGE
     old_manifest = build_manifest(agents_root / LEGACY_PACKAGE)
-    real = ethos_migrate._copy_tree
+    real = ethos_migrate._create_local_target_directory
 
-    def racing(source: Path, destination: Path) -> None:
+    def racing(destination: Path) -> None:
         if destination == target:
             write_tree(destination, {"other-writer.txt": "mine"})
-        real(source, destination)
+        real(destination)
 
-    monkeypatch.setattr(ethos_migrate, "_copy_tree", racing)
+    monkeypatch.setattr(ethos_migrate, "_create_local_target_directory", racing)
 
     with pytest.raises(MigrationError, match="another writer"):
         migrate(request_for(tmp_path), filesets)
@@ -1790,6 +1828,79 @@ def test_recovery_uses_absolute_recorded_paths_after_the_working_directory_chang
     assert not (decoy_cwd / "agents" / TARGET_PACKAGE).exists()
 
 
+def test_recovery_precedes_invalid_rerun_path_normalization(tmp_path: Path) -> None:
+    agents_root = tmp_path / "agents"
+    make_local_package(agents_root)
+    filesets = FakeFilesets()
+    filesets.seed(LEGACY_PACKAGE, as_fileset_tree(legacy_package_files()))
+    strand_a_journal(tmp_path, filesets)
+    invalid = Path("invalid\0path")
+
+    report = migrate(
+        MigrationRequest(
+            agent=AGENT,
+            workspace=WORKSPACE,
+            agents_root=invalid,
+            profiles=(invalid,),
+            experiment_dirs=(invalid,),
+            start_dir=invalid,
+        ),
+        filesets,
+    )
+
+    assert report.outcome is Outcome.RECOVERED
+    assert (agents_root / LEGACY_PACKAGE).is_dir()
+
+
+def test_recovery_does_not_require_a_working_process_directory(tmp_path: Path) -> None:
+    agents_root = tmp_path / "agents"
+    make_local_package(agents_root)
+    filesets = FakeFilesets()
+    filesets.seed(LEGACY_PACKAGE, as_fileset_tree(legacy_package_files()))
+    strand_a_journal(tmp_path, filesets)
+    removed_cwd = tmp_path / "removed-cwd"
+    removed_cwd.mkdir()
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(removed_cwd)
+        removed_cwd.rmdir()
+        report = migrate(MigrationRequest(agent=AGENT, workspace=WORKSPACE), filesets)
+
+    assert report.outcome is Outcome.RECOVERED
+    assert (agents_root / LEGACY_PACKAGE).is_dir()
+
+
+def test_recovery_dry_run_precedes_invalid_paths_and_remains_read_only(tmp_path: Path) -> None:
+    agents_root = tmp_path / "agents"
+    make_local_package(agents_root)
+    filesets = FakeFilesets()
+    filesets.seed(LEGACY_PACKAGE, as_fileset_tree(legacy_package_files()))
+    strand_a_journal(tmp_path, filesets)
+    journal = journal_dir(WORKSPACE, AGENT) / "journal.json"
+    journal_before = journal.read_bytes()
+    uploads_before = list(filesets.uploads)
+    deletes_before = list(filesets.deletes)
+    invalid = Path("invalid\0path")
+
+    report = migrate(
+        MigrationRequest(
+            agent=AGENT,
+            workspace=WORKSPACE,
+            agents_root=invalid,
+            profiles=(invalid,),
+            experiment_dirs=(invalid,),
+            dry_run=True,
+            start_dir=invalid,
+        ),
+        filesets,
+    )
+
+    assert report.outcome is Outcome.RECOVERY_REQUIRED
+    assert journal.read_bytes() == journal_before
+    assert filesets.uploads == uploads_before
+    assert filesets.deletes == deletes_before
+
+
 def test_recovery_owns_a_local_target_copied_before_the_follow_up_journal(
     tmp_path: Path,
 ) -> None:
@@ -1798,21 +1909,22 @@ def test_recovery_owns_a_local_target_copied_before_the_follow_up_journal(
     old_manifest = build_manifest(old_package)
     target_package = agents_root / TARGET_PACKAGE
     filesets = FakeFilesets()
-    real_copy_tree = ethos_migrate._copy_tree
+    real_copy = getattr(ethos_migrate, "_copy_staged_into_target", None)
 
-    def copy_then_exit(source: Path, destination: Path) -> None:
-        real_copy_tree(source, destination)
+    def copy_then_exit(source: Path, destination: Path, manifest: Any) -> None:
+        assert real_copy is not None
+        real_copy(source, destination, manifest)
         if destination == target_package:
             raise KeyboardInterrupt("injected process exit after the local copy")
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(ethos_migrate, "_copy_tree", copy_then_exit)
+        patch.setattr(ethos_migrate, "_copy_staged_into_target", copy_then_exit, raising=False)
         with pytest.raises(KeyboardInterrupt):
             migrate(request_for(tmp_path), filesets)
 
     record = json.loads((journal_dir(WORKSPACE, AGENT) / "journal.json").read_text(encoding="utf-8"))
     assert record["target_package_state"] == "creating"
-    assert build_manifest(target_package)
+    assert (target_package / LOCAL_OWNER_MARKER).read_text(encoding="utf-8") == record["owner_token"]
 
     report = migrate(request_for(tmp_path), filesets)
 
@@ -1820,6 +1932,91 @@ def test_recovery_owns_a_local_target_copied_before_the_follow_up_journal(
     assert build_manifest(old_package) == old_manifest
     assert not target_package.exists()
     assert (WORKSPACE, TARGET_PACKAGE) not in filesets.trees
+
+
+def test_recovery_preserves_a_local_directory_created_before_its_owner_marker(
+    tmp_path: Path,
+) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    target_package = agents_root / TARGET_PACKAGE
+    filesets = FakeFilesets()
+
+    def exit_before_marker(path: Path, owner_token: str) -> None:
+        raise KeyboardInterrupt("injected process exit before the owner marker")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ethos_migrate, "_write_local_owner_marker", exit_before_marker, raising=False)
+        with pytest.raises(KeyboardInterrupt):
+            migrate(request_for(tmp_path), filesets)
+
+    assert target_package.is_dir()
+    assert list(target_package.iterdir()) == []
+
+    with pytest.raises(RecoveryRequired, match="owner marker.*preserved"):
+        migrate(request_for(tmp_path), filesets)
+
+    assert target_package.is_dir()
+    assert build_manifest(old_package) == old_manifest
+
+
+@pytest.mark.parametrize("matching", [False, True], ids=["empty", "matching"])
+def test_recovery_preserves_a_competing_local_target_without_the_owner_marker(
+    tmp_path: Path,
+    matching: bool,
+) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    target_package = agents_root / TARGET_PACKAGE
+    filesets = FakeFilesets()
+
+    def competing_create(path: Path) -> None:
+        if matching:
+            write_tree(path, target_package_files())
+        else:
+            path.mkdir()
+        raise KeyboardInterrupt("injected process exit after another writer created the target")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ethos_migrate, "_create_local_target_directory", competing_create, raising=False)
+        with pytest.raises(KeyboardInterrupt):
+            migrate(request_for(tmp_path), filesets)
+
+    competing_manifest = build_manifest(target_package)
+    with pytest.raises(RecoveryRequired, match="owner marker.*preserved"):
+        migrate(request_for(tmp_path), filesets)
+
+    assert build_manifest(target_package) == competing_manifest
+    assert not (target_package / LOCAL_OWNER_MARKER).exists()
+    assert build_manifest(old_package) == old_manifest
+
+
+def test_owned_local_state_is_durable_before_the_owner_marker_is_removed(tmp_path: Path) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    target_package = agents_root / TARGET_PACKAGE
+    filesets = FakeFilesets()
+
+    def exit_before_marker_removal(path: Path, owner_token: str) -> None:
+        raise KeyboardInterrupt("injected process exit before owner marker removal")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ethos_migrate, "_remove_local_owner_marker", exit_before_marker_removal, raising=False)
+        with pytest.raises(KeyboardInterrupt):
+            migrate(request_for(tmp_path), filesets)
+
+    record = json.loads((journal_dir(WORKSPACE, AGENT) / "journal.json").read_text(encoding="utf-8"))
+    assert record["target_package_state"] == "owned"
+    assert (target_package / LOCAL_OWNER_MARKER).read_text(encoding="utf-8") == record["owner_token"]
+
+    report = migrate(request_for(tmp_path), filesets)
+
+    assert report.outcome is Outcome.RECOVERED
+    assert build_manifest(old_package) == old_manifest
+    assert not target_package.exists()
 
 
 def test_recovery_owns_a_fileset_created_before_the_follow_up_journal(
@@ -1832,8 +2029,8 @@ def test_recovery_owns_a_fileset_created_before_the_follow_up_journal(
     filesets = FakeFilesets()
     real_create = filesets.create
 
-    def create_then_exit(*, workspace: str, name: str) -> bool:
-        created = real_create(workspace=workspace, name=name)
+    def create_then_exit(*, workspace: str, name: str, owner_token: str | None = None) -> bool:
+        created = real_create(workspace=workspace, name=name, owner_token=owner_token)
         if name == TARGET_PACKAGE and created:
             raise KeyboardInterrupt("injected process exit after Fileset creation")
         return created
@@ -1845,6 +2042,7 @@ def test_recovery_owns_a_fileset_created_before_the_follow_up_journal(
 
     record = json.loads((journal_dir(WORKSPACE, AGENT) / "journal.json").read_text(encoding="utf-8"))
     assert record["target_fileset_state"] == "creating"
+    assert filesets.owner_token(workspace=WORKSPACE, name=TARGET_PACKAGE) == record["owner_token"]
     assert filesets.trees[(WORKSPACE, TARGET_PACKAGE)] == {}
 
     report = migrate(request_for(tmp_path), filesets)
@@ -1852,6 +2050,46 @@ def test_recovery_owns_a_fileset_created_before_the_follow_up_journal(
     assert report.outcome is Outcome.RECOVERED
     assert build_manifest(old_package) == old_manifest
     assert (WORKSPACE, TARGET_PACKAGE) not in filesets.trees
+
+
+@pytest.mark.parametrize("matching", [False, True], ids=["empty", "matching"])
+def test_recovery_preserves_a_competing_fileset_without_the_owner_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    matching: bool,
+) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    filesets = FakeFilesets()
+    competing = as_fileset_tree(target_package_files()) if matching else {}
+    filesets.steal_on_create[TARGET_PACKAGE] = competing
+    filesets.steal_on_create_owner[TARGET_PACKAGE] = OTHER_OWNER_TOKEN
+    real_create = filesets.create
+
+    def lose_create_race_then_exit(
+        *,
+        workspace: str,
+        name: str,
+        owner_token: str | None = None,
+    ) -> bool:
+        created = real_create(workspace=workspace, name=name, owner_token=owner_token)
+        if name == TARGET_PACKAGE:
+            assert created is False
+            raise KeyboardInterrupt("injected process exit after a lost create race")
+        return created
+
+    monkeypatch.setattr(filesets, "create", lose_create_race_then_exit)
+    with pytest.raises(KeyboardInterrupt):
+        migrate(request_for(tmp_path), filesets)
+    monkeypatch.setattr(filesets, "create", real_create)
+
+    with pytest.raises(RecoveryRequired, match="owner token.*preserved"):
+        migrate(request_for(tmp_path), filesets)
+
+    assert filesets.trees[(WORKSPACE, TARGET_PACKAGE)] == competing
+    assert filesets.owner_token(workspace=WORKSPACE, name=TARGET_PACKAGE) == OTHER_OWNER_TOKEN
+    assert build_manifest(old_package) == old_manifest
 
 
 def test_recovery_preserves_a_competing_divergent_fileset(
@@ -1864,10 +2102,16 @@ def test_recovery_preserves_a_competing_divergent_fileset(
     filesets = FakeFilesets()
     competing = {"another-writer.txt": b"do not delete"}
     filesets.steal_on_create[TARGET_PACKAGE] = competing
+    filesets.steal_on_create_owner[TARGET_PACKAGE] = OTHER_OWNER_TOKEN
     real_create = filesets.create
 
-    def lose_create_race_then_exit(*, workspace: str, name: str) -> bool:
-        created = real_create(workspace=workspace, name=name)
+    def lose_create_race_then_exit(
+        *,
+        workspace: str,
+        name: str,
+        owner_token: str | None = None,
+    ) -> bool:
+        created = real_create(workspace=workspace, name=name, owner_token=owner_token)
         if name == TARGET_PACKAGE:
             assert created is False
             raise KeyboardInterrupt("injected process exit after a lost create race")
@@ -1912,6 +2156,43 @@ def test_recovery_finishes_a_partial_local_restore(tmp_path: Path) -> None:
     assert report.outcome is Outcome.RECOVERED
     assert build_manifest(old_package) == old_manifest
     assert not (agents_root / TARGET_PACKAGE).exists()
+
+
+def test_partial_restore_never_overwrites_a_concurrently_created_file(tmp_path: Path) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    filesets = FakeFilesets()
+    real_copy_tree = ethos_migrate._copy_tree
+
+    def restore_one_file_then_fail(source: Path, destination: Path) -> None:
+        if destination == old_package:
+            write_tree(destination, {"agent.yaml": (source / "agent.yaml").read_bytes()})
+            raise OSError("injected partial restore failure")
+        real_copy_tree(source, destination)
+
+    with pytest.MonkeyPatch.context() as patch:
+        fail_verify_final(patch, RuntimeError("injected final verification failure"))
+        patch.setattr(ethos_migrate, "_copy_tree", restore_one_file_then_fail)
+        with pytest.raises(RecoveryRequired):
+            migrate(request_for(tmp_path), filesets)
+
+    competing_path = old_package / LEGACY_CONTRACT_FILENAME
+    competing_bytes = b"another writer created this file"
+    real_exclusive_copy = getattr(ethos_migrate, "_copy_file_exclusive", None)
+
+    def competing_copy(source: Path, destination: Path) -> None:
+        if destination == competing_path:
+            destination.write_bytes(competing_bytes)
+        assert real_exclusive_copy is not None
+        real_exclusive_copy(source, destination)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ethos_migrate, "_copy_file_exclusive", competing_copy, raising=False)
+        with pytest.raises(RecoveryRequired, match="appeared.*preserved"):
+            migrate(request_for(tmp_path), filesets)
+
+    assert competing_path.read_bytes() == competing_bytes
+    assert (journal_dir(WORKSPACE, AGENT) / "journal.json").is_file()
 
 
 def test_a_journal_removal_failure_keeps_all_backups(
@@ -1993,6 +2274,7 @@ def test_an_unreadable_journal_reports_recovery_required(tmp_path: Path) -> None
         ("staged", []),
         ("steps", "backups"),
         ("target_package_state", "unknown"),
+        ("owner_token", 7),
     ],
 )
 def test_a_valid_json_journal_with_a_malformed_field_requires_recovery(
@@ -2180,12 +2462,13 @@ class StubFilesetsResource:
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
         self.retrieve_error: Exception | None = None
         self.create_error: Exception | None = None
+        self.retrieve_result = MagicMock(custom_fields={})
 
     def retrieve(self, name: str, **kwargs: Any) -> Any:
         self.calls.append(("retrieve", (name,), kwargs))
         if self.retrieve_error is not None:
             raise self.retrieve_error
-        return object()
+        return self.retrieve_result
 
     def create(self, **kwargs: Any) -> Any:
         self.calls.append(("create", (), kwargs))
@@ -2253,16 +2536,32 @@ def test_sdk_fileset_store_create_is_conditional() -> None:
     sdk = StubSdk()
     store = SdkFilesetStore(sdk)
 
-    assert store.create(workspace=WORKSPACE, name=TARGET_PACKAGE) is True
+    assert store.create(workspace=WORKSPACE, name=TARGET_PACKAGE, owner_token=OWNER_TOKEN) is True
     operation, args, kwargs = sdk.files.filesets.calls[-1]
     assert operation == "create"
     assert args == ()
-    assert kwargs == {"name": TARGET_PACKAGE, "workspace": WORKSPACE}
+    assert kwargs == {
+        "name": TARGET_PACKAGE,
+        "workspace": WORKSPACE,
+        "custom_fields": {FILESET_OWNER_FIELD: OWNER_TOKEN},
+    }
     # exist_ok must stay at its default of False, or a 409 would look like a create.
     assert "exist_ok" not in kwargs
 
     sdk.files.filesets.create_error = conflict_error()
-    assert store.create(workspace=WORKSPACE, name=TARGET_PACKAGE) is False
+    assert store.create(workspace=WORKSPACE, name=TARGET_PACKAGE, owner_token=OWNER_TOKEN) is False
+
+
+def test_sdk_fileset_store_retrieves_the_owner_token_from_custom_fields() -> None:
+    sdk = StubSdk()
+    sdk.files.filesets.retrieve_result.custom_fields = {FILESET_OWNER_FIELD: OWNER_TOKEN}
+    store = SdkFilesetStore(sdk)
+
+    assert store.owner_token(workspace=WORKSPACE, name=TARGET_PACKAGE) == OWNER_TOKEN
+    assert sdk.files.filesets.calls == [("retrieve", (TARGET_PACKAGE,), {"workspace": WORKSPACE})]
+
+    sdk.files.filesets.retrieve_result.custom_fields = {FILESET_OWNER_FIELD: 7}
+    assert store.owner_token(workspace=WORKSPACE, name=TARGET_PACKAGE) is None
 
 
 def test_sdk_fileset_store_create_propagates_other_errors() -> None:
@@ -2270,7 +2569,7 @@ def test_sdk_fileset_store_create_propagates_other_errors() -> None:
     sdk.files.filesets.create_error = RuntimeError("boom")
 
     with pytest.raises(RuntimeError, match="boom"):
-        SdkFilesetStore(sdk).create(workspace=WORKSPACE, name=TARGET_PACKAGE)
+        SdkFilesetStore(sdk).create(workspace=WORKSPACE, name=TARGET_PACKAGE, owner_token=OWNER_TOKEN)
 
 
 def test_sdk_fileset_store_download_creates_the_destination(tmp_path: Path) -> None:

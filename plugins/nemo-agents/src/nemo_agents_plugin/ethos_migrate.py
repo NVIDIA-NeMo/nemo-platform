@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import tempfile
 from collections.abc import Iterator
@@ -69,6 +70,8 @@ ETHOS_WRITER_SKILL = "nemo-ethos"
 PROFILE_FILENAME = "optimizer.yaml"
 JOURNAL_ROOT_NAME = "ethos-migrations"
 JOURNAL_FILENAME = "journal.json"
+LOCAL_OWNER_MARKER = ".nemo-ethos-migration-owner"
+FILESET_OWNER_FIELD = "nemo_agents_ethos_migration_owner"
 
 INSIGHTS_JOB_SOURCE = "insights"
 EXPERIMENT_STATE_DIRNAME = "eval-and-optimize"
@@ -205,8 +208,67 @@ def _copy_file(source: Path, destination: Path) -> None:
     shutil.copyfile(source, destination)
 
 
+def _copy_file_exclusive(source: Path, destination: Path) -> None:
+    """Copy bytes into a path that must remain absent until the create."""
+    with source.open("rb") as source_handle:
+        descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        with os.fdopen(descriptor, "wb") as destination_handle:
+            shutil.copyfileobj(source_handle, destination_handle)
+            destination_handle.flush()
+            os.fsync(destination_handle.fileno())
+
+
 def _remove_tree(path: Path) -> None:
     shutil.rmtree(path)
+
+
+def _create_local_target_directory(path: Path) -> None:
+    path.mkdir()
+
+
+def _write_local_owner_marker(target: Path, owner_token: str) -> None:
+    marker = target / LOCAL_OWNER_MARKER
+    with marker.open("x", encoding="ascii") as handle:
+        handle.write(owner_token)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _local_owner_token(target: Path) -> str | None:
+    marker = target / LOCAL_OWNER_MARKER
+    if marker.is_symlink() or not marker.is_file():
+        return None
+    try:
+        return marker.read_text(encoding="ascii")
+    except (OSError, UnicodeError):
+        return None
+
+
+def _remove_local_owner_marker(target: Path, owner_token: str) -> None:
+    marker = target / LOCAL_OWNER_MARKER
+    if _local_owner_token(target) != owner_token:
+        raise MigrationError(f"{marker} no longer carries this transaction's owner token")
+    marker.unlink()
+
+
+def _copy_staged_into_target(source: Path, target: Path, manifest: Manifest) -> None:
+    """Copy a staged package without overwriting any concurrently created path."""
+    if LOCAL_OWNER_MARKER in manifest:
+        raise MigrationError(f"the staged package uses reserved path {LOCAL_OWNER_MARKER!r}")
+    for rel in manifest:
+        destination = target / rel
+        parent = target
+        for part in PurePosixPath(rel).parts[:-1]:
+            parent /= part
+            try:
+                parent.mkdir()
+            except FileExistsError:
+                if parent.is_symlink() or not parent.is_dir():
+                    raise MigrationError(f"{parent} appeared during the target copy and was preserved") from None
+        try:
+            _copy_file_exclusive(source / rel, destination)
+        except FileExistsError as exc:
+            raise MigrationError(f"{destination} appeared during the target copy and was preserved") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -313,12 +375,9 @@ def _is_safe_relative_path(value: str) -> bool:
 class FilesetStore(Protocol):
     """The Fileset operations migration needs.
 
-    ``create`` must be conditional: it returns ``True`` only when this call
-    created the Fileset, and ``False`` when it already existed. That is what
-    makes target ownership decidable without a read-then-write race, so the
-    transaction never deletes a Fileset another writer created. ``upload`` must
-    not auto-create, so a Fileset can only come into existence through
-    ``create``.
+    ``create`` must be conditional and attach the supplied owner token. It
+    returns ``True`` only when this call created the Fileset. ``upload`` must not
+    auto-create, so a Fileset can only come into existence through ``create``.
 
     The list API carries no checksum, so remote bytes are verified by
     downloading them and computing the same local manifest.
@@ -326,7 +385,9 @@ class FilesetStore(Protocol):
 
     def exists(self, *, workspace: str, name: str) -> bool: ...
 
-    def create(self, *, workspace: str, name: str) -> bool: ...
+    def create(self, *, workspace: str, name: str, owner_token: str | None = None) -> bool: ...
+
+    def owner_token(self, *, workspace: str, name: str) -> str | None: ...
 
     def download(self, *, workspace: str, name: str, dest: Path) -> None: ...
 
@@ -368,7 +429,7 @@ class SdkFilesetStore:
             return False
         return True
 
-    def create(self, *, workspace: str, name: str) -> bool:
+    def create(self, *, workspace: str, name: str, owner_token: str | None = None) -> bool:
         """Create the Fileset, returning False when it already existed.
 
         ``exist_ok`` stays at its default of false so the platform's 409 is the
@@ -377,11 +438,22 @@ class SdkFilesetStore:
         """
         from nemo_platform import ConflictError
 
+        fields: dict[str, Any] = {"name": name, "workspace": workspace}
+        if owner_token is not None:
+            fields["custom_fields"] = {FILESET_OWNER_FIELD: owner_token}
         try:
-            self.sdk.files.filesets.create(name=name, workspace=workspace)
+            self.sdk.files.filesets.create(**fields)
         except ConflictError:
             return False
         return True
+
+    def owner_token(self, *, workspace: str, name: str) -> str | None:
+        fileset = self.sdk.files.filesets.retrieve(name, workspace=workspace)
+        custom_fields = getattr(fileset, "custom_fields", None)
+        if not isinstance(custom_fields, dict):
+            return None
+        owner_token = custom_fields.get(FILESET_OWNER_FIELD)
+        return owner_token if isinstance(owner_token, str) else None
 
     def download(self, *, workspace: str, name: str, dest: Path) -> None:
         dest.mkdir(parents=True, exist_ok=True)
@@ -1061,6 +1133,7 @@ class _TransactionRecord:
 
     workspace: str
     agent: str
+    owner_token: str
     agents_root: str
     old_package: str
     target_package: str
@@ -1087,6 +1160,7 @@ class _TransactionRecord:
         return {
             "workspace": self.workspace,
             "agent": self.agent,
+            "owner_token": self.owner_token,
             "agents_root": self.agents_root,
             "old_package": self.old_package,
             "target_package": self.target_package,
@@ -1116,6 +1190,9 @@ class _TransactionRecord:
 
         workspace = _journal_string(data, "workspace")
         agent = _journal_string(data, "agent")
+        owner_token = _journal_string(data, "owner_token")
+        if re.fullmatch(r"[0-9a-f]{64}", owner_token) is None:
+            raise ValueError("journal field 'owner_token' must be a lowercase 256-bit token")
         try:
             validate_agent_name(agent)
         except MigrationError as exc:
@@ -1169,6 +1246,7 @@ class _TransactionRecord:
         return cls(
             workspace=workspace,
             agent=agent,
+            owner_token=owner_token,
             agents_root=agents_root,
             old_package=old_package,
             target_package=target_package,
@@ -1473,6 +1551,7 @@ def _apply(
     record = _TransactionRecord(
         workspace=plan.workspace,
         agent=plan.agent,
+        owner_token=secrets.token_hex(32),
         agents_root=str(plan.agents_root),
         old_package=str(plan.old_package),
         target_package=str(plan.target_package),
@@ -1515,7 +1594,11 @@ def _apply(
             # Conditional create is the ownership decision: a false return means
             # another writer created the Fileset between assessment and now, and
             # this transaction must never delete a Fileset it did not create.
-            if not filesets.create(workspace=plan.workspace, name=plan.target_fileset):
+            if not filesets.create(
+                workspace=plan.workspace,
+                name=plan.target_fileset,
+                owner_token=record.owner_token,
+            ):
                 record.target_fileset_state = _TargetState.PRE_EXISTING
                 persist()
                 raise MigrationError(
@@ -1533,18 +1616,19 @@ def _apply(
         if assessment.target_local is None:
             record.target_package_state = _TargetState.CREATING
             persist()
-            # No pre-clean: a path that appeared after assessment must break this
-            # transaction rather than be replaced.
             try:
-                _copy_tree(assessment.staged_dir, plan.target_package)
+                _create_local_target_directory(plan.target_package)
             except FileExistsError as exc:
                 record.target_package_state = _TargetState.PRE_EXISTING
                 persist()
                 raise MigrationError(
                     f"{plan.target_package} appeared while this migration was running, so it belongs to another writer"
                 ) from exc
+            _write_local_owner_marker(plan.target_package, record.owner_token)
+            _copy_staged_into_target(assessment.staged_dir, plan.target_package, record.staged)
             record.target_package_state = _TargetState.OWNED
             persist()
+            _remove_local_owner_marker(plan.target_package, record.owner_token)
         finish("write-target-package")
 
         _rewrite_profiles(assessment, record)
@@ -1695,14 +1779,32 @@ def _remove_local_target_if_owned(record: _TransactionRecord) -> str | None:
             f"cannot prove that local target {target} belongs to this transaction because the journal "
             "records no creation attempt; the target was preserved"
         )
+    marker = target / LOCAL_OWNER_MARKER
+    marker_exists = marker.exists() or marker.is_symlink()
+    observed_owner = _local_owner_token(target)
+    if record.target_package_state is _TargetState.CREATING:
+        if observed_owner != record.owner_token:
+            return (
+                f"cannot prove that local target {target} belongs to this transaction because its owner marker "
+                "is missing or different; the target was preserved"
+            )
+        _remove_tree(target)
+        return None
+    if marker_exists and observed_owner != record.owner_token:
+        return (
+            f"cannot prove that local target {target} belongs to this transaction because its owner marker "
+            "is different; the target was preserved"
+        )
     try:
         actual = build_manifest(target)
     except (MigrationError, OSError) as exc:
         return f"cannot prove that local target {target} belongs to this transaction ({exc}); the target was preserved"
+    if marker_exists:
+        actual.pop(LOCAL_OWNER_MARKER, None)
     if actual != record.staged:
         return (
-            f"cannot prove that local target {target} belongs to this transaction because its manifest "
-            "differs from the recorded target manifest; the target was preserved"
+            f"cannot prove that owned local target {target} is compatible with the recorded manifest; "
+            "the target was preserved"
         )
     _remove_tree(target)
     return None
@@ -1712,30 +1814,47 @@ def _remove_fileset_target_if_owned(record: _TransactionRecord, filesets: Filese
     if record.target_fileset_state is _TargetState.PRE_EXISTING:
         return None
     try:
-        actual = _remote_manifest(filesets, record.workspace, record.target_fileset)
+        exists = filesets.exists(workspace=record.workspace, name=record.target_fileset)
     except Exception as exc:
         return (
             f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
-            f"because its manifest could not be read ({exc}); the Fileset was preserved"
+            f"because its existence could not be checked ({exc}); the Fileset was preserved"
         )
-    if actual is None:
+    if not exists:
         return None
     if record.target_fileset_state is _TargetState.ABSENT:
         return (
             f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
             "because the journal records no creation attempt; the Fileset was preserved"
         )
-
-    created_but_not_recorded = record.target_fileset_state is _TargetState.CREATING and (
-        actual == {} or actual == record.staged
-    )
-    recorded_as_owned = record.target_fileset_state is _TargetState.OWNED and _manifest_is_compatible_subset(
-        actual, record.staged
-    )
-    if not created_but_not_recorded and not recorded_as_owned:
+    try:
+        observed_owner = filesets.owner_token(workspace=record.workspace, name=record.target_fileset)
+    except Exception as exc:
         return (
             f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
-            "because its manifest differs from every recorded transaction state; the Fileset was preserved"
+            f"because its owner token could not be read ({exc}); the Fileset was preserved"
+        )
+    if observed_owner != record.owner_token:
+        return (
+            f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
+            "because its owner token is missing or different; the Fileset was preserved"
+        )
+    if record.target_fileset_state is _TargetState.CREATING:
+        filesets.delete(workspace=record.workspace, name=record.target_fileset)
+        return None
+    try:
+        actual = _remote_manifest(filesets, record.workspace, record.target_fileset)
+    except Exception as exc:
+        return (
+            f"cannot prove that owned Fileset {record.workspace}/{record.target_fileset} is compatible because "
+            f"its manifest could not be read ({exc}); the Fileset was preserved"
+        )
+    if actual is None:
+        return None
+    if not _manifest_is_compatible_subset(actual, record.staged):
+        return (
+            f"cannot prove that owned Fileset {record.workspace}/{record.target_fileset} is compatible with "
+            "the recorded manifest; the Fileset was preserved"
         )
     filesets.delete(workspace=record.workspace, name=record.target_fileset)
     return None
@@ -1763,10 +1882,11 @@ def _restore_local_tree(source: Path, destination: Path, expected: Manifest) -> 
         )
     for rel in sorted(expected.keys() - actual.keys()):
         target = destination / rel
-        if target.exists() or target.is_symlink():
-            raise MigrationError(f"{target} appeared during recovery, so it was preserved")
         target.parent.mkdir(parents=True, exist_ok=True)
-        _copy_file(source / rel, target)
+        try:
+            _copy_file_exclusive(source / rel, target)
+        except FileExistsError as exc:
+            raise MigrationError(f"{target} appeared during recovery and was preserved") from exc
 
 
 def _undo(record: _TransactionRecord, filesets: FilesetStore) -> None:
@@ -1922,9 +2042,19 @@ def run_migration(
             and the next run recovers before any new work.
     """
     validate_agent_name(request.agent)
-    request = _normalize_request(request)
     directory = journal_dir(request.workspace, request.agent)
+    journal = directory / JOURNAL_FILENAME
 
+    # Recovery reads only absolute paths from the journal. Check it before any
+    # rerun path or working-directory lookup can block that recorded work.
+    if request.dry_run and journal.is_file():
+        return _dry_run(request, directory, filesets, jobs)
+    if not request.dry_run and journal.is_file():
+        with _exclusive_lock(directory, request.workspace, request.agent):
+            if journal.is_file():
+                return _recover(directory, filesets)
+
+    request = _normalize_request(request)
     if request.dry_run:
         return _dry_run(request, directory, filesets, jobs)
 
