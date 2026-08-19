@@ -15,6 +15,7 @@ from nemo_agents_plugin.entities import ComputeResources, Endpoint
 from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
+    ReservedSecretEnvVarError,
     UnreachableGatewayURLError,
     build_container_resources,
     build_deployment_config,
@@ -355,6 +356,28 @@ def test_build_deployment_config_no_secrets_adds_no_secret_env() -> None:
         mode="k8s",
     )
     assert all(e.secret_ref is None for e in cfg.containers[0].env)
+
+
+@pytest.mark.parametrize("mode", ["docker", "k8s"])
+@pytest.mark.parametrize(
+    "reserved_name",
+    ["NMP_WORKSPACE", "NMP_AGENT_NAME", "NMP_BASE_URL", "AGENT_CONFIG_PATH", "NAT_CONFIG_PATH"],
+)
+def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(reserved_name: str, mode: str) -> None:
+    # A secret env var whose name collides with a platform-generated container
+    # env var is rejected up front (behavior would otherwise differ by substrate).
+    with pytest.raises(ReservedSecretEnvVarError, match=reserved_name):
+        build_deployment_config(
+            name="hello-dep",
+            workspace="default",
+            image="nat-runtime:latest",
+            port=8000,
+            agent_config={},
+            platform_base_url="http://nmp-api:8080",
+            config_mount_path="/workspace/config.yaml",
+            mode=mode,
+            secrets={reserved_name: "default/some-secret"},
+        )
 
 
 def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:

@@ -72,6 +72,22 @@ _AGENT_CONFIG_PATH_ENV = "AGENT_CONFIG_PATH"
 _FABRIC_SERVER_MODULE = "nemo_agents_plugin.fabric.server"
 _AUTH_PROXY_IDENTITY = "agents"
 
+# Env var names the backend generates on the agent container. A secret env var
+# from the environment must not collide with these: docker would apply the
+# secret value over the generated one, while k8s ignores the colliding secret
+# (explicit ``env`` entries take precedence over the managed Secret's
+# ``envFrom``), so the behavior would be inconsistent and surprising. Reject the
+# collision at compile time instead.
+_RESERVED_ENV_VAR_NAMES = frozenset(
+    {
+        "NMP_WORKSPACE",
+        "NMP_AGENT_NAME",
+        "NMP_BASE_URL",
+        _AGENT_CONFIG_PATH_ENV,
+        _NAT_CONFIG_ENV,
+    }
+)
+
 
 # On delete, wait up to this long for the deployments controller to tear down the
 # container and remove the Deployment entity before we drop the DeploymentConfig.
@@ -250,6 +266,10 @@ def build_container_resources(resources: ComputeResources | None, *, mode: Deplo
     return ResourceRequirements(limits=dict(resources.limits), requests=dict(resources.requests))
 
 
+class ReservedSecretEnvVarError(ValueError):
+    """A secret env var name collides with a platform-generated container env var."""
+
+
 def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[EnvVar]:
     """Compile resolved secret references into secret-backed container env vars.
 
@@ -257,9 +277,21 @@ def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[
     name resolves against the deployment ``workspace``). Each entry becomes an
     ``EnvVar`` carrying a ``secret_ref`` (never a plaintext value); the
     deployments-plugin substrate materializes the value at deploy time.
+
+    Raises :class:`ReservedSecretEnvVarError` when a secret name collides with a
+    platform-generated env var (see ``_RESERVED_ENV_VAR_NAMES``): such a
+    collision behaves inconsistently across substrates, so it is rejected up
+    front rather than silently shadowing platform wiring.
     """
     if not secrets:
         return []
+    reserved = sorted(name for name in secrets if name in _RESERVED_ENV_VAR_NAMES)
+    if reserved:
+        raise ReservedSecretEnvVarError(
+            "Environment secret variable name(s) collide with platform-reserved container env vars: "
+            f"{', '.join(reserved)}. Rename the secret env var(s) to avoid "
+            f"{', '.join(sorted(_RESERVED_ENV_VAR_NAMES))}."
+        )
     env_vars: list[EnvVar] = []
     for env_name, ref in secrets.items():
         secret_workspace, secret_name = parse_qualified_name(ref, default_workspace=workspace)
@@ -577,23 +609,27 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 logger.error("Refusing to deploy Fabric agent %r: %s", name, exc)
                 return DeploymentInfo(name=name, status="failed", error=str(exc))
 
-        deployment_config = build_deployment_config(
-            name=name,
-            workspace=workspace,
-            image=resolved_image,
-            port=self._config.container_port,
-            agent_config=config,
-            platform_base_url=gateway,
-            config_mount_path=self._config.config_mount_path,
-            mode=deployment_mode,
-            plugin_wheels_init_image=self._config.plugin_wheels_init_image,
-            labels=deployment_labels,
-            auth_proxy_identity=auth_proxy_identity,
-            auth_proxy_on_behalf_of=auth_proxy_on_behalf_of,
-            config_files=staged_config_files,
-            resources=resources,
-            secrets=secrets,
-        )
+        try:
+            deployment_config = build_deployment_config(
+                name=name,
+                workspace=workspace,
+                image=resolved_image,
+                port=self._config.container_port,
+                agent_config=config,
+                platform_base_url=gateway,
+                config_mount_path=self._config.config_mount_path,
+                mode=deployment_mode,
+                plugin_wheels_init_image=self._config.plugin_wheels_init_image,
+                labels=deployment_labels,
+                auth_proxy_identity=auth_proxy_identity,
+                auth_proxy_on_behalf_of=auth_proxy_on_behalf_of,
+                config_files=staged_config_files,
+                resources=resources,
+                secrets=secrets,
+            )
+        except ReservedSecretEnvVarError as exc:
+            logger.error("Refusing to deploy agent %r: %s", name, exc)
+            return DeploymentInfo(name=name, status="failed", error=str(exc))
         await entities.create(deployment_config)
         try:
             deployment = Deployment(
