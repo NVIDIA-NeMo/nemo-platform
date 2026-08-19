@@ -43,6 +43,7 @@ from nemo_experimentalist_plugin.entities import (
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
+from nemo_experimentalist_plugin.experimentalist.components.models import missing_objective_reason
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
@@ -454,6 +455,7 @@ class ExperimentContext:
                 metrics=result.aggregate_metrics,
                 objective_metrics=self._objective_metrics,
                 artifacts=self.root / "eval-and-optimize" / "results" / result.id,
+                reason=missing_objective_reason(result.trials, result.aggregate_metrics, self._objective_metrics),
             )
         return result
 

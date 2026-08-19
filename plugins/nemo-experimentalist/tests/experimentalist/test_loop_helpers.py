@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Rolling a round back so the loop can re-enter it cleanly."""
+"""Loop helpers: rolling a round back, and refusing a baseline nothing could measure."""
 
 from pathlib import Path
 
 import pytest
 from doubles import FakeBackend, make_context
-from nemo_experimentalist_plugin.entities import Proposal
+from nemo_experimentalist_plugin.entities import EvaluationResult, Proposal, TrialResult
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
 
@@ -50,3 +50,40 @@ async def test_rollback_discards_later_candidates_and_clears_their_evaluator_scr
     assert ctx.candidate_dir(discarded).exists(), "the artifact must survive a rollback"
     assert not any(d.exists() for d in scratch), "stale evaluator scratch would be read on re-run"
     assert survivor_scratch.exists(), "a survivor's results must not be swept up"
+
+
+@pytest.mark.asyncio
+async def test_baseline_validation_refuses_an_unmeasurable_baseline_and_records_a_measured_one(
+    tmp_path: Path,
+) -> None:
+    """The run's one reference point must exist before anything is compared against it.
+
+    An empty aggregate is indistinguishable from a scored one downstream, so a run
+    that cannot measure its own starting point would spend every round ranking
+    candidates that are all mutually incomparable and then report no winner.
+    """
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    baseline = await _commit(ctx, "baseline: the agent under test, unchanged", generation=0)
+
+    unmeasurable = EvaluationResult(
+        id=f"{baseline.label}-validation",
+        aggregate_metrics={},
+        trials=[
+            TrialResult(id="task-a__0", task_id="task-a", status="failed", error={"type": "RewardFileNotFoundError"})
+        ],
+    )
+    with pytest.raises(ValueError, match="RewardFileNotFoundError"):
+        await EvolutionaryStrategy._record_baseline_validation(
+            ctx=ctx, baseline=baseline, results={baseline.label: unmeasurable}
+        )
+    assert "validation" not in (await ctx.candidates())[0].rewards, "a refused baseline must not be recorded"
+
+    measured = EvaluationResult(
+        id=f"{baseline.label}-validation",
+        aggregate_metrics={"reward": 0.4},
+        trials=[TrialResult(id="task-a__0", task_id="task-a", status="completed")],
+    )
+    await EvolutionaryStrategy._record_baseline_validation(
+        ctx=ctx, baseline=baseline, results={baseline.label: measured}
+    )
+    assert (await ctx.candidates())[0].rewards["validation"].metrics == {"reward": 0.4}
