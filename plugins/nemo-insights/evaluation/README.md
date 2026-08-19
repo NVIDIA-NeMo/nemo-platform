@@ -12,7 +12,7 @@ wheel.
 
 - Run every command from `plugins/nemo-insights`; the `evaluation` package is
   not installed in the plugin wheel.
-- Install the AWS CLI and configure the CSS S3 credentials described in
+- Install AWS CLI 2.33.0 or newer and configure the CSS S3 credentials described in
   [State bundles](#state-bundles).
 - Start a local NeMo Platform at `http://localhost:8080` before using pinned
   analysis, restore, roundtrip, or guarded publish commands.
@@ -160,8 +160,8 @@ uv run python -m evaluation publish evaluation/tmp/glamr.tar.zst --base http://l
 `snapshot` drains the subject's workspaces (benchmark subjects: realistic +
 `-oracle` twin) into JSONL + manifest — no ClickHouse, no Docker. An intake
 subject can set `experiment = "<name>"` to capture only that Experiment's
-complete traces; membership comes from root spans, then every child is exported
-by trace ID. `publish`
+complete traces; membership comes from the Experiment's evaluations and their
+traces, then every span in each trace is exported by trace ID. `publish`
 refuses to mint unverified: `--base` runs the round-trip fidelity guard there
 first (re-ingest into scratch workspaces → re-export → doc diff), or pass
 `--no-verify` only after running `roundtrip` separately and confirming it

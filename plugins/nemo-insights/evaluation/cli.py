@@ -95,17 +95,30 @@ def _load_dotenv(path: Path = ENV_PATH) -> None:
             os.environ.setdefault(key, value)
 
 
+def _aws_cli_version(executable: str) -> tuple[int, int, int] | None:
+    result = subprocess.run([executable, "--version"], capture_output=True, text=True)
+    match = re.search(r"aws-cli/(\d+)\.(\d+)\.(\d+)", result.stdout + result.stderr)
+    if not match:
+        return None
+    major, minor, patch = match.groups()
+    return int(major), int(minor), int(patch)
+
+
 def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
     """Print a readiness checklist for one subject (or all): what's set up, what's not."""
     names = [name] if name else sorted(subjects)
+    aws = shutil.which("aws")
+    aws_version = _aws_cli_version(aws) if aws else None
     for subject_name in names:
         subject = subjects.get(subject_name)
         if subject is None:
             print(f"✗ {subject_name}: unknown subject")
             continue
         unmet: list[str] = []
-        if shutil.which("aws") is None:
-            unmet.append("AWS CLI (needed for pinned/--state analyze; install with `brew install awscli`)")
+        if aws is None:
+            unmet.append("AWS CLI 2.33.0+ (needed for pinned/--state analyze; install with `brew install awscli`)")
+        elif (aws_version or (0, 0, 0)) < (2, 33, 0):
+            unmet.append("AWS CLI 2.33.0+ (required for immutable multipart state uploads)")
         if not os.environ.get(release.ACCESS_KEY_ENV) or not os.environ.get(release.SECRET_KEY_ENV):
             unmet.append("CSS S3 credentials in evaluation/.env (CSS Portal → Auth Info)")
         unmet += build_adapter(subject).check()
