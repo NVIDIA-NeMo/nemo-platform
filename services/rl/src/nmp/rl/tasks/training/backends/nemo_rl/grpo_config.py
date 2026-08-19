@@ -216,6 +216,8 @@ def _build_nemo_gym_env_config(
                 ),
                 # Same rule: unset leaves the OpenSandbox server's default in place.
                 resources=gym.sandbox_resources or None,
+                # ttl_s has a non-null default, so it is only overridden when declared.
+                **({"ttl_s": gym.sandbox_ttl_s} if gym.sandbox_ttl_s else {}),
                 environment_pvc_claim=mounts.environment_pvc_claim,
                 environment_sub_path=mounts.environment_sub_path,
                 dataset_pvc_claim=mounts.dataset_pvc_claim,
