@@ -235,12 +235,11 @@ class TraceAnalyzer(Agent):
         All TraceExplorer methods are async — always `await` them.
 
         The framework enters the evaluator-owned runtime context before this
-        method. If ``runtime`` implements ``DependencyCommandExecutor``, call
+        method. When ``runtime`` exposes ``execute``, call
         ``await runtime.execute(...)`` directly for in-environment commands.
         Otherwise ``self.shell`` is host-local; use it only for host-local
         inspection and only when the runtime explicitly exposes no execution
-        channel. Import ``DependencyCommandExecutor`` from
-        ``nemo_experimentalist_plugin.entities`` before using that type check.
+        channel.
 
         1. Use ``task.inputs``, ``task.resources``, and ``task.metric_specs`` for
            task-side context. Do not assume Harbor paths or hidden verifier/oracle

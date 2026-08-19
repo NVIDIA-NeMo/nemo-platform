@@ -174,6 +174,54 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
 
 
 @pytest.mark.asyncio
+async def test_run_experimentalist_configures_and_flushes_opt_in_observability(
+    model_clients: ClosingModelClients,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    paths = _make_run_paths(tmp_path)
+    runner = RecordingRunner()
+    seen: dict[str, object] = {}
+
+    class Observability:
+        def shutdown(self) -> None:
+            seen["shutdown"] = True
+
+    def setup_observability(**kwargs: object) -> Observability:
+        seen["setup"] = kwargs
+        return Observability()
+
+    monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: object())
+    monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: object())
+    monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
+    monkeypatch.setattr(experimentalist_run, "_experimentalist_observability_enabled", lambda: True)
+    monkeypatch.setattr(
+        experimentalist_run,
+        "setup_experimentalist_observability",
+        setup_observability,
+    )
+
+    await experimentalist_run.run_experimentalist(
+        agent=paths.agent,
+        insight=None,
+        train_dataset=DatasetRef(uri=str(paths.train)),
+        validation_dataset=DatasetRef(uri=str(paths.validation)),
+        experiment_dir=paths.experiment,
+        workspace="workspace-a",
+        client=cast(AsyncNeMoPlatform, ClosingClient()),
+        config=EvolutionaryOptimizerConfig(),
+        base_url="https://platform.example",
+    )
+
+    assert seen["setup"] == {
+        "base_url": "https://platform.example",
+        "workspace": "workspace-a",
+        "target_agent": str(paths.agent),
+    }
+    assert seen["shutdown"] is True
+
+
+@pytest.mark.asyncio
 async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
     model_clients: ClosingModelClients,
     monkeypatch: pytest.MonkeyPatch,

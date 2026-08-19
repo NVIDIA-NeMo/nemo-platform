@@ -332,15 +332,13 @@ class Rationalizer(Agent):
         immediately:
 
         ```python
-        from nemo_experimentalist_plugin.entities import DependencyCommandExecutor
-
         thought = (
             "Task instructions say the article title is 'A Review of AR Applications "
             "for History Education' — this is a known sub-field. I need the paper's "
             "reference list to find the primary studies."
         )
         action = "Search Semantic Scholar for 'Challenor Ma 2019 AR history education review'."
-        execute = runtime.execute if isinstance(runtime, DependencyCommandExecutor) else self.shell.run
+        execute = getattr(runtime, "execute", self.shell.run)
         result = await execute('python3 -c "...")
         steps.append(RationaleStep(
             thought=thought,
@@ -481,12 +479,11 @@ class Rationalizer(Agent):
         runtime injects to discover how to reach it — do not assume any
         specific mechanism (container, process, HTTP service, etc.).
 
-        If ``runtime`` implements ``DependencyCommandExecutor``, call its
-        ``execute`` method directly for task-environment commands. Otherwise
-        ``self.shell`` runs on the host. Never execute host-side commands and
-        record their output as if they were the AUT's in-runtime experience —
-        the paths, permissions, and tools available on the host differ from
-        those in the task runtime.
+        When ``runtime`` exposes ``execute``, call that method directly for
+        task-environment commands. Otherwise ``self.shell`` runs on the host.
+        Never execute host-side commands and record their output as if they
+        were the AUT's in-runtime experience — the paths, permissions, and
+        tools available on the host differ from those in the task runtime.
 
         Never include in rationale steps:
         - Paths or commands that only work on the rationalizer host, not in
@@ -627,10 +624,8 @@ class Rationalizer(Agent):
         The runtime exposes a bash-accessible environment with the input file.
 
         ```python
-        from nemo_experimentalist_plugin.entities import DependencyCommandExecutor
-
         steps = []
-        execute = runtime.execute if isinstance(runtime, DependencyCommandExecutor) else self.shell.run
+        execute = getattr(runtime, "execute", self.shell.run)
 
         # ── Step 1: read the instruction from task.inputs ───────────────────
         instruction = str(task.inputs.get("instruction", ""))

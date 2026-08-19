@@ -20,7 +20,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias
 from urllib.parse import unquote, urlparse
 
 from nemo_platform_plugin.entity import NemoEntity
@@ -48,7 +48,6 @@ class DependencyRuntimeError(RuntimeError):
     """A task dependency runtime could not start, execute, or stop safely."""
 
 
-@runtime_checkable
 class DependencyCommandExecutor(Protocol):
     """A live dependency runtime that can execute a command in its environment.
 
