@@ -76,8 +76,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --baseline-freeze /tmp/base-python-freeze.txt \
         --label platform-glue
 
-# Codec cleanup for release image scans.
-RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/rl/codec-file-removals.txt
+# Late file cleanup for bundled or non-package-managed files.
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.sh,target=/tmp/remove-listed-files.sh,readonly \
+    --mount=type=bind,source=docker/customizer/removals/files/nmp-rl-training.txt,target=/tmp/file-removals.txt,readonly \
+    bash /tmp/remove-listed-files.sh /tmp/file-removals.txt
 
 # Runtime uv cache: the base's /opt/uv_cache ships READ-ONLY on purpose - the prefetched venvs
 # symlink their package files into it, so a writable cache would let code running in this container
