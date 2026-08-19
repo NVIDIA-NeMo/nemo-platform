@@ -518,3 +518,77 @@ async def test_stage_fabric_spec_config_files_agent_spec_md_alone_does_not_satis
             agent_yaml_path="/workspace/agent.yaml",
             sdk=sdk,
         )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_drops_agent_spec_markdown(tmp_path: Path) -> None:
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        root = Path(local_path)
+        (root / "AGENT-SPEC.md").write_text("# Spec\n", encoding="utf-8")
+        (root / "mcps").mkdir()
+        (root / "mcps" / "calculator.py").write_text("print(1)\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=_fabric_config(),
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert not (tmp_path / "AGENT-SPEC.md").exists()
+    assert (tmp_path / "mcps" / "calculator.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_rejects_symlink_escaping_base_dir(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("nope\n", encoding="utf-8")
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        (Path(local_path) / "escape").symlink_to(outside)
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    with pytest.raises(FabricArtifactStagingError, match="escapes the agent base directory"):
+        await stage_fabric_spec_dir(
+            workspace="default",
+            agent_name="fabric-agent",
+            agent_config=_fabric_config(),
+            base_dir=base_dir,
+            sdk=sdk,
+        )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_allows_symlinks_inside_runtime_directories(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    base_dir = tmp_path / "base"
+    (base_dir / "artifacts").mkdir(parents=True)
+    (base_dir / "artifacts" / "link").symlink_to(outside)
+
+    config = _fabric_config()
+    config["environment"] = {"workspace": "./workspace", "artifacts": "./artifacts"}
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=config,
+        base_dir=base_dir,
+        sdk=sdk,
+    )
+
+    assert (base_dir / "artifacts" / "link").is_symlink()

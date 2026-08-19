@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import posixpath
 import shutil
@@ -56,31 +57,37 @@ async def stage_fabric_spec_dir(
     fileset is not fatal — config-only agents deploy from ``agent.yaml`` alone —
     but a config referencing skills still needs them staged.
 
+    ``AGENT-SPEC.md`` is dropped after download, matching the container path,
+    so both runtimes see the same tree.
+
     The container byte cap does not apply here: it bounds ConfigMap and env
-    delivery, neither of which is in this path.
+    delivery, neither of which is in this path. What lands on the platform host
+    is bounded by ``_check_agent_root_bounds`` at CLI upload time only — a
+    fileset written straight through the files API is unbounded here. That is
+    the intended trust boundary for local subprocess mode, not an oversight.
 
     *base_dir* is reused when the controller restarts a subprocess deployment,
     so previously staged files are cleared first. Otherwise a file dropped from
     the fileset would survive locally, and stale skills could satisfy validation
     for a deployment that staged nothing.
     """
-    _clear_staged_tree(base_dir, _runtime_dir_names(agent_config))
+    preserved = _runtime_dir_names(agent_config)
+    await asyncio.to_thread(_clear_staged_tree, base_dir, preserved)
 
-    if not agent_name or sdk is None:
-        validate_referenced_skill_paths(agent_config, _staged_relative_paths(base_dir))
-        return
+    if agent_name and sdk is not None:
+        fileset_name = agent_spec_fileset_name(agent_name)
+        try:
+            await sdk.download(local_path=str(base_dir), fileset=fileset_name, workspace=workspace)
+        except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
+            logger.info(
+                "Agent spec fileset %s/%s unavailable (%s); using inline agent.yaml only",
+                workspace,
+                fileset_name,
+                exc,
+            )
 
-    fileset_name = agent_spec_fileset_name(agent_name)
-    try:
-        await sdk.download(local_path=str(base_dir), fileset=fileset_name, workspace=workspace)
-    except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
-        logger.info(
-            "Agent spec fileset %s/%s unavailable (%s); using inline agent.yaml only",
-            workspace,
-            fileset_name,
-            exc,
-        )
-    validate_referenced_skill_paths(agent_config, _staged_relative_paths(base_dir))
+    staged = await asyncio.to_thread(_collect_staged_dir, base_dir, preserved)
+    validate_referenced_skill_paths(agent_config, staged)
 
 
 def _runtime_dir_names(agent_config: dict[str, Any]) -> set[str]:
@@ -128,6 +135,37 @@ def _clear_staged_tree(base_dir: Path, preserved: set[str]) -> None:
             raise FabricArtifactStagingError(
                 f"Failed to remove stale agent spec artifact {child.name!r} from {base_dir}: {exc}"
             ) from exc
+
+
+def _collect_staged_dir(base_dir: Path, preserved: set[str]) -> set[PurePosixPath]:
+    """Return staged files relative to *base_dir*, rejecting anything that escapes it.
+
+    ``_collect_staged_config_files`` refuses ``..`` in a staged path; this path
+    writes to the platform host's filesystem rather than an inert ConfigMap, so
+    it keeps the same guard. Symlinks are the reachable form here: the download
+    lands real files, but a link inside the tree would resolve outside it.
+    ``AGENT-SPEC.md`` is removed for parity with the container path.
+
+    *preserved* runtime directories are skipped: a running agent owns their
+    contents, symlinks included, and staging neither writes nor validates them.
+    """
+    resolved_base = base_dir.resolve()
+    staged: set[PurePosixPath] = set()
+    for path in base_dir.rglob("*"):
+        rel = path.relative_to(base_dir)
+        if rel.parts[0] in preserved:
+            continue
+        if path.is_symlink() or not path.resolve().is_relative_to(resolved_base):
+            raise FabricArtifactStagingError(
+                f"Staged agent spec path {rel.as_posix()!r} escapes the agent base directory {base_dir}"
+            )
+        if not path.is_file():
+            continue
+        if path.name == AGENT_SPEC_FILENAME:
+            path.unlink()
+            continue
+        staged.add(PurePosixPath(rel.as_posix()))
+    return staged
 
 
 def _staged_relative_paths(base_dir: Path) -> set[PurePosixPath]:
