@@ -277,7 +277,12 @@ class TestDeleteSession:
 
         assert response.status_code == 204
         mock_entity_client.get.assert_awaited_once_with(AgentSession, name="session-one", workspace="default")
-        mock_entity_client.delete.assert_awaited_once_with(AgentSession, name="session-one", workspace="default")
+        mock_entity_client.delete.assert_awaited_once_with(
+            AgentSession,
+            name="session-one",
+            workspace="default",
+            expected_db_version=mock_entity_client.get.return_value.db_version,
+        )
         cleanup.assert_awaited_once_with(mock_entity_client, mock_entity_client.get.return_value)
 
     def test_delete_returns_404(self) -> None:
