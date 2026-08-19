@@ -43,7 +43,9 @@ interface UseOverviewTracesResult {
  *
  * Scoped to the workspace, not the agent: Intake has no agent attribution on a trace
  * (`TraceFilter` exposes id/session/status/started_at/evaluation only), so there is nothing to
- * narrow on yet. Swap in an `agent` filter here once the ingest path records it.
+ * narrow on yet. This will cause traces from other agents to be included in the overview.
+ *
+ * TODO: Add agent filter once Intake supports it.
  */
 export const useOverviewTraces = ({
   workspace,
