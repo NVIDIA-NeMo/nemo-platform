@@ -15,10 +15,14 @@ The command performs one hard rename:
 * Fileset ``<agent>-spec`` to ``<agent>-ethos``
 * affected ``optimizer.yaml`` keys and paths to ``ethos``
 
-The apply path is a compensating transaction journalled outside the repository.
-Its binding rule: **every controlled failure before the final verification
-leaves the old local package, the old Fileset, and the old profile keys
-authoritative.**
+The apply path is a compensating transaction. Its binding rule: **every
+controlled failure before the final verification leaves the old local package,
+the old Fileset, and the old profile keys authoritative.**
+
+:class:`_TransactionRecord` is the single source of truth for the transaction. It
+is held in memory, persisted to a journal outside the repository, and is the only
+input recovery reads, so a later run with different arguments can never redirect
+recovery at a path the failed run never touched.
 
 Platform access goes through the two narrow ports :class:`FilesetStore` and
 :class:`JobStore`, so the transaction is testable against real files without a
@@ -37,7 +41,7 @@ import os
 import re
 import shutil
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -64,11 +68,12 @@ ETHOS_PROFILE_KEY = "ethos"
 ETHOS_WRITER_SKILL = "nemo-ethos"
 PROFILE_FILENAME = "optimizer.yaml"
 JOURNAL_ROOT_NAME = "ethos-migrations"
+JOURNAL_FILENAME = "journal.json"
 
 INSIGHTS_JOB_SOURCE = "insights"
 EXPERIMENT_STATE_DIRNAME = "eval-and-optimize"
 EXPERIMENT_DEFAULT_ROOT = (".nemo-optimizer", "experiments")
-BLOCKING_RUN_STATUSES = frozenset({"running", "failed"})
+COMPLETED_RUN_STATUS = "completed"
 
 # Names that legitimately keep the old substring. They are masked out of a line
 # before the banned terms are searched, which is how a longer allowed term wins
@@ -127,6 +132,7 @@ class Outcome(str, Enum):
     PENDING = "pending"
     MIGRATED = "migrated"
     RECOVERED = "recovered"
+    RECOVERY_REQUIRED = "recovery-required"
     CONFLICT = "conflict"
     BLOCKED = "blocked"
 
@@ -151,7 +157,7 @@ class MigrationReport:
 
     @property
     def ok(self) -> bool:
-        """False for a conflict or a blocked run, which the CLI turns into exit 1."""
+        """False for a conflict, a blocked run, or pending recovery; the CLI exits 1."""
         return self.outcome in _OK_OUTCOMES
 
 
@@ -166,6 +172,32 @@ class MigrationRequest:
     experiment_dirs: tuple[Path, ...] = ()
     dry_run: bool = False
     start_dir: Path | None = None
+
+
+# ---------------------------------------------------------------------------
+# Filesystem seams
+#
+# Every mutating filesystem call the transaction makes goes through one of these
+# three functions, so a test can fail a specific copy, removal, or profile write
+# at its real boundary instead of through a hook in the transaction itself.
+# ---------------------------------------------------------------------------
+
+
+def _copy_tree(source: Path, destination: Path) -> None:
+    """Copy a directory tree, refusing to write over an existing destination.
+
+    ``dirs_exist_ok`` stays false so a destination that appeared after assessment
+    raises :class:`FileExistsError` instead of being merged into or replaced.
+    """
+    shutil.copytree(source, destination)
+
+
+def _copy_file(source: Path, destination: Path) -> None:
+    shutil.copyfile(source, destination)
+
+
+def _remove_tree(path: Path) -> None:
+    shutil.rmtree(path)
 
 
 # ---------------------------------------------------------------------------
@@ -187,11 +219,16 @@ Manifest = dict[str, FileFingerprint]
 def build_manifest(root: Path) -> Manifest:
     """Fingerprint every regular file under *root*, keyed by relative POSIX path.
 
-    Symlinks and paths that escape *root* are rejected rather than skipped: the
-    Fileset upload follows a symlink and ships its target's bytes, so skipping
-    one would move content from outside the package and hide it from every
-    comparison this module makes.
+    A symlinked root, a symlink anywhere beneath it, and a path that escapes the
+    root are all rejected rather than skipped: the Fileset upload follows a
+    symlink and ships its target's bytes, so tolerating one would move content
+    from outside the package and hide it from every comparison made here.
     """
+    if root.is_symlink():
+        raise MigrationError(
+            f"{root} is a symlink; migration copies, uploads, and deletes this path, so following "
+            "it could reach content outside the agents root. Replace it with a real directory"
+        )
     resolved_root = root.resolve()
     manifest: Manifest = {}
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -226,11 +263,15 @@ def _fingerprint(path: Path) -> FileFingerprint:
     return FileFingerprint(size=size, sha256=digest.hexdigest())
 
 
-def _manifest_to_json(manifest: Manifest) -> dict[str, dict[str, Any]]:
+def _manifest_to_json(manifest: Manifest | None) -> dict[str, dict[str, Any]] | None:
+    if manifest is None:
+        return None
     return {rel: {"size": fp.size, "sha256": fp.sha256} for rel, fp in manifest.items()}
 
 
-def _manifest_from_json(payload: dict[str, dict[str, Any]]) -> Manifest:
+def _manifest_from_json(payload: dict[str, dict[str, Any]] | None) -> Manifest | None:
+    if payload is None:
+        return None
     return {rel: FileFingerprint(size=entry["size"], sha256=entry["sha256"]) for rel, entry in payload.items()}
 
 
@@ -240,13 +281,22 @@ def _manifest_from_json(payload: dict[str, dict[str, Any]]) -> Manifest:
 
 
 class FilesetStore(Protocol):
-    """The four Fileset operations migration needs.
+    """The Fileset operations migration needs.
+
+    ``create`` must be conditional: it returns ``True`` only when this call
+    created the Fileset, and ``False`` when it already existed. That is what
+    makes target ownership decidable without a read-then-write race, so the
+    transaction never deletes a Fileset another writer created. ``upload`` must
+    not auto-create, so a Fileset can only come into existence through
+    ``create``.
 
     The list API carries no checksum, so remote bytes are verified by
     downloading them and computing the same local manifest.
     """
 
     def exists(self, *, workspace: str, name: str) -> bool: ...
+
+    def create(self, *, workspace: str, name: str) -> bool: ...
 
     def download(self, *, workspace: str, name: str, dest: Path) -> None: ...
 
@@ -288,14 +338,33 @@ class SdkFilesetStore:
             return False
         return True
 
+    def create(self, *, workspace: str, name: str) -> bool:
+        """Create the Fileset, returning False when it already existed.
+
+        ``exist_ok`` stays at its default of false so the platform's 409 is the
+        answer to "did this call create it?", rather than a check the caller
+        makes separately and races against.
+        """
+        from nemo_platform import ConflictError
+
+        try:
+            self.sdk.files.filesets.create(name=name, workspace=workspace)
+        except ConflictError:
+            return False
+        return True
+
     def download(self, *, workspace: str, name: str, dest: Path) -> None:
         dest.mkdir(parents=True, exist_ok=True)
         self.sdk.files.download(local_path=str(dest), fileset=name, workspace=workspace)
 
     def upload(self, *, workspace: str, name: str, source: Path) -> None:
-        from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
-
-        upload_to_fileset(source, fileset=name, workspace=workspace, sdk=self.sdk)
+        # Trailing slash uploads the directory's contents, not the directory.
+        self.sdk.files.upload(
+            local_path=f"{source}/",
+            fileset=name,
+            workspace=workspace,
+            fileset_auto_create=False,
+        )
 
     def delete(self, *, workspace: str, name: str) -> None:
         self.sdk.files.filesets.delete(name, workspace=workspace)
@@ -324,8 +393,31 @@ class SdkJobStore:
 
 
 # ---------------------------------------------------------------------------
-# Plan and journal locations
+# Name validation and plan
 # ---------------------------------------------------------------------------
+
+
+def validate_agent_name(agent: str) -> None:
+    """Reject any agent name that is not one safe path component.
+
+    The name is interpolated into a local package path that the transaction
+    copies over and deletes, so a separator, ``..``, or an absolute value would
+    let it reach outside ``--agents-root``.
+    """
+    if not agent:
+        raise MigrationError("--name is required and cannot be empty")
+    if "\0" in agent:
+        raise MigrationError("--name cannot contain a NUL byte")
+    if agent in {".", ".."}:
+        raise MigrationError(f"--name {agent!r} is a directory reference, not an agent name")
+    if "/" in agent or "\\" in agent or os.sep in agent or (os.altsep and os.altsep in agent):
+        raise MigrationError(f"--name {agent!r} cannot contain a path separator")
+    candidate = Path(agent)
+    if candidate.is_absolute() or candidate.name != agent:
+        raise MigrationError(
+            f"--name {agent!r} must be a single path component, so the agent's package stays "
+            "directly inside --agents-root"
+        )
 
 
 @dataclass(frozen=True)
@@ -334,11 +426,13 @@ class MigrationPlan:
 
     agent: str
     workspace: str
+    agents_root: Path
     old_package: Path
     target_package: Path
     old_fileset: str
     target_fileset: str
-    profiles: tuple[Path, ...]
+    external_profiles: tuple[Path, ...]
+    packaged_profiles: tuple[str, ...]
     experiment_dirs: tuple[Path, ...]
 
 
@@ -354,24 +448,33 @@ def journal_dir(workspace: str, agent: str) -> Path:
 
 
 def _build_plan(request: MigrationRequest) -> MigrationPlan:
-    agents_root = Path(request.agents_root)
+    agents_root = Path(request.agents_root).expanduser()
     old_package = agents_root / f"{request.agent}{LEGACY_PACKAGE_SUFFIX}"
     target_package = agents_root / ethos_fileset_name(request.agent)
-    profiles = _discover_profiles(request, old_package, target_package)
+    external, packaged = _discover_profiles(request, old_package, target_package)
     return MigrationPlan(
         agent=request.agent,
         workspace=request.workspace,
+        agents_root=agents_root,
         old_package=old_package,
         target_package=target_package,
         old_fileset=f"{request.agent}{LEGACY_PACKAGE_SUFFIX}",
         target_fileset=ethos_fileset_name(request.agent),
-        profiles=profiles,
-        experiment_dirs=_discover_experiment_dirs(request, profiles),
+        external_profiles=external,
+        packaged_profiles=packaged,
+        experiment_dirs=_discover_experiment_dirs(request, external, target_package),
     )
 
 
-def _discover_profiles(request: MigrationRequest, old_package: Path, target_package: Path) -> tuple[Path, ...]:
-    """Deduplicated union of explicit, walked-up, and package-local profiles.
+def _discover_profiles(
+    request: MigrationRequest, old_package: Path, target_package: Path
+) -> tuple[tuple[Path, ...], tuple[str, ...]]:
+    """Split the affected profile set into external files and package-local copies.
+
+    A profile inside either package travels with the package, so it is rewritten
+    in the staged copy rather than edited in the legacy source. Containment
+    decides that, not how the profile was discovered, so an explicit
+    ``--profile`` pointing into the package is still treated as package-local.
 
     The command performs no global scan, so a profile outside this set is not
     discoverable and the caller must name it with ``--profile``.
@@ -381,9 +484,20 @@ def _discover_profiles(request: MigrationRequest, old_package: Path, target_pack
     if walked is not None:
         candidates.append(walked)
     for package in (old_package, target_package):
-        if package.is_dir():
+        if package.is_dir() and not package.is_symlink():
             candidates.extend(sorted(package.rglob(PROFILE_FILENAME)))
-    return _resolve_unique(candidates)
+
+    external: dict[Path, None] = {}
+    packaged: dict[str, None] = {}
+    roots = [old_package.resolve(), target_package.resolve()]
+    for candidate in _resolve_unique(candidates):
+        for root in roots:
+            if candidate.is_relative_to(root):
+                packaged.setdefault(candidate.relative_to(root).as_posix(), None)
+                break
+        else:
+            external.setdefault(candidate, None)
+    return tuple(external), tuple(packaged)
 
 
 def _walk_up_for_profile(start_dir: Path | None) -> Path | None:
@@ -398,11 +512,13 @@ def _walk_up_for_profile(start_dir: Path | None) -> Path | None:
     return None
 
 
-def _discover_experiment_dirs(request: MigrationRequest, profiles: tuple[Path, ...]) -> tuple[Path, ...]:
+def _discover_experiment_dirs(
+    request: MigrationRequest, external_profiles: tuple[Path, ...], target_package: Path
+) -> tuple[Path, ...]:
     """Explicit directories plus the default tree each affected profile reserves."""
     candidates: list[Path] = [Path(directory) for directory in request.experiment_dirs]
-    for profile in profiles:
-        root = profile.parent.joinpath(*EXPERIMENT_DEFAULT_ROOT)
+    for profile_dir in (*(profile.parent for profile in external_profiles), target_package):
+        root = profile_dir.joinpath(*EXPERIMENT_DEFAULT_ROOT)
         if root.is_dir():
             candidates.extend(sorted(entry for entry in root.iterdir() if entry.is_dir()))
     return _resolve_unique(candidates)
@@ -437,7 +553,12 @@ def _legacy_occurrences(text: str) -> list[tuple[int, str]]:
 
 
 def _legacy_findings(root: Path, manifest: Manifest) -> list[str]:
-    """List every unrewritten literal in the staged tree, by path and line."""
+    """List every unrewritten literal in a package, by path and line.
+
+    Every text file is read, not only the contract file: a leftover reference in
+    a packaged skill, an ``agent.yaml`` entry, or a package-local profile is just
+    as much a broken pointer after the rename.
+    """
     findings: list[str] = []
     for rel in manifest:
         for _, term in _legacy_occurrences(rel):
@@ -449,6 +570,148 @@ def _legacy_findings(root: Path, manifest: Manifest) -> list[str]:
         for lineno, term in _legacy_occurrences(text):
             findings.append(f"{rel}:{lineno}: {term!r}")
     return findings
+
+
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _ProfilePlan:
+    """One external ``optimizer.yaml`` and the rewrite it needs, if any."""
+
+    path: Path
+    data: dict[str, Any]
+    expected: str | None = None
+    rewritten: dict[str, Any] | None = None
+    conflict: str | None = None
+
+    @property
+    def needs_rewrite(self) -> bool:
+        return self.rewritten is not None
+
+
+def _read_profile_mapping(path: Path) -> dict[str, Any]:
+    """Load a profile as a YAML mapping, or raise a controlled error."""
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise MigrationError(f"{path}: cannot be read as YAML ({exc})") from exc
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise MigrationError(f"{path}: the document root must be a YAML mapping")
+    return payload
+
+
+def _plan_profile_change(
+    payload: dict[str, Any], plan: MigrationPlan, label: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Return ``(rewritten payload or None, expected ethos value)``.
+
+    ``None`` for the rewritten payload means the profile is already in its final
+    form. The expected value is what verification requires afterwards, so a
+    write that lands the wrong path is caught rather than accepted for merely
+    ending in the right filename.
+    """
+    has_old = LEGACY_PROFILE_KEY in payload
+    has_new = ETHOS_PROFILE_KEY in payload
+    if not has_old and not has_new:
+        return None, None
+
+    old_value = payload.get(LEGACY_PROFILE_KEY)
+    new_value = payload.get(ETHOS_PROFILE_KEY)
+    if has_old and not isinstance(old_value, str):
+        raise MigrationError(f"{label}: {LEGACY_PROFILE_KEY!r} must be a string path, not {old_value!r}")
+    if has_new and not isinstance(new_value, str):
+        raise MigrationError(f"{label}: {ETHOS_PROFILE_KEY!r} must be a string path, not {new_value!r}")
+
+    source_value = old_value if has_old else new_value
+    assert isinstance(source_value, str)  # both branches above rejected non-strings
+    rewritten_value = _rewrite_profile_value(source_value, plan, label)
+
+    # A half-converted profile carries both keys. They agree when the old value
+    # rewrites to the new one, which is the state a resumed migration leaves
+    # behind; anything else is a divergence a rename must not silently resolve.
+    if has_old and has_new and new_value != rewritten_value:
+        raise MigrationError(
+            f"{label}: {LEGACY_PROFILE_KEY} is {old_value!r} but {ETHOS_PROFILE_KEY} is "
+            f"{new_value!r}; the two disagree, so keep one and rerun"
+        )
+
+    rewritten = _replace_profile_key(payload, rewritten_value)
+    return (None if rewritten == payload else rewritten), rewritten_value
+
+
+def _rewrite_profile_value(value: str, plan: MigrationPlan, label: str) -> str:
+    """Rewrite the old package segment and contract filename inside a profile path."""
+    rewritten = [
+        ethos_fileset_name(plan.agent)
+        if segment == f"{plan.agent}{LEGACY_PACKAGE_SUFFIX}"
+        else ETHOS_FILENAME
+        if segment == LEGACY_CONTRACT_FILENAME
+        else segment
+        for segment in value.split("/")
+    ]
+    result = "/".join(rewritten)
+    if not result.endswith(ETHOS_FILENAME):
+        raise MigrationError(
+            f"{label}: {LEGACY_PROFILE_KEY} is {value!r}, which no rewrite rule turns into a path "
+            f"ending in {ETHOS_FILENAME}. Point it at the agent's contract file and rerun"
+        )
+    return result
+
+
+def _replace_profile_key(payload: dict[str, Any], value: str) -> dict[str, Any]:
+    """Swap the old key for ``ethos`` in place, preserving every other key's order."""
+    rewritten: dict[str, Any] = {}
+    for key, existing in payload.items():
+        if key == LEGACY_PROFILE_KEY:
+            rewritten[ETHOS_PROFILE_KEY] = value
+        elif key == ETHOS_PROFILE_KEY:
+            # Already written when the old key came first. Otherwise this is the
+            # only occurrence, and the rewritten value belongs at this position.
+            rewritten.setdefault(ETHOS_PROFILE_KEY, value)
+        else:
+            rewritten[key] = existing
+    return rewritten
+
+
+def _write_profile(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
+def _plan_external_profile(path: Path, plan: MigrationPlan) -> _ProfilePlan:
+    try:
+        payload = _read_profile_mapping(path)
+        rewritten, expected = _plan_profile_change(payload, plan, str(path))
+    except MigrationError as exc:
+        return _ProfilePlan(path=path, data={}, conflict=str(exc))
+    return _ProfilePlan(path=path, data=payload, expected=expected, rewritten=rewritten)
+
+
+def _profile_matches(path: Path, expected: str | None) -> bool:
+    """True when the profile is exactly in its final form.
+
+    The old key must be absent rather than merely falsy, and the ``ethos`` value
+    must equal the one value this migration computed for this profile.
+    """
+    try:
+        payload = _read_profile_mapping(path)
+    except MigrationError:
+        return False
+    if LEGACY_PROFILE_KEY in payload:
+        return False
+    actual = payload[ETHOS_PROFILE_KEY] if ETHOS_PROFILE_KEY in payload else None
+    return actual == expected
+
+
+def _profile_is_free_of_legacy_key(path: Path) -> bool:
+    try:
+        return LEGACY_PROFILE_KEY not in _read_profile_mapping(path)
+    except MigrationError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -491,7 +754,7 @@ def _merge_sources(sources: list[_Source], dest: Path) -> None:
     for rel, (source, _) in sorted(chosen.items()):
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source.root / rel, target)
+        _copy_file(source.root / rel, target)
 
 
 def _rename_contract(staged: Path, agent: str) -> None:
@@ -532,11 +795,28 @@ def _rewrite_identity_region(markdown: str, agent: str) -> str:
     return markdown[: front.end()] + region + body[cut:]
 
 
-def _stage(sources: list[_Source], dest: Path, agent: str) -> Manifest:
+def _rewrite_packaged_profiles(staged: Path, plan: MigrationPlan) -> None:
+    """Convert every ``optimizer.yaml`` that travels inside the package.
+
+    These are rewritten in the staged copy, never in the legacy source, so the
+    old package stays byte-for-byte authoritative until the transaction commits.
+    Doing it before the literal scan is what lets a package carrying its own
+    profile migrate at all.
+    """
+    for path in sorted(staged.rglob(PROFILE_FILENAME)):
+        label = f"{path.relative_to(staged).as_posix()} (inside the package)"
+        payload = _read_profile_mapping(path)
+        rewritten, _ = _plan_profile_change(payload, plan, label)
+        if rewritten is not None:
+            _write_profile(path, rewritten)
+
+
+def _stage(sources: list[_Source], dest: Path, plan: MigrationPlan) -> Manifest:
     """Build and validate the target package in *dest*."""
     dest.mkdir(parents=True, exist_ok=True)
     _merge_sources(sources, dest)
-    _rename_contract(dest, agent)
+    _rename_contract(dest, plan.agent)
+    _rewrite_packaged_profiles(dest, plan)
     manifest = build_manifest(dest)
     findings = _legacy_findings(dest, manifest)
     if findings:
@@ -556,114 +836,6 @@ def _validate_contract(package: Path) -> None:
         parse_ethos(contract.read_text(encoding="utf-8"))
     except (EthosParseError, yaml.YAMLError, OSError, UnicodeError) as exc:
         raise MigrationError(f"{contract} does not parse as {ETHOS_FILENAME}: {exc}") from exc
-
-
-# ---------------------------------------------------------------------------
-# Profiles
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _ProfilePlan:
-    """One affected ``optimizer.yaml`` and the rewrite it needs, if any."""
-
-    path: Path
-    data: dict[str, Any]
-    rewritten: dict[str, Any] | None = None
-    conflict: str | None = None
-
-    @property
-    def needs_rewrite(self) -> bool:
-        return self.rewritten is not None
-
-
-def _plan_profile(path: Path, plan: MigrationPlan) -> _ProfilePlan:
-    """Read one profile and decide whether it needs a key or path rewrite."""
-    try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        return _ProfilePlan(path=path, data={}, conflict=f"{path}: cannot be read as YAML ({exc})")
-    if payload is None:
-        payload = {}
-    if not isinstance(payload, dict):
-        return _ProfilePlan(path=path, data={}, conflict=f"{path}: the document root must be a YAML mapping")
-
-    old_value = payload.get(LEGACY_PROFILE_KEY)
-    new_value = payload.get(ETHOS_PROFILE_KEY)
-    if old_value is None and new_value is None:
-        return _ProfilePlan(path=path, data=payload)
-    if old_value is not None and not isinstance(old_value, str):
-        return _ProfilePlan(path=path, data=payload, conflict=f"{path}: {LEGACY_PROFILE_KEY!r} must be a string path")
-    if new_value is not None and not isinstance(new_value, str):
-        return _ProfilePlan(path=path, data=payload, conflict=f"{path}: {ETHOS_PROFILE_KEY!r} must be a string path")
-
-    source_value = old_value if old_value is not None else new_value
-    assert source_value is not None  # exactly one of the two branches above set it
-    try:
-        rewritten_value = _rewrite_profile_value(source_value, plan)
-    except MigrationError as exc:
-        return _ProfilePlan(path=path, data=payload, conflict=f"{path}: {exc}")
-
-    # A half-converted profile carries both keys. They agree when the old value
-    # rewrites to the new one, which is the state a resumed migration leaves
-    # behind; anything else is a divergence a rename must not silently resolve.
-    if old_value is not None and new_value is not None and new_value != rewritten_value:
-        return _ProfilePlan(
-            path=path,
-            data=payload,
-            conflict=(
-                f"{path}: {LEGACY_PROFILE_KEY} is {old_value!r} but {ETHOS_PROFILE_KEY} is "
-                f"{new_value!r}; the two disagree, so keep one and rerun"
-            ),
-        )
-
-    rewritten = _replace_profile_key(payload, rewritten_value)
-    if rewritten == payload:
-        return _ProfilePlan(path=path, data=payload)
-    return _ProfilePlan(path=path, data=payload, rewritten=rewritten)
-
-
-def _rewrite_profile_value(value: str, plan: MigrationPlan) -> str:
-    """Rewrite the old package segment and contract filename inside a profile path."""
-    rewritten = [
-        ethos_fileset_name(plan.agent)
-        if segment == f"{plan.agent}{LEGACY_PACKAGE_SUFFIX}"
-        else ETHOS_FILENAME
-        if segment == LEGACY_CONTRACT_FILENAME
-        else segment
-        for segment in value.split("/")
-    ]
-    result = "/".join(rewritten)
-    if not result.endswith(ETHOS_FILENAME):
-        raise MigrationError(
-            f"{LEGACY_PROFILE_KEY} is {value!r}, which no rewrite rule turns into a path ending in "
-            f"{ETHOS_FILENAME}. Point it at the agent's contract file and rerun"
-        )
-    return result
-
-
-def _replace_profile_key(payload: dict[str, Any], value: str) -> dict[str, Any]:
-    """Swap the old key for ``ethos`` in place, preserving every other key's order."""
-    rewritten: dict[str, Any] = {}
-    for key, existing in payload.items():
-        if key == LEGACY_PROFILE_KEY:
-            rewritten[ETHOS_PROFILE_KEY] = value
-        elif key == ETHOS_PROFILE_KEY:
-            # Already written when the old key came first. Otherwise this is the
-            # only occurrence, and the rewritten value belongs at this position.
-            rewritten.setdefault(ETHOS_PROFILE_KEY, value)
-        else:
-            rewritten[key] = existing
-    return rewritten
-
-
-def _write_profile(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
-
-
-def _profile_is_converted(path: Path, plan: MigrationPlan) -> bool:
-    profile = _plan_profile(path, plan)
-    return profile.conflict is None and not profile.needs_rewrite
 
 
 # ---------------------------------------------------------------------------
@@ -694,11 +866,14 @@ def _is_terminal(status: str) -> bool:
 
 
 def _blocking_experiment_runs(plan: MigrationPlan) -> list[str]:
-    """Conservatively name every experiment directory that may still be resumable.
+    """Name every experiment directory whose run may still be resumable.
 
-    Candidate records are the durable evidence that a run owns state on disk. A
-    completed run is historical and never blocks. This can reject a
-    non-resumable run, but it cannot let a resumable one through.
+    Candidate records are the durable evidence that a run owns state on disk.
+    With records present, only an explicit ``completed`` status proceeds:
+    anything else, including a missing status, an unrecognized one, and a
+    ``run.json`` that is unreadable or not an object, is treated as live. That
+    can reject a run that was not resumable, but it cannot let a resumable one
+    through.
     """
     blocking: list[str] = []
     for directory in plan.experiment_dirs:
@@ -706,16 +881,20 @@ def _blocking_experiment_runs(plan: MigrationPlan) -> list[str]:
         candidates = sorted((state / "candidates").glob("*.json"))
         if not candidates:
             continue
+        count = len(candidates)
         try:
             record = json.loads((state / "run.json").read_text(encoding="utf-8"))
-            status = str(record.get("status", "")) if isinstance(record, dict) else ""
         except (OSError, UnicodeError, ValueError):
-            blocking.append(
-                f"{directory} keeps {len(candidates)} candidate record(s) but its run.json is missing or unreadable"
-            )
+            blocking.append(f"{directory} keeps {count} candidate record(s) but its run.json is missing or unreadable")
             continue
-        if status in BLOCKING_RUN_STATUSES:
-            blocking.append(f"{directory} holds a {status} run with {len(candidates)} candidate record(s)")
+        if not isinstance(record, dict):
+            blocking.append(f"{directory} keeps {count} candidate record(s) but its run.json is not an object")
+            continue
+        status = record.get("status")
+        if status == COMPLETED_RUN_STATUS:
+            continue
+        described = "no status" if status is None else f"status {status!r}"
+        blocking.append(f"{directory} holds a run with {described} and {count} candidate record(s)")
     return blocking
 
 
@@ -731,13 +910,120 @@ def _run_gates(plan: MigrationPlan, jobs: JobStore) -> tuple[list[str], list[str
 
 
 # ---------------------------------------------------------------------------
+# Transaction record
+# ---------------------------------------------------------------------------
+
+_STEPS = (
+    "backups",
+    "upload-target-fileset",
+    "verify-target-fileset",
+    "write-target-package",
+    "rewrite-profiles",
+    "delete-old-fileset",
+    "delete-old-package",
+    "final-verify",
+)
+
+
+@dataclass
+class _TransactionRecord:
+    """Every input and effect of one transaction, in memory and in the journal.
+
+    Recovery reads only this. A later run may pass a different ``--agents-root``,
+    ``--profile``, or ``--experiment-dir``, and none of it can redirect recovery
+    at a path the failed run never touched.
+    """
+
+    workspace: str
+    agent: str
+    agents_root: str
+    old_package: str
+    target_package: str
+    old_fileset: str
+    target_fileset: str
+    # Absolute path to the expected ``ethos`` value, or null when the profile
+    # carries neither key and must stay untouched.
+    external_profiles: dict[str, str | None]
+    packaged_profiles: list[str]
+    experiment_dirs: list[str]
+    backup_root: str
+    legacy_local_backup: str | None
+    legacy_remote_backup: str | None
+    profile_backups: dict[str, str]
+    staged: Manifest
+    old_local: Manifest | None
+    old_remote: Manifest | None
+    created_target_fileset: bool = False
+    created_target_package: bool = False
+    steps: list[str] = field(default_factory=list)
+    failed_step: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "workspace": self.workspace,
+            "agent": self.agent,
+            "agents_root": self.agents_root,
+            "old_package": self.old_package,
+            "target_package": self.target_package,
+            "old_fileset": self.old_fileset,
+            "target_fileset": self.target_fileset,
+            "external_profiles": self.external_profiles,
+            "packaged_profiles": self.packaged_profiles,
+            "experiment_dirs": self.experiment_dirs,
+            "backup_root": self.backup_root,
+            "legacy_local_backup": self.legacy_local_backup,
+            "legacy_remote_backup": self.legacy_remote_backup,
+            "profile_backups": self.profile_backups,
+            "staged": _manifest_to_json(self.staged),
+            "old_local": _manifest_to_json(self.old_local),
+            "old_remote": _manifest_to_json(self.old_remote),
+            "created_target_fileset": self.created_target_fileset,
+            "created_target_package": self.created_target_package,
+            "steps": self.steps,
+            "failed_step": self.failed_step,
+        }
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> _TransactionRecord:
+        staged = _manifest_from_json(payload["staged"])
+        assert staged is not None  # a journal always records the staged manifest
+        return cls(
+            workspace=payload["workspace"],
+            agent=payload["agent"],
+            agents_root=payload["agents_root"],
+            old_package=payload["old_package"],
+            target_package=payload["target_package"],
+            old_fileset=payload["old_fileset"],
+            target_fileset=payload["target_fileset"],
+            external_profiles=payload["external_profiles"],
+            packaged_profiles=payload["packaged_profiles"],
+            experiment_dirs=payload["experiment_dirs"],
+            backup_root=payload["backup_root"],
+            legacy_local_backup=payload["legacy_local_backup"],
+            legacy_remote_backup=payload["legacy_remote_backup"],
+            profile_backups=payload["profile_backups"],
+            staged=staged,
+            old_local=_manifest_from_json(payload["old_local"]),
+            old_remote=_manifest_from_json(payload["old_remote"]),
+            created_target_fileset=payload["created_target_fileset"],
+            created_target_package=payload["created_target_package"],
+            steps=payload["steps"],
+            failed_step=payload["failed_step"],
+        )
+
+    def next_step(self) -> str:
+        completed = set(self.steps)
+        return next((name for name in _STEPS if name not in completed), _STEPS[-1])
+
+
+# ---------------------------------------------------------------------------
 # Assessment: discover, read, stage, classify, gate
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class _Assessment:
-    """Everything the apply sequence needs, all of it already read and verified."""
+    """Transient state the apply sequence needs beyond the durable record."""
 
     plan: MigrationPlan
     staged_dir: Path
@@ -769,14 +1055,14 @@ def _assess(
     """Classify the current state, staging and gating as the state table requires."""
     lines = _location_lines(plan)
 
-    old_local = build_manifest(plan.old_package) if plan.old_package.is_dir() else None
-    target_local = build_manifest(plan.target_package) if plan.target_package.is_dir() else None
+    old_local = _package_manifest(plan.old_package)
+    target_local = _package_manifest(plan.target_package)
     old_remote_read = _read_fileset(filesets, plan.workspace, plan.old_fileset, stack)
     target_remote_read = _read_fileset(filesets, plan.workspace, plan.target_fileset, stack)
     old_remote = old_remote_read[0] if old_remote_read is not None else None
     target_remote = target_remote_read[0] if target_remote_read is not None else None
 
-    profiles = [_plan_profile(path, plan) for path in plan.profiles]
+    profiles = [_plan_external_profile(path, plan) for path in plan.external_profiles]
     conflicts = [profile.conflict for profile in profiles if profile.conflict is not None]
     if conflicts:
         return (
@@ -793,7 +1079,7 @@ def _assess(
         f"Legacy Fileset: {'present' if old_remote is not None else 'absent'}",
         f"Target local package: {'present' if target_local is not None else 'absent'}",
         f"Target Fileset: {'present' if target_remote is not None else 'absent'}",
-        f"Profiles still naming the pre-rename artifact: {len(pending_profiles)}",
+        f"External profiles still naming the pre-rename artifact: {len(pending_profiles)}",
     ]
 
     staged_dir = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix=".ethos-migrate-staged-"))) / "package"
@@ -804,7 +1090,7 @@ def _assess(
             sources.append(_Source("the local package", plan.old_package, old_local))
         if old_remote_read is not None:
             sources.append(_Source("the Fileset", old_remote_read[1], old_remote_read[0]))
-        staged = _stage(sources, staged_dir, plan.agent)
+        staged = _stage(sources, staged_dir, plan)
 
     target_complete = _target_is_complete(plan, target_local, target_remote)
 
@@ -839,8 +1125,9 @@ def _assess(
                 Outcome.CONFLICT,
                 [
                     *lines,
-                    "Conflict: the target is partial or divergent, and no legacy source or journal "
-                    "explains it. Reconcile it by hand, then rerun; nothing was changed.",
+                    "Conflict: the target is partial, divergent, or still names the pre-rename "
+                    "artifact, and no legacy source or journal explains it. Reconcile it by hand, "
+                    "then rerun; nothing was changed.",
                 ],
                 None,
             )
@@ -848,7 +1135,7 @@ def _assess(
             return Outcome.ALREADY_MIGRATED, [*lines, "Already migrated. Nothing to do."], None
         # Stage from the verified target so resuming profile conversion runs
         # through the same apply sequence a full migration does.
-        shutil.copytree(plan.target_package, staged_dir)
+        _copy_tree(plan.target_package, staged_dir)
         staged = build_manifest(staged_dir)
 
     assert staged is not None  # every branch above either returned or staged
@@ -881,9 +1168,23 @@ def _assess(
     )
 
 
+def _package_manifest(package: Path) -> Manifest | None:
+    """Fingerprint a package root, or return None when it is absent."""
+    if package.is_symlink():
+        raise MigrationError(
+            f"{package} is a symlink; migration copies, uploads, and deletes this path, so "
+            "following it could reach content outside the agents root. Replace it with a real directory"
+        )
+    if not package.is_dir():
+        return None
+    return build_manifest(package)
+
+
 def _target_is_complete(plan: MigrationPlan, target_local: Manifest | None, target_remote: Manifest | None) -> bool:
-    """True when both target copies exist, match, and carry a parseable contract."""
+    """True when both target copies exist, match, parse, and carry no old literal."""
     if target_local is None or target_remote is None or target_local != target_remote:
+        return False
+    if _legacy_findings(plan.target_package, target_local):
         return False
     try:
         _validate_contract(plan.target_package)
@@ -894,19 +1195,20 @@ def _target_is_complete(plan: MigrationPlan, target_local: Manifest | None, targ
 
 def _location_lines(plan: MigrationPlan) -> list[str]:
     """Every location the command reads or writes, for the dry-run report."""
-    lines = [
+    return [
         f"Agent: {plan.agent}   Workspace: {plan.workspace}",
         f"Local package: {plan.old_package} -> {plan.target_package}",
         f"Fileset: {plan.old_fileset} -> {plan.target_fileset}",
         f"Journal: {journal_dir(plan.workspace, plan.agent)}",
-        f"Affected profiles ({len(plan.profiles)}):",
-        *(f"  {path}" for path in plan.profiles),
+        f"External profiles rewritten in place ({len(plan.external_profiles)}):",
+        *(f"  {path}" for path in plan.external_profiles),
+        f"Package-local profiles rewritten inside the target package ({len(plan.packaged_profiles)}):",
+        *(f"  {plan.target_package / rel}" for rel in plan.packaged_profiles),
         f"Known experiment directories ({len(plan.experiment_dirs)}):",
         *(f"  {path}" for path in plan.experiment_dirs),
         "Custom profiles and experiment directories outside this set cannot be discovered, because "
         "the command performs no global scan. Pass each one with --profile or --experiment-dir.",
     ]
-    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -915,8 +1217,8 @@ def _location_lines(plan: MigrationPlan) -> list[str]:
 
 
 @contextlib.contextmanager
-def _exclusive_lock(directory: Path, plan: MigrationPlan) -> Iterator[None]:
-    """Hold a non-blocking exclusive lock for the whole apply.
+def _exclusive_lock(directory: Path, workspace: str, agent: str) -> Iterator[None]:
+    """Hold a non-blocking exclusive lock across discovery and the whole apply.
 
     The kernel releases the lock when the process exits, cleanly or not, so no
     stale lock record ever needs cleaning.
@@ -927,8 +1229,8 @@ def _exclusive_lock(directory: Path, plan: MigrationPlan) -> Iterator[None]:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
             raise MigrationError(
-                f"another ethos migrate is already running for agent {plan.agent!r} in workspace "
-                f"{plan.workspace!r}; nothing was read or written"
+                f"another ethos migrate is already running for agent {agent!r} in workspace "
+                f"{workspace!r}; nothing was read or written"
             ) from exc
         yield
     finally:
@@ -937,35 +1239,32 @@ def _exclusive_lock(directory: Path, plan: MigrationPlan) -> Iterator[None]:
 
 def _write_journal(directory: Path, payload: dict[str, Any]) -> None:
     """Replace the journal atomically, so a crash never leaves a half-written record."""
-    temporary = directory / "journal.json.tmp"
+    temporary = directory / f"{JOURNAL_FILENAME}.tmp"
     with temporary.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(temporary, directory / "journal.json")
+    os.replace(temporary, directory / JOURNAL_FILENAME)
 
 
-def _discard_transaction_state(directory: Path) -> None:
+def _persist_best_effort(directory: Path, record: _TransactionRecord) -> None:
+    """Write the journal without letting a write failure mask the real error."""
+    try:
+        _write_journal(directory, record.to_json())
+    except Exception:
+        logger.exception("Could not persist the ethos migration journal under %s", directory)
+
+
+def _discard_transaction_state(directory: Path, backups: Path) -> None:
     """Remove the journal and every backup. The lock file stays; the kernel owns it."""
     with contextlib.suppress(OSError):
-        (directory / "journal.json").unlink()
-    shutil.rmtree(directory / "backup", ignore_errors=True)
+        (directory / JOURNAL_FILENAME).unlink()
+    shutil.rmtree(backups, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Apply
 # ---------------------------------------------------------------------------
-
-_STEPS = (
-    "backups",
-    "upload-target-fileset",
-    "verify-target-fileset",
-    "write-target-package",
-    "rewrite-profiles",
-    "delete-old-fileset",
-    "delete-old-package",
-    "final-verify",
-)
 
 
 def _apply(
@@ -974,119 +1273,131 @@ def _apply(
     directory: Path,
     filesets: FilesetStore,
     lines: list[str],
-    on_step: Callable[[str], None] | None,
 ) -> MigrationReport:
     """Run the compensating transaction.
 
     Every step before ``final-verify`` leaves the old local package, the old
-    Fileset, and the old profile keys authoritative, so a failure anywhere can
-    be undone from the journal and the backups.
+    Fileset, and the old profile keys authoritative, so a failure anywhere can be
+    undone from the in-memory record and the backups. The journal is a durable
+    copy of that record, never the thing compensation depends on.
     """
     plan = assessment.plan
     backups = directory / "backup"
-    journal: dict[str, Any] = {
-        "workspace": plan.workspace,
-        "agent": plan.agent,
-        "old_package": str(plan.old_package),
-        "target_package": str(plan.target_package),
-        "old_fileset": plan.old_fileset,
-        "target_fileset": plan.target_fileset,
-        "staged": _manifest_to_json(assessment.staged),
-        "created_target_fileset": assessment.target_remote is None,
-        "created_target_package": assessment.target_local is None,
-        "had_old_package": assessment.old_local is not None,
-        "had_old_fileset": assessment.old_remote is not None,
-        "profile_backups": {},
-        "steps": [],
-        "failed_step": None,
-    }
-    _write_journal(directory, journal)
+    record = _TransactionRecord(
+        workspace=plan.workspace,
+        agent=plan.agent,
+        agents_root=str(plan.agents_root),
+        old_package=str(plan.old_package),
+        target_package=str(plan.target_package),
+        old_fileset=plan.old_fileset,
+        target_fileset=plan.target_fileset,
+        external_profiles={str(profile.path): profile.expected for profile in assessment.profiles},
+        packaged_profiles=list(plan.packaged_profiles),
+        experiment_dirs=[str(path) for path in plan.experiment_dirs],
+        backup_root=str(backups),
+        legacy_local_backup=str(backups / "legacy-local") if assessment.old_local is not None else None,
+        legacy_remote_backup=str(backups / "legacy-remote") if assessment.old_remote is not None else None,
+        profile_backups={},
+        staged=assessment.staged,
+        old_local=assessment.old_local,
+        old_remote=assessment.old_remote,
+    )
 
-    def begin(name: str) -> None:
-        if on_step is not None:
-            on_step(name)
+    def persist() -> None:
+        _write_journal(directory, record.to_json())
 
     def finish(name: str) -> None:
-        journal["steps"].append(name)
-        _write_journal(directory, journal)
+        record.steps.append(name)
+        persist()
 
     try:
-        begin("backups")
-        _build_backups(assessment, backups, filesets, journal)
+        persist()
+
+        _build_backups(assessment, record, backups, filesets)
         finish("backups")
 
-        begin("upload-target-fileset")
         if assessment.target_remote is None:
+            # Conditional create is the ownership decision: a false return means
+            # another writer created the Fileset between assessment and now, and
+            # this transaction must never delete a Fileset it did not create.
+            if not filesets.create(workspace=plan.workspace, name=plan.target_fileset):
+                raise MigrationError(
+                    f"Fileset {plan.workspace}/{plan.target_fileset} appeared while this migration "
+                    "was running, so it belongs to another writer"
+                )
+            record.created_target_fileset = True
+            persist()
             filesets.upload(workspace=plan.workspace, name=plan.target_fileset, source=assessment.staged_dir)
         finish("upload-target-fileset")
 
-        begin("verify-target-fileset")
-        _verify_remote(filesets, plan.workspace, plan.target_fileset, assessment.staged)
+        _verify_remote(filesets, plan.workspace, plan.target_fileset, record.staged)
         finish("verify-target-fileset")
 
-        begin("write-target-package")
         if assessment.target_local is None:
-            _write_package(assessment.staged_dir, plan.target_package)
+            # No pre-clean: a path that appeared after assessment must break this
+            # transaction rather than be replaced.
+            try:
+                _copy_tree(assessment.staged_dir, plan.target_package)
+            except FileExistsError as exc:
+                raise MigrationError(
+                    f"{plan.target_package} appeared while this migration was running, so it belongs to another writer"
+                ) from exc
+            record.created_target_package = True
+            persist()
         finish("write-target-package")
 
-        begin("rewrite-profiles")
-        _rewrite_profiles(assessment, plan)
+        _rewrite_profiles(assessment, record)
         finish("rewrite-profiles")
 
-        begin("delete-old-fileset")
         if assessment.old_remote is not None:
             filesets.delete(workspace=plan.workspace, name=plan.old_fileset)
         finish("delete-old-fileset")
 
-        begin("delete-old-package")
         if assessment.old_local is not None:
-            shutil.rmtree(plan.old_package)
+            _remove_tree(plan.old_package)
         finish("delete-old-package")
 
-        begin("final-verify")
-        _verify_final(assessment, filesets)
+        _verify_final(record, filesets)
         finish("final-verify")
     except Exception as exc:
-        failed = _failed_step(journal)
-        journal["failed_step"] = failed
-        _write_journal(directory, journal)
+        failed = record.next_step()
+        record.failed_step = failed
+        # Compensate from the in-memory record before touching the journal: a
+        # journal write is exactly what may have just failed, and a second
+        # failure here must not skip the undo.
         try:
-            _compensate(assessment, journal, filesets, backups)
+            _compensate(record, filesets)
         except Exception as compensation_error:
+            _persist_best_effort(directory, record)
             raise RecoveryRequired(
                 f"ethos migrate failed at step {failed!r} and could not undo its own work "
                 f"({compensation_error}); status is recovery-required. The journal and backups "
                 f"under {directory} are kept, and the next run recovers before any new work"
             ) from compensation_error
-        _discard_transaction_state(directory)
+        _discard_transaction_state(directory, backups)
         raise MigrationError(
             f"ethos migrate failed at step {failed!r} ({exc}); the old local package, the old "
             "Fileset, and the old profile keys were restored and remain authoritative"
         ) from exc
 
-    _discard_transaction_state(directory)
+    _discard_transaction_state(directory, backups)
     return MigrationReport(outcome=Outcome.MIGRATED, lines=[*lines, "Migrated."])
 
 
-def _failed_step(journal: dict[str, Any]) -> str:
-    completed = set(journal["steps"])
-    return next((name for name in _STEPS if name not in completed), _STEPS[-1])
-
-
-def _build_backups(assessment: _Assessment, backups: Path, filesets: FilesetStore, journal: dict[str, Any]) -> None:
-    """Copy every legacy source and affected profile, then verify each by checksum."""
+def _build_backups(assessment: _Assessment, record: _TransactionRecord, backups: Path, filesets: FilesetStore) -> None:
+    """Copy every legacy source and external profile, then verify each by checksum."""
     plan = assessment.plan
     backups.mkdir(parents=True, exist_ok=True)
 
-    if assessment.old_local is not None:
-        destination = backups / "legacy-local"
+    if record.legacy_local_backup is not None:
+        destination = Path(record.legacy_local_backup)
         shutil.rmtree(destination, ignore_errors=True)
-        shutil.copytree(plan.old_package, destination)
+        _copy_tree(plan.old_package, destination)
         if build_manifest(destination) != assessment.old_local:
             raise MigrationError(f"the backup of {plan.old_package} does not match its source")
 
-    if assessment.old_remote is not None:
-        destination = backups / "legacy-remote"
+    if record.legacy_remote_backup is not None:
+        destination = Path(record.legacy_remote_backup)
         shutil.rmtree(destination, ignore_errors=True)
         filesets.download(workspace=plan.workspace, name=plan.old_fileset, dest=destination)
         if build_manifest(destination) != assessment.old_remote:
@@ -1096,25 +1407,19 @@ def _build_backups(assessment: _Assessment, backups: Path, filesets: FilesetStor
     profile_backups.mkdir(parents=True, exist_ok=True)
     for index, profile in enumerate(assessment.profiles):
         destination = profile_backups / f"{index:03d}-{profile.path.name}"
-        shutil.copyfile(profile.path, destination)
+        _copy_file(profile.path, destination)
         if _fingerprint(destination) != _fingerprint(profile.path):
             raise MigrationError(f"the backup of {profile.path} does not match its source")
-        journal["profile_backups"][str(profile.path)] = str(destination)
+        record.profile_backups[str(profile.path)] = str(destination)
 
 
-def _rewrite_profiles(assessment: _Assessment, plan: MigrationPlan) -> None:
+def _rewrite_profiles(assessment: _Assessment, record: _TransactionRecord) -> None:
     for profile in assessment.profiles:
         if profile.rewritten is not None:
             _write_profile(profile.path, profile.rewritten)
-    for profile in assessment.profiles:
-        if profile.rewritten is not None and not _profile_is_converted(profile.path, plan):
-            raise MigrationError(f"{profile.path} still names the pre-rename artifact after the rewrite")
-
-
-def _write_package(staged: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(target, ignore_errors=True)
-    shutil.copytree(staged, target)
+    for raw_path, expected in record.external_profiles.items():
+        if not _profile_matches(Path(raw_path), expected):
+            raise MigrationError(f"{raw_path} does not hold {ETHOS_PROFILE_KEY}: {expected!r} after the rewrite")
 
 
 def _verify_remote(filesets: FilesetStore, workspace: str, name: str, expected: Manifest) -> None:
@@ -1127,20 +1432,37 @@ def _verify_remote(filesets: FilesetStore, workspace: str, name: str, expected: 
         raise MigrationError(f"Fileset {workspace}/{name} does not match the expected manifest")
 
 
-def _verify_final(assessment: _Assessment, filesets: FilesetStore) -> None:
+def _remote_matches(filesets: FilesetStore, workspace: str, name: str, expected: Manifest) -> bool:
+    if not filesets.exists(workspace=workspace, name=name):
+        return False
+    try:
+        _verify_remote(filesets, workspace, name, expected)
+    except MigrationError:
+        return False
+    return True
+
+
+def _verify_final(record: _TransactionRecord, filesets: FilesetStore) -> None:
     """Confirm the complete final target and the converted profiles before committing."""
-    plan = assessment.plan
-    if build_manifest(plan.target_package) != assessment.staged:
-        raise MigrationError(f"{plan.target_package} does not match the staged package")
-    _validate_contract(plan.target_package)
-    _verify_remote(filesets, plan.workspace, plan.target_fileset, assessment.staged)
-    for profile in assessment.profiles:
-        if not _profile_is_converted(profile.path, plan):
-            raise MigrationError(f"{profile.path} still names the pre-rename artifact")
-    if plan.old_package.exists():
-        raise MigrationError(f"{plan.old_package} still exists")
-    if filesets.exists(workspace=plan.workspace, name=plan.old_fileset):
-        raise MigrationError(f"Fileset {plan.workspace}/{plan.old_fileset} still exists")
+    target_package = Path(record.target_package)
+    if build_manifest(target_package) != record.staged:
+        raise MigrationError(f"{target_package} does not match the staged package")
+    _validate_contract(target_package)
+    findings = _legacy_findings(target_package, record.staged)
+    if findings:
+        raise MigrationError(f"{target_package} still names the pre-rename artifact: {findings}")
+    _verify_remote(filesets, record.workspace, record.target_fileset, record.staged)
+    for rel in record.packaged_profiles:
+        packaged = target_package / rel
+        if packaged.is_file() and not _profile_is_free_of_legacy_key(packaged):
+            raise MigrationError(f"{packaged} still names the pre-rename artifact")
+    for raw_path, expected in record.external_profiles.items():
+        if not _profile_matches(Path(raw_path), expected):
+            raise MigrationError(f"{raw_path} does not hold {ETHOS_PROFILE_KEY}: {expected!r}")
+    if Path(record.old_package).exists():
+        raise MigrationError(f"{record.old_package} still exists")
+    if filesets.exists(workspace=record.workspace, name=record.old_fileset):
+        raise MigrationError(f"Fileset {record.workspace}/{record.old_fileset} still exists")
 
 
 # ---------------------------------------------------------------------------
@@ -1148,93 +1470,111 @@ def _verify_final(assessment: _Assessment, filesets: FilesetStore) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _undo(journal: dict[str, Any], plan: MigrationPlan, filesets: FilesetStore, backups: Path) -> None:
-    """Undo this transaction's writes from the journal and the backups.
+def _undo(record: _TransactionRecord, filesets: FilesetStore) -> None:
+    """Undo this transaction's writes from the record and the backups.
 
-    Each action is conditional on current state, so re-running it after a
-    partial compensation is safe. Pre-existing target state the transaction did
-    not create is left untouched.
+    Each action is conditional on current state, so re-running it after a partial
+    compensation is safe. Target state this transaction did not create is left
+    untouched, which is why ``created_target_*`` is only ever set after the
+    creating call succeeded.
     """
-    for raw_path, raw_backup in journal["profile_backups"].items():
+    for raw_path, raw_backup in record.profile_backups.items():
         backup = Path(raw_backup)
         if backup.is_file():
-            shutil.copyfile(backup, Path(raw_path))
-    if journal["created_target_package"] and plan.target_package.exists():
-        shutil.rmtree(plan.target_package)
-    if journal["created_target_fileset"] and filesets.exists(workspace=plan.workspace, name=plan.target_fileset):
-        filesets.delete(workspace=plan.workspace, name=plan.target_fileset)
-    if journal["had_old_package"] and not plan.old_package.exists():
-        shutil.copytree(backups / "legacy-local", plan.old_package)
-    if journal["had_old_fileset"] and not filesets.exists(workspace=plan.workspace, name=plan.old_fileset):
-        filesets.upload(workspace=plan.workspace, name=plan.old_fileset, source=backups / "legacy-remote")
+            _copy_file(backup, Path(raw_path))
+
+    target_package = Path(record.target_package)
+    if record.created_target_package and target_package.exists():
+        _remove_tree(target_package)
+    if record.created_target_fileset and filesets.exists(workspace=record.workspace, name=record.target_fileset):
+        filesets.delete(workspace=record.workspace, name=record.target_fileset)
+
+    old_package = Path(record.old_package)
+    if record.legacy_local_backup is not None and not old_package.exists():
+        _copy_tree(Path(record.legacy_local_backup), old_package)
+    if record.legacy_remote_backup is not None and record.old_remote is not None:
+        # Converge rather than only fill a gap: a compensation that created the
+        # Fileset and then failed to upload leaves it empty, and the next attempt
+        # has to be able to finish that restore.
+        if not _remote_matches(filesets, record.workspace, record.old_fileset, record.old_remote):
+            if not filesets.exists(workspace=record.workspace, name=record.old_fileset):
+                filesets.create(workspace=record.workspace, name=record.old_fileset)
+            filesets.upload(
+                workspace=record.workspace,
+                name=record.old_fileset,
+                source=Path(record.legacy_remote_backup),
+            )
 
 
-def _compensate(assessment: _Assessment, journal: dict[str, Any], filesets: FilesetStore, backups: Path) -> None:
+def _compensate(record: _TransactionRecord, filesets: FilesetStore) -> None:
     """Undo the failed transaction, then verify the old state is authoritative again."""
-    plan = assessment.plan
-    _undo(journal, plan, filesets, backups)
+    _undo(record, filesets)
 
-    if assessment.old_local is not None and build_manifest(plan.old_package) != assessment.old_local:
-        raise MigrationError(f"{plan.old_package} was not restored to its original contents")
-    if assessment.old_remote is not None:
-        _verify_remote(filesets, plan.workspace, plan.old_fileset, assessment.old_remote)
-    for profile in assessment.profiles:
-        if profile.rewritten is None:
-            continue
-        if _plan_profile(profile.path, plan).data != profile.data:
-            raise MigrationError(f"{profile.path} was not restored to its original contents")
+    old_package = Path(record.old_package)
+    if record.old_local is not None and build_manifest(old_package) != record.old_local:
+        raise MigrationError(f"{old_package} was not restored to its original contents")
+    if record.old_remote is not None:
+        _verify_remote(filesets, record.workspace, record.old_fileset, record.old_remote)
+    for raw_path, raw_backup in record.profile_backups.items():
+        if _fingerprint(Path(raw_path)) != _fingerprint(Path(raw_backup)):
+            raise MigrationError(f"{raw_path} was not restored to its original contents")
 
 
-def _recover(directory: Path, plan: MigrationPlan, filesets: FilesetStore) -> MigrationReport:
-    """Finish or undo the transaction the journal describes, before any new work."""
-    journal = json.loads((directory / "journal.json").read_text(encoding="utf-8"))
-    backups = directory / "backup"
-    staged = _manifest_from_json(journal["staged"])
+def _recover(directory: Path, filesets: FilesetStore) -> MigrationReport:
+    """Finish or undo the transaction the journal describes, before any new work.
 
-    legacy_gone = not plan.old_package.is_dir() and not filesets.exists(workspace=plan.workspace, name=plan.old_fileset)
-    if legacy_gone and _target_is_committed(plan, filesets, staged):
-        _discard_transaction_state(directory)
+    Only the journal is read. Whatever ``--agents-root``, ``--profile``, or
+    ``--experiment-dir`` this invocation passed is ignored until recovery ends,
+    so recovery can never write to a path the failed run never touched.
+    """
+    try:
+        record = _TransactionRecord.from_json(json.loads((directory / JOURNAL_FILENAME).read_text(encoding="utf-8")))
+    except (OSError, UnicodeError, ValueError, KeyError, AssertionError) as exc:
+        raise RecoveryRequired(
+            f"the journal under {directory} could not be read ({exc}); status is recovery-required. "
+            "Inspect it by hand, because migration cannot tell what the interrupted run had done"
+        ) from exc
+
+    backups = Path(record.backup_root)
+    legacy_gone = not Path(record.old_package).exists() and not filesets.exists(
+        workspace=record.workspace, name=record.old_fileset
+    )
+    if legacy_gone and _target_is_committed(record, filesets):
+        _discard_transaction_state(directory, backups)
         return MigrationReport(
             outcome=Outcome.RECOVERED,
             lines=[
-                f"Recovered: the interrupted migration of {plan.agent!r} had already committed, so "
+                f"Recovered: the interrupted migration of {record.agent!r} had already committed, so "
                 "only cleanup remained. The target is authoritative.",
             ],
         )
 
     try:
-        _undo(journal, plan, filesets, backups)
-        if journal["had_old_package"]:
-            if build_manifest(plan.old_package) != build_manifest(backups / "legacy-local"):
-                raise MigrationError(f"{plan.old_package} was not restored to its backed-up contents")
-        if journal["had_old_fileset"]:
-            _verify_remote(filesets, plan.workspace, plan.old_fileset, build_manifest(backups / "legacy-remote"))
+        _compensate(record, filesets)
     except Exception as exc:
+        _persist_best_effort(directory, record)
         raise RecoveryRequired(
-            f"recovery of the interrupted migration of {plan.agent!r} failed ({exc}); status is "
+            f"recovery of the interrupted migration of {record.agent!r} failed ({exc}); status is "
             f"recovery-required. The journal and backups under {directory} are kept"
         ) from exc
 
-    _discard_transaction_state(directory)
+    _discard_transaction_state(directory, backups)
     return MigrationReport(
         outcome=Outcome.RECOVERED,
         lines=[
-            f"Recovered: undid the interrupted migration of {plan.agent!r}, which failed at step "
-            f"{journal.get('failed_step')!r}. The pre-rename state is authoritative again; rerun to migrate.",
+            f"Recovered: undid the interrupted migration of {record.agent!r}, which failed at step "
+            f"{record.failed_step!r}. The pre-rename state is authoritative again; rerun to migrate.",
         ],
     )
 
 
-def _target_is_committed(plan: MigrationPlan, filesets: FilesetStore, staged: Manifest) -> bool:
+def _target_is_committed(record: _TransactionRecord, filesets: FilesetStore) -> bool:
     """True when the interrupted transaction had already reached its commit point."""
-    if not plan.target_package.is_dir() or build_manifest(plan.target_package) != staged:
-        return False
     try:
-        _validate_contract(plan.target_package)
-        _verify_remote(filesets, plan.workspace, plan.target_fileset, staged)
+        _verify_final(record, filesets)
     except MigrationError:
         return False
-    return all(_profile_is_converted(path, plan) for path in plan.profiles)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1247,7 +1587,6 @@ def run_migration(
     *,
     filesets: FilesetStore,
     jobs: JobStore,
-    on_step: Callable[[str], None] | None = None,
 ) -> MigrationReport:
     """Migrate one agent's Ethos artifacts, or report why it cannot.
 
@@ -1255,39 +1594,83 @@ def run_migration(
         request: The agent, workspace, roots, and caller-named paths.
         filesets: Fileset port.
         jobs: Platform Jobs port.
-        on_step: Called with each mutating step name just before that step runs.
-            Raise from it to abort mid-transaction, which is how compensation is
-            exercised.
 
     Returns:
         A report whose ``outcome`` names the state-table row that applied.
 
     Raises:
-        MigrationError: A controlled failure. The old state was restored and
-            remains authoritative.
+        MigrationError: An invalid request, a lock held by another run, or a
+            controlled failure whose old state was restored and remains
+            authoritative.
         RecoveryRequired: Compensation failed. The journal and backups are kept,
             and the next run recovers before any new work.
     """
-    plan = _build_plan(request)
+    validate_agent_name(request.agent)
+    directory = journal_dir(request.workspace, request.agent)
 
     if request.dry_run:
-        # Read-only: no journal, lock file, package, Fileset, or profile backup.
-        with contextlib.ExitStack() as stack:
-            outcome, lines, _ = _classify(plan, filesets, jobs, stack)
-        if outcome is Outcome.PENDING:
-            lines = [*lines, "Migration is required. Rerun without --dry-run to apply it."]
-        return MigrationReport(outcome=outcome, lines=["Dry run — nothing was written.", *lines])
+        return _dry_run(request, directory, filesets, jobs)
 
-    directory = journal_dir(request.workspace, request.agent)
+    # An empty state has nothing to lock against, and creating the lock file
+    # would make a read-only no-op write to disk. This preliminary pass may
+    # therefore return only that one outcome; every path that can mutate falls
+    # through and repeats the whole discovery under the lock.
+    if _is_empty_state(request, directory, filesets):
+        return MigrationReport(
+            outcome=Outcome.NOTHING_TO_MIGRATE,
+            lines=[
+                f"Nothing to migrate for agent {request.agent!r} in workspace {request.workspace!r}: "
+                "no pre-rename package or Fileset, no target, and no profile naming the old artifact. "
+                "Nothing was read beyond that check, and nothing was written.",
+            ],
+        )
+
     directory.mkdir(parents=True, exist_ok=True)
-    with _exclusive_lock(directory, plan):
-        if (directory / "journal.json").is_file():
-            return _recover(directory, plan, filesets)
+    with _exclusive_lock(directory, request.workspace, request.agent):
+        if (directory / JOURNAL_FILENAME).is_file():
+            return _recover(directory, filesets)
+        # Authoritative discovery happens here, inside the lock, so nothing
+        # planned below was read before a competing apply could be excluded.
+        plan = _build_plan(request)
         with contextlib.ExitStack() as stack:
             outcome, lines, assessment = _classify(plan, filesets, jobs, stack)
             if assessment is None:
                 return MigrationReport(outcome=outcome, lines=lines)
-            return _apply(assessment, directory=directory, filesets=filesets, lines=lines, on_step=on_step)
+            return _apply(assessment, directory=directory, filesets=filesets, lines=lines)
+
+
+def _dry_run(request: MigrationRequest, directory: Path, filesets: FilesetStore, jobs: JobStore) -> MigrationReport:
+    """Report what an apply would do. Reads only; writes nothing anywhere."""
+    prefix = "Dry run — nothing was written."
+    if (directory / JOURNAL_FILENAME).is_file():
+        return MigrationReport(
+            outcome=Outcome.RECOVERY_REQUIRED,
+            lines=[
+                prefix,
+                f"An interrupted migration of {request.agent!r} left a journal at {directory}.",
+                "Recovery must finish before any new work. Rerun without --dry-run, which recovers "
+                "first and then reports what remains.",
+            ],
+        )
+    plan = _build_plan(request)
+    with contextlib.ExitStack() as stack:
+        outcome, lines, _ = _classify(plan, filesets, jobs, stack)
+    if outcome is Outcome.PENDING:
+        lines = [*lines, "Migration is required. Rerun without --dry-run to apply it."]
+    return MigrationReport(outcome=outcome, lines=[prefix, *lines])
+
+
+def _is_empty_state(request: MigrationRequest, directory: Path, filesets: FilesetStore) -> bool:
+    """True when no journal, package, Fileset, or stale profile reference exists."""
+    if (directory / JOURNAL_FILENAME).exists():
+        return False
+    plan = _build_plan(request)
+    if plan.old_package.exists() or plan.target_package.exists():
+        return False
+    for name in (plan.old_fileset, plan.target_fileset):
+        if filesets.exists(workspace=plan.workspace, name=name):
+            return False
+    return not any(_plan_external_profile(path, plan).needs_rewrite for path in plan.external_profiles)
 
 
 def _classify(

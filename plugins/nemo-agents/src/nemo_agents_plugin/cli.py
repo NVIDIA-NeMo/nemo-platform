@@ -1254,7 +1254,16 @@ def _register_ethos_commands(app: typer.Typer) -> None:
             SdkFilesetStore,
             SdkJobStore,
             run_migration,
+            validate_agent_name,
         )
+
+        # Reject an unsafe name before anything else, so a usage error never
+        # needs a reachable platform and never reaches a path operation.
+        try:
+            validate_agent_name(name)
+        except MigrationError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
 
         sdk = _platform_sdk(_resolve_base_url(base_url))
         request = MigrationRequest(
