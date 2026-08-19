@@ -361,15 +361,11 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     { query: { enabled: open && mode === MODE_EXPERIMENT } }
   );
   const evaluations = evaluationsResponse?.data ?? [];
-  // The eval-config pointer lives in each Evaluation's own metadata (dict[str,str]) — the
-  // entity whose metadata is documented for a "config snapshot", not its ExperimentGroup.
-  // Approach A (metadata-only; the filter makes no extra calls): offer only evaluations that carry
-  // the pointer. Evaluations written before this change have empty metadata, so they won't
-  // appear until re-created or backfilled. Rejected alternatives if that bites: B — eager
-  // per-evaluation filesListFilesetFiles verification (too costly); C — a backend `runnable`
-  // flag. The select-time canRunSelectedEvaluation gate below is the safety net for an
-  // evaluation that names a fileset but is missing eval-config.json. Future upgrade: keep
-  // incompatible rows but disable them with an explanatory tooltip instead of hiding.
+  /* The eval-config.json is identified on each Evaluation by convention in Studio.
+   * It's not persisted by the CLI or API at all. Only Studio created jobs will
+   * have this field written to the Evaluation's metadata (dict[str,str]).
+   * Unfortunately there's no existing way for Evaluations to be matched to the
+   * artifacts that generated them by contract. */
   const compatibleEvaluations = evaluations.filter((item) => evaluationFilesetName(item) != null);
   const selectedEvaluation = evaluations.find((item) => item.name === evaluationName);
   const hasNoEvaluations =

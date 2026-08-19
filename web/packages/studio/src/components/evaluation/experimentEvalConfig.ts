@@ -17,7 +17,8 @@ export const EVAL_CONFIG_FILENAME = 'eval-config.json';
 
 /** The fileset an Evaluation stores its eval config in, or null when it names none. A blank
  *  or whitespace-only metadata value counts as "none": it would otherwise pass the picker's
- *  filter and even become the default, only to be rejected by evaluationConfigError. */
+ *  filter and even become the default, only to be rejected by evaluationConfigError.
+ *  This is stored by Studio UI convention only, not enforced by API or CLI */
 export const evaluationFilesetName = (evaluation: EvaluationResponse): string | null => {
   const name = evaluation.metadata?.[EVAL_CONFIG_FILESET_KEY]?.trim();
   return name ? name : null;
