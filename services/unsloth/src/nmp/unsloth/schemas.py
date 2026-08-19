@@ -33,6 +33,7 @@ from typing import Any, Literal, Self
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from pydantic import Field, model_validator
 
 
@@ -220,9 +221,15 @@ class ScheduleSpec(UnslothSchema):
         "constant_with_warmup",
         "cosine_with_restarts",
     ] = "linear"
+    # HuggingFace's own logging cadence, which drives stdout and any configured
+    # W&B/MLflow run. Deliberately *not* the Jobs-service reporting cadence: a user
+    # who wants verbose HF logs should not get one Jobs report per step as a side
+    # effect. 1 is the right default now that a downstream gate decides what to
+    # keep -- it gives that gate the finest resolution available to sample from.
     logging_steps: int = Field(default=1, gt=0)
     save_steps: int | None = Field(default=None, gt=0)
     eval_steps: int | None = Field(default=None, gt=0)
+    progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
     seed: int = 3407
     lr_scheduler_kwargs: dict[str, Any] | None = Field(
         default=None,

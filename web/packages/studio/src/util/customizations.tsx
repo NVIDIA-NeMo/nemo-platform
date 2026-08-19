@@ -1,16 +1,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { StatTileProps } from '@nemo/common/src/components/StatTile';
+import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { formatFinetuningType } from '@nemo/common/src/utils/formatters';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { Badge } from '@nvidia/foundations-react-core';
-import type { CustomizationTrainingTelemetry } from '@studio/types/customization';
+import type {
+  CustomizationMetricValue,
+  CustomizationStatusDetailsWithMetrics,
+  CustomizationTrainingTelemetry,
+} from '@studio/types/customization';
 import {
   isAutomodelJob,
   isUnslothJob,
   type CustomizationJob,
   type CustomizationJobStatusDetails,
 } from '@studio/util/customizationBackend';
+import { formatElapsedTime } from '@studio/util/date';
 import { getTextWithCount } from '@studio/util/strings';
 import { Circle /* TODO: replace with a proper icon (was Circle) */, Gpu } from 'lucide-react';
 import { ReactNode } from 'react';
@@ -83,6 +90,19 @@ export const getBaseModel = (customizationJob?: CustomizationJob): string => {
   }
   if (isAutomodelJob(customizationJob)) {
     return customizationJob.spec.model ?? '';
+  }
+  return '';
+};
+
+export const getFinetuningType = (customizationJob?: CustomizationJob): string => {
+  if (!customizationJob) {
+    return '';
+  }
+  if (isAutomodelJob(customizationJob)) {
+    return customizationJob.spec.training?.finetuning_type ?? '';
+  }
+  if (isUnslothJob(customizationJob)) {
+    return customizationJob.spec.training?.finetuning_type ?? '';
   }
   return '';
 };
@@ -182,11 +202,115 @@ export const getTrainingTelemetry = (
     epoch: asFiniteNumber(details.epoch),
     trainLoss: asFiniteNumber(details.train_loss),
     valLoss: asFiniteNumber(details.val_loss),
-    learningRate: asFiniteNumber(details.lr),
-    gradNorm: asFiniteNumber(details.grad_norm),
+    // `?? details.lr` reads jobs written before the phase prefix was applied to
+    // every metric name. Those are already in the database and never change, so
+    // without the fallback their Learning Rate and Gradient Norm render blank
+    // forever. `train_loss` and `val_loss` need no equivalent -- they were
+    // already spelled that way.
+    learningRate: asFiniteNumber(details.train_lr ?? details.lr),
+    gradNorm: asFiniteNumber(details.train_grad_norm ?? details.grad_norm),
     checkpointPath: asNonEmptyString(details.checkpoint_path),
   };
 };
+
+interface MetricSummary {
+  final: number;
+  deltaFromStart?: number;
+}
+
+const summarizeMetric = (series?: CustomizationMetricValue[]): MetricSummary | undefined => {
+  if (!series?.length) return undefined;
+  const final = series[series.length - 1].value;
+  const deltaFromStart = series.length > 1 ? final - series[0].value : undefined;
+  return { final, deltaFromStart };
+};
+
+/**
+ * Past this magnitude `toFixed` produces a string long enough to distort the tile grid, so the
+ * value switches to exponential. Diverged runs are exactly when these numbers get large.
+ */
+const EXPONENTIAL_ABOVE = 1e6;
+
+/**
+ * Longest phase label rendered before truncating. Known phases top out at "Processing
+ * Checkpoint" (21 chars); this only bites on phases the backend adds later, which are
+ * title-cased verbatim and otherwise unbounded.
+ */
+const MAX_PHASE_LENGTH = 22;
+
+const truncatePhase = (phase: string): string =>
+  phase.length > MAX_PHASE_LENGTH ? `${phase.slice(0, MAX_PHASE_LENGTH - 1)}…` : phase;
+
+export const formatMetricValue = (value: number, decimals = 4): string =>
+  Math.abs(value) >= EXPONENTIAL_ABOVE ? value.toExponential(2) : value.toFixed(decimals);
+
+/** Compact past four digits so a long run's step count cannot widen the column. */
+export const formatStepCount = (value: number): string =>
+  Math.abs(value) >= 10_000
+    ? new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
+        value
+      )
+    : value.toLocaleString();
+
+const formatDeltaHint = (delta: number, decimals: number): string =>
+  `${delta >= 0 ? '+' : ''}${formatMetricValue(delta, decimals)} from start`;
+
+const NOT_AVAILABLE = '—';
+
+const lossTile = (label: string, summary?: MetricSummary): StatTileProps => {
+  if (!summary) {
+    return { label, value: NOT_AVAILABLE };
+  }
+  return {
+    label,
+    value: formatMetricValue(summary.final),
+    hint:
+      summary.deltaFromStart !== undefined ? formatDeltaHint(summary.deltaFromStart, 4) : undefined,
+    hintStatus:
+      summary.deltaFromStart !== undefined
+        ? summary.deltaFromStart < 0
+          ? 'success'
+          : 'error'
+        : undefined,
+  };
+};
+
+export const getTrainingProgressTiles = (
+  telemetry: CustomizationTrainingTelemetry
+): StatTileProps[] => [
+  {
+    label: 'Steps Completed',
+    value:
+      telemetry.step === undefined
+        ? NOT_AVAILABLE
+        : telemetry.maxSteps
+          ? `${formatStepCount(telemetry.step)} / ${formatStepCount(telemetry.maxSteps)}`
+          : formatStepCount(telemetry.step),
+  },
+  {
+    label: 'Epochs Completed',
+    value:
+      telemetry.epoch === undefined
+        ? NOT_AVAILABLE
+        : telemetry.numEpochs
+          ? `${telemetry.epoch} / ${telemetry.numEpochs}`
+          : String(telemetry.epoch),
+  },
+];
+
+export const getLossTiles = (
+  statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
+  isTerminal = false
+): StatTileProps[] => [
+  lossTile(
+    `${isTerminal ? 'Final' : 'Latest'} Training Loss`,
+    summarizeMetric(statusDetails?.metrics?.train_loss)
+  ),
+  lossTile(
+    `${isTerminal ? 'Final' : 'Latest'} Validation Loss`,
+    summarizeMetric(statusDetails?.metrics?.val_loss)
+  ),
+];
 
 const TRAINING_PHASE_LABELS: Record<string, string> = {
   compiling_config: 'Compiling Config',
@@ -205,6 +329,78 @@ export const formatTrainingPhase = (phase: string): string =>
     .split('_')
     .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
     .join(' ');
+
+export interface JobDurationStep {
+  created_at: string;
+  updated_at: string;
+}
+
+export const getJobStartDate = (steps: readonly JobDurationStep[] | undefined): Date | undefined =>
+  steps?.length ? utcToLocalDate(steps[0].created_at) : undefined;
+
+export const getJobDuration = (
+  steps: readonly JobDurationStep[] | undefined,
+  isTerminal: boolean,
+  liveSeconds?: number
+): string => {
+  if (!isTerminal) {
+    return formatTimeInSeconds(liveSeconds) || NOT_AVAILABLE;
+  }
+
+  if (!steps?.length) {
+    return NOT_AVAILABLE;
+  }
+
+  const start = utcToLocalDate(steps[0].created_at);
+  const end = utcToLocalDate(steps[steps.length - 1].updated_at);
+  if (!start || !end || end.getTime() - start.getTime() < 1000) {
+    return NOT_AVAILABLE;
+  }
+  return formatElapsedTime(start, end);
+};
+
+interface TrainingDiagnosticsContext {
+  isTerminal: boolean;
+  duration: string;
+}
+
+export const getTrainingDiagnosticsTiles = (
+  telemetry: CustomizationTrainingTelemetry,
+  statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
+  { isTerminal, duration }: TrainingDiagnosticsContext
+): StatTileProps[] => {
+  const trainLoss = summarizeMetric(statusDetails?.metrics?.train_loss);
+  const valLoss = summarizeMetric(statusDetails?.metrics?.val_loss);
+
+  return [
+    {
+      label: 'Learning Rate',
+      value: telemetry.learningRate?.toExponential(2) ?? NOT_AVAILABLE,
+      hint: 'at latest step',
+    },
+    {
+      label: 'Gradient Norm',
+      value:
+        telemetry.gradNorm !== undefined ? formatMetricValue(telemetry.gradNorm) : NOT_AVAILABLE,
+      hint: 'at latest step',
+    },
+    {
+      label: 'Train/Val Gap',
+      value:
+        trainLoss && valLoss ? formatMetricValue(valLoss.final - trainLoss.final) : NOT_AVAILABLE,
+      hint: 'validation - training',
+    },
+    isTerminal
+      ? { label: 'Duration', value: duration, hint: 'total run time' }
+      : {
+          label: 'Phase',
+          value: telemetry.phase
+            ? truncatePhase(formatTrainingPhase(telemetry.phase))
+            : NOT_AVAILABLE,
+          hint: 'current stage',
+        },
+  ];
+};
 
 const badge = (key: string, icon: ReactNode, label: string): ReactNode => (
   <Badge key={key} color="gray" kind="solid">

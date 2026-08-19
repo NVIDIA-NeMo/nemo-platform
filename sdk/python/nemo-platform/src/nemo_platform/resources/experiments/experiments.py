@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 from typing_extensions import Literal
 
 import httpx
@@ -75,8 +75,10 @@ class ExperimentsResource(SyncAPIResource):
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
+        show_evaluations_over_time: bool | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -103,6 +105,9 @@ class ExperimentsResource(SyncAPIResource):
 
           insight_id: Reference to an external insight that seeded this experiment, if any.
 
+          is_favorite: Whether this Experiment is marked as a favorite. Defaults to false on create;
+              omit on update to preserve the existing value.
+
           metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
@@ -111,6 +116,9 @@ class ExperimentsResource(SyncAPIResource):
               `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
+
+          show_evaluations_over_time: Whether Studio should display this Experiment's Evaluation results over time.
+              Defaults to false on create; omit on update to preserve the existing value.
 
           summary: Human- or agent-authored summary of the experiment's findings.
 
@@ -139,8 +147,10 @@ class ExperimentsResource(SyncAPIResource):
                         "default_sort": default_sort,
                         "description": description,
                         "insight_id": insight_id,
+                        "is_favorite": is_favorite,
                         "metadata": metadata,
                         "pareto": pareto,
+                        "show_evaluations_over_time": show_evaluations_over_time,
                         "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
@@ -199,11 +209,14 @@ class ExperimentsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
+        baseline_evaluation_name: Optional[str] | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
+        show_evaluations_over_time: bool | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -218,6 +231,9 @@ class ExperimentsResource(SyncAPIResource):
         Args:
           body_name: Workspace-unique experiment name.
 
+          baseline_evaluation_name: Name of this Experiment's baseline Evaluation. The Evaluation must already be a
+              live member of the Experiment. Set null to clear the selected baseline.
+
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
@@ -229,6 +245,9 @@ class ExperimentsResource(SyncAPIResource):
 
           insight_id: Reference to an external insight that seeded this experiment, if any.
 
+          is_favorite: Whether this Experiment is marked as a favorite. Defaults to false on create;
+              omit on update to preserve the existing value.
+
           metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
@@ -237,6 +256,9 @@ class ExperimentsResource(SyncAPIResource):
               `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
+
+          show_evaluations_over_time: Whether Studio should display this Experiment's Evaluation results over time.
+              Defaults to false on create; omit on update to preserve the existing value.
 
           summary: Human- or agent-authored summary of the experiment's findings.
 
@@ -263,11 +285,14 @@ class ExperimentsResource(SyncAPIResource):
             body=maybe_transform(
                 {
                     "body_name": body_name,
+                    "baseline_evaluation_name": baseline_evaluation_name,
                     "default_sort": default_sort,
                     "description": description,
                     "insight_id": insight_id,
+                    "is_favorite": is_favorite,
                     "metadata": metadata,
                     "pareto": pareto,
+                    "show_evaluations_over_time": show_evaluations_over_time,
                     "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
@@ -297,7 +322,8 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+          filter: Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time,
+              baseline_evaluation_name, is_deleted, or a metadata key/value
               (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
               soft-deleted experiments; omit to see only live ones.
 
@@ -408,8 +434,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
+        show_evaluations_over_time: bool | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -436,6 +464,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           insight_id: Reference to an external insight that seeded this experiment, if any.
 
+          is_favorite: Whether this Experiment is marked as a favorite. Defaults to false on create;
+              omit on update to preserve the existing value.
+
           metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
@@ -444,6 +475,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
               `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
+
+          show_evaluations_over_time: Whether Studio should display this Experiment's Evaluation results over time.
+              Defaults to false on create; omit on update to preserve the existing value.
 
           summary: Human- or agent-authored summary of the experiment's findings.
 
@@ -472,8 +506,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
                         "default_sort": default_sort,
                         "description": description,
                         "insight_id": insight_id,
+                        "is_favorite": is_favorite,
                         "metadata": metadata,
                         "pareto": pareto,
+                        "show_evaluations_over_time": show_evaluations_over_time,
                         "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
@@ -532,11 +568,14 @@ class AsyncExperimentsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
+        baseline_evaluation_name: Optional[str] | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
+        is_favorite: bool | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         pareto: ParetoConfigParam | Omit = omit,
+        show_evaluations_over_time: bool | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -551,6 +590,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Args:
           body_name: Workspace-unique experiment name.
 
+          baseline_evaluation_name: Name of this Experiment's baseline Evaluation. The Evaluation must already be a
+              live member of the Experiment. Set null to clear the selected baseline.
+
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
@@ -562,6 +604,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           insight_id: Reference to an external insight that seeded this experiment, if any.
 
+          is_favorite: Whether this Experiment is marked as a favorite. Defaults to false on create;
+              omit on update to preserve the existing value.
+
           metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
@@ -570,6 +615,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
               `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
+
+          show_evaluations_over_time: Whether Studio should display this Experiment's Evaluation results over time.
+              Defaults to false on create; omit on update to preserve the existing value.
 
           summary: Human- or agent-authored summary of the experiment's findings.
 
@@ -596,11 +644,14 @@ class AsyncExperimentsResource(AsyncAPIResource):
             body=await async_maybe_transform(
                 {
                     "body_name": body_name,
+                    "baseline_evaluation_name": baseline_evaluation_name,
                     "default_sort": default_sort,
                     "description": description,
                     "insight_id": insight_id,
+                    "is_favorite": is_favorite,
                     "metadata": metadata,
                     "pareto": pareto,
+                    "show_evaluations_over_time": show_evaluations_over_time,
                     "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
@@ -630,7 +681,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+          filter: Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time,
+              baseline_evaluation_name, is_deleted, or a metadata key/value
               (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
               soft-deleted experiments; omit to see only live ones.
 

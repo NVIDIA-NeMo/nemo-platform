@@ -13,7 +13,7 @@ dependencies = [
     "nemo-evaluator-sdk",
     "opentelemetry-proto>=1.42.1",
     "protobuf>=6.0.0",
-    "nooa",
+    "nooa>=0.0.9",
     "pyyaml>=6.0.3",
     "nemo-eval-author-plugin",
     "nemo-insights-plugin",

@@ -927,11 +927,17 @@ class HarborDataset(Dataset):
     ``tests/``.  ``dataset.validate()`` rejects a ``/tests/`` path that no file
     provides, so a guessed path fails before it can run and score.
 
-    and must write to:
+    and must write **one of** (``reward.json`` wins when both exist):
 
     - ``/logs/verifier/reward.json`` — flat JSON object; **every value must be a
       plain number** (int or float).  Harbor calls ``float(value)`` on each entry
       and silently drops non-numeric values (nested objects, booleans, strings).
+    - ``/logs/verifier/reward.txt`` — one bare number, and nothing else.
+
+    Writing one is mandatory.  Exiting ``0`` without either scores *nothing* — not
+    zero: Harbor raises ``RewardFileNotFoundError`` and the trial is recorded as
+    failed.  So score every agent outcome, failures included; an agent that did
+    nothing scores ``0``, and that is a real measurement.
 
     **Missing evidence is not a score.**  When a metric's signal source is absent
     or empty — no trace files, no log file, no expected artifact — exit non-zero

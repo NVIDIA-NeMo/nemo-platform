@@ -93,6 +93,8 @@ def build_export_manifest(
         "platform_revision": (platform_info or {}).get("revision"),
         "records": [r.name for r in records],
     }
+    if stats.get("selections"):
+        manifest["selections"] = stats["selections"]
     env = env or {}
     manifest |= {key: env[var] for key, var in _LINEAGE_ENV.items() if env.get(var)}
     return manifest
@@ -222,12 +224,19 @@ def snapshot_export(
     CLI's ``--base`` override rewrites every stanza before this is called).
     """
     subject_workspaces: list[tuple[Subject, list[str]]] = []
-    claimed_workspaces: set[str] = set()
+    claimed_workspaces: dict[str, Subject] = {}
     for subject in subjects:
+        for workspace in workspaces_for_subject(subject):
+            owner = claimed_workspaces.get(workspace)
+            if owner is not None and (owner.config.get("experiment") or subject.config.get("experiment")):
+                sys.exit(
+                    f"snapshot: workspace '{workspace}' is shared by experiment-scoped subject "
+                    f"'{owner.name if owner.config.get('experiment') else subject.name}' and another subject"
+                )
         workspaces = [workspace for workspace in workspaces_for_subject(subject) if workspace not in claimed_workspaces]
         if workspaces:
             subject_workspaces.append((subject, workspaces))
-            claimed_workspaces.update(workspaces)
+            claimed_workspaces.update({workspace: subject for workspace in workspaces})
     # Every selected subject must carry a base_url: a partial miss would silently
     # let the agreement check pass on the configured subset and export the
     # unconfigured subject from the others' platform.
@@ -256,6 +265,7 @@ def snapshot_export(
                 state,
                 since=since,
                 client=_basic_auth_intake_client_for(subject, source_url),
+                experiment=str(subject.config["experiment"]) if subject.config.get("experiment") else None,
             )
             for subject, workspaces in subject_workspaces
         ]
@@ -275,6 +285,11 @@ def snapshot_export(
             },
             "min_start_time": min(min_bounds).isoformat() if min_bounds else None,
             "max_start_time": max(max_bounds).isoformat() if max_bounds else None,
+            "selections": {
+                workspace: selection
+                for result in exported
+                for workspace, selection in result.get("selections", {}).items()
+            },
         }
         for rec in records:
             shutil.copy2(rec, state / "tmp" / rec.name)

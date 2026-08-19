@@ -35,6 +35,9 @@ class ExperimentResponse(BaseModel):
 
     workspace: str
 
+    baseline_evaluation_name: Optional[str] = None
+    """Name of this Experiment's selected baseline Evaluation, if any."""
+
     created_at: Optional[datetime] = None
 
     description: Optional[str] = None
@@ -43,6 +46,9 @@ class ExperimentResponse(BaseModel):
     """Number of live (non-soft-deleted) evaluations in this experiment."""
 
     insight_id: Optional[str] = None
+
+    is_favorite: Optional[bool] = None
+    """Whether this Experiment is marked as a favorite."""
 
     metadata: Optional[Dict[str, str]] = None
 
@@ -54,6 +60,9 @@ class ExperimentResponse(BaseModel):
     latency (y): both exist for every group, so the chart always has something to
     render before anyone customizes it.
     """
+
+    show_evaluations_over_time: Optional[bool] = None
+    """Whether Studio should display this Experiment's Evaluation results over time."""
 
     summary: Optional[str] = None
 

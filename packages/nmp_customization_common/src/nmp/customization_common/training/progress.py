@@ -8,15 +8,29 @@ Provides progress reporting to the Jobs service using the NeMo Platform SDK.
 training runner; backends subclass it (or instantiate it directly) supplying
 their own ``service_name`` so the task SDK resolves the right credentials.
 
+The Jobs service MERGES ``status_details`` key-wise rather than replacing the
+blob -- ``JobDispatcher._update_status_details_object``, applied both to the task
+and to the copy propagated up to the job. A field therefore survives every later
+update that does not restate it. The merge is shallow: a key that is sent
+replaces the stored value wholesale.
+
+That is what lets the callback restate every scalar on every report rather than
+only the ones a given step observed -- restating costs a handful of numbers and
+makes a dropped report self-healing, while a key left unmentioned is left alone.
+The accumulated series are the expensive term and are sent only when they change.
+
 For training-specific metrics (loss, validation, checkpoints) see the
 ``TrainingProgressCallback`` which composes this reporter.
 """
 
 import logging
 import os
+from collections.abc import Mapping
 from typing import Any, cast
 
+import httpx
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
@@ -25,13 +39,27 @@ from nmp.customization_common.service.context import NMPJobContext
 
 logger = logging.getLogger(__name__)
 
+# The SDK defaults to a 60s read/write timeout and retries twice, so one wedged
+# report can hold the training thread for roughly three minutes. That trade is
+# wrong here: a healthy update costs 46ms plus 0.31ms/KB, and a lost one costs
+# almost nothing, because every report carries the whole series -- the next one
+# supersedes it. Fail fast and let training continue.
+#
+# Retries stay at the SDK default. They are cheap once the timeout is short, and
+# the final flush from close() is the one report with no successor to repair it.
+_REPORT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
 
 class JobsServiceProgressReporter:
     """Reports high-level progress to the Jobs service."""
 
     def __init__(self, job_ctx: NMPJobContext, service_name: str):
         self._job_ctx = job_ctx
-        self._sdk = get_task_sdk(service_name)
+        # with_options rather than handing get_task_sdk a client: that function
+        # skips its workload-identity branch entirely when passed one, so
+        # supplying a client just to set a timeout would quietly change how the
+        # task authenticates.
+        self._sdk = get_task_sdk(service_name).with_options(timeout=_REPORT_TIMEOUT)
         self._is_main_rank = int(os.environ.get("RANK", "0")) == 0
         self._max_steps = 0
         self._num_epochs = 0
@@ -81,9 +109,43 @@ class JobsServiceProgressReporter:
         except Exception as e:
             logger.warning(f"Failed to update task progress: {e}")
 
-    def fetch_current_metrics(self) -> dict[str, list[dict[str, float | int]]]:
+    def fetch_current_metrics(self) -> dict[str, list[dict[str, float | int]]] | None:
+        """Read back every stored metric series, to seed a new process.
+
+        The only read this reporter makes, and it happens once per process. The
+        accumulator lives in memory, so a process taking over a task would report
+        from empty and replace what the task had stored; reading it back is what
+        keeps the curves continuous. Predates the per-metric series -- the two
+        loss curves were seeded the same way.
+
+        Because the server merges, no write path needs to know what is already
+        stored -- a report that omits a field leaves it standing.
+
+        Deliberately not restricted to a known set of names: backends decide what
+        they accumulate, and seeding only ``train_loss`` would silently restart
+        every other curve from empty. Non-list values are
+        dropped so a malformed blob cannot poison the accumulator, and each list
+        is copied so the caller's accumulator does not alias the response.
+
+        Returns ``{}`` when there is nothing to seed from and ``None`` when the
+        read itself failed, which are not the same thing and must not look the
+        same to the caller. The merge is wholesale per key, so a caller that
+        treats a failed read as "nothing stored" sends its own partial
+        accumulator under ``metrics`` and destroys the history it could not read
+        -- see :class:`~nmp.customization_common.training.callbacks.TrainingProgressCallback`.
+
+        Only a 404 means "nothing stored": every other failure is a transport or
+        server problem, and a distributed launch racing a briefly unreachable
+        Jobs service hits those, not the 404.
+
+        A blob that reads back malformed is a successful read of unusable data,
+        so it seeds nothing and is *not* an error: overwriting it is the repair.
+        Neither branch may raise -- this runs from the callback's constructor,
+        which backends build outside any try, so raising here kills the training
+        process rather than costing it its seed.
+        """
         if not self._enabled:
-            return {"train_loss": [], "val_loss": []}
+            return {}
 
         try:
             jobs = client_from_platform(self._sdk, JobsClient)
@@ -93,14 +155,28 @@ class JobsServiceProgressReporter:
                 job=self._job_ctx.job_id,
                 step=self._job_ctx.step,
             ).data()
-            metrics = cast(dict[str, Any], (task.status_details or {}).get("metrics", {}) or {})
-            return {
-                "train_loss": metrics.get("train_loss", []),
-                "val_loss": metrics.get("val_loss", []),
-            }
+            stored = task.status_details or {}
+        except NotFoundError:
+            # Expected on a first run, where the task has no stored details yet.
+            logger.info("No stored status details to seed from: task not found")
+            return {}
         except Exception as e:
-            logger.info(f"No prior metrics to seed (expected on first run): {e}")
-            return {"train_loss": [], "val_loss": []}
+            logger.warning(f"Could not read stored metric series to seed from: {e}")
+            return None
+
+        if not isinstance(stored, Mapping):
+            logger.warning(f"Stored status details are not an object ({type(stored).__name__}); seeding nothing")
+            return {}
+
+        metrics = stored.get("metrics") or {}
+        if not isinstance(metrics, Mapping):
+            logger.warning(f"Stored metrics are not an object ({type(metrics).__name__}); seeding nothing")
+            return {}
+
+        return cast(
+            dict[str, list[dict[str, float | int]]],
+            {name: list(points) for name, points in metrics.items() if isinstance(points, list)},
+        )
 
     def report_running(self, phase: str, **details: Any) -> None:
         if "step" in details and "percentage_done" not in details and self._max_steps > 0:

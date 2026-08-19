@@ -226,7 +226,14 @@ def _compile_one(input_path: Path, model_local_dir: Path) -> dict[str, Any]:
         )
         compiled = compile_automodel_config(config, Path(tmpdir), job_ctx)
 
-    compiled.pop("_resolved_chat_template", None)
+    # Keys we add to the recipe config that are not the recipe's. The golden
+    # files describe the contract with nemo_automodel, so ours would only make
+    # them churn whenever our own reporting shape changed -- and, worse, would
+    # do it silently: the check reports a mismatch, the mismatch names the
+    # embedding configs, and the branch below skips the whole test on that
+    # basis. `_progress_reporting` did exactly that when it was added.
+    for _ours in ("_resolved_chat_template", "_progress_reporting"):
+        compiled.pop(_ours, None)
     _replace_paths(
         compiled,
         {
@@ -322,21 +329,36 @@ def _generate_all() -> None:
     print(f"Done. {total} configs written to {OUTPUT_DIR}/")
 
 
-def _check_all() -> None:
-    """Regenerate all configs and fail if any differ from the committed version."""
+def _check_all(exclude: set[str] | None = None) -> None:
+    """Regenerate all configs and fail if any differ from the committed version.
+
+    ``exclude`` names config stems whose mismatches are known and tolerated. It
+    is an argument rather than a constant here because the caller owns the list,
+    and it filters *which configs are compared* rather than which failures are
+    forgiven -- the distinction matters. The test used to scan this function's
+    output for an excluded name and skip the whole run if it found one, so any
+    mismatch that happened to list an excluded config alongside a real one
+    disabled the check entirely and said nothing. Adding a key to every compiled
+    config did exactly that.
+    """
+    exclude = exclude or set()
     groups = _discover_model_groups()
     if not groups:
         print(f"No model groups found in {INPUT_DIR}/")
         sys.exit(1)
 
-    total = sum(len(configs) for _, configs in groups)
+    total = sum(len(configs) for _, configs in groups) - len(exclude)
     print(f"Checking {total} configs across {len(groups)} models...")
+    if exclude:
+        print(f"Excluded: {', '.join(sorted(exclude))}")
     mismatches: list[str] = []
     missing: list[str] = []
 
     for group_name, config_paths in groups:
         results = _process_model_group(group_name, config_paths, write=False)
         for output_path, compiled in results:
+            if output_path.stem in exclude:
+                continue
             generated_yaml = _dump_yaml(compiled)
             if not output_path.exists():
                 missing.append(output_path.name)
@@ -385,6 +407,11 @@ def main() -> None:
         help="Verify all output configs match what the current code generates (for CI)",
     )
     parser.add_argument(
+        "--exclude",
+        default="",
+        help="Comma-separated config stems to leave out of --check (e.g. ones not yet supported)",
+    )
+    parser.add_argument(
         "input",
         type=Path,
         nargs="?",
@@ -396,7 +423,7 @@ def main() -> None:
     if args.all:
         _generate_all()
     elif args.check:
-        _check_all()
+        _check_all({stem for stem in args.exclude.split(",") if stem})
     else:
         if not args.input:
             parser.error("input file is required when not using --all or --check")

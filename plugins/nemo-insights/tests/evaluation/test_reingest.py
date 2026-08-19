@@ -150,6 +150,27 @@ def test_llm_doc_inverts_model_and_sets_parent():
     assert "input.value" not in otlp["attributes"]  # doc had no input
 
 
+def test_atif_doc_inverts_to_exact_direct_span():
+    doc = {
+        **AGENT_DOC,
+        "source": "atif",
+        "span_id": "span-abc123",
+        "trace_id": "campaign-session",
+        "session_id": "campaign-session",
+    }
+
+    source, direct = reingest.doc_to_direct_span(doc, CATALOG)
+
+    assert source == "atif"
+    assert direct["span_id"] == "span-abc123"
+    assert direct["trace_id"] == "campaign-session"
+    assert direct["started_at"].endswith("+00:00")
+    assert direct["input"] == "do 1"
+    assert direct["output"] == "ok"
+    assert direct["attributes"]["otel.scope"] == '{"name":"evaluation","version":"1.0.0"}'
+    assert direct["attributes"]["nemo.evaluation.name"] == "smoke-20260626-121437-5559-20260626-121438-a833"
+
+
 def test_raw_alias_wins_over_inversion():
     doc = dict(LLM_DOC)
     doc["raw_attributes"] = json.dumps({"llm.model_name": "other"})
@@ -921,46 +942,43 @@ def test_ingest_bundle_validates_target_names(tmp_path, quiet_platform):
         )
 
 
-# --- source guard: only otel-sourced corpora are restorable (B1) ---
+# --- provider-neutral restore for non-OTLP sources ---
 
 
-def test_ingest_bundle_rejects_non_otel_sources(tmp_path, quiet_platform):
-    """ATIF/chat-completions span ids are not OTLP hex — bytes.fromhex would crash mid-batch
-    (partial restore) and any doc that survived would silently mutate (source_format -> otel).
-    The guard must fire BEFORE any network I/O, naming workspace + offending sources."""
+def test_ingest_bundle_restores_non_otel_sources_directly(tmp_path, quiet_platform):
     atif = {**AGENT_DOC, "source": "atif", "span_id": "span-abc123"}
     chat = {**LLM_DOC, "source": "chat-completions", "span_id": "chatcmpl-xyz"}
     export_dir = _write_export(tmp_path, "ws-a", [atif, chat, AGENT_DOC], [ANNOTATION_DOC])
-    with pytest.raises(RuntimeError) as exc:
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 3, 1),
-            workspace_map={"ws-a": "ws-b"},
-            catalog=CATALOG,
-        )
-    message = str(exc.value)
-    assert "ws-a" in message  # names the workspace
-    assert "atif" in message and "chat-completions" in message  # offending source values
-    assert "otel" in message  # states only otel-sourced corpora are restorable
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-    assert quiet_platform["ensured"] == []  # nothing touched the platform at all
+    quiet_platform["span_counts"] = [0, 3]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+
+    outcome = reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 3, 1),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+        sleep=lambda _: None,
+    )
+
+    direct = [body for url, body in quiet_platform["posts"] if url.endswith("/ingest/spans")]
+    assert {body["source"] for body in direct} == {"atif", "chat-completions", "otel"}
+    assert outcome["ws-a"]["spans"] == {"ingested": 3, "skipped": 0}
 
 
-def test_ingest_bundle_non_otel_anywhere_blocks_every_workspace(tmp_path, quiet_platform):
-    """The scan covers ALL bundle workspaces before ingesting ANY — all-or-nothing."""
+def test_ingest_bundle_scans_all_span_files_before_writes(tmp_path, quiet_platform):
     _write_export(tmp_path, "ws-a", [AGENT_DOC])
     ws_dir = tmp_path / "export" / "ws-c"
     ws_dir.mkdir(parents=True)
-    bad = {**AGENT_DOC, "source": "atif"}
+    bad = {key: value for key, value in AGENT_DOC.items() if key != "source"}
     (ws_dir / "spans.jsonl").write_text(json.dumps(bad) + "\n", encoding="utf-8")
     manifest = {
         "workspaces": ["ws-a", "ws-c"],
         "counts": {"ws-a": {"spans": 1}, "ws-c": {"spans": 1}},
         "min_start_time": datetime.now(timezone.utc).isoformat(),
     }
-    with pytest.raises(RuntimeError, match="ws-c"):
+    with pytest.raises(ValueError, match="no source"):
         reingest.ingest_bundle(
             "http://x",
             tmp_path / "export",
@@ -1329,6 +1347,18 @@ def test_diff_reports_value_changes_and_count_drift():
     assert mismatches == ["ws-a/spans: 1 exported vs 0 restored"]
 
 
+def test_grouped_jsonl_diff_ignores_order_within_trace(tmp_path):
+    original = tmp_path / "original.jsonl"
+    restored = tmp_path / "restored.jsonl"
+    original.write_text("\n".join(json.dumps(doc) for doc in (AGENT_DOC, LLM_DOC)) + "\n", encoding="utf-8")
+    restored_docs = [
+        {**doc, "workspace": "scratch-rt", "ingested_at": "2026-08-18T00:00:00Z"} for doc in (LLM_DOC, AGENT_DOC)
+    ]
+    restored.write_text("\n".join(json.dumps(doc) for doc in restored_docs) + "\n", encoding="utf-8")
+
+    assert reingest._diff_grouped_jsonl(original, restored, workspace="ws-a", collection="spans") == []
+
+
 def test_diff_normalizes_annotation_server_fields():
     restored = {
         **ANNOTATION_DOC,
@@ -1386,6 +1416,38 @@ def test_roundtrip_diff_maps_scratch_reexports_and_cleans_up(tmp_path, monkeypat
     assert seen["map"] == {"ws-a": "scratch-reingest-cafef00d-ws-a"}
     assert seen["exported"] == (["scratch-reingest-cafef00d-ws-a"], None)
     assert seen["cleaned"] == ["scratch-reingest-cafef00d-ws-a"]
+
+
+def test_roundtrip_diff_handles_mixed_scoped_workspaces(tmp_path, monkeypatch):
+    manifest = {
+        "workspaces": ["ws-a", "ws-b"],
+        "counts": {},
+        "selections": {"ws-a": {"experiment": "run-a"}},
+    }
+    exports = []
+
+    def fake_export(base_url, workspaces, out_dir, *, since, selection=None):
+        exports.append((workspaces[0], selection))
+        return {"workspaces": {}}
+
+    monkeypatch.setattr(reingest, "ingest_bundle", lambda *args, **kwargs: {})
+    monkeypatch.setattr(reingest.export, "export_workspaces", fake_export)
+    monkeypatch.setattr(reingest, "_diff_grouped_jsonl", lambda *args, **kwargs: [])
+    monkeypatch.setattr(reingest, "cleanup_scratch", lambda *args: None)
+
+    mismatches = reingest.roundtrip_diff(
+        "http://x",
+        tmp_path,
+        manifest,
+        scratch_prefix="scratch-reingest-",
+        catalog=CATALOG,
+        content_key="cafef00d",
+    )
+    assert mismatches == []
+    assert exports == [
+        ("scratch-reingest-cafef00d-ws-a", {"experiment": "run-a"}),
+        ("scratch-reingest-cafef00d-ws-b", None),
+    ]
 
 
 def test_roundtrip_diff_cleans_up_even_when_ingest_fails(tmp_path, monkeypatch):
@@ -1468,29 +1530,16 @@ def test_cleanup_scratch_remote_leaves_rows_and_record_and_reports(monkeypatch, 
     assert "manual" in err.lower()
 
 
-def test_cleanup_scratch_loopback_deletes_rows_and_records(monkeypatch, fake_docker):
-    deleted: list[str] = []
-
-    class _FakeClient:
+def test_cleanup_scratch_loopback_deletes_rows_and_keeps_reusable_record(monkeypatch, fake_docker):
+    class _NoHTTP:
         def __init__(self, *args, **kwargs):
-            pass
+            raise AssertionError("row cleanup must keep the active workspace record")
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def delete(self, url):
-            deleted.append(url)
-            return httpx.Response(204)
-
-    monkeypatch.setattr(reingest.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(reingest.httpx, "Client", _NoHTTP)
     monkeypatch.setattr(reingest, "_local_clickhouse_container", lambda: "nmp-intake-clickhouse-a1b2c3d4e5f6")
     reingest.cleanup_scratch("http://127.0.0.1:8080", ["scratch-rt-abc12345-ws-a"])
     tables = {cmd[-1].split("FROM intake.")[1].split(" ")[0] for cmd in fake_docker}
     assert tables == {"spans", "annotations", "evaluator_results", "trace_index"}
-    assert len(deleted) == 1 and deleted[0].endswith("/apis/entities/v2/workspaces/scratch-rt-abc12345-ws-a")
 
 
 def test_cleanup_scratch_keeps_workspace_record_when_container_is_ambiguous(monkeypatch, capsys):

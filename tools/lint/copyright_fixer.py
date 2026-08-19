@@ -1,13 +1,6 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# /// script
-# dependencies = [
-#   "typer",
-#   "gitpython",
-# ]
-# ///
 
 
 """
@@ -16,16 +9,14 @@ Copyright header fixer for NeMo-Platform
 Scans source files and adds SPDX copyright headers where missing.
 """
 
+import argparse
 import os
 import re
+import subprocess
+import sys
 from datetime import datetime
 from fnmatch import fnmatch
 from pathlib import Path
-
-import typer
-from git import InvalidGitRepositoryError, Repo
-
-app = typer.Typer(name="copyright-fixer", help="Copyright fixer tool for NeMo-Platform.", no_args_is_help=True)
 
 # --- constants ---
 
@@ -284,6 +275,11 @@ _NON_SPDX_PATTERNS = (
     _LEGACY_SPDX_HASH_RE,
 )
 
+type _IgnorePattern = tuple[bool, str, str, bool]
+_IGNORE_DIR = "dir"
+_IGNORE_PATH = "path"
+_IGNORE_NAME = "name"
+
 
 def _matches_path_filter(relpath: str, patterns: list[str]) -> bool:
     """Return True if *relpath* matches any of the given path patterns.
@@ -308,26 +304,67 @@ def _matches_path_filter(relpath: str, patterns: list[str]) -> bool:
 # --- ignore helpers ---
 
 
-def _get_repo(start: str) -> Repo | None:
-    """Discover the git repository containing *start*."""
+def _git_output(args: list[str], cwd: str) -> str | None:
+    """Run git and return stdout, or None if cwd is not inside a repo."""
     try:
-        return Repo(start, search_parent_directories=True)
-    except InvalidGitRepositoryError:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return None
+    return result.stdout
 
 
-def _load_copyright_excludes(repo_root: str | None) -> list[str]:
+def _get_repo_root(start: str) -> str | None:
+    """Discover the git repository root containing *start*."""
+    output = _git_output(["rev-parse", "--show-toplevel"], start)
+    if output is None:
+        return None
+    return str(Path(output.strip()).resolve())
+
+
+def _has_glob(pattern: str) -> bool:
+    return "*" in pattern or "?" in pattern or "[" in pattern
+
+
+def _prepare_copyright_excludes(patterns: list[str]) -> list[_IgnorePattern]:
+    """Pre-parse .copyrightignore patterns for the per-file hot path."""
+    parsed = []
+    for raw_pat in patterns:
+        negate = raw_pat.startswith("!")
+        pat = raw_pat[1:] if negate else raw_pat
+        if pat.endswith("/"):
+            pattern = pat.rstrip("/")
+            parsed.append((negate, pattern, _IGNORE_DIR, _has_glob(pattern)))
+        elif "/" in pat:
+            parsed.append((negate, pat, _IGNORE_PATH, _has_glob(pat)))
+        else:
+            parsed.append((negate, pat, _IGNORE_NAME, _has_glob(pat)))
+    return parsed
+
+
+def _load_copyright_excludes(repo_root: str | None) -> list[_IgnorePattern]:
     """Load exclude patterns from .copyrightignore at the repo root."""
     if repo_root is None:
         return []
     ignore_path = os.path.join(repo_root, _COPYRIGHT_IGNORE_FILE)
     if not os.path.isfile(ignore_path):
         return []
+    raw_patterns = []
     with open(ignore_path, encoding="utf-8") as fh:
-        return [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+        for line in fh:
+            raw = line.strip()
+            if raw and not raw.startswith("#"):
+                raw_patterns.append(raw)
+    return _prepare_copyright_excludes(raw_patterns)
 
 
-def _pat_matches(relpath: str, p: Path, pat: str) -> bool:
+def _pat_matches(relpath: str, basename: str, pattern: _IgnorePattern) -> bool:
     """Return True if *pat* matches *relpath*.
 
     Pattern semantics (gitignore-like):
@@ -335,17 +372,17 @@ def _pat_matches(relpath: str, p: Path, pat: str) -> bool:
       - Contains ``/`` (no trailing) → fnmatch from repo root.
       - Bare name → fnmatch on the file's basename.
     """
-    if pat.endswith("/"):
-        prefix = pat.rstrip("/")
-        if "*" in prefix or "?" in prefix or "[" in prefix:
-            return fnmatch(relpath, prefix) or fnmatch(relpath, prefix + "/*")
-        return relpath == prefix or relpath.startswith(prefix + "/")
-    if "/" in pat:
-        return fnmatch(relpath, pat)
-    return fnmatch(p.name, pat)
+    _, pat, kind, has_glob = pattern
+    if kind == _IGNORE_DIR:
+        if has_glob:
+            return fnmatch(relpath, pat) or fnmatch(relpath, pat + "/*")
+        return relpath == pat or relpath.startswith(pat + "/")
+    if kind == _IGNORE_PATH:
+        return fnmatch(relpath, pat) if has_glob else relpath == pat
+    return fnmatch(basename, pat) if has_glob else basename == pat
 
 
-def _is_copyright_excluded(relpath: str, patterns: list[str]) -> bool:
+def _is_copyright_excluded(relpath: str, patterns: list[_IgnorePattern]) -> bool:
     """Return True if the file should be excluded per .copyrightignore.
 
     Supports gitignore-style ``!`` negation: a pattern starting with ``!``
@@ -353,11 +390,10 @@ def _is_copyright_excluded(relpath: str, patterns: list[str]) -> bool:
     order — **last match wins**.
     """
     excluded = False
-    p = Path(relpath)
-    for raw_pat in patterns:
-        negate = raw_pat.startswith("!")
-        pat = raw_pat[1:] if negate else raw_pat
-        if _pat_matches(relpath, p, pat):
+    basename = os.path.basename(relpath)
+    for pattern in patterns:
+        if _pat_matches(relpath, basename, pattern):
+            negate = pattern[0]
             excluded = not negate
     return excluded
 
@@ -380,10 +416,12 @@ def _has_correct_spdx_header(head: str) -> bool:
 
 def _has_non_spdx_header(filepath: str) -> bool:
     """Return True if the file has a copyright header that is not the correct SPDX format."""
-    head = _read_head(filepath)
-    if not head:
-        return False
-    return _has_header(head) and not _has_correct_spdx_header(head)
+    return _has_non_spdx_header_head(_read_head(filepath))
+
+
+def _has_non_spdx_header_head(head: str) -> bool:
+    """Return True if *head* has a copyright header that is not the correct SPDX format."""
+    return bool(head) and _has_header(head) and not _has_correct_spdx_header(head)
 
 
 def _read_head(path: str, nbytes: int = 4096) -> str:
@@ -397,20 +435,19 @@ def _read_head(path: str, nbytes: int = 4096) -> str:
 
 def _is_supported_file(path: str) -> bool:
     """Return True if *path* can safely carry a SPDX comment header."""
-    p = Path(path)
-    name = p.name
-    suffix = p.suffix
+    name = os.path.basename(path)
+    suffix = os.path.splitext(name)[1]
     return (
         suffix in _EXTENSIONS
         or name in _SPECIAL_FILENAMES
         or name in _HTML_FILENAMES
         or name.startswith("Dockerfile.")
         or name.endswith(".Dockerfile")
-        or (suffix == "" and _has_shebang(p))
+        or (suffix == "" and _has_shebang(path))
     )
 
 
-def _has_shebang(path: Path) -> bool:
+def _has_shebang(path: str) -> bool:
     """Return True if *path* starts with a shebang."""
     try:
         with open(path, "rb") as fh:
@@ -424,15 +461,16 @@ def _is_explicitly_included(relpath: str, root_relpath: str, include: list[str])
     return _matches_path_filter(relpath, include) or _matches_path_filter(root_relpath, include)
 
 
-def _collect_files_from_dir(root: str, include: list[str] | None = None) -> list[str]:
+def _collect_files_from_dir(root: str, include: list[str] | None = None, repo_root: str | None = None) -> list[str]:
     """Collect tracked files under *root* that can safely carry SPDX headers."""
-    repo = _get_repo(root)
+    root = str(Path(root).resolve())
+    repo_root = repo_root or _get_repo_root(root)
     include = include or []
 
-    if repo is not None:
-        repo_root = str(repo.working_tree_dir)
+    if repo_root is not None:
         copyright_excludes = _load_copyright_excludes(repo_root)
-        raw = repo.git.ls_files("--cached", "-z", "--", root)
+        root_pathspec = os.path.relpath(root, repo_root)
+        raw = _git_output(["ls-files", "--cached", "-z", "--", root_pathspec], repo_root) or ""
         git_files = [f for f in raw.split("\0") if f]
         target_files = []
         for relpath in git_files:
@@ -744,78 +782,41 @@ def _add_header(filepath: str) -> bool:
     return True
 
 
-def _resolve_targets(paths: list[Path], include: list[str] | None = None) -> tuple[list[str], str | None]:
-    """Return (file_list, display_root)."""
-    if len(paths) == 1 and paths[0].is_dir():
-        root = str(paths[0].resolve())
-        return _collect_files_from_dir(root, include=include), root
-
-    files = [str(p.resolve()) for p in paths if p.is_file() and _is_supported_file(str(p.resolve()))]
-    files = _filter_copyright_excluded(files, include=include)
-    return files, None
+def _resolve_repo_root() -> str:
+    """Return the current Git repository root, or the current directory outside Git."""
+    repo_root = _get_repo_root(os.getcwd())
+    if repo_root is not None:
+        return repo_root
+    return str(Path(".").resolve())
 
 
-def _filter_copyright_excluded(files: list[str], include: list[str] | None = None) -> list[str]:
-    """Drop files matched by .copyrightignore, unless explicitly --include'd.
+def _resolve_targets(include: list[str] | None = None) -> tuple[list[str], str]:
+    """Return tracked copyright-check targets for the current repository."""
+    repo_root = _get_repo_root(os.getcwd())
+    root = repo_root if repo_root is not None else str(Path(".").resolve())
+    return _collect_files_from_dir(root, include=include, repo_root=repo_root), root
 
-    Mirrors the exclusion applied by ``_collect_files_from_dir`` for
-    directory scans, but for an explicit file list (e.g. filenames passed
-    by pre-commit).
-    """
-    if not files:
-        return files
 
-    repo = _get_repo(files[0])
-    if repo is None:
-        return files
-
-    repo_root = str(repo.working_tree_dir)
-    copyright_excludes = _load_copyright_excludes(repo_root)
-    if not copyright_excludes:
-        return files
-
-    include = include or []
-    kept = []
-    for filepath in files:
-        relpath = os.path.relpath(filepath, repo_root)
-        if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
-            relpath, relpath, include
-        ):
-            continue
-        kept.append(filepath)
-    return kept
+def _read_heads(files: list[str]) -> dict[str, str]:
+    """Read all file heads once so classification does not repeatedly hit disk."""
+    return {f: _read_head(f) for f in files}
 
 
 # --- CLI ---
 
 
-@app.command()
 def update_license_headers(
-    paths: list[Path] = typer.Argument(
-        default=None,
-        help="Directory to scan or individual files to process. Defaults to current directory.",
-    ),
-    check: bool = typer.Option(False, "--check", help="Check only, don't modify files. Exit 1 if headers are missing."),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", "-n", help="Show files that would be updated, without modifying anything."
-    ),
-    fix: bool = typer.Option(
-        False, "--fix", help="Fix all non-compliant headers (proprietary, legacy, non-standard SPDX)."
-    ),
-    fix_style: bool = typer.Option(
-        False, "--fix-style", help="Fix headers that use the wrong comment style (e.g. # instead of // in TS/JS files)."
-    ),
-    include: list[str] = typer.Option(
-        None, "--include", "-i", help="Only process files under these directories/patterns (relative to root)."
-    ),
-    exclude: list[str] = typer.Option(
-        None, "--exclude", "-e", help="Skip files under these directories/patterns (relative to root)."
-    ),
-) -> None:
+    check: bool = False,
+    dry_run: bool = False,
+    fix: bool = False,
+    fix_style: bool = False,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
+) -> int:
     """Add SPDX copyright headers to files missing them.
 
-    Accepts a single directory (scans recursively) or a list of individual
-    files.  When no argument is provided, scans the current directory.
+    Scans the current Git repository, or the current directory when run outside
+    Git.  The fixer only considers tracked files when run inside a repository.
 
     Use --fix to replace non-compliant headers (proprietary licenses,
     old-style Apache blocks, non-standard SPDX) with the correct SPDX
@@ -826,23 +827,9 @@ def update_license_headers(
 
     Use --include / --exclude to selectively target directories so you
     don't end up with a monster commit. Explicit --include patterns can
-    target files under .copyrightignore-excluded directories::
-
-        # Only process two directories
-        ./script/copyright_fixer.py . --include services/guardrails --include packages/models
-
-        # Process everything except generated SDK code
-        ./script/copyright_fixer.py . --exclude packages/nemo_platform
+    target files under .copyrightignore-excluded directories.
     """
-    if not paths:
-        paths = [Path(".")]
-
-    for p in paths:
-        if not p.exists():
-            typer.echo(f"Error: {p} does not exist", err=True)
-            raise typer.Exit(code=1)
-
-    files, root = _resolve_targets(paths, include=include)
+    files, root = _resolve_targets(include=include)
 
     # Apply --include / --exclude filters (include takes priority over exclude)
     if include or exclude:
@@ -865,37 +852,41 @@ def update_license_headers(
             return os.path.relpath(filepath, root)
         return filepath
 
-    # Classify files by issue type
-    proprietary = [f for f in files if _has_proprietary_license(_read_head(f))]
-    non_spdx = [f for f in files if _has_non_spdx_header(f) and f not in proprietary]
-    missing = [f for f in files if _read_head(f).strip() and not _has_header(_read_head(f))]
+    heads = _read_heads(files)
+
+    # Classify files by issue type. Keep this based on the cached file heads:
+    # the common pre-commit path scans the whole repo, so avoiding repeated
+    # opens matters more than micro-optimizing the regex checks.
+    proprietary = [f for f, head in heads.items() if _has_proprietary_license(head)]
+    non_spdx = [f for f, head in heads.items() if _has_non_spdx_header_head(head) and f not in proprietary]
+    missing = [f for f, head in heads.items() if head.strip() and not _has_header(head)]
 
     if check or dry_run:
         has_issues = False
         if missing:
             has_issues = True
-            typer.echo(f"Found {len(missing)} file(s) missing copyright headers:")
+            _echo(f"Found {len(missing)} file(s) missing copyright headers:")
             for f in missing:
-                typer.echo(f"  - {_rel(f)}")
+                _echo(f"  - {_rel(f)}")
         if proprietary:
             has_issues = True
-            typer.echo(
+            _echo(
                 f"Error: {len(proprietary)} file(s) use disallowed proprietary license — all files must be open source (Apache-2.0):"
             )
             for f in proprietary:
-                typer.echo(f"  ! {_rel(f)}")
+                _echo(f"  ! {_rel(f)}")
         if non_spdx:
             has_issues = True
-            typer.echo(f"Error: {len(non_spdx)} file(s) have non-standard copyright headers (expected SPDX format):")
+            _echo(f"Error: {len(non_spdx)} file(s) have non-standard copyright headers (expected SPDX format):")
             for f in non_spdx:
-                typer.echo(f"  ~ {_rel(f)}")
+                _echo(f"  ~ {_rel(f)}")
         if has_issues:
             if proprietary or non_spdx:
-                typer.echo("  Run with --fix to replace non-compliant headers with correct SPDX format.")
+                _echo("  Run with --fix to replace non-compliant headers with correct SPDX format.")
             if check:
-                raise typer.Exit(code=1)
+                return 1
         else:
-            typer.echo(f"All {len(files)} file(s) have correct copyright headers.")
+            _echo(f"All {len(files)} file(s) have correct copyright headers.")
     else:
         updated = 0
 
@@ -905,39 +896,98 @@ def update_license_headers(
                 for filepath in proprietary + non_spdx:
                     if _fix_non_spdx_header(filepath):
                         updated += 1
-                        typer.echo(f"  ~ {_rel(filepath)} (header replaced with SPDX)")
+                        _echo(f"  ~ {_rel(filepath)} (header replaced with SPDX)")
                     elif filepath in proprietary and _fix_proprietary_license(filepath):
                         updated += 1
-                        typer.echo(f"  ! {_rel(filepath)} (fixed: {_PROPRIETARY_LICENSE} -> {_CORRECT_LICENSE})")
+                        _echo(f"  ! {_rel(filepath)} (fixed: {_PROPRIETARY_LICENSE} -> {_CORRECT_LICENSE})")
             else:
                 if proprietary:
-                    typer.echo(
+                    _echo(
                         f"Error: {len(proprietary)} file(s) use disallowed proprietary license — all files must be open source (Apache-2.0):",
                         err=True,
                     )
                     for f in proprietary:
-                        typer.echo(f"  ! {_rel(f)}", err=True)
+                        _echo(f"  ! {_rel(f)}", err=True)
                 if non_spdx:
-                    typer.echo(
+                    _echo(
                         f"Error: {len(non_spdx)} file(s) have non-standard copyright headers (expected SPDX format):",
                         err=True,
                     )
                     for f in non_spdx:
-                        typer.echo(f"  ~ {_rel(f)}", err=True)
-                typer.echo("  Run with --fix to replace non-compliant headers with correct SPDX format.", err=True)
-                raise typer.Exit(code=1)
+                        _echo(f"  ~ {_rel(f)}", err=True)
+                _echo("  Run with --fix to replace non-compliant headers with correct SPDX format.", err=True)
+                return 1
 
-        for filepath in files:
+        style_candidates = [f for f, head in heads.items() if _has_header(head)] if fix_style else []
+        for filepath in style_candidates:
             if fix_style and _needs_style_fix(filepath) and _fix_header_style(filepath):
                 updated += 1
-                typer.echo(f"  ~ {_rel(filepath)}")
-            elif _add_header(filepath):
+                _echo(f"  ~ {_rel(filepath)}")
+
+        for filepath in missing:
+            if _add_header(filepath):
                 updated += 1
-                typer.echo(f"  + {_rel(filepath)}")
-        typer.echo(f"  Processed {len(files)} files, updated {updated}")
+                _echo(f"  + {_rel(filepath)}")
+        _echo(f"  Processed {len(files)} files, updated {updated}")
         if updated:
-            typer.echo(f"Run 'git diff' to review {updated} changed file(s).")
+            _echo(f"Run 'git diff' to review {updated} changed file(s).")
+
+    return 0
+
+
+def _echo(message: str = "", *, err: bool = False) -> None:
+    print(message, file=sys.stderr if err else sys.stdout)
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="copyright-fixer",
+        description="Scan tracked source files and add SPDX copyright headers where missing.",
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="Check only, don't modify files. Exit 1 if headers are missing."
+    )
+    parser.add_argument(
+        "--dry-run", "-n", action="store_true", help="Show files that would be updated without modifying anything."
+    )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Fix all non-compliant headers: proprietary, legacy, and non-standard SPDX.",
+    )
+    parser.add_argument(
+        "--fix-style",
+        action="store_true",
+        help="Fix headers that use the wrong comment style, e.g. # instead of // in TS/JS files.",
+    )
+    parser.add_argument(
+        "--include",
+        "-i",
+        action="append",
+        default=[],
+        help="Only process files under these directories/patterns relative to the repo root. Can be repeated.",
+    )
+    parser.add_argument(
+        "--exclude",
+        "-e",
+        action="append",
+        default=[],
+        help="Skip files under these directories/patterns relative to the repo root. Can be repeated.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    return update_license_headers(
+        check=args.check,
+        dry_run=args.dry_run,
+        fix=args.fix,
+        fix_style=args.fix_style,
+        include=args.include,
+        exclude=args.exclude,
+    )
 
 
 if __name__ == "__main__":
-    app()
+    raise SystemExit(main())
