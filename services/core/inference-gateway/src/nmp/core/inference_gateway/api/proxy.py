@@ -102,17 +102,15 @@ RESPONSE_HEADERS_TO_DROP = frozenset(
     }
 )
 # On the error path, FastAPI builds a brand-new JSON body for the HTTPException; it does
-# not reuse the upstream response body. Framing headers describe *that* upstream body, not
-# the one FastAPI is about to generate, so forwarding them verbatim would be wrong: Starlette
-# will not recompute Content-Length if one is already present in the headers we pass in, so a
-# stale value here would misdescribe the actual response sent to the client.
-ERROR_RESPONSE_HEADERS_TO_DROP = RESPONSE_HEADERS_TO_DROP | {
-    "content-length",
-    "content-type",
-    "content-encoding",
-    "transfer-encoding",
-    "connection",
-}
+# not reuse the upstream response body, so most upstream headers either describe a body
+# we're not forwarding (Content-Length, Content-Type, ...) or are hop-by-hop and shouldn't
+# cross this boundary at all. Rather than deny-listing every such header (and needing to
+# remember to add the next one), only forward headers a caller actually needs.
+ERROR_RESPONSE_HEADERS_TO_FORWARD = frozenset(
+    {
+        "retry-after",  # read by the evaluator's resilience layer to set its retry backoff floor
+    }
+)
 
 
 def normalize_proxy_url(host_url: str, trailing_uri: str) -> str:
@@ -317,20 +315,17 @@ def _filter_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDict[str]
 def _filter_error_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDict[str]:
     """Filter response headers for forwarding onto a synthesized error body.
 
-    Unlike :func:`_filter_response_headers`, this also drops headers that describe
-    the framing of the upstream response body (Content-Length, Content-Type, etc.),
-    since the error path raises a new HTTPException with its own body rather than
-    forwarding the upstream body byte-for-byte.
-
-    Also honors the Connection header's own contents: per RFC 9110 section 7.6.1,
-    a Connection header can name additional hop-by-hop headers that must not be
-    forwarded past this hop, so those named headers are dropped too rather than
-    just the literal "Connection" header itself.
+    Unlike :func:`_filter_response_headers`, which drops a known-bad set and
+    forwards everything else, this only forwards headers on
+    :data:`ERROR_RESPONSE_HEADERS_TO_FORWARD`. The error path raises a new
+    HTTPException with its own body rather than forwarding the upstream body
+    byte-for-byte, so most upstream headers (framing headers describing that
+    body, hop-by-hop headers, anything backend-internal) should not cross this
+    boundary at all; an allowlist means a new upstream header type can never
+    leak through by default the way a deny-list would require remembering to
+    block it.
     """
-    to_drop = set(ERROR_RESPONSE_HEADERS_TO_DROP)
-    for connection_value in headers.getall("connection", []):
-        to_drop.update(token.strip().lower() for token in connection_value.split(",") if token.strip())
-    return CIMultiDict((k, v) for k, v in headers.items() if k.lower() not in to_drop)
+    return CIMultiDict((k, v) for k, v in headers.items() if k.lower() in ERROR_RESPONSE_HEADERS_TO_FORWARD)
 
 
 def _close_response(response: aiohttp.ClientResponse | None):
