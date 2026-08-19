@@ -21,9 +21,9 @@ from nemo_agents_plugin.entities import (
     Agent,
     AgentDeployment,
     agent_config_file_ref,
-    agent_spec_file_ref,
-    agent_spec_fileset_name,
-    agent_spec_local_path,
+    ethos_file_ref,
+    ethos_fileset_name,
+    ethos_local_path,
 )
 from nemo_agents_plugin.schema import (
     CreateAgentRequest,
@@ -190,20 +190,20 @@ class TestCreateAgentRequest:
 
 
 # ---------------------------------------------------------------------------
-# Canonical spec-location helpers
+# Canonical Ethos-location helpers
 # ---------------------------------------------------------------------------
 
 
-class TestSpecLocationConvention:
-    def test_spec_location_convention(self) -> None:
-        assert agent_spec_fileset_name("checkout-bot") == "checkout-bot-spec"
-        ref = agent_spec_file_ref("default", "checkout-bot")
-        assert str(ref) == "default/checkout-bot-spec#AGENT-SPEC.md"
-        assert agent_spec_local_path("checkout-bot").as_posix() == "agents/checkout-bot-spec/AGENT-SPEC.md"
+class TestEthosLocationConvention:
+    def test_ethos_location_convention(self) -> None:
+        assert ethos_fileset_name("checkout-bot") == "checkout-bot-ethos"
+        ref = ethos_file_ref("default", "checkout-bot")
+        assert str(ref) == "default/checkout-bot-ethos#ETHOS.md"
+        assert ethos_local_path("checkout-bot").as_posix() == "agents/checkout-bot-ethos/ETHOS.md"
 
     def test_config_file_ref_uses_canonical_agent_yaml(self) -> None:
         ref = agent_config_file_ref("default", "checkout-bot")
-        assert str(ref) == "default/checkout-bot-spec#agent.yaml"
+        assert str(ref) == "default/checkout-bot-ethos#agent.yaml"
 
 
 # ---------------------------------------------------------------------------

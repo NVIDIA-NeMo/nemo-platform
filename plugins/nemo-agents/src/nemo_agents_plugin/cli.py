@@ -63,11 +63,11 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
-    MAX_AGENT_SPEC_STAGED_BYTES,
-    MAX_AGENT_SPEC_STAGED_FILES,
+    MAX_ETHOS_STAGED_BYTES,
+    MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
-    agent_spec_fileset_name,
+    ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
@@ -788,7 +788,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             try:
-                _upload_agent_spec_fileset(
+                _upload_ethos_fileset(
                     agent_name=name,
                     workspace=workspace,
                     agent_root=agent_config.parent,
@@ -796,7 +796,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
                 )
             except Exception as exc:
                 typer.echo(
-                    f"Error: failed to upload agent spec fileset for {name!r}: {exc}",
+                    f"Error: failed to upload Ethos fileset for {name!r}: {exc}",
                     err=True,
                 )
                 try:
@@ -1605,28 +1605,28 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
             continue
         file_count += 1
         total_bytes += path.stat().st_size
-        if file_count > MAX_AGENT_SPEC_STAGED_FILES:
+        if file_count > MAX_ETHOS_STAGED_FILES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} holds more than "
-                f"{MAX_AGENT_SPEC_STAGED_FILES} files; point --agent-config at a "
+                f"{MAX_ETHOS_STAGED_FILES} files; point --agent-config at a "
                 "directory containing only the agent's own artifacts"
             )
-        if total_bytes > MAX_AGENT_SPEC_STAGED_BYTES:
+        if total_bytes > MAX_ETHOS_STAGED_BYTES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} exceeds the "
-                f"{MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery; "
+                f"{MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery; "
                 "point --agent-config at a directory containing only the agent's own artifacts"
             )
 
 
-def _upload_agent_spec_fileset(
+def _upload_ethos_fileset(
     *,
     agent_name: str,
     workspace: str,
     agent_root: Path,
     base_url: str,
 ) -> None:
-    """Upload *agent_root* into the conventional ``{agent}-spec`` fileset.
+    """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
     Agent YAML must live in a dedicated agent root so sibling artifacts
@@ -1637,17 +1637,17 @@ def _upload_agent_spec_fileset(
     _check_agent_root_bounds(agent_root)
     upload_to_fileset(
         agent_root,
-        fileset=agent_spec_fileset_name(agent_name),
+        fileset=ethos_fileset_name(agent_name),
         workspace=workspace,
         sdk=_platform_sdk(base_url),
     )
 
 
 def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:
-    """Delete the agent entity, leaving the ``{agent}-spec`` fileset in place.
+    """Delete the agent entity, leaving the ``{agent}-ethos`` fileset in place.
 
     The fileset outlives the agent on purpose: it is the canonical home of
-    ``AGENT-SPEC.md`` (see ``agent_spec_file_ref``), which ``nemo-spec`` writes
+    ``ETHOS.md`` (see ``ethos_file_ref``), which ``nemo-spec`` writes
     before the agent exists and ``nemo-build-agent`` reads on every rebuild.
     Deleting the fileset here would destroy that durable contract, so the
     executable artifacts it also carries are left behind instead.

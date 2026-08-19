@@ -8,7 +8,7 @@ Verifies:
 - Abort on user decline
 - ``--yes`` / ``-y`` skips the prompt
 - ``--all`` works as an alias for ``--agent`` on ``undeploy``
-- Agent delete leaves the durable ``{agent}-spec`` fileset in place
+- Agent delete leaves the durable ``{agent}-ethos`` fileset in place
 """
 
 from __future__ import annotations
@@ -79,8 +79,8 @@ class TestDeleteConfirmation:
         mock_delete.assert_called_once()
         assert "deleted" in result.output.lower()
 
-    def test_delete_removes_agent_but_preserves_spec_fileset(self, app) -> None:
-        """The ``{agent}-spec`` fileset is durable: it holds ``AGENT-SPEC.md``."""
+    def test_delete_removes_agent_but_preserves_ethos_fileset(self, app) -> None:
+        """The ``{agent}-ethos`` fileset is durable: it holds ``ETHOS.md``."""
         methods: list[str] = []
 
         def handler(req: httpx.Request) -> httpx.Response:

@@ -2341,7 +2341,7 @@ components:
       title: Agent
       description: "An agent definition \u2014 stores agent config and metadata.\n\
         \nEntity type: ``agent``\nPrimary lookup: by ``name`` within a ``workspace``.\n\
-        \nThe agent's spec files live at the locations returned by\n:func:`agent_spec_file_ref`\
+        \nThe agent's Ethos files live at the locations returned by\n:func:`ethos_file_ref`\
         \ and :func:`agent_config_file_ref` \u2014 they\nare **not** stored on the\
         \ entity because the paths are fully derivable\nfrom ``(workspace, name)``."
     AgentDeployment:
