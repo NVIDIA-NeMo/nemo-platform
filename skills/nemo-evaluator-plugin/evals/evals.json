@@ -1,16 +1,21 @@
-[
-  {
-    "id": "nemo-evaluator-plugin-001",
-    "question": "I need help with the nemo-evaluator-plugin. How do I run an inline exact-match evaluation using the nemo CLI?",
-    "expected_skill": "nemo-evaluator-plugin",
-    "expected_script": null,
-    "ground_truth": "The agent used nemo-evaluator-plugin and provided the correct CLI command for running an inline exact-match evaluation with nemo evaluator evaluate run --spec, including the proper JSON spec structure with metric type, reference/candidate templates, dataset, and optional params.",
-    "expected_behavior": [
-      "The agent read the nemo-evaluator-plugin SKILL.md before responding",
-      "The agent provided the exact CLI command syntax for nemo evaluator evaluate run --spec with the exact-match metric configuration",
-      "The agent included the JSON spec structure showing metric type, reference template, candidate template, and dataset fields",
-      "The agent mentioned activating the Python virtual environment as a prerequisite",
-      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
-    ]
-  }
-]
+{
+  "skill_name": "nemo-evaluator-plugin",
+  "evals": [
+    {
+      "id": "nemo-evaluator-plugin-001",
+      "prompt": "Use the nemo-evaluator-plugin skill and the running NeMo Platform to submit the bundled two-row offline exact-match evaluation. Wait for the job to finish, retrieve its aggregate scores, and report the job name, terminal status, metric name, and mean. Do not use the standalone nemo evaluator evaluate run path.",
+      "expected_skill": "nemo-evaluator-plugin",
+      "expected_script": null,
+      "expected_output": "The agent read nemo-evaluator-plugin, resolved its bundled assets/specs/exact_match_metric.json, submitted it to the running platform with nemo evaluator evaluate submit --spec-file, retained the returned job name, waited for the job to reach completed, downloaded the aggregate-scores result, and reported exact-match.exact-match with a mean of 0.5.",
+      "assertions": [
+        "The agent read the nemo-evaluator-plugin SKILL.md before responding",
+        "The agent resolved and used the bundled assets/specs/exact_match_metric.json two-row offline evaluation spec",
+        "The agent submitted the evaluation to the running platform with nemo evaluator evaluate submit --spec-file and did not use nemo evaluator evaluate run",
+        "The agent retained the returned platform job name and waited until nemo jobs get-status reported the terminal completed status",
+        "The agent listed or downloaded the aggregate-scores result and reported the exact-match.exact-match mean as 0.5",
+        "The agent reported observable evidence including the job name, completed status, metric name, and mean rather than inventing a result",
+        "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
+      ]
+    }
+  ]
+}

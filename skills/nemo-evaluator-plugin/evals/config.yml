@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+schema_version: 1
+harbor:
+  task_source: native_harbor
+  custom_dockerfile_mode: preserve
+  base_image_mode: disabled
+skill_workspace:
+  mode: isolated
+grading:
+  mode: default

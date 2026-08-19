@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+readonly NMP_EVAL_BASE_URL="${NMP_BASE_URL:-http://127.0.0.1:8080}"
+readonly NMP_EVAL_DATA_DIR="${NMP_DATA_DIR:-/workspace/.nemo}"
+readonly NMP_EVAL_CONFIG_PATH="${NMP_CONFIG_FILE_PATH:-/etc/nmp/eval.yaml}"
+readonly NMP_EVAL_LOG_PATH="${NMP_EVAL_DATA_DIR}/platform.log"
+readonly NMP_EVAL_PID_PATH="${NMP_EVAL_DATA_DIR}/platform.pid"
+readonly NMP_EVAL_STARTUP_TIMEOUT_SECONDS="${NMP_EVAL_STARTUP_TIMEOUT_SECONDS:-240}"
+
+export NMP_AUTH_ENABLED=false
+export NMP_BASE_URL="${NMP_EVAL_BASE_URL}"
+export NMP_CONFIG_FILE_PATH="${NMP_EVAL_CONFIG_PATH}"
+export NMP_DATA_DIR="${NMP_EVAL_DATA_DIR}"
+export PATH="/app/.venv/bin:${PATH}"
+
+mkdir -p "${NMP_EVAL_DATA_DIR}/files" "${NMP_EVAL_DATA_DIR}/subprocess-jobs"
+
+profile_is_ready() {
+    curl --fail --silent --connect-timeout 2 --max-time 10 \
+        "${NMP_EVAL_BASE_URL%/}/apis/jobs/v2/execution-profiles" \
+        | jq --exit-status 'any(.[]; .provider == "subprocess" and .profile == "default")' >/dev/null
+}
+
+platform_is_ready() {
+    curl --fail --silent --connect-timeout 2 --max-time 10 \
+        "${NMP_EVAL_BASE_URL%/}/health/ready" >/dev/null \
+        && profile_is_ready
+}
+
+platform_pid() {
+    if [[ -s "${NMP_EVAL_PID_PATH}" ]]; then
+        tr -d '[:space:]' <"${NMP_EVAL_PID_PATH}"
+    fi
+}
+
+platform_is_running() {
+    local pid
+    pid="$(platform_pid)"
+    [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null
+}
+
+print_failure_log() {
+    if [[ -f "${NMP_EVAL_LOG_PATH}" ]]; then
+        echo "NeMo Platform startup log (last 200 lines):" >&2
+        tail -n 200 "${NMP_EVAL_LOG_PATH}" >&2
+    fi
+}
+
+if platform_is_ready; then
+    exit 0
+fi
+
+if ! platform_is_running; then
+    rm -f "${NMP_EVAL_PID_PATH}"
+    nohup /app/.venv/bin/nemo services run \
+        --services entities,jobs,files,secrets,evaluator \
+        --controllers jobs \
+        --config "${NMP_EVAL_CONFIG_PATH}" \
+        --host 127.0.0.1 \
+        --port 8080 \
+        >"${NMP_EVAL_LOG_PATH}" 2>&1 </dev/null &
+    echo "$!" >"${NMP_EVAL_PID_PATH}"
+fi
+
+readonly startup_deadline=$((SECONDS + NMP_EVAL_STARTUP_TIMEOUT_SECONDS))
+while ((SECONDS < startup_deadline)); do
+    if platform_is_ready; then
+        exit 0
+    fi
+    if ! platform_is_running; then
+        echo "NeMo Platform exited before becoming ready." >&2
+        print_failure_log
+        exit 1
+    fi
+    sleep 2
+done
+
+echo "NeMo Platform did not become ready within ${NMP_EVAL_STARTUP_TIMEOUT_SECONDS} seconds." >&2
+print_failure_log
+exit 1

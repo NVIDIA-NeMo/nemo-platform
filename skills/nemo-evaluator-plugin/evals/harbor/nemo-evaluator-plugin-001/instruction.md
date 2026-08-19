@@ -1,0 +1,1 @@
+Use the nemo-evaluator-plugin skill and the running NeMo Platform to submit the bundled two-row offline exact-match evaluation. Wait for the job to finish, retrieve its aggregate scores, and report the job name, terminal status, metric name, and mean. Do not use the standalone nemo evaluator evaluate run path.

@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+schema_version = "1.3"
+
+[task]
+name = "nvidia/nemo-evaluator-plugin-001"
+description = "Submit an offline exact-match evaluation to a live NeMo Platform."
+
+[agent]
+timeout_sec = 300.0
+
+[verifier]
+timeout_sec = 180.0
+
+[environment]
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+network_mode = "public"
+skills_dir = "/workspace/skills"
+build_timeout_sec = 2400.0
+
+[environment.env]
+NMP_AUTH_ENABLED = "false"
+NMP_BASE_URL = "http://127.0.0.1:8080"
+NMP_CONFIG_FILE_PATH = "/etc/nmp/eval.yaml"
+NMP_DATA_DIR = "/workspace/.nemo"
+NMP_EVAL_STARTUP_TIMEOUT_SECONDS = "240"
+
+[environment.healthcheck]
+command = "/usr/local/bin/nmp-eval-bootstrap"
+interval_sec = 5.0
+timeout_sec = 245.0
+retries = 1
