@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from enum import Enum
 
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from nmp.rl.app.constants import DEFAULT_OUTPUT_MODEL_PATH, DEFAULT_SEED, DEFAULT_TRAINING_OUTPUT_PATH
 from nmp.rl.entities.values import CheckpointFormat, FinetuningType, Precision, TrainingType
 from pydantic import BaseModel, Field
@@ -95,6 +96,7 @@ class TrainingStepConfig(BaseModel):
         val_check_interval: float | None = None
         val_at_end: bool = True
         keep_top_k: int = 1
+        progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
 
     class BatchConfig(BaseModel):
         global_batch_size: int = Field(default=32, gt=0)

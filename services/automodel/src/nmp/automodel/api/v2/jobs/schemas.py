@@ -12,6 +12,7 @@ from nmp.common.entities.constants import (
     MAX_LENGTH_255,
     REGEX_WORD_CHARACTER_DOT_DASH,
 )
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from pydantic import AfterValidator, BaseModel, ConfigDict, Discriminator, Field, model_validator
 
 # Important!!! Do not import Pydantic models from this file into tasks.
@@ -210,14 +211,18 @@ class _TrainingBase(BaseModel):
         gt=0,
         description="Max training steps. Overrides epochs if set.",
     )
-    log_every_n_steps: Optional[int] = Field(
-        default=None,
-        description="Logging frequency in steps. Controls how often training metrics are logged.",
-    )
     val_check_interval: Optional[float] = Field(
         default=None,
         description="Validation interval. Float <= 1.0 is fraction of epoch; > 1.0 is step count.",
     )
+    # `log_every_n_steps` used to sit here, described as "Logging frequency in steps.
+    # Controls how often training metrics are logged." It controlled nothing: no
+    # code read it, it never reached the recipe config, and it was absent from the
+    # submitter-facing plugin schema and from every generated spec, so no request
+    # could set it in the first place. `progress_reporting` below is the knob it
+    # was reaching for. Removing it is invisible -- this model ignores extras, so a
+    # stored spec that still carries the key parses exactly as it did before.
+    progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
 
     # --- Batch ---
     batch_size: int = Field(

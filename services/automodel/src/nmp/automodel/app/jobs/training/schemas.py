@@ -11,6 +11,7 @@ from nmp.automodel.app.constants import (
     DEFAULT_TRAINING_OUTPUT_PATH,
 )
 from nmp.automodel.entities.values import CheckpointFormat, FinetuningType, Precision, TrainingType
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from pydantic import BaseModel, Field
 
 
@@ -177,6 +178,7 @@ class TrainingStepConfig(BaseModel):
         epochs: int = 1
         max_steps: Optional[int] = None
         val_check_interval: Optional[float] = None
+        progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
 
     class BatchConfig(BaseModel):
         global_batch_size: int = Field(default=32, gt=0)

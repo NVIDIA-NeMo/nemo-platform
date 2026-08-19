@@ -6,7 +6,7 @@ description: API component of NeMo Platform
 ---
 ## NeMo Platform API Container
 
-This container image provides a REST API for NeMo Platform.
+This container image provides the NeMo Platform REST API for inference, models, files, jobs, evaluations, guardrails, and observability. Use it to develop and operate AI agents through the NeMo Platform CLI, Python SDK, or NeMo Studio. It is a CPU container that supports local Docker use and self-managed Kubernetes deployments; see the [NeMo Platform support matrix](https://docs.nvidia.com/nemo-platform/documentation/reference/support-matrix) for supported hosts and resource requirements.
 
 ### Resources
 

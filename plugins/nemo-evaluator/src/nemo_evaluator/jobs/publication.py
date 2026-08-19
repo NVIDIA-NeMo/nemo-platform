@@ -19,7 +19,8 @@ is what Studio needs to get evaluation runs into Experiments.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import time
+from datetime import UTC, datetime
 
 from nemo_evaluator.intake.publish import PublishError, PublishReport, publish_to_intake
 from nemo_evaluator.intake.row_adapter import RowIdentityError, row_result_to_agent_eval_result
@@ -33,10 +34,17 @@ from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationRe
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import NeMoPlatformError, NotFoundError
+from nemo_platform.types.evaluations import EvaluationResponse
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
+
+#: Evaluation metadata keys carrying how long the run took and how long publishing it took, both as
+#: string-encoded seconds (the API takes ``dict[str, str]``). Two keys rather than one ``duration``
+#: because a reader cannot tell which of the two a single key means.
+EVAL_DURATION_KEY = "eval_duration_sec"
+PUBLISH_DURATION_KEY = "publish_duration_sec"
 
 
 class PublicationOutcome(BaseModel):
@@ -99,6 +107,40 @@ def _failed(evaluation_id: str, error: str, report: PublishReport | None) -> Pub
     )
 
 
+def _eval_duration_sec(result: AgentEvalResult) -> float | None:
+    """Wall-clock seconds the run itself took, or ``None`` when it cannot be known."""
+    if result.metadata.duration_sec is not None:
+        return result.metadata.duration_sec
+    if result.metadata.started_at is not None:
+        # A row-eval result carries only a start time (see ``intake.row_adapter``), so its length is
+        # measured here instead. Call this before publishing, not after, or the run duration swallows
+        # the publish it is meant to be reported alongside. It still slightly overcounts: it covers
+        # persisting the bundle between the run finishing and this call.
+        return (datetime.now(UTC) - result.metadata.started_at).total_seconds()
+    return None
+
+
+async def _record_durations(
+    platform: AsyncNeMoPlatform,
+    *,
+    evaluation: EvaluationResponse,
+    spec: IntakePublicationSpec,
+    workspace: str,
+    eval_duration_sec: float | None,
+    publish_duration_sec: float,
+) -> None:
+    """Stamp the two durations onto the Evaluation's metadata.
+
+    PATCH replaces the metadata dict wholesale, so the merge with what is already there is
+    mandatory — a blind write would drop producer keys such as ``eval_config_fileset``.
+    """
+    metadata = dict(evaluation.metadata or {})
+    if eval_duration_sec is not None:
+        metadata[EVAL_DURATION_KEY] = f"{eval_duration_sec:.1f}"
+    metadata[PUBLISH_DURATION_KEY] = f"{publish_duration_sec:.1f}"
+    await platform.evaluations.patch(spec.evaluation_id, workspace=workspace, metadata=metadata)
+
+
 async def _publish(
     result: AgentEvalResult,
     *,
@@ -108,13 +150,17 @@ async def _publish(
     agent_name: str,
     model_name: str | None,
 ) -> PublishReport:
-    """Check the Evaluation exists, then publish under it."""
+    """Check the Evaluation exists, publish under it, then record how long both took."""
+    # Measured before the publish so the two durations stay disjoint — for a result that carries only
+    # a start time, reading this afterwards would fold the whole publish into the run's own length.
+    eval_duration_sec = _eval_duration_sec(result)
     # The Evaluation must pre-exist — ATIF ingest rejects an unknown one per trial, so without this
     # a typo would surface as N failed writes after a partial publish instead of one clear stop.
     # This reads the entity store, so it says nothing about whether Intake's span storage is up;
     # that surfaces on the first ingest below, and re-publish is idempotent, so it needs no probe.
-    await platform.evaluations.retrieve(spec.evaluation_id, workspace=workspace)
-    return await publish_to_intake(
+    evaluation = await platform.evaluations.retrieve(spec.evaluation_id, workspace=workspace)
+    publish_started = time.monotonic()
+    report = await publish_to_intake(
         result,
         platform=platform,
         experiment_id=spec.evaluation_id,
@@ -123,6 +169,26 @@ async def _publish(
         agent_version=spec.agent_version,
         model_name=model_name,
     )
+    publish_duration_sec = time.monotonic() - publish_started
+    try:
+        await _record_durations(
+            platform,
+            evaluation=evaluation,
+            spec=spec,
+            workspace=workspace,
+            eval_duration_sec=eval_duration_sec,
+            publish_duration_sec=publish_duration_sec,
+        )
+    except Exception:
+        # The durations are informational, and the publish already succeeded. Every caller-side
+        # handler turns an exception here into a failed job (and a raise when `required`), so letting
+        # one escape would report a successful publish as a failure.
+        logger.warning(
+            "Published to Intake but could not record durations on evaluation %r",
+            spec.evaluation_id,
+            exc_info=True,
+        )
+    return report
 
 
 def publish_agent_eval_result(

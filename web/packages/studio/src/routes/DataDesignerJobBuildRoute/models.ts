@@ -131,28 +131,40 @@ export const firstAvailableModel = (
 };
 
 /**
- * Resolves the model + provider to auto-fill for a template-seeded model. Prefers a model
- * matching `preferred` (by full URN, or by name so it resolves across workspaces —
- * the URN's workspace prefix varies per user) when it exists in the workspace, otherwise
- * falls back to the first available model. Returns null when no models are available.
+ * The workspace model matching `preferred` — by full URN, or by name so it resolves across
+ * workspaces, since the URN's workspace prefix varies per user. Null when the workspace does not
+ * serve it, which is what lets the template path refuse to substitute.
+ */
+export const findWorkspaceModel = (
+  modelGroups: ModelWorkspaceGroup[],
+  preferred: string
+): { model: string; provider: string } | null => {
+  for (const group of modelGroups) {
+    for (const entity of group.models) {
+      const urn = getURNFromNamedEntityRef(entity);
+      const baseName = entity.name?.split('@')[0];
+      if (urn && (urn === preferred || entity.name === preferred || baseName === preferred)) {
+        return { model: urn, provider: entity.model_providers?.[0] ?? '' };
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * Resolves a model + provider for a config that names `preferred` loosely — the AI-draft path,
+ * where the LLM invents plausible identifiers the workspace has never heard of. Substitutes the
+ * first available model when the named one is absent; callers surface that as a warning.
+ *
+ * The template path deliberately does NOT use this: a template names a model on purpose, so an
+ * absent one is an error to show rather than a substitution to make silently.
  */
 export const resolveTemplateModel = (
   modelGroups: ModelWorkspaceGroup[],
   preferred?: string
-): { model: string; provider: string } | null => {
-  if (preferred) {
-    for (const group of modelGroups) {
-      for (const entity of group.models) {
-        const urn = getURNFromNamedEntityRef(entity);
-        const baseName = entity.name?.split('@')[0];
-        if (urn && (urn === preferred || entity.name === preferred || baseName === preferred)) {
-          return { model: urn, provider: entity.model_providers?.[0] ?? '' };
-        }
-      }
-    }
-  }
-  return firstAvailableModel(modelGroups);
-};
+): { model: string; provider: string } | null =>
+  (preferred ? findWorkspaceModel(modelGroups, preferred) : null) ??
+  firstAvailableModel(modelGroups);
 
 /**
  * Resolves a template's model specs into {@link BuilderModel}s, numbering ids from

@@ -395,10 +395,6 @@ nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
 nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
-# Not published to PyPI yet, so this pins an immutable public commit. It is a commit
-# rather than a tag because the callable `@strategy(llm=...)` support this plugin now
-# depends on landed after v0.0.8; move back to a tag once one ships that contains it.
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }
 
 # Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
 # FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every

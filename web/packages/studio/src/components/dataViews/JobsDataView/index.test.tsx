@@ -15,6 +15,7 @@ import { server } from '@studio/mocks/node';
 import { getWorkspaceJobsRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import { fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 vi.hoisted(() => {
@@ -125,6 +126,71 @@ describe('JobsDataView', () => {
     fireEvent.click(await screen.findByTestId('column-filter-source'));
 
     expect(await screen.findByRole('option', { name: 'nemo-agents-plugin' })).toBeInTheDocument();
+  });
+
+  describe('source tag', () => {
+    it('renders the source value as a selectable, focusable tag button', async () => {
+      server.use(
+        http.get(JOBS_URL, () =>
+          HttpResponse.json(makeJobsPage([makeJob({ source: 'evaluator-metrics' })]))
+        )
+      );
+
+      renderComponent();
+
+      const tag = await screen.findByRole('button', { name: 'Evaluator' });
+      expect(tag.tagName).toBe('BUTTON');
+
+      tag.focus();
+      expect(tag).toHaveFocus();
+    });
+
+    it('applies the source filter when the source tag is clicked', async () => {
+      const requestUrls: string[] = [];
+      server.use(
+        http.get(JOBS_URL, ({ request }) => {
+          requestUrls.push(request.url);
+          return HttpResponse.json(makeJobsPage([makeJob({ source: 'evaluator-metrics' })]));
+        })
+      );
+      const user = userEvent.setup();
+
+      renderComponent();
+
+      await user.click(await screen.findByRole('button', { name: 'Evaluator' }));
+
+      await waitFor(() => {
+        const matched = requestUrls.find((u) => new URL(u).searchParams.has('filter[source]'));
+        expect(matched).toBeDefined();
+      });
+      const matchedUrl = requestUrls.find((u) => new URL(u).searchParams.has('filter[source]'))!;
+      expect(new URL(matchedUrl).searchParams.get('filter[source]')).toBe('evaluator-metrics');
+    });
+
+    it('applies the source filter when the source tag is activated via keyboard', async () => {
+      const requestUrls: string[] = [];
+      server.use(
+        http.get(JOBS_URL, ({ request }) => {
+          requestUrls.push(request.url);
+          return HttpResponse.json(makeJobsPage([makeJob({ source: 'evaluator-metrics' })]));
+        })
+      );
+      const user = userEvent.setup();
+
+      renderComponent();
+
+      const tag = await screen.findByRole('button', { name: 'Evaluator' });
+      tag.focus();
+      expect(tag).toHaveFocus();
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        const matched = requestUrls.find((u) => new URL(u).searchParams.has('filter[source]'));
+        expect(matched).toBeDefined();
+      });
+      const matchedUrl = requestUrls.find((u) => new URL(u).searchParams.has('filter[source]'))!;
+      expect(new URL(matchedUrl).searchParams.get('filter[source]')).toBe('evaluator-metrics');
+    });
   });
 
   it('shows error panel when API returns an error', async () => {

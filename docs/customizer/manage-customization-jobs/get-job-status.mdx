@@ -13,8 +13,12 @@ Get detailed execution status for a customization job, including step-by-step pr
 This endpoint provides granular execution details including:
 
 - **Step-level status**: `model-and-dataset-download` → `training` → `model-upload` → `model-entity-creation`
-- **Training metrics**: `step`, `epoch`, `train_loss`, `lr` (learning rate), `grad_norm`, `val_loss`
+- **Training progress**: `step`, `epoch`, `max_steps`, `num_epochs`, `percentage_done`
+- **Latest metric values**: one field per metric, named `<phase>_<metric>` — `train_loss`, `train_lr`, `train_grad_norm`, `val_loss`, and whatever else your backend reports
+- **Metric history**: `metrics`, holding each metric as a series of `{step, epoch, value}` points
 - **Progress tracking**: `downloaded_files`, `uploaded_bytes`, `progress_pct`
+
+Which metrics appear depends on the backend and the algorithm. See [Checking Your Customization Job Metrics](/documentation/customizer-reference/tutorials/metrics) for how the names are formed.
 
 To list jobs or get job definitions (model entity, hyperparameters, spec), use [List Active Jobs](/documentation/customizer-reference/manage-customization-jobs/list-active-jobs) instead.
 
@@ -149,9 +153,25 @@ curl -X GET \
              "num_epochs": 2,
              "step": 8,
              "epoch": 1,
+             "percentage_done": 8,
              "train_loss": 2.8918895721435547,
-             "lr": 4.9101714686276044e-05,
-             "grad_norm": 26.0
+             "train_lr": 4.9101714686276044e-05,
+             "train_grad_norm": 26.0,
+             "metrics": {
+               "train_loss": [
+                 { "step": 4, "epoch": 1, "value": 3.2087905406951904 },
+                 { "step": 8, "epoch": 1, "value": 2.8918895721435547 }
+               ],
+               "val_loss": [],
+               "train_lr": [
+                 { "step": 4, "epoch": 1, "value": 4.9550857343138022e-05 },
+                 { "step": 8, "epoch": 1, "value": 4.9101714686276044e-05 }
+               ],
+               "train_grad_norm": [
+                 { "step": 4, "epoch": 1, "value": 31.5 },
+                 { "step": 8, "epoch": 1, "value": 26.0 }
+               ]
+             }
            }
          }
        ]
@@ -225,11 +245,30 @@ curl -X GET \
              "num_epochs": 2,
              "step": 94,
              "epoch": 2,
+             "percentage_done": 100,
              "train_loss": 0.3437718152999878,
-             "lr": 5.000000000000001e-07,
-             "grad_norm": 20.125,
+             "train_lr": 5.000000000000001e-07,
+             "train_grad_norm": 20.125,
              "val_loss": 0.5527229905128479,
-             "checkpoint_path": "/var/run/scratch/job/training/checkpoints"
+             "checkpoint_path": "/var/run/scratch/job/training/checkpoints",
+             "metrics": {
+               "train_loss": [
+                 { "step": 47, "epoch": 1, "value": 1.1204545497894287 },
+                 { "step": 94, "epoch": 2, "value": 0.3437718152999878 }
+               ],
+               "val_loss": [
+                 { "step": 47, "epoch": 1, "value": 0.9182837605476379 },
+                 { "step": 94, "epoch": 2, "value": 0.5527229905128479 }
+               ],
+               "train_lr": [
+                 { "step": 47, "epoch": 1, "value": 2.5e-05 },
+                 { "step": 94, "epoch": 2, "value": 5.000000000000001e-07 }
+               ],
+               "train_grad_norm": [
+                 { "step": 47, "epoch": 1, "value": 24.75 },
+                 { "step": 94, "epoch": 2, "value": 20.125 }
+               ]
+             }
            }
          }
        ]

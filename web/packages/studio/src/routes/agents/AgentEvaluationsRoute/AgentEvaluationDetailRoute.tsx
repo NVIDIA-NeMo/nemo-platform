@@ -9,8 +9,9 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
+import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { evaluatorCancelAgentEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
@@ -35,6 +36,7 @@ import {
   joinBundleByTask,
   parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
+import { evalDurationMs } from '@studio/api/evaluation/utils';
 import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
 import { EvalAggregateScoresTable } from '@studio/components/evaluation/EvalAggregateScoresTable';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
@@ -95,6 +97,15 @@ export const AgentEvaluationDetailRoute: FC = () => {
   const liveSeconds = useLiveSeconds({
     startDate: !isJobTerminal ? utcToLocalDate(job?.created_at) : undefined,
   });
+
+  // How long the run took, once it finished. The job row itself cannot answer this — it is written
+  // at create and on rerun, never on a status change — so the duration comes from the evaluation the
+  // run published under. Fetched by name, so it lands as soon as the publish does.
+  const publishedEvaluation = job?.spec.publication?.intake?.evaluation_id;
+  const { data: evaluation } = useGetEvaluation(workspace, publishedEvaluation ?? '', {
+    query: { enabled: !!workspace && !!publishedEvaluation && isJobTerminal },
+  });
+  const durationMs = evalDurationMs(evaluation?.metadata);
 
   const handleCancelJob = async () => {
     if (!jobName) return;
@@ -210,6 +221,9 @@ export const AgentEvaluationDetailRoute: FC = () => {
                     {!isJobTerminal && liveSeconds !== undefined && (
                       <Text kind="body/regular/sm">{formatTimeInSeconds(liveSeconds)}</Text>
                     )}
+                    {isJobTerminal && durationMs !== undefined && (
+                      <Text kind="body/regular/sm">{formatDurationMs(durationMs)}</Text>
+                    )}
                   </Flex>
                 }
                 loading={isLoadingJob}
@@ -236,11 +250,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
               <KVPair
                 label="Created"
                 value={job.created_at ? <RelativeTime datetime={job.created_at} /> : ''}
-                loading={isLoadingJob}
-              />
-              <KVPair
-                label="Updated"
-                value={job.updated_at ? <RelativeTime datetime={job.updated_at} /> : ''}
                 loading={isLoadingJob}
               />
               {artifactsFileset && (

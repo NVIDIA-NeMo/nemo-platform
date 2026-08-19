@@ -18,7 +18,7 @@ import type {
   PlatformJobResponse,
   PlatformJobsListFilter,
 } from '@nemo/sdk/generated/platform/schema';
-import { Flex } from '@nvidia/foundations-react-core';
+import { Flex, Tag } from '@nvidia/foundations-react-core';
 import {
   HIDDEN_JOB_SOURCES,
   JOB_SOURCE,
@@ -135,7 +135,6 @@ export const JobsDataView = () => {
     accessor((original) => original?.source || '', {
       id: 'source',
       header: 'Source',
-      size: 200,
       enableSorting: true,
       meta: {
         filter: {
@@ -151,23 +150,24 @@ export const JobsDataView = () => {
         const icon = display?.icon ?? <Cog className={iconColorClass} size={14} />;
         const label = display?.label ?? sourceValue;
         return (
-          <Flex
-            align="center"
-            gap="density-sm"
-            className="cursor-pointer"
+          <Tag
+            kind="outline"
+            color="gray"
+            density="compact"
             data-no-row-click
             onClick={() => col.setFilterValue(sourceValue)}
           >
-            {icon}
-            {label}
-          </Flex>
+            <Flex align="center" gap="density-sm">
+              {icon}
+              {label}
+            </Flex>
+          </Tag>
         );
       },
     }),
     accessor((original) => original?.status || '', {
       id: 'status',
       header: 'Status',
-      size: 150,
       meta: {
         filter: {
           type: 'single-select' as const,
@@ -180,7 +180,6 @@ export const JobsDataView = () => {
     accessor((original) => original?.created_at || '', {
       id: 'created_at',
       header: 'Created',
-      size: 200,
       enableSorting: true,
       meta: {
         filter: dateTimeFilter('Created At'),
@@ -190,7 +189,6 @@ export const JobsDataView = () => {
     accessor(() => '', {
       id: 'actions',
       header: '',
-      size: 120,
       enableSorting: false,
       cell: ({ row }) => (
         <Flex justify="end">

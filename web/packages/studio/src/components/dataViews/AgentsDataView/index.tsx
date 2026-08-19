@@ -109,9 +109,6 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
 
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
-    columnPinning: {
-      right: ['row-actions'],
-    },
   });
 
   // `keepPreviousData` keeps the previous workspace's rows on screen after a switch,
