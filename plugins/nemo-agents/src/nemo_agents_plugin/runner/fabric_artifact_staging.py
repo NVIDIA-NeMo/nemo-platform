@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 from collections.abc import Collection
 from pathlib import Path, PurePosixPath
@@ -56,7 +57,14 @@ async def stage_fabric_spec_dir(
 
     The container byte cap does not apply here: it bounds ConfigMap and env
     delivery, neither of which is in this path.
+
+    *base_dir* is reused when the controller restarts a subprocess deployment,
+    so previously staged files are cleared first. Otherwise a file dropped from
+    the fileset would survive locally, and stale skills could satisfy validation
+    for a deployment that staged nothing.
     """
+    _clear_staged_tree(base_dir, _runtime_dir_names(agent_config))
+
     if not agent_name or sdk is None:
         validate_referenced_skill_paths(agent_config, _staged_relative_paths(base_dir))
         return
@@ -72,6 +80,43 @@ async def stage_fabric_spec_dir(
             exc,
         )
     validate_referenced_skill_paths(agent_config, _staged_relative_paths(base_dir))
+
+
+def _runtime_dir_names(agent_config: dict[str, Any]) -> set[str]:
+    """Return top-level names under the agent root that the runtime owns, not staging.
+
+    ``environment.workspace`` and ``environment.artifacts`` hold a live agent's
+    output (Relay telemetry among it) and resolve relative to ``agent.yaml``, so
+    restaging must not delete them.
+    """
+    environment = agent_config.get("environment")
+    if not isinstance(environment, dict):
+        return set()
+
+    names: set[str] = set()
+    for key in ("workspace", "artifacts"):
+        value = environment.get(key)
+        if not isinstance(value, str) or not value:
+            continue
+        rel = PurePosixPath(value)
+        if rel.is_absolute():
+            continue
+        parts = [part for part in rel.parts if part != ".."]
+        if parts and parts[0] != ".":
+            names.add(parts[0])
+    return names
+
+
+def _clear_staged_tree(base_dir: Path, preserved: set[str]) -> None:
+    if not base_dir.is_dir():
+        return
+    for child in base_dir.iterdir():
+        if child.name in preserved:
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
 
 
 def _staged_relative_paths(base_dir: Path) -> set[PurePosixPath]:
@@ -192,8 +237,12 @@ def validate_referenced_skill_paths(
             raise FabricArtifactStagingError(
                 f"Invalid skills.paths entry {skill_path!r}: must be a relative path under the agent base directory"
             )
-        prefix = f"{rel}/"
-        matched = any(str(staged) == str(rel) or str(staged).startswith(prefix) for staged in staged_paths)
+        # "." normalizes to zero parts — the agent root itself, which packaging accepts.
+        rel_parts = tuple(part for part in rel.parts if part != ".")
+        if rel_parts:
+            matched = any(staged.parts[: len(rel_parts)] == rel_parts for staged in staged_paths)
+        else:
+            matched = bool(staged_paths)
         if not matched:
             raise FabricArtifactStagingError(
                 f"Referenced skills.paths entry {skill_path!r} was not found in staged agent spec fileset"

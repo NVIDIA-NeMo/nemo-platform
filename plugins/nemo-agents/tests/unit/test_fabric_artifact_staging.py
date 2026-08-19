@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +16,7 @@ from nemo_agents_plugin.runner.fabric_artifact_staging import (
     FabricArtifactStagingError,
     stage_fabric_spec_config_files,
     stage_fabric_spec_dir,
+    validate_referenced_skill_paths,
 )
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError
@@ -324,3 +325,93 @@ async def test_stage_fabric_spec_dir_allows_oversized_tree(tmp_path: Path) -> No
     )
 
     assert (tmp_path / "huge.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_removes_files_dropped_from_fileset(tmp_path: Path) -> None:
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "STALE.md").write_text("removed upstream\n", encoding="utf-8")
+    (tmp_path / "agent.yaml").write_text("stale: true\n", encoding="utf-8")
+
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        (Path(local_path) / "mcps").mkdir()
+        (Path(local_path) / "mcps" / "calculator.py").write_text("print(1)\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=_fabric_config(),
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert not (tmp_path / "skills").exists()
+    assert not (tmp_path / "agent.yaml").exists()
+    assert (tmp_path / "mcps" / "calculator.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_missing_fileset_does_not_accept_stale_skills(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# Stale\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    with pytest.raises(FabricArtifactStagingError, match="skills/review"):
+        await stage_fabric_spec_dir(
+            workspace="default",
+            agent_name="fabric-agent",
+            agent_config=_fabric_config(skills_paths=["skills/review"]),
+            base_dir=tmp_path,
+            sdk=sdk,
+        )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_preserves_runtime_directories(tmp_path: Path) -> None:
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts" / "events.atof.jsonl").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "workspace").mkdir()
+    (tmp_path / "workspace" / "scratch.txt").write_text("keep\n", encoding="utf-8")
+    (tmp_path / "STALE.md").write_text("drop\n", encoding="utf-8")
+
+    config = _fabric_config()
+    config["environment"] = {"workspace": "./workspace", "artifacts": "./artifacts"}
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=config,
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert (tmp_path / "artifacts" / "events.atof.jsonl").exists()
+    assert (tmp_path / "workspace" / "scratch.txt").exists()
+    assert not (tmp_path / "STALE.md").exists()
+
+
+def test_validate_referenced_skill_paths_accepts_agent_root() -> None:
+    validate_referenced_skill_paths(_fabric_config(skills_paths=["."]), {PurePosixPath("SKILL.md")})
+
+
+def test_validate_referenced_skill_paths_rejects_agent_root_when_nothing_staged() -> None:
+    with pytest.raises(FabricArtifactStagingError, match=r"\."):
+        validate_referenced_skill_paths(_fabric_config(skills_paths=["."]), set())
+
+
+def test_validate_referenced_skill_paths_does_not_match_sibling_prefix() -> None:
+    with pytest.raises(FabricArtifactStagingError, match="skills/review"):
+        validate_referenced_skill_paths(
+            _fabric_config(skills_paths=["skills/review"]),
+            {PurePosixPath("skills/review-notes/SKILL.md")},
+        )
