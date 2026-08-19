@@ -496,8 +496,8 @@ export const handlers = [
   http.get(
     '*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions',
     ({ request, params }) => {
-      const testCaseId = new URL(request.url).searchParams.get('filter[test_case_id]');
-      return HttpResponse.json(mockEvaluationSessionsPage(String(params['name']), testCaseId));
+      const testCaseName = new URL(request.url).searchParams.get('filter[test_case_name]');
+      return HttpResponse.json(mockEvaluationSessionsPage(String(params['name']), testCaseName));
     }
   ),
   http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {

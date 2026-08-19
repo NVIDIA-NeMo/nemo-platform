@@ -12,8 +12,8 @@ each task runs several times (trials). You upload **one ATIF payload per trial**
 | Harbor concept | NeMo entity | How |
 |---|---|---|
 | A benchmark / sweep | **Experiment** | `POST /experiments` once |
-| One agent+config on that benchmark | **Evaluation** | `POST /evaluations` once (its `name` is your `evaluation_id`) |
-| A task / test case | `test_case_id` | field inside `evaluation_context` |
+| One agent+config on that benchmark | **Evaluation** | `POST /evaluations` once (its `name` is your `evaluation_name`) |
+| A task / test case | `test_case_name` | field inside `evaluation_context` |
 | One trial (attempt) of a task | one ingested **session** | one `POST /ingest/atif` |
 
 ## Mapping: Harbor trial files → ATIF payload
@@ -25,8 +25,8 @@ Per trial, Harbor writes result files (typically `result.json` and `agent/trajec
 | `agent.name` / `agent.version` / `agent.model_name` | the agent under test |
 | `steps[]` | the trajectory steps (`agent`/`user`/`system`, with `metrics.{prompt_tokens, completion_tokens, cost_usd}`) |
 | `final_metrics.{total_prompt_tokens, total_completion_tokens, total_cost_usd, total_steps}` | trajectory `final_metrics` or the trial's `agent_result` (`n_input_tokens`, `n_output_tokens`, `cost_usd`) |
-| `evaluation_context.evaluation_id` | your Evaluation **name** (constant across the whole run) |
-| `evaluation_context.test_case_id` | the task id (constant across that task's trials) |
+| `evaluation_context.evaluation_name` | the target Evaluation (constant across the whole run) |
+| `evaluation_context.test_case_name` | the task name (constant across that task's trials) |
 | `extra.verifier_result.rewards` | the verifier's per-criterion scores → one evaluator score row each |
 
 **Cost/tokens are pass-through.** NeMo does not recompute cost — it sums the per-call `cost_usd` /
@@ -39,7 +39,7 @@ token values Harbor recorded. If Harbor didn't record a cost for a run, that run
 {
   "schema_version": "ATIF-v1.5",
   "session_id": "<trial-uuid>",
-  "evaluation_context": { "evaluation_id": "my-eval-baseline", "test_case_id": "tau-bench/airline-042" },
+  "evaluation_context": { "evaluation_name": "my-eval-baseline", "test_case_name": "tau-bench/airline-042" },
   "agent": { "name": "my-agent", "version": "1.0.0", "model_name": "provider/model" },
   "final_metrics": { "total_prompt_tokens": 51701, "total_completion_tokens": 255, "total_cost_usd": 0.264, "total_steps": 3 },
   "extra": {
@@ -55,8 +55,8 @@ token values Harbor recorded. If Harbor didn't record a cost for a run, that run
 
 ## Consistency rules (so rollups aggregate correctly)
 
-- **`evaluation_id` is identical** for every trial of the run (it's the Evaluation name).
-- **`test_case_id` is identical** across all trials of the same task, and **differs** between tasks —
+- **`evaluation_name` is identical** for every trial of the run.
+- **`test_case_name` is identical** across all trials of the same task, and **differs** between tasks —
   this is what lets the platform group a task's k attempts.
 - Give each trial a distinct `session_id` (one session = one run in the rollup's `run_count`).
 

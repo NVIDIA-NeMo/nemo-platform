@@ -572,7 +572,7 @@ def seed_eval_context_trace(seeder: Seeder) -> None:
         "nemo.evaluation.name": "exp-type-showcase",
         "nemo.experiment.run_id": "run-01",
         "nemo.experiment.sha": "a1b2c3d4",
-        "nemo.test_case.id": "case-0007",
+        "nemo.test_case.name": "case-0007",
         "nemo.experiment.metadata": json.dumps({"dataset": "showcase-bench", "split": "test", "seed": 7}),
     }
     with seeder.span(

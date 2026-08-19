@@ -10,7 +10,7 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 from nmp.intake.config import DEFAULT_SPAN_RETENTION_DAYS
-from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
+from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, bag_keys, spec_for_field
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -253,20 +253,9 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
     client.command(f"DROP TABLE IF EXISTS {table}")
 
     project_key = spec_for_field(SpanAttributeField.PROJECT).bag_key
-    test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key
-
-    # Resolve evaluation_id by coalescing the canonical bag key with any legacy aliases. Ingest always
-    # re-keys new spans to the canonical key, so this only matters for the backfill INSERT: spans stored
-    # under an older key (e.g. the pre-rename ``nemo.experiment.id``) keep their evaluation association
-    # instead of being dropped when the MV is rebuilt.
-    evaluation_spec = spec_for_field(SpanAttributeField.EVALUATION_NAME)
-    evaluation_keys = [
-        evaluation_spec.bag_key,
-        *(k for k in evaluation_spec.source_keys if k != evaluation_spec.bag_key),
-    ]
-    evaluation_id_expr = (
-        "coalesce(" + ", ".join(f"nullIf(attributes_string['{key}'], '')" for key in evaluation_keys) + ", '')"
-    )
+    # Ingest writes canonical keys, while the backfill must preserve associations on historical rows.
+    evaluation_name_expr = _coalesced_string_attribute(SpanAttributeField.EVALUATION_NAME)
+    test_case_name_expr = _coalesced_string_attribute(SpanAttributeField.TEST_CASE_NAME)
 
     # Note this is logically a single table. CH requires creating an underlying table and then a view that writes to that table.
     client.command(
@@ -284,8 +273,8 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             root_output String CODEC(ZSTD(3)),
 
             project String DEFAULT '',
-            evaluation_id String DEFAULT '',
-            test_case_id String DEFAULT '',
+            evaluation_name String DEFAULT '',
+            test_case_name String DEFAULT '',
 
             root_started_at DateTime64(6) CODEC(Delta(8), ZSTD(1)),
             root_ended_at Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
@@ -296,8 +285,8 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
 
             INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
             INDEX idx_session_id session_id TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_evaluation_id evaluation_id TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_test_case_id test_case_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_evaluation_name evaluation_name TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_test_case_name test_case_name TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_root_status root_status TYPE set(4) GRANULARITY 4,
             INDEX idx_source_format source_format TYPE set(8) GRANULARITY 4
         )
@@ -323,8 +312,8 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             input AS root_input,
             output AS root_output,
             attributes_string['{project_key}'] AS project,
-            {evaluation_id_expr} AS evaluation_id,
-            attributes_string['{test_case_key}'] AS test_case_id,
+            {evaluation_name_expr} AS evaluation_name,
+            {test_case_name_expr} AS test_case_name,
             start_time AS root_started_at,
             nullIf(end_time, toDateTime64(0, 6)) AS root_ended_at,
             if(end_time = toDateTime64(0, 6), NULL, dateDiff('millisecond', start_time, end_time)) AS latency_ms,
@@ -373,8 +362,17 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     # the MV now coalesces both keys, so spans already ingested under ``nemo.experiment.id`` keep their
     # evaluation association while new spans use the canonical key.
     ("ch_trace_index_0006_nemo_evaluation_name", _create_trace_index_schema),
+    # The test-case span-attribute bag key was renamed ``nemo.test_case.id`` -> ``nemo.test_case.name``,
+    # and the trace_index columns now describe the name values they store. Rebuild the derived table
+    # and MV with canonical columns while the backfill coalesces canonical and historical bag keys.
+    ("ch_trace_index_0007_nemo_test_case_name", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
+
+
+def _coalesced_string_attribute(field: SpanAttributeField) -> str:
+    keys = bag_keys(spec_for_field(field))
+    return "coalesce(" + ", ".join(f"nullIf(attributes_string['{key}'], '')" for key in keys) + ", '')"
 
 
 def _table(settings: ClickHouseMigrationSettings, name: str) -> str:

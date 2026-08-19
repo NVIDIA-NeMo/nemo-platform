@@ -292,8 +292,9 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         assert trace.session_id == t1.session_id
         assert trace.root_span_id == t1.span_id
         assert trace.evaluation_context is not None
-        assert trace.evaluation_context.evaluation_id == EXPERIMENT_NAME
-        assert trace.evaluation_context.test_case_id == "task-1"
+        evaluation_context = trace.evaluation_context.to_dict()
+        assert evaluation_context["evaluation_name"] == EXPERIMENT_NAME
+        assert evaluation_context["test_case_name"] == "task-1"
 
         # --- trial-1 scores: every field, every data_type coercion.
         rows = await client.intake.spans.evaluator_results.list(t1.span_id, workspace=WORKSPACE)

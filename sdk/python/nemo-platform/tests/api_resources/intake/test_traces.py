@@ -112,6 +112,7 @@ class TestTraces:
             filter={
                 "id": "id",
                 "evaluation_id": "evaluation_id",
+                "evaluation_name": "evaluation_name",
                 "session_id": "session_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -119,6 +120,7 @@ class TestTraces:
                 },
                 "status": "success",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             mode="summary",
             page=1,
@@ -245,6 +247,7 @@ class TestAsyncTraces:
             filter={
                 "id": "id",
                 "evaluation_id": "evaluation_id",
+                "evaluation_name": "evaluation_name",
                 "session_id": "session_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -252,6 +255,7 @@ class TestAsyncTraces:
                 },
                 "status": "success",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             mode="summary",
             page=1,

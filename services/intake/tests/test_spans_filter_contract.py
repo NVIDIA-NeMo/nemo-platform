@@ -18,7 +18,7 @@ import pytest
 from nmp.common.api.filter import parse_json_filter
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.intake.repository.clickhouse.span import _span_where
-from nmp.intake.spans.api.spans import ATTRIBUTE_EQ_FILTER_FIELDS, _span_filter
+from nmp.intake.spans.api.spans import ATTRIBUTE_EQ_FILTER_FIELD_MAP, ATTRIBUTE_EQ_FILTER_FIELDS, _span_filter
 from nmp.intake.spans.api.spans_schemas import SpanFilter
 from nmp.intake.spans.span_attribute_catalog import spec_for_field
 
@@ -63,7 +63,24 @@ def test_every_published_filter_reaches_sql(field: str) -> None:
 def test_every_attribute_filter_has_a_catalog_entry(field: str) -> None:
     # The repository resolves attribute filters through the catalog, so a field routed
     # there without an entry raises rather than returning a clean rejection.
-    assert spec_for_field(field) is not None
+    assert spec_for_field(ATTRIBUTE_EQ_FILTER_FIELD_MAP[field]) is not None
+
+
+@pytest.mark.parametrize(
+    ("canonical", "deprecated"),
+    [("evaluation_name", "evaluation_id"), ("test_case_name", "test_case_id")],
+)
+def test_deprecated_identifier_filters_build_the_same_query(canonical: str, deprecated: str) -> None:
+    assert build_where(canonical) == build_where(deprecated)
+
+
+def test_identifier_filter_schema_marks_only_old_fields_deprecated() -> None:
+    properties = SpanFilter.model_json_schema()["properties"]
+
+    assert properties["evaluation_name"].get("deprecated") is not True
+    assert properties["test_case_name"].get("deprecated") is not True
+    assert properties["evaluation_id"]["deprecated"] is True
+    assert properties["test_case_id"]["deprecated"] is True
 
 
 def test_no_filter_field_is_published_without_a_way_to_serve_it() -> None:
