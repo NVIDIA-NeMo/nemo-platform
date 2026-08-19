@@ -8,26 +8,15 @@ import {
   seriesColor,
 } from '@nemo/common/src/components/charts/format';
 import type { ChartLegendItem } from '@nemo/common/src/components/charts/types';
-import type {
-  ComparisonLineChartProps,
-  ComparisonSeries,
-} from '@nemo/common/src/components/ComparisonLineChart/types';
-import {
-  buildChartRows,
-  resolveAnnotation,
-} from '@nemo/common/src/components/ComparisonLineChart/utils';
+import type { ColoredBandSeries, RangeBandProps } from '@studio/components/charts/RangeBand/types';
+import { buildRangeBandRows } from '@studio/components/charts/RangeBand/utils';
 import { useCallback, useMemo, useState } from 'react';
 
-export interface ColoredSeries extends ComparisonSeries {
-  resolvedColor: string;
-}
-
 type ModelOptions = Pick<
-  ComparisonLineChartProps,
+  RangeBandProps,
   | 'series'
   | 'xAxis'
   | 'xAxisType'
-  | 'annotations'
   | 'formatXValue'
   | 'formatYValue'
   | 'initialHiddenSeriesIds'
@@ -35,14 +24,13 @@ type ModelOptions = Pick<
 >;
 
 /**
- * Derives everything the chart draws from its props: pivoted rows, resolved colors and
- * annotations, plus the legend visibility/hover state the chart and legend share.
+ * Derives everything the chart draws from its props: pivoted rows and resolved colors, plus the
+ * legend visibility/hover state the chart and legend share.
  */
-export const useComparisonChartModel = ({
+export const useRangeBandChartModel = ({
   series,
   xAxis,
   xAxisType,
-  annotations,
   formatXValue = formatXValueDefault,
   formatYValue = formatNumericValue,
   initialHiddenSeriesIds,
@@ -53,20 +41,12 @@ export const useComparisonChartModel = ({
   );
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  const colored = useMemo<ColoredSeries[]>(
+  const colored = useMemo<ColoredBandSeries[]>(
     () => series.map((entry, index) => ({ ...entry, resolvedColor: seriesColor(entry, index) })),
     [series]
   );
 
-  const rows = useMemo(() => buildChartRows(series, xAxis), [series, xAxis]);
-
-  const resolvedAnnotations = useMemo(
-    () =>
-      (annotations ?? [])
-        .map((annotation) => resolveAnnotation(annotation, series, xAxis))
-        .filter((annotation) => annotation !== null),
-    [annotations, series, xAxis]
-  );
+  const rows = useMemo(() => buildRangeBandRows(series, xAxis), [series, xAxis]);
 
   const resolvedXAxisType = xAxisType ?? inferXAxisType(xAxis);
   const isTimeAxis = resolvedXAxisType === 'time';
@@ -118,7 +98,6 @@ export const useComparisonChartModel = ({
 
   return {
     rows,
-    resolvedAnnotations,
     resolvedXAxisType,
     isTimeAxis,
     hoveredId,

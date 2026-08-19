@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  formatNumericValue,
+  inferXAxisType,
+  seriesColor,
+} from '@nemo/common/src/components/charts/format';
 import { ComparisonLineChart } from '@nemo/common/src/components/ComparisonLineChart';
 import type { ComparisonSeries } from '@nemo/common/src/components/ComparisonLineChart/types';
 import {
   buildChartRows,
-  formatNumericValue,
   hasPlottableData,
-  inferXAxisType,
   resolveAnnotation,
-  seriesColor,
 } from '@nemo/common/src/components/ComparisonLineChart/utils';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

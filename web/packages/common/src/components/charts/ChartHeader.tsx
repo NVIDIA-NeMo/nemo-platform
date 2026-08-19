@@ -10,7 +10,7 @@ interface Props {
 }
 
 /** Title on the left, legend on the right; renders when either is present. */
-export const ComparisonChartHeader: FC<Props> = ({ title, legend }) =>
+export const ChartHeader: FC<Props> = ({ title, legend }) =>
   title || legend ? (
     <Flex justify={title ? 'between' : 'end'} align="center" gap="density-md" className="pb-2">
       {title && <Text kind="label/bold/lg">{title}</Text>}
