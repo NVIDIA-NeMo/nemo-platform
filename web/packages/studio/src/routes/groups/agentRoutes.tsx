@@ -5,10 +5,7 @@ import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { AGENTS_ENABLED, MONITOR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
-import {
-  agentsRoutes,
-  getAgentMonitorRoute,
-} from '@studio/routes/utils';
+import { agentsRoutes, getAgentMonitorRoute } from '@studio/routes/utils';
 import { DatabaseCheck } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
