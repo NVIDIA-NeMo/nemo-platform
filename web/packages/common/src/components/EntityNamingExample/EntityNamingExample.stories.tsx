@@ -144,7 +144,13 @@ const NameFieldForm: FC<NameFieldFormProps> = ({
 
   return (
     <form
-      onSubmit={handleSubmit((values) => onSubmitted?.(values))}
+      onSubmit={handleSubmit((values) => {
+        // The conflict lives in local state, not `formState.errors`, so the
+        // zod resolver won't block submission on its own. Guard explicitly
+        // rather than firing a request the API can only reject.
+        if (conflict) return;
+        onSubmitted?.(values);
+      })}
       className="flex flex-col gap-density-md"
     >
       <FormField

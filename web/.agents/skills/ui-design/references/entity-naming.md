@@ -88,7 +88,11 @@ a **pattern to implement per form**, not a shared component to import. Do not in
      one thing the live preview can't tell the user on its own. Show
      `slotError` = `"An {entity} named {value} already exists"`, where
      `{value}` is the sanitized (would-be-submitted) name, and set
-     `status="error"`.
+     `status="error"`. While that conflict is the current result, also block
+     submission — return early from the `handleSubmit` callback (or disable
+     the submit control). The conflict lives in local `useState`, not
+     `formState.errors`, so the resolver alone won't stop `handleSubmit` from
+     firing a request the API will only reject with `409 Conflict`.
    - If the check itself fails (rejected promise/network error): don't
      silently swallow it into an unhandled rejection, and don't render the
      normal "will be created as" preview either — that would claim an
@@ -206,11 +210,14 @@ const slotHelp = checking
   <TextInput value={value} onChange={(e) => onChange(e.currentTarget.value)} onBlur={onBlur} />
 </FormField>;
 
-// formData.name in handleSubmit is already sanitized — no extra step needed:
+// formData.name in handleSubmit is already sanitized — no extra step needed.
+// The conflict lives in local state, not `formState.errors`, so the resolver
+// won't block submit on its own — guard on it explicitly.
 <form
-  onSubmit={handleSubmit((formData) =>
-    createSecret({ name: formData.name /* already sanitized */ })
-  )}
+  onSubmit={handleSubmit((formData) => {
+    if (conflict) return;
+    createSecret({ name: formData.name /* already sanitized */ });
+  })}
 />;
 ```
 
@@ -244,3 +251,7 @@ const slotHelp = checking
 - **Do** debounce the uniqueness check (`use-debounce`), or check against an
   already-loaded client-side set when one exists. **Don't** fire a network
   request on every raw keystroke.
+- **Do** block submission while a conflict is the current result. **Don't**
+  rely on the zod resolver to stop it — the conflict lives in local
+  `useState`, so `handleSubmit` will happily fire a request the API can only
+  answer with `409 Conflict`.
