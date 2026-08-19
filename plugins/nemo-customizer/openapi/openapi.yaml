@@ -2324,6 +2324,8 @@ components:
             selection works; set False only to skip the extra eval. GRPO ignores this
             when the dataset ships no validation.jsonl.
           default: true
+        progress_reporting:
+          $ref: '#/components/schemas/ProgressReportingConfig'
         keep_top_k:
           type: integer
           exclusiveMinimum: 0.0

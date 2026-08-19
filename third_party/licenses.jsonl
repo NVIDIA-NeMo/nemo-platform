@@ -25,18 +25,16 @@
 {"name": "authlib", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "base58", "license": "MIT", "compatible": true}
 {"name": "beartype", "license": "MIT", "compatible": true}
-{"name": "beautifulsoup4", "license": "MIT", "compatible": true}
 {"name": "boto3", "license": "APACHE-2.0", "compatible": true}
 {"name": "botocore", "license": "APACHE-2.0", "compatible": true}
 {"name": "botocore-stubs", "license": "MIT", "compatible": true}
 {"name": "bracex", "license": "MIT", "compatible": true}
 {"name": "cachetools", "license": "MIT", "compatible": true}
 {"name": "caio", "license": "APACHE-2.0", "compatible": true}
-{"name": "certifi", "license": "LGPL", "compatible": true}
+{"name": "certifi", "license": "MPL-2.0", "compatible": true}
 {"name": "cffi", "license": "MIT", "compatible": true}
 {"name": "chardet", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "charset-normalizer", "license": "MIT", "compatible": true}
-{"name": "circuitbreaker", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "claude-agent-sdk", "license": "MIT", "compatible": true}
 {"name": "click", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "clickhouse-connect", "license": "APACHE-2.0", "compatible": true}
@@ -45,7 +43,6 @@
 {"name": "colorlog", "license": "MIT", "compatible": true}
 {"name": "connect-python", "license": "APACHE-2.0", "compatible": true}
 {"name": "contourpy", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "crc32c", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "cryptography", "license": "APACHE-2.0", "compatible": true}
 {"name": "cycler", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cyclopts", "license": "APACHE-2.0", "compatible": true}
@@ -69,7 +66,6 @@
 {"name": "duckdb", "license": "MIT", "compatible": true}
 {"name": "durationpy", "license": "MIT", "compatible": true}
 {"name": "email-validator", "license": "UNLICENSE", "compatible": true}
-{"name": "exa-py", "license": "MIT", "compatible": true}
 {"name": "exceptiongroup", "license": "MIT", "compatible": true}
 {"name": "expandvars", "license": "MIT", "compatible": true}
 {"name": "faker", "license": "MIT", "compatible": true}
@@ -145,7 +141,7 @@
 {"name": "google.golang.org/protobuf", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "gopkg.in/yaml.v3", "license": "MIT", "compatible": true}
-{"name": "greenlet", "license": "MIT", "compatible": true}
+{"name": "greenlet", "license": "MIT AND PYTHON-2.0", "compatible": true}
 {"name": "griffelib", "license": "ISC", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
 {"name": "gunicorn", "license": "MIT", "compatible": true}
@@ -193,14 +189,9 @@
 {"name": "langchain-classic", "license": "MIT", "compatible": true}
 {"name": "langchain-community", "license": "MIT", "compatible": true}
 {"name": "langchain-core", "license": "MIT", "compatible": true}
-{"name": "langchain-exa", "license": "MIT", "compatible": true}
 {"name": "langchain-google-genai", "license": "MIT", "compatible": true}
-{"name": "langchain-huggingface", "license": "MIT", "compatible": true}
-{"name": "langchain-litellm", "license": "MIT", "compatible": true}
 {"name": "langchain-mcp-adapters", "license": "MIT", "compatible": true}
-{"name": "langchain-milvus", "license": "MIT", "compatible": true}
 {"name": "langchain-nvidia-ai-endpoints", "license": "MIT", "compatible": true}
-{"name": "langchain-oci", "license": "MIT", "compatible": true}
 {"name": "langchain-openai", "license": "MIT", "compatible": true}
 {"name": "langchain-protocol", "license": "MIT", "compatible": true}
 {"name": "langchain-text-splitters", "license": "MIT", "compatible": true}
@@ -257,20 +248,18 @@
 {"name": "numpy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-ml-py", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-nat-atif", "license": "APACHE-2.0", "compatible": true}
+{"name": "nvidia-nat-config-optimizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-core", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-eval", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-langchain", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-opentelemetry", "license": "APACHE-2.0", "compatible": true}
 {"name": "oauthlib", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "oci", "license": "UPL-1.0 OR APACHE-2.0", "compatible": true}
-{"name": "oci-openai", "license": "UPL-1.0", "compatible": true}
 {"name": "onnxruntime", "license": "MIT", "compatible": true}
 {"name": "openai", "license": "APACHE-2.0", "compatible": true}
 {"name": "openai-agents", "license": "MIT", "compatible": true}
 {"name": "openai-codex", "license": "APACHE-2.0", "compatible": true}
 {"name": "openai-codex-cli-bin", "license": "APACHE-2.0", "compatible": true}
 {"name": "openapi-pydantic", "license": "MIT", "compatible": true}
-{"name": "openevals", "license": "MIT", "compatible": true}
 {"name": "openinference-instrumentation", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-instrumentation-litellm", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-semantic-conventions", "license": "APACHE-2.0", "compatible": true}
@@ -299,7 +288,7 @@
 {"name": "packaging", "license": "APACHE-2.0", "compatible": true}
 {"name": "pandas", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pathable", "license": "APACHE-2.0", "compatible": true}
-{"name": "pathspec", "license": "LGPL", "compatible": true}
+{"name": "pathspec", "license": "MPL-2.0", "compatible": true}
 {"name": "pillow", "license": "MIT-CMU", "compatible": true}
 {"name": "pip", "license": "MIT", "compatible": true}
 {"name": "pkce", "license": "MIT", "compatible": true}
@@ -318,7 +307,7 @@
 {"name": "propcache", "license": "APACHE-2.0", "compatible": true}
 {"name": "protobuf", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "psutil", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "psycopg2-binary", "license": "LGPL", "compatible": true}
+{"name": "psycopg2-binary", "license": "LGPL-3.0-OR-LATER WITH OPENVPN-OPENSSL-EXCEPTION", "compatible": true}
 {"name": "py-key-value-aio", "license": "APACHE-2.0", "compatible": true}
 {"name": "py-rust-stemmers", "license": "MIT", "compatible": true}
 {"name": "pyarrow", "license": "APACHE-2.0", "compatible": true}
@@ -347,7 +336,7 @@
 {"name": "ragas", "license": "APACHE-2.0", "compatible": true}
 {"name": "realtime", "license": "MIT", "compatible": true}
 {"name": "referencing", "license": "MIT", "compatible": true}
-{"name": "regex", "license": "APACHE-2.0", "compatible": true}
+{"name": "regex", "license": "APACHE-2.0 AND CNRI-PYTHON", "compatible": true}
 {"name": "requests", "license": "APACHE-2.0", "compatible": true}
 {"name": "requests-oauthlib", "license": "ISC", "compatible": true}
 {"name": "requests-toolbelt", "license": "APACHE-2.0", "compatible": true}
@@ -377,7 +366,6 @@
 {"name": "smart-open", "license": "MIT", "compatible": true}
 {"name": "smmap", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sniffio", "license": "APACHE-2.0", "compatible": true}
-{"name": "soupsieve", "license": "MIT", "compatible": true}
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}
 {"name": "sqlfluff", "license": "MIT", "compatible": true}
 {"name": "sqlite-vec", "license": "MIT", "compatible": true}
@@ -404,7 +392,7 @@
 {"name": "tomli-w", "license": "MIT", "compatible": true}
 {"name": "tomlkit", "license": "MIT", "compatible": true}
 {"name": "tornado", "license": "APACHE-2.0", "compatible": true}
-{"name": "tqdm", "license": "MIT", "compatible": true}
+{"name": "tqdm", "license": "MIT AND MPL-2.0", "compatible": true}
 {"name": "transformers", "license": "APACHE-2.0", "compatible": true}
 {"name": "typer", "license": "MIT", "compatible": true}
 {"name": "types-aioboto3", "license": "MIT", "compatible": true}
@@ -432,7 +420,6 @@
 {"name": "websocket-client", "license": "APACHE-2.0", "compatible": true}
 {"name": "websockets", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "wget", "license": "PUBLIC DOMAIN", "compatible": true}
-{"name": "wikipedia", "license": "MIT", "compatible": true}
 {"name": "wrapt", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "xdg-base-dirs", "license": "ISC", "compatible": true}
 {"name": "xxhash", "license": "BSD-3-CLAUSE", "compatible": true}
