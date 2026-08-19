@@ -14,6 +14,7 @@ from typing import Any, ClassVar, cast
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.agent_config_formats import resolve_agent_config_for_deployment
+from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT, Agent
 from nemo_agents_plugin.fabric.invocation import (
     AgentConfigInvocationRequest,
@@ -54,6 +55,7 @@ FABRIC_RUN_RESULT_FILENAME = "fabric_run_result.json"
 FABRIC_ERROR_FILENAME = "fabric_error.json"
 SUCCESSFUL_FABRIC_STATUSES = {"succeeded"}
 DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS = 60 * 60
+DEFAULT_AGENT_INVOCATION_IMAGE_NAME = "nmp-api"
 
 
 class AgentInvocationJobConfig(BaseModel):
@@ -91,6 +93,10 @@ class AgentInvocationJob(NemoJob):
     container: ClassVar[str] = "cpu-tasks"
     input_spec_schema: ClassVar[type[BaseModel]] = AgentInvocationJobConfig
     spec_schema: ClassVar[type[BaseModel]] = AgentInvocationStepConfig
+
+    @staticmethod
+    def _invocation_image() -> str:
+        return AgentsConfig.get().deployments.default_image or get_qualified_image(DEFAULT_AGENT_INVOCATION_IMAGE_NAME)
 
     @classmethod
     async def to_spec(  # type: ignore[override]
@@ -167,7 +173,7 @@ class AgentInvocationJob(NemoJob):
                         profile=profile or "default",
                         provider="cpu",
                         container=ContainerSpec(
-                            image=get_qualified_image("nmp-cpu-tasks"),
+                            image=cls._invocation_image(),
                             entrypoint=["python", "-m"],
                             command=["nemo_agents_plugin.tasks.invoke"],
                         ),

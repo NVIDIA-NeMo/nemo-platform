@@ -402,24 +402,54 @@ async def test_compile_produces_single_cpu_step_with_canonical_config() -> None:
         workdir=AgentWorkdir(base_workdir="default/source#project/"),
     )
 
-    platform_spec = await AgentInvocationJob.compile(
-        workspace="default",
-        spec=spec,
-        entity_client=MagicMock(),
-        job_name=None,
-        async_sdk=MagicMock(),
-    )
+    with patch("nemo_agents_plugin.jobs.invoke.AgentsConfig.get") as get_config:
+        get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
+        platform_spec = await AgentInvocationJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
 
     steps = list(platform_spec["steps"])
     assert len(steps) == 1
     step = steps[0]
     assert step["name"] == "invoke-agent"
     assert step["executor"]["provider"] == "cpu"
+    assert step["executor"]["container"]["image"] == "registry.example/nmp-api:test"
     assert step["executor"]["container"]["command"] == ["nemo_agents_plugin.tasks.invoke"]
     assert step["config"] == spec.model_dump(mode="json")
     step_config = cast(dict[str, Any], step["config"])
     assert cast(dict[str, Any], step_config["request"])["input"] == "hello"
     assert step["environment"] == []
+
+
+@pytest.mark.asyncio
+async def test_compile_falls_back_to_qualified_api_image() -> None:
+    spec = AgentInvocationStepConfig(
+        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    with (
+        patch("nemo_agents_plugin.jobs.invoke.AgentsConfig.get") as get_config,
+        patch("nemo_agents_plugin.jobs.invoke.get_qualified_image", return_value="qualified/nmp-api:dev"),
+    ):
+        get_config.return_value.deployments.default_image = ""
+        platform_spec = await AgentInvocationJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+    steps = list(platform_spec["steps"])
+    assert len(steps) == 1
+    step = steps[0]
+    assert step["executor"]["provider"] == "cpu"
+    assert step["executor"]["container"]["image"] == "qualified/nmp-api:dev"
 
 
 def test_run_without_input_workdir_saves_empty_input_snapshot(ctx: JobContext) -> None:
