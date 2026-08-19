@@ -687,34 +687,13 @@ def main() -> None:
     token = os.environ.get("NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN")
     if token is None:
         raise SystemExit("NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN is required")
-    inference_api_key = os.environ.get("INFERENCE_API_KEY")
-    inference_api_base = os.environ.get("INFERENCE_API_BASE")
-    aut_model_name = os.environ.get("AUT_MODEL_NAME")
-    missing = [
-        name
-        for name, value in (
-            ("INFERENCE_API_KEY", inference_api_key),
-            ("INFERENCE_API_BASE", inference_api_base),
-            ("AUT_MODEL_NAME", aut_model_name),
-        )
-        if not value
-    ]
-    if missing:
-        raise SystemExit(f"Trusted bridge startup environment is missing: {', '.join(missing)}")
-    assert inference_api_key is not None
-    assert inference_api_base is not None
-    assert aut_model_name is not None
-    from nemo_experimentalist_plugin.harbor_bridge.runner import (  # noqa: PLC0415
-        HarborBridgeRunner,
-        TrustedInferenceConfig,
-    )
+    from nemo_experimentalist_plugin.harbor_bridge.runner import HarborBridgeRunner  # noqa: PLC0415
 
-    inference = TrustedInferenceConfig.model_validate(
-        {
-            "api_key": inference_api_key,
-            "api_base": inference_api_base,
-            "model_name": aut_model_name,
-        }
+    agent_env = dict(os.environ)
+    sensitive_values = tuple(
+        value
+        for name, value in agent_env.items()
+        if any(marker in name.upper() for marker in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"))
     )
     app = create_app(
         settings=HarborBridgeSettings(
@@ -723,9 +702,9 @@ def main() -> None:
             token=token,
             standard_attempts=runtime_config.standard_attempts,
             standard_concurrency=runtime_config.standard_concurrency,
-            sensitive_values=(inference_api_key,),
+            sensitive_values=sensitive_values,
         ),
-        runner=HarborBridgeRunner(inference),
+        runner=HarborBridgeRunner(agent_env),
     )
     uvicorn.run(app, host=runtime_config.host, port=runtime_config.port, log_level="info")
 

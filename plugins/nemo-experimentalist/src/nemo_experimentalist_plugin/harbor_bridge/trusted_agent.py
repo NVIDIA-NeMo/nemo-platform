@@ -244,13 +244,13 @@ class TrustedCandidateAgent(BaseInstalledAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        """Execute only the fixed entrypoint with process-scoped inference credentials."""
-        api_key = self._get_env("INFERENCE_API_KEY")
-        if not api_key:
-            raise RuntimeError("INFERENCE_API_KEY is required for the Experimentalist candidate")
-        api_base = self._get_env("INFERENCE_API_BASE")
-        if not api_base:
-            raise RuntimeError("INFERENCE_API_BASE is required for the Experimentalist candidate")
+        """Execute the fixed entrypoint with Harbor-scoped agent environment.
+
+        Harbor's trial context applies the complete ``agent_env`` mapping to
+        this installed-agent process. Keep this per-exec mapping limited to
+        runtime paths so arbitrary AUT settings and credentials are inherited
+        unchanged rather than reconstructed here.
+        """
 
         prompt_path = self.logs_dir / "instruction.txt"
         prompt_path.write_text(instruction, encoding="utf-8")
@@ -258,13 +258,8 @@ class TrustedCandidateAgent(BaseInstalledAgent):
         await environment.upload_file(prompt_path, remote_prompt)
 
         env = {
-            "INFERENCE_API_KEY": api_key,
-            "INFERENCE_API_BASE": api_base,
             "PYTHONPATH": REMOTE_PROJECT,
         }
-        model_name = self.model_name or self._get_env("AUT_MODEL_NAME")
-        if model_name:
-            env["AUT_MODEL_NAME"] = model_name
 
         command = (
             f"{REMOTE_VENV}/bin/python -m main "

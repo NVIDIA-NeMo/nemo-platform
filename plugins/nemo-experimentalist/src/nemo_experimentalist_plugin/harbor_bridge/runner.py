@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from harbor.models.job.config import RetryConfig
@@ -21,24 +22,18 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
 )
 from nemo_experimentalist_plugin.harbor_bridge.contracts import EvaluationSubmission, RunProfile
 from nemo_experimentalist_plugin.harbor_bridge.trusted_agent import candidate_agent_import
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr
-
-
-class TrustedInferenceConfig(BaseModel):
-    """Host-provided candidate inference configuration."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    api_key: SecretStr
-    api_base: AnyHttpUrl
-    model_name: str = Field(min_length=1, max_length=256)
 
 
 class HarborBridgeRunner:
-    """Run one fixed trusted adapter over catalog-materialized tasks."""
+    """Run one fixed trusted adapter over catalog-materialized tasks.
 
-    def __init__(self, inference: TrustedInferenceConfig) -> None:
-        self.inference = inference
+    ``agent_env`` is the complete host environment explicitly inherited by the
+    bridge. Harbor scopes it to the installed-agent process; task and verifier
+    containers continue to use the environment declared by their Harbor task.
+    """
+
+    def __init__(self, agent_env: Mapping[str, str]) -> None:
+        self.agent_env = dict(agent_env)
 
     async def run(
         self,
@@ -75,12 +70,8 @@ class HarborBridgeRunner:
                     environment_build_timeout_multiplier=profile.build_timeout_multiplier,
                     import_path=trusted_import_path,
                     scope_import_path=False,
-                    agent_model_name=self.inference.model_name,
-                    agent_env={
-                        "INFERENCE_API_KEY": self.inference.api_key.get_secret_value(),
-                        "INFERENCE_API_BASE": str(self.inference.api_base),
-                        "AUT_MODEL_NAME": self.inference.model_name,
-                    },
+                    agent_model_name=self.agent_env.get("AUT_MODEL_NAME"),
+                    agent_env=self.agent_env,
                     trace_dir="/app/traces",
                 ),
                 experiment_dir=work_dir,
