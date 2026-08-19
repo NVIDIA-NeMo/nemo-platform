@@ -109,6 +109,7 @@ DEFAULT_TRACE_ARTIFACT_SOURCE = "/app/traces"
 _ATIF_TRACE_SUFFIX = ".atif.json"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
 _CONTAINER_TESTS_REFERENCE = re.compile(r"/tests/([A-Za-z0-9_.\-/]+)")
+_SHELL_COMMENT = re.compile(r"(?:^|\s)#.*")
 _BLANKET_EXCEPTIONS = frozenset({"Exception", "BaseException"})
 _TRIAL_LOG_DESCRIPTIONS = {
     "agent/oracle.txt": "Oracle-agent log captured when Harbor runs the reference solution.",
@@ -160,6 +161,11 @@ class _VerifierSyntaxFailure:
     error: str
     line: int | None = None
     column: int | None = None
+
+
+# Syntax failure, blind-scoring failures, and the /tests paths the verifier can read.
+# All three follow from the source alone, so validate() caches them per source.
+_VerifierFindings: TypeAlias = tuple[_VerifierSyntaxFailure | None, list[tuple[str, int]], list[tuple[str, int]]]
 
 
 class HarborDependencyRuntime(DependencyRuntime):
@@ -335,7 +341,39 @@ def _resolve_verifier_dir(task_dir: Path, config: dict[str, Any]) -> Path:
     return task_dir / _VERIFIER_DIRNAME["name"]
 
 
-def _unresolvable_evidence_failures(source: str, verifier_dir: Path) -> list[tuple[str, int]]:
+def _python_evidence_references(tree: ast.Module) -> list[tuple[str, int]]:
+    """Return ``(path, line)`` for every ``/tests`` path a Python verifier can open.
+
+    Only a string literal becomes a read. A comment never does, and a docstring
+    naming one describes it instead — this contract discusses ``/tests/instruction.md``
+    by name, so a verifier explaining itself must not be mistaken for one reading it.
+    """
+    described = {
+        node.body[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    return [
+        (match.group(1), node.lineno)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node not in described
+        for match in _CONTAINER_TESTS_REFERENCE.finditer(node.value)
+    ]
+
+
+def _shell_evidence_references(source: str) -> list[tuple[str, int]]:
+    """Return ``(path, line)`` for every ``/tests`` path a shell verifier can open."""
+    return [
+        (match.group(1), line_number)
+        for line_number, line in enumerate(source.splitlines(), start=1)
+        for match in _CONTAINER_TESTS_REFERENCE.finditer(_SHELL_COMMENT.sub("", line))
+    ]
+
+
+def _unresolvable_evidence_failures(references: Sequence[tuple[str, int]], verifier_dir: Path) -> list[tuple[str, int]]:
     """Return ``(error, line)`` for verifier reads that cannot resolve at run time.
 
     Harbor mounts the verifier directory read-only at ``/tests`` and nothing else
@@ -345,23 +383,22 @@ def _unresolvable_evidence_failures(source: str, verifier_dir: Path) -> list[tup
     """
     mount = verifier_dir.resolve()
     failures: list[tuple[str, int]] = []
-    for line_number, line in enumerate(source.splitlines(), start=1):
-        for match in _CONTAINER_TESTS_REFERENCE.finditer(line):
-            relative = match.group(1).rstrip("/")
-            if not relative:
-                continue
-            # A path climbing out of the mount finds the host file it names, but in the
-            # container /tests/.. is the container root, where that file never exists.
-            candidate = (mount / relative).resolve()
-            if candidate.is_relative_to(mount) and candidate.exists():
-                continue
-            failures.append(
-                (
-                    f"reads /tests/{relative}, which no file provides: Harbor mounts only "
-                    f"{verifier_dir.name}/ there. Copy the file into {verifier_dir.name}/ or read another source.",
-                    line_number,
-                )
+    for reference, line in references:
+        relative = reference.rstrip("/")
+        if not relative:
+            continue
+        # A path climbing out of the mount finds the host file it names, but in the
+        # container /tests/.. is the container root, where that file never exists.
+        candidate = (mount / relative).resolve()
+        if candidate.is_relative_to(mount) and candidate.exists():
+            continue
+        failures.append(
+            (
+                f"reads /tests/{relative}, which no file provides: Harbor mounts only "
+                f"{verifier_dir.name}/ there. Copy the file into {verifier_dir.name}/ or read another source.",
+                line,
             )
+        )
     return failures
 
 
@@ -400,19 +437,23 @@ def _blanket_except_failures(tree: ast.Module) -> list[tuple[str, int]]:
     return failures
 
 
-def _python_findings(source: str, path: Path) -> tuple[_VerifierSyntaxFailure | None, list[tuple[str, int]]]:
-    """Parse one Python verifier once, and report its syntax and blind-scoring failures."""
+def _python_findings(source: str, path: Path) -> _VerifierFindings:
+    """Parse one Python verifier once, and report its syntax, blind scoring, and evidence reads."""
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError as exc:
-        return _VerifierSyntaxFailure(
-            error=f"{type(exc).__name__}: {exc.msg}",
-            line=exc.lineno,
-            column=exc.offset,
-        ), []
+        return (
+            _VerifierSyntaxFailure(
+                error=f"{type(exc).__name__}: {exc.msg}",
+                line=exc.lineno,
+                column=exc.offset,
+            ),
+            [],
+            [],
+        )
     except (RecursionError, ValueError) as exc:
-        return _VerifierSyntaxFailure(error=f"{type(exc).__name__}: {exc}"), []
-    return None, _blanket_except_failures(tree)
+        return _VerifierSyntaxFailure(error=f"{type(exc).__name__}: {exc}"), [], []
+    return None, _blanket_except_failures(tree), _python_evidence_references(tree)
 
 
 async def _shell_syntax_failure(source: str) -> _VerifierSyntaxFailure | None:
@@ -1411,7 +1452,7 @@ class HarborDataset(Dataset):
     async def validate(self) -> None:
         """Validate selected task verifier syntax and evidence paths without executing verifier code."""
         failures: list[HarborVerifierValidationFailure] = []
-        cache: dict[tuple[str, str], tuple[_VerifierSyntaxFailure | None, list[tuple[str, int]]]] = {}
+        cache: dict[tuple[str, str], _VerifierFindings] = {}
 
         for task in self.list_tasks():
             if not task.uri:
@@ -1434,10 +1475,14 @@ class HarborDataset(Dataset):
                 cache_key = (verifier_type, hashlib.sha256(source.encode("utf-8")).hexdigest())
                 if cache_key not in cache:
                     if verifier_type == "shell":
-                        cache[cache_key] = (await _shell_syntax_failure(source), [])
+                        cache[cache_key] = (
+                            await _shell_syntax_failure(source),
+                            [],
+                            _shell_evidence_references(source),
+                        )
                     else:
                         cache[cache_key] = _python_findings(source, path)
-                syntax_failure, swallowed = cache[cache_key]
+                syntax_failure, swallowed, references = cache[cache_key]
 
                 if syntax_failure is not None:
                     failures.append(
@@ -1452,7 +1497,7 @@ class HarborDataset(Dataset):
 
                 failures.extend(
                     HarborVerifierValidationFailure(task_id=task.id, path=path.resolve(), error=error, line=line)
-                    for error, line in [*_unresolvable_evidence_failures(source, verifier_dir), *swallowed]
+                    for error, line in [*_unresolvable_evidence_failures(references, verifier_dir), *swallowed]
                 )
 
         if failures:

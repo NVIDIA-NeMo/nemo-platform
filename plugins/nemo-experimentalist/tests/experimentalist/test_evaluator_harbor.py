@@ -967,6 +967,27 @@ async def test_validate_accepts_a_verifier_reading_evidence_the_task_ships(tmp_p
     await HarborDataset.from_path(dataset_dir).validate()
 
 
+@pytest.mark.asyncio
+async def test_validate_accepts_a_verifier_that_only_names_a_missing_tests_path_in_prose(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    # The contract names /tests/instruction.md to rule it out, so a verifier explaining
+    # why it reads something else quotes that path without ever opening it.
+    python_source = (
+        '"""Score the total. The instruction is a prompt, not /tests/instruction.md."""\n'
+        "import os, pathlib\n"
+        "# Nothing provides /tests/instruction.md, so the rubric carries the reference.\n"
+        'rubric = pathlib.Path("/tests/judge_rubric.md").read_text()\n'
+        'traces = pathlib.Path(os.environ["TRACE_DIR"])\n'
+    )
+    shell_source = "#!/usr/bin/env bash\n# /tests/instruction.md is never mounted.\npython /tests/check_coverage.py\n"
+    _write(dataset_dir / "prose" / "task.toml", "")
+    _write(dataset_dir / "prose" / "tests" / "check_coverage.py", python_source)
+    _write(dataset_dir / "prose" / "tests" / "test.sh", shell_source)
+    _write(dataset_dir / "prose" / "tests" / "judge_rubric.md", "Answer states the total.\n")
+
+    await HarborDataset.from_path(dataset_dir).validate()
+
+
 def test_python_findings_report_recursion_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -976,9 +997,10 @@ def test_python_findings_report_recursion_error(
 
     monkeypatch.setattr(ast, "parse", raise_recursion_error)
 
-    failure, swallowed = _python_findings("deeply nested source", tmp_path / "check.py")
+    failure, swallowed, references = _python_findings("deeply nested source", tmp_path / "check.py")
 
     assert swallowed == []
+    assert references == []
     assert failure is not None
     assert failure.error == "RecursionError: maximum recursion depth exceeded during compilation"
     assert failure.line is None
