@@ -30,6 +30,7 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
+- ``ethos``        — sub-group: migrate an agent's Ethos artifacts to their final names
 """
 
 from __future__ import annotations
@@ -63,6 +64,7 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
+    ETHOS_LOCAL_ROOT,
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
@@ -120,6 +122,7 @@ class AgentsCLI(NemoCLI):
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
+        _register_ethos_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
         for name, cli_cls in discover_agent_cli().items():
@@ -1193,6 +1196,88 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Ethos artifact commands
+# ---------------------------------------------------------------------------
+
+
+def _register_ethos_commands(app: typer.Typer) -> None:
+    """Register the ``ethos`` sub-group onto *app*.
+
+    Glue only: planning, validation, and the transaction live in
+    :mod:`nemo_agents_plugin.ethos_migrate`.
+    """
+    ethos_app = typer.Typer(name="ethos", help="Manage an agent's Ethos artifacts.", no_args_is_help=True)
+    app.add_typer(ethos_app, rich_help_panel="Agent Resources (requires running cluster)")
+
+    @ethos_app.command(name="migrate")
+    def ethos_migrate(
+        name: str = typer.Option(..., "--name", "-n", help="Agent name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        agents_root: Path = typer.Option(
+            Path(ETHOS_LOCAL_ROOT),
+            "--agents-root",
+            help="Directory holding local agent packages.",
+        ),
+        profile: Optional[list[str]] = typer.Option(
+            None,
+            "--profile",
+            help=(
+                "Path to an optimizer.yaml to convert. Repeatable. The command also converts the "
+                "profile found by walking up from the current directory and any profile inside the "
+                "agent's package; pass every other one explicitly."
+            ),
+        ),
+        experiment_dir: Optional[list[str]] = typer.Option(
+            None,
+            "--experiment-dir",
+            help=(
+                "Experiment directory to check for unfinished runs. Repeatable. The command also "
+                "checks the default tree each affected profile reserves."
+            ),
+        ),
+        dry_run: bool = typer.Option(
+            False,
+            "--dry-run",
+            help="Report the outcome, both gate results, and every location read or written, then exit.",
+        ),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Move an agent's Ethos package, Fileset, and profile keys to their final names.
+
+        Safe to rerun in any state: with nothing to migrate it is a read-only
+        no-op, an already-migrated agent verifies and exits 0, and a conflict or
+        active work exits non-zero with an explanation.
+        """
+        from nemo_agents_plugin.ethos_migrate import (
+            MigrationError,
+            MigrationRequest,
+            SdkFilesetStore,
+            SdkJobStore,
+            run_migration,
+        )
+
+        sdk = _platform_sdk(_resolve_base_url(base_url))
+        request = MigrationRequest(
+            agent=name,
+            workspace=workspace,
+            agents_root=agents_root,
+            profiles=tuple(Path(value) for value in profile or ()),
+            experiment_dirs=tuple(Path(value) for value in experiment_dir or ()),
+            dry_run=dry_run,
+        )
+        try:
+            report = run_migration(request, filesets=SdkFilesetStore(sdk), jobs=SdkJobStore(sdk))
+        except MigrationError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+        for line in report.lines:
+            typer.echo(line)
+        if not report.ok:
+            raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
 # Deployment wait helper
 # ---------------------------------------------------------------------------
 
@@ -1647,7 +1732,7 @@ def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> N
     """Delete the agent entity, leaving the ``{agent}-ethos`` fileset in place.
 
     The fileset outlives the agent on purpose: it is the canonical home of
-    ``ETHOS.md`` (see ``ethos_file_ref``), which ``nemo-spec`` writes
+    ``ETHOS.md`` (see ``ethos_file_ref``), which ``nemo-ethos`` writes
     before the agent exists and ``nemo-build-agent`` reads on every rebuild.
     Deleting the fileset here would destroy that durable contract, so the
     executable artifacts it also carries are left behind instead.
