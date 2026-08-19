@@ -92,7 +92,7 @@ class HarborBridgeSettings(BaseModel):
     max_archive_bytes: int = Field(default=DEFAULT_MAX_ARCHIVE_BYTES, ge=1, le=2 * 1024 * 1024 * 1024)
     max_archive_files: int = Field(default=DEFAULT_MAX_ARCHIVE_FILES, ge=1, le=100_000)
     max_concurrent_evaluations: int = Field(default=1, ge=1, le=8)
-    max_concurrent_dependency_sessions: int = Field(default=2, ge=1, le=8)
+    max_concurrent_dependency_sessions: int = Field(default=os.cpu_count() or 4, ge=1)
     standard_attempts: int = Field(default=3, ge=1, le=3)
     standard_concurrency: int = Field(default=os.cpu_count() or 4, ge=1)
     sensitive_values: tuple[str, ...] = ()
@@ -702,6 +702,7 @@ def main() -> None:
             token=token,
             standard_attempts=runtime_config.standard_attempts,
             standard_concurrency=runtime_config.standard_concurrency,
+            max_concurrent_dependency_sessions=runtime_config.max_concurrent_dependency_sessions,
             sensitive_values=sensitive_values,
         ),
         runner=HarborBridgeRunner(agent_env),

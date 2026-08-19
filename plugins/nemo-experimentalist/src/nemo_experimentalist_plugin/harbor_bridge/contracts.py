@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
@@ -54,6 +55,7 @@ class BridgeRuntimeConfig(StrictModel):
     catalog_root: Path
     standard_attempts: int = Field(ge=1, le=3)
     standard_concurrency: int = Field(ge=1)
+    max_concurrent_dependency_sessions: int = Field(default_factory=lambda: os.cpu_count() or 4, ge=1)
 
 
 class EnvelopeTask(StrictModel):

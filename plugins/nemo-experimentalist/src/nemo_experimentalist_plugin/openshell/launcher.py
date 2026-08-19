@@ -112,6 +112,7 @@ class HarborBridge:
             catalog_root=prepared.catalog_root,
             standard_attempts=standard_attempts,
             standard_concurrency=standard_concurrency,
+            max_concurrent_dependency_sessions=standard_concurrency,
         )
         try:
             runtime_config_path.write_text(runtime_config.model_dump_json(indent=2) + "\n", encoding="utf-8")

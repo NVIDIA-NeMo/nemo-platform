@@ -137,19 +137,25 @@ class _Session:
 
 
 class HarborDependencySessionManager:
-    """Own short-lived, read-only Harbor task inspection environments."""
+    """Own short-lived, read-only Harbor task inspection environments.
+
+    Requests above the configured capacity wait for an existing inspection
+    environment to be released.  Starting an environment can start a Harbor
+    task's Docker dependencies, so returning a capacity error would make
+    otherwise valid concurrent Rationalizer and TraceAnalyzer work fail merely
+    because another analysis is in progress.
+    """
 
     def __init__(self, *, max_concurrent_sessions: int = 2) -> None:
-        self._max = max_concurrent_sessions
+        if max_concurrent_sessions < 1:
+            raise ValueError("max_concurrent_sessions must be positive")
         self._sessions: dict[str, _Session] = {}
-        self._starting = 0
         self._lock = asyncio.Lock()
+        self._capacity = asyncio.Semaphore(max_concurrent_sessions)
 
     async def start(self, request: DependencyStartRequest, *, task_dir: Path, work_dir: Path) -> str:
-        async with self._lock:
-            if len(self._sessions) + self._starting >= self._max:
-                raise RuntimeError("Dependency session capacity reached")
-            self._starting += 1
+        await self._capacity.acquire()
+        release_capacity = True
         runtime = HarborDependencyRuntime(
             task_path=ResourceRef(uri=task_dir.resolve().as_uri()),
             force_build=True,
@@ -166,13 +172,14 @@ class HarborDependencySessionManager:
             async with self._lock:
                 self._sessions[session_id] = _Session(context)
             entered = False
+            release_capacity = False
         except BaseException:
             if entered:
                 await context.__aexit__(None, None, None)
             raise
         finally:
-            async with self._lock:
-                self._starting -= 1
+            if release_capacity:
+                self._capacity.release()
         return session_id
 
     async def execute(self, session_id: str, request: DependencyExecRequest) -> DependencyExecResponse:
@@ -204,8 +211,11 @@ class HarborDependencySessionManager:
             session = self._sessions.pop(session_id, None)
         if session is None:
             raise KeyError(session_id)
-        async with session.lock:
-            await session.context.__aexit__(None, None, None)
+        try:
+            async with session.lock:
+                await session.context.__aexit__(None, None, None)
+        finally:
+            self._capacity.release()
 
     async def close(self) -> None:
         async with self._lock:
