@@ -326,16 +326,14 @@ group "docker-cpu" {
   targets = [
     "nmp-api-docker",
     "nmp-cpu-tasks-docker",
+    "nmp-gym-tasks-docker",
   ]
 }
 
-# CI-only extension of docker-cpu. The Gym image is published by CPU image CI but remains excluded
-# from docker-cpu and every release target until the Ray security blocker is resolved.
+# CI extension of docker-cpu that also validates the Gym runtime before publication.
 group "docker-cpu-ci" {
   targets = [
-    "nmp-api-docker",
-    "nmp-cpu-tasks-docker",
-    "nmp-gym-tasks-docker",
+    "docker-cpu",
     "nmp-gym-tasks-smoke-test",
   ]
 }
@@ -696,7 +694,7 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# Production-shaped Gym task image, built for CI only while Ray remains blocked from release.
+# Dedicated Gym task image. The Gym-specific dependencies remain isolated from the shared CPU task image.
 target "nmp-gym-tasks-docker" {
   target     = "runtime"
   context    = "."

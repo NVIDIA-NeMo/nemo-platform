@@ -81,6 +81,7 @@ def test_ngc_sdk_supports_required_metadata_parameters() -> None:
 
 def test_default_display_name_preserves_known_names() -> None:
     assert default_display_name("nmp-cpu-tasks") == "NeMo Platform CPU Tasks"
+    assert default_display_name("nmp-gym-tasks") == "NeMo Platform Gym Tasks"
     assert default_display_name("safe-synthesizer-tasks") == "Safe Synthesizer Tasks"
 
 

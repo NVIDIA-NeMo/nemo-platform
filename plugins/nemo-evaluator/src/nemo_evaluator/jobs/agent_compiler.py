@@ -27,9 +27,8 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 
 AGENT_EVAL_STEP_NAME = "agent-evaluate"
 
-#: Container wiring for agent-evaluate steps, run via ``python -m``. Gym targets use an isolated image
-#: because NeMo Gym requires Ray, which the platform workspace excludes over an unresolved critical CVE.
-#: The Gym image is currently built for CI only; release publication remains blocked on security approval.
+#: Container wiring for agent-evaluate steps, run via ``python -m``. Gym targets use a dedicated image
+#: because NeMo Gym requires Ray. This keeps Gym and Ray out of the shared CPU task image.
 AGENT_EVAL_IMAGE = "nmp-cpu-tasks"
 GYM_AGENT_EVAL_IMAGE = "nmp-gym-tasks"
 AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
