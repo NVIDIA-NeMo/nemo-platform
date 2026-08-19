@@ -13,6 +13,9 @@ from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
     _build_probe,
     build_configmap_body,
+    build_env_vars,
+    build_secret_body,
+    build_secret_env_from,
     compile_workload,
     configmap_data_key,
     validate_config_for_deployment,
@@ -20,14 +23,17 @@ from nemo_deployments_plugin.backends.k8s.compiler import (
 )
 from nemo_deployments_plugin.backends.k8s.deployments import build_deployment_body
 from nemo_deployments_plugin.backends.k8s.jobs import build_job_body
+from nemo_deployments_plugin.backends.labels import k8s_deployment_secret_name
 from nemo_deployments_plugin.entities import (
     ConfigFile,
     Container,
     ContainerPort,
+    EnvVar,
     ExecAction,
     HTTPGetAction,
     K8sDeploymentConfig,
     Probe,
+    SecretRef,
 )
 from nemo_platform_plugin.config import ImagePullSecret
 
@@ -301,3 +307,95 @@ def test_validate_rejects_duplicate_listen_ports() -> None:
 
 def test_build_configmap_body_none_when_empty() -> None:
     assert build_configmap_body(workspace="default", deployment_name="task", labels={}, config_files=[]) is None
+
+
+def test_build_secret_body_none_when_empty() -> None:
+    assert build_secret_body(workspace="default", deployment_name="task", labels={}, secret_env={}) is None
+
+
+def test_build_secret_body_holds_values_and_labels() -> None:
+    labels = {"managed-by": "nemo-deployments", "nemo.nvidia.com/deployment-name": "task"}
+    secret = build_secret_body(
+        workspace="default",
+        deployment_name="task",
+        labels=labels,
+        secret_env={"APP_TOKEN": "value-a", "OTHER": "value-b"},
+    )
+    serialized = _serialized(secret)
+    assert serialized["kind"] == "Secret"
+    assert serialized["type"] == "Opaque"
+    assert serialized["metadata"]["name"] == k8s_deployment_secret_name("default", "task")
+    assert serialized["metadata"]["labels"] == labels
+    assert serialized["stringData"] == {"APP_TOKEN": "value-a", "OTHER": "value-b"}
+
+
+def test_build_env_vars_skips_secret_ref_entries() -> None:
+    container = Container(
+        name="main",
+        image="alpine",
+        env=[
+            EnvVar(name="PLAIN", value="v"),
+            EnvVar(name="APP_TOKEN", secretRef=SecretRef(workspace="default", name="app-token")),
+        ],
+    )
+    env = build_env_vars(container)
+    names = {item.name for item in env}
+    assert names == {"PLAIN"}
+
+
+def test_build_secret_env_from_empty_without_secret() -> None:
+    assert build_secret_env_from(None) == []
+
+
+def test_build_secret_env_from_projects_secret_ref() -> None:
+    env_from = build_secret_env_from("dep-sec-abc")
+    serialized = [_serialized(item) for item in env_from]
+    assert serialized == [{"secretRef": {"name": "dep-sec-abc"}}]
+
+
+def test_compile_workload_mounts_secret_via_env_from() -> None:
+    config = sample_always_config().model_copy(
+        update={
+            "containers": [
+                Container(
+                    name="main",
+                    image="nginx:alpine",
+                    ports=[ContainerPort(name="http", containerPort=8080)],
+                    env=[EnvVar(name="APP_TOKEN", secretRef=SecretRef(workspace="default", name="app-token"))],
+                )
+            ]
+        }
+    )
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Always",
+        secret_env={"APP_TOKEN": "app-token-value"},
+    )
+    assert compiled.secret_body is not None
+    assert compiled.secret_name == k8s_deployment_secret_name("default", "task")
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    main = pod_spec["containers"][0]
+    assert main["envFrom"] == [{"secretRef": {"name": k8s_deployment_secret_name("default", "task")}}]
+    # The secret value never appears as a plaintext env var in the pod spec.
+    assert "env" not in main or all(entry.get("value") != "app-token-value" for entry in main["env"])
+
+
+def test_compile_workload_no_secret_when_secret_env_empty() -> None:
+    config = sample_always_config()
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Always",
+        secret_env={},
+    )
+    assert compiled.secret_body is None
+    assert compiled.secret_name is None
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    assert "envFrom" not in pod_spec["containers"][0]
