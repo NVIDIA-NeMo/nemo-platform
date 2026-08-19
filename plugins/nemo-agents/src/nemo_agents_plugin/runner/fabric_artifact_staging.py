@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Stage Fabric agent-spec fileset artifacts for container deployments."""
+"""Stage Fabric agent-spec fileset artifacts for container and subprocess deployments."""
 
 from __future__ import annotations
 
 import logging
 import tempfile
+from collections.abc import Collection
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
@@ -36,6 +37,45 @@ class _FilesDownloader(Protocol):
         fileset: str | None = None,
         workspace: str | None = None,
     ) -> None: ...
+
+
+async def stage_fabric_spec_dir(
+    *,
+    workspace: str,
+    agent_name: str,
+    agent_config: dict[str, Any],
+    base_dir: Path,
+    sdk: _FilesDownloader | None,
+) -> None:
+    """Download the agent spec fileset into *base_dir* for subprocess deployments.
+
+    Mirrors :func:`stage_fabric_spec_config_files` for a runtime that reads the
+    agent root off local disk rather than through a ConfigMap. An unavailable
+    fileset is not fatal — config-only agents deploy from ``agent.yaml`` alone —
+    but a config referencing skills still needs them staged.
+
+    The container byte cap does not apply here: it bounds ConfigMap and env
+    delivery, neither of which is in this path.
+    """
+    if not agent_name or sdk is None:
+        validate_referenced_skill_paths(agent_config, _staged_relative_paths(base_dir))
+        return
+
+    fileset_name = agent_spec_fileset_name(agent_name)
+    try:
+        await sdk.download(local_path=str(base_dir), fileset=fileset_name, workspace=workspace)
+    except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
+        logger.info(
+            "Agent spec fileset %s/%s unavailable (%s); using inline agent.yaml only",
+            workspace,
+            fileset_name,
+            exc,
+        )
+    validate_referenced_skill_paths(agent_config, _staged_relative_paths(base_dir))
+
+
+def _staged_relative_paths(base_dir: Path) -> set[PurePosixPath]:
+    return {PurePosixPath(path.relative_to(base_dir).as_posix()) for path in base_dir.rglob("*") if path.is_file()}
 
 
 async def stage_fabric_spec_config_files(
@@ -127,20 +167,22 @@ def _validate_staged_size(config_files: list[ConfigFile], fileset_name: str) -> 
         )
 
 
-def _validate_referenced_skill_paths(
+def validate_referenced_skill_paths(
     agent_config: dict[str, Any],
-    config_files: list[ConfigFile],
-    agent_yaml_path: str,
+    staged_paths: Collection[PurePosixPath],
 ) -> None:
+    """Ensure every ``skills.paths`` entry resolves to staged content.
+
+    *staged_paths* holds the staged files relative to the agent base directory,
+    so container ``config_files`` and an on-disk base directory validate against
+    one definition of "the skill is present".
+    """
     skills = agent_config.get("skills")
     if not isinstance(skills, dict):
         return
     paths = skills.get("paths")
     if not isinstance(paths, list) or not paths:
         return
-
-    base_dir = PurePosixPath(agent_yaml_path).parent
-    staged_paths = {PurePosixPath(config_file.path) for config_file in config_files}
 
     for skill_path in paths:
         if not isinstance(skill_path, str) or not skill_path:
@@ -150,10 +192,23 @@ def _validate_referenced_skill_paths(
             raise FabricArtifactStagingError(
                 f"Invalid skills.paths entry {skill_path!r}: must be a relative path under the agent base directory"
             )
-        expected = base_dir / rel
-        prefix = f"{expected}/"
-        matched = any(str(staged) == str(expected) or str(staged).startswith(prefix) for staged in staged_paths)
+        prefix = f"{rel}/"
+        matched = any(str(staged) == str(rel) or str(staged).startswith(prefix) for staged in staged_paths)
         if not matched:
             raise FabricArtifactStagingError(
                 f"Referenced skills.paths entry {skill_path!r} was not found in staged agent spec fileset"
             )
+
+
+def _validate_referenced_skill_paths(
+    agent_config: dict[str, Any],
+    config_files: list[ConfigFile],
+    agent_yaml_path: str,
+) -> None:
+    base_dir = PurePosixPath(agent_yaml_path).parent
+    staged_paths = {
+        PurePosixPath(config_file.path).relative_to(base_dir)
+        for config_file in config_files
+        if PurePosixPath(config_file.path).is_relative_to(base_dir)
+    }
+    validate_referenced_skill_paths(agent_config, staged_paths)

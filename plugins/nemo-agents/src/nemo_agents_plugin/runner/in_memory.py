@@ -40,6 +40,8 @@ from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.entities import AGENT_CONFIG_FILENAME, NEMO_AGENTS_SPEC_CONFIG_FORMAT, DeploymentMode
 from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_credential_env
 from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
+from nemo_agents_plugin.runner.fabric_artifact_staging import stage_fabric_spec_dir
+from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 # Match characters not safe for filesystem paths.  Deployment names are
 # normally URL-safe identifiers, but we sanitise defensively to ensure we
@@ -228,9 +230,9 @@ class InMemoryRunnerBackend(RunnerBackend):
         # created_by drives on-behalf-of delegation only for container modes (via
         # the auth-proxy sidecar). Subprocess deployments run in-process on the
         # platform host and do not use the sidecar, so it does not apply here.
-        del agent, image, deployment_mode, created_by
+        del image, deployment_mode, created_by
         if config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-            return await self._create_fabric_deployment(workspace, name, config, port)
+            return await self._create_fabric_deployment(workspace, name, config, port, agent=agent)
 
         key = (workspace, name)
         config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
@@ -268,12 +270,16 @@ class InMemoryRunnerBackend(RunnerBackend):
         name: str,
         config: dict[str, Any],
         port: int,
+        *,
+        agent: str = "",
     ) -> DeploymentInfo:
         """Validate and start a Platform-owned Fabric-backed agent server."""
         key = (workspace, name)
         base_dir = self._fabric_base_dir_for(workspace, name)
         await asyncio.to_thread(base_dir.mkdir, parents=True, exist_ok=True)
         try:
+            await self._stage_agent_spec(workspace, agent, config, base_dir)
+            # After staging so the resolved config wins over any agent.yaml in the fileset.
             config_path = await asyncio.to_thread(self._write_fabric_config, base_dir, config)
             await validate_platform_agent_config(config, base_dir=base_dir)
             log_path = self.log_path_for(workspace, name)
@@ -405,6 +411,23 @@ class InMemoryRunnerBackend(RunnerBackend):
     def _write_fabric_config(self, base_dir: Path, config: dict[str, Any]) -> Path:
         """Write a Platform-owned agent config into its deployment directory."""
         return _write_yaml_config(base_dir / AGENT_CONFIG_FILENAME, config)
+
+    async def _stage_agent_spec(
+        self,
+        workspace: str,
+        agent: str,
+        config: dict[str, Any],
+        base_dir: Path,
+    ) -> None:
+        """Deliver the agent's spec fileset (skills, MCP servers, prompts) into *base_dir*."""
+        sdk = get_async_platform_sdk(as_service="agents", internal=True) if agent else None
+        await stage_fabric_spec_dir(
+            workspace=workspace,
+            agent_name=agent,
+            agent_config=config,
+            base_dir=base_dir,
+            sdk=sdk.files if sdk else None,
+        )
 
     def _spawn(
         self,

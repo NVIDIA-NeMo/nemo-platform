@@ -15,6 +15,7 @@ import yaml
 from nemo_agents_plugin.runner.fabric_artifact_staging import (
     FabricArtifactStagingError,
     stage_fabric_spec_config_files,
+    stage_fabric_spec_dir,
 )
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError
@@ -229,3 +230,97 @@ async def test_stage_fabric_spec_config_files_rejects_missing_skill_path() -> No
             agent_yaml_path="/workspace/agent.yaml",
             sdk=sdk,
         )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_stages_sibling_artifacts(tmp_path: Path) -> None:
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        root = Path(local_path)
+        (root / "mcps").mkdir()
+        (root / "mcps" / "calculator.py").write_text("print(1)\n", encoding="utf-8")
+        skill_dir = root / "skills" / "review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Review\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=_fabric_config(skills_paths=["skills/review"]),
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert (tmp_path / "mcps" / "calculator.py").read_text(encoding="utf-8") == "print(1)\n"
+    assert (tmp_path / "skills" / "review" / "SKILL.md").exists()
+    await_args = sdk.download.await_args
+    assert await_args is not None
+    assert await_args.kwargs["fileset"] == "fabric-agent-spec"
+    assert await_args.kwargs["local_path"] == str(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_missing_fileset_is_not_fatal(tmp_path: Path) -> None:
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=NotFoundError("missing fileset", response=MagicMock(), body=None))
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=_fabric_config(),
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_missing_fileset_rejects_configured_skills(tmp_path: Path) -> None:
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    with pytest.raises(FabricArtifactStagingError, match="skills/review"):
+        await stage_fabric_spec_dir(
+            workspace="default",
+            agent_name="fabric-agent",
+            agent_config=_fabric_config(skills_paths=["skills/review"]),
+            base_dir=tmp_path,
+            sdk=sdk,
+        )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_without_downloader_skips_download(tmp_path: Path) -> None:
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="",
+        agent_config=_fabric_config(),
+        base_dir=tmp_path,
+        sdk=None,
+    )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_allows_oversized_tree(tmp_path: Path) -> None:
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        (Path(local_path) / "huge.md").write_text("x" * 1_000_000, encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=_fabric_config(),
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert (tmp_path / "huge.md").exists()
