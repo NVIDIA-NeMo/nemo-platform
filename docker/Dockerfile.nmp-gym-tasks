@@ -4,9 +4,8 @@
 
 # Gym-enabled task image for NeMo Evaluator agent-evaluation jobs.
 #
-# This image is built and exercised in CI but remains excluded from release targets until the
-# critical Ray CVE has been resolved or approved through the security exception process. Test and
-# model configuration is supplied per job through GymRunnerTarget.hydra_params.
+# Gym and Ray are isolated from the shared CPU task image. Test and model configuration is supplied
+# per job through GymRunnerTarget.hydra_params.
 
 ARG NMP_CPU_TASKS_BASE=nmp-cpu-tasks
 FROM ${NMP_CPU_TASKS_BASE} AS runtime
@@ -20,9 +19,6 @@ RUN uv venv --python /usr/local/bin/python3.13 /opt/gym-venv \
         --no-dev \
         --no-install-project \
     && ln -s /opt/gym-venv/bin/gym /usr/local/bin/gym
-
-LABEL com.nvidia.nemo-platform.ci-only="true"
-LABEL com.nvidia.nemo-platform.release-blocked="ray-security-review"
 
 FROM runtime AS smoke-test
 RUN gym --help >/dev/null \

@@ -633,12 +633,20 @@ jobs:
           kind-image-pull-token: ${{ github.token }}
           kind-image-pull-user: ${{ github.actor }}
 
+      - name: Pre-pull Gym task image
+        shell: bash
+        env:
+          KIND_IMAGE_PULL_TOKEN: ${{ github.token }}
+          KIND_IMAGE_PULL_USER: ${{ github.actor }}
+          IMAGE_REGISTRY: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          IMAGE_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+        run: e2e/k8s/scripts/prepull_kind_images.sh "${IMAGE_REGISTRY}/nmp-gym-tasks:${IMAGE_TAG}"
+
       - name: Run Gym agent-evaluate e2e test
         shell: bash
         env:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
           E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
-          NGC_API_KEY: not-used-for-ghcr-gym-e2e
         run: |
           test -n "${NMP_E2E_CLUSTER_URL}"
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"

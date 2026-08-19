@@ -326,14 +326,14 @@ group "docker-cpu" {
   targets = [
     "nmp-api-docker",
     "nmp-cpu-tasks-docker",
-    "nmp-gym-tasks-docker",
   ]
 }
 
-# CI extension of docker-cpu that also validates the Gym runtime before publication.
+# CI extension that builds and validates the dedicated Gym task image.
 group "docker-cpu-ci" {
   targets = [
     "docker-cpu",
+    "nmp-gym-tasks-docker",
     "nmp-gym-tasks-smoke-test",
   ]
 }
@@ -704,12 +704,12 @@ target "nmp-gym-tasks-docker" {
   }
   cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
-  tags       = ["${IMAGE_REGISTRY}/nmp-gym-tasks:${BAKE_TAG}"]
+  tags       = sha_and_maybe_latest_tags("nmp-gym-tasks")
   output     = image_output()
   platforms  = get_platforms()
 }
 
-# Cheap import/CLI validation for the isolated Gym environment. Built in docker-cpu-ci before publication.
+# Cheap import/CLI validation for the isolated Gym environment. Built in docker-cpu-ci.
 target "nmp-gym-tasks-smoke-test" {
   target     = "smoke-test"
   context    = "."

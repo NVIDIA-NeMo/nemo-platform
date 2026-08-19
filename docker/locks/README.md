@@ -55,10 +55,9 @@ uv sync --project docker/locks/mamba-wheel-build-py312 --locked --no-install-pro
 ## Gym task image lockfile
 
 `docker/Dockerfile.nmp-gym-tasks` uses `nmp-gym-tasks` for the isolated Gym
-environment. The image is currently built only in CI and remains excluded from
-release targets pending resolution or security approval of Ray's critical CVE.
-The lock is separate from the workspace because Gym requires Ray, which the root
-project deliberately excludes.
+environment. The lock is separate from the workspace because Gym and Ray are
+image-specific dependencies that are intentionally excluded from the shared CPU
+task environment.
 
 After changing `docker/locks/nmp-gym-tasks/pyproject.toml`, regenerate
 its lock with Python 3.13.14 or newer:
@@ -93,7 +92,3 @@ relocks dynamically:
 
 6. Run the Evaluator agent-evaluation compiler tests, which verify that Gym
    targets route to this image.
-
-NeMo-RL's training image obtains Gym from the NeMo-RL repository's pinned
-submodule. That pin and this PyPI pin are independent; coordinate them only when
-a compatibility requirement calls for it rather than assuming they are equal.
