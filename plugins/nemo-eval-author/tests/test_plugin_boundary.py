@@ -9,10 +9,13 @@ Two lists, because "imports Experimentalist" is not one thing.
 ``DatasetRef`` and friends. Every plugin is *supposed* to speak these; duplicating them
 would fork the contract and break comparability in Studio. This list does not shrink.
 
-``_BORROWED_BEHAVIOUR`` is debt: Harbor, tools, trace analysis, the backend factory. Eval
-Author is meant to end up standalone, so this list can only shrink, and duplicating a
-helper beats adding a row. Emptying it is what unblocks the remaining
-TODO(eval-author-standalone) cleanup.
+``_BORROWED_BEHAVIOUR`` is debt, and it can only shrink. Duplicating a helper beats
+adding a row.
+
+Most of that debt came from the agent package. The agent moved into
+``nemo_experimentalist_plugin.eval_author``, next to the evaluator, trace, and reporting
+helpers it borrowed, so those borrows are now ordinary intra-package imports and the list
+is down to the platform client that ``discovery/`` uses.
 """
 
 import ast
@@ -28,27 +31,9 @@ _SHARED_LAYER_A = {
 # Behaviour Eval Author still borrows. Each row is debt; deleting one is the goal, and
 # adding one needs a deliberate argument for why duplicating the helper is worse.
 #
-#   client                  -> make_client, the platform client factory
-#   ...dataset_staging      -> stage_eval_author_inputs
-#   ...evaluator.base       -> EvaluatorType
-#   ...evaluator.factory    -> DatasetFactory
-#   ...evaluator.harbor     -> HarborDataset
-#   ...tools                -> GuardedShellTools
-#   ...trace_analyzer       -> TraceAnalyzer, TraceAnalyzerConfig, Diagnostic
-#   ...trace_explorer       -> TraceExplorer and its view models
-#   experimentalist_backend -> make_experimentalist_backend
-#   ...reporting            -> RunReporter (ASE-749: reuse Experimentalist narrator; do not duplicate)
+#   client -> make_client, the platform client factory that discovery/ builds on
 _BORROWED_BEHAVIOUR = {
     "nemo_experimentalist_plugin.client",
-    "nemo_experimentalist_plugin.experimentalist.components.dataset_staging",
-    "nemo_experimentalist_plugin.experimentalist.components.evaluator.base",
-    "nemo_experimentalist_plugin.experimentalist.components.evaluator.factory",
-    "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor",
-    "nemo_experimentalist_plugin.experimentalist.components.tools",
-    "nemo_experimentalist_plugin.experimentalist.components.trace_analyzer",
-    "nemo_experimentalist_plugin.experimentalist.components.trace_explorer",
-    "nemo_experimentalist_plugin.experimentalist.experimentalist_backend",
-    "nemo_experimentalist_plugin.experimentalist.reporting",
 }
 
 

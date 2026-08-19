@@ -4,7 +4,7 @@
 """Experimentalist config wiring for the nested Eval Author settings block."""
 
 import pytest
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 
 

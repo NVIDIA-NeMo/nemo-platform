@@ -20,7 +20,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from nemo_eval_author_plugin import traces
+from nemo_experimentalist_plugin.eval_author import traces
 from nemo_platform import AsyncNeMoPlatform
 
 DISCOVERY_SPAN_BUDGET = 200

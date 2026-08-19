@@ -6,9 +6,9 @@
 from pathlib import Path
 
 import pytest
-from nemo_eval_author_plugin.eval_author import models
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorResult, MetricAuthoringResult
 from nemo_experimentalist_plugin.entities import Dataset
+from nemo_experimentalist_plugin.eval_author import models
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorResult, MetricAuthoringResult
 from pydantic import ValidationError
 
 

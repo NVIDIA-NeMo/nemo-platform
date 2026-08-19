@@ -15,8 +15,8 @@ from typing import Any
 
 import httpx
 import pytest
-from nemo_eval_author_plugin import traces
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_experimentalist_plugin.eval_author import traces
+from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
 from nemo_platform import APIConnectionError, APIStatusError
 
 _BASE = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)

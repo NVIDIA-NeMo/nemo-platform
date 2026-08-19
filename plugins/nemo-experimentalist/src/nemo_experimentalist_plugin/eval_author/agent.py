@@ -13,9 +13,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nemo_eval_author_plugin import traces
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
 from nemo_experimentalist_plugin.entities import (
     Dataset,
     DatasetValidationError,
@@ -23,6 +20,9 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
 )
+from nemo_experimentalist_plugin.eval_author import traces
+from nemo_experimentalist_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -129,7 +129,7 @@ class EvalAuthor(Agent):
         first, then pass those ids to ``query_traces``. Grouped rows also sort by
         ``-span_count`` when you want the busiest traces instead of the newest.
 
-        See ``nemo_eval_author_plugin.traces.query_spans`` for the filter vocabulary.
+        See ``nemo_experimentalist_plugin.eval_author.traces.query_spans`` for the filter vocabulary.
         """
         client, workspace = self._intake()
         return await traces.query_spans(
@@ -155,7 +155,7 @@ class EvalAuthor(Agent):
         trace, which a capped span query cannot give you. There is no ``agent_name``
         filter here, because only spans carry it; use ``find_agent_traces`` instead.
 
-        See ``nemo_eval_author_plugin.traces.query_traces`` for the filter vocabulary.
+        See ``nemo_experimentalist_plugin.eval_author.traces.query_traces`` for the filter vocabulary.
         """
         client, workspace = self._intake()
         return await traces.query_traces(client, workspace=workspace, filter=filter, sort=sort, mode=mode, limit=limit)

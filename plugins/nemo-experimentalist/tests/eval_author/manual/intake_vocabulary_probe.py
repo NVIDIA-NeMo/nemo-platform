@@ -25,7 +25,7 @@ import asyncio
 import re
 from typing import Any
 
-from nemo_eval_author_plugin import traces
+from nemo_experimentalist_plugin.eval_author import traces
 from nemo_platform import AsyncNeMoPlatform
 
 # Every column Intake names in its "Unknown filter field" message, which is a superset of

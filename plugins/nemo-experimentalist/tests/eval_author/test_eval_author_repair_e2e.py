@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import DatasetValidationError, local_path_from_uri
+from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborDataset,
     HarborEvaluatorConfig,
