@@ -106,7 +106,10 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 |-------|---------|-------|
 | `num_generations_per_prompt` | `8` | Group size for relative advantages. |
 | `num_prompts_per_step` | `null` | Derived from `batch_size / num_generations_per_prompt` when omitted. `num_prompts_per_step × num_generations_per_prompt` must be a multiple of `batch_size` (enforced by `validate_for_training`), so prefer a `num_generations_per_prompt` that divides `batch_size`. |
-| `num_val_generations_per_prompt` | `4` | Generations per prompt at validation. Set `1` when the validation set already repeats each prompt (e.g. an AIME24 mean@32 split), or you multiply the eval cost. |
+| `automodel_kwargs` | `null` | Passed to `policy.dtensor_cfg.automodel_kwargs` (selects the DTensor v2 backend). `{"force_hf": true}` loads stock HuggingFace modules when a model's custom Automodel backbone is not compatible with the parallelizer; a `{"backend": {...}}` block picks the Transformer-Engine / DeepEP MoE implementation. |
+| `router_aux_loss_coef` | `null` | MoE router auxiliary-loss coefficient, applied as a HuggingFace config override. Set `0.0` for RL on a MoE model — the aux load-balancing loss is a pretraining regularizer and adds a gradient term unrelated to the reward. |
+| `vllm_tensor_parallel_size` | `null` | Tensor parallelism for the rollout engine alone. Defaults to `min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node)`. Set it when the model needs several GPUs to hold inference weights but you want the policy trained at a different tensor-parallel size. |
+| `vllm_gpu_memory_utilization` | `0.5` | Fraction of each GPU vLLM reserves for weights plus KV cache. Raise toward `0.7` for large models, which otherwise cannot load their weight shard. |
 | `val_at_start` | `false` | Run validation **before** the first training step. Enable to measure uplift: baseline and result come from one job on the same data and generation settings, instead of a separate baseline run that must be kept in sync. Costs a full rollout pass, hence off by default. Ignored without a `validation.jsonl`. **GRPO only** — DPO always validates at step 0, since its validation needs no generation. |
 | `normalize_rewards` | `true` | |
 | `max_rollout_turns` | `1` | Multi-turn rollouts; most math envs use `1`. |
@@ -116,7 +119,11 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 
 ### `parallelism`
 
-Same block as automodel (`num_nodes`, `num_gpus_per_node`, `tensor_parallel_size`, `pipeline_parallel_size`, `context_parallel_size`, `sequence_parallel`). Divisibility rule (enforced by `RlJobOutput.validate_for_training`): `total_gpus = num_nodes × num_gpus_per_node` must be divisible by `tensor_parallel_size × pipeline_parallel_size × context_parallel_size`, and `batch_size` by `micro_batch_size × data_parallel_size`. **Multi-node (`num_nodes > 1`)** additionally requires the platform to set `NMP_RL_MULTINODE_SHARED_STORAGE_PATH` (shared filesystem for Ray's cross-node coordination); the compiler fails fast otherwise.
+Same block as automodel (`num_nodes`, `num_gpus_per_node`, `tensor_parallel_size`, `pipeline_parallel_size`, `context_parallel_size`, `sequence_parallel`), plus `expert_parallel_size` for MoE policy training (GRPO only; read by the DTensor v2 backend, and setting it above `1` selects v2). Divisibility rule (enforced by `RlJobOutput.validate_for_training`): `total_gpus = num_nodes × num_gpus_per_node` must be divisible by `tensor_parallel_size × pipeline_parallel_size × context_parallel_size × expert_parallel_size`, and `batch_size` by `micro_batch_size × data_parallel_size`. **Multi-node (`num_nodes > 1`)** additionally requires the platform to set `NMP_RL_MULTINODE_SHARED_STORAGE_PATH` (shared filesystem for Ray's cross-node coordination); the compiler fails fast otherwise.
+
+### How validation sampling works
+
+There is no validation counterpart to `num_generations_per_prompt`. NeMo-RL's `validate()` runs **exactly one rollout per row** of `validation.jsonl` — no per-prompt fan-out. To score a prompt *k* times (mean@k), repeat its **row** *k* times when building the dataset. Validation cost is therefore just the row count, and `val_at_start` / `val_at_end` score the same rows, which makes the before/after comparison paired.
 
 ## Integrations (W&B / MLflow)
 

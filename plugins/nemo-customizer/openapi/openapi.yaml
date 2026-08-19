@@ -2412,12 +2412,6 @@ components:
             be a multiple of batch_size.
           type: integer
           exclusiveMinimum: 0.0
-        num_val_generations_per_prompt:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Num Val Generations Per Prompt
-          description: Rollouts sampled per prompt during validation.
-          default: 4
         temperature:
           type: number
           maximum: 2.0
@@ -2473,6 +2467,36 @@ components:
           title: Max Grad Norm
           description: Maximum gradient norm for clipping.
           default: 1.0
+        automodel_kwargs:
+          title: Automodel Kwargs
+          description: 'Passed to policy.dtensor_cfg.automodel_kwargs; selects the
+            DTensor v2 backend. {''force_hf'': true} loads the stock HuggingFace modules;
+            a {''backend'': {...}} block picks the Transformer-Engine / DeepEP MoE
+            implementation. Unset means Automodel auto-detects.'
+          additionalProperties: true
+          type: object
+        router_aux_loss_coef:
+          title: Router Aux Loss Coef
+          description: MoE router auxiliary-loss coefficient, applied as a HuggingFace
+            config override. Use 0.0 to drop the load-balancing term during RL. Unset
+            keeps the model's own value.
+          type: number
+          minimum: 0.0
+        vllm_tensor_parallel_size:
+          title: Vllm Tensor Parallel Size
+          description: Tensor parallel size for the vLLM rollout engine, independent
+            of the policy's. Defaults to min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node).
+          type: integer
+          exclusiveMinimum: 0.0
+        vllm_gpu_memory_utilization:
+          type: number
+          maximum: 1.0
+          exclusiveMinimum: 0.0
+          title: Vllm Gpu Memory Utilization
+          description: Fraction of each GPU vLLM reserves for weights plus KV cache.
+            Raise toward 0.7 for large models; the rest is left for the colocated
+            policy.
+          default: 0.5
       additionalProperties: false
       type: object
       required:
@@ -2818,6 +2842,13 @@ components:
           exclusiveMinimum: 0.0
           title: Context Parallel Size
           description: Context parallel size.
+          default: 1
+        expert_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expert Parallel Size
+          description: Expert parallel size for MoE models. GRPO only; a value above
+            1 selects the DTensor v2 backend.
           default: 1
         sequence_parallel:
           type: boolean

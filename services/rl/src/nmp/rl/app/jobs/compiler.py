@@ -326,7 +326,6 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             grpo=GRPOConfig(
                 num_generations_per_prompt=t.num_generations_per_prompt,
                 num_prompts_per_step=t.num_prompts_per_step,
-                num_val_generations_per_prompt=t.num_val_generations_per_prompt,
                 temperature=t.temperature,
                 max_new_tokens=t.max_new_tokens,
                 normalize_rewards=t.normalize_rewards,
@@ -335,6 +334,10 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 ratio_clip_min=t.ratio_clip_min,
                 ratio_clip_max=t.ratio_clip_max,
                 max_grad_norm=t.max_grad_norm,
+                automodel_kwargs=t.automodel_kwargs,
+                router_aux_loss_coef=t.router_aux_loss_coef,
+                vllm_tensor_parallel_size=t.vllm_tensor_parallel_size,
+                vllm_gpu_memory_utilization=t.vllm_gpu_memory_utilization,
             ),
             lora=(
                 LoRAConfig(
@@ -374,6 +377,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             tensor_parallel_size=p.tensor_parallel_size,
             pipeline_parallel_size=p.pipeline_parallel_size,
             context_parallel_size=p.context_parallel_size,
+            expert_parallel_size=p.expert_parallel_size,
             sequence_parallel=p.sequence_parallel,
             activation_checkpointing=t.activation_checkpointing,
         ),
