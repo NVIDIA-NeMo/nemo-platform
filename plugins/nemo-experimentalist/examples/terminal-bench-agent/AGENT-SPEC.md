@@ -75,7 +75,8 @@ Invocation:
 ```bash
 INFERENCE_API_KEY=<key> \
 uv run --project examples/terminal-bench-agent python -m main \
-  --prompt "<task description>"
+  --prompt-file instruction.md \
+  --trace-path /app/traces/trace.jsonl
 ```
 
 Harbor runs need no Docker socket, sidecar, system Python, package manager, or

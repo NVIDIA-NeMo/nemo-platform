@@ -20,6 +20,7 @@ AGENT_DIR = Path(__file__).parent
 ARTIFACTS_DIR = "/app/artifacts"
 TRACES_DIR = "/app/traces"
 TRACE_PATH = f"{TRACES_DIR}/trace.jsonl"
+REMOTE_PROMPT_PATH = "/logs/agent/instruction.md"
 COLLECTED_ARTIFACTS_DIR = "/logs/artifacts"
 UV_VERSION = "0.9.14"
 INSTALL_ATTEMPTS = 3
@@ -141,11 +142,19 @@ class WrappedAgent(BaseAgent):
         model_name = self.model_name or os.environ.get("AUT_MODEL_NAME")
         if model_name:
             env["NEMO_AGENT_MODEL"] = model_name
-        proc = await environment.exec(
-            f"cd /app && uv run --frozen python main.py --prompt {shlex.quote(instruction.strip())} "
-            f"--trace-path {shlex.quote(TRACE_PATH)}",
-            env=env,
-        )
+        prompt_root = Path(tempfile.mkdtemp(prefix="tau3-agent-prompt-"))
+        try:
+            prompt_path = prompt_root / "instruction.md"
+            prompt_path.write_text(instruction, encoding="utf-8")
+            await environment.upload_file(prompt_path, REMOTE_PROMPT_PATH)
+            proc = await environment.exec(
+                "cd /app && uv run --frozen python -m main "
+                f"--prompt-file {shlex.quote(REMOTE_PROMPT_PATH)} "
+                f"--trace-path {shlex.quote(TRACE_PATH)}",
+                env=env,
+            )
+        finally:
+            shutil.rmtree(prompt_root, ignore_errors=True)
         # download traces from container to parse token counts on the host
         _tmp = tempfile.mkdtemp(prefix="agent_traces_")
         metrics_error = None

@@ -13,6 +13,8 @@ from __future__ import annotations
 import fnmatch
 import logging
 import shlex
+import shutil
+import tempfile
 from pathlib import Path
 
 from harbor import AgentContext, BaseAgent, BaseEnvironment
@@ -21,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 AGENT_DIR = Path(__file__).parent
 TRACE_DIR = "/app/traces"
+TRACE_PATH = f"{TRACE_DIR}/trace.jsonl"
+REMOTE_PROMPT_PATH = "/logs/agent/instruction.md"
 
 # Never uploaded into the task container: optimizer bookkeeping, caches, and
 # anything holding credentials.
@@ -108,16 +112,22 @@ class WrappedAgent(BaseAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        """Execute the agent on *instruction* inside the task container."""
-        session_id = self.session_id or "local"
-        proc = await environment.exec(
-            f"cd /app && python main.py --prompt {shlex.quote(instruction.strip())} "
-            f"--session-id {shlex.quote(session_id)}",
-            env={"TRACE_DIR": TRACE_DIR},
-        )
+        """Execute the standard entrypoint inside the task container."""
+        prompt_root = Path(tempfile.mkdtemp(prefix="smoke-agent-prompt-"))
+        try:
+            prompt_path = prompt_root / "instruction.md"
+            prompt_path.write_text(instruction, encoding="utf-8")
+            await environment.upload_file(prompt_path, REMOTE_PROMPT_PATH)
+            proc = await environment.exec(
+                "cd /app && python -m main "
+                f"--prompt-file {shlex.quote(REMOTE_PROMPT_PATH)} "
+                f"--trace-path {shlex.quote(TRACE_PATH)}",
+            )
+        finally:
+            shutil.rmtree(prompt_root, ignore_errors=True)
 
-        # Nothing is copied here: Harbor collects /app/artifacts and /app/traces
-        # after this method returns, per the declarations described above.
+        # The evaluator collects /app/traces. Task-declared artifacts remain
+        # under /app/artifacts for the verifier and normal Harbor collection.
         context.metadata = {
             "stdout": proc.stdout,
             "stderr": proc.stderr,

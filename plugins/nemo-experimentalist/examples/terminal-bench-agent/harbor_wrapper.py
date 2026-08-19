@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import shlex
 import shutil
@@ -177,30 +176,6 @@ class WrappedAgent(BaseInstalledAgent):
             timeout_sec=600,
         )
 
-    def _apply_summary(self, context: AgentContext) -> None:
-        summary_path = self.logs_dir / "summary.json"
-        try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return
-        if not isinstance(summary, dict):
-            return
-        answer = summary.get("answer")
-        if isinstance(answer, str):
-            context.metadata = {**(context.metadata or {}), "answer": answer}
-        usage = summary.get("usage")
-        if not isinstance(usage, dict):
-            return
-        input_tokens = usage.get("input_tokens")
-        output_tokens = usage.get("output_tokens")
-        cache_read_tokens = usage.get("cache_read_tokens")
-        if isinstance(input_tokens, int):
-            context.n_input_tokens = input_tokens
-        if isinstance(output_tokens, int):
-            context.n_output_tokens = output_tokens
-        if isinstance(cache_read_tokens, int):
-            context.n_cache_tokens = cache_read_tokens
-
     @with_prompt_template
     @override
     async def run(
@@ -214,9 +189,9 @@ class WrappedAgent(BaseInstalledAgent):
         if not api_key:
             raise RuntimeError("INFERENCE_API_KEY is required for the Terminal-Bench LangChain agent")
 
-        prompt_path = self.logs_dir / "instruction.txt"
+        prompt_path = self.logs_dir / "instruction.md"
         prompt_path.write_text(instruction, encoding="utf-8")
-        remote_prompt = f"{REMOTE_ROOT}/instruction.txt"
+        remote_prompt = f"{REMOTE_ROOT}/instruction.md"
         await environment.upload_file(prompt_path, remote_prompt)
 
         env = {
@@ -232,7 +207,6 @@ class WrappedAgent(BaseInstalledAgent):
             f"{REMOTE_VENV}/bin/python -m main "
             f"--prompt-file {shlex.quote(remote_prompt)} "
             "--trace-path /app/traces/trace.jsonl "
-            "--summary-path /logs/agent/summary.json "
             "> /logs/agent/terminal-bench-agent.txt 2>&1; "
             "status=$?; "
             "cat /logs/agent/terminal-bench-agent.txt; "
@@ -240,18 +214,15 @@ class WrappedAgent(BaseInstalledAgent):
             "cp -r /app/traces/. /logs/artifacts/traces/ 2>/dev/null || true; "
             "exit $status"
         )
-        try:
-            result = await self.exec_as_agent(
-                environment,
-                command=command,
-                env=env,
-                cwd="/app",
-            )
-            context.metadata = {
-                **(context.metadata or {}),
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "returncode": result.return_code,
-            }
-        finally:
-            self._apply_summary(context)
+        result = await self.exec_as_agent(
+            environment,
+            command=command,
+            env=env,
+            cwd="/app",
+        )
+        context.metadata = {
+            **(context.metadata or {}),
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.return_code,
+        }

@@ -17,6 +17,10 @@ the agent runs in. `harbor_wrapper` therefore passes `OPENAI_API_KEY` and
 `OPENAI_BASE_URL` through at exec time; `INFERENCE_API_KEY` / `INFERENCE_API_BASE` are
 honored as a fallback when running `main.py` outside the wrapper.
 
+All evaluator modes use the same entrypoint: `python -m main --prompt-file
+instruction.md --trace-path /app/traces/trace.jsonl`. The Harbor wrapper and
+the remote Harbor bridge both supply those paths.
+
 The agent raises nooa's `tool_call_timeout` to 300 seconds, overridable with
 `TAU3_MCP_TOOL_TIMEOUT_SECONDS`, because the sidecar runs a user-simulator LLM inside
 `start_conversation` and `send_message_to_user`. The default of 60 seconds would be

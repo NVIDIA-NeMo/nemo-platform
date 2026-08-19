@@ -15,7 +15,8 @@ the single answer line to `/app/artifacts/output.txt`.
 
 ## Interface
 
-- Invoked as `python main.py --prompt "<instruction text>"` with `/app` as the
+- Invoked as `python -m main --prompt-file <instruction.md> --trace-path
+  /app/traces/trace.jsonl` with `/app` as the
   working directory.
 - Writes exactly one line, plus a trailing newline, to
   `/app/artifacts/output.txt`.
