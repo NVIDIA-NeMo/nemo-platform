@@ -279,7 +279,6 @@ class InMemoryRunnerBackend(RunnerBackend):
         await asyncio.to_thread(base_dir.mkdir, parents=True, exist_ok=True)
         try:
             await self._stage_agent_spec(workspace, agent, config, base_dir)
-            # After staging so the resolved config wins over any agent.yaml in the fileset.
             config_path = await asyncio.to_thread(self._write_fabric_config, base_dir, config)
             await validate_platform_agent_config(config, base_dir=base_dir)
             log_path = self.log_path_for(workspace, name)
