@@ -56,9 +56,9 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime, timedelta, timezone
+from itertools import groupby
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -76,6 +76,8 @@ _EPOCH_ISO = "1970-01-01T00:00:00Z"
 _STATUS_CODE_ERROR = 2  # opentelemetry.proto.trace.v1.Status.STATUS_CODE_ERROR
 OTLP_REQUEST_MAX_BYTES = 4 * 1024 * 1024
 OTLP_REQUEST_MAX_SPANS = 100
+DIRECT_REQUEST_MAX_SPANS = 1000
+DIRECT_REQUEST_MAX_BYTES = 4 * 1024 * 1024
 
 # Where the attribute catalog lives inside a nemo-platform checkout.
 CATALOG_RELPATH = Path("services/intake/src/nmp/intake/spans/span_attribute_catalog.py")
@@ -254,17 +256,25 @@ def _iso_to_ns(value: str) -> int:
     return ((dt - _EPOCH) // timedelta(microseconds=1)) * 1000
 
 
-def doc_to_otlp(doc: dict, catalog) -> dict:
-    """One detailed span doc -> a plain OTLP span dict (no protobuf, no network).
-
-    Returns ``{trace_id, span_id, parent_span_id, name, start_ns, end_ns,
-    status_error, scope, attributes}`` — :func:`build_trace_request` turns a
-    batch of these into one protobuf request. ``catalog`` is the platform's
-    ``span_attribute_catalog`` module (see :func:`load_catalog`); the semantic
-    doc columns are inverted through it mechanically, so a catalog change on
-    the platform side changes the inversion with it.
-    """
+def _doc_attributes(doc: dict, catalog) -> dict[str, Any]:
+    """Rebuild source attributes from detailed read-API fields."""
     attrs: dict[str, Any] = json.loads(doc.get("raw_attributes") or "{}")
+    for spec in catalog.ATTRIBUTE_SPECS:
+        if any(key in attrs for key in spec.source_keys):
+            continue  # raw passthrough already carries a source alias — let it win, as it did originally
+        value = _doc_value(doc, spec.field.value)
+        if value is not None:
+            attrs[spec.source_keys[0]] = value
+    metadata = (doc.get("evaluation_context") or {}).get("metadata")
+    if metadata and "nemo.experiment.metadata" not in attrs:
+        # Stored in the string bag but excluded from raw_attributes; resurfaces as evaluation_context.metadata.
+        attrs["nemo.experiment.metadata"] = json.dumps(metadata, separators=(",", ":"), ensure_ascii=False)
+    return attrs
+
+
+def doc_to_otlp(doc: dict, catalog) -> dict:
+    """One detailed span doc -> a plain OTLP span dict (no protobuf, no network)."""
+    attrs = _doc_attributes(doc, catalog)
     # Ingest re-stamps otel.scope from the protobuf scope on every span, so the exported value
     # must travel as the scope itself (build_trace_request groups spans by it), not as an attribute.
     scope = json.loads(attrs.pop("otel.scope", "null") or "null")
@@ -277,16 +287,6 @@ def doc_to_otlp(doc: dict, catalog) -> dict:
         attrs["status"] = "cancelled"  # source-only; the only OTLP route to a cancelled row
     if "openinference.span.kind" not in attrs and doc.get("kind") not in (None, "UNKNOWN"):
         attrs["openinference.span.kind"] = doc["kind"]
-    for spec in catalog.ATTRIBUTE_SPECS:
-        if any(key in attrs for key in spec.source_keys):
-            continue  # raw passthrough already carries a source alias — let it win, as it did originally
-        value = _doc_value(doc, spec.field.value)
-        if value is not None:
-            attrs[spec.source_keys[0]] = value
-    metadata = (doc.get("evaluation_context") or {}).get("metadata")
-    if metadata and "nemo.experiment.metadata" not in attrs:
-        # Stored in the string bag but excluded from raw_attributes; resurfaces as evaluation_context.metadata.
-        attrs["nemo.experiment.metadata"] = json.dumps(metadata, separators=(",", ":"), ensure_ascii=False)
     if not doc.get("trace_id"):
         raise ValueError(f"span {doc.get('span_id')}: no trace_id — cannot rebuild an OTLP span")
     return {
@@ -300,6 +300,38 @@ def doc_to_otlp(doc: dict, catalog) -> dict:
         "scope": scope,
         "attributes": attrs,
     }
+
+
+def _iso_utc(value: str) -> str:
+    """Read-API timestamp (naive means UTC) -> offset-aware UTC ISO string."""
+    timestamp = datetime.fromisoformat(value)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc).isoformat()
+
+
+def doc_to_direct_span(doc: dict, catalog) -> tuple[str, dict]:
+    """One detailed span doc -> its exact provider-neutral direct-ingest representation."""
+    source = doc.get("source")
+    if not isinstance(source, str) or not source:
+        raise ValueError(f"span {doc.get('span_id')}: no source")
+    if not doc.get("trace_id"):
+        raise ValueError(f"span {doc.get('span_id')}: no trace_id")
+    body = {
+        "span_id": doc["span_id"],
+        "trace_id": doc["trace_id"],
+        "session_id": doc["session_id"],
+        "parent_span_id": doc.get("parent_span_id"),
+        "name": doc.get("name") or "",
+        "kind": doc.get("kind") or "UNKNOWN",
+        "status": doc.get("status") or "unknown",
+        "started_at": _iso_utc(doc["started_at"]),
+        "ended_at": _iso_utc(doc["ended_at"]) if doc.get("ended_at") else None,
+        "input": doc.get("input"),
+        "output": doc.get("output"),
+        "attributes": _doc_attributes(doc, catalog),
+    }
+    return source, {key: value for key, value in body.items() if value is not None}
 
 
 def build_trace_request(otlp_spans: list[dict]) -> ExportTraceServiceRequest:
@@ -430,8 +462,8 @@ def _require_zero(workspace: str, collection: str, count: int) -> None:
         )
 
 
-def _collection_outcome(documents: list[dict], ingested: bool) -> dict[str, int]:
-    count = len(documents)
+def _collection_outcome(documents: list[dict] | int, ingested: bool) -> dict[str, int]:
+    count = documents if isinstance(documents, int) else len(documents)
     if ingested:
         return {"ingested": count, "skipped": 0}
     return {"ingested": 0, "skipped": count}
@@ -447,6 +479,67 @@ def _read_jsonl(path: Path) -> list[dict]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _iter_jsonl(path: Path) -> Iterator[dict]:
+    if not path.is_file():
+        return
+    with path.open(encoding="utf-8") as stream:
+        for line in stream:
+            if line.strip():
+                yield json.loads(line)
+
+
+def _scan_span_file(path: Path, catalog) -> tuple[int, set[str], set[str]]:
+    """Check direct inversion and return count, sources, and earliest span IDs."""
+    count = 0
+    sources: set[str] = set()
+    earliest: datetime | None = None
+    earliest_ids: set[str] = set()
+    for doc in _iter_jsonl(path):
+        source, direct = doc_to_direct_span(doc, catalog)
+        sources.add(source)
+        started_at = datetime.fromisoformat(direct["started_at"])
+        if earliest is None or started_at < earliest:
+            earliest = started_at
+            earliest_ids = {doc["span_id"]}
+        elif started_at == earliest:
+            earliest_ids.add(doc["span_id"])
+        count += 1
+    return count, sources, earliest_ids
+
+
+def _ingest_direct_span_file(
+    base_url: str,
+    workspace: str,
+    path: Path,
+    catalog,
+    *,
+    client: httpx.Client,
+) -> None:
+    """Stream detailed span docs into bounded provider-neutral batches."""
+    batches: dict[str, list[dict]] = {}
+    batch_bytes: dict[str, int] = {}
+    url = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{workspace}/ingest/spans"
+
+    def flush(source: str) -> None:
+        spans = batches.get(source)
+        if not spans:
+            return
+        _post_created(client, url, {"source": source, "spans": spans})
+        spans.clear()
+        batch_bytes[source] = 0
+
+    for doc in _iter_jsonl(path):
+        source, direct = doc_to_direct_span(doc, catalog)
+        batch = batches.setdefault(source, [])
+        size = len(json.dumps(direct, ensure_ascii=False).encode())
+        if batch and (len(batch) == DIRECT_REQUEST_MAX_SPANS or batch_bytes[source] + size > DIRECT_REQUEST_MAX_BYTES):
+            flush(source)
+        batch.append(direct)
+        batch_bytes[source] = batch_bytes.get(source, 0) + size
+    for source in batches:
+        flush(source)
 
 
 def _wait_for_spans(
@@ -582,13 +675,13 @@ def _first_span_id(base_url: str, workspace: str, *, client: httpx.Client | None
             client.close()
 
 
-def _doc_started_at(doc: dict) -> datetime:
-    """A span doc's chronological ``started_at`` (naive values are UTC; missing sorts first)."""
-    parsed = datetime.fromisoformat(str(doc.get("started_at") or _EPOCH_ISO))
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
-
-
-def _assert_same_first_span(base_url: str, workspace: str, span_docs: list[dict], *, client: httpx.Client) -> None:
+def _assert_same_first_span(
+    base_url: str,
+    workspace: str,
+    expected: set[str],
+    *,
+    client: httpx.Client,
+) -> None:
     """Harden the count-only skip guard: matching counts can still be a different corpus.
 
     A re-minted ref (same workspaces, same counts, fresh ids — e.g. re-published
@@ -601,8 +694,6 @@ def _assert_same_first_span(base_url: str, workspace: str, span_docs: list[dict]
     live_first = _first_span_id(base_url, workspace, client=client)
     if live_first is None:
         return
-    earliest = min(_doc_started_at(doc) for doc in span_docs)
-    expected = {doc.get("span_id") for doc in span_docs if _doc_started_at(doc) == earliest}
     if live_first not in expected:
         raise RuntimeError(
             f"{workspace}: span count matches the bundle but its first span is {live_first!r} "
@@ -678,31 +769,13 @@ def ingest_bundle(
     satisfied. Returns
     ``{source_ws: {"workspace": target, <collection>: {"ingested": n, "skipped": n}}}``.
 
-    Only otel-sourced corpora are restorable: ATIF/chat-completions span docs
-    carry non-hex ids (``span-<digest>``, ``chatcmpl-<hash>``) that the OTLP
-    inversion cannot encode, and re-ingest would re-stamp their ``source`` as
-    otel. Every workspace's docs are scanned up front so a bad bundle errors
-    before ANYTHING is ingested (all-or-nothing).
+    OTLP-only workspaces retain the protobuf path. Other source formats use the
+    provider-neutral direct-span API so arbitrary ids and source names survive.
+    Every span file is checked for invertibility in a bounded-memory pass before any write.
     """
-    spans_by_ws: dict[str, list[dict]] = {}
-    foreign_sources: dict[str, Counter] = {}
+    span_info: dict[str, tuple[int, set[str], set[str]]] = {}
     for source_ws in manifest["workspaces"]:
-        docs = _read_jsonl(Path(export_dir) / source_ws / "spans.jsonl")
-        spans_by_ws[source_ws] = docs
-        bad = Counter(doc.get("source") for doc in docs if doc.get("source") != "otel")
-        if bad:
-            foreign_sources[source_ws] = bad
-    if foreign_sources:
-        detail = "; ".join(
-            f"workspace '{ws}': "
-            + ", ".join(f"{src or '<missing>'}={n}" for src, n in sorted(bad.items(), key=lambda kv: str(kv[0])))
-            for ws, bad in foreign_sources.items()
-        )
-        raise RuntimeError(
-            f"bundle contains non-otel span docs ({detail}) — their ids are not OTLP hex, so re-ingest "
-            "would crash mid-batch (partial restore) and any doc that survived would be silently "
-            "re-stamped as otel. Only otel-sourced corpora are restorable today; nothing was ingested."
-        )
+        span_info[source_ws] = _scan_span_file(Path(export_dir) / source_ws / "spans.jsonl", catalog)
     if warn_if_stale(manifest) and _is_loopback(base_url):
         # CI's stack freezes TTL merges unconditionally; a laptop restore of a >90d bundle
         # would otherwise lose its spans on the next TTL merge with only an ignorable warning.
@@ -718,13 +791,18 @@ def ingest_bundle(
             if not _WS_OK.fullmatch(target):
                 raise RuntimeError(f"target workspace '{target}' violates the platform naming rule ({_WS_OK.pattern})")
             ws_dir = Path(export_dir) / source_ws
-            spans = spans_by_ws[source_ws]
+            spans_path = ws_dir / "spans.jsonl"
+            span_file_count, sources, earliest_span_ids = span_info[source_ws]
             annotations = _read_jsonl(ws_dir / "annotations.jsonl")
             results = _read_jsonl(ws_dir / "evaluator_results.jsonl")
             ws_counts = counts.get(source_ws) or {}
-            expected_spans = int(ws_counts.get("spans", len(spans)))
+            expected_spans = int(ws_counts.get("spans", span_file_count))
             expected_ann = int(ws_counts.get("annotations", len(annotations)))
             expected_res = int(ws_counts.get("evaluator_results", len(results)))
+            if expected_spans != span_file_count:
+                raise RuntimeError(
+                    f"{source_ws}: manifest expects {expected_spans} spans but spans.jsonl contains {span_file_count}"
+                )
             ensure_workspace(base_url, target, client=client)
 
             have_spans = span_count(base_url, target, client=client)
@@ -737,15 +815,15 @@ def ingest_bundle(
                     ("evaluator results", have_res),
                 ):
                     _require_zero(target, collection, count)
-                ingest_spans = bool(spans)
+                ingest_spans = bool(span_file_count)
                 post_annotations = bool(annotations)
                 post_results = bool(results)
             else:
                 if have_spans == expected_spans:
                     ingest_spans = False
-                    if expected_spans and spans:
+                    if expected_spans:
                         # Counts alone can't tell a restored corpus from a re-minted one — fingerprint it.
-                        _assert_same_first_span(base_url, target, spans, client=client)
+                        _assert_same_first_span(base_url, target, earliest_span_ids, client=client)
                 elif have_spans == 0:
                     ingest_spans = True
                 else:
@@ -782,7 +860,7 @@ def ingest_bundle(
                 print(f"{target}: already restored ({have_spans} spans) — skipping")
                 outcome[source_ws] = {
                     "workspace": target,
-                    "spans": _collection_outcome(spans, False),
+                    "spans": _collection_outcome(span_file_count, False),
                     "annotations": _collection_outcome(annotations, False),
                     "evaluator_results": _collection_outcome(results, False),
                 }
@@ -790,14 +868,23 @@ def ingest_bundle(
             # Healing = posting into a workspace whose spans already landed (interrupted restore).
             healing = expected_spans > 0 and not ingest_spans
             if ingest_spans:
-                print(f"ingesting {len(spans)} spans into {target}")
-                # Materialize every request before posting: higher memory use buys up-front
-                # validation (including oversized spans) and prevents a partial restore.
-                trace_requests = build_trace_requests(spans, catalog)
-                for request in trace_requests:
-                    export_trace_request(base_url, target, request, client=client)
-                if spans:
-                    _wait_for_spans(base_url, target, expected_spans or len(spans), client=client, sleep=sleep)
+                print(f"ingesting {span_file_count} spans into {target}")
+                if sources == {"otel"}:
+                    spans = _read_jsonl(spans_path)
+                    trace_requests = build_trace_requests(spans, catalog)
+                    for request in trace_requests:
+                        export_trace_request(base_url, target, request, client=client)
+                else:
+                    _ingest_direct_span_file(base_url, target, spans_path, catalog, client=client)
+                if span_file_count:
+                    _wait_for_spans(
+                        base_url,
+                        target,
+                        expected_spans,
+                        client=client,
+                        timeout_s=1800.0,
+                        sleep=sleep,
+                    )
             root = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{target}"
             if post_annotations:
                 if healing:
@@ -813,7 +900,7 @@ def ingest_bundle(
                     _post_created(client, f"{root}/evaluator-results", body)
             outcome[source_ws] = {
                 "workspace": target,
-                "spans": _collection_outcome(spans, ingest_spans),
+                "spans": _collection_outcome(span_file_count, ingest_spans),
                 "annotations": _collection_outcome(annotations, post_annotations),
                 "evaluator_results": _collection_outcome(results, post_results),
             }
@@ -849,6 +936,37 @@ def _diff_collection(original: list[dict], restored: list[dict], *, workspace: s
     return mismatches
 
 
+def _diff_grouped_jsonl(original: Path, restored: Path, *, workspace: str, collection: str) -> list[str]:
+    """Streaming exact diff for trace-grouped scoped exports."""
+    left = groupby(_iter_jsonl(original), key=lambda doc: doc["trace_id"])
+    right = groupby(_iter_jsonl(restored), key=lambda doc: doc["trace_id"])
+    while True:
+        group_a = next(left, None)
+        group_b = next(right, None)
+        if group_a is None or group_b is None:
+            if group_a is group_b:
+                return []
+            return [f"{workspace}/{collection}: trace count differs"]
+        trace_a, documents_a = group_a
+        trace_b, documents_b = group_b
+        if trace_a != trace_b:
+            return [f"{workspace}/{collection}: trace {trace_a!r} != {trace_b!r}"]
+        normalized_a = {(doc["source"], doc["span_id"]): _normalize(doc, collection) for doc in documents_a}
+        normalized_b = {(doc["source"], doc["span_id"]): _normalize(doc, collection) for doc in documents_b}
+        if normalized_a.keys() != normalized_b.keys():
+            return [f"{workspace}/{collection} trace {trace_a}: span identities differ"]
+        for identity, doc_a in normalized_a.items():
+            doc_b = normalized_b[identity]
+            if doc_a == doc_b:
+                continue
+            label = identity[1]
+            return [
+                f"{workspace}/{collection} {label}.{key}: {doc_a.get(key)!r} != {doc_b.get(key)!r}"
+                for key in sorted(set(doc_a) | set(doc_b))
+                if doc_a.get(key) != doc_b.get(key)
+            ]
+
+
 def cleanup_scratch(base_url: str, workspaces: list[str]) -> None:
     """Best-effort scratch-workspace cleanup after a round-trip check.
 
@@ -858,10 +976,10 @@ def cleanup_scratch(base_url: str, workspaces: list[str]) -> None:
     publishing that URL's port. The DELETE mutations are scoped to an exact
     IN-list of the scratch names. When the binding cannot be verified NOTHING is
     deleted — docker-execing another container would purge the wrong ClickHouse,
-    and deleting just the workspace *record* would orphan rows behind it. Leaving
-    the record intact means a later collision hits the loud foreign-data guard;
-    leftovers are printed for manual cleanup. Failures are reported, never
-    raised: on CI the whole platform is ephemeral, so residue is moot.
+    and deleting just the workspace *record* would orphan rows behind it. Workspace
+    records are retained after successful row cleanup so the same content-scoped
+    check can reuse them. Failures are reported, never raised: on CI the whole
+    platform is ephemeral, so residue is moot.
     """
     if not workspaces:
         return
@@ -913,11 +1031,6 @@ def cleanup_scratch(base_url: str, workspaces: list[str]) -> None:
                 file=sys.stderr,
             )
             return
-    with httpx.Client(timeout=30.0) as client:
-        for ws in workspaces:
-            resp = client.delete(f"{base_url.rstrip('/')}/apis/entities/v2/workspaces/{ws}")
-            if resp.status_code not in (200, 204, 404):
-                print(f"cleanup: workspace record {ws} not deleted ({resp.status_code})", file=sys.stderr)
 
 
 def _scratch_digest(manifest: dict, content_key: str | None) -> str:
@@ -990,12 +1103,40 @@ def roundtrip_diff(
         TEMP_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TEMP_ROOT) as tmp:
             re_dir = Path(tmp)
-            export.export_workspaces(base_url, list(workspace_map.values()), re_dir, since=None)
+            selections = manifest.get("selections") or {}
+            if selections:
+                for source_ws, scratch_ws in workspace_map.items():
+                    export.export_workspaces(
+                        base_url,
+                        [scratch_ws],
+                        re_dir,
+                        since=None,
+                        selection=selections.get(source_ws),
+                    )
+            else:
+                export.export_workspaces(base_url, list(workspace_map.values()), re_dir, since=None)
             for source_ws, scratch_ws in workspace_map.items():
                 for collection in ("spans", "annotations", "evaluator_results"):
-                    original = _read_jsonl(Path(export_dir) / source_ws / f"{collection}.jsonl")
-                    restored = _read_jsonl(re_dir / "export" / scratch_ws / f"{collection}.jsonl")
-                    mismatches.extend(_diff_collection(original, restored, workspace=source_ws, collection=collection))
+                    original_path = Path(export_dir) / source_ws / f"{collection}.jsonl"
+                    restored_path = re_dir / "export" / scratch_ws / f"{collection}.jsonl"
+                    if source_ws in selections and collection == "spans":
+                        mismatches.extend(
+                            _diff_grouped_jsonl(
+                                original_path,
+                                restored_path,
+                                workspace=source_ws,
+                                collection=collection,
+                            )
+                        )
+                    else:
+                        mismatches.extend(
+                            _diff_collection(
+                                _read_jsonl(original_path),
+                                _read_jsonl(restored_path),
+                                workspace=source_ws,
+                                collection=collection,
+                            )
+                        )
     finally:
         cleanup_scratch(base_url, list(workspace_map.values()))
     return mismatches
