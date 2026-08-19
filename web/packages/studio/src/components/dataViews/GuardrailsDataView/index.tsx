@@ -19,7 +19,7 @@ import type {
   GuardrailConfigFilter,
   GuardrailsListGuardrailConfigsParams,
 } from '@nemo/sdk/generated/platform/schema';
-import { Badge, Button, Flex, Text } from '@nvidia/foundations-react-core';
+import { Badge, Button, type DropdownEntry, Flex, Text } from '@nvidia/foundations-react-core';
 import {
   getMainModelName,
   getRailCounts,
@@ -155,7 +155,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (config: GuardrailConfig) => [
+          rowActions: (config: GuardrailConfig): DropdownEntry[] => [
             {
               slotStart: <Copy />,
               children: 'Duplicate',
