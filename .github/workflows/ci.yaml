@@ -349,17 +349,6 @@ jobs:
         shell: bash
         run: make docker-push TARGET=docker-cpu-ci
 
-      - name: Publish Gym e2e image tags
-        if: env.PUBLISH_IMAGES == 'true'
-        shell: bash
-        run: |
-          docker buildx imagetools create \
-            --tag "${IMAGE_REGISTRY}/nmp-api:${BAKE_TAG}-gym-e2e" \
-            "${IMAGE_REGISTRY}/nmp-api:${BAKE_TAG}"
-          docker buildx imagetools create \
-            --tag "${IMAGE_REGISTRY}/nmp-gym-tasks:${BAKE_TAG}-gym-e2e" \
-            "${IMAGE_REGISTRY}/nmp-gym-tasks:${BAKE_TAG}"
-
       - name: Save fastembed model cache
         if: steps.fastembed-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -629,19 +618,18 @@ jobs:
       packages: read
     env:
       KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-gym-e2e
-      NMP_GYM_E2E_IMAGE_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}-gym-e2e
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
-      - name: Setup Kind cluster with Gym-enabled CPU tasks
+      - name: Setup Kind cluster for Gym evaluation
         uses: ./.github/actions/setup-kind-cluster
         with:
           kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
           image-registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
-          image-tag: ${{ env.NMP_GYM_E2E_IMAGE_TAG }}
+          image-tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
           kind-image-pull-token: ${{ github.token }}
           kind-image-pull-user: ${{ github.actor }}
 
