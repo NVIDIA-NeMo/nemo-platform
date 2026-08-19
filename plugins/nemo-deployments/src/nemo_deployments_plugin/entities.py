@@ -285,7 +285,12 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
     volume_mounts: list[VolumeMount] = Field(default_factory=list, alias="volumeMounts")
     config_files: list[ConfigFile] = Field(default_factory=list, alias="configFiles")
     restart_policy: RestartPolicy = Field(default="Always", alias="restartPolicy")
-    backoff_limit: int = Field(default=6, alias="backoffLimit")
+    backoff_limit: int = Field(
+        default=6,
+        ge=1,
+        alias="backoffLimit",
+        description="Retry limit for OnFailure deployments; must be positive. Never deployments disable retries internally.",
+    )
     drift_recovery: DriftRecoveryPolicy = Field(default_factory=DriftRecoveryPolicy, alias="driftRecovery")
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig, alias="backendConfig")

@@ -24,6 +24,18 @@ def test_deployment_config_requires_containers_shape() -> None:
     assert cfg.containers[0].image == "nginx:latest"
 
 
+def test_deployment_config_rejects_zero_backoff_limit() -> None:
+    with pytest.raises(ValidationError):
+        DeploymentConfig.model_validate(
+            {
+                "name": "cfg",
+                "workspace": "default",
+                "containers": [Container(name="main", image="nginx:latest")],
+                "backoff_limit": 0,
+            }
+        )
+
+
 def test_volume_default_status_pending() -> None:
     vol = Volume(name="v1", workspace="default")
     assert vol.status == "PENDING"

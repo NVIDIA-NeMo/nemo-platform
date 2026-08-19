@@ -95,6 +95,8 @@ def restart_policy_kwargs(restart_policy: RestartPolicy, backoff_limit: int) -> 
     if restart_policy == "Always":
         return {"restart_policy": {"Name": "always"}}
     if restart_policy == "OnFailure":
+        if backoff_limit < 1:
+            raise DeploymentConfigError("backoff_limit must be at least 1 for OnFailure restart policy")
         return {"restart_policy": {"Name": "on-failure", "MaximumRetryCount": backoff_limit}}
     return {}
 

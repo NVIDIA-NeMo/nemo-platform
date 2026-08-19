@@ -5,7 +5,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from doubles import FakeBackend, fake_client
@@ -207,6 +207,4 @@ async def test_authored_metrics_and_suite_reach_the_run(
         "the strategy must receive the settled contract through the context"
     )
     assert [t.name for t in runner._config.regression_metrics] == ["reward"], "configured targets demote to guardrails"
-    assert cast(Any, distributed["suite"]).id == "insight-suite", (
-        "the authored suite must reach the splits the loop evaluates"
-    )
+    assert distributed["suite"].id == "insight-suite", "the authored suite must reach the splits the loop evaluates"
