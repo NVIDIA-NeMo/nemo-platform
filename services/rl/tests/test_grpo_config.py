@@ -633,3 +633,30 @@ def test_sandbox_resources_unset_leaves_the_provider_default(
 
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert "resources" not in sandbox
+
+
+def test_sandbox_ttl_reaches_the_sandbox_when_the_operator_sets_it(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ttl_s reaps leaked sandboxes, so it has to outlast the longest accepted run.
+
+    NeMo-RL defaults it to 4h. A GRPO job that runs longer loses its sandbox mid-rollout
+    and dies with a proxy 502, which reads as a transport fault rather than an expiry.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    step.gym.sandbox_ttl_s = 86_400
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["ttl_s"] == 86_400
+
+
+def test_sandbox_ttl_unset_keeps_the_nemo_rl_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["ttl_s"] == 14_400

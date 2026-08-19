@@ -94,6 +94,19 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         ),
     )
 
+    sandbox_ttl_s: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Lifetime of the Gym sandbox pod, as env.nemo_gym.sandbox.ttl_s. Leave unset to "
+            "take NeMo-RL's default of 14400 (4h). It is a reap timer for leaked sandboxes, "
+            "not a job timeout, so it must exceed the longest training run the cluster "
+            "accepts -- a GRPO job outliving it loses its sandbox mid-rollout and fails with "
+            "a proxy 502. Cannot exceed the OpenSandbox server's max_sandbox_timeout_seconds "
+            "(86400 as installed). Operator-scoped: jobs cannot set it."
+        ),
+    )
+
     sandbox_resources: dict[str, str] | None = Field(
         default=None,
         description=(
