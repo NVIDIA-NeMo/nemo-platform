@@ -34,7 +34,7 @@ dependencies = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.6.0,<0.7",
+  "nemo-relay>=0.7.2,<0.8",
   # Fabric's typed config surface (FabricConfig/RuntimeConfig/ModelConfig/the relay models) — what the
   # agent-eval runtimes compose against. The metapackage alone is ~2 MB / 3 packages; it requires
   # nemo-fabric-runtime unconditionally as of rc4, which is why the `runtime` extra it used to expose

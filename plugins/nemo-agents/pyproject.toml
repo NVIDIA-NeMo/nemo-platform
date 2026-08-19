@@ -35,13 +35,11 @@ dependencies = [
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",
     "rich>=13.7.1",
-    # Floor stays at 0.1.0 so published wheels remain PyPI-resolvable (wheelcheck / consumers).
-    # Workspace uv.sources pins the mid-Aug main SHA (0.2.0 content) until PyPI ships 0.2.0.
-    "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.3.0",
+    "nemo-fabric[claude,codex,deepagents,relay]>=0.2.0rc3,<0.3.0",
     # TODO(AIRCORE-952): Switch to the metapackage's `hermes-agent` extra once hermes-agent
     # relaxes its vulnerable exact dependency pins — that extra applies [harness], which
     # pins requests==2.33.0.
-    "nemo-fabric-adapters-hermes>=0.1.0,<0.3.0; python_version < '3.14'",
+    "nemo-fabric-adapters-hermes>=0.2.0rc3,<0.3.0; python_version < '3.14'",
 ]
 version = "0.0.0"
 

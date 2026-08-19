@@ -1714,36 +1714,62 @@ mypy-extensions==1.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
 nemo-anonymizer==0.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:ee5a47c67121ce145c24e42611bcc1671dc60574a6ec779e9f732d3e32418761
     # via nemo-anonymizer-plugin
-nemo-fabric @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:1325153a7b4a4e721ccd751e395afaddd1e1917532e88aa1567265aef8a5dc4c
     # via
     #   nemo-agents-plugin
     #   nemo-evaluator-sdk
-nemo-fabric-adapters-claude @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/claude ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapter-contract==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:86ba06cb575810848834774713fcf4c50f64611507461e152cfb44c3c694d76b
+    # via
+    #   nemo-fabric-adapters-claude
+    #   nemo-fabric-adapters-codex
+    #   nemo-fabric-adapters-common
+    #   nemo-fabric-adapters-deepagents
+    #   nemo-fabric-adapters-hermes
+nemo-fabric-adapters-claude==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:57548b7d6691f2b767f38580d76ff1497f08d5aac88fe3d54b43aa70d7ee9b1c
     # via nemo-fabric
-nemo-fabric-adapters-codex @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/codex ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-codex==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:3258beda3ceaf82564dbd57bc4314dfa923e46ed0c1dfd3d9014c666dd09e35f
     # via nemo-fabric
-nemo-fabric-adapters-common @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/common ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-common==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:279dfd5e5bc9a74764803ea4408e9dfa8440976b24177690354b49a03a1989cd
     # via
     #   nemo-fabric-adapters-claude
     #   nemo-fabric-adapters-codex
     #   nemo-fabric-adapters-deepagents
     #   nemo-fabric-adapters-hermes
-nemo-fabric-adapters-deepagents @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/deepagents ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-deepagents==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:3d65b7f7fad929f6865aae2d65a7979bfdc1c90c1cd3b44fd88fd60ef7226296
     # via nemo-fabric
-nemo-fabric-adapters-hermes @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/hermes ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-hermes==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:6d771dc2f7bd95e30fa2b6f0e053aec3b96ff668f073c9d2276cf20c79fa36da
     # via nemo-agents-plugin
-nemo-fabric-runtime @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=python ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-runtime==0.2.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:22e56ee982503d5973e9c1bbbe5da0d85a768f3972fb89f80f2f2fe8ceca7dde \
+    --hash=sha256:b3f070e6e17283fb8bf6b702b339eb946ec01b61328b5bcf99259d2be868a3ba \
+    --hash=sha256:efdb3a23385d8d20370f7bd96769300cb333deeca9b7850481977c97482f8451
     # via nemo-fabric
-nemo-relay==0.6.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:849daa9e45158ac581e54506e0fcc7a24f557d1ed06dbdc074f5de7a00393cbc \
-    --hash=sha256:8c80e534b76bb0455cfc222aaf5c10fa064c088b3c0d5e137eb3c97db46dbc47 \
-    --hash=sha256:ad5dae6febf6532d7b113abc2a404679c8feffc499df3034b93d9a078185d2bb \
-    --hash=sha256:c0cd9570f64c6956fe3bfb82af1cdb3ee70cb50b51098cdb0de831c3f9b4e904 \
-    --hash=sha256:c8bc4a792a2f8c35ddef1b900cc43be2b2bbbfcd5e7cf65aa0829c04d25eb77f \
-    --hash=sha256:f3d3088019609bc953357b5598a47481dc3e7dc8f11ecf27002ede251f37eb7b
+nemo-relay==0.7.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:301dfc8334032ac52c09cc0b1421181e7c4df601abe7c82dfe51aa74ddbb3732 \
+    --hash=sha256:49c70c0a94cebb6cba3dd7521be11f63eac4cd9386881eb29827ac91b1bd780b \
+    --hash=sha256:8eeaaf8c6a18440e473dd14eb1bb82e56c6514e70adee7456eddf9ce217cff89 \
+    --hash=sha256:90ff984a89c42ebd0cfe26a0af3f180b1970e2ebcd743d19a960e547949ad2ef \
+    --hash=sha256:d4895a4df39a92ecbac3633fb4ec59cf1f83286c0369f433760ab28fb8d6dddf \
+    --hash=sha256:ea5a1bb52e25e001dcbf6af1830616be181845e978cc848df58562556bba5604
     # via
     #   nemo-evaluator-sdk
     #   nemo-fabric
+nemo-relay-cli-bin==0.7.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:1821c95a23b6615834551bffb24f2ac40ccfcbd414da6c0f550bbfdb62d9d7ad \
+    --hash=sha256:73a12cf7556ff9df7aeab137ae393bcf8a16375b84d7f20ca980b7401647aaaf \
+    --hash=sha256:af187f9ce77c715f704fb044c1787384fc547ca0fd575e1289c8c33ad2db351b \
+    --hash=sha256:b3cb9d39695c2d09c8380a0e1e5e9e39bed66618c5b85affba7ec0cef0161893 \
+    --hash=sha256:e8f0d804ebadf892e16d567a9d693d87f830d38dab6cf7badf5cd186ab4697d7
+    # via
+    #   nemo-fabric-adapters-claude
+    #   nemo-fabric-adapters-codex
 nemo-safe-synthesizer==0.1.7 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:07ad037e6ded8f7020039fa88efdab4aaaf805ea52fb8238380086e0811eaaf0
     # via nemo-safe-synthesizer-plugin

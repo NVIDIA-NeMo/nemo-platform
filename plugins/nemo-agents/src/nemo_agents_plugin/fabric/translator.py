@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
-# CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
-import nemo_fabric as fabric  # ty: ignore[unresolved-import]
+import nemo_fabric as fabric
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
 from nemo_agents_plugin.fabric.gateway_credentials import (
     bind_platform_gateway_model_credential,
@@ -133,7 +133,9 @@ def _instructions_config(config: AgentConfig) -> Any:
 def _skills_config(config: AgentConfig) -> Any:
     if config.skills is None:
         return None
-    return fabric.SkillConfig(paths=config.skills.paths)
+    paths: list[str | Path] = []
+    paths.extend(config.skills.paths)
+    return fabric.SkillConfig(paths=paths)
 
 
 def _mcp_config(config: AgentConfig) -> Any:
@@ -168,7 +170,7 @@ def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig
 
 def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict[str, Any]:
     telemetry = config.telemetry
-    observability: dict[str, Any] = {"version": 2}
+    observability: dict[str, Any] = {"version": 3}
 
     if telemetry.atif is not None:
         atif = dict(telemetry.atif)
