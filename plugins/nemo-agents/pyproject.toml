@@ -59,6 +59,7 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 
 [project.entry-points."nemo.jobs"]
 "agents.evaluate" = "nemo_agents_plugin.jobs.evaluate_agent:EvaluateAgentJob"
+"agents.invoke" = "nemo_agents_plugin.jobs.invoke:AgentInvocationJob"
 # POC: agent-improvement workflow
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
@@ -119,6 +120,9 @@ nemo-agent-config-example-calculator = {workspace = true}
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: service integration tests",
+]
 # "src" puts nemo_agents_plugin on sys.path.  nemo-platform is resolved
 # from the workspace — run `uv sync` at the repo root before running these tests.
 pythonpath = ["src"]
