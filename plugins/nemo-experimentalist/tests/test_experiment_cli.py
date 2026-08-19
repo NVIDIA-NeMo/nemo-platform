@@ -68,6 +68,7 @@ class CapturedExperimentRun:
     insight: Path | str | None
     agent_spec: str | None
     framework_skills_dirs: list[Path] | None
+    base_url: str | None
 
 
 @dataclass
@@ -112,6 +113,7 @@ class ExperimentRunRecorder:
         insight: Path | str | None = None,
         agent_spec: str | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        base_url: str | None = None,
     ) -> str:
         self.captured = CapturedExperimentRun(
             agent=agent,
@@ -125,6 +127,7 @@ class ExperimentRunRecorder:
             insight=insight,
             agent_spec=agent_spec,
             framework_skills_dirs=framework_skills_dirs,
+            base_url=base_url,
         )
         return self.result
 
@@ -241,6 +244,7 @@ def test_experiment_cli_passes_dataset_driven_contract_to_runner(
     assert runner.captured.experiment_dir == paths.experiment
     assert runner.captured.workspace == "workspace-a"
     assert runner.captured.client is platform_client
+    assert runner.captured.base_url == "http://platform.test"
     assert platform_client.closed
     assert runner.captured.config == expected_config
 
