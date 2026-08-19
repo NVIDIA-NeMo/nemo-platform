@@ -59,6 +59,48 @@ Create the name of the Controller service account to use
 {{- end }}
 
 {{/*
+Detect legacy controller selection flags passed through core.controller.extraArgs.
+*/}}
+{{- define "nmp-core.hasControllerSelectionExtraArgs" -}}
+{{- $hasSelection := false -}}
+{{- range .Values.core.controller.extraArgs }}
+{{- $arg := toString . -}}
+{{- if or (eq $arg "--controllers") (hasPrefix "--controllers=" $arg) (eq $arg "--controller-group") (hasPrefix "--controller-group=" $arg) -}}
+{{- $hasSelection = true -}}
+{{- end -}}
+{{- end -}}
+{{- if $hasSelection -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Render the `nemo services run` controller selection arg for the controller pod.
+core.controller.controllers takes precedence over core.controller.controllerGroup.
+*/}}
+{{- define "nmp-core.controllerSelectionArgs" -}}
+{{- if not (include "nmp-core.hasControllerSelectionExtraArgs" .) -}}
+{{- $controllers := .Values.core.controller.controllers | default list -}}
+{{- if $controllers -}}
+{{- $controllerList := "" -}}
+{{- if kindIs "slice" $controllers -}}
+{{- $controllerList = join "," $controllers -}}
+{{- else -}}
+{{- $controllerList = toString $controllers -}}
+{{- end -}}
+{{- if not ($controllerList | trim) -}}
+{{- fail "core.controller.controllers must not be empty when set" -}}
+{{- end -}}
+- {{ printf "--controllers=%s" $controllerList | quote }}
+{{- else if .Values.core.controller.controllerGroup -}}
+- {{ printf "--controller-group=%s" .Values.core.controller.controllerGroup | quote }}
+{{- else -}}
+{{- fail "one of core.controller.controllerGroup or core.controller.controllers must be set for the controller deployment" -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Create the name of the Jobs service account to use (for pods created by the jobs controller)
 */}}
 {{- define "nmp-core.jobsServiceAccountName" -}}

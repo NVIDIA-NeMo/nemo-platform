@@ -174,10 +174,12 @@ and
 | api.serviceAccount.automount | bool | `true` | Automatically mount a ServiceAccount's API credentials. |
 | api.serviceAccount.create | bool | `true` | Specifies whether a service account should be created. |
 | api.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated using the fullname template. |
+| api.serviceGroup | string | `"all"` | Predefined service group passed to `nemo services run --service-group`. Ignored when api.services is non-empty. |
 | api.serviceMonitor.annotations | object | `{}` | Additional annotations to add to the ServiceMonitor |
 | api.serviceMonitor.enabled | bool | `false` | Enable ServiceMonitor resources for Prometheus Operator |
 | api.serviceMonitor.interval | string | `"30s"` | Scrape interval for the ServiceMonitor |
 | api.serviceMonitor.labels | object | `{}` | Additional labels to add to the ServiceMonitor |
+| api.services | list | `[]` | Explicit services passed to `nemo services run --services`. When non-empty, overrides api.serviceGroup. Can be a list or a comma-separated string. |
 | api.serviceMonitor.scheme | string | `"http"` | Scheme to use for scraping metrics (http or https) |
 | api.startupProbe | object | This object has the following default values for the startup probe configuration. | Startup probe configuration for the api service. |
 | api.startupProbe.failureThreshold | int | `24` | The failure threshold for the startup probe. |
@@ -225,6 +227,8 @@ and
 | core | object | This object has the following default values for the core deployment configuration. | Core deployment configuration settings |
 | core.controller.affinity | object | `{}` | Affinity configuration for the controller service. |
 | core.controller.annotations | object | `{}` | Annotations to add to the controller service deployment. |
+| core.controller.controllerGroup | string | `"all"` | Predefined controller group passed to `nemo services run --controller-group`. Ignored when core.controller.controllers is non-empty. |
+| core.controller.controllers | list | `[]` | Explicit controllers passed to `nemo services run --controllers`. When non-empty, overrides core.controller.controllerGroup. Can be a list or a comma-separated string. |
 | core.controller.env | object | `{}` | Additional environment variables to pass to containers. This is an object formatted like NAME: value or NAME: valueFrom: {object}. |
 | core.controller.extraArgs | list | `[]` | Additional arguments to pass to the Core Controller service |
 | core.controller.livenessProbe | object | This object has the following default values for the liveness probe configuration. | Liveness probe configuration for the controller service. |

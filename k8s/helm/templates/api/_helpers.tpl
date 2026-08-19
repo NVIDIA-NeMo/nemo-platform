@@ -33,6 +33,48 @@ Create the name of the API service account to use
 {{- end }}
 {{- end }}
 
+{{/*
+Detect legacy service selection flags passed through api.extraArgs.
+*/}}
+{{- define "nmp-api.hasServiceSelectionExtraArgs" -}}
+{{- $hasSelection := false -}}
+{{- range .Values.api.extraArgs }}
+{{- $arg := toString . -}}
+{{- if or (eq $arg "--services") (hasPrefix "--services=" $arg) (eq $arg "--service-group") (hasPrefix "--service-group=" $arg) -}}
+{{- $hasSelection = true -}}
+{{- end -}}
+{{- end -}}
+{{- if $hasSelection -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Render the `nemo services run` service selection arg for the API pod.
+api.services takes precedence over api.serviceGroup so explicit services can be
+set without also clearing the default service group value.
+*/}}
+{{- define "nmp-api.serviceSelectionArgs" -}}
+{{- if not (include "nmp-api.hasServiceSelectionExtraArgs" .) -}}
+{{- $services := .Values.api.services | default list -}}
+{{- if $services -}}
+{{- $serviceList := "" -}}
+{{- if kindIs "slice" $services -}}
+{{- $serviceList = join "," $services -}}
+{{- else -}}
+{{- $serviceList = toString $services -}}
+{{- end -}}
+{{- if not ($serviceList | trim) -}}
+{{- fail "api.services must not be empty when set" -}}
+{{- end -}}
+- {{ printf "--services=%s" $serviceList | quote }}
+{{- else if .Values.api.serviceGroup -}}
+- {{ printf "--service-group=%s" .Values.api.serviceGroup | quote }}
+{{- else -}}
+{{- fail "one of api.serviceGroup or api.services must be set for the API deployment" -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
 
 {{/*
 Create the PVC name

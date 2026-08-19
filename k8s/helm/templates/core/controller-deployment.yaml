@@ -53,7 +53,7 @@ spec:
           image: {{ include "nmp-core.image" . | quote }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           args:
-            - "--controller-group=all"
+            {{- include "nmp-core.controllerSelectionArgs" . | nindent 12 }}
             - "--host={{ include "nemo-platform.bindHost" . }}"
             - "--port={{ .Values.core.controller.service.port | default 8000 }}"
             {{- range .Values.core.controller.extraArgs }}
