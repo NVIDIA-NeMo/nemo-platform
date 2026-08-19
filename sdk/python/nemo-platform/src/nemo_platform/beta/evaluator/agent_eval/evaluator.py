@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
@@ -245,7 +245,7 @@ class AgentEvaluator:
             if not task.metrics:
                 raise ValueError(f"task {task.id!r} does not declare any metrics")
 
-        await _preflight_task_metrics(tasks)
+        await _preflight_task_metrics(tasks, trials_by_task)
 
         semaphore = asyncio.Semaphore(config.parallelism)
 
@@ -386,14 +386,22 @@ class AgentEvaluator:
                 await close_client()
 
 
-async def _preflight_task_metrics(tasks: Sequence[AgentEvalTask]) -> None:
-    """Run each distinct metric's preflight once.
+async def _preflight_task_metrics(
+    tasks: Sequence[AgentEvalTask],
+    trials_by_task: Mapping[str, Sequence[AgentEvalTrial]],
+) -> None:
+    """Run each distinct metric's preflight once, skipping metrics with nothing to score.
 
     Agent-eval scores metrics directly rather than through ``prepare_metric_for_execution``, so
-    nothing else runs their preflight.
+    nothing else runs their preflight. Failed trials short-circuit to a failed score without
+    invoking the metric, so a task whose trials all failed must not trigger one: preflight resolves
+    the judge endpoint, making it both a wasted request and a way for the run to abort.
     """
     preflighted: set[int] = set()
     for task in tasks:
+        scoreable = any(trial.status != AgentEvalTrialStatus.FAILED for trial in trials_by_task.get(task.id, ()))
+        if not scoreable:
+            continue
         for metric in task.metrics:
             if isinstance(metric, MetricWithPreflight) and id(metric) not in preflighted:
                 preflighted.add(id(metric))
