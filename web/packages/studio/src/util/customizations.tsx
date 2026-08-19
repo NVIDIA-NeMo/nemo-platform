@@ -182,8 +182,13 @@ export const getTrainingTelemetry = (
     epoch: asFiniteNumber(details.epoch),
     trainLoss: asFiniteNumber(details.train_loss),
     valLoss: asFiniteNumber(details.val_loss),
-    learningRate: asFiniteNumber(details.lr),
-    gradNorm: asFiniteNumber(details.grad_norm),
+    // `?? details.lr` reads jobs written before the phase prefix was applied to
+    // every metric name. Those are already in the database and never change, so
+    // without the fallback their Learning Rate and Gradient Norm render blank
+    // forever. `train_loss` and `val_loss` need no equivalent -- they were
+    // already spelled that way.
+    learningRate: asFiniteNumber(details.train_lr ?? details.lr),
+    gradNorm: asFiniteNumber(details.train_grad_norm ?? details.grad_norm),
     checkpointPath: asNonEmptyString(details.checkpoint_path),
   };
 };
