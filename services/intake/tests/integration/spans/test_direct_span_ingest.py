@@ -58,7 +58,9 @@ def test_direct_span_ingest_round_trips_batch_and_raw_json(client: TestClient):
                 name="model-call",
                 kind="LLM",
                 started_at=_timestamp(1),
-                ended_at=_timestamp(2),
+                ended_at=None,
+                input="plain input",
+                output='{"already":"serialized"}',
                 attributes={
                     "llm.model_name": "child-model",
                     "llm.token_count.prompt": 12,
@@ -97,6 +99,9 @@ def test_direct_span_ingest_round_trips_batch_and_raw_json(client: TestClient):
     assert child["parent_span_id"] == "root-span"
     assert child["input_tokens"] == 12
     assert child["output_tokens"] == 3
+    assert child["input"] == "plain input"
+    assert child["output"] == '{"already":"serialized"}'
+    assert "ended_at" not in child
     assert json.loads(child["raw_attributes"])["provider.raw"]["events"][0]["value"] is None
 
 

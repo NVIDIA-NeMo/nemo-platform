@@ -197,6 +197,8 @@ attributes retain native JSON types. Known semantic attributes populate queryabl
 attributes appear in detailed reads under `raw_attributes`. Reposting the same
 `(source, trace_id, span_id)` updates the existing logical span.
 
+String inputs and outputs are stored verbatim; objects and arrays are serialized as JSON.
+
 The default ClickHouse TTL is 90 days from `started_at`. If any span is outside that window, Intake
 returns `422` before writing the batch and instructs the operator to increase the `spans` and
 `trace_index` TTLs. Provider timestamps are never rewritten by the endpoint.

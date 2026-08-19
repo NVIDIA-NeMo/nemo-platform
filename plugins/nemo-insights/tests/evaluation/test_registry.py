@@ -30,6 +30,7 @@ def test_registry_contains_only_expected_analyzable_subjects() -> None:
 
     assert set(subjects) == {
         "glamr",
+        "kernel-factory",
         "nemo-oo-airline",
         "nvq",
         "tau2-airline",
@@ -67,6 +68,7 @@ def test_tau2_telecom_uses_small_split() -> None:
 def test_every_analyzable_subject_has_expected_state_pin() -> None:
     expected = {
         "glamr": "state-v8",
+        "kernel-factory": "state-v11",
         "nemo-oo-airline": "state-v9",
         "nvq": "state-v7",
         "tau2-airline": "state-v6",
