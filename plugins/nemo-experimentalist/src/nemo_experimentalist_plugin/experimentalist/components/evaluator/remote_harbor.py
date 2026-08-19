@@ -454,6 +454,42 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
         super().__init__(options, experiment_dir)
         self._transport = transport
 
+    def _result_dir(
+        self,
+        agent: Path,
+        dataset: Dataset,
+        options: RemoteHarborEvaluatorConfig,
+    ) -> Path:
+        """Return the standard, sandbox-owned directory for one evaluation.
+
+        Remote Harbor cannot expose the host's Harbor job directory to the
+        sandbox. It must nevertheless honour ``jobs_dir`` so reporters,
+        resumptions, and users find remote and native evaluator output in the
+        same ``eval-and-optimize/results/<candidate>-<dataset>`` layout.
+        """
+        jobs_dir = ((self.experiment_dir or Path.cwd()) / options.jobs_dir).resolve()
+        result_dir = (jobs_dir / f"{agent.name}-{dataset.id}").resolve()
+        if result_dir == jobs_dir or not result_dir.is_relative_to(jobs_dir):
+            raise ValueError(f"Remote Harbor result directory escapes jobs_dir: {result_dir}")
+        return result_dir
+
+    @staticmethod
+    def _write_submission_metadata(result_dir: Path, submission: EvaluationSubmission) -> None:
+        """Persist non-secret bridge submission provenance before a remote run.
+
+        The request contract intentionally excludes credentials and host paths,
+        so retaining it in the sandbox output is safe. Writing it before the
+        POST also makes an interrupted submission inspectable and resumable.
+        """
+        result_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = result_dir / "metadata.json"
+        temporary = result_dir / f".{metadata_path.name}.{uuid4().hex}.tmp"
+        try:
+            temporary.write_text(submission.model_dump_json(indent=2) + "\n", encoding="utf-8")
+            temporary.replace(metadata_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
     async def _materialize_result_artifacts(
         self,
         client: httpx.AsyncClient,
@@ -462,6 +498,7 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
         result: EvaluationResult,
         headers: dict[str, str],
         staging: Path,
+        result_dir: Path,
         options: RemoteHarborEvaluatorConfig,
     ) -> None:
         """Download, verify, extract, and relink approved result artifacts.
@@ -502,7 +539,8 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
                         raise RuntimeError("Harbor bridge artifact archive exceeds the configured limit")
                     output.write(chunk)
 
-        artifact_root = ((self.experiment_dir or Path.cwd()) / "remote-harbor-artifacts" / job_id).resolve()
+        artifact_root = result_dir / "artifacts"
+        shutil.rmtree(artifact_root, ignore_errors=True)
         extract_directory_archive(
             archive,
             artifact_root,
@@ -566,6 +604,7 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
             raise ValueError("One evaluation may reference exactly one trusted task envelope")
         envelope_id, envelope_digest = identities.pop()
         headers = _bridge_headers(options.bridge_token_env)
+        result_dir = self._result_dir(agent, dataset, options)
 
         staging = (self.experiment_dir or Path.cwd()) / "tmp" / "harbor-bridge" / uuid4().hex
         staging.mkdir(parents=True)
@@ -589,6 +628,7 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
                 overlay=ArchiveReference(digest=overlay_digest) if overlay_digest is not None else None,
                 run_profile=options.run_profile,
             )
+            self._write_submission_metadata(result_dir, submission)
             async with httpx.AsyncClient(
                 timeout=options.request_timeout_sec,
                 transport=self._transport,
@@ -632,6 +672,7 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
                             result=status.result,
                             headers=headers,
                             staging=staging,
+                            result_dir=result_dir,
                             options=options,
                         )
                         return list(status.result.trials)
