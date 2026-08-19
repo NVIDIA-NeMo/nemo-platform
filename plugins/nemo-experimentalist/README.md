@@ -155,6 +155,14 @@ uv run nemo agents experimentalist run \
   --validation-dataset path/to/validation
 ```
 
+### Optional OpenShell sandbox
+
+Local execution is the default. To isolate the optimizer in OpenShell while
+keeping Harbor and Docker on the trusted host, add
+`--execution-mode openshell` to either mode. See the
+[OpenShell Harbor bridge walkthrough](../../docs/openshell-harbor-bridge-walkthrough.md)
+for prerequisites, required environment configuration, monitoring, and cleanup.
+
 ### Parameters
 
 Every input can come from the `optimizer.yaml` profile or from a flag; flags

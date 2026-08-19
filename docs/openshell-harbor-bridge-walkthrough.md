@@ -152,6 +152,115 @@ flowchart LR
 The [higher-level architecture overview](openshell-harbor-bridge-architecture.svg)
 shows the same system organized around lifecycle and ownership.
 
+## Using OpenShell as an optional sandbox
+
+OpenShell is an opt-in execution boundary, not a replacement for the normal
+local Experimentalist workflow.  Leave out `--execution-mode` to run locally
+with Harbor. Add `--execution-mode openshell` when the optimizer itself should
+run in an OpenShell sandbox while Harbor, Docker, and agent-under-test
+credentials remain on the trusted host.
+
+### Prerequisites
+
+On the machine that starts Experimentalist, ensure all three host services are
+ready:
+
+```bash
+export NMP_BASE_URL=http://localhost:8080
+
+curl -fsS "$NMP_BASE_URL/health/ready"
+openshell status
+docker info
+```
+
+`docker info` must show a reachable server, not only client information. If it
+reports permission denied for `/var/run/docker.sock`, grant the user access to
+the Docker daemon and start a new login session before running Experimentalist.
+
+The default sandbox image is built from this checkout when necessary, so Docker
+is required even though the OpenShell sandbox itself never receives Docker
+socket access. Run a long optimization in `tmux` or another persistent session.
+
+### Required configuration
+
+OpenShell deliberately has no implicit model or credential defaults. Configure
+the following trusted host environment values before launch:
+
+```bash
+export NEMO_DEFAULT_MODEL=<platform-model-name>
+export NEMO_FAST_MODEL=<platform-model-name>
+export INFERENCE_API_KEY=<credential-for-the-agent-under-test>
+export INFERENCE_API_BASE=<agent-under-test-inference-endpoint>
+export AUT_MODEL_NAME=<agent-under-test-model-name>
+```
+
+`NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL` identify the models used by
+Experimentalist. They are the only model settings made available inside the
+sandbox. `INFERENCE_API_KEY`, `INFERENCE_API_BASE`, and `AUT_MODEL_NAME` are
+owned by the host Harbor bridge to evaluate the agent under test; the sandbox
+does not receive the inference key as a plain environment variable. Keep these
+values in the trusted shell environment or platform-level secret/configuration,
+never in the agent source or dataset.
+
+The run configuration must disable source-control archival and winner
+publication because an OpenShell run cannot safely perform those host actions:
+
+```yaml
+storage:
+  archive_candidates: false
+  publish_winner: false
+```
+
+For Harbor concurrency, omit `outcome_evaluator_config.n_concurrent_trials` to
+use the host CPU count, or set it explicitly for a lower resource limit. The
+same setting is used by the host bridge for every standard Harbor evaluation.
+
+### Start a sandboxed run
+
+Use the usual command and add exactly one opt-in flag:
+
+```bash
+uv run nemo agents experimentalist run \
+  --execution-mode openshell \
+  --no-insight \
+  --agent path/to/agent \
+  --agent-spec path/to/AGENT-SPEC.md \
+  --train-dataset path/to/train-dataset \
+  --validation-dataset path/to/validation-dataset \
+  --config path/to/experimentalist.yaml \
+  --base-url "$NMP_BASE_URL" \
+  --experiment-dir path/to/experiment
+```
+
+Remove `--no-insight` and provide the normal Insight/task-template inputs for
+an Insight-driven run. Dataset preparation, bridge startup, provider setup,
+sandbox creation, output download, and normal cleanup are all internal to this
+command. Users should not invoke `run.sh` or prepare an OpenShell sandbox by
+hand.
+
+When `NMP_BASE_URL` points at `localhost`, the launcher safely rewrites that
+host for the sandbox and renders the matching platform port in its network
+policy. For a platform outside the local host, use its reachable HTTP(S) base
+URL. The hostname and port must be reachable from the OpenShell sandbox and
+allowed by its policy; the launcher does not assume port `8080`.
+
+### Observe, cancel, and troubleshoot
+
+The host-side bridge log and per-job results are retained in the experiment
+directory while the run is active:
+
+```bash
+tail -f path/to/experiment/openshell-runtime/host/bridge/bridge.log
+find path/to/experiment/openshell-runtime/host/bridge/jobs -maxdepth 3 -name result.json
+```
+
+Use Ctrl-C or `kill <experimentalist-pid>` for normal cancellation. The
+launcher terminates the bridge, deletes its ephemeral provider, and lets the
+OpenShell wrapper delete the temporary sandbox. Avoid `kill -9`: it prevents
+that cleanup. If a host failure leaves resources behind, inspect them with the
+OpenShell and Docker CLIs, then remove only the sandbox or Compose project that
+belongs to the interrupted experiment.
+
 ## OpenShell runtime configuration
 
 The public interface is still `nemo agents experimentalist run --execution-mode openshell`.
