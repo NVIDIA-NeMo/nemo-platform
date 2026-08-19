@@ -70,14 +70,20 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
   });
 
   const [modalVirtualModel, setModalVirtualModel] = useState<VirtualModel>();
-  const [detailsPanelTab, setDetailsPanelTab] = useState<VirtualModelPanelTab>('details');
+  const detailsPanelTab: VirtualModelPanelTab =
+    searchParams.get('tab') === 'chat' ? 'chat' : 'details';
 
   const openVirtualModelPanel = useCallback(
     (virtualModel: VirtualModelWithId, tab: VirtualModelPanelTab) => {
-      setDetailsPanelTab(tab);
+      if (!virtualModel.name) return;
+
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('virtualModel', virtualModel.name);
+      nextParams.set('tab', tab);
+      setSearchParams(nextParams);
       openDetailsPanel(virtualModel);
     },
-    [openDetailsPanel]
+    [openDetailsPanel, searchParams, setSearchParams]
   );
 
   const sortState = dataViewState.sorting.state[0];
@@ -149,14 +155,42 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
 
   useEffect(() => {
     const linkedName = searchParams.get('virtualModel');
-    if (!linkedName || vmForDetails?.name === linkedName) return;
+    if (!linkedName) {
+      if (isDetailsPanelOpen) closeDetailsPanel();
+      return;
+    }
+
     const linkedVirtualModel = virtualModelsWithId.find((vm) => vm.name === linkedName);
-    if (!linkedVirtualModel) return;
-    openVirtualModelPanel(
-      linkedVirtualModel,
-      searchParams.get('tab') === 'chat' ? 'chat' : 'details'
-    );
-  }, [openVirtualModelPanel, searchParams, virtualModelsWithId, vmForDetails?.name]);
+    if (!linkedVirtualModel) {
+      if (!isFetching && isDetailsPanelOpen) closeDetailsPanel();
+      return;
+    }
+
+    if (!isDetailsPanelOpen || vmForDetails?.name !== linkedName) {
+      openDetailsPanel(linkedVirtualModel);
+    }
+  }, [
+    closeDetailsPanel,
+    isDetailsPanelOpen,
+    isFetching,
+    openDetailsPanel,
+    searchParams,
+    virtualModelsWithId,
+    vmForDetails?.name,
+  ]);
+
+  const selectVirtualModelPanelTab = useCallback(
+    (tab: VirtualModelPanelTab) => {
+      const selectedName = searchParams.get('virtualModel') ?? vmForDetails?.name;
+      if (!selectedName) return;
+
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('virtualModel', selectedName);
+      nextParams.set('tab', tab);
+      setSearchParams(nextParams, { replace: true });
+    },
+    [searchParams, setSearchParams, vmForDetails?.name]
+  );
 
   const closeVirtualModelPanel = useCallback(() => {
     if (searchParams.has('virtualModel') || searchParams.has('tab')) {
@@ -353,7 +387,8 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         <VirtualModelDetailsSidePanel
           open={isDetailsPanelOpen}
           virtualModel={vmForDetails}
-          defaultTab={detailsPanelTab}
+          tab={detailsPanelTab}
+          onTabChange={selectVirtualModelPanelTab}
           onClose={closeVirtualModelPanel}
         />
       )}

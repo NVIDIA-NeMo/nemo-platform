@@ -15,7 +15,7 @@ import {
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
 import { ParamsPopover } from '@studio/components/chat/ParamsPopover';
 import { ModelChat } from '@studio/components/ModelChat';
-import { type FC, useEffect, useMemo, useState } from 'react';
+import { type FC, useMemo, useState } from 'react';
 
 const MiddlewareCallView: FC<{ call: MiddlewareCall }> = ({ call }) => (
   <Block className="rounded-lg border border-base bg-surface-raised p-density-md">
@@ -64,8 +64,9 @@ const MiddlewarePipeline: FC<{ label: string; calls: MiddlewareCall[] | undefine
 export interface VirtualModelDetailsSidePanelProps {
   open: boolean;
   onClose: () => void;
+  onTabChange: (tab: VirtualModelPanelTab) => void;
+  tab: VirtualModelPanelTab;
   virtualModel: VirtualModel;
-  defaultTab?: VirtualModelPanelTab;
 }
 
 export type VirtualModelPanelTab = 'details' | 'chat';
@@ -73,13 +74,13 @@ export type VirtualModelPanelTab = 'details' | 'chat';
 export const VirtualModelDetailsSidePanel: FC<VirtualModelDetailsSidePanelProps> = ({
   open,
   onClose,
+  onTabChange,
+  tab,
   virtualModel,
-  defaultTab = 'details',
 }) => {
   const models = virtualModel.models ?? [];
   const virtualModelName = virtualModel.name ?? '';
   const virtualModelWorkspace = virtualModel.workspace ?? '';
-  const [selectedTab, setSelectedTab] = useState<VirtualModelPanelTab>(defaultTab);
   const [inferenceParams, setInferenceParams] = useState<InferenceParams>({
     ...DEFAULT_INFERENCE_PARAMS,
     max_tokens: 4096,
@@ -91,10 +92,6 @@ export const VirtualModelDetailsSidePanel: FC<VirtualModelDetailsSidePanelProps>
     ],
     []
   );
-
-  useEffect(() => {
-    setSelectedTab(defaultTab);
-  }, [defaultTab, virtualModel.name, virtualModel.workspace]);
 
   return (
     <SidePanel
@@ -116,13 +113,13 @@ export const VirtualModelDetailsSidePanel: FC<VirtualModelDetailsSidePanelProps>
       <Block className="w-full px-4">
         <SegmentedControl
           className="[&.nv-segmented-control-root]:mt-4 w-full!"
-          value={selectedTab}
+          value={tab}
           items={tabItems}
-          onValueChange={(value) => setSelectedTab(value as VirtualModelPanelTab)}
+          onValueChange={(value) => onTabChange(value as VirtualModelPanelTab)}
         />
       </Block>
 
-      {selectedTab === 'details' ? (
+      {tab === 'details' ? (
         <Stack className="min-h-0 flex-1 gap-density-lg overflow-auto px-4 pb-4">
           <Stack className="gap-density-md">
             <KVPair
