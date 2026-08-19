@@ -44,7 +44,7 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
     split_agent_spec,
     split_git_ref,
 )
-from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror, experiment_name, group_name
+from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id, spans_to_protobuf
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_insights_plugin.entities import Insight
@@ -53,50 +53,6 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
-_INTAKE_SERVER_RETRY_DELAYS = (1.0, 2.0, 4.0, 8.0, 16.0)
-
-
-async def _post_otlp_payload(
-    client: AsyncNeMoPlatform,
-    url: str,
-    payload: bytes,
-) -> None:
-    """Post one idempotent OTLP payload, retrying transient Intake failures.
-
-    A Harbor evaluation can complete while a locally restarted Intake service is
-    still bringing ClickHouse online. OTLP ingestion deduplicates spans by id,
-    so replaying the same payload after a 5xx response is safe. Client errors
-    are intentionally not retried: they require a corrected payload or policy.
-
-    Args:
-        client: Platform client used for the request.
-        url: Intake OTLP endpoint path.
-        payload: Serialized ``ExportTraceServiceRequest`` protobuf.
-
-    Raises:
-        httpx.HTTPStatusError: If Intake continues returning a server error, or
-            immediately for a non-server HTTP error.
-    """
-    for delay in (*_INTAKE_SERVER_RETRY_DELAYS, None):
-        try:
-            await client.post(
-                url,
-                cast_to=object,
-                content=payload,
-                options={"headers": {"Content-Type": "application/x-protobuf"}},
-            )
-            return
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            if not 500 <= status_code < 600 or delay is None:
-                raise
-            logger.warning(
-                "[INTAKE] OTLP ingest returned %s; retrying in %.0fs (%s)",
-                status_code,
-                delay,
-                exc.request.url,
-            )
-            await asyncio.sleep(delay)
 
 
 async def _upload_trace_otlp(
@@ -120,7 +76,12 @@ async def _upload_trace_otlp(
     }
     url = f"/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
     for payload in jsonl_to_protobuf(path, extra_resource_attrs=attrs):
-        await _post_otlp_payload(client, url, payload)
+        await client.post(
+            url,
+            cast_to=object,
+            content=payload,
+            options={"headers": {"Content-Type": "application/x-protobuf"}},
+        )
 
 
 async def _upload_trace_atif(
@@ -261,9 +222,8 @@ class ExperimentalistBackend(ABC):
     async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
         """Best-effort Evaluation name for *candidate* × *split* in *workspace*.
 
-        Returns "" only when there is no Platform client (offline). With a client,
-        returns a deterministic name even when the optional native projection fails,
-        so Intake trace persistence can continue.
+        Returns "" when there is no projection (offline) or it fails — the name only
+        tags Intake resource attributes, so a run must not break on it.
         """
         ...
 
@@ -784,7 +744,12 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                 }
                 url = f"/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
                 for payload in spans_to_protobuf(rows, attrs):
-                    await _post_otlp_payload(self.client, url, payload)
+                    await self.client.post(
+                        url,
+                        cast_to=object,
+                        content=payload,
+                        options={"headers": {"Content-Type": "application/x-protobuf"}},
+                    )
                 trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
         else:
             trace_format = str(trial.trace.metadata.get("trace_format", "otlp"))
@@ -854,28 +819,16 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         raise last_exc
 
     async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
-        """Return a stable Intake evaluation name and repair its optional mirror.
-
-        Trace ingestion must not depend on the native Experiment/Evaluation
-        projection. In particular, a Platform restart can make the original
-        best-effort Experiment-group creation fail even though Intake is back
-        by the time Harbor returns its traces. Recreate the group before the
-        evaluation upsert when possible, but retain the deterministic name if
-        that projection is still unavailable.
-        """
         if self.client is None:
             return ""
-        name = experiment_name(group_name(candidate.run_id), candidate.label, split)
         mirror = self._mirrors.get(workspace)
         if mirror is None:
             mirror = self._mirrors[workspace] = ExperimentMirror(self.client, workspace)
         try:
-            run = _load_entity(ExperimentRun, self._eo / "run.json")
-            await mirror.ensure_group(run)
-            await mirror.ensure_experiment(candidate, split=split)
+            return await mirror.ensure_experiment(candidate, split=split)
         except Exception as exc:  # noqa: BLE001 - projection is best-effort
-            logger.warning("[MIRROR] ensure_experiment failed; uploading Intake traces without it: %s", exc)
-        return name
+            logger.warning("[MIRROR] ensure_experiment failed: %s", exc)
+            return ""
 
     async def persist_result(self, *, workspace: str, result: ExperimentalistResult) -> None:
         report_path = self._eo / "OPTIMIZATION.md"
