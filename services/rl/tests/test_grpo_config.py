@@ -600,3 +600,36 @@ def test_max_new_tokens_defaults_to_the_full_context(
 
     policy = compile_grpo_config(step, job_ctx)["policy"]
     assert policy["generation"]["max_new_tokens"] == policy["max_total_sequence_length"]
+
+
+def test_sandbox_resources_reach_the_sandbox_when_the_operator_sets_them(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sandbox runs a Gym server per config entry plus its own Ray instance.
+
+    On the OpenSandbox default that is enough to be OOMKilled mid-rollout, which surfaces
+    to the training pod as a proxy 502 rather than as a memory error, so the operator needs
+    a way to size the pod.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    step.gym.sandbox_resources = {"cpu": "2", "memory": "8Gi"}
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["resources"] == {"cpu": "2", "memory": "8Gi"}
+
+
+def test_sandbox_resources_unset_leaves_the_provider_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset must not be emitted at all rather than this compiler asserting a size.
+
+    The dump is exclude_none, so an unset value leaves the key off entirely and NeMo-RL's
+    own default applies.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert "resources" not in sandbox
