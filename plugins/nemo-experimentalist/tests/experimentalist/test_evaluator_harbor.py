@@ -902,6 +902,7 @@ async def test_validate_rejects_verifier_evidence_that_cannot_resolve_in_the_con
     blind_source = (
         "import pathlib\n"
         'instruction = pathlib.Path("/tests/instruction.md").read_text()\n'
+        'climbed = pathlib.Path("/tests/../instruction.md").read_text()\n'
         'expected = pathlib.Path("/tests/expected.txt").read_text()\n'
     )
     _write(dataset_dir / "blind" / "task.toml", "")
@@ -914,8 +915,10 @@ async def test_validate_rejects_verifier_evidence_that_cannot_resolve_in_the_con
 
     message = str(exc_info.value)
     # instruction.md sits beside the task, not in tests/, so /tests/instruction.md is empty
-    # at run time. expected.txt is in tests/, which Harbor does mount, so it must pass.
+    # at run time, and climbing to it with .. reaches it on the host but not in the
+    # container. expected.txt is in tests/, which Harbor does mount, so it must pass.
     assert "check_coverage.py:2: reads /tests/instruction.md, which no file provides" in message
+    assert "check_coverage.py:3: reads /tests/../instruction.md, which no file provides" in message
     assert "expected.txt" not in message
 
 

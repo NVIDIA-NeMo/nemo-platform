@@ -343,11 +343,17 @@ def _unresolvable_evidence_failures(source: str, verifier_dir: Path) -> list[tup
     be empty. Reading it yields no evidence, and a verifier that scores anyway
     reports a measurement it never made.
     """
+    mount = verifier_dir.resolve()
     failures: list[tuple[str, int]] = []
     for line_number, line in enumerate(source.splitlines(), start=1):
         for match in _CONTAINER_TESTS_REFERENCE.finditer(line):
             relative = match.group(1).rstrip("/")
-            if not relative or (verifier_dir / relative).exists():
+            if not relative:
+                continue
+            # A path climbing out of the mount finds the host file it names, but in the
+            # container /tests/.. is the container root, where that file never exists.
+            candidate = (mount / relative).resolve()
+            if candidate.is_relative_to(mount) and candidate.exists():
                 continue
             failures.append(
                 (
@@ -919,13 +925,14 @@ class HarborDataset(Dataset):
     - ``/tests/``         — the task's ``tests/`` directory, mounted read-only.  It
       holds exactly the files the task ships in ``tests/`` and nothing more.
 
-    **``instruction.md`` is not readable at scoring time.**  Harbor mounts ``tests/``
-    and ``solution/`` into the container and nothing else.  The task instruction goes
-    to the agent as a prompt, so no file for it exists at ``/tests/instruction.md``,
-    at ``instruction.md`` beside the working directory, or anywhere else a verifier
-    can reach.  A metric needing reference text must read a file the task ships in
-    ``tests/``.  ``dataset.validate()`` rejects a ``/tests/`` path that no file
-    provides, so a guessed path fails before it can run and score.
+    **``instruction.md`` is not readable at scoring time.**  The task's ``tests/``
+    directory is the only task content the verifier container receives.  The
+    instruction goes to the agent as a prompt, so no file for it exists at
+    ``/tests/instruction.md``, at ``instruction.md`` beside the working directory,
+    or anywhere else a verifier can reach.  A metric needing reference text must
+    read a file the task ships in ``tests/``.  ``dataset.validate()`` rejects a
+    ``/tests/`` path that no file provides — including one that climbs out with
+    ``..`` — so a guessed path fails before it can run and score.
 
     and must write **one of** (``reward.json`` wins when both exist):
 
