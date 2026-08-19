@@ -9,7 +9,7 @@ from nemo_agents_plugin.ethos import ETHOS_SECTION_TITLES
 from nemo_agents_plugin.ethos_parse import parse_ethos
 
 
-def _spec_md(**sections: str) -> str:
+def _ethos_md(**sections: str) -> str:
     front = "---\nname: it-helpdesk\ncreated_timestamp: '2026-01-02T03:04:05+00:00'\nauthor: agent-1\n---"
     defaults = {title: f"{title} content" for title in ETHOS_SECTION_TITLES}
     defaults["Role"] = "help users with IT issues"
@@ -20,7 +20,7 @@ def _spec_md(**sections: str) -> str:
 
 
 def test_valid_ethos_parses_to_metadata_and_sections() -> None:
-    ethos = parse_ethos(_spec_md())
+    ethos = parse_ethos(_ethos_md())
 
     assert ethos.name == "it-helpdesk"
     assert ethos.author == "agent-1"
@@ -29,7 +29,7 @@ def test_valid_ethos_parses_to_metadata_and_sections() -> None:
 
 
 def test_missing_required_section_rejected() -> None:
-    md = _spec_md().replace("## Purpose\n\nPurpose content\n\n", "")
+    md = _ethos_md().replace("## Purpose\n\nPurpose content\n\n", "")
 
     try:
         parse_ethos(md)
