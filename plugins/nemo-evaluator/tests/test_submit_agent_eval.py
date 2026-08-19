@@ -97,7 +97,8 @@ def test_supplying_both_shapes_is_refused_rather_than_silently_preferring_one() 
     evaluator, _ = _evaluator()
 
     with pytest.raises(TypeError) as excinfo:
-        evaluator.submit(tasks=TasksetRef("ts"), metric=MagicMock(), dataset=MagicMock(), target=_runner())
+        # Rejected statically too; the runtime guard is for callers without a type checker.
+        evaluator.submit(tasks=TasksetRef("ts"), metric=MagicMock(), dataset=MagicMock(), target=_runner())  # ty: ignore[no-matching-overload]
 
     assert "not both" in str(excinfo.value)
 

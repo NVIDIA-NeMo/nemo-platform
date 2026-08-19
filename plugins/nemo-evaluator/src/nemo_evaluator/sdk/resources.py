@@ -149,8 +149,6 @@ class Evaluator:
         *,
         tasks: TasksetRef,
         target: AgentTaskRunner,
-        metric: None = None,
-        dataset: None = None,
     ) -> AgentEvaluatorJobResource: ...
 
     def submit(
