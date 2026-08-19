@@ -243,8 +243,10 @@ class AgentSession(NemoEntity, entity_type="agent_session"):
     last_active_at: datetime | None = Field(
         default=None,
         description="UTC timestamp of the last activity in the session.",
+        json_schema_extra={"nullable": True},
     )
     expires_at: datetime | None = Field(
         default=None,
         description="UTC timestamp when the session expires, if expiration is configured.",
+        json_schema_extra={"nullable": True},
     )

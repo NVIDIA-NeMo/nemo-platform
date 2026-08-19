@@ -2324,6 +2324,18 @@ paths:
           type: string
           default: -created_at
           title: Sort
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SessionFilter'
+        description: 'Filter results on various criteria. Supports bracket notation
+          (?filter[field][$op]=value), JSON ({"field":{"$op":"value"}}), and text
+          syntax (field:"value"). Operators: $eq (exact match), $like (substring),
+          $lt, $lte, $gt, $gte (comparison), $in, $nin (set membership), $and, $or,
+          $not (logical). Default operator is $eq.'
       responses:
         '200':
           description: Successful Response
@@ -2694,11 +2706,13 @@ components:
         last_active_at:
           title: Last Active At
           description: UTC timestamp of the last activity in the session.
+          nullable: true
           type: string
           format: date-time
         expires_at:
           title: Expires At
           description: UTC timestamp when the session expires, if expiration is configured.
+          nullable: true
           type: string
           format: date-time
         id:
@@ -4355,6 +4369,16 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    SessionFilter:
+      additionalProperties: false
+      description: Query filter for ``GET /v2/workspaces/{workspace}/sessions``.
+      properties:
+        deployment_id:
+          description: Filter to sessions for this deployment ID.
+          title: Deployment Id
+          type: string
+      title: SessionFilter
+      type: object
     SessionStatus:
       type: string
       enum:

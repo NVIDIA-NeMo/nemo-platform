@@ -28,6 +28,7 @@ from nemo_agents_plugin.schema import CreateSessionRequest, SessionFilter, Sessi
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 from nemo_platform_plugin.schema import PaginationData
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -85,7 +86,12 @@ async def create_session(
         raise HTTPException(status_code=500, detail="Failed to create session.") from exc
 
 
-@router.get("/sessions", response_model=SessionPage, tags=["Agent Sessions"])
+@router.get(
+    "/sessions",
+    response_model=SessionPage,
+    tags=["Agent Sessions"],
+    openapi_extra=generate_openapi_extra_params(filter_schema=SessionFilter),
+)
 @scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
