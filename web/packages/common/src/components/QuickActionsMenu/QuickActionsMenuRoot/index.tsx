@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ActionMenuItem, ActionsMenu } from '@nemo/common/src/components/ActionsMenu';
+import { ActionsMenu, type ActionMenuItem } from '@nemo/common/src/components/ActionsMenu';
 import { EllipsisVertical } from 'lucide-react';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 export type QuickActionItem = ActionMenuItem;
 

@@ -12,7 +12,7 @@ import {
   Flex,
 } from '@nvidia/foundations-react-core';
 import { Sparkles } from 'lucide-react';
-import React, { FC, ReactElement, ReactNode } from 'react';
+import React, { type FC, type ReactElement, type ReactNode } from 'react';
 
 export interface ActionMenuItem {
   label: string;
