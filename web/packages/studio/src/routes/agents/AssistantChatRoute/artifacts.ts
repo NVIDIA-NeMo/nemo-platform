@@ -49,7 +49,6 @@ const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   agent_chat: '/workspaces/{workspace}/agents/{name}?tab=chat-playground',
   agent_deployments: '/workspaces/{workspace}/agents',
   agent_deployment: '/workspaces/{workspace}/agents/{name}',
-  agent_evaluations: '/workspaces/{workspace}/agents/evaluations',
   agent_evaluation: '/workspaces/{workspace}/agents/evaluations/{name}',
   agent_monitor: '/workspaces/{workspace}/agents/monitor',
   base_models: '/workspaces/{workspace}/base-models',

@@ -44,14 +44,14 @@ import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
-  getAgentEvaluationsListRoute,
+  getAgentEvaluationsTabRoute,
   getAgentsListRoute,
   getFilesetRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleX, ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 
 const TERMINAL_STATUSES = new Set([
@@ -73,14 +73,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  useBreadcrumbs({
-    items: [
-      { slotLabel: 'Agents', href: getAgentsListRoute(workspace) },
-      { slotLabel: 'Evaluations', href: getAgentEvaluationsListRoute(workspace) },
-      { slotLabel: jobName },
-    ],
-  });
-
   // Job + status — refetched while the job is non-terminal so the badge stays
   // live without forcing a page reload.
   const { data: job, isLoading: isLoadingJob } = useQuery({
@@ -89,6 +81,22 @@ export const AgentEvaluationDetailRoute: FC = () => {
     enabled: !!workspace && !!jobName,
     refetchInterval: (query) => (isTerminal(query.state.data?.status) ? false : 5_000),
   });
+
+  // The "Evaluations" crumb links the agent's eval tab, but the agent name only arrives with
+  // the loaded job — so set breadcrumbs from an effect keyed on it (the useBreadcrumbs `items`
+  // param runs once on mount and would keep the crumb non-clickable after the job resolves).
+  const agentName = job ? agentNameForJob(job) : null;
+  const { setBreadcrumbs } = useBreadcrumbs();
+  useEffect(() => {
+    setBreadcrumbs([
+      { slotLabel: 'Agents', href: getAgentsListRoute(workspace) },
+      agentName
+        ? { slotLabel: 'Evaluations', href: getAgentEvaluationsTabRoute(workspace, agentName) }
+        : { slotLabel: 'Evaluations' },
+      { slotLabel: jobName },
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [setBreadcrumbs, workspace, agentName, jobName]);
 
   const isJobTerminal = isTerminal(job?.status);
   const canCancelJob = !!job?.status && !isJobTerminal;
