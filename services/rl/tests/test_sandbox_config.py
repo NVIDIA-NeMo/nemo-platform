@@ -14,9 +14,7 @@ from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
     SandboxNetworkPolicy,
     apply_master_egress_to_sandbox_config,
     assemble_master_egress_allow,
-    bootstrap_env_from_job,
     build_sandbox_mounts,
-    resolve_ephemeral_work_path,
 )
 from pydantic import ValidationError
 
@@ -86,31 +84,6 @@ def test_apply_master_egress_to_sandbox_config() -> None:
     assert updated.network_policy.egress_allow == assemble_master_egress_allow()
     # original unchanged (pydantic copy)
     assert sandbox.network_policy.egress_allow[0].host == "placeholder"
-
-
-def test_bootstrap_env_from_job_keys() -> None:
-    env = bootstrap_env_from_job(
-        job_id="job-1",
-        environment_path="/job/environment",
-        dataset_path="/job/dataset",
-        work_path="/job/work",
-        broker_url="http://broker:51234",
-        broker_token="tok",
-        gym_global_config_json="{}",
-    )
-    assert env["NMP_JOB_ID"] == "job-1"
-    assert env["NMP_ENVIRONMENT_PATH"] == "/job/environment"
-    assert env["NMP_DATASET_PATH"] == "/job/dataset"
-    assert env["NMP_WORK_PATH"] == "/job/work"
-    assert env["NMP_BROKER_URL"] == "http://broker:51234"
-    assert env["NMP_BROKER_TOKEN"] == "tok"
-    assert env["NMP_GYM_GLOBAL_CONFIG"] == "{}"
-
-
-def test_resolve_ephemeral_work_path_uses_tmp_when_no_scratch() -> None:
-    path = resolve_ephemeral_work_path("abc123")
-    assert path.endswith("/nmp-rl/abc123/work")
-    assert path.startswith("/scratch/") or path.startswith("/tmp/")
 
 
 def test_egress_is_operator_scoped_not_per_job() -> None:

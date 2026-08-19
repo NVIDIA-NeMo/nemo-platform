@@ -112,6 +112,7 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 | `vllm_gpu_memory_utilization` | `0.5` | Fraction of each GPU vLLM reserves for weights plus KV cache. Raise toward `0.7` for large models, which otherwise cannot load their weight shard. |
 | `val_at_start` | `false` | Run validation **before** the first training step. Enable to measure uplift: baseline and result come from one job on the same data and generation settings, instead of a separate baseline run that must be kept in sync. Costs a full rollout pass, hence off by default. Ignored without a `validation.jsonl`. **GRPO only** — DPO always validates at step 0, since its validation needs no generation. |
 | `normalize_rewards` | `true` | |
+| `overlong_filtering` | `false` | Zero the loss contribution of rollouts truncated by `max_new_tokens`, so the policy is not penalised for responses it was cut off from finishing. Enable when a low `max_new_tokens` truncates many rollouts. |
 | `max_rollout_turns` | `1` | Multi-turn rollouts; most math envs use `1`. |
 | `ref_policy_kl_penalty` | `0.0` | KL coefficient in the GRPO loss. |
 | `ratio_clip_min` / `ratio_clip_max` | `0.2` / `0.28` | PPO-style ratio clip bounds. |

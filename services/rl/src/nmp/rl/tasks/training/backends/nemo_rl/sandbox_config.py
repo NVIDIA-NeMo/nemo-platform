@@ -85,12 +85,6 @@ class NemoGymSandboxedConfig(BaseModel):
     job_id: str | None = None
 
 
-def resolve_ephemeral_work_path(job_id: str) -> str:
-    """Prefer node-local ``/scratch`` for lock-heavy Gym/HF work; else ``/tmp``."""
-    base = Path("/scratch") if Path("/scratch").is_dir() else Path("/tmp")
-    return str(base / "nmp-rl" / job_id / "work")
-
-
 def resolve_job_storage_pvc_claim() -> str | None:
     """Job-storage PVC claim name injected by the compiler, if any."""
     from nmp.rl.app.constants import NMP_JOB_STORAGE_PVC_ENVVAR
@@ -144,34 +138,6 @@ def build_sandbox_mounts(
         # reclaimed by the same job-storage cleanup.
         workspace_sub_path=f"{prefix}/gym-work",
     )
-
-
-def bootstrap_env_from_job(
-    *,
-    job_id: str,
-    environment_path: str,
-    dataset_path: str,
-    work_path: str,
-    broker_url: str | None = None,
-    broker_token: str | None = None,
-    gym_global_config_json: str | None = None,
-) -> dict[str, str]:
-    """Environment variables injected into the Gym job-host bootstrap."""
-    env: dict[str, str] = {
-        "NMP_JOB_ID": job_id,
-        "NMP_ENVIRONMENT_PATH": environment_path,
-        "NMP_DATASET_PATH": dataset_path,
-        "NMP_WORK_PATH": work_path,
-        "NMP_MAX_REQUEST_BYTES": str(268_435_456),
-        "NMP_MAX_RESPONSE_BYTES": str(268_435_456),
-    }
-    if broker_url:
-        env["NMP_BROKER_URL"] = broker_url
-    if broker_token:
-        env["NMP_BROKER_TOKEN"] = broker_token
-    if gym_global_config_json:
-        env["NMP_GYM_GLOBAL_CONFIG"] = gym_global_config_json
-    return env
 
 
 def assemble_master_egress_allow(

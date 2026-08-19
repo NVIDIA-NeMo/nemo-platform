@@ -329,6 +329,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 temperature=t.temperature,
                 max_new_tokens=t.max_new_tokens,
                 normalize_rewards=t.normalize_rewards,
+                overlong_filtering=t.overlong_filtering,
                 max_rollout_turns=t.max_rollout_turns,
                 ref_policy_kl_penalty=t.ref_policy_kl_penalty,
                 ratio_clip_min=t.ratio_clip_min,
