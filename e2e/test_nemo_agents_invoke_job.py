@@ -18,8 +18,8 @@ from nmp.testing.e2e import wait_for_platform_job
 
 from e2e.agents_deploy_helpers import (
     TEST_AGENT_RESPONSE,
-    _mock_backed_fabric_agent_config,
     delete_agent_if_exists,
+    mock_backed_fabric_agent_config,
     unique_name,
 )
 
@@ -145,7 +145,7 @@ def _chat_completion_error(message: str) -> dict[str, Any]:
 
 
 def _mock_backed_workspace_agent_config(agent_name: str, model_name: str) -> dict[str, Any]:
-    config = _mock_backed_fabric_agent_config(agent_name, model_name)
+    config = mock_backed_fabric_agent_config(agent_name, model_name)
     config["instructions"] = {
         "system": {
             "content": (
