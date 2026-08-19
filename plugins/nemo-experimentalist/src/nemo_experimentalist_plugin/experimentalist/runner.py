@@ -207,10 +207,16 @@ class ExperimentRunner:
             # allow_empty in insight mode: the Eval Author fills these splits, so they are
             # legitimately empty when the run starts.
             "train": dataset_factory.build_dataset(
-                self._config.outcome_evaluator, train_ref, allow_empty=insight is not None
+                self._config.outcome_evaluator,
+                train_ref,
+                evaluator_config=self._config.outcome_evaluator_config,
+                allow_empty=insight is not None,
             ),
             "validation": dataset_factory.build_dataset(
-                self._config.outcome_evaluator, validation_ref, allow_empty=insight is not None
+                self._config.outcome_evaluator,
+                validation_ref,
+                evaluator_config=self._config.outcome_evaluator_config,
+                allow_empty=insight is not None,
             ),
         }
 
@@ -245,7 +251,11 @@ class ExperimentRunner:
             ).run(
                 insight=insight,
                 agent_path=agent_dir,
-                task_template=dataset_factory.build_task_template(self._config.outcome_evaluator, template_ref),
+                task_template=dataset_factory.build_task_template(
+                    self._config.outcome_evaluator,
+                    template_ref,
+                    evaluator_config=self._config.outcome_evaluator_config,
+                ),
                 train_dataset=datasets["train"],
                 validation_dataset=datasets["validation"],
                 client=self._backend.client,

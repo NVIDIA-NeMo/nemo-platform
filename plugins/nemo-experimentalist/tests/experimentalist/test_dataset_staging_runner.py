@@ -66,7 +66,7 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
             build_options.append(options)
             return SimpleNamespace(ref=ref)
 
-        def build_task_template(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
+        def build_task_template(self, evaluator_type: str, ref: DatasetRef, **_options: object) -> SimpleNamespace:
             return SimpleNamespace(uri=ref.uri)
 
     class MutatingEvalAuthor:
@@ -161,7 +161,7 @@ async def test_authored_metrics_and_suite_reach_the_run(
         def build_dataset(self, evaluator_type: str, ref: DatasetRef, **_options: object) -> SimpleNamespace:
             return SimpleNamespace(ref=ref)
 
-        def build_task_template(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
+        def build_task_template(self, evaluator_type: str, ref: DatasetRef, **_options: object) -> SimpleNamespace:
             return SimpleNamespace(uri=ref.uri)
 
     class Author:

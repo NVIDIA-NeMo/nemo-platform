@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+  <title id="title">OpenShell Harbor bridge runtime topology</title>
+  <desc id="desc">Host processes are shown above the runtime boundary. OpenShell and Harbor-managed Docker containers are shown below it, with HTTP, Docker, filesystem and credential interfaces.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1f2937" flood-opacity="0.13"/></filter>
+    <marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#59677b"/></marker>
+    <marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#3976b8"/></marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#32845a"/></marker>
+    <marker id="red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#b14f55"/></marker>
+    <style>
+      .title { font: 700 28px Arial, sans-serif; fill: #172033; }
+      .sub { font: 400 14px Arial, sans-serif; fill: #5b6577; }
+      .zone { font: 700 18px Arial, sans-serif; fill: #172033; }
+      .head { font: 700 15px Arial, sans-serif; fill: #172033; }
+      .body { font: 400 12px Arial, sans-serif; fill: #30394b; }
+      .small { font: 400 11px Arial, sans-serif; fill: #5b6577; }
+      .mono { font: 500 11px Consolas, Menlo, monospace; fill: #30394b; }
+      .badge { font: 700 10px Arial, sans-serif; fill: #ffffff; letter-spacing: 0.7px; }
+      .host-zone { fill: #fff9ed; stroke: #bd812c; stroke-width: 2.2; rx: 15; }
+      .container-zone { fill: #f2f8ff; stroke: #5685bd; stroke-width: 2.2; rx: 15; }
+      .compose-zone { fill: #fff4f2; stroke: #b65b5b; stroke-width: 1.7; rx: 12; }
+      .box { fill: #ffffff; stroke: #919daf; stroke-width: 1.4; rx: 9; filter: url(#shadow); }
+      .blue-box { fill: #edf5ff; stroke: #5685bd; stroke-width: 1.5; rx: 9; filter: url(#shadow); }
+      .green-box { fill: #eaf8ef; stroke: #3f9367; stroke-width: 1.5; rx: 9; filter: url(#shadow); }
+      .orange-box { fill: #fff0d7; stroke: #bd812c; stroke-width: 1.5; rx: 9; filter: url(#shadow); }
+      .purple-box { fill: #f3effc; stroke: #8067a9; stroke-width: 1.5; rx: 9; filter: url(#shadow); }
+      .red-box { fill: #fff0f0; stroke: #b65b5b; stroke-width: 1.5; rx: 9; filter: url(#shadow); }
+      .card { fill: #ffffff; stroke: #a4afbf; stroke-width: 1.4; rx: 10; }
+      .divider { stroke: #d8dde5; stroke-width: 1; }
+      .flow { fill: none; stroke: #59677b; stroke-width: 2; marker-end: url(#gray); }
+      .request { fill: none; stroke: #3976b8; stroke-width: 2.2; marker-end: url(#blue); }
+      .response { fill: none; stroke: #32845a; stroke-width: 2.2; marker-end: url(#green); }
+      .credential { fill: none; stroke: #b14f55; stroke-width: 2; stroke-dasharray: 5 4; marker-end: url(#red); }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1120" fill="#ffffff"/>
+  <text x="34" y="42" class="title">OpenShell Harbor bridge · runtime topology</text>
+  <text x="34" y="66" class="sub">Everything above the boundary is a host process. Everything below it is a managed container.</text>
+
+  <!-- Host OS -->
+  <rect x="28" y="90" width="1744" height="290" class="host-zone"/>
+  <rect x="48" y="106" width="82" height="22" fill="#a56718" rx="4"/>
+  <text x="60" y="121" class="badge">HOST OS</text>
+  <text x="144" y="122" class="zone">Trusted host processes</text>
+
+  <rect x="55" y="150" width="250" height="174" class="blue-box"/>
+  <rect x="72" y="166" width="92" height="20" fill="#3976b8" rx="4"/><text x="82" y="180" class="badge">PROCESS</text>
+  <text x="72" y="211" class="head">nemo launcher</text>
+  <text x="72" y="234" class="mono">experimentalist run</text>
+  <text x="72" y="257" class="body">prepare run + trusted catalog</text>
+  <text x="72" y="280" class="body">start bridge + OpenShell</text>
+  <text x="72" y="303" class="body">final cleanup</text>
+
+  <rect x="355" y="150" width="220" height="174" class="red-box"/>
+  <rect x="372" y="166" width="92" height="20" fill="#b14f55" rx="4"/><text x="382" y="180" class="badge">HOST ENV</text>
+  <text x="372" y="211" class="head">Exported settings</text>
+  <text x="372" y="234" class="body">credentials</text>
+  <text x="372" y="257" class="body">model + endpoint settings</text>
+  <text x="372" y="280" class="body">Docker environment</text>
+  <text x="372" y="303" class="small">inherited by bridge process</text>
+
+  <rect x="625" y="135" width="310" height="204" class="orange-box"/>
+  <rect x="642" y="151" width="92" height="20" fill="#a56718" rx="4"/><text x="652" y="165" class="badge">PROCESS</text>
+  <text x="642" y="196" class="head">Harbor bridge · FastAPI :8765</text>
+  <text x="642" y="219" class="body">Bearer auth + strict contracts</text>
+  <text x="642" y="242" class="body">safe archive + digest validation</text>
+  <text x="642" y="265" class="body">trusted catalog materialization</text>
+  <text x="642" y="288" class="body">async jobs + dependency sessions</text>
+  <text x="642" y="311" class="body">redaction + artifact export</text>
+
+  <rect x="985" y="150" width="280" height="174" class="purple-box"/>
+  <rect x="1002" y="166" width="92" height="20" fill="#8067a9" rx="4"/><text x="1012" y="180" class="badge">PROCESS</text>
+  <text x="1002" y="211" class="head">Harbor evaluator</text>
+  <text x="1002" y="234" class="mono">HarborBridgeRunner</text>
+  <text x="1002" y="257" class="mono">HarborNativeOutcomeEvaluator</text>
+  <text x="1002" y="280" class="mono">TrustedCandidateAgent</text>
+  <text x="1002" y="303" class="small">owns trial lifecycle</text>
+
+  <rect x="1315" y="150" width="400" height="174" class="red-box"/>
+  <rect x="1332" y="166" width="92" height="20" fill="#b14f55" rx="4"/><text x="1342" y="180" class="badge">DAEMON</text>
+  <text x="1332" y="211" class="head">Docker daemon</text>
+  <text x="1332" y="234" class="mono">docker / docker compose</text>
+  <text x="1332" y="257" class="body">build/pull task images</text>
+  <text x="1332" y="280" class="body">create per-trial Compose projects</text>
+  <text x="1332" y="303" class="small">socket accessible to host Harbor only</text>
+
+  <path d="M305 237 L355 237" class="credential"/>
+  <path d="M575 237 L625 237" class="credential"/>
+  <path d="M305 278 L330 278 L330 315 L600 315 L600 290 L625 290" class="flow"/>
+  <path d="M935 237 L985 237" class="flow"/>
+  <path d="M1265 237 L1315 237" class="flow"/>
+  <text x="1277" y="224" class="small">Docker API</text>
+
+  <!-- Explicit process/container boundary -->
+  <line x1="28" y1="402" x2="1772" y2="402" stroke="#172033" stroke-width="3"/>
+  <rect x="680" y="389" width="440" height="27" fill="#172033" rx="5"/>
+  <text x="701" y="407" class="badge">HOST / CONTAINER BOUNDARY · NO DOCKER SOCKET CROSSES INTO OPENSHELL</text>
+
+  <!-- Containers -->
+  <rect x="28" y="425" width="1744" height="286" class="container-zone"/>
+  <rect x="48" y="441" width="104" height="22" fill="#3976b8" rx="4"/>
+  <text x="59" y="456" class="badge">CONTAINERS</text>
+  <text x="166" y="457" class="zone">Managed runtime isolation</text>
+
+  <rect x="55" y="483" width="760" height="196" class="green-box"/>
+  <rect x="72" y="499" width="164" height="20" fill="#32845a" rx="4"/><text x="82" y="513" class="badge">OPENSHELL SANDBOX</text>
+  <text x="72" y="544" class="head">Experimentalist image</text>
+  <text x="72" y="567" class="mono">inner.py → Experimentalist → RemoteHarborEvaluator</text>
+  <text x="72" y="594" class="body">Files: /sandbox/input → /sandbox/output</text>
+  <text x="72" y="617" class="body">Network: approved Platform routes :8080 + bridge routes :8765</text>
+  <text x="72" y="640" class="body">Env: model names + bridge URL + opaque provider credential</text>
+  <text x="72" y="663" class="small">No host filesystem · no direct internet · no Docker socket</text>
+
+  <rect x="855" y="465" width="890" height="214" class="compose-zone"/>
+  <rect x="872" y="481" width="188" height="20" fill="#b14f55" rx="4"/><text x="882" y="495" class="badge">HARBOR COMPOSE PROJECT</text>
+  <text x="872" y="523" class="small">one isolated project per trial; deleted on completion, failure or cancellation</text>
+
+  <rect x="875" y="546" width="245" height="108" class="orange-box"/>
+  <text x="892" y="571" class="head">main service · task image</text>
+  <text x="892" y="593" class="mono">/installed-agent/project</text>
+  <text x="892" y="615" class="mono">python -m main</text>
+  <text x="892" y="637" class="small">AgentConfig.env</text>
+
+  <rect x="1150" y="546" width="245" height="108" class="purple-box"/>
+  <text x="1167" y="571" class="head">task sidecar(s)</text>
+  <text x="1167" y="593" class="mono">tau3-runtime:8000/mcp</text>
+  <text x="1167" y="615" class="body">MCP streamable HTTP</text>
+  <text x="1167" y="637" class="small">environment.env</text>
+
+  <rect x="1425" y="546" width="300" height="108" class="green-box"/>
+  <text x="1442" y="571" class="head">verifier phase</text>
+  <text x="1442" y="593" class="body">shared or separate environment</text>
+  <text x="1442" y="615" class="body">tests → reward/result</text>
+  <text x="1442" y="637" class="small">verifier.env</text>
+
+  <path d="M1120 600 L1150 600" class="request"/>
+  <text x="1124" y="588" class="small">MCP</text>
+  <path d="M1395 600 L1425 600" class="flow"/>
+
+  <!-- Boundary-crossing interfaces -->
+  <path d="M180 324 L180 483" class="flow"/>
+  <text x="190" y="420" class="small">OpenShell CLI creates container</text>
+  <path d="M530 483 L530 445 L780 445 L780 339" class="request"/>
+  <text x="548" y="439" class="small">HTTP :8765 via OpenShell provider · Bearer injected</text>
+  <path d="M745 339 L745 461 L495 461 L495 483" class="response"/>
+  <text x="508" y="475" class="small">status + sanitized results + artifacts</text>
+  <path d="M1515 324 L1515 465" class="flow"/>
+  <text x="1526" y="420" class="small">daemon creates containers</text>
+  <path d="M1125 324 L1125 440 L998 440 L998 546" class="flow"/>
+  <text x="1010" y="438" class="small">install + exec candidate</text>
+
+  <!-- Compact lower cards -->
+  <rect x="28" y="742" width="490" height="325" class="card"/>
+  <rect x="28" y="742" width="490" height="38" fill="#eaf8ef" rx="10"/>
+  <text x="48" y="767" class="head">OpenShell access</text>
+  <text x="48" y="807" class="head">RO files</text><text x="125" y="807" class="mono">/app /bin /etc /lib /opt /proc /usr /var/log</text>
+  <text x="48" y="831" class="head">RW files</text><text x="125" y="831" class="mono">/sandbox /tmp /home/sandbox /dev/null /dev/shm</text>
+  <line x1="48" y1="850" x2="498" y2="850" class="divider"/>
+  <text x="48" y="876" class="head">Platform :8080</text>
+  <text x="151" y="876" class="mono">GET /health/ready</text>
+  <text x="151" y="898" class="mono">GET|POST|PUT /apis/intake/.../**</text>
+  <text x="151" y="920" class="mono">GET /apis/insights/.../**</text>
+  <text x="151" y="942" class="mono">GET /apis/models/.../**</text>
+  <text x="151" y="964" class="mono">POST /apis/inference-gateway/.../**</text>
+  <line x1="48" y1="983" x2="498" y2="983" class="divider"/>
+  <text x="48" y="1009" class="head">Denied</text><text x="125" y="1009" class="body">Docker · direct internet · arbitrary hosts · host files</text>
+  <text x="48" y="1040" class="small">Only policy-approved Python binaries may open these routes.</text>
+
+  <rect x="544" y="742" width="710" height="325" class="card"/>
+  <rect x="544" y="742" width="710" height="38" fill="#fff0d7" rx="10"/>
+  <text x="564" y="767" class="head">Bridge HTTP interface · host:8765</text>
+  <text x="564" y="807" class="mono">GET</text><text x="625" y="807" class="mono">/health/ready</text><text x="1000" y="807" class="small">no auth → 200</text>
+  <text x="564" y="839" class="mono">POST</text><text x="625" y="839" class="mono">/v1/evaluations</text><text x="1000" y="839" class="small">multipart → 202 job</text>
+  <text x="564" y="871" class="mono">GET</text><text x="625" y="871" class="mono">/v1/evaluations/{job_id}</text><text x="1000" y="871" class="small">→ state/result</text>
+  <text x="564" y="903" class="mono">GET</text><text x="625" y="903" class="mono">/v1/evaluations/{job_id}/artifacts</text><text x="1000" y="903" class="small">→ gzip + digest</text>
+  <text x="564" y="935" class="mono">DELETE</text><text x="625" y="935" class="mono">/v1/evaluations/{job_id}</text><text x="1000" y="935" class="small">→ 204 cancel</text>
+  <line x1="564" y1="953" x2="1234" y2="953" class="divider"/>
+  <text x="564" y="979" class="mono">POST</text><text x="625" y="979" class="mono">/v1/dependencies</text><text x="1000" y="979" class="small">multipart → 201 session</text>
+  <text x="564" y="1011" class="mono">POST</text><text x="625" y="1011" class="mono">/v1/dependencies/{id}/exec</text><text x="1000" y="1011" class="small">JSON → exec result</text>
+  <text x="564" y="1043" class="mono">DELETE</text><text x="625" y="1043" class="mono">/v1/dependencies/{id}</text><text x="1000" y="1043" class="small">→ 204 stop</text>
+
+  <rect x="1280" y="742" width="492" height="325" class="card"/>
+  <rect x="1280" y="742" width="492" height="38" fill="#fff0f0" rx="10"/>
+  <text x="1300" y="767" class="head">Credential and cleanup channels</text>
+  <text x="1300" y="807" class="mono">host env</text><text x="1420" y="807" class="body">→ bridge process only</text>
+  <text x="1300" y="839" class="mono">environment.env</text><text x="1420" y="839" class="body">→ task Compose services</text>
+  <text x="1300" y="871" class="mono">verifier.env</text><text x="1420" y="871" class="body">→ verifier process</text>
+  <text x="1300" y="903" class="mono">AgentConfig.env</text><text x="1420" y="903" class="body">→ candidate process</text>
+  <line x1="1300" y1="923" x2="1752" y2="923" class="divider"/>
+  <text x="1300" y="951" class="head">Cancel</text><text x="1420" y="951" class="body">DELETE → Harbor cancellation</text>
+  <text x="1300" y="983" class="head">Trial</text><text x="1420" y="983" class="mono">EnvironmentConfig(delete=True)</text>
+  <text x="1300" y="1015" class="head">Finally</text><text x="1420" y="1015" class="body">delete sandbox + provider; stop bridge</text>
+  <text x="1300" y="1043" class="small">All /v1 routes use bearer auth; dependency exec/delete also use a session capability.</text>
+
+  <text x="28" y="1097" class="small">Host = native OS process/daemon · Container = OpenShell-managed sandbox or Harbor-managed Docker service</text>
+</svg>

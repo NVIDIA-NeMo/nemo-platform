@@ -16,6 +16,7 @@ from typing import Literal
 
 from harbor.job import DatasetConfig, Job, JobConfig
 from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
+from harbor.models.trial.config import EnvironmentConfig
 from nemo_experimentalist_plugin.entities import Dataset, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
@@ -148,6 +149,12 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     artifacts: list[str] = Field(default=[])
     retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
     import_path: str = Field(default=DEFAULT_AGENT_IMPORT_PATH)
+    scope_import_path: bool = Field(
+        default=True,
+        description="Scope a candidate-owned import path under the candidate directory.",
+    )
+    agent_model_name: str | None = Field(default=None)
+    agent_env: dict[str, str] = Field(default_factory=dict)
     trace_dir: str = Field(default=DEFAULT_TRACE_ARTIFACT_SOURCE)
     trace_format: Literal["otlp", "atif"] = Field(
         default="otlp",
@@ -187,15 +194,30 @@ class HarborNativeOutcomeEvaluator(roles.OutcomeEvaluator):
         options_dict["jobs_dir"] = inputs.jobs_dir
         options_dict["job_name"] = inputs.job_name
         import_path: str = options_dict.pop("import_path")
+        scope_import_path: bool = options_dict.pop("scope_import_path")
+        agent_model_name: str | None = options_dict.pop("agent_model_name")
+        agent_env: dict[str, str] = options_dict.pop("agent_env")
         trace_dir: str = options_dict.pop("trace_dir", DEFAULT_TRACE_ARTIFACT_SOURCE)
         trace_format: str = options_dict.pop("trace_format", "otlp")
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
         force_rerun: bool = options_dict.pop("force_rerun", False)
 
-        scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
-        agents_config = [AgentConfig(import_path=scoped_import_path)]
+        if scope_import_path:
+            resolved_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
+        else:
+            resolved_import_path, scoped_package = import_path, None
+        agents_config = [AgentConfig(import_path=resolved_import_path, model_name=agent_model_name, env=agent_env)]
         datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in harbor_dataset.tasks])]
-        job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
+        # Harbor's default is currently delete=True. Keep it explicit at this
+        # bridge boundary: each task may start a Docker Compose project, and
+        # its containers, orphan services, local images, and volumes must be
+        # removed even when a trial fails or the parent job is cancelled.
+        job_config = JobConfig(
+            **options_dict,
+            agents=agents_config,
+            datasets=datasets_config,
+            environment=EnvironmentConfig(delete=True),
+        )
         if force_rerun:
             job_dir = _validated_job_dir(job_config.jobs_dir, job_config.job_name)
             if job_dir.exists():
@@ -205,7 +227,8 @@ class HarborNativeOutcomeEvaluator(roles.OutcomeEvaluator):
             job = await Job.create(job_config)
             await job.run()
         finally:
-            _cleanup_scoped_imports(scoped_package)
+            if scoped_package is not None:
+                _cleanup_scoped_imports(scoped_package)
 
         trials = await self._trials_from_dir(job.job_dir, harbor_dataset.tasks, trace_format=trace_format)
         return trials

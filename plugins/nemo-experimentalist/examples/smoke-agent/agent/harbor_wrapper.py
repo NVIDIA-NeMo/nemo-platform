@@ -20,6 +20,7 @@ from harbor import AgentContext, BaseAgent, BaseEnvironment
 logger = logging.getLogger(__name__)
 
 AGENT_DIR = Path(__file__).parent
+TRACE_DIR = "/app/traces"
 
 # Never uploaded into the task container: optimizer bookkeeping, caches, and
 # anything holding credentials.
@@ -111,7 +112,8 @@ class WrappedAgent(BaseAgent):
         session_id = self.session_id or "local"
         proc = await environment.exec(
             f"cd /app && python main.py --prompt {shlex.quote(instruction.strip())} "
-            f"--session-id {shlex.quote(session_id)}"
+            f"--session-id {shlex.quote(session_id)}",
+            env={"TRACE_DIR": TRACE_DIR},
         )
 
         # Nothing is copied here: Harbor collects /app/artifacts and /app/traces

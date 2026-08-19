@@ -233,9 +233,10 @@ class TraceAnalyzer(Agent):
 
         All TraceExplorer methods are async — always `await` them.
 
-        The framework enters ``task.start_deps()`` before this method. Inspect
-        ``self.context["dependencies"]`` to see the active dependency runtime,
-        including start, readiness, and stop command specs.
+        The framework enters ``task.start_deps()`` before this method. While it
+        is active, ``self.shell`` is bound to the runtime when it provides an
+        in-environment command-execution channel. Otherwise the shell remains
+        host-local; use only interfaces the runtime explicitly exposes.
 
         1. Use ``task.inputs``, ``task.resources``, and ``task.metric_specs`` for
            task-side context. Do not assume Harbor paths or hidden verifier/oracle
@@ -371,26 +372,27 @@ class TraceAnalyzer(Agent):
         rationale = rationale or Rationale(task_name=task.id, steps=[])
 
         async with task.start_deps() as runtime:
-            overview = await self.get_overview(trace, trial)
-            analysis = await self.analyze_trajectory(
-                trace=trace,
-                trial=trial,
-                task=task,
-                overview=overview,
-                rationale=rationale,
-                insight=insight,
-                selection_reason=selection_reason,
-                objective_metrics=objective_metrics,
-                regression_metrics=regression_metrics,
-                agent_path=agent_path,
-                runtime=runtime,
-            )
-            diagnostic = await self.diagnose(
-                trace,
-                analysis,
-                insight,
-                objective_metrics,
-                regression_metrics,
-            )
-            cache.store(self._experiment_dir, key, diagnostic)
+            with self.shell.use_dependency_runtime(runtime):
+                overview = await self.get_overview(trace, trial)
+                analysis = await self.analyze_trajectory(
+                    trace=trace,
+                    trial=trial,
+                    task=task,
+                    overview=overview,
+                    rationale=rationale,
+                    insight=insight,
+                    selection_reason=selection_reason,
+                    objective_metrics=objective_metrics,
+                    regression_metrics=regression_metrics,
+                    agent_path=agent_path,
+                    runtime=runtime,
+                )
+                diagnostic = await self.diagnose(
+                    trace,
+                    analysis,
+                    insight,
+                    objective_metrics,
+                    regression_metrics,
+                )
+                cache.store(self._experiment_dir, key, diagnostic)
         return diagnostic

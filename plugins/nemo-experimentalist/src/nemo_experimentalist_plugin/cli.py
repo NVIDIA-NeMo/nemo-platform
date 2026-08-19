@@ -11,12 +11,14 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 import httpx
 import typer
 import yaml
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.openshell.launcher import OpenShellLaunchError, launch_openshell_run
+from nemo_experimentalist_plugin.openshell.preparation import prepare_openshell_run
 from nemo_experimentalist_plugin.preflight import (
     Probes,
     check_artifacts,
@@ -51,6 +53,8 @@ from nooa import GenerationError
 DEFAULT_WORKSPACE = "default"
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
+_OPEN_SHELL_PREPARER = prepare_openshell_run  # test seam
+_OPEN_SHELL_LAUNCHER = launch_openshell_run  # test seam
 
 run_experimentalist = None  # lazily imported by the run command; tests monkeypatch it
 
@@ -166,6 +170,11 @@ class ExperimentalistCLI(NemoCLI):
                 ),
                 file_okay=False,
                 dir_okay=True,
+            ),
+            execution_mode: Literal["local", "openshell"] = typer.Option(
+                "local",
+                "--execution-mode",
+                help="Execution boundary for the run. Local is the default; openshell runs the optimizer sandboxed.",
             ),
             workspace: str | None = typer.Option(
                 None,
@@ -286,6 +295,22 @@ class ExperimentalistCLI(NemoCLI):
                     scratch_dir=experiment_dir_resolved / "resolved",
                     plan=plan,
                 )
+                if execution_mode == "openshell":
+                    client = make_client(base_url_resolved)
+                    try:
+                        prepared = await _OPEN_SHELL_PREPARER(
+                            inputs,
+                            experiment_dir=experiment_dir_resolved,
+                            client=client,
+                        )
+                        return await asyncio.to_thread(
+                            _OPEN_SHELL_LAUNCHER,
+                            prepared,
+                            experiment_dir=experiment_dir_resolved,
+                            platform_url=base_url_resolved,
+                        )
+                    finally:
+                        await client.close()
                 global run_experimentalist
                 if run_experimentalist is None:
                     from nemo_experimentalist_plugin.experimentalist.run import (
@@ -320,7 +345,7 @@ class ExperimentalistCLI(NemoCLI):
                 # than guessing which one it was.
                 typer.echo(f"Error: a model-driven step of the run failed.\n\n{exc}", err=True)
                 raise typer.Exit(code=1) from None
-            except (OSError, ValueError, yaml.YAMLError) as exc:
+            except (OpenShellLaunchError, OSError, ValueError, yaml.YAMLError) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from None
             typer.echo(output_text)

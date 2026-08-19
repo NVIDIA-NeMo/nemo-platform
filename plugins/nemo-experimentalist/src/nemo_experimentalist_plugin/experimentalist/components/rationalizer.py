@@ -115,9 +115,10 @@ class Rationalizer(Agent):
         if cached is not None:
             return cached
         async with task.start_deps() as runtime:
-            rationale = await self.solve(task, runtime, agent_spec=agent_spec)
-            rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
-            cache.store(self._workspace_path, key, rationale)
+            with self.shell.use_dependency_runtime(runtime):
+                rationale = await self.solve(task, runtime, agent_spec=agent_spec)
+                rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
+                cache.store(self._workspace_path, key, rationale)
         return rationale
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=120.0)))

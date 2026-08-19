@@ -10,9 +10,10 @@ train_batch_seed: 20260727
 trajectory_scorer: null
 terminator: null
 storage:
-  archive_candidates: true
+  archive_candidates: false
+  publish_winner: false
 outcome_evaluator_config:
-  n_attempts: 1
+  n_attempts: 3
   quiet: true
   agent_setup_timeout_multiplier: 2.0
   environment_build_timeout_multiplier: 3.0

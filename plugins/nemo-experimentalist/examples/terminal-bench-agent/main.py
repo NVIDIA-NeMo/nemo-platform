@@ -30,7 +30,7 @@ def main() -> None:
     prompt_group = parser.add_mutually_exclusive_group(required=True)
     prompt_group.add_argument("--prompt")
     prompt_group.add_argument("--prompt-file", type=Path)
-    parser.add_argument("--trace-path", type=Path, default=Path("/logs/artifacts/traces/trace.jsonl"))
+    parser.add_argument("--trace-path", type=Path, default=Path("/app/traces/trace.jsonl"))
     parser.add_argument("--summary-path", type=Path, default=Path("/logs/agent/summary.json"))
     args = parser.parse_args()
 

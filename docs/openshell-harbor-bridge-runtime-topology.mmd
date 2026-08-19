@@ -1,0 +1,57 @@
+%% SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+%% SPDX-License-Identifier: Apache-2.0
+
+flowchart LR
+    subgraph OS["CONTAINER · OpenShell sandbox"]
+        direction TB
+        EXP["Experimentalist"]
+        CLIENT["Remote Harbor client"]
+        ACCESS["Access<br/>RW: /sandbox, /tmp<br/>Platform :&lt;configured port&gt;<br/>Bridge :8765<br/><b>No Docker socket</b><br/><b>No direct internet</b>"]
+        EXP --> CLIENT
+    end
+
+    PROVIDER["OpenShell provider<br/>injects Bearer token"]
+
+    subgraph HOST["HOST OS · trusted processes"]
+        direction TB
+        API["Bridge HTTP :8765<br/><br/>GET /health/ready<br/>POST /v1/evaluations<br/>GET /v1/evaluations/:job_id<br/>GET /v1/evaluations/:job_id/artifacts<br/>DELETE /v1/evaluations/:job_id<br/>POST /v1/dependencies<br/>POST /v1/dependencies/:session_id/exec<br/>DELETE /v1/dependencies/:session_id"]
+        BRIDGE["Harbor bridge<br/>validate · materialize · redact"]
+        HARBOR["Harbor evaluator<br/>TrustedCandidateAgent"]
+        DOCKER["Docker daemon"]
+        ENV["Exported host environment"]
+        API --> BRIDGE --> HARBOR --> DOCKER
+        ENV -.->|inherited| BRIDGE
+    end
+
+    subgraph TRIALS["DOCKER CONTAINERS · one Compose project per concurrent trial"]
+        direction TB
+        subgraph T1["Trial 1"]
+            direction TB
+            MAIN["main service · task image<br/><b>Installed candidate</b><br/>python -m main"]
+            RUNTIME["task sidecar<br/>tau3-runtime:8000/mcp"]
+            VERIFY["verifier phase<br/>shared or separate environment"]
+            MAIN <-->|"MCP"| RUNTIME
+            MAIN --> VERIFY
+        end
+        MORE["Trial 2 … N<br/>same isolated topology"]
+    end
+
+    PLATFORM["NeMo Platform :&lt;configured port&gt;<br/><br/>GET /health/ready<br/>GET|POST|PUT /apis/intake/...<br/>GET /apis/insights/...<br/>GET /apis/models/...<br/>POST /apis/inference-gateway/..."]
+
+    CLIENT -->|"request"| PROVIDER --> API
+    API -.->|"status · sanitized result · artifacts"| CLIENT
+    EXP <-->|"policy-limited HTTP"| PLATFORM
+    DOCKER -->|"create / delete"| T1
+    DOCKER -->|"create / delete"| MORE
+    ENV -.->|AgentConfig.env| MAIN
+    ENV -.->|environment.env| RUNTIME
+    ENV -.->|verifier.env| VERIFY
+
+    classDef sandbox fill:#eef8f1,stroke:#3f9367,stroke-width:2px,color:#172033;
+    classDef host fill:#fff4dd,stroke:#bd812c,stroke-width:2px,color:#172033;
+    classDef docker fill:#fff0f0,stroke:#b65b5b,stroke-width:2px,color:#172033;
+    classDef interface fill:#eef5ff,stroke:#5685bd,stroke-width:2px,color:#172033;
+    class EXP,CLIENT,ACCESS sandbox;
+    class API,BRIDGE,HARBOR,DOCKER,ENV host;
+    class MAIN,RUNTIME,VERIFY,MORE docker;
+    class PROVIDER,PLATFORM interface;

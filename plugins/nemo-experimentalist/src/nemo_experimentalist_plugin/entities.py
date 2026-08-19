@@ -17,9 +17,10 @@ import shlex
 from abc import ABC
 from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 from urllib.parse import unquote, urlparse
 
 from nemo_platform_plugin.entity import NemoEntity
@@ -30,8 +31,41 @@ MetricValue: TypeAlias = float | int
 TrialStatus: TypeAlias = Literal["completed", "failed"]
 
 
+@dataclass(frozen=True)
+class DependencyCommandResult:
+    """Captured output from one command in a task dependency environment."""
+
+    stdout: str
+    stderr: str
+    returncode: int
+
+
 class DatasetValidationError(ValueError):
     """Dataset content failed evaluator-specific authoring validation."""
+
+
+class DependencyRuntimeError(RuntimeError):
+    """A task dependency runtime could not start, execute, or stop safely."""
+
+
+@runtime_checkable
+class DependencyCommandExecutor(Protocol):
+    """A live dependency runtime that can execute a command in its environment.
+
+    This is deliberately separate from :class:`DependencyRuntime`: a runtime
+    can describe lifecycle commands without offering an in-environment exec
+    channel. Consumers should use this protocol only while the runtime context
+    is active, and fall back to their normal host-local mechanism otherwise.
+    """
+
+    async def execute(
+        self,
+        command: str,
+        *,
+        stdin: str | None = None,
+        timeout: float = 30.0,
+    ) -> DependencyCommandResult:
+        """Execute one command in the live dependency environment."""
 
 
 def local_path_from_uri(uri: str, *, context: str = "Resource") -> Path:

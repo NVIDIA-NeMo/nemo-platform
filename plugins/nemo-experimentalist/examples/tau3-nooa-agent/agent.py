@@ -13,7 +13,7 @@ from nooa.unifiedllm import CompletionClient
 
 enable_tracing(
     exporters=[
-        exporters.jsonl(trace_dir="/app/traces/"),
+        exporters.jsonl(trace_dir=os.environ.get("TRACE_DIR", "/app/traces/")),
     ]
 )
 
@@ -24,7 +24,7 @@ MCP_TOOL_TIMEOUT_SECONDS = float(os.environ.get("TAU3_MCP_TOOL_TIMEOUT_SECONDS",
 # names the tau3 task environment uses. INFERENCE_* is the fallback for running the
 # agent outside the wrapper.
 llm = CompletionClient(
-    model=os.environ.get("NEMO_AGENT_MODEL", "openai/azure/anthropic/claude-haiku-4-5"),
+    model=os.environ.get("AUT_MODEL_NAME", "openai/azure/anthropic/claude-haiku-4-5"),
     api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("INFERENCE_API_KEY"),
     api_base=os.environ.get("OPENAI_BASE_URL")
     or os.environ.get("INFERENCE_API_BASE", "https://inference-api.nvidia.com/v1"),

@@ -45,6 +45,7 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 "trajectory-scorer.goal-tree" = "nemo_experimentalist_plugin.experimentalist.components.trace_scorer"
 "outcome-evaluator.harbor-native" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native"
 "outcome-evaluator.harbor-runner" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator"
+"outcome-evaluator.remote-harbor" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor"
 
 [build-system]
 requires = ["hatchling"]

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 AGENT_DIR = Path(__file__).parent
 ARTIFACTS_DIR = "/app/artifacts"
 TRACES_DIR = "/app/traces"
+TRACE_PATH = f"{TRACES_DIR}/trace.jsonl"
 COLLECTED_ARTIFACTS_DIR = "/logs/artifacts"
 UV_VERSION = "0.9.14"
 INSTALL_ATTEMPTS = 3
@@ -141,7 +142,8 @@ class WrappedAgent(BaseAgent):
         if model_name:
             env["NEMO_AGENT_MODEL"] = model_name
         proc = await environment.exec(
-            f"cd /app && uv run --frozen python main.py --prompt {shlex.quote(instruction.strip())}",
+            f"cd /app && uv run --frozen python main.py --prompt {shlex.quote(instruction.strip())} "
+            f"--trace-path {shlex.quote(TRACE_PATH)}",
             env=env,
         )
         # download traces from container to parse token counts on the host

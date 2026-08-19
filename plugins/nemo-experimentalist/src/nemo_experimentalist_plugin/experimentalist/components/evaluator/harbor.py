@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import tempfile
 import tomllib
@@ -33,6 +34,7 @@ from nemo_experimentalist_plugin.entities import (
     DatasetRef,
     DatasetValidationError,
     DataValue,
+    DependencyCommandResult,
     DependencyRuntime,
     MetricResult,
     MetricSpec,
@@ -177,8 +179,9 @@ class HarborDependencyRuntime(DependencyRuntime):
 class HarborDependencyContext:
     """Async context manager that starts and stops Harbor task dependencies."""
 
-    def __init__(self, runtime: HarborDependencyRuntime) -> None:
+    def __init__(self, runtime: HarborDependencyRuntime, *, temp_root: Path | None = None) -> None:
         self._runtime = runtime
+        self._temp_root = temp_root
         self._environment: BaseEnvironment | None = None
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
@@ -216,7 +219,9 @@ class HarborDependencyContext:
         harbor_task = HarborTaskModel(task_path)
         context_id = uuid4()
         session_id = f"{harbor_task.short_name}__{context_id.hex[:12]}__env"
-        temp_dir = tempfile.TemporaryDirectory(prefix="nemo-harbor-deps-")
+        if self._temp_root is not None:
+            self._temp_root.mkdir(parents=True, exist_ok=True)
+        temp_dir = tempfile.TemporaryDirectory(prefix="nemo-harbor-deps-", dir=self._temp_root)
         trial_paths = TrialPaths(Path(temp_dir.name))
         trial_paths.mkdir()
 
@@ -279,6 +284,25 @@ class HarborDependencyContext:
                 "harbor_trial_dir": str(trial_paths.trial_dir),
                 "harbor_environment_session_id": session_id,
             }
+        )
+
+    async def execute(
+        self,
+        command: str,
+        *,
+        stdin: str | None = None,
+        timeout: float = 30.0,
+        cwd: str = "/app",
+    ) -> DependencyCommandResult:
+        """Execute a bounded command in the active Harbor task environment."""
+        if self._environment is None:
+            raise RuntimeError("Harbor dependency environment is not running")
+        wrapped = command if stdin is None else f"printf %s {shlex.quote(stdin)} | (\n{command}\n)"
+        result = await self._environment.exec(wrapped, cwd=cwd, timeout_sec=max(1, int(timeout)))
+        return DependencyCommandResult(
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+            returncode=result.return_code,
         )
 
     async def _stop_started_runtime(self) -> None:
