@@ -332,6 +332,7 @@ class ExperimentalistCLI(NemoCLI):
                         client=client,
                         config=inputs.config,
                         framework_skills_dirs=inputs.framework_skills_dirs,
+                        base_url=base_url_resolved,
                     )
                 finally:
                     await client.close()

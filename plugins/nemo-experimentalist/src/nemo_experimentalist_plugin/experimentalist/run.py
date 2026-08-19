@@ -4,6 +4,7 @@
 """Reusable optimizer Experimentalist run orchestration."""
 
 import logging
+import os
 from pathlib import Path
 from typing import TextIO
 
@@ -11,6 +12,10 @@ from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
+)
+from nemo_experimentalist_plugin.experimentalist.observability import (
+    EXPERIMENTALIST_OBSERVABILITY_ENV,
+    setup_experimentalist_observability,
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
 from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
@@ -55,6 +60,7 @@ async def run_experimentalist(
     config: EvolutionaryOptimizerConfig,
     task_template: DatasetRef | None = None,
     framework_skills_dirs: list[Path] | None = None,
+    base_url: str | None = None,
 ) -> str:
     """Build and run the Experimentalist against an agent and dataset.
 
@@ -108,8 +114,15 @@ async def run_experimentalist(
     model_platform_client = client or AsyncNeMoPlatform()
     owns_model_platform_client = client is None
     model_clients: ConfiguredModelClients | None = None
+    observability = None
     try:
         model_clients = await resolve_model_clients(model_platform_client, model_refs)
+        if base_url and _experimentalist_observability_enabled():
+            observability = setup_experimentalist_observability(
+                base_url=base_url,
+                workspace=workspace,
+                target_agent=str(agent) if agent is not None else "(from insight)",
+            )
         with activate_model_clients(model_clients):
             result = await ExperimentRunner(
                 backend=backend,
@@ -131,11 +144,15 @@ async def run_experimentalist(
             ).run()
     finally:
         try:
-            if model_clients is not None:
-                await model_clients.aclose()
+            if observability is not None:
+                observability.shutdown()
         finally:
-            if owns_model_platform_client:
-                await model_platform_client.close()
+            try:
+                if model_clients is not None:
+                    await model_clients.aclose()
+            finally:
+                if owns_model_platform_client:
+                    await model_platform_client.close()
 
     winner = result.winner
     reporter.run_finished(
@@ -144,3 +161,9 @@ async def run_experimentalist(
         report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
     )
     return result.summary
+
+
+def _experimentalist_observability_enabled() -> bool:
+    """True when Experimentalist self-observability is explicitly enabled."""
+    value = os.environ.get(EXPERIMENTALIST_OBSERVABILITY_ENV, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
