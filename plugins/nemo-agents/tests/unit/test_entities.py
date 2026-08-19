@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for Agent/AgentDeployment entity definitions and API schema models.
+"""Unit tests for agent entity definitions and API schema models.
 
 Entity tests live here alongside schema tests because both cover pure Pydantic
 model behaviour — no network, no entity store required.
 
-Entity classes: ``Agent``, ``AgentDeployment``  → ``nemo_agents_plugin.entities``
+Entity classes: ``Agent``, ``AgentDeployment``, ``AgentSession``
+                                               → ``nemo_agents_plugin.entities``
 Request schemas: ``CreateAgentRequest``, ``CreateDeploymentRequest``
                                                → ``nemo_agents_plugin.schema``
 """
@@ -20,6 +21,8 @@ from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
     Agent,
     AgentDeployment,
+    AgentSession,
+    SessionStatus,
     agent_config_file_ref,
     agent_spec_file_ref,
     agent_spec_fileset_name,
@@ -125,7 +128,7 @@ class TestAgentDeploymentEntity:
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            AgentDeployment(name="dep", workspace="default", status="unknown")
+            AgentDeployment.model_validate({"name": "dep", "workspace": "default", "status": "unknown"})
 
     def test_data_fields_include_deployment_fields(self) -> None:
         d = AgentDeployment(
@@ -165,6 +168,81 @@ class TestAgentDeploymentEntity:
         assert data["name"] == "dep"
         assert data["agent"] == "calc"
         assert data["status"] == "running"
+
+
+# ---------------------------------------------------------------------------
+# Entity: AgentSession
+# ---------------------------------------------------------------------------
+
+
+class TestAgentSessionEntity:
+    def test_entity_type(self) -> None:
+        assert AgentSession.__entity_type__ == "agent_session"
+
+    def test_deployment_id_is_required(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentSession.model_validate({"name": "session", "workspace": "default"})
+
+    def test_deployment_id_must_not_be_empty(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentSession(name="session", workspace="default", deployment_id="")
+
+    def test_deployment_id_is_stored_as_domain_data(self) -> None:
+        session = AgentSession(name="session", workspace="default", deployment_id="deployment-id")
+
+        assert session.deployment_id == "deployment-id"
+        assert session._get_data_fields()["deployment_id"] == "deployment-id"
+
+    def test_lifecycle_defaults(self) -> None:
+        session = AgentSession(name="session", workspace="default", deployment_id="deployment-id")
+
+        assert session.status is SessionStatus.ACTIVE
+        assert session.last_active_at is None
+        assert session.expires_at is None
+
+    def test_closed_status(self) -> None:
+        session = AgentSession(
+            name="session",
+            workspace="default",
+            deployment_id="deployment-id",
+            status=SessionStatus.CLOSED,
+        )
+
+        assert session.status is SessionStatus.CLOSED
+
+    def test_invalid_status_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentSession.model_validate(
+                {
+                    "name": "session",
+                    "workspace": "default",
+                    "deployment_id": "deployment-id",
+                    "status": "failed",
+                }
+            )
+
+    def test_utc_lifecycle_timestamps(self) -> None:
+        session = AgentSession(
+            name="session",
+            workspace="default",
+            deployment_id="deployment-id",
+            last_active_at=NOW,
+            expires_at=NOW,
+        )
+
+        assert session.last_active_at == NOW
+        assert session.expires_at == NOW
+
+    def test_entity_serialises_as_api_response(self) -> None:
+        session = AgentSession(name="session", workspace="default", deployment_id="deployment-id")
+        session._id = "session-id"
+        session._created_at = NOW
+
+        data = session.model_dump()
+        assert data["id"] == "session-id"
+        assert data["name"] == "session"
+        assert data["workspace"] == "default"
+        assert data["deployment_id"] == "deployment-id"
 
 
 # ---------------------------------------------------------------------------
