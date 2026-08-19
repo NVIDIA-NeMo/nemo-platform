@@ -2253,6 +2253,184 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/sessions:
+    post:
+      tags:
+      - Agent Sessions
+      summary: Create Session
+      description: Create a logical conversation for an existing deployment.
+      operationId: create_session_apis_agents_v2_workspaces__workspace__sessions_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agent Sessions
+      summary: List Sessions
+      description: List sessions in a workspace, optionally filtered by deployment
+        ID.
+      operationId: list_sessions_apis_agents_v2_workspaces__workspace__sessions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AgentSession_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/sessions/{name}:
+    get:
+      tags:
+      - Agent Sessions
+      summary: Get Session
+      description: Get a session by name.
+      operationId: get_session_apis_agents_v2_workspaces__workspace__sessions__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agent Sessions
+      summary: Delete Session
+      description: Permanently delete a session by name.
+      operationId: delete_session_apis_agents_v2_workspaces__workspace__sessions__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/sessions/{name}/close:
+    post:
+      tags:
+      - Agent Sessions
+      summary: Close Session
+      description: Close a session. Closing an already-closed session is idempotent.
+      operationId: close_session_apis_agents_v2_workspaces__workspace__sessions__name__close_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Agent:
@@ -2487,6 +2665,100 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
+    AgentSession:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        deployment_id:
+          type: string
+          minLength: 1
+          title: Deployment Id
+          description: Immutable ID of the AgentDeployment this session belongs to.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SessionStatus'
+          description: 'Lifecycle status: active | closed.'
+          default: active
+        last_active_at:
+          title: Last Active At
+          description: UTC timestamp of the last activity in the session.
+          type: string
+          format: date-time
+        expires_at:
+          title: Expires At
+          description: UTC timestamp when the session expires, if expiration is configured.
+          type: string
+          format: date-time
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - deployment_id
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AgentSession
+      description: 'A durable logical conversation associated with an AgentDeployment.
+
+
+        The session entity owns Platform-level conversation identity only. Live
+
+        harness state remains process-local to the deployment''s serving runtime.'
     AnalyzeBatchConfig:
       properties:
         batch:
@@ -2716,6 +2988,23 @@ components:
       - agent
       title: CreateDeploymentRequest
       description: Request body for ``POST /v2/workspaces/{workspace}/deployments``.
+    CreateSessionRequest:
+      properties:
+        deployment_id:
+          type: string
+          minLength: 1
+          title: Deployment Id
+          description: ID of the AgentDeployment to create a session for.
+        name:
+          title: Name
+          description: Optional session name. Auto-generated from deployment name
+            + random suffix if omitted.
+          type: string
+      type: object
+      required:
+      - deployment_id
+      title: CreateSessionRequest
+      description: Request body for ``POST /v2/workspaces/{workspace}/sessions``.
     DatetimeFilter:
       additionalProperties: false
       properties:
@@ -3366,6 +3655,29 @@ components:
       required:
       - data
       title: NemoListResponse_AgentDeployment_
+    NemoListResponse_AgentSession_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentSession'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AgentSession_
     NemoListResponse_Agent_:
       properties:
         data:
@@ -4043,6 +4355,13 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    SessionStatus:
+      type: string
+      enum:
+      - active
+      - closed
+      title: SessionStatus
+      description: Lifecycle status of an agent session.
     StringFilter:
       additionalProperties: false
       properties:

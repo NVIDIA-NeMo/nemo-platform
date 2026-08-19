@@ -68,7 +68,7 @@ class CreateDeploymentRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     """Request body for ``POST /v2/workspaces/{workspace}/sessions``."""
 
-    deployment_id: str = Field(description="ID of the AgentDeployment to create a session for.")
+    deployment_id: str = Field(min_length=1, description="ID of the AgentDeployment to create a session for.")
     name: str | None = Field(
         default=None,
         description="Optional session name. Auto-generated from deployment name + random suffix if omitted.",

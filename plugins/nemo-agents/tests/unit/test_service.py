@@ -23,7 +23,7 @@ def _mounted_routes() -> dict[str, set[str]]:
             if not isinstance(route, APIRoute):
                 continue
             path = f"/apis/agents{spec.prefix}{route.path}".replace("{trailing_uri:path}", "{trailing_uri}")
-            routes.setdefault(path, set()).update(route.methods)
+            routes.setdefault(path, set()).update(route.methods or set())
     return routes
 
 
@@ -54,3 +54,11 @@ def test_optimize_job_route_matches_generated_submit_path() -> None:
 
 def test_analyze_job_route_matches_generated_submit_path() -> None:
     assert submit_path_for(AnalyzeBatchJob, workspace="{workspace}") in _mounted_post_paths()
+
+
+def test_session_routes_are_mounted() -> None:
+    routes = _mounted_routes()
+
+    assert routes["/apis/agents/v2/workspaces/{workspace}/sessions"] == {"GET", "POST"}
+    assert routes["/apis/agents/v2/workspaces/{workspace}/sessions/{name}"] == {"DELETE", "GET"}
+    assert routes["/apis/agents/v2/workspaces/{workspace}/sessions/{name}/close"] == {"POST"}

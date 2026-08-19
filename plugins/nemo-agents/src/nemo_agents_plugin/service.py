@@ -95,12 +95,14 @@ class AgentsService(NemoService):
             deployment_logs,
             deployments,
             gateway,
+            sessions,
         )
 
         _prefix = "/v2/workspaces/{workspace}"
         specs: list[RouterSpec] = [
             RouterSpec(agents.router, tag="Agents", description="Agent CRUD", prefix=_prefix),
             RouterSpec(deployments.router, tag="Agent Deployments", description="Deployment lifecycle", prefix=_prefix),
+            RouterSpec(sessions.router, tag="Agent Sessions", description="Session lifecycle", prefix=_prefix),
             RouterSpec(
                 deployment_logs.router,
                 tag="Agent Deployments",

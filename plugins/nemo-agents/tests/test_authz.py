@@ -63,6 +63,20 @@ def test_crud_binding_deployment_read_covers_logs() -> None:
         assert binding.callers == ["principal"]
 
 
+def test_session_lifecycle_bindings() -> None:
+    contrib = _contribution()
+
+    create = contrib.endpoints[f"{_BASE}/sessions"]["post"]
+    assert create.permissions == ["agents.sessions.create"]
+    assert create.scopes == ["agents:write", "platform:write"]
+    assert create.callers == ["principal"]
+
+    close = contrib.endpoints[f"{_BASE}/sessions/{{name}}/close"]["post"]
+    assert close.permissions == ["agents.sessions.close"]
+    assert close.scopes == ["agents:write", "platform:write"]
+    assert close.callers == ["principal"]
+
+
 def test_gateway_proxy_binding() -> None:
     contrib = _contribution()
     methods = contrib.endpoints[_GATEWAY_AGENT]
