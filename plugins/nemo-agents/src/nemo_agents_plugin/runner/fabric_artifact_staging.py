@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import posixpath
 import shutil
 import tempfile
 from collections.abc import Collection
@@ -98,25 +99,35 @@ def _runtime_dir_names(agent_config: dict[str, Any]) -> set[str]:
         value = environment.get(key)
         if not isinstance(value, str) or not value:
             continue
-        rel = PurePosixPath(value)
+        rel = PurePosixPath(posixpath.normpath(value))
         if rel.is_absolute():
             continue
-        parts = [part for part in rel.parts if part != ".."]
-        if parts and parts[0] != ".":
-            names.add(parts[0])
+        # normpath resolves "foo/../workspace" to "workspace"; a leading ".." escapes base_dir.
+        if rel.parts and rel.parts[0] != "..":
+            names.add(rel.parts[0])
     return names
 
 
 def _clear_staged_tree(base_dir: Path, preserved: set[str]) -> None:
+    """Remove previously staged content, leaving *preserved* runtime directories.
+
+    Deletion failures are fatal: a surviving skill tree would otherwise satisfy
+    validation for a deployment that staged nothing.
+    """
     if not base_dir.is_dir():
         return
     for child in base_dir.iterdir():
         if child.name in preserved:
             continue
-        if child.is_dir() and not child.is_symlink():
-            shutil.rmtree(child, ignore_errors=True)
-        else:
-            child.unlink(missing_ok=True)
+        try:
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
+        except OSError as exc:
+            raise FabricArtifactStagingError(
+                f"Failed to remove stale agent spec artifact {child.name!r} from {base_dir}: {exc}"
+            ) from exc
 
 
 def _staged_relative_paths(base_dir: Path) -> set[PurePosixPath]:
@@ -152,7 +163,10 @@ async def stage_fabric_spec_config_files(
                 agent_yaml_path=agent_yaml_path,
                 rewritten_agent_yaml=config_yaml,
             )
-            _validate_referenced_skill_paths(rewritten_agent_config, config_files, agent_yaml_path)
+            # Validate against what the fileset delivered, not config_files, which
+            # carries the generated agent.yaml whether or not the fileset supplied one.
+            delivered = {path for path in _staged_relative_paths(tmp_path) if path.name != AGENT_SPEC_FILENAME}
+            validate_referenced_skill_paths(rewritten_agent_config, delivered)
             _validate_staged_size(config_files, fileset_name)
             return config_files
     except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
@@ -162,11 +176,11 @@ async def stage_fabric_spec_config_files(
             fileset_name,
             exc,
         )
-        inline_only = [ConfigFile(path=agent_yaml_path, content=config_yaml)]
         # A config that references skills still needs them staged, so an absent
-        # fileset must fail here rather than at container start.
-        _validate_referenced_skill_paths(rewritten_agent_config, inline_only, agent_yaml_path)
-        return inline_only
+        # fileset must fail here rather than at container start. Nothing was
+        # staged from the fileset, so no skills.paths entry can resolve.
+        validate_referenced_skill_paths(rewritten_agent_config, set())
+        return [ConfigFile(path=agent_yaml_path, content=config_yaml)]
 
 
 def _collect_staged_config_files(
@@ -247,17 +261,3 @@ def validate_referenced_skill_paths(
             raise FabricArtifactStagingError(
                 f"Referenced skills.paths entry {skill_path!r} was not found in staged agent spec fileset"
             )
-
-
-def _validate_referenced_skill_paths(
-    agent_config: dict[str, Any],
-    config_files: list[ConfigFile],
-    agent_yaml_path: str,
-) -> None:
-    base_dir = PurePosixPath(agent_yaml_path).parent
-    staged_paths = {
-        PurePosixPath(config_file.path).relative_to(base_dir)
-        for config_file in config_files
-        if PurePosixPath(config_file.path).is_relative_to(base_dir)
-    }
-    validate_referenced_skill_paths(agent_config, staged_paths)

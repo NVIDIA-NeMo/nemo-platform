@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -414,4 +414,107 @@ def test_validate_referenced_skill_paths_does_not_match_sibling_prefix() -> None
         validate_referenced_skill_paths(
             _fabric_config(skills_paths=["skills/review"]),
             {PurePosixPath("skills/review-notes/SKILL.md")},
+        )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_preserves_runtime_dir_through_parent_traversal(tmp_path: Path) -> None:
+    (tmp_path / "workspace").mkdir()
+    (tmp_path / "workspace" / "scratch.txt").write_text("keep\n", encoding="utf-8")
+    (tmp_path / "foo").mkdir()
+    (tmp_path / "foo" / "stale.txt").write_text("drop\n", encoding="utf-8")
+
+    config = _fabric_config()
+    config["environment"] = {"workspace": "foo/../workspace", "artifacts": "../outside"}
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    await stage_fabric_spec_dir(
+        workspace="default",
+        agent_name="fabric-agent",
+        agent_config=config,
+        base_dir=tmp_path,
+        sdk=sdk,
+    )
+
+    assert (tmp_path / "workspace" / "scratch.txt").exists()
+    assert not (tmp_path / "foo").exists()
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_dir_fails_when_stale_tree_cannot_be_removed(tmp_path: Path) -> None:
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "SKILL.md").write_text("# Stale\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock()
+
+    with patch(
+        "nemo_agents_plugin.runner.fabric_artifact_staging.shutil.rmtree",
+        side_effect=PermissionError("read-only"),
+    ):
+        with pytest.raises(FabricArtifactStagingError, match="stale agent spec artifact"):
+            await stage_fabric_spec_dir(
+                workspace="default",
+                agent_name="fabric-agent",
+                agent_config=_fabric_config(),
+                base_dir=tmp_path,
+                sdk=sdk,
+            )
+
+    sdk.download.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_config_files_missing_fileset_rejects_agent_root_skill() -> None:
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=NotFoundError("missing fileset", response=MagicMock(), body=None))
+
+    with pytest.raises(FabricArtifactStagingError, match=r"skills\.paths entry|was not found"):
+        await stage_fabric_spec_config_files(
+            workspace="default",
+            agent_name="fabric-agent",
+            rewritten_agent_config=_fabric_config(skills_paths=["."]),
+            agent_yaml_path="/workspace/agent.yaml",
+            sdk=sdk,
+        )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_config_files_accepts_agent_root_skill_from_fileset() -> None:
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        (Path(local_path) / "SKILL.md").write_text("# Root skill\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    result = await stage_fabric_spec_config_files(
+        workspace="default",
+        agent_name="fabric-agent",
+        rewritten_agent_config=_fabric_config(skills_paths=["."]),
+        agent_yaml_path="/workspace/agent.yaml",
+        sdk=sdk,
+    )
+
+    assert "/workspace/SKILL.md" in {item.path for item in result}
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_config_files_agent_spec_md_alone_does_not_satisfy_root_skill() -> None:
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        (Path(local_path) / "AGENT-SPEC.md").write_text("# Spec\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    with pytest.raises(FabricArtifactStagingError, match="was not found"):
+        await stage_fabric_spec_config_files(
+            workspace="default",
+            agent_name="fabric-agent",
+            rewritten_agent_config=_fabric_config(skills_paths=["."]),
+            agent_yaml_path="/workspace/agent.yaml",
+            sdk=sdk,
         )
