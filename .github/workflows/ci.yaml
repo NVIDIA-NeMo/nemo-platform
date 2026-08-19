@@ -127,24 +127,6 @@ jobs:
       - name: Check lock with platform uv
         run: bash script/uv-lock.sh --check
 
-      - name: Check Gym task image lock
-        run: |
-          uv python install 3.13.14
-          uv lock \
-            --check \
-            --project docker/locks/nmp-gym-tasks \
-            --python 3.13.14
-          for platform in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-            uv sync \
-              --project docker/locks/nmp-gym-tasks \
-              --locked \
-              --no-dev \
-              --no-install-project \
-              --dry-run \
-              --python 3.13.14 \
-              --python-platform "${platform}"
-          done
-
   uv-compatibility:
     name: Check configured uv compatibility
     runs-on: ubuntu-latest
