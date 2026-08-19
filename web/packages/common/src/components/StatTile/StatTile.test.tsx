@@ -77,6 +77,16 @@ describe('StatTile', () => {
     expect(screen.getByText('+0.05')).toHaveClass('text-[color:var(--text-color-feedback-danger)]');
   });
 
+  it('drops its surrounding surface when not bordered', () => {
+    const { rerender } = render(<StatTile label="Duration" value="00:01:38" />);
+    expect(screen.getByTestId('stat-tile-surface')).toBeInTheDocument();
+
+    rerender(<StatTile label="Duration" value="00:01:38" bordered={false} />);
+    expect(screen.queryByTestId('stat-tile-surface')).not.toBeInTheDocument();
+    expect(screen.getByText('Duration')).toBeInTheDocument();
+    expect(screen.getByText('00:01:38')).toBeInTheDocument();
+  });
+
   it('renders the label in the same muted tone as an unstatused hint', () => {
     render(<StatTile label="Learning Rate" value="1.00e-6" hint="at latest step" />);
 

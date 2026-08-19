@@ -9334,6 +9334,7 @@ interface LogViewerProps {
   isLoading?: boolean;
   downloadFilename?: string;
   rows?: number;
+  fillHeight?: boolean;
   emptyMessage?: string;
   /** Where the copy confirmation goes. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
   onNotify?: NotifyFn;
