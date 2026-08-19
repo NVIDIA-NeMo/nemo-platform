@@ -96,7 +96,12 @@ def _load_dotenv(path: Path = ENV_PATH) -> None:
 
 
 def _aws_cli_version(executable: str) -> tuple[int, int, int] | None:
-    result = subprocess.run([executable, "--version"], capture_output=True, text=True)
+    try:
+        result = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode:
+        return None
     match = re.search(r"aws-cli/(\d+)\.(\d+)\.(\d+)", result.stdout + result.stderr)
     if not match:
         return None
@@ -117,7 +122,9 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
         unmet: list[str] = []
         if aws is None:
             unmet.append("AWS CLI 2.33.0+ (needed for pinned/--state analyze; install with `brew install awscli`)")
-        elif (aws_version or (0, 0, 0)) < (2, 33, 0):
+        elif aws_version is None:
+            unmet.append("could not determine AWS CLI version (2.33.0+ required)")
+        elif aws_version < (2, 33, 0):
             unmet.append("AWS CLI 2.33.0+ (required for immutable multipart state uploads)")
         if not os.environ.get(release.ACCESS_KEY_ENV) or not os.environ.get(release.SECRET_KEY_ENV):
             unmet.append("CSS S3 credentials in evaluation/.env (CSS Portal → Auth Info)")

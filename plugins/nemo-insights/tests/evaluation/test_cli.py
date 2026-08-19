@@ -869,6 +869,20 @@ def test_aws_cli_version(monkeypatch):
     assert cli._aws_cli_version("/usr/bin/aws") == (2, 36, 24)
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [OSError(), subprocess.TimeoutExpired("/usr/bin/aws", 5), subprocess.CompletedProcess([], 1)],
+)
+def test_aws_cli_version_probe_failure(monkeypatch, failure):
+    def fail(*args, **kwargs):
+        if isinstance(failure, BaseException):
+            raise failure
+        return failure
+
+    monkeypatch.setattr(cli.subprocess, "run", fail)
+    assert cli._aws_cli_version("/usr/bin/aws") is None
+
+
 def test_doctor_ready(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
     monkeypatch.setattr("evaluation.adapters.IntakeAdapter.check", lambda self: [])
@@ -899,14 +913,18 @@ def test_doctor_flags_missing_aws(monkeypatch, capsys):
     assert "AWS CLI 2.33.0+ (needed for pinned/--state analyze; install with `brew install awscli`)" in out
 
 
-def test_doctor_flags_old_aws(monkeypatch, capsys):
+@pytest.mark.parametrize(
+    ("version", "message"),
+    [(None, "could not determine AWS CLI version"), ((2, 32, 34), "AWS CLI 2.33.0+")],
+)
+def test_doctor_flags_unsupported_aws(monkeypatch, capsys, version, message):
     monkeypatch.setattr("evaluation.adapters.IntakeAdapter.check", lambda self: [])
     monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/aws")
-    monkeypatch.setattr(cli, "_aws_cli_version", lambda _executable: (2, 32, 34))
+    monkeypatch.setattr(cli, "_aws_cli_version", lambda _executable: version)
     monkeypatch.setenv(cli.release.ACCESS_KEY_ENV, "team-test")
     monkeypatch.setenv(cli.release.SECRET_KEY_ENV, "secret")
     cli._doctor(cli.load_registry(cli.REGISTRY_PATH), "nvq")
-    assert "AWS CLI 2.33.0+" in capsys.readouterr().out
+    assert message in capsys.readouterr().out
 
 
 def test_doctor_lists_unmet(monkeypatch, capsys):
