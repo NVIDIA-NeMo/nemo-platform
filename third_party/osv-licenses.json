@@ -1872,27 +1872,27 @@
         {
           "package": {
             "name": "nemo-fabric",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "Apache-2.0"
+            "UNKNOWN"
           ]
         },
         {
           "package": {
             "name": "nemo-fabric-adapter-contract",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "Apache-2.0"
+            "UNKNOWN"
           ]
         },
         {
           "package": {
             "name": "nemo-fabric-adapters-claude",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1902,7 +1902,7 @@
         {
           "package": {
             "name": "nemo-fabric-adapters-codex",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1912,7 +1912,7 @@
         {
           "package": {
             "name": "nemo-fabric-adapters-common",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1922,7 +1922,7 @@
         {
           "package": {
             "name": "nemo-fabric-adapters-deepagents",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1932,7 +1932,7 @@
         {
           "package": {
             "name": "nemo-fabric-adapters-hermes",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1942,7 +1942,7 @@
         {
           "package": {
             "name": "nemo-fabric-runtime",
-            "version": "0.2.0rc3",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -10071,7 +10071,7 @@
     },
     {
       "name": "Apache-2.0",
-      "count": 144
+      "count": 142
     },
     {
       "name": "BSD-3-Clause",
@@ -10087,7 +10087,7 @@
     },
     {
       "name": "UNKNOWN",
-      "count": 5
+      "count": 7
     },
     {
       "name": "BSD-2-Clause",
