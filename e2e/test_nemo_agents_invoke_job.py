@@ -23,14 +23,7 @@ from e2e.agents_deploy_helpers import (
     unique_name,
 )
 
-pytestmark = [
-    pytest.mark.subprocess_only,
-    pytest.mark.e2e_config(
-        "e2e/configs/local-subprocess.yaml",
-        harness={"backend": "subprocess"},
-    ),
-    pytest.mark.timeout(600),
-]
+pytestmark = [pytest.mark.timeout(600)]
 
 
 def _agents_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
