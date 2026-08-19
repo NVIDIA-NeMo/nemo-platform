@@ -15,7 +15,7 @@ from types import ModuleType
 from typing import Literal
 
 from harbor.job import DatasetConfig, Job, JobConfig
-from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
+from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig, VerifierConfig
 from nemo_experimentalist_plugin.entities import Dataset, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
@@ -190,6 +190,8 @@ class HarborNativeOutcomeEvaluator(roles.OutcomeEvaluator):
         trace_dir: str = options_dict.pop("trace_dir", DEFAULT_TRACE_ARTIFACT_SOURCE)
         trace_format: str = options_dict.pop("trace_format", "otlp")
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
+        # Nothing else tells a verifier where the traces are.
+        options_dict["verifier"] = VerifierConfig(env={"TRACE_DIR": trace_dir})
         force_rerun: bool = options_dict.pop("force_rerun", False)
 
         scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
