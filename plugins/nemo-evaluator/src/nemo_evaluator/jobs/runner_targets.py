@@ -30,6 +30,7 @@ from __future__ import annotations
 from nemo_evaluator.jobs.agent_spec import AgentRunnerTarget, GymRunnerTarget
 from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.trials import AgentTaskRunner
+from pydantic_core import PydanticSerializationError
 
 
 class UnsubmittableRunnerError(TypeError):
@@ -70,5 +71,21 @@ def _gym_target(runner: GymAgentTaskRunner) -> GymRunnerTarget:
     well be wrong job-side — but a container path is absolute too, so nothing here can tell a local
     path from one that is correct in the job's image, and guessing would break the legitimate case
     to protect against a mistake the submitter is better placed to catch.
+
+    The one rejection is a value with no JSON form. ``hydra_params`` and ``env_vars`` are typed
+    loosely enough to hold a callable or an arbitrary object, which survives construction here and
+    then fails inside ``model_dump(mode="json")`` at submit time — a ``PydanticSerializationError``
+    raised from the transport, naming neither the runner nor the field. Checking here turns that
+    into the refusal this module promises.
     """
-    return GymRunnerTarget(**runner.config.model_dump())
+    target = GymRunnerTarget(**runner.config.model_dump())
+    try:
+        target.model_dump(mode="json")
+    except PydanticSerializationError as error:
+        raise UnsubmittableRunnerError(
+            "this GymAgentTaskRunner holds configuration with no JSON form, so it cannot be sent to "
+            f"the service: {error}. `hydra_params` and `env_vars` are free-form, but their values "
+            "must be JSON-compatible — Gym receives them as Hydra overrides and environment "
+            "variables, so a callable or a live object could not have travelled anyway."
+        ) from error
+    return target

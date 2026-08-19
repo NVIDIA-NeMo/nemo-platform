@@ -184,6 +184,21 @@ class Evaluator:
                     f"an AgentTaskRunner; got {type(target).__name__}. Pass a runner such as "
                     "GymAgentTaskRunner(config=...)."
                 )
+            # Everything below configures a *row* evaluation. The taskset path cannot honour any of
+            # it, so accepting it silently would run a job that ignores what the caller asked for.
+            row_only = {
+                "config": config,
+                "field_mapping": field_mapping,
+                "prompt_template": prompt_template,
+                "metric_bundle_packager": metric_bundle_packager,
+            }
+            supplied = sorted(name for name, value in row_only.items() if value is not None)
+            if supplied:
+                raise TypeError(
+                    f"submit(tasks=...) does not use {', '.join(supplied)} — those configure a row "
+                    "evaluation. A taskset evaluation is configured by the runner passed as "
+                    "`target`, so supplying them here would have no effect."
+                )
             return self._executor.submit_agent_eval(tasks=tasks, target=target)
         if metric is None or dataset is None:
             raise TypeError(

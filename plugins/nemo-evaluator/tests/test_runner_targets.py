@@ -82,6 +82,31 @@ def test_the_config_read_back_is_the_one_the_runner_holds() -> None:
     assert target.env_vars["OPENAI_API_KEY"] == "sk-real-value"
 
 
+def test_configuration_with_no_json_form_is_refused_rather_than_failing_at_submit() -> None:
+    """`hydra_params` and `env_vars` are typed loosely enough to hold anything.
+
+    A callable survives `GymRuntimeConfig` construction and only fails inside
+    `model_dump(mode="json")` when the spec is posted — a `PydanticSerializationError` raised from
+    the transport, naming neither the runner nor the field. This module promises to refuse what
+    cannot travel, so the refusal has to happen here.
+    """
+    runner = GymAgentTaskRunner(
+        config=GymRuntimeConfig(
+            agent="a",
+            agent_config="c",
+            resources_server="r",
+            hydra_params={"callback": lambda value: value},
+        )
+    )
+
+    with pytest.raises(UnsubmittableRunnerError) as excinfo:
+        runner_to_target(runner)
+
+    message = str(excinfo.value)
+    assert "JSON" in message, "the message should say what is wrong with the value"
+    assert "hydra_params" in message, "and name the fields that are free-form"
+
+
 def test_an_unsupported_runner_is_refused_by_name() -> None:
     # Only Gym has a target today. A runner with no wire form must say so rather than produce a
     # spec that silently runs something else.

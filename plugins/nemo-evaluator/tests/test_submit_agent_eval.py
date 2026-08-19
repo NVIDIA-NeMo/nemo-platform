@@ -71,6 +71,27 @@ def test_a_runner_passed_to_the_row_path_is_refused_rather_than_sent_as_an_endpo
     executor.submit.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "option",
+    ["config", "field_mapping", "prompt_template", "metric_bundle_packager"],
+)
+def test_row_only_options_are_refused_rather_than_silently_dropped(option: str) -> None:
+    """A taskset evaluation is configured by its runner, so these four have nowhere to go.
+
+    Accepting them silently would submit a job that ignores what the caller supplied — the failure
+    mode is a run that looks fine and used none of the requested configuration.
+    """
+    evaluator, executor = _evaluator()
+
+    with pytest.raises(TypeError) as excinfo:
+        evaluator.submit(tasks=TasksetRef("ts"), target=_runner(), **{option: MagicMock()})
+
+    message = str(excinfo.value)
+    assert option in message, "the message should name the option that cannot be honoured"
+    assert "target" in message, "and point at what does configure a taskset run"
+    executor.submit_agent_eval.assert_not_called()
+
+
 def test_supplying_both_shapes_is_refused_rather_than_silently_preferring_one() -> None:
     # Picking one for the caller would run an evaluation they did not ask for. Better to stop.
     evaluator, _ = _evaluator()

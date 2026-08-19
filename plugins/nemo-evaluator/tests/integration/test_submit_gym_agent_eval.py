@@ -135,6 +135,14 @@ def test_a_live_gym_runner_submits_and_round_trips_through_the_service(subproces
     )
     assert job.name, "the service returned no job name"
 
+    # The resource's own status route resolves for an agent job. Worth asserting rather than
+    # assuming: `job_route_base_url` builds the status path from `/evaluate/jobs` while agent jobs
+    # live under `/agent-evaluate/jobs`, and a review round questioned whether that 404s. It does
+    # not — the status lookup ignores the collection prefix — but nothing else covers it, since the
+    # execution path polls through `nmp.testing` rather than this resource.
+    status = job.get_job_status()
+    assert status.status, f"the agent job's status route returned no status: {status!r}"
+
     # Read back over the wire rather than trusting the submit response, so what is asserted is what
     # the service *stored*. Fetched with a plain GET because ``evaluator.get_job_resource`` is the
     # row-evaluation reader — it validates the job's spec as an ``EvaluateSpec``, which an agent
