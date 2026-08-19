@@ -10,8 +10,7 @@ train_batch_seed: 20260727
 trajectory_scorer: null
 terminator: null
 storage:
-  archive_candidates: false
-  publish_winner: false
+  archive_candidates: true
 outcome_evaluator_config:
   n_attempts: 3
   quiet: true
