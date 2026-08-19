@@ -326,14 +326,14 @@ group "docker-cpu" {
   targets = [
     "nmp-api-docker",
     "nmp-cpu-tasks-docker",
+    "nmp-gym-tasks-docker",
   ]
 }
 
-# CI extension that builds and validates the dedicated Gym task image.
+# CI extension that adds the Gym smoke-test stage to docker-cpu.
 group "docker-cpu-ci" {
   targets = [
     "docker-cpu",
-    "nmp-gym-tasks-docker",
     "nmp-gym-tasks-smoke-test",
   ]
 }
