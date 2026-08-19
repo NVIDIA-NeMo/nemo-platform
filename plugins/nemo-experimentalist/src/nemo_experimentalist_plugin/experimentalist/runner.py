@@ -209,13 +209,11 @@ class ExperimentRunner:
             "train": dataset_factory.build_dataset(
                 self._config.outcome_evaluator,
                 train_ref,
-                evaluator_config=self._config.outcome_evaluator_config,
                 allow_empty=insight is not None,
             ),
             "validation": dataset_factory.build_dataset(
                 self._config.outcome_evaluator,
                 validation_ref,
-                evaluator_config=self._config.outcome_evaluator_config,
                 allow_empty=insight is not None,
             ),
         }
@@ -254,7 +252,6 @@ class ExperimentRunner:
                 task_template=dataset_factory.build_task_template(
                     self._config.outcome_evaluator,
                     template_ref,
-                    evaluator_config=self._config.outcome_evaluator_config,
                 ),
                 train_dataset=datasets["train"],
                 validation_dataset=datasets["validation"],

@@ -23,9 +23,12 @@ from nemo_experimentalist_plugin.entities import (
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import EvaluatorFactory
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+    HarborDataset,
+    HarborDependencyRuntime,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (
     BRIDGE_TOKEN_ENV,
-    RemoteHarborDataset,
     RemoteHarborDependencyContext,
     RemoteHarborDependencyRuntime,
     RemoteHarborEvaluatorConfig,
@@ -141,11 +144,7 @@ async def test_remote_evaluator_submits_and_translates_trials(
         experiment_dir=Path("experiment"),
         transport=httpx.ASGITransport(app=app),
     )
-    dataset = RemoteHarborDataset.from_ref(
-        DatasetRef(uri=sandbox_dataset.as_uri()),
-        evaluator_config=config,
-        transport=httpx.ASGITransport(app=app),
-    )
+    dataset = HarborDataset.from_ref(DatasetRef(uri=sandbox_dataset.as_uri()))
 
     baseline_result = await evaluator.run(candidates[0], dataset)
     result = await evaluator.run(candidates[1], dataset)
@@ -158,7 +157,8 @@ async def test_remote_evaluator_submits_and_translates_trials(
     assert Path(result.trials[0].trace.uri.removeprefix("file://")).read_text(encoding="utf-8") == (
         '{"resourceSpans":[]}\n'
     )
-    runtime = dataset.tasks[0].dependencies
+    assert isinstance(dataset.tasks[0].dependencies, HarborDependencyRuntime)
+    runtime = evaluator._dependency_runtime(dataset, dataset.tasks[0])
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     assert runtime.max_archive_bytes == 4096
 
@@ -179,12 +179,9 @@ async def test_dependency_command_extends_client_timeout(
         bridge_url="http://bridge.test",
         request_timeout_sec=5,
     )
-    dataset = RemoteHarborDataset.from_ref(
-        DatasetRef(uri=registered.dataset_path.as_uri()),
-        evaluator_config=config,
-        transport=httpx.MockTransport(respond),
-    )
-    runtime = dataset.tasks[0].dependencies
+    evaluator = RemoteHarborOutcomeEvaluator(config, transport=httpx.MockTransport(respond))
+    dataset = HarborDataset.from_ref(DatasetRef(uri=registered.dataset_path.as_uri()))
+    runtime = evaluator._dependency_runtime(dataset, dataset.tasks[0])
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     runtime._session_id = "dependency-session"
     runtime._capability = "capability"
@@ -194,17 +191,15 @@ async def test_dependency_command_extends_client_timeout(
     assert captured_timeout["read"] == 130
 
 
-def test_remote_dataset_binds_copied_template_to_bridge_runtime(tmp_path: Path) -> None:
+def test_remote_evaluator_binds_static_template_to_bridge_runtime(tmp_path: Path) -> None:
     registered = _registered_dataset(tmp_path, single_task_root=True)
     generated_suite = tmp_path / "generated"
     shutil.copytree(registered.dataset_path, generated_suite / "trace-task")
 
-    dataset = RemoteHarborDataset.from_ref(
-        DatasetRef(uri=generated_suite.as_uri()),
-        evaluator_config=RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test"),
-    )
-
-    runtime = dataset.tasks[0].dependencies
+    evaluator = RemoteHarborOutcomeEvaluator(RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test"))
+    dataset = HarborDataset.from_ref(DatasetRef(uri=generated_suite.as_uri()))
+    assert isinstance(dataset.tasks[0].dependencies, HarborDependencyRuntime)
+    runtime = evaluator._dependency_runtime(dataset, dataset.tasks[0])
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     assert runtime.base_task_id == "source"
     assert runtime.task_id == "trace-task"
@@ -242,12 +237,11 @@ async def test_dependency_shutdown_preserves_body_error_and_clears_state(
     monkeypatch.setenv(BRIDGE_TOKEN_ENV, _TOKEN)
     registered = _registered_dataset(tmp_path)
     config = RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test")
-    dataset = RemoteHarborDataset.from_ref(
-        DatasetRef(uri=registered.dataset_path.as_uri()),
-        evaluator_config=config,
-        transport=httpx.MockTransport(lambda _request: httpx.Response(500)),
+    evaluator = RemoteHarborOutcomeEvaluator(
+        config, transport=httpx.MockTransport(lambda _request: httpx.Response(500))
     )
-    runtime = dataset.tasks[0].dependencies
+    dataset = HarborDataset.from_ref(DatasetRef(uri=registered.dataset_path.as_uri()))
+    runtime = evaluator._dependency_runtime(dataset, dataset.tasks[0])
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     context = RemoteHarborDependencyContext(runtime)
 

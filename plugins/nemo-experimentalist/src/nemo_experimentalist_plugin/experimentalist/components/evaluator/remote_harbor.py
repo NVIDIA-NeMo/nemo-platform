@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 from collections.abc import Iterator, Sequence
+from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Literal
@@ -19,7 +20,6 @@ from uuid import uuid4
 import httpx
 from nemo_experimentalist_plugin.entities import (
     Dataset,
-    DatasetRef,
     DependencyCommandResult,
     DependencyRuntime,
     DependencyRuntimeError,
@@ -28,7 +28,6 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
     local_path_from_uri,
-    subset_dataset_id,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
@@ -280,155 +279,6 @@ class RemoteHarborDependencyContext:
         return False
 
 
-class RemoteHarborDataset(HarborDataset):
-    """Harbor tasks whose dependency operations are delegated to the bridge.
-
-    The dataset, rather than the evaluator, owns conversion from a task's local
-    Harbor dependency declaration to :class:`RemoteHarborDependencyRuntime`.
-    Consequently every consumer of the dataset, including a Rationalizer and a
-    task subset, sees the bridge-only runtime from the moment the dataset is
-    built.
-    """
-
-    def __init__(
-        self,
-        id: str,
-        source: ResourceRef | None = None,
-        tasks: Sequence[Task] | None = None,
-        metadata: dict[str, Any] | None = None,
-        *,
-        evaluator_config: RemoteHarborEvaluatorConfig,
-        transport: httpx.AsyncBaseTransport | None = None,
-    ) -> None:
-        super().__init__(id=id, source=source, tasks=tasks, metadata=metadata)
-        self._evaluator_config = evaluator_config
-        self._transport = transport
-
-    @classmethod
-    def from_ref(
-        cls,
-        ref: DatasetRef,
-        *,
-        evaluator_config: EvaluatorConfig | None = None,
-        transport: httpx.AsyncBaseTransport | None = None,
-        **options: Any,
-    ) -> RemoteHarborDataset:
-        """Build a remote Harbor dataset from a local Harbor dataset reference.
-
-        Args:
-            ref: Harbor dataset reference.
-            evaluator_config: Remote Harbor bridge settings supplied by the
-                evaluator factory.
-            transport: Optional HTTP transport used for bridge requests. This
-                supports in-process bridge tests; production uses the default
-                network transport.
-            **options: Forwarded to :meth:`HarborDataset.from_ref`.
-
-        Returns:
-            A dataset whose task dependencies can only be started through the
-            Harbor bridge.
-        """
-        if not isinstance(evaluator_config, RemoteHarborEvaluatorConfig):
-            raise TypeError("Remote Harbor datasets require RemoteHarborEvaluatorConfig")
-        return cls.from_harbor_dataset(
-            HarborDataset.from_ref(ref, **options),
-            evaluator_config=evaluator_config,
-            transport=transport,
-        )
-
-    @classmethod
-    def from_harbor_dataset(
-        cls,
-        dataset: HarborDataset,
-        *,
-        evaluator_config: RemoteHarborEvaluatorConfig,
-        transport: httpx.AsyncBaseTransport | None = None,
-    ) -> RemoteHarborDataset:
-        """Copy a Harbor dataset and replace each task dependency runtime."""
-        if dataset.source is None:
-            raise ValueError("Remote Harbor evaluator requires a sourced Harbor dataset")
-        root = local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve()
-        return cls(
-            id=dataset.id,
-            source=dataset.source,
-            tasks=[
-                cls._remote_task(task, root=root, evaluator_config=evaluator_config, transport=transport)
-                for task in dataset.list_tasks()
-            ],
-            metadata=dataset.metadata,
-            evaluator_config=evaluator_config,
-            transport=transport,
-        )
-
-    @staticmethod
-    def _remote_task(
-        task,
-        *,
-        root: Path,
-        evaluator_config: RemoteHarborEvaluatorConfig,
-        transport: httpx.AsyncBaseTransport | None,
-    ) -> Task:
-        if isinstance(task.dependencies, RemoteHarborDependencyRuntime):
-            runtime = task.dependencies.model_copy(deep=False)
-            runtime._transport = transport
-            return task.model_copy(update={"dependencies": runtime})
-        if not isinstance(task.dependencies, HarborDependencyRuntime):
-            raise DependencyRuntimeError(
-                f"Remote Harbor evaluator will not run unsupported task dependencies locally: {task.id}"
-            )
-        task_path = local_path_from_uri(task.uri, context="Harbor task reference").resolve()
-        binding = resolve_envelope_task(root, task_path, task_id=task.id)
-        runtime = RemoteHarborDependencyRuntime.model_validate(
-            {
-                "task_id": task.id,
-                "base_task_id": binding.base_task_id,
-                "envelope_id": binding.envelope_id,
-                "envelope_digest": binding.envelope_digest,
-                "task_path": task_path,
-                "overlay_policy": binding.policy,
-                "bridge_url": evaluator_config.bridge_url,
-                "bridge_token_env": evaluator_config.bridge_token_env,
-                "request_timeout_sec": evaluator_config.request_timeout_sec,
-                "max_archive_bytes": evaluator_config.max_archive_bytes,
-            }
-        )
-        runtime._transport = transport
-        return task.model_copy(update={"dependencies": runtime})
-
-    def add_tasks(self, tasks: list[Task]) -> None:
-        """Add task copies and bind their dependencies to the bridge."""
-        super().add_tasks(tasks)
-        if self.source is None:
-            raise ValueError(f"Remote Harbor dataset {self.id!r} has no source directory")
-        root = local_path_from_uri(self.source.uri, context="Harbor dataset reference").resolve()
-        self.tasks = [
-            self._remote_task(
-                task,
-                root=root,
-                evaluator_config=self._evaluator_config,
-                transport=self._transport,
-            )
-            for task in self.list_tasks()
-        ]
-
-    def subset(self, task_ids: Sequence[str]) -> RemoteHarborDataset:
-        """Return a bridge-backed subset without reverting to local Docker runtime."""
-        selected_ids = set(task_ids)
-        tasks = [task for task in self.list_tasks() if task.id in selected_ids]
-        missing = selected_ids - {task.id for task in tasks}
-        if missing:
-            missing_text = ", ".join(sorted(missing))
-            raise ValueError(f"Task id(s) not found in Remote Harbor dataset {self.id!r}: {missing_text}")
-        return RemoteHarborDataset(
-            id=subset_dataset_id(self.id, [task.id for task in tasks]),
-            source=self.source,
-            tasks=tasks,
-            metadata=dict(self.metadata),
-            evaluator_config=self._evaluator_config,
-            transport=self._transport,
-        )
-
-
 class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
     """Evaluate through the host bridge without giving the sandbox Docker access.
 
@@ -440,7 +290,7 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
     """
 
     name = "remote-harbor"
-    dataset_type = RemoteHarborDataset
+    dataset_type = HarborDataset
     config_type = RemoteHarborEvaluatorConfig
     evaluator_type: EvaluatorType = "remote-harbor"
 
@@ -453,6 +303,36 @@ class RemoteHarborOutcomeEvaluator(roles.OutcomeEvaluator):
     ) -> None:
         super().__init__(options, experiment_dir)
         self._transport = transport
+
+    def dependency_context(self, dataset: Dataset, task: Task) -> AbstractAsyncContextManager[DependencyRuntime | None]:
+        """Start a bridge-backed dependency session for one static Harbor task."""
+        return self._dependency_runtime(dataset, task).context()
+
+    def _dependency_runtime(self, dataset: Dataset, task: Task) -> RemoteHarborDependencyRuntime:
+        """Adapt one static Harbor task to the bridge execution protocol."""
+        if not isinstance(task.dependencies, HarborDependencyRuntime):
+            raise DependencyRuntimeError(f"Remote Harbor evaluator requires Harbor task dependencies: {task.id}")
+        if not isinstance(dataset, HarborDataset) or dataset.source is None:
+            raise DependencyRuntimeError("Remote Harbor evaluator requires a sourced Harbor dataset")
+        task_path = local_path_from_uri(task.uri, context="Harbor task reference").resolve()
+        root = local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve()
+        binding = resolve_envelope_task(root, task_path, task_id=task.id)
+        runtime = RemoteHarborDependencyRuntime.model_validate(
+            {
+                "task_id": task.id,
+                "base_task_id": binding.base_task_id,
+                "envelope_id": binding.envelope_id,
+                "envelope_digest": binding.envelope_digest,
+                "task_path": task_path,
+                "overlay_policy": binding.policy,
+                "bridge_url": self.options.bridge_url,
+                "bridge_token_env": self.options.bridge_token_env,
+                "request_timeout_sec": self.options.request_timeout_sec,
+                "max_archive_bytes": self.options.max_archive_bytes,
+            }
+        )
+        runtime._transport = self._transport
+        return runtime
 
     def _result_dir(
         self,

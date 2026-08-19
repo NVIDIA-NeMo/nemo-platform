@@ -21,6 +21,7 @@ from nemo_experimentalist_plugin.entities import (
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluationRuntime
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,
@@ -663,6 +664,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
         candidate: Candidate,
         dataset: Dataset,
         evaluation: EvaluationResult,
+        evaluation_runtime: EvaluationRuntime,
         peer_evaluations: dict[str, EvaluationResult] | None = None,
         round_num: int | None = None,
         agent_spec: Path | None = None,
@@ -738,7 +740,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
                     workspace=self._workspace_path,
                     config=self._config.rationalizer,
                     framework_skills_dirs=self._framework_skills_dirs,
-                ).run(task, agent_spec=agent_spec)
+                ).run(task, evaluation_runtime=evaluation_runtime, agent_spec=agent_spec)
                 for task in unique_tasks.values()
             ],
             return_exceptions=True,
@@ -767,6 +769,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
                     objective_metrics=objectives,
                     regression_metrics=regressions,
                     load_trace=self._load_trace,
+                    evaluation_runtime=evaluation_runtime,
                 )
                 for trial, task, selection_reason in trial_tasks
             ],

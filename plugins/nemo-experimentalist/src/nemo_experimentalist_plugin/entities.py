@@ -259,16 +259,6 @@ class Task(BaseModel):
     )
     metadata: dict[str, DataValue] = Field(default_factory=dict, description="Metadata for the task.")
 
-    def start_deps(self) -> AbstractAsyncContextManager[DependencyRuntime | None]:
-        """Return an async context manager for this task's dependency runtime.
-
-        Returns:
-            AbstractAsyncContextManager[DependencyRuntime | None]: An async context manager for this task's dependency runtime.
-        """
-        if self.dependencies is None:
-            return DependencyContext(None)
-        return self.dependencies.context()
-
 
 class Dataset(ABC):
     """Collection of tasks."""

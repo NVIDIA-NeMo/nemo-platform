@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluationRuntime
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -94,7 +95,13 @@ class Rationalizer(Agent):
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
-    async def run(self, task: Task, agent_spec: Path | None = None) -> Rationale:
+    async def run(
+        self,
+        task: Task,
+        *,
+        evaluation_runtime: EvaluationRuntime,
+        agent_spec: Path | None = None,
+    ) -> Rationale:
         """Generate a correct reasoning trace for the task.
 
         Args:
@@ -114,11 +121,10 @@ class Rationalizer(Agent):
         cached = cache.load(self._workspace_path, key, Rationale)
         if cached is not None:
             return cached
-        async with task.start_deps() as runtime:
-            with self.shell.use_dependency_runtime(runtime):
-                rationale = await self.solve(task, runtime, agent_spec=agent_spec)
-                rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
-                cache.store(self._workspace_path, key, rationale)
+        async with evaluation_runtime.dependency_context(task) as runtime:
+            rationale = await self.solve(task, runtime, agent_spec=agent_spec)
+            rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
+            cache.store(self._workspace_path, key, rationale)
         return rationale
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=120.0)))
@@ -149,8 +155,8 @@ class Rationalizer(Agent):
         ## Runtime — already live
 
         The ``runtime`` parameter is the ALREADY-STARTED task dependency
-        context. All task services are live. **NEVER call ``task.start_deps()``
-        inside this method** — it creates a new isolated context that resets
+        context. All task services are live. **NEVER start another dependency
+        context inside this method** — it creates a new isolated context that resets
         all conversation and service state to zero.
 
         ## Step 0 — Build the scoring checklist
@@ -326,13 +332,16 @@ class Rationalizer(Agent):
         immediately:
 
         ```python
+        from nemo_experimentalist_plugin.entities import DependencyCommandExecutor
+
         thought = (
             "Task instructions say the article title is 'A Review of AR Applications "
             "for History Education' — this is a known sub-field. I need the paper's "
             "reference list to find the primary studies."
         )
         action = "Search Semantic Scholar for 'Challenor Ma 2019 AR history education review'."
-        result = await self.shell.run('python3 -c "..."')   # actual tool call
+        execute = runtime.execute if isinstance(runtime, DependencyCommandExecutor) else self.shell.run
+        result = await execute('python3 -c "...")
         steps.append(RationaleStep(
             thought=thought,
             action=action,
@@ -460,24 +469,24 @@ class Rationalizer(Agent):
         task dependency context. All task services (MCP servers, containers,
         endpoints) are live and reachable right now.
 
-        **NEVER call ``task.start_deps()`` inside this method.** Doing so
+        **NEVER start another dependency context inside this method.** Doing so
         creates a NEW isolated context that resets all conversation and service
         state to zero — destroying any progress made in the existing runtime.
         Use the ``runtime`` parameter directly to reach the task environment.
 
-        The AUT executes inside the task's runtime environment, which is set up
-        by ``task.start_deps()``. That environment may inject environment
+        The AUT executes inside the task's runtime environment, which the
+        evaluator starts. That environment may inject environment
         variables, start services, or expose endpoints that the AUT uses.
         Inspect ``task.inputs``, ``task.resources``, and any env vars the
         runtime injects to discover how to reach it — do not assume any
         specific mechanism (container, process, HTTP service, etc.).
 
-        The rationalizer's ``self.shell`` runs on the host. It can reach the
-        task's runtime only through whatever interface the runtime exposes
-        (e.g. env vars pointing to endpoints or exec wrappers). Never execute
-        host-side commands and record their output as if they were the AUT's
-        in-runtime experience — the paths, permissions, and tools available
-        on the host differ from those in the task runtime.
+        If ``runtime`` implements ``DependencyCommandExecutor``, call its
+        ``execute`` method directly for task-environment commands. Otherwise
+        ``self.shell`` runs on the host. Never execute host-side commands and
+        record their output as if they were the AUT's in-runtime experience —
+        the paths, permissions, and tools available on the host differ from
+        those in the task runtime.
 
         Never include in rationale steps:
         - Paths or commands that only work on the rationalizer host, not in
@@ -618,7 +627,10 @@ class Rationalizer(Agent):
         The runtime exposes a bash-accessible environment with the input file.
 
         ```python
+        from nemo_experimentalist_plugin.entities import DependencyCommandExecutor
+
         steps = []
+        execute = runtime.execute if isinstance(runtime, DependencyCommandExecutor) else self.shell.run
 
         # ── Step 1: read the instruction from task.inputs ───────────────────
         instruction = str(task.inputs.get("instruction", ""))
@@ -634,8 +646,8 @@ class Rationalizer(Agent):
 
         # ── Step 2: inspect the runtime environment ──────────────────────────
         # Discover available files/services via task.resources and env vars
-        # injected by task.start_deps() — mechanism depends on the task type.
-        result = await self.shell.run("ls -la input.csv && head -3 input.csv")
+        # injected by the evaluator — mechanism depends on the task type.
+        result = await execute("ls -la input.csv && head -3 input.csv")
         steps.append(RationaleStep(
             thought=(
                 "The instruction names `input.csv` and column `price`. "
@@ -647,7 +659,7 @@ class Rationalizer(Agent):
         ))
 
         # ── Step 3: first attempt fails — record error, do NOT cite its data ─
-        result = await self.shell.run(
+        result = await execute(
             "python3 -c \""
             "import csv, statistics; "
             "rows = list(csv.DictReader(open('input.csv'))); "
@@ -663,7 +675,7 @@ class Rationalizer(Agent):
         ))
 
         # ── Step 4: fix after the observed error, quote error in thought ──────
-        result = await self.shell.run(
+        result = await execute(
             "python3 -c \""
             "import csv, statistics; "
             "rows = list(csv.DictReader(open('input.csv'))); "
@@ -681,7 +693,7 @@ class Rationalizer(Agent):
         ))
 
         # ── Step 5: write artifact using the derived value ───────────────────
-        result = await self.shell.run(
+        result = await execute(
             "mkdir -p out && echo 47.5 > out/result.txt && cat out/result.txt"
         )
         steps.append(RationaleStep(

@@ -1639,19 +1639,6 @@ async def test_dependency_context_aexit_stop_raises_with_original_exc(tmp_path):
     assert result is False
 
 
-def test_task_start_deps_with_no_dependencies():
-    task = Task(id="t1")
-    ctx = task.start_deps()
-    assert isinstance(ctx, DependencyContext)
-
-
-def test_task_start_deps_with_dependencies():
-    runtime = DependencyRuntime(start=CommandSpec(argv=["true"]))
-    task = Task(id="t1", dependencies=runtime)
-    ctx = task.start_deps()
-    assert isinstance(ctx, DependencyContext)
-
-
 def test_dataset_subset_missing_raises():
     class ConcreteDataset(Dataset):
         @classmethod

@@ -310,9 +310,11 @@ def _export_result(
             and source.is_relative_to(work_dir)
             and source.exists()
         ):
+            source_relative = source.relative_to(work_dir)
+            destination = export_root / (source_relative if source.is_dir() else source_relative.parent)
             copied = _copy_result_resource(
                 source,
-                export_root / str(index),
+                destination,
                 scratch=scratch,
                 max_bytes=max_bytes,
                 max_files=max_files,

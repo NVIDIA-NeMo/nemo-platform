@@ -8,12 +8,17 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeAlias
+from typing import Protocol, TypeAlias
 
 from nemo_experimentalist_plugin.entities import (
     Dataset,
+    DependencyContext,
+    DependencyRuntime,
     EvaluationResult,
+    Task,
     TrialResult,
 )
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,6 +29,26 @@ logger = logging.getLogger(__name__)
 #: Literal: the set is open, and a package can add to it without editing this module.
 #: `harbor-native` and `harbor-runner` are two entries in it, not the whole of it.
 EvaluatorType: TypeAlias = str
+
+
+class EvaluationRuntime(Protocol):
+    """Evaluator-owned capability for starting one task's dependencies."""
+
+    def dependency_context(self, task: Task) -> AbstractAsyncContextManager[DependencyRuntime | None]:
+        """Return the context that makes ``task`` executable."""
+        ...
+
+
+@dataclass(frozen=True)
+class _DatasetEvaluationRuntime:
+    """Bind an evaluator's execution backend to one static dataset."""
+
+    evaluator: Evaluator
+    dataset: Dataset
+
+    def dependency_context(self, task: Task) -> AbstractAsyncContextManager[DependencyRuntime | None]:
+        """Start ``task`` using the bound evaluator and dataset."""
+        return self.evaluator.dependency_context(self.dataset, task)
 
 
 class EvaluatorConfig(BaseModel):
@@ -44,6 +69,20 @@ class Evaluator(ABC):
     def __init__(self, options: EvaluatorConfig, experiment_dir: Path | None = None) -> None:
         self.options = options
         self.experiment_dir = experiment_dir
+
+    def dependency_context(self, dataset: Dataset, task: Task) -> AbstractAsyncContextManager[DependencyRuntime | None]:
+        """Start task dependencies using this evaluator's execution backend.
+
+        Native evaluators use the task's declared runtime directly. Evaluators
+        that run elsewhere may override this to adapt the same static task to
+        their transport-specific dependency runner.
+        """
+        del dataset
+        return task.dependencies.context() if task.dependencies is not None else DependencyContext(None)
+
+    def evaluation_runtime(self, dataset: Dataset) -> EvaluationRuntime:
+        """Return the narrow dependency capability for ``dataset`` analysis."""
+        return _DatasetEvaluationRuntime(self, dataset)
 
     async def aggregate_results(self, results: Sequence[TrialResult]) -> dict[str, float | int]:
         """

@@ -19,6 +19,7 @@ from nemo_experimentalist_plugin.entities import (
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
+    EvaluationRuntime,
     Evaluator,
     EvaluatorConfig,
     EvaluatorType,
@@ -34,6 +35,7 @@ __all__ = [
     "EvaluationResult",
     "Evaluator",
     "EvaluatorConfig",
+    "EvaluationRuntime",
     "EvaluatorType",
     "MetricResult",
     "MetricSpec",

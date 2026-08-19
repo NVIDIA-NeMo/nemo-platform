@@ -129,8 +129,8 @@ class RecordingRunner:
 class ArtifactRunner:
     async def run(self, *, submission, profile, candidate_dir, dataset_dir, work_dir) -> EvaluationResult:
         del submission, profile, candidate_dir, dataset_dir
-        trace = work_dir / "results" / "trace.jsonl"
-        trace.parent.mkdir()
+        trace = work_dir / "results" / "trial-task" / "attempt-0" / "traces" / "trace.jsonl"
+        trace.parent.mkdir(parents=True)
         trace.write_text('{"resourceSpans":[]}\n', encoding="utf-8")
         return EvaluationResult(
             id="artifact-result",
@@ -213,7 +213,7 @@ def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
         )
 
     trial = payload["result"]["trials"][0]
-    assert trial["trace"]["uri"].startswith("nemo-harbor-bridge:///artifacts/")
+    assert trial["trace"]["uri"] == ("nemo-harbor-bridge:///artifacts/results/trial-task/attempt-0/traces/trace.jsonl")
     assert trial["resources"]["outside"]["uri"].startswith("nemo-harbor-bridge:///unavailable/")
     assert trial["outputs"] == {
         "host_path": "[HOST_PATH_REDACTED]",
@@ -226,7 +226,8 @@ def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
     archive.write_bytes(artifact_response.content)
     extracted = tmp_path / "downloaded-artifacts"
     extract_directory_archive(archive, extracted)
-    assert next(extracted.rglob("trace.jsonl")).read_text(encoding="utf-8") == '{"resourceSpans":[]}\n'
+    trace_path = extracted / "results" / "trial-task" / "attempt-0" / "traces" / "trace.jsonl"
+    assert trace_path.read_text(encoding="utf-8") == '{"resourceSpans":[]}\n'
 
 
 @pytest.mark.parametrize(

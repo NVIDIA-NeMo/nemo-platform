@@ -24,6 +24,7 @@ from nemo_experimentalist_plugin.entities import (
     Proposal,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluationRuntime
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
     ensure_heldout_hidden,
     restore_heldout_splits,
@@ -408,6 +409,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 round_num=round_num,
                 config=config,
                 agent_spec_path=agent_spec_path,
+                evaluation_runtime=ctx.outcome_evaluator.evaluation_runtime(train_eval_dataset),
             )
             proposals = await self._propose_improvements(
                 analysis=analysis,
@@ -828,6 +830,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         config: EvolutionaryOptimizerConfig,
         load_trace: TraceLoader | None = None,
         agent_spec_path: Path | None = None,
+        evaluation_runtime: EvaluationRuntime,
     ) -> str:
         """Run TraceRootCauseAnalyzer per survivor, merge analyses, persist to disk.
         ``None`` those traces are skipped (local ``file://`` traces still load).
@@ -862,6 +865,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     peer_evaluations={k: v for k, v in evaluations.items() if k != s.label},
                     round_num=round_num,
                     agent_spec=agent_spec_path,
+                    evaluation_runtime=evaluation_runtime,
                 )
                 for s in survivors
             ]

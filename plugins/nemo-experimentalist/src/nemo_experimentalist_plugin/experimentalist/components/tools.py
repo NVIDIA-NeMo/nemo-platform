@@ -2,12 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Sequence
 from pathlib import Path
 
-from nemo_experimentalist_plugin.entities import Candidate, DependencyCommandExecutor, DependencyRuntime
+from nemo_experimentalist_plugin.entities import Candidate
 from nooa.tools import ShellResult, ShellTools
 
 from .holdout_utils import (
@@ -51,29 +49,6 @@ class GuardedShellTools(ShellTools):
         """Initialize with a working directory and an optional set of blocked path tokens."""
         super().__init__(cwd=str(cwd), init_command=init_command)
         self._blocked_paths = tuple(blocked_paths)
-        self._dependency_executor: ContextVar[DependencyCommandExecutor | None] = ContextVar(
-            f"dependency_executor_{id(self)}",
-            default=None,
-        )
-
-    @contextmanager
-    def use_dependency_runtime(self, runtime: DependencyRuntime | None) -> Iterator[None]:
-        """Route shell calls through an executable live dependency runtime.
-
-        Runtimes that do not implement :class:`DependencyCommandExecutor` keep
-        the existing host-local shell behavior. This is required for evaluator
-        types that expose lifecycle only, while bridge-backed runtimes can
-        safely provide execution without Docker access in the caller.
-
-        Args:
-            runtime: The active task dependency runtime, if any.
-        """
-        executor = runtime if isinstance(runtime, DependencyCommandExecutor) else None
-        token = self._dependency_executor.set(executor)
-        try:
-            yield
-        finally:
-            self._dependency_executor.reset(token)
 
     def is_blocked(self, command: str) -> bool:
         """Return True if the command references any held-out split path token.
@@ -110,9 +85,6 @@ class GuardedShellTools(ShellTools):
         if self.is_blocked(command):
             logger.warning(f"GuardedShellTools blocked held-out access: {command}")
             return ShellResult(stdout="", stderr=BLOCKED_MESSAGE, returncode=1)
-        if executor := self._dependency_executor.get():
-            result = await executor.execute(command, stdin=stdin, timeout=timeout)
-            return ShellResult(stdout=result.stdout, stderr=result.stderr, returncode=result.returncode)
         return await super().run(command, stdin=stdin, timeout=timeout)
 
 

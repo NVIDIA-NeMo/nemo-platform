@@ -7,10 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    EvaluatorConfig,
-    EvaluatorType,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorConfig, EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.registry import resolve
 from nemo_experimentalist_plugin.experimentalist.roles import OutcomeEvaluator
 
@@ -40,8 +37,6 @@ class DatasetFactory:
         self,
         evaluator_type: EvaluatorType,
         dataset_ref: DatasetRef,
-        *,
-        evaluator_config: EvaluatorConfig | dict[str, Any] | None = None,
         **options: Any,
     ) -> Dataset:
         """Build a Dataset for the selected evaluator type.
@@ -49,8 +44,6 @@ class DatasetFactory:
         Args:
             evaluator_type(EvaluatorType): The type of evaluator to build the dataset for.
             dataset_ref(DatasetRef): The reference to the dataset to build.
-            evaluator_config: The resolved evaluator configuration. Dataset types that
-                own a runtime use it to construct that runtime.
             **options: Forwarded to the dataset type's ``from_ref``. ``allow_empty=True``
                 is what lets an Insight-driven run start with splits the Eval Author has
                 not filled yet.
@@ -64,24 +57,13 @@ class DatasetFactory:
         if not evaluator_type or not dataset_ref:
             raise ValueError("Evaluator type and dataset reference are required")
         component = _evaluation(evaluator_type)
-        if evaluator_config is None:
-            dataset_type = cast(type[EvaluatorDataset], component.dataset_type)
-            return dataset_type.from_ref(dataset_ref, **options)
-        if isinstance(evaluator_config, EvaluatorConfig):
-            resolved_config = evaluator_config
-        elif isinstance(evaluator_config, dict):
-            resolved_config = component.config_type.model_validate(evaluator_config)
-        else:
-            raise TypeError(f"{evaluator_type!r} evaluator config must be an EvaluatorConfig or dict")
         dataset_type = cast(type[EvaluatorDataset], component.dataset_type)
-        return dataset_type.from_ref(dataset_ref, evaluator_config=resolved_config, **options)
+        return dataset_type.from_ref(dataset_ref, **options)
 
     def build_task_template(
         self,
         evaluator_type: EvaluatorType,
         template_ref: DatasetRef,
-        *,
-        evaluator_config: EvaluatorConfig | dict[str, Any] | None = None,
     ) -> Task:
         """Parse an evaluator-specific template directory as one task.
 
@@ -97,7 +79,6 @@ class DatasetFactory:
             self.build_dataset(
                 evaluator_type,
                 template_ref,
-                evaluator_config=evaluator_config,
                 single_task=True,
             ).list_tasks()
         )

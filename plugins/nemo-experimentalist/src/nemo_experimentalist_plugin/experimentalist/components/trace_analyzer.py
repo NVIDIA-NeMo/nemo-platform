@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlparse
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, MetricResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluationRuntime
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools, WorkspaceTool
 from nemo_experimentalist_plugin.experimentalist.seam import TraceLoader
 from nemo_insights_plugin.entities import Insight
@@ -233,10 +234,13 @@ class TraceAnalyzer(Agent):
 
         All TraceExplorer methods are async — always `await` them.
 
-        The framework enters ``task.start_deps()`` before this method. While it
-        is active, ``self.shell`` is bound to the runtime when it provides an
-        in-environment command-execution channel. Otherwise the shell remains
-        host-local; use only interfaces the runtime explicitly exposes.
+        The framework enters the evaluator-owned runtime context before this
+        method. If ``runtime`` implements ``DependencyCommandExecutor``, call
+        ``await runtime.execute(...)`` directly for in-environment commands.
+        Otherwise ``self.shell`` is host-local; use it only for host-local
+        inspection and only when the runtime explicitly exposes no execution
+        channel. Import ``DependencyCommandExecutor`` from
+        ``nemo_experimentalist_plugin.entities`` before using that type check.
 
         1. Use ``task.inputs``, ``task.resources``, and ``task.metric_specs`` for
            task-side context. Do not assume Harbor paths or hidden verifier/oracle
@@ -300,6 +304,7 @@ class TraceAnalyzer(Agent):
         trial: TrialResult,
         task: Task,
         agent_path: Path,
+        evaluation_runtime: EvaluationRuntime,
         rationale: Rationale | None = None,
         insight: Insight | None = None,
         selection_reason: str = "",
@@ -371,28 +376,27 @@ class TraceAnalyzer(Agent):
 
         rationale = rationale or Rationale(task_name=task.id, steps=[])
 
-        async with task.start_deps() as runtime:
-            with self.shell.use_dependency_runtime(runtime):
-                overview = await self.get_overview(trace, trial)
-                analysis = await self.analyze_trajectory(
-                    trace=trace,
-                    trial=trial,
-                    task=task,
-                    overview=overview,
-                    rationale=rationale,
-                    insight=insight,
-                    selection_reason=selection_reason,
-                    objective_metrics=objective_metrics,
-                    regression_metrics=regression_metrics,
-                    agent_path=agent_path,
-                    runtime=runtime,
-                )
-                diagnostic = await self.diagnose(
-                    trace,
-                    analysis,
-                    insight,
-                    objective_metrics,
-                    regression_metrics,
-                )
-                cache.store(self._experiment_dir, key, diagnostic)
+        async with evaluation_runtime.dependency_context(task) as runtime:
+            overview = await self.get_overview(trace, trial)
+            analysis = await self.analyze_trajectory(
+                trace=trace,
+                trial=trial,
+                task=task,
+                overview=overview,
+                rationale=rationale,
+                insight=insight,
+                selection_reason=selection_reason,
+                objective_metrics=objective_metrics,
+                regression_metrics=regression_metrics,
+                agent_path=agent_path,
+                runtime=runtime,
+            )
+            diagnostic = await self.diagnose(
+                trace,
+                analysis,
+                insight,
+                objective_metrics,
+                regression_metrics,
+            )
+            cache.store(self._experiment_dir, key, diagnostic)
         return diagnostic
