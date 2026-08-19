@@ -18,21 +18,43 @@ class EnvironmentFormat(StrEnum):
 
 
 class EnvironmentManifestMetadata(BaseModel):
-    """User/provenance metadata in nemo-environment.yaml."""
+    """Provenance metadata in nemo-environment.yaml. Descriptive only -- nothing here
+    changes how the environment is installed or run.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=255, description="Environment name.", examples=["ascii-tree"])
     description: str | None = Field(default=None, max_length=2048)
-    hub_id: str | None = None
-    vf_env_id: str | None = None
-    adapter_agent: str | None = None
+    hub_id: str | None = Field(
+        default=None,
+        description="Identifier of the upstream package this environment was built from.",
+        examples=["primeintellect/ascii-tree"],
+    )
+    vf_env_id: str | None = Field(
+        default=None,
+        description="For verifiers-based environments, the id passed to verifiers.load_environment(). "
+        "Dataset rows carry the same value in their vf_env_id field.",
+        examples=["ascii-tree"],
+    )
+    adapter_agent: str | None = Field(
+        default=None,
+        description="Agent harness this package was built against, mirroring adapter.agent.",
+        examples=["verifiers_agent"],
+    )
 
 
 class _ManifestBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    config_paths: list[str] = Field(min_length=1)
+    config_paths: list[str] = Field(
+        min_length=1,
+        description="Gym config YAMLs to load, as paths relative to the package root. Required by "
+        "every format -- an environment with no config starts no servers -- but where they may "
+        "live differs: native-v1 under responses_api_agents/, resources_servers/ or "
+        "responses_api_models/, adapter-wheels-v1 under configs/, wheels-v1 anywhere.",
+        examples=[["configs/verifiers_agent.yaml"]],
+    )
     metadata: EnvironmentManifestMetadata
 
     @field_validator("config_paths")
@@ -62,11 +84,23 @@ class WheelsV1Manifest(_ManifestBase):
 
 
 class AdapterRef(BaseModel):
+    """Agent harness an adapter-wheels-v1 package runs on, supplied by the training image."""
+
     model_config = ConfigDict(extra="forbid")
 
-    agent: str = Field(min_length=1)
+    agent: str = Field(
+        min_length=1,
+        description="Agent harness to run this environment on. Must be one of the harnesses built "
+        "into the training image (IMAGE_ADAPTER_ALLOWLIST in "
+        "nmp.rl.tasks.environment.allowlist); the package selects existing image code rather than "
+        "shipping its own, so an unlisted value is rejected at validation.",
+        examples=["verifiers_agent"],
+    )
     agent_type: Literal["responses_api_agents"] = "responses_api_agents"
-    image_config_root: str | None = None
+    image_config_root: str | None = Field(
+        default=None,
+        description="Override for the harness directory inside the image. Unset resolves through the allowlist.",
+    )
 
 
 class AdapterWheelsV1Manifest(_ManifestBase):
@@ -90,6 +124,10 @@ ENVIRONMENT_MANIFEST_ADAPTER: TypeAdapter[EnvironmentManifest] = TypeAdapter(Env
 
 
 class ModelServerRefSpec(BaseModel):
+    """Reference to a NeMo Gym model server entry. During GRPO this points at the policy
+    being trained, which Gym serves from the job's own vLLM engine.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["responses_api_models"] = "responses_api_models"
@@ -97,15 +135,29 @@ class ModelServerRefSpec(BaseModel):
 
 
 class VerifiersAgentInstanceConfig(BaseModel):
-    """Fields under responses_api_agents.verifiers_agent in Hydra YAML."""
+    """Fields under ``responses_api_agents.verifiers_agent`` in an environment's Hydra YAML.
+
+    This is the config that loads a verifiers environment and points it at the model to
+    roll out against. Sampling fields (``max_tokens``, ``temperature``, ``top_p``) are
+    overwritten per row by the compiler's generation settings.
+    """
 
     model_config = ConfigDict(extra="allow", protected_namespaces=())
 
     entrypoint: str = "app.py"
-    model_server: ModelServerRefSpec = Field(default_factory=ModelServerRefSpec)
+    model_server: ModelServerRefSpec = Field(
+        default_factory=ModelServerRefSpec,
+        description="Model server the agent rolls out against; normally the policy model.",
+    )
     model_name: str = ""
-    vf_env_id: str
-    vf_env_args: dict = Field(default_factory=dict)
+    vf_env_id: str = Field(
+        description="Identifier passed to verifiers.load_environment().",
+        examples=["ascii-tree"],
+    )
+    vf_env_args: dict = Field(
+        default_factory=dict,
+        description="Keyword arguments forwarded to that environment loader.",
+    )
     max_tokens: int = 8192
     temperature: float = 1.0
     top_p: float = 1.0

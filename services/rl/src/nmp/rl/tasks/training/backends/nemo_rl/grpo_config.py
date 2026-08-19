@@ -33,9 +33,7 @@ from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
     SandboxConfig,
     SandboxNetworkPolicy,
     assemble_master_egress_allow,
-    bootstrap_env_from_job,
     build_sandbox_mounts,
-    resolve_ephemeral_work_path,
     resolve_job_storage_pvc_claim,
 )
 from nmp.rl.tasks.training.chat_templates import resolve_chat_template
@@ -274,16 +272,6 @@ def _build_nemo_gym_env_config(
         # long after compile reported success. "json" mode lowers tuples to lists, and
         # NeMo-RL's own tuple[str, ...] field coerces them back on validation.
         nemo_gym.update(sandbox_cfg.model_dump(mode="json", exclude_none=True))
-
-        work_path = resolve_ephemeral_work_path(job_ctx.job_id)
-        bootstrap = bootstrap_env_from_job(
-            job_id=job_ctx.job_id,
-            environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
-            dataset_path=gym.sandbox_dataset_path or SANDBOX_DATASET_PATH,
-            work_path=work_path,
-        )
-        nemo_gym["bootstrap_env"] = bootstrap
-        nemo_gym["host_work_path"] = work_path
     else:
         nemo_gym["environment_path"] = gym.environment_path
 
@@ -340,7 +328,7 @@ def compile_grpo_config(
         "val_start_at": -1,
         "val_at_start": val_at_start,
         "val_at_end": val_at_end,
-        "overlong_filtering": False,
+        "overlong_filtering": grpo_hp.overlong_filtering,
         "max_val_samples": val_samples if val_samples else None,
         "val_batch_size": val_samples if val_samples else num_prompts,
         "seed": customizer_config.seed,

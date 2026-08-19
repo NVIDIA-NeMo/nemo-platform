@@ -202,6 +202,12 @@ class GRPOTraining(_TrainingBase):
         "Cannot exceed max_seq_length.",
     )
     normalize_rewards: bool = Field(default=True, description="Normalize rewards within each prompt group.")
+    overlong_filtering: bool = Field(
+        default=False,
+        description="Zero the loss contribution of rollouts truncated by the generation limit. "
+        "Enable when a low max_new_tokens truncates many rollouts, so the policy is not penalised "
+        "for responses it was cut off from finishing.",
+    )
     max_rollout_turns: int = Field(
         default=1, gt=0, description="Maximum agent turns per rollout. Single-turn environments use 1."
     )

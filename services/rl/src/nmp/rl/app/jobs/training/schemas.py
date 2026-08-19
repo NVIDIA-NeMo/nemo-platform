@@ -67,6 +67,7 @@ class GRPOConfig(BaseModel):
     temperature: float = Field(default=1.0, gt=0.0)
     max_new_tokens: int | None = Field(default=None, gt=0)
     normalize_rewards: bool = True
+    overlong_filtering: bool = False
     max_rollout_turns: int = Field(default=1, gt=0)
     ref_policy_kl_penalty: float = Field(default=0.0, ge=0.0)
     ratio_clip_min: float = Field(default=0.2, ge=0.0)

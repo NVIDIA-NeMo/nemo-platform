@@ -3,14 +3,8 @@
 
 # NeMo-RL training images (`nmp-rl-base`, `nmp-rl-training`)
 
-GPU images for NeMo Platform's RL customization — **DPO**, and **GRPO** (will be added in
-future releases) — plus the
+GPU images for NeMo Platform's RL customization — **DPO** and **GRPO** — plus the
 **NeMo-Gym** environment runtime. A single training image serves both algorithms.
-
-> **(will be added in future releases)** marks capability the image carries but the platform does
-> not expose yet: DPO is
-> the shipping algorithm, and the GRPO backend is still in review. The image builds the extras
-> and prefetches the venvs GRPO needs so it works the day that lands.
 
 The images are built **from source** on NVIDIA's `cuda-dl-base` (CUDA 13, Python
 3.13), rather than layered on a prebuilt PyTorch container. This README records the
@@ -119,24 +113,26 @@ resolve the same interpreter as their parent.
 - **Per node, not per worker.** Eight GPU workers on one node share one venv on that node's
   disk; `venvs.py` uses a `STARTED_ENV_BUILDER` lock so it is built once, not eight times.
 - **Different workers can have different GPU requirements.** DPO's worker launches with the
-  `fsdp` venv (no `deep_ep`); GRPO's (will be added in future) generation worker with the 
+  `fsdp` venv (no `deep_ep`); GRPO's generation worker with the 
   `vllm` venv (`deep_ep`, Hopper-only) — in the same image.
 - `NEMO_RL_PY_EXECUTABLES_SYSTEM=1` collapses every actor into the base venv. We do **not**
   set it.
 
-### Which extras DPO and GRPO (will be added in future releases) actually use
+### Which extras DPO and GRPO actually use
 
 | Algorithm | Actor | Extra / venv | Notable contents |
 |---|---|---|---|
 | DPO | `DTensorPolicyWorker` (policy training) | **`fsdp`** | `flash-attn` (prebuilt multi-arch wheel), `mamba-ssm`, `causal-conv1d` |
-| GRPO (future release) | `DTensorPolicyWorkerV2` (policy training) | **`automodel`** | `nemo-automodel`, Transformer-Engine, `megatron-fsdp` |
-| GRPO (future release) | `MegatronPolicyWorker` (policy training) | **`mcore`** | `megatron-bridge`, `megatron-core`, Transformer-Engine |
-| GRPO (future release) | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
-| GRPO (Gym, future release) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
+| GRPO | `DTensorPolicyWorker` (policy training) | **`fsdp`** | as above — plain full-weight GRPO |
+| GRPO | `DTensorPolicyWorkerV2` (policy training) | **`automodel`** | `nemo-automodel`, Transformer-Engine, `megatron-fsdp` |
+| GRPO | `MegatronPolicyWorker` (policy training) | **`mcore`** | `megatron-bridge`, `megatron-core`, Transformer-Engine |
+| GRPO | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
+| GRPO (Gym) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
 
-DPO resolves to the **V1** DTensor worker (`dtensor_cfg._v2` defaults to false and the DPO
-compiler does not set it), which maps to the `fsdp` extra. GRPO's compiler sets
-`policy.dtensor_cfg._v2: true`, which selects **V2** and therefore the `automodel` extra.
+`dtensor_cfg._v2` defaults to false, so DPO and plain full-weight GRPO both resolve to the
+**V1** DTensor worker and the `fsdp` extra. The GRPO compiler sets `_v2: true` when the job
+asks for something only V2 implements — LoRA, expert parallelism, or `automodel_kwargs` —
+which selects **V2** and therefore the `automodel` extra.
 
 **LoRA requires V2 or Megatron.** DTensor V1 asserts `lora_cfg.enabled is False`
 (`nemo_rl/models/policy/lm_policy.py`); the DTensor LoRA implementation lives in
@@ -291,7 +287,7 @@ driver (base venv)
                    (init_reference_model=True — no extra worker, no extra venv)
 ```
 
-**GRPO job (future release), DTensor V2 path** — training + generation + (optionally) Gym.
+**GRPO job, DTensor V2 path** — training + generation + (optionally) Gym.
 This is the path the customizer's GRPO compiler emits (`policy.dtensor_cfg._v2: true`,
 `megatron_cfg.enabled: false`); see below for the Megatron alternative.
 
@@ -349,7 +345,7 @@ Mamba or hybrid model on A100 would fail at first kernel launch with the current
 `9.0 10.0` build. Add `8.0` to the arch list to cover that case — unlike `deep_ep`,
 these two do compile for `sm_80`.
 
-**GRPO targets Hopper / Blackwell (for now).** GRPO (will be added in future releases)
+**GRPO targets Hopper / Blackwell (for now).** GRPO
 generation uses vLLM, whose MoE path pulls `deep_ep` (and `deep_gemm` for fp8),
 source-compiled CUDA extensions that use Hopper-class features (TMA async copy,
 warp specialization, NVSHMEM GPU-initiated RDMA) and only build/run on
@@ -422,7 +418,7 @@ the uv cache + venv prefetch rather than via wheel images:
   deltas would fail `uv sync --frozen`). Reusing the pattern would mean new cp313/cu130
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
-  which the GRPO (future release) policy worker needs, so it is built from source here.
+  which the GRPO policy worker needs, so it is built from source here.
   `.python-version` pinning an exact patch release, which uv honours over whatever
   `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
   every venv came up on RL's version while ours sat unused on disk, so the image shipped
@@ -463,9 +459,9 @@ Prefetched (the filters match **actor FQNs**, not extra names):
 | Filter | Extra | Needed by |
 |---|---|---|
 | `dtensor_policy_worker.DTensorPolicyWorker` | `fsdp` | DPO policy training |
-| `dtensor_policy_worker_v2.DTensorPolicyWorkerV2` | `automodel` | GRPO policy training (future release) — selected by `policy.dtensor_cfg._v2: true`; the only LoRA-capable DTensor worker. The V1 filter does not match it (`dtensor_policy_worker_v2.`) |
-| `megatron_policy_worker.MegatronPolicyWorker` | `mcore` | GRPO policy training on Megatron (future release) — selected by `policy.megatron_cfg.enabled: true`; also hosts Megatron-native generation in-process. Does not match modelopt's `megatron_quant_policy_worker.MegatronQuantPolicyWorker` |
-| `vllm.vllm_worker` | `vllm` | GRPO generation (future release) — matches **both** `VllmGenerationWorker` and `VllmAsyncGenerationWorker` (NeMo-Gym forces async rollouts, so both are on the path) |
+| `dtensor_policy_worker_v2.DTensorPolicyWorkerV2` | `automodel` | GRPO policy training — selected by `policy.dtensor_cfg._v2: true`; the only LoRA-capable DTensor worker. The V1 filter does not match it (`dtensor_policy_worker_v2.`) |
+| `megatron_policy_worker.MegatronPolicyWorker` | `mcore` | GRPO policy training on Megatron — selected by `policy.megatron_cfg.enabled: true`; also hosts Megatron-native generation in-process. Does not match modelopt's `megatron_quant_policy_worker.MegatronQuantPolicyWorker` |
+| `vllm.vllm_worker` | `vllm` | GRPO generation — matches **both** `VllmGenerationWorker` and `VllmAsyncGenerationWorker` (NeMo-Gym forces async rollouts, so both are on the path) |
 | `sync_rollout_actor.SyncRolloutActor` | `vllm` | GRPO rollout driver (future, sync path) |
 | `nemo_gym.NemoGym` | `nemo_gym` | Gym environment actor (mode A, colocated) |
 | `nemo_gym_actor.SandboxedGymActor` | `nemo_gym` | Sandboxed Gym (mode B) — the trusted proxy actor in the training pod |

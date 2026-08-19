@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
@@ -19,6 +20,7 @@ from nmp.rl.schemas.environment import (
     GymVerifiersDatasetRow,
 )
 from nmp.rl.tasks.environment.allowlist import IMAGE_ADAPTER_ALLOWLIST
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +46,65 @@ def duplicate_wheel_distributions(wheels_dir: Path) -> dict[str, list[str]]:
 
 
 def load_manifest(env_root: Path) -> EnvironmentManifest:
-    manifest_path = env_root / "nemo-environment.yaml"
+    manifest_path = env_root / MANIFEST_FILENAME
     if not manifest_path.is_file():
-        raise EnvironmentPackageValidationError(f"Missing nemo-environment.yaml at environment root: {env_root}")
-    raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        raise EnvironmentPackageValidationError(f"Missing {MANIFEST_FILENAME} at environment root: {env_root}")
+    return parse_manifest(manifest_path.read_text(encoding="utf-8"))
+
+
+MANIFEST_FILENAME = "nemo-environment.yaml"
+
+
+def parse_manifest(raw_yaml: bytes | str) -> EnvironmentManifest:
+    """Parse and validate manifest bytes without touching the filesystem."""
+    raw = yaml.safe_load(raw_yaml)
     if not isinstance(raw, dict):
-        raise EnvironmentPackageValidationError("nemo-environment.yaml must be a mapping")
-    return ENVIRONMENT_MANIFEST_ADAPTER.validate_python(raw)
+        raise EnvironmentPackageValidationError(f"{MANIFEST_FILENAME} must be a mapping")
+    try:
+        return ENVIRONMENT_MANIFEST_ADAPTER.validate_python(raw)
+    except ValidationError as exc:
+        raise EnvironmentPackageValidationError(f"Invalid {MANIFEST_FILENAME}: {exc}") from exc
+
+
+def validate_manifest_against_listing(manifest: EnvironmentManifest, paths: Iterable[str]) -> None:
+    """Check a manifest against a flat list of package-relative file paths.
+
+    Everything here is decidable from the file names alone, so it runs against a FileSet
+    listing at submit time as well as against a downloaded package in the job. Checks that
+    need file contents or filesystem metadata (symlinks, path escapes) stay in
+    :func:`validate_package_layout`.
+    """
+    entries = {p.lstrip("./") for p in paths}
+
+    for path in sorted(entries):
+        if path.endswith(".jsonl"):
+            raise EnvironmentPackageValidationError(
+                f"Prompt JSONL must not live in the environment package: {path}. "
+                "Upload dataset rows as a separate dataset FileSet."
+            )
+
+    missing = [rel for rel in manifest.config_paths if rel not in entries]
+    if missing:
+        raise EnvironmentPackageValidationError(
+            f"config_paths reference files that are not in the package: {', '.join(sorted(missing))}"
+        )
+
+    if offline_wheel_install_required(manifest):
+        wheels = [p for p in entries if p.startswith("wheels/") and "/" not in p[len("wheels/") :]]
+        if not wheels:
+            raise EnvironmentPackageValidationError(
+                f"format {manifest.format.value!r} installs its dependencies offline, so the package "
+                "must carry a non-empty wheels/ directory"
+            )
+        non_wheels = sorted(p for p in wheels if not p.endswith(".whl"))
+        if non_wheels:
+            raise EnvironmentPackageValidationError(f"Non-wheel files in wheels/: {', '.join(non_wheels)}")
+
+    if isinstance(manifest, AdapterWheelsV1Manifest) and manifest.adapter.agent not in IMAGE_ADAPTER_ALLOWLIST:
+        raise EnvironmentPackageValidationError(
+            f"adapter.agent {manifest.adapter.agent!r} is not built into the training image. "
+            f"Supported: {', '.join(sorted(IMAGE_ADAPTER_ALLOWLIST))}"
+        )
 
 
 def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> None:
@@ -58,15 +112,11 @@ def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> No
     if not env_root.is_dir():
         raise EnvironmentPackageValidationError(f"Environment root is not a directory: {env_root}")
 
-    for jsonl in env_root.rglob("*.jsonl"):
-        raise EnvironmentPackageValidationError(
-            f"Prompt JSONL must not live in the environment package: {jsonl.relative_to(env_root)}"
-        )
-
+    # Filesystem-only checks run first: rglob does not follow symlinked directories, so an
+    # escaping config_path is absent from the listing below and would otherwise be reported
+    # as a plain missing file rather than as the containment breach it is.
     for rel in manifest.config_paths:
         cfg = env_root / rel
-        if not cfg.is_file():
-            raise EnvironmentPackageValidationError(f"Missing config file: {rel}")
         if cfg.is_symlink():
             raise EnvironmentPackageValidationError(f"Symlinks are not allowed: {rel}")
         # Compare by path components, not string prefix: "/job/environment-attacker"
@@ -74,22 +124,17 @@ def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> No
         if not cfg.resolve().is_relative_to(env_root.resolve()):
             raise EnvironmentPackageValidationError(f"config_paths escapes environment root: {rel}")
 
-    fmt = manifest.format
-    if fmt in (EnvironmentFormat.WHEELS_V1, EnvironmentFormat.ADAPTER_WHEELS_V1):
-        wheels_dir = env_root / "wheels"
-        if not wheels_dir.is_dir():
-            raise EnvironmentPackageValidationError("Missing wheels/ directory")
-        wheels = [p for p in wheels_dir.iterdir() if p.is_file()]
-        if not wheels:
-            raise EnvironmentPackageValidationError("wheels/ must be non-empty")
-        for whl in wheels:
-            if whl.suffix != ".whl":
-                raise EnvironmentPackageValidationError(f"Non-wheel file in wheels/: {whl.name}")
+    validate_manifest_against_listing(
+        manifest,
+        (str(p.relative_to(env_root)) for p in env_root.rglob("*") if p.is_file()),
+    )
+
+    if offline_wheel_install_required(manifest):
         # Warn, not raise: several versions of a project in a find-links pool is legal, and
         # rejecting here would invalidate packages already uploaded. But it means the
         # package does not pin what gets installed, so say so where it can still be fixed
         # rather than leaving it to surface as a resolver failure mid-job.
-        for name, versions in duplicate_wheel_distributions(wheels_dir).items():
+        for name, versions in duplicate_wheel_distributions(env_root / "wheels").items():
             logger.warning(
                 "wheels/ vendors %d versions of %s (%s). The installed version is then "
                 "whatever the resolver picks. Regenerate the package so it vendors a "
@@ -97,12 +142,6 @@ def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> No
                 len(versions),
                 name,
                 ", ".join(sorted(versions)),
-            )
-
-    if isinstance(manifest, AdapterWheelsV1Manifest):
-        if manifest.adapter.agent not in IMAGE_ADAPTER_ALLOWLIST:
-            raise EnvironmentPackageValidationError(
-                f"adapter.agent {manifest.adapter.agent!r} is not on the image allowlist"
             )
 
 

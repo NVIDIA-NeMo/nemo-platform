@@ -22,6 +22,7 @@ from nmp.customization_common.service.platform_client import (
 from nmp.rl.entities.values import TrainingType
 from nmp.rl.schemas import GRPOTraining, OutputResponse, RlJobOutput
 
+from nemo_rl_plugin.environment import check_environment_package
 from nemo_rl_plugin.schema import OutputRequest, RlJobInput
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ async def transform_input_to_output(
         if not input_spec.environment:
             raise ValueError("GRPO jobs require an environment fileset reference.")
         await check_environment_access(sdk, input_spec.environment, workspace)
+        await check_environment_package(sdk, input_spec.environment, workspace)
         await check_gym_dataset_layout(sdk, input_spec.dataset, workspace)
 
     is_embedding = bool(model_entity.spec and getattr(model_entity.spec, "is_embedding_model", False))
