@@ -136,6 +136,8 @@ class TrainingStepConfig(BaseModel):
         # settings; resolved by the compiler because RlConfig is not readable from the
         # training pod. None takes NeMo-RL's default.
         sandbox_server_protocol: str | None = None
+        # Operator-scoped, from platformConfig.rl.sandbox_resources.
+        sandbox_resources: dict[str, str] | None = None
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1

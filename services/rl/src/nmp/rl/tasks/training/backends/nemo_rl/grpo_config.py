@@ -214,6 +214,8 @@ def _build_nemo_gym_env_config(
                 host_provider_options=(
                     {"connection": {"protocol": gym.sandbox_server_protocol}} if gym.sandbox_server_protocol else {}
                 ),
+                # Same rule: unset leaves the OpenSandbox server's default in place.
+                resources=gym.sandbox_resources or None,
                 environment_pvc_claim=mounts.environment_pvc_claim,
                 environment_sub_path=mounts.environment_sub_path,
                 dataset_pvc_claim=mounts.dataset_pvc_claim,
