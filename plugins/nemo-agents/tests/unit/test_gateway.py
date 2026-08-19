@@ -23,7 +23,7 @@ The mock replicates the async-context-manager chain::
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import httpx
 import pytest
@@ -34,10 +34,13 @@ from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import (
     Agent,
     AgentDeployment,
+    AgentSession,
     DeploymentMode,
     DeploymentStatus,
     Endpoint,
+    SessionStatus,
 )
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 # ---------------------------------------------------------------------------
@@ -55,8 +58,30 @@ def _make_deployment(
     workspace: str = "default",
     status: DeploymentStatus = "running",
     endpoint: str = "http://localhost:9001",
+    deployment_id: str | None = None,
 ) -> AgentDeployment:
-    return AgentDeployment(name=name, workspace=workspace, agent=agent, status=status, endpoint=endpoint)
+    deployment = AgentDeployment(name=name, workspace=workspace, agent=agent, status=status, endpoint=endpoint)
+    if deployment_id is not None:
+        deployment._id = deployment_id
+    return deployment
+
+
+def _make_session(
+    *,
+    session_id: str = "session-id",
+    name: str = "session-one",
+    workspace: str = "default",
+    deployment_id: str = "deployment-id",
+    status: SessionStatus = SessionStatus.ACTIVE,
+) -> AgentSession:
+    session = AgentSession(
+        name=name,
+        workspace=workspace,
+        deployment_id=deployment_id,
+        status=status,
+    )
+    session._id = session_id
+    return session
 
 
 def _make_container_deployment(
@@ -321,6 +346,22 @@ class TestProxyByDeploymentName:
 
 
 class TestProxyByAgentName:
+    @pytest.mark.asyncio
+    async def test_resolver_returns_selected_deployment_entity(self, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        failed = _make_deployment(name="failed-dep", agent="calc", status="failed")
+        selected = _make_deployment(name="running-dep", agent="calc", status="running")
+        later = _make_deployment(name="later-dep", agent="calc", status="running")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([failed, selected, later]))
+
+        resolved = await gateway_module._resolve_agent_deployment(  # noqa: SLF001
+            "calc",
+            "default",
+            mock_entity_client,
+        )
+
+        assert resolved is selected
+
     def test_resolves_running_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
@@ -335,6 +376,7 @@ class TestProxyByAgentName:
             )
 
         assert resp.status_code == 200
+        mock_entity_client.find_one.assert_not_awaited()
 
     def test_agent_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("not found"))
@@ -374,6 +416,165 @@ class TestProxyByAgentName:
             )
 
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Persisted session resolution and deployment binding
+# ---------------------------------------------------------------------------
+
+
+class TestSessionAwareRouting:
+    def test_agent_route_uses_session_bound_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        session = _make_session(session_id="session-2", deployment_id="deployment-2")
+        bound_deployment = _make_deployment(
+            name="calc-v2",
+            agent="calc",
+            endpoint="http://localhost:9002",
+            deployment_id="deployment-2",
+        )
+        mock_entity_client.find_one = AsyncMock(side_effect=[session, bound_deployment])
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                headers={SESSION_ID_HEADER: "session-2"},
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        assert mock_entity_client.find_one.await_args_list == [
+            call(AgentSession, workspace="default", filter_obj={"id": "session-2"}),
+            call(AgentDeployment, workspace="default", filter_obj={"id": "deployment-2"}),
+        ]
+        mock_entity_client.get.assert_not_awaited()
+        mock_entity_client.list.assert_not_awaited()
+        stream_call = httpx_mock.__aenter__.return_value.stream.call_args
+        assert stream_call.kwargs["url"] == "http://localhost:9002/v1/chat/completions"
+        assert stream_call.kwargs["headers"][SESSION_ID_HEADER] == "session-2"
+
+    def test_direct_route_accepts_session_for_same_deployment(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        deployment = _make_deployment(deployment_id="deployment-1")
+        session = _make_session(session_id="session-1", deployment_id="deployment-1")
+        mock_entity_client.get = AsyncMock(return_value=deployment)
+        mock_entity_client.find_one = AsyncMock(return_value=session)
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                headers={SESSION_ID_HEADER: "session-1"},
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        mock_entity_client.find_one.assert_awaited_once_with(
+            AgentSession,
+            workspace="default",
+            filter_obj={"id": "session-1"},
+        )
+        stream_call = httpx_mock.__aenter__.return_value.stream.call_args
+        assert stream_call.kwargs["headers"][SESSION_ID_HEADER] == "session-1"
+
+    def test_unknown_session_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.find_one = AsyncMock(side_effect=NemoEntityNotFoundError("not found"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "missing"},
+            json={},
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Session ID 'missing' not found in workspace 'default'."
+        mock_entity_client.get.assert_not_awaited()
+        mock_entity_client.list.assert_not_awaited()
+
+    def test_cross_workspace_session_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.find_one = AsyncMock(return_value=_make_session(session_id="session-1", workspace="other"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={},
+        )
+
+        assert resp.status_code == 404
+
+    def test_closed_session_returns_409(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.find_one = AsyncMock(
+            return_value=_make_session(session_id="session-1", status=SessionStatus.CLOSED)
+        )
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={},
+        )
+
+        assert resp.status_code == 409
+        assert "closed" in resp.json()["detail"].lower()
+
+    def test_empty_session_header_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: ""},
+            json={},
+        )
+
+        assert resp.status_code == 400
+        mock_entity_client.find_one.assert_not_awaited()
+
+    def test_missing_bound_deployment_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        session = _make_session(session_id="session-1", deployment_id="missing-deployment")
+        mock_entity_client.find_one = AsyncMock(side_effect=[session, NemoEntityNotFoundError("not found")])
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={},
+        )
+
+        assert resp.status_code == 404
+        assert "missing-deployment" in resp.json()["detail"]
+
+    def test_agent_route_rejects_session_bound_to_another_agent(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        session = _make_session(session_id="session-1", deployment_id="deployment-1")
+        deployment = _make_deployment(
+            agent="other-agent",
+            deployment_id="deployment-1",
+        )
+        mock_entity_client.find_one = AsyncMock(side_effect=[session, deployment])
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={},
+        )
+
+        assert resp.status_code == 409
+        assert "other-agent" in resp.json()["detail"]
+
+    def test_direct_route_rejects_session_for_another_deployment(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        deployment = _make_deployment(deployment_id="deployment-1")
+        session = _make_session(session_id="session-2", deployment_id="deployment-2")
+        mock_entity_client.get = AsyncMock(return_value=deployment)
+        mock_entity_client.find_one = AsyncMock(return_value=session)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-2"},
+            json={},
+        )
+
+        assert resp.status_code == 409
+        assert "deployment-2" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
