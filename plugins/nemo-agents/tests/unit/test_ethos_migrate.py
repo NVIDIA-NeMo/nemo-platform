@@ -623,6 +623,21 @@ def strand_a_journal(tmp_path: Path, filesets: FakeFilesets) -> None:
     filesets.fail_upload.discard(LEGACY_PACKAGE)
 
 
+def strand_an_initial_journal(tmp_path: Path, filesets: FakeFilesets) -> Path:
+    """Exit after the initial journal write and before any external mutation."""
+    agents_root = tmp_path / "agents"
+    make_local_package(agents_root)
+
+    def exit_before_backups(*args: Any, **kwargs: Any) -> None:
+        raise KeyboardInterrupt("injected process exit before backups")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ethos_migrate, "_build_backups", exit_before_backups)
+        with pytest.raises(KeyboardInterrupt):
+            migrate(request_for(tmp_path), filesets)
+    return journal_dir(WORKSPACE, AGENT) / "journal.json"
+
+
 def test_dry_run_reports_a_pending_recovery_without_writing(tmp_path: Path) -> None:
     agents_root = tmp_path / "agents"
     make_local_package(agents_root)
@@ -1700,6 +1715,243 @@ def test_recovery_ignores_new_arguments_and_touches_only_recorded_paths(tmp_path
     assert not (journal_dir(WORKSPACE, AGENT) / "journal.json").exists()
 
 
+def test_recovery_uses_absolute_recorded_paths_after_the_working_directory_changes(tmp_path: Path) -> None:
+    original_cwd = tmp_path / "original"
+    original_cwd.mkdir()
+    original_root = original_cwd / "agents"
+    original_package = make_local_package(original_root)
+    original_profile = write_profile(
+        original_cwd / "optimizer.yaml",
+        {LEGACY_PROFILE_KEY: f"{LEGACY_PACKAGE}/{LEGACY_CONTRACT_FILENAME}"},
+    )
+    original_manifest = build_manifest(original_package)
+    original_profile_bytes = original_profile.read_bytes()
+    filesets = FakeFilesets()
+    filesets.seed(LEGACY_PACKAGE, as_fileset_tree(legacy_package_files()))
+    filesets.fail_upload.add(LEGACY_PACKAGE)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(original_cwd)
+        fail_verify_final(patch, RuntimeError("injected final verification failure"))
+        fail_copy_tree_into(patch, original_package.resolve())
+        with pytest.raises(RecoveryRequired):
+            migrate(
+                MigrationRequest(
+                    agent=AGENT,
+                    workspace=WORKSPACE,
+                    agents_root=Path("agents"),
+                    profiles=(Path("optimizer.yaml"),),
+                    experiment_dirs=(Path("runs"),),
+                    start_dir=Path("."),
+                ),
+                filesets,
+            )
+    filesets.fail_upload.discard(LEGACY_PACKAGE)
+
+    journal = journal_dir(WORKSPACE, AGENT) / "journal.json"
+    record = json.loads(journal.read_text(encoding="utf-8"))
+    for path_field in ("agents_root", "old_package", "target_package", "backup_root"):
+        assert Path(record[path_field]).is_absolute()
+        assert Path(record[path_field]) == Path(record[path_field]).resolve()
+    assert all(Path(path).is_absolute() for path in record["external_profiles"])
+    assert all(Path(path).is_absolute() for path in record["experiment_dirs"])
+    assert all(Path(path).is_absolute() for path in record["profile_backups"].values())
+
+    decoy_cwd = tmp_path / "decoy"
+    decoy_cwd.mkdir()
+    decoy_package = decoy_cwd / "agents" / LEGACY_PACKAGE
+    write_tree(decoy_package, {"decoy.txt": "another package"})
+    decoy_profile = write_profile(
+        decoy_cwd / "optimizer.yaml",
+        {LEGACY_PROFILE_KEY: LEGACY_CONTRACT_FILENAME},
+    )
+    decoy_manifest = build_manifest(decoy_package)
+    decoy_profile_bytes = decoy_profile.read_bytes()
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(decoy_cwd)
+        report = migrate(
+            MigrationRequest(
+                agent=AGENT,
+                workspace=WORKSPACE,
+                agents_root=Path("agents"),
+                profiles=(Path("optimizer.yaml"),),
+                experiment_dirs=(Path("different-runs"),),
+                start_dir=Path("."),
+            ),
+            filesets,
+        )
+
+    assert report.outcome is Outcome.RECOVERED
+    assert build_manifest(original_package) == original_manifest
+    assert original_profile.read_bytes() == original_profile_bytes
+    assert build_manifest(decoy_package) == decoy_manifest
+    assert decoy_profile.read_bytes() == decoy_profile_bytes
+    assert not (decoy_cwd / "agents" / TARGET_PACKAGE).exists()
+
+
+def test_recovery_owns_a_local_target_copied_before_the_follow_up_journal(
+    tmp_path: Path,
+) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    target_package = agents_root / TARGET_PACKAGE
+    filesets = FakeFilesets()
+    real_copy_tree = ethos_migrate._copy_tree
+
+    def copy_then_exit(source: Path, destination: Path) -> None:
+        real_copy_tree(source, destination)
+        if destination == target_package:
+            raise KeyboardInterrupt("injected process exit after the local copy")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ethos_migrate, "_copy_tree", copy_then_exit)
+        with pytest.raises(KeyboardInterrupt):
+            migrate(request_for(tmp_path), filesets)
+
+    record = json.loads((journal_dir(WORKSPACE, AGENT) / "journal.json").read_text(encoding="utf-8"))
+    assert record["target_package_state"] == "creating"
+    assert build_manifest(target_package)
+
+    report = migrate(request_for(tmp_path), filesets)
+
+    assert report.outcome is Outcome.RECOVERED
+    assert build_manifest(old_package) == old_manifest
+    assert not target_package.exists()
+    assert (WORKSPACE, TARGET_PACKAGE) not in filesets.trees
+
+
+def test_recovery_owns_a_fileset_created_before_the_follow_up_journal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    filesets = FakeFilesets()
+    real_create = filesets.create
+
+    def create_then_exit(*, workspace: str, name: str) -> bool:
+        created = real_create(workspace=workspace, name=name)
+        if name == TARGET_PACKAGE and created:
+            raise KeyboardInterrupt("injected process exit after Fileset creation")
+        return created
+
+    monkeypatch.setattr(filesets, "create", create_then_exit)
+    with pytest.raises(KeyboardInterrupt):
+        migrate(request_for(tmp_path), filesets)
+    monkeypatch.setattr(filesets, "create", real_create)
+
+    record = json.loads((journal_dir(WORKSPACE, AGENT) / "journal.json").read_text(encoding="utf-8"))
+    assert record["target_fileset_state"] == "creating"
+    assert filesets.trees[(WORKSPACE, TARGET_PACKAGE)] == {}
+
+    report = migrate(request_for(tmp_path), filesets)
+
+    assert report.outcome is Outcome.RECOVERED
+    assert build_manifest(old_package) == old_manifest
+    assert (WORKSPACE, TARGET_PACKAGE) not in filesets.trees
+
+
+def test_recovery_preserves_a_competing_divergent_fileset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    filesets = FakeFilesets()
+    competing = {"another-writer.txt": b"do not delete"}
+    filesets.steal_on_create[TARGET_PACKAGE] = competing
+    real_create = filesets.create
+
+    def lose_create_race_then_exit(*, workspace: str, name: str) -> bool:
+        created = real_create(workspace=workspace, name=name)
+        if name == TARGET_PACKAGE:
+            assert created is False
+            raise KeyboardInterrupt("injected process exit after a lost create race")
+        return created
+
+    monkeypatch.setattr(filesets, "create", lose_create_race_then_exit)
+    with pytest.raises(KeyboardInterrupt):
+        migrate(request_for(tmp_path), filesets)
+    monkeypatch.setattr(filesets, "create", real_create)
+
+    with pytest.raises(RecoveryRequired, match="cannot prove.*Fileset.*preserved"):
+        migrate(request_for(tmp_path), filesets)
+
+    assert filesets.trees[(WORKSPACE, TARGET_PACKAGE)] == competing
+    assert build_manifest(old_package) == old_manifest
+    assert (journal_dir(WORKSPACE, AGENT) / "journal.json").is_file()
+
+
+def test_recovery_finishes_a_partial_local_restore(tmp_path: Path) -> None:
+    agents_root = tmp_path / "agents"
+    old_package = make_local_package(agents_root)
+    old_manifest = build_manifest(old_package)
+    filesets = FakeFilesets()
+    real_copy_tree = ethos_migrate._copy_tree
+
+    def restore_one_file_then_fail(source: Path, destination: Path) -> None:
+        if destination == old_package:
+            write_tree(destination, {"agent.yaml": (source / "agent.yaml").read_bytes()})
+            raise OSError("injected partial restore failure")
+        real_copy_tree(source, destination)
+
+    with pytest.MonkeyPatch.context() as patch:
+        fail_verify_final(patch, RuntimeError("injected final verification failure"))
+        patch.setattr(ethos_migrate, "_copy_tree", restore_one_file_then_fail)
+        with pytest.raises(RecoveryRequired):
+            migrate(request_for(tmp_path), filesets)
+
+    assert set(build_manifest(old_package)) == {"agent.yaml"}
+
+    report = migrate(request_for(tmp_path), filesets)
+
+    assert report.outcome is Outcome.RECOVERED
+    assert build_manifest(old_package) == old_manifest
+    assert not (agents_root / TARGET_PACKAGE).exists()
+
+
+def test_a_journal_removal_failure_keeps_all_backups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agents_root = tmp_path / "agents"
+    make_local_package(agents_root)
+    filesets = FakeFilesets()
+    filesets.seed(LEGACY_PACKAGE, as_fileset_tree(legacy_package_files()))
+    profile = write_profile(
+        tmp_path / "optimizer.yaml",
+        {LEGACY_PROFILE_KEY: LEGACY_CONTRACT_FILENAME},
+    )
+    directory = journal_dir(WORKSPACE, AGENT)
+    journal = directory / "journal.json"
+    real_unlink = Path.unlink
+
+    def refuse_journal_removal(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path == journal:
+            raise PermissionError("injected journal removal failure")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_journal_removal)
+    with pytest.raises(RecoveryRequired, match="journal.*backups"):
+        migrate(request_for(tmp_path, profiles=(profile,)), filesets)
+
+    record = json.loads(journal.read_text(encoding="utf-8"))
+    assert Path(record["legacy_local_backup"]).is_dir()
+    assert Path(record["legacy_remote_backup"]).is_dir()
+    assert all(Path(path).is_file() for path in record["profile_backups"].values())
+
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+    report = migrate(request_for(tmp_path, profiles=(profile,)), filesets)
+
+    assert report.outcome is Outcome.RECOVERED
+    assert not journal.exists()
+    assert not (directory / "backup").exists()
+
+
 def test_a_journal_whose_target_is_committed_finishes_cleanup(tmp_path: Path) -> None:
     agents_root = tmp_path / "agents"
     make_local_package(agents_root)
@@ -1732,6 +1984,49 @@ def test_an_unreadable_journal_reports_recovery_required(tmp_path: Path) -> None
         migrate(request_for(tmp_path), FakeFilesets())
 
     assert build_manifest(agents_root / LEGACY_PACKAGE) == old_manifest
+
+
+@pytest.mark.parametrize(
+    ("field", "malformed"),
+    [
+        ("old_package", 7),
+        ("staged", []),
+        ("steps", "backups"),
+        ("target_package_state", "unknown"),
+    ],
+)
+def test_a_valid_json_journal_with_a_malformed_field_requires_recovery(
+    tmp_path: Path,
+    field: str,
+    malformed: Any,
+) -> None:
+    filesets = FakeFilesets()
+    journal = strand_an_initial_journal(tmp_path, filesets)
+    old_package = tmp_path / "agents" / LEGACY_PACKAGE
+    old_manifest = build_manifest(old_package)
+    payload = json.loads(journal.read_text(encoding="utf-8"))
+    payload[field] = malformed
+    journal.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RecoveryRequired, match="journal"):
+        migrate(request_for(tmp_path), filesets)
+
+    assert build_manifest(old_package) == old_manifest
+    assert journal.is_file()
+
+
+def test_a_valid_json_journal_with_a_non_object_root_requires_recovery(tmp_path: Path) -> None:
+    filesets = FakeFilesets()
+    journal = strand_an_initial_journal(tmp_path, filesets)
+    old_package = tmp_path / "agents" / LEGACY_PACKAGE
+    old_manifest = build_manifest(old_package)
+    journal.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
+
+    with pytest.raises(RecoveryRequired, match="journal"):
+        migrate(request_for(tmp_path), filesets)
+
+    assert build_manifest(old_package) == old_manifest
+    assert journal.is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -1767,8 +2062,8 @@ def test_a_journal_write_failure_after_a_mutation_still_compensates(
     filesets.seed(LEGACY_PACKAGE, as_fileset_tree(legacy_package_files()))
     old_manifest = build_manifest(agents_root / LEGACY_PACKAGE)
     old_remote = dict(filesets.trees[(WORKSPACE, LEGACY_PACKAGE)])
-    # Calls: 1 initial, 2 finish(backups), 3 after the target Fileset is created.
-    fail_journal_writes_from(monkeypatch, 3)
+    # Calls: 1 initial, 2 finish(backups), 3 write-ahead, 4 after creation.
+    fail_journal_writes_from(monkeypatch, 4)
 
     with pytest.raises(MigrationError, match="upload-target-fileset"):
         migrate(request_for(tmp_path), filesets)
@@ -1788,7 +2083,7 @@ def test_a_journal_write_failure_does_not_mask_a_failed_compensation(
     make_local_package(agents_root)
     filesets = FakeFilesets()
     filesets.fail_delete.add(TARGET_PACKAGE)
-    fail_journal_writes_from(monkeypatch, 3)
+    fail_journal_writes_from(monkeypatch, 4)
 
     with pytest.raises(RecoveryRequired, match="recovery-required"):
         migrate(request_for(tmp_path), filesets)

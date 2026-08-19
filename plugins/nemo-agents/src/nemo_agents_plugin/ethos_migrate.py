@@ -44,8 +44,8 @@ import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Protocol
+from pathlib import Path, PurePosixPath
+from typing import Any, Protocol, cast
 
 import yaml
 from nemo_agents_plugin.entities import ETHOS_FILENAME, ETHOS_LOCAL_ROOT, ethos_fileset_name
@@ -135,6 +135,15 @@ class Outcome(str, Enum):
     RECOVERY_REQUIRED = "recovery-required"
     CONFLICT = "conflict"
     BLOCKED = "blocked"
+
+
+class _TargetState(str, Enum):
+    """Durable ownership state for one final target."""
+
+    ABSENT = "absent"
+    PRE_EXISTING = "pre-existing"
+    CREATING = "creating"
+    OWNED = "owned"
 
 
 _OK_OUTCOMES = frozenset(
@@ -269,10 +278,31 @@ def _manifest_to_json(manifest: Manifest | None) -> dict[str, dict[str, Any]] | 
     return {rel: {"size": fp.size, "sha256": fp.sha256} for rel, fp in manifest.items()}
 
 
-def _manifest_from_json(payload: dict[str, dict[str, Any]] | None) -> Manifest | None:
+def _manifest_from_json(payload: object, label: str) -> Manifest | None:
     if payload is None:
         return None
-    return {rel: FileFingerprint(size=entry["size"], sha256=entry["sha256"]) for rel, entry in payload.items()}
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must be an object or null")
+
+    manifest: Manifest = {}
+    for rel, entry in payload.items():
+        if not isinstance(rel, str) or not _is_safe_relative_path(rel):
+            raise ValueError(f"{label} contains invalid relative path {rel!r}")
+        if not isinstance(entry, dict):
+            raise ValueError(f"{label}[{rel!r}] must be an object")
+        size = entry.get("size")
+        digest = entry.get("sha256")
+        if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+            raise ValueError(f"{label}[{rel!r}].size must be a non-negative integer")
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(f"{label}[{rel!r}].sha256 must be a lowercase SHA-256 digest")
+        manifest[rel] = FileFingerprint(size=size, sha256=digest)
+    return manifest
+
+
+def _is_safe_relative_path(value: str) -> bool:
+    path = PurePosixPath(value)
+    return value not in {"", "."} and not path.is_absolute() and path.as_posix() == value and ".." not in path.parts
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +466,31 @@ class MigrationPlan:
     experiment_dirs: tuple[Path, ...]
 
 
+def _normalize_request(request: MigrationRequest) -> MigrationRequest:
+    """Resolve every caller-supplied path against one captured working directory."""
+    try:
+        current = Path.cwd().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise MigrationError(f"the current working directory cannot be resolved ({exc})") from exc
+
+    def absolute(value: Path, label: str) -> Path:
+        try:
+            path = Path(value).expanduser()
+            return (path if path.is_absolute() else current / path).resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise MigrationError(f"{label} cannot be resolved to an absolute path ({exc})") from exc
+
+    return MigrationRequest(
+        agent=request.agent,
+        workspace=request.workspace,
+        agents_root=absolute(request.agents_root, "--agents-root"),
+        profiles=tuple(absolute(path, "--profile") for path in request.profiles),
+        experiment_dirs=tuple(absolute(path, "--experiment-dir") for path in request.experiment_dirs),
+        dry_run=request.dry_run,
+        start_dir=absolute(request.start_dir or current, "profile discovery start directory"),
+    )
+
+
 def journal_dir(workspace: str, agent: str) -> Path:
     """Transaction directory for one workspace-and-agent pair, outside the repository.
 
@@ -444,11 +499,11 @@ def journal_dir(workspace: str, agent: str) -> Path:
     where a crashed migration could land in a commit.
     """
     digest = hashlib.sha256(f"{workspace}\0{agent}".encode()).hexdigest()
-    return nmp_user_data_dir() / JOURNAL_ROOT_NAME / digest
+    return (Path(nmp_user_data_dir()).expanduser() / JOURNAL_ROOT_NAME / digest).resolve()
 
 
 def _build_plan(request: MigrationRequest) -> MigrationPlan:
-    agents_root = Path(request.agents_root).expanduser()
+    agents_root = request.agents_root
     old_package = agents_root / f"{request.agent}{LEGACY_PACKAGE_SUFFIX}"
     target_package = agents_root / ethos_fileset_name(request.agent)
     external, packaged = _discover_profiles(request, old_package, target_package)
@@ -925,6 +980,76 @@ _STEPS = (
 )
 
 
+def _journal_field(payload: dict[str, Any], name: str) -> Any:
+    if name not in payload:
+        raise ValueError(f"journal field {name!r} is missing")
+    return payload[name]
+
+
+def _journal_string(payload: dict[str, Any], name: str) -> str:
+    value = _journal_field(payload, name)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"journal field {name!r} must be a non-empty string")
+    return value
+
+
+def _journal_absolute_path(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} must be a non-empty string")
+    try:
+        path = Path(value)
+        normalized = path.resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"{label} is not a valid path ({exc})") from exc
+    if not path.is_absolute() or path != normalized:
+        raise ValueError(f"{label} must be an absolute normalized path")
+    return value
+
+
+def _journal_optional_absolute_path(value: object, label: str) -> str | None:
+    if value is None:
+        return None
+    return _journal_absolute_path(value, label)
+
+
+def _journal_string_list(payload: dict[str, Any], name: str) -> list[str]:
+    value = _journal_field(payload, name)
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"journal field {name!r} must be an array of strings")
+    return value
+
+
+def _journal_absolute_path_list(payload: dict[str, Any], name: str) -> list[str]:
+    return [
+        _journal_absolute_path(value, f"journal field {name!r}[{index}]")
+        for index, value in enumerate(_journal_string_list(payload, name))
+    ]
+
+
+def _journal_external_profiles(payload: dict[str, Any]) -> dict[str, str | None]:
+    value = _journal_field(payload, "external_profiles")
+    if not isinstance(value, dict):
+        raise ValueError("journal field 'external_profiles' must be an object")
+    profiles: dict[str, str | None] = {}
+    for raw_path, expected in value.items():
+        path = _journal_absolute_path(raw_path, "journal external profile path")
+        if expected is not None and not isinstance(expected, str):
+            raise ValueError(f"journal external profile {path!r} must map to a string or null")
+        profiles[path] = expected
+    return profiles
+
+
+def _journal_profile_backups(payload: dict[str, Any]) -> dict[str, str]:
+    value = _journal_field(payload, "profile_backups")
+    if not isinstance(value, dict):
+        raise ValueError("journal field 'profile_backups' must be an object")
+    backups: dict[str, str] = {}
+    for raw_path, raw_backup in value.items():
+        path = _journal_absolute_path(raw_path, "journal profile path")
+        backups[path] = _journal_absolute_path(raw_backup, f"journal backup for {path!r}")
+    return backups
+
+
 @dataclass
 class _TransactionRecord:
     """Every input and effect of one transaction, in memory and in the journal.
@@ -953,8 +1078,8 @@ class _TransactionRecord:
     staged: Manifest
     old_local: Manifest | None
     old_remote: Manifest | None
-    created_target_fileset: bool = False
-    created_target_package: bool = False
+    target_fileset_state: _TargetState
+    target_package_state: _TargetState
     steps: list[str] = field(default_factory=list)
     failed_step: str | None = None
 
@@ -977,38 +1102,92 @@ class _TransactionRecord:
             "staged": _manifest_to_json(self.staged),
             "old_local": _manifest_to_json(self.old_local),
             "old_remote": _manifest_to_json(self.old_remote),
-            "created_target_fileset": self.created_target_fileset,
-            "created_target_package": self.created_target_package,
+            "target_fileset_state": self.target_fileset_state.value,
+            "target_package_state": self.target_package_state.value,
             "steps": self.steps,
             "failed_step": self.failed_step,
         }
 
     @classmethod
-    def from_json(cls, payload: dict[str, Any]) -> _TransactionRecord:
-        staged = _manifest_from_json(payload["staged"])
-        assert staged is not None  # a journal always records the staged manifest
+    def from_json(cls, payload: object) -> _TransactionRecord:
+        if not isinstance(payload, dict):
+            raise ValueError("the journal root must be an object")
+        data = cast(dict[str, Any], payload)
+
+        workspace = _journal_string(data, "workspace")
+        agent = _journal_string(data, "agent")
+        try:
+            validate_agent_name(agent)
+        except MigrationError as exc:
+            raise ValueError(f"journal field 'agent' is invalid ({exc})") from exc
+
+        agents_root = _journal_absolute_path(_journal_field(data, "agents_root"), "journal field 'agents_root'")
+        old_package = _journal_absolute_path(_journal_field(data, "old_package"), "journal field 'old_package'")
+        target_package = _journal_absolute_path(
+            _journal_field(data, "target_package"), "journal field 'target_package'"
+        )
+        old_fileset = _journal_string(data, "old_fileset")
+        target_fileset = _journal_string(data, "target_fileset")
+        if old_package != str(Path(agents_root) / f"{agent}{LEGACY_PACKAGE_SUFFIX}"):
+            raise ValueError("journal field 'old_package' does not match its recorded agents root and agent")
+        if target_package != str(Path(agents_root) / ethos_fileset_name(agent)):
+            raise ValueError("journal field 'target_package' does not match its recorded agents root and agent")
+        if old_fileset != f"{agent}{LEGACY_PACKAGE_SUFFIX}" or target_fileset != ethos_fileset_name(agent):
+            raise ValueError("the journal Fileset names do not match its recorded agent")
+
+        packaged_profiles = _journal_string_list(data, "packaged_profiles")
+        if any(not _is_safe_relative_path(path) for path in packaged_profiles):
+            raise ValueError("journal field 'packaged_profiles' contains an unsafe relative path")
+        steps = _journal_string_list(data, "steps")
+        if steps != list(_STEPS[: len(steps)]):
+            raise ValueError("journal field 'steps' must be an ordered prefix of the transaction steps")
+        failed_step = _journal_field(data, "failed_step")
+        if failed_step is not None and (not isinstance(failed_step, str) or failed_step not in _STEPS):
+            raise ValueError("journal field 'failed_step' must be a transaction step or null")
+        try:
+            target_fileset_state = _TargetState(_journal_string(data, "target_fileset_state"))
+            target_package_state = _TargetState(_journal_string(data, "target_package_state"))
+        except ValueError as exc:
+            raise ValueError("the journal target state is not recognized") from exc
+
+        staged = _manifest_from_json(_journal_field(data, "staged"), "journal field 'staged'")
+        if staged is None:
+            raise ValueError("journal field 'staged' cannot be null")
+        old_local = _manifest_from_json(_journal_field(data, "old_local"), "journal field 'old_local'")
+        old_remote = _manifest_from_json(_journal_field(data, "old_remote"), "journal field 'old_remote'")
+        legacy_local_backup = _journal_optional_absolute_path(
+            _journal_field(data, "legacy_local_backup"), "journal field 'legacy_local_backup'"
+        )
+        legacy_remote_backup = _journal_optional_absolute_path(
+            _journal_field(data, "legacy_remote_backup"), "journal field 'legacy_remote_backup'"
+        )
+        if (old_local is None) != (legacy_local_backup is None):
+            raise ValueError("journal fields 'old_local' and 'legacy_local_backup' must agree")
+        if (old_remote is None) != (legacy_remote_backup is None):
+            raise ValueError("journal fields 'old_remote' and 'legacy_remote_backup' must agree")
+
         return cls(
-            workspace=payload["workspace"],
-            agent=payload["agent"],
-            agents_root=payload["agents_root"],
-            old_package=payload["old_package"],
-            target_package=payload["target_package"],
-            old_fileset=payload["old_fileset"],
-            target_fileset=payload["target_fileset"],
-            external_profiles=payload["external_profiles"],
-            packaged_profiles=payload["packaged_profiles"],
-            experiment_dirs=payload["experiment_dirs"],
-            backup_root=payload["backup_root"],
-            legacy_local_backup=payload["legacy_local_backup"],
-            legacy_remote_backup=payload["legacy_remote_backup"],
-            profile_backups=payload["profile_backups"],
+            workspace=workspace,
+            agent=agent,
+            agents_root=agents_root,
+            old_package=old_package,
+            target_package=target_package,
+            old_fileset=old_fileset,
+            target_fileset=target_fileset,
+            external_profiles=_journal_external_profiles(data),
+            packaged_profiles=packaged_profiles,
+            experiment_dirs=_journal_absolute_path_list(data, "experiment_dirs"),
+            backup_root=_journal_absolute_path(_journal_field(data, "backup_root"), "journal field 'backup_root'"),
+            legacy_local_backup=legacy_local_backup,
+            legacy_remote_backup=legacy_remote_backup,
+            profile_backups=_journal_profile_backups(data),
             staged=staged,
-            old_local=_manifest_from_json(payload["old_local"]),
-            old_remote=_manifest_from_json(payload["old_remote"]),
-            created_target_fileset=payload["created_target_fileset"],
-            created_target_package=payload["created_target_package"],
-            steps=payload["steps"],
-            failed_step=payload["failed_step"],
+            old_local=old_local,
+            old_remote=old_remote,
+            target_fileset_state=target_fileset_state,
+            target_package_state=target_package_state,
+            steps=steps,
+            failed_step=failed_step,
         )
 
     def next_step(self) -> str:
@@ -1256,9 +1435,17 @@ def _persist_best_effort(directory: Path, record: _TransactionRecord) -> None:
 
 
 def _discard_transaction_state(directory: Path, backups: Path) -> None:
-    """Remove the journal and every backup. The lock file stays; the kernel owns it."""
-    with contextlib.suppress(OSError):
-        (directory / JOURNAL_FILENAME).unlink()
+    """Remove the journal before its backups. The lock file stays."""
+    journal = directory / JOURNAL_FILENAME
+    try:
+        journal.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise RecoveryRequired(
+            f"the migration finished but its journal at {journal} could not be removed ({exc}); "
+            f"status is recovery-required. All backups under {backups} were kept"
+        ) from exc
     shutil.rmtree(backups, ignore_errors=True)
 
 
@@ -1301,6 +1488,12 @@ def _apply(
         staged=assessment.staged,
         old_local=assessment.old_local,
         old_remote=assessment.old_remote,
+        target_fileset_state=(
+            _TargetState.PRE_EXISTING if assessment.target_remote is not None else _TargetState.ABSENT
+        ),
+        target_package_state=(
+            _TargetState.PRE_EXISTING if assessment.target_local is not None else _TargetState.ABSENT
+        ),
     )
 
     def persist() -> None:
@@ -1317,15 +1510,19 @@ def _apply(
         finish("backups")
 
         if assessment.target_remote is None:
+            record.target_fileset_state = _TargetState.CREATING
+            persist()
             # Conditional create is the ownership decision: a false return means
             # another writer created the Fileset between assessment and now, and
             # this transaction must never delete a Fileset it did not create.
             if not filesets.create(workspace=plan.workspace, name=plan.target_fileset):
+                record.target_fileset_state = _TargetState.PRE_EXISTING
+                persist()
                 raise MigrationError(
                     f"Fileset {plan.workspace}/{plan.target_fileset} appeared while this migration "
                     "was running, so it belongs to another writer"
                 )
-            record.created_target_fileset = True
+            record.target_fileset_state = _TargetState.OWNED
             persist()
             filesets.upload(workspace=plan.workspace, name=plan.target_fileset, source=assessment.staged_dir)
         finish("upload-target-fileset")
@@ -1334,15 +1531,19 @@ def _apply(
         finish("verify-target-fileset")
 
         if assessment.target_local is None:
+            record.target_package_state = _TargetState.CREATING
+            persist()
             # No pre-clean: a path that appeared after assessment must break this
             # transaction rather than be replaced.
             try:
                 _copy_tree(assessment.staged_dir, plan.target_package)
             except FileExistsError as exc:
+                record.target_package_state = _TargetState.PRE_EXISTING
+                persist()
                 raise MigrationError(
                     f"{plan.target_package} appeared while this migration was running, so it belongs to another writer"
                 ) from exc
-            record.created_target_package = True
+            record.target_package_state = _TargetState.OWNED
             persist()
         finish("write-target-package")
 
@@ -1470,28 +1671,128 @@ def _verify_final(record: _TransactionRecord, filesets: FilesetStore) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _remote_manifest(filesets: FilesetStore, workspace: str, name: str) -> Manifest | None:
+    if not filesets.exists(workspace=workspace, name=name):
+        return None
+    with tempfile.TemporaryDirectory(prefix=f".ethos-migrate-recover-{name}-") as tmp:
+        destination = Path(tmp)
+        filesets.download(workspace=workspace, name=name, dest=destination)
+        return build_manifest(destination)
+
+
+def _manifest_is_compatible_subset(actual: Manifest, expected: Manifest) -> bool:
+    return all(expected.get(path) == fingerprint for path, fingerprint in actual.items())
+
+
+def _remove_local_target_if_owned(record: _TransactionRecord) -> str | None:
+    target = Path(record.target_package)
+    if record.target_package_state is _TargetState.PRE_EXISTING:
+        return None
+    if not target.exists() and not target.is_symlink():
+        return None
+    if record.target_package_state is _TargetState.ABSENT:
+        return (
+            f"cannot prove that local target {target} belongs to this transaction because the journal "
+            "records no creation attempt; the target was preserved"
+        )
+    try:
+        actual = build_manifest(target)
+    except (MigrationError, OSError) as exc:
+        return f"cannot prove that local target {target} belongs to this transaction ({exc}); the target was preserved"
+    if actual != record.staged:
+        return (
+            f"cannot prove that local target {target} belongs to this transaction because its manifest "
+            "differs from the recorded target manifest; the target was preserved"
+        )
+    _remove_tree(target)
+    return None
+
+
+def _remove_fileset_target_if_owned(record: _TransactionRecord, filesets: FilesetStore) -> str | None:
+    if record.target_fileset_state is _TargetState.PRE_EXISTING:
+        return None
+    try:
+        actual = _remote_manifest(filesets, record.workspace, record.target_fileset)
+    except Exception as exc:
+        return (
+            f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
+            f"because its manifest could not be read ({exc}); the Fileset was preserved"
+        )
+    if actual is None:
+        return None
+    if record.target_fileset_state is _TargetState.ABSENT:
+        return (
+            f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
+            "because the journal records no creation attempt; the Fileset was preserved"
+        )
+
+    created_but_not_recorded = record.target_fileset_state is _TargetState.CREATING and (
+        actual == {} or actual == record.staged
+    )
+    recorded_as_owned = record.target_fileset_state is _TargetState.OWNED and _manifest_is_compatible_subset(
+        actual, record.staged
+    )
+    if not created_but_not_recorded and not recorded_as_owned:
+        return (
+            f"cannot prove that Fileset {record.workspace}/{record.target_fileset} belongs to this transaction "
+            "because its manifest differs from every recorded transaction state; the Fileset was preserved"
+        )
+    filesets.delete(workspace=record.workspace, name=record.target_fileset)
+    return None
+
+
+def _restore_local_tree(source: Path, destination: Path, expected: Manifest) -> None:
+    """Restore a missing or compatible partial tree without overwriting divergence."""
+    if destination.is_symlink():
+        raise MigrationError(f"{destination} is a symlink, so the legacy package cannot be restored safely")
+    if destination.is_dir() and build_manifest(destination) == expected:
+        return
+    if build_manifest(source) != expected:
+        raise MigrationError(f"the local backup at {source} does not match the recorded legacy manifest")
+    if not destination.exists():
+        _copy_tree(source, destination)
+        return
+    if not destination.is_dir():
+        raise MigrationError(f"{destination} exists but is not a directory, so the legacy package was preserved")
+
+    actual = build_manifest(destination)
+    divergent = [path for path, fingerprint in actual.items() if expected.get(path) != fingerprint]
+    if divergent:
+        raise MigrationError(
+            f"{destination} contains divergent legacy paths, so recovery preserved it: {', '.join(divergent)}"
+        )
+    for rel in sorted(expected.keys() - actual.keys()):
+        target = destination / rel
+        if target.exists() or target.is_symlink():
+            raise MigrationError(f"{target} appeared during recovery, so it was preserved")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _copy_file(source / rel, target)
+
+
 def _undo(record: _TransactionRecord, filesets: FilesetStore) -> None:
     """Undo this transaction's writes from the record and the backups.
 
     Each action is conditional on current state, so re-running it after a partial
-    compensation is safe. Target state this transaction did not create is left
-    untouched, which is why ``created_target_*`` is only ever set after the
-    creating call succeeded.
+    compensation is safe. A target is deleted only when its recorded operation
+    state and manifest prove that this transaction created it.
     """
     for raw_path, raw_backup in record.profile_backups.items():
         backup = Path(raw_backup)
         if backup.is_file():
             _copy_file(backup, Path(raw_path))
 
-    target_package = Path(record.target_package)
-    if record.created_target_package and target_package.exists():
-        _remove_tree(target_package)
-    if record.created_target_fileset and filesets.exists(workspace=record.workspace, name=record.target_fileset):
-        filesets.delete(workspace=record.workspace, name=record.target_fileset)
+    ambiguities = [
+        message
+        for message in (
+            _remove_local_target_if_owned(record),
+            _remove_fileset_target_if_owned(record, filesets),
+        )
+        if message is not None
+    ]
 
     old_package = Path(record.old_package)
-    if record.legacy_local_backup is not None and not old_package.exists():
-        _copy_tree(Path(record.legacy_local_backup), old_package)
+    if record.legacy_local_backup is not None and record.old_local is not None:
+        _restore_local_tree(Path(record.legacy_local_backup), old_package, record.old_local)
     if record.legacy_remote_backup is not None and record.old_remote is not None:
         # Converge rather than only fill a gap: a compensation that created the
         # Fileset and then failed to upload leaves it empty, and the next attempt
@@ -1504,6 +1805,8 @@ def _undo(record: _TransactionRecord, filesets: FilesetStore) -> None:
                 name=record.old_fileset,
                 source=Path(record.legacy_remote_backup),
             )
+    if ambiguities:
+        raise MigrationError("; ".join(ambiguities))
 
 
 def _compensate(record: _TransactionRecord, filesets: FilesetStore) -> None:
@@ -1529,13 +1832,26 @@ def _recover(directory: Path, filesets: FilesetStore) -> MigrationReport:
     """
     try:
         record = _TransactionRecord.from_json(json.loads((directory / JOURNAL_FILENAME).read_text(encoding="utf-8")))
-    except (OSError, UnicodeError, ValueError, KeyError, AssertionError) as exc:
+        backups = Path(record.backup_root)
+        if backups != (directory / "backup").resolve():
+            raise ValueError("journal field 'backup_root' does not match its transaction directory")
+        recorded_backups = [
+            path
+            for path in (
+                record.legacy_local_backup,
+                record.legacy_remote_backup,
+                *record.profile_backups.values(),
+            )
+            if path is not None
+        ]
+        if any(not Path(path).is_relative_to(backups) for path in recorded_backups):
+            raise ValueError("a journal backup path escapes its recorded backup root")
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError, AttributeError, AssertionError) as exc:
         raise RecoveryRequired(
             f"the journal under {directory} could not be read ({exc}); status is recovery-required. "
             "Inspect it by hand, because migration cannot tell what the interrupted run had done"
         ) from exc
 
-    backups = Path(record.backup_root)
     legacy_gone = not Path(record.old_package).exists() and not filesets.exists(
         workspace=record.workspace, name=record.old_fileset
     )
@@ -1606,6 +1922,7 @@ def run_migration(
             and the next run recovers before any new work.
     """
     validate_agent_name(request.agent)
+    request = _normalize_request(request)
     directory = journal_dir(request.workspace, request.agent)
 
     if request.dry_run:
