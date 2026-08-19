@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Auditor Config CRUD Operations (CLI)
 
 Tests the agent's ability to perform CRUD operations on auditor configurations using the NeMo Platform CLI.

@@ -348,13 +348,20 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
 
     list_operation = openapi["paths"]["/v2/access-keys"]["get"]
     list_parameters = {parameter["name"]: parameter for parameter in list_operation["parameters"]}
-    assert list_parameters["page"]["schema"] == {"type": "integer", "minimum": 1, "default": 1, "title": "Page"}
+    assert list_parameters["page"]["schema"] == {
+        "type": "integer",
+        "minimum": 1,
+        "default": 1,
+        "title": "Page",
+        "description": "Page number to retrieve.",
+    }
     assert list_parameters["page_size"]["schema"] == {
         "type": "integer",
         "maximum": 100,
         "minimum": 1,
         "default": 100,
         "title": "Page Size",
+        "description": "Number of keys to retrieve per page.",
     }
     list_responses = list_operation["responses"]
     assert list_responses["200"]["content"]["application/json"]["schema"] == {

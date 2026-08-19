@@ -354,9 +354,13 @@ def run_config(
         else:
             ss.process_data()
             total_time = time.monotonic() - (ss._total_start or time.monotonic())
-            pii_replaced_df = getattr(ss, "_train_df", None)
+            pii_replaced_df = getattr(ss, "_training_df", None)
             if pii_replaced_df is None:
-                raise RuntimeError("process_data() completed but _train_df is None")
+                # Older upstream builds used _train_df; keep a fallback so
+                # plugin-local runs do not depend on exactly one NSS internals name.
+                pii_replaced_df = getattr(ss, "_train_df", None)
+            if pii_replaced_df is None:
+                raise RuntimeError("process_data() completed but processed training data is unavailable")
             from nemo_safe_synthesizer.results import make_nss_results
 
             ss.results = make_nss_results(generate_results=pii_replaced_df, total_time=total_time)

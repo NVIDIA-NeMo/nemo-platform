@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # nmp-automodel
 
 Compiler and task entrypoints for NeMo Automodel training jobs on the platform. **No HTTP server** — consumed by `nemo-automodel-plugin` and Jobs task images (`my-registry/nemo-platform-dev/nmp-customizer-tasks`, `.../nmp-automodel-training`).

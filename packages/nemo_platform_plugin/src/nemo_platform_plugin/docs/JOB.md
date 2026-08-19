@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Job Surface (NemoJob)
 
 A `NemoJob` is a unit of work you can execute locally, submit to a cluster, or introspect — the same class drives all three. The platform auto-generates three CLI verbs per job: `run`, `submit`, `explain`.

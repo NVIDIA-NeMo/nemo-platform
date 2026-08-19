@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform Plugins
 
 This directory contains first-party NeMo Platform plugins. Each subdirectory is a standalone Python package that registers one or more surfaces with the platform via entry points.

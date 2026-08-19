@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-setup
 description: Set up a local NeMo Platform (`make bootstrap` + `nemo setup`) — services, providers, plugins, default/fast models, and an optional demo agent. Use when the user asks to install, bootstrap, set up, run, or start a local NeMo Platform.
 version: "0.1"
@@ -86,7 +89,9 @@ is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 ## Bootstrap and start
 
-The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot:
+This section is the **source checkout** path: use it to work on NeMo Platform itself, on a local plugin, or on Studio assets. To only *use* the platform, install the published wheel instead — `uv tool install "nemo-platform[all]"` needs no checkout and no toolchain, then continue at `nemo setup`.
+
+The steps below cover prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot. Prefer them over the manual sections further down whenever the task fits:
 
 Before running `make bootstrap`, install Flox from the [Flox installation guide](https://flox.dev/docs/install-flox/install). Flox is the recommended source-development toolchain and does not need to be activated first. Contributors using a preinstalled host toolchain instead need the versions printed by `make toolchain-versions` and a C compiler; they must use `make TOOLCHAIN=system bootstrap`.
 
@@ -94,7 +99,7 @@ Before running `make bootstrap`, install Flox from the [Flox installation guide]
 
 ```bash
 make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
-flox activate            # enter the managed development environment
+flox -q activate         # enter the managed development environment
 nemo setup               # interactive: prompts for provider, picks default/fast models, optionally deploys calculator-agent
 ```
 
@@ -130,7 +135,7 @@ make: *** [test-unit] Error 127
 That covers the `make` targets only. To run `uv` or `pnpm` directly, activate Flox first:
 
 ```bash
-flox activate
+flox -q activate
 ```
 
 Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.

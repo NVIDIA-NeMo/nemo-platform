@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Execute GPU Jobs Through NeMo Platform Jobs Pipeline
 
 This task tests your ability to create and run GPU jobs through the NeMo Platform jobs system. The jobs controller dispatches real Docker containers with GPU access.

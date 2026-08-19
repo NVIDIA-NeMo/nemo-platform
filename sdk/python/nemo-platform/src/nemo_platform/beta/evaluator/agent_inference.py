@@ -369,6 +369,12 @@ async def _invoke_http_agent(
             field_name=invocation.response_path_field,
         )
         response = _openai_response(str(response_value))
+        # The synthesized response keeps only the extracted text, so carry the agent's own token
+        # usage across: it is the sole token source for a row evaluation, whose trials are otherwise
+        # built with no measurements at all. Model targets already return their full completion.
+        usage = result_data.get("usage") if isinstance(result_data, Mapping) else None
+        if isinstance(usage, Mapping):
+            response["usage"] = dict(usage)
         if invocation.trajectory_path:
             trajectory = _extract_jsonpath(
                 result_data,

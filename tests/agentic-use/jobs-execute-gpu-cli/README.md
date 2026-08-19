@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Execute GPU Jobs Through NeMo Platform Jobs Pipeline (CLI)
 
 Tests real GPU job execution through the NeMo Platform jobs controller and Docker backend. Unlike the proof-of-concept GPU evals that bypass the NeMo Platform job system, this eval dispatches GPU containers through the actual NeMo Platform pipeline.

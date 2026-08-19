@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # CLI Configuration for NeMo Platform CLI
 # This file configures CLI-specific behavior like table column display for listing entities.
 
@@ -334,6 +337,18 @@ config:
       override: files/list.py
     delete:
       override: files/delete.py
+
+- resource: [intake, ingest, spans]
+  methods:
+    create:
+      examples:
+      - nemo intake ingest spans create --input-file spans.json
+      - >-
+        nemo intake ingest spans create --input-data '{"source":"langsmith","spans":[{"span_id":"span-1","trace_id":"trace-1","started_at":"2026-08-14T00:00:00Z"}]}'
+      - >-
+        echo '{"source":"langsmith","spans":[{"span_id":"span-1","trace_id":"trace-1","started_at":"2026-08-14T00:00:00Z"}]}' | nemo intake ingest spans create --input-file -
+      - >-
+        nemo intake ingest spans create --source langsmith --spans '[{"span_id":"span-1","trace_id":"trace-1","started_at":"2026-08-14T00:00:00Z"}]'
 
 # High-level inference operations at the `nemo inference` level
 - resource: [inference]

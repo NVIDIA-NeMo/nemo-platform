@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Linting Documentation Python Snippets
 
 Lint Markdown and MDX Python fenced code blocks for syntax and type errors without executing them using `docs/_scripts/lint_python_snippets.py`.

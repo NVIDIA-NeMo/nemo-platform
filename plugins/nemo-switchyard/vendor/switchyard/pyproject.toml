@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Vendored subset of github.com/NVIDIA-dev/switchyard at commit
 # 94079222829d67fa278ac5b50799c8162e4c0409.
 #

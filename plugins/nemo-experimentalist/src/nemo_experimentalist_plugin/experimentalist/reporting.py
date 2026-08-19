@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TextIO
 
-from nemo_experimentalist_plugin.config import MetricTarget
+from nemo_experimentalist_plugin.entities import MetricTarget
 
 _RULE = "═" * 62
 _THIN = "─" * 62
@@ -33,6 +33,11 @@ class Verbosity(str, Enum):
 
     QUIET = "quiet"
     NORMAL = "normal"
+
+
+def reward_scalar(aggregate_metrics: dict[str, float | int]) -> float:
+    """Extract the scalar reward from an evaluation's aggregate metrics."""
+    return float(aggregate_metrics.get("reward", 0.0))
 
 
 class RunReporter:
@@ -115,12 +120,16 @@ class RunReporter:
         metrics: dict[str, float | int],
         objective_metrics: list[MetricTarget],
         artifacts: Path,
+        reason: str | None = None,
     ) -> None:
         """Narrate an evaluation using all configured objective metrics.
 
         Objective directions determine whether validation deltas are displayed
         as improvements or declines. Regression metrics are guardrails and are
         intentionally not presented as progress dimensions.
+
+        *reason* explains an ``n/a``, which otherwise reads as a score of nothing
+        rather than a measurement that never happened.
         """
         if self._verbosity is Verbosity.QUIET:
             return
@@ -143,6 +152,8 @@ class RunReporter:
                     rendered += f" {'▲' if improved else '▼'}{delta:+.3f}"
                 rendered_metrics.append(rendered)
             self._emit(f"   {label} · {split:<10} · {', '.join(rendered_metrics)}   → {artifacts}")
+            if reason is not None:
+                self._emit(f"     ↳ {reason}")
         except Exception:  # noqa: BLE001
             pass
 

@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: auditor
 description: NeMo Platform auditor playbook for audit target and config CRUD through the platform SDK. Use when the task involves audit targets, audit configs, or probes.
 ---

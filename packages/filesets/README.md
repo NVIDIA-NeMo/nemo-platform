@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Filesets Package
 
 This package provides `FilesetFileSystem`, an fsspec-compatible filesystem for working with NeMo Platform filesets. It also serves as a migration guide from Datastore (HuggingFace Hub) to the Files Service.

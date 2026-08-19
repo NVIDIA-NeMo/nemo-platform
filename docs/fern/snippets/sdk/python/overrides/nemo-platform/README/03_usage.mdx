@@ -1,3 +1,6 @@
+{/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
+{/* SPDX-License-Identifier: Apache-2.0 */}
+
 ## Usage
 
 This section describes how to use the NeMo Platform Python SDK.
@@ -37,7 +40,6 @@ async def main() -> None:
     page = await client.workspaces.list()
     print(page.data)
 
-
 asyncio.run(main())
 ```
 
@@ -60,7 +62,6 @@ import asyncio
 from nemo_platform import DefaultAioHttpClient
 from nemo_platform import AsyncNeMoPlatform
 
-
 async def main() -> None:
     async with AsyncNeMoPlatform(
         base_url="http://nemo.test",
@@ -68,7 +69,6 @@ async def main() -> None:
     ) as client:
         page = await client.workspaces.list()
         print(page.data)
-
 
 asyncio.run(main())
 ```
@@ -119,7 +119,6 @@ async def main() -> None:
     async for job in client.jobs.list(workspace="my-workspace"):
         all_jobs.append(job)
     print(all_jobs)
-
 
 asyncio.run(main())
 ```

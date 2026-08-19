@@ -7,10 +7,11 @@ Companion to ``run_gym_eval.py``: that script *produces* a run bundle, this one 
 how to get at each kind of result — headline aggregates, ``pass@k``, per-task outcomes, and the
 runner's own aggregations.
 
-The helpers below (:func:`aggregate`, :func:`per_task_outcomes`) are written to be lifted directly
-into your own code. Everything shown here also works on the in-memory ``AgentEvalResult`` returned by
-``AgentEvaluator().run(...)`` — reading from a bundle just makes the example runnable without a live
-run.
+Per-task results are read through the SDK's own typed view, ``summary.task_outcomes(metric_name)``,
+rather than by walking the nested ``summary.task_metric_values`` dict here — that is the accessor to
+lift into your own code. Everything shown here also works on the in-memory ``AgentEvalResult``
+returned by ``AgentEvaluator().run(...)`` — reading from a bundle just makes the example runnable
+without a live run.
 
 There is no bundle checked into the repo — ``run_gym_eval.py`` makes one. It writes to a fresh
 temporary directory by default, so give it an explicit ``--output-dir`` and point this script at the
@@ -29,18 +30,26 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Sequence
 from pathlib import Path
 
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
-from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore, is_trial_failure
+from nemo_evaluator_sdk.agent_eval.results import (
+    AgentEvalSummary,
+    PerTaskOutcomes,
+    numeric_metric_values,
+)
 from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
+from pydantic import ValidationError
 
-#: Value at which an attempt counts as a pass, matching the SDK's pass@k definition (full credit).
+#: Value at which a trial counts as a pass, matching the SDK's pass@k definition (full credit).
 PASS_VALUE = 1.0
 
 #: Namespace the Gym runner's own aggregations are imported under, so they never collide with ours.
 RUNNER_PREFIX = "runner.gym."
+
+
+class BundleFormatError(Exception):
+    """A run bundle this script cannot read (wrong directory, or written by an older SDK)."""
+
 
 # --------------------------------------------------------------------------------------------------
 # Accessors — lift these into your own code.
@@ -60,55 +69,43 @@ def aggregate(summary: AgentEvalSummary, name: str) -> AggregateScore:
     raise KeyError(f"no aggregate named {name!r}; available: {available}")
 
 
-def per_task_outcomes(
-    scores: Sequence[AgentEvalTaskScore],
-    *,
-    metric_type: str,
-    output_name: str,
-) -> dict[str, list[float | None]]:
-    """Group per-trial score values by task: ``task_id -> [value per attempt]``, ``None`` if it died.
-
-    A run with ``num_repeats=R`` produces R trials per task, and the scores are a flat
-    task x trial x metric list — so answering "which tasks failed?" means grouping them yourself.
-
-    Failed trials are kept, as ``None``. Dropping them would show a task that passed once and crashed
-    once as solved, and disagrees with how the SDK computes pass@k (a dead rollout is an attempt that
-    did not pass). A failed *metric* is dropped instead: it leaves the attempt unmeasured rather than
-    unsuccessful, so counting it against the agent would turn a judge timeout into a failure.
-    """
-    by_task: dict[str, list[float | None]] = {}
-    for score in scores:
-        if score.metric_type != metric_type:
-            continue
-        if is_trial_failure(score):
-            by_task.setdefault(score.task_id, []).append(None)
-            continue
-        if score.status == AgentEvalScoreStatus.FAILED:
-            continue
-        for output in score.outputs:
-            if output.name == output_name and isinstance(output.value, int | float):
-                by_task.setdefault(score.task_id, []).append(float(output.value))
-    return by_task
-
-
 # --------------------------------------------------------------------------------------------------
 # Bundle loading (see the run.json manifest for the full artifact list).
 # --------------------------------------------------------------------------------------------------
 
 
-def load_bundle(bundle: Path) -> tuple[AgentEvalSummary, list[AgentEvalTaskScore]]:
-    """Hydrate the pieces of a persisted run bundle used below.
+def load_bundle(bundle: Path) -> AgentEvalSummary:
+    """Load the persisted summary, including native and runner aggregates and per-task values.
 
-    A runner's own numbers need no separate file: they are imported into ``summary.scores`` under
-    ``runner.<name>.``, so one load covers both.
+    Every way a bundle can be unreadable raises :class:`BundleFormatError` and nothing else, so
+    :func:`main` turns all of them into an exit code rather than a traceback. In particular it
+    rejects a bundle written before ``task_metric_values`` existed rather than reading one: the
+    field defaults to empty, so an older bundle would otherwise load cleanly and simply show no
+    per-task section — the reader would conclude the run had no per-task outcomes rather than that
+    this script cannot see them.
     """
-    summary = AgentEvalSummary.model_validate(json.loads((bundle / "summary.json").read_text(encoding="utf-8")))
-    scores = [
-        AgentEvalTaskScore.model_validate(json.loads(line))
-        for line in (bundle / "scores.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    return summary, scores
+    summary_path = bundle / "summary.json"
+    if not summary_path.exists():
+        raise BundleFormatError(f"{bundle} is not a run bundle (no summary.json). Run run_gym_eval.py first.")
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise BundleFormatError(f"{summary_path} is not readable JSON: {exc}") from exc
+    # Before the membership test below, which raises TypeError on a root that is not a container and
+    # matches a substring on a bare JSON string.
+    if not isinstance(payload, dict):
+        raise BundleFormatError(f"{summary_path} is not a JSON object (found {type(payload).__name__}).")
+    # Checked explicitly because `model_validate` would *not* catch this: the field defaults to an
+    # empty dict, so an older bundle loads cleanly and simply shows no per-task section.
+    if "task_metric_values" not in payload:
+        raise BundleFormatError(
+            f"{summary_path} predates summary.task_metric_values, which this script reads "
+            "per-task outcomes from. Re-run the eval to produce a current bundle."
+        )
+    try:
+        return AgentEvalSummary.model_validate(payload)
+    except ValidationError as exc:
+        raise BundleFormatError(f"{summary_path} is not a valid run summary: {exc}") from exc
 
 
 # --------------------------------------------------------------------------------------------------
@@ -138,29 +135,42 @@ def show_aggregates(summary: AgentEvalSummary) -> None:
     print(f"\n  {summary.task_count} tasks · {summary.trial_count} trials · {summary.score_count} scores")
 
 
-def show_per_task(by_task: dict[str, list[float | None]]) -> None:
+def show_per_task(outcomes: list[PerTaskOutcomes]) -> None:
     """Per-task outcomes: which tasks were solved, and how consistently.
 
-    An attempt passes on full credit (``>= PASS_VALUE``), matching how the SDK computes pass@k. A
-    ``None`` is a trial that died: it counts as an attempt and never as a pass, so a task that passed
+    Takes the SDK's typed view, so every row already knows its own task and metric and no dict has
+    to be re-keyed here. Already sorted by task, hence no ``sorted()``.
+
+    A trial passes on full credit (``>= PASS_VALUE``), matching how the SDK computes pass@k. A
+    ``None`` is a trial that died: it counts toward ``n`` and never as a pass, so a task that passed
     once and crashed once reads as flaky rather than solved.
     """
-    print("\nPer-task outcomes (attempt values; an attempt passes at full credit)")
-    solved = flaky = failed = 0
-    for task_id, values in sorted(by_task.items()):
-        passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
-        if passes == len(values):
-            verdict, marker = "solved", "+"
-            solved += 1
-        elif passes:
-            verdict, marker = f"flaky ({passes}/{len(values)})", "~"
-            flaky += 1
-        else:
-            verdict, marker = "failed", "-"
-            failed += 1
-        attempts = ", ".join("died" if value is None else f"{value:g}" for value in values)
-        print(f"  {marker} {task_id[:16]}…  [{attempts}]  {verdict}")
-    print(f"\n  {solved} solved · {flaky} flaky · {failed} failed")
+    print("\nPer-task outcomes (trial values; a trial passes at full credit)")
+    solved = flaky = failed = unmeasured = 0
+    for per_task in outcomes:
+        for outcome in per_task.outcomes:
+            # Projected to floats only here, where the work is genuinely arithmetic: `>=` and `:g`
+            # both raise on a judge's label, and numeric_metric_values drops those while keeping a
+            # dead trial's None. Everything above reads the records as they were recorded.
+            values = numeric_metric_values(outcome.trials)
+            if not values:
+                verdict, marker = "unmeasured", "?"
+                unmeasured += 1
+                shown = ""
+            else:
+                passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
+                if passes == len(values):
+                    verdict, marker = "solved", "+"
+                    solved += 1
+                elif passes:
+                    verdict, marker = f"flaky ({passes}/{len(values)})", "~"
+                    flaky += 1
+                else:
+                    verdict, marker = "failed", "-"
+                    failed += 1
+                shown = ", ".join("died" if value is None else f"{value:g}" for value in values)
+            print(f"  {marker} {per_task.task_id[:16]}…  [{shown}]  {verdict}")
+    print(f"\n  {solved} solved · {flaky} flaky · {failed} failed · {unmeasured} unmeasured")
 
 
 def show_runner_aggregations(summary: AgentEvalSummary) -> None:
@@ -203,15 +213,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    if not (args.bundle / "summary.json").exists():
-        raise SystemExit(f"{args.bundle} is not a run bundle (no summary.json). Run run_gym_eval.py first.")
-
-    summary, scores = load_bundle(args.bundle)
+    # The CLI boundary is where a bad bundle becomes an exit code; the accessors above just raise.
+    try:
+        summary = load_bundle(args.bundle)
+    except BundleFormatError as exc:
+        raise SystemExit(str(exc)) from exc
 
     show_aggregates(summary)
-    by_task = per_task_outcomes(scores, metric_type=args.metric_type, output_name=args.output_name)
-    if by_task:
-        show_per_task(by_task)
+    # Empty when no task was measured by this metric at all -- typically a wrong --metric-type.
+    outcomes = summary.task_outcomes(f"{args.metric_type}.{args.output_name}")
+    if outcomes:
+        show_per_task(outcomes)
     show_runner_aggregations(summary)
 
     print(f"\nFull report: {args.bundle / 'report.html'}")

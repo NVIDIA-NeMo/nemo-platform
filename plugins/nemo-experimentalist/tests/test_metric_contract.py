@@ -4,11 +4,12 @@
 import pytest
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
-    MetricTarget,
     has_metric_dimensions,
     pareto_objectives,
+    with_insight_objective,
 )
-from nemo_experimentalist_plugin.experimentalist.components.loop import _with_insight_objective
+from nemo_experimentalist_plugin.entities import MetricTarget, TrialResult, TrialStatus
+from nemo_experimentalist_plugin.experimentalist.components.models import missing_objective_reason
 
 
 def test_metric_contract_supports_multiple_objective_metrics() -> None:
@@ -64,6 +65,54 @@ def test_metric_dimensions_require_only_the_objectives_used_for_pareto_ranking()
     assert not has_metric_dimensions({"quality": 0.9}, [*objectives, *regressions])
 
 
+def _trial(status: TrialStatus, *, error_type: str | None = None) -> TrialResult:
+    return TrialResult(
+        id=f"task__{status}",
+        task_id="task",
+        status=status,
+        error=None if error_type is None else {"type": error_type},
+    )
+
+
+@pytest.mark.parametrize(
+    ("trials", "metrics", "expected"),
+    [
+        # Measured: nothing to explain.
+        ([_trial("completed")], {"reward": 0.0}, None),
+        # No trials at all: the evaluator itself produced nothing.
+        ([], {}, "the evaluator produced no trials, so 'reward' was never measured"),
+        # Every trial failed. Harbor's own diagnosis is on the trials; name it.
+        (
+            [_trial("failed", error_type="RewardFileNotFoundError")],
+            {},
+            "0/1 trials completed (RewardFileNotFoundError), so 'reward' was never measured",
+        ),
+        # Mixed failures are counted, most frequent first.
+        (
+            [
+                _trial("failed", error_type="AgentTimeoutError"),
+                _trial("failed", error_type="AgentTimeoutError"),
+                _trial("failed"),
+            ],
+            {},
+            "0/3 trials completed (AgentTimeoutError ×2, unknown), so 'reward' was never measured",
+        ),
+        # The silent shape: the verifier ran, exited cleanly, and emitted no metric.
+        ([_trial("completed"), _trial("completed")], {}, "2/2 trials completed, but none reported 'reward'"),
+        # A trial can carry other metrics and still miss the objective.
+        ([_trial("completed")], {"latency": 3.0}, "1/1 trials completed, but none reported 'reward'"),
+    ],
+)
+def test_missing_objective_reason_names_the_evidence_behind_an_absent_metric(
+    trials: list[TrialResult],
+    metrics: dict[str, float],
+    expected: str | None,
+) -> None:
+    objectives = [MetricTarget(name="reward", direction="maximize")]
+
+    assert missing_objective_reason(trials, metrics, objectives) == expected
+
+
 @pytest.mark.parametrize(
     "config",
     [
@@ -93,7 +142,7 @@ def test_insight_metrics_become_objectives_and_existing_targets_become_guardrail
         }
     )
 
-    effective = _with_insight_objective(config, ("uses_required_tool", "cites_source"))
+    effective = with_insight_objective(config, ("uses_required_tool", "cites_source"))
 
     assert [target.name for target in effective.objective_function] == ["uses_required_tool", "cites_source"]
     assert all(target.direction == "maximize" for target in effective.objective_function)

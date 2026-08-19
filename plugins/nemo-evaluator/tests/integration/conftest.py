@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 #: IGW mock-provider prefix, and the env var the in-process IGW config reads it from. Applied to
 #: *this* (test) process via the ``_igw_mock_prefix`` fixture (not at import) so it never leaks into
 #: unrelated unit suites that merely collect this conftest; passed to the platform subprocess via
-#: each fixture's ``env_overrides``.
+#: each fixture's ``hydra_params``.
 MOCK_PROVIDER_PREFIX = "igw-mock-"
 MOCK_PROVIDER_PREFIX_ENVVAR = "NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX"
 CLICKHOUSE_XDIST_GROUP = "nmp_intake_clickhouse"
@@ -94,7 +94,7 @@ def running_platform(
     *,
     run_args: list[str],
     base_url: str,
-    env_overrides: dict[str, str] | None = None,
+    hydra_params: dict[str, str] | None = None,
     ready_timeout: float = 180.0,
 ) -> Iterator[str]:
     """Run ``nemo services run`` bound to ``base_url``'s port, yield the URL, then tear it down.
@@ -112,7 +112,7 @@ def running_platform(
     process = subprocess.Popen(
         ["uv", "run", "nemo", "services", "run", *run_args, "--port", str(port)],
         cwd=REPO_ROOT,
-        env={**os.environ, "NMP_BASE_URL": base_url, **(env_overrides or {})},
+        env={**os.environ, "NMP_BASE_URL": base_url, **(hydra_params or {})},
     )
     try:
         _wait_for_ready(base_url, timeout=ready_timeout, process=process)
@@ -138,7 +138,7 @@ def _igw_mock_prefix() -> Iterator[None]:
     var: the override is honored ahead of the cached/env config, so it works regardless of when the
     IGW config was first read, whereas a whole-repo run can read and cache that config before any
     plugin-local hook fires. The platform *subprocess* gets the same prefix via each fixture's
-    ``env_overrides``.
+    ``hydra_params``.
     """
     with igw_mock_provider_mode(MOCK_PROVIDER_PREFIX):
         yield
@@ -200,7 +200,7 @@ def subprocess_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[st
     with running_platform(
         run_args=["--service-group", "all", "--controller-group", "all"],
         base_url=AGENT_PLATFORM_BASE_URL,
-        env_overrides={
+        hydra_params={
             "NMP_CONFIG_FILE_PATH": str(config_path),
             MOCK_PROVIDER_PREFIX_ENVVAR: MOCK_PROVIDER_PREFIX,
         },
@@ -222,7 +222,7 @@ def auth_subprocess_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterat
     with running_platform(
         run_args=["--service-group", "all", "--controller-group", "all"],
         base_url=AGENT_AUTH_PLATFORM_BASE_URL,
-        env_overrides={
+        hydra_params={
             "NMP_CONFIG_FILE_PATH": str(config_path),
             MOCK_PROVIDER_PREFIX_ENVVAR: MOCK_PROVIDER_PREFIX,
         },
@@ -289,6 +289,6 @@ def docker_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     with running_platform(
         run_args=["--service-group", "all", "--controller-group", "all"],
         base_url=AGENT_DOCKER_PLATFORM_BASE_URL,
-        env_overrides={"NMP_CONFIG_FILE_PATH": str(config_path)},
+        hydra_params={"NMP_CONFIG_FILE_PATH": str(config_path)},
     ) as base_url:
         yield base_url

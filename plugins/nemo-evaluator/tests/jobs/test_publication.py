@@ -32,7 +32,12 @@ from nemo_evaluator.jobs.agent_spec import (
     target_agent_identity,
 )
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec
-from nemo_evaluator.jobs.publication import PublicationFailedError, publish_agent_eval_result
+from nemo_evaluator.jobs.publication import (
+    EVAL_DURATION_KEY,
+    PUBLISH_DURATION_KEY,
+    PublicationFailedError,
+    publish_agent_eval_result,
+)
 from nemo_evaluator.jobs.publication_spec import (
     IntakePublicationSpec,
     PublicationSpec,
@@ -96,10 +101,19 @@ class _FakeTraces:
 
 
 class _FakeEvaluations:
-    def __init__(self, *, missing: bool = False, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        missing: bool = False,
+        error: Exception | None = None,
+        patch_error: Exception | None = None,
+    ) -> None:
         self.missing = missing
         self.error = error
+        self.patch_error = patch_error
         self.retrieved: _SessionIds = []
+        self.patched: list[dict[str, Any]] = []
+        self.metadata: dict[str, str] = {"eval_config_fileset": "fs-1"}
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> object:
         self.retrieved.append(name)
@@ -107,17 +121,26 @@ class _FakeEvaluations:
             raise self.error
         if self.missing:
             raise NotFoundError("not found", response=_response(404), body=None)
+        return SimpleNamespace(name=name, metadata=dict(self.metadata))
+
+    async def patch(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> object:
+        if self.patch_error is not None:
+            raise self.patch_error
+        self.patched.append({"name": name, **kwargs})
         return SimpleNamespace(name=name)
 
 
 class _FakeIngest:
-    def __init__(self, calls: list[dict[str, Any]], *, error: Exception | None = None) -> None:
+    def __init__(self, calls: list[dict[str, Any]], *, error: Exception | None = None, delay_sec: float = 0.0) -> None:
         self._calls = calls
         self._error = error
+        self._delay_sec = delay_sec
         self.loop: asyncio.AbstractEventLoop | None = None
 
     async def create(self, **kwargs: Any) -> None:
         self.loop = asyncio.get_running_loop()
+        if self._delay_sec:
+            await asyncio.sleep(self._delay_sec)
         if self._error is not None:
             raise self._error
         self._calls.append(kwargs)
@@ -132,15 +155,17 @@ class _FakeClient:
         missing_evaluation: bool = False,
         ingest_error: Exception | None = None,
         preflight_error: Exception | None = None,
+        patch_error: Exception | None = None,
+        ingest_delay_sec: float = 0.0,
     ) -> None:
         self.workspace = "default"
         self.atif_calls: list[dict[str, Any]] = []
         self.eval_result_calls: list[dict[str, Any]] = []
         self.trace_calls: _SessionIds = []
         self.copy_calls = 0
-        self.evaluations = _FakeEvaluations(missing=missing_evaluation, error=preflight_error)
+        self.evaluations = _FakeEvaluations(missing=missing_evaluation, error=preflight_error, patch_error=patch_error)
         self.intake = SimpleNamespace(
-            ingest=SimpleNamespace(atif=_FakeIngest(self.atif_calls, error=ingest_error)),
+            ingest=SimpleNamespace(atif=_FakeIngest(self.atif_calls, error=ingest_error, delay_sec=ingest_delay_sec)),
             evaluator_results=_FakeIngest(self.eval_result_calls),
             traces=_FakeTraces(self.trace_calls),
         )
@@ -315,6 +340,52 @@ def test_publishes_and_reports_what_landed() -> None:
     assert outcome.evaluator_result_count == 1
     assert outcome.error is None
     assert client.evaluations.retrieved == ["eval-1"]
+
+
+def test_durations_are_stamped_without_dropping_existing_metadata() -> None:
+    client = _FakeClient()
+    _publish(cast(AsyncNeMoPlatform, client))
+
+    (patched,) = client.evaluations.patched
+    metadata = patched["metadata"]
+    # PATCH replaces the metadata dict wholesale, so stamping the durations has to merge with what
+    # the producer already wrote. A blind write would silently drop `eval_config_fileset`.
+    assert metadata["eval_config_fileset"] == "fs-1"
+    assert float(metadata[EVAL_DURATION_KEY]) > 0
+    assert float(metadata[PUBLISH_DURATION_KEY]) >= 0
+
+
+def test_a_started_at_only_result_does_not_count_publish_time_as_run_time() -> None:
+    # A row-eval result carries no `duration_sec`, so the run's length is derived from `started_at`.
+    # Deriving it after the publish instead of before would fold the publish into the run.
+    publish_sec = 0.3
+    client = _FakeClient(ingest_delay_sec=publish_sec)
+    result = _result()
+    result.metadata.started_at = datetime.now(UTC)
+
+    publish_agent_eval_result(
+        result,
+        spec=IntakePublicationSpec(evaluation_id="eval-1", agent_name="a", required=True),
+        target=None,
+        workspace="default",
+        async_sdk=cast(AsyncNeMoPlatform, client),
+    )
+
+    (patched,) = client.evaluations.patched
+    metadata = patched["metadata"]
+    assert float(metadata[PUBLISH_DURATION_KEY]) >= publish_sec
+    assert float(metadata[EVAL_DURATION_KEY]) < publish_sec / 2
+
+
+def test_a_failed_duration_stamp_does_not_fail_the_publish() -> None:
+    client = _FakeClient(patch_error=APIConnectionError(request=httpx.Request("PATCH", "http://x")))
+    outcome = _publish(cast(AsyncNeMoPlatform, client), required=True)
+
+    # The durations are informational and the trials already landed, so losing them must not turn a
+    # successful publish into a failed job — which is what every caller-side handler would do.
+    assert outcome.status == PlatformJobStatus.COMPLETED
+    assert outcome.trial_count == 1
+    assert outcome.error is None
 
 
 def test_outcome_does_not_leak_experiment_id() -> None:

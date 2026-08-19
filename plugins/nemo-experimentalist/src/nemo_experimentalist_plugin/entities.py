@@ -23,7 +23,7 @@ from typing import Any, Literal, TypeAlias
 from urllib.parse import unquote, urlparse
 
 from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SerializeAsAny, model_validator
 
 DataValue: TypeAlias = str | int | float | bool | dict[str, Any] | list[Any] | None
 MetricValue: TypeAlias = float | int
@@ -386,15 +386,32 @@ class ExperimentRun(NemoEntity, entity_type="experiment_run"):
         default="running",
         description="Lifecycle status of this optimization run.",
     )
-    rounds_completed: int = Field(
+    progress_completed: int = Field(
         default=0,
-        description="Number of full optimization rounds completed so far.",
+        description="Units of work the strategy reports finished so far. Display only.",
+    )
+    progress_total: int | None = Field(
+        default=None,
+        description=(
+            "Units of work expected in total, when the strategy can say. None means it "
+            "cannot — an opaque strategy has no honest denominator, so consumers show a "
+            "counter rather than a bar."
+        ),
+    )
+    progress_unit: str = Field(
+        default="step",
+        description="What one unit of progress is: 'round' for the evolutionary loop, 'trial' for a search.",
+    )
+    progress_note: str | None = Field(
+        default=None,
+        description="What the strategy is currently doing, for strategies with no meaningful total.",
     )
     winner_agent: str | None = Field(
         default=None,
         description=(
-            "Entity id of the winning Candidate, or a local filesystem path "
-            "to the agent directory when running offline; set on completion."
+            "Label of the winning Candidate — 'agent-3', not its id. Every artifact "
+            "path in a run is built from the label, so this is the form a reader can "
+            "resolve; set on completion."
         ),
     )
     summary: str | None = Field(
@@ -413,7 +430,6 @@ class ExperimentRun(NemoEntity, entity_type="experiment_run"):
         Without this, resumed runs lose their identity and projection names collapse.
         """
         if isinstance(data, dict) and "id" in data:
-            # Pydantic wraps the dict during validation, extract the raw data
             instance = handler(data)
             instance._id = data["id"]  # type: ignore[attr-defined]
             return instance
@@ -437,23 +453,99 @@ class RewardRecord(BaseModel):
     metadata: dict[str, DataValue] = Field(default_factory=dict, description="Provenance for this measurement.")
 
 
+class RewardMap(dict[str, RewardRecord]):
+    """A candidate's measurements, keyed by reward channel.
+
+    One mapping answers both questions: ``rewards[channel]`` always yields a record, so
+    ``rewards["train"].metrics`` needs no presence check, while ``channel in rewards``
+    answers *was this measured at all* — which is what gates whether to evaluate.
+
+    ``__missing__`` **returns** without inserting, which is the whole point and why this
+    is not a ``defaultdict``: that one's ``__missing__`` inserts, so merely reading a
+    channel would mark it measured, skip its evaluation, and persist a phantom record.
+    """
+
+    def __missing__(self, channel: str) -> RewardRecord:
+        return RewardRecord()
+
+    def __setitem__(self, channel: str, record: RewardRecord) -> None:
+        """Refuse a direct write: it mutates memory and is never persisted.
+
+        A measurement reaches the store through ``ctx.record_reward``, which also
+        persists the evaluation's traces and updates the candidate. Assigning here
+        instead leaves a candidate that looks measured until the next reload.
+        """
+        raise TypeError(
+            f"cannot set rewards[{channel!r}] directly; record a measurement with "
+            "ctx.record_reward(candidate, channel=..., result=...) so it is persisted"
+        )
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
+        """Validate as a plain channel map, then re-wrap so ``__missing__`` survives.
+
+        Pydantic rejects a bare ``dict`` subclass, and validating into one would hand
+        back a plain ``dict`` that has lost the behaviour this class exists for.
+        """
+        from pydantic_core import core_schema
+
+        return core_schema.no_info_after_validator_function(cls, handler.generate_schema(dict[str, RewardRecord]))
+
+
+class Proposal(BaseModel):
+    """A request to build one candidate — the Proposer → Builder contract.
+
+    A transient component message, not a separately persisted entity and not an
+    unfinished Candidate: a proposal describes work to perform, and a Candidate is the
+    durable result after a Builder completes it. Failed proposals produce no Candidate
+    and are not retained; a successful one is embedded in ``Candidate.generated_from``.
+
+    ``kind`` is an opaque compatibility discriminator, not a global enumeration: it
+    routes the proposal to a Builder that declares it can accept it. ``payload`` is
+    owned by that Proposer/Builder pair — Layer A stores and transports it and
+    interprets neither.
+    """
+
+    ancestor: str | None = Field(
+        default=None,
+        description="Parent Candidate id to build from. None means the baseline.",
+    )
+    description: str = Field(
+        min_length=1,
+        description="Human-readable explanation of the proposed variant.",
+    )
+    kind: str = Field(
+        min_length=1,
+        description="Builder compatibility discriminator, e.g. 'code-change' or 'parameters'.",
+    )
+    payload: dict[str, DataValue] = Field(
+        default_factory=dict,
+        description="Build instructions, validated by the component-owned schema for this kind.",
+    )
+
+
 class Candidate(NemoEntity, entity_type="candidate"):
     """A candidate agent version produced during an Experimentalist run.
 
-    Lives in the entity store so candidates are queryable, resumable, and
-    survive the local working directory being deleted.  ``run_id`` groups all
-    candidates for a single ExperimentRun.
+    Metadata and measurements live in the entity store; the completed work is
+    *addressed*, not contained. ``artifact`` points at the resource that defines this
+    candidate and, when external evaluation is used, is directly consumable by the
+    run's evaluation component. Its format belongs to the components that produce and
+    consume that candidate kind — the host only stores, transports, archives and
+    publishes the reference.
 
-    Like every entity in this plugin, a Candidate's durable identity is its
-    store-assigned ``id`` (``name`` is left for the store to auto-slug).
-    ``label`` is the run-scoped handle ("agent-0", "agent-1", ...) used for the
-    working directory, evolution-tree key, and ``ancestor`` references; it is
-    unique within a run, not globally.
+    A Candidate is only ever created once its artifact exists and validates, so
+    ``artifact`` is required and no durable record points at partial work. Incomplete
+    work is a runner-owned path, not a Candidate.
 
-    A candidate's completed artifact is not stored here yet: it is still the
-    ``agents/<label>/`` directory the loop materialises. ``artifact: ResourceRef``
-    and runner-owned storage arrive with the candidate contract (plan §3.1, M1).
+    Identity is the store-assigned ``id``. ``label`` survives purely as a display
+    handle for reports and the evolution tree; it is unique within a run, not globally,
+    and nothing may derive storage or lineage from it.
     """
+
+    #: Set by :meth:`slim`. A slim copy has had its trials emptied for prompting, so
+    #: persisting one would write that loss back; ``update_candidate`` refuses it.
+    _slim: bool = PrivateAttr(default=False)
 
     workspace: str = Field(
         default="default",
@@ -461,46 +553,58 @@ class Candidate(NemoEntity, entity_type="candidate"):
     )
     run_id: str = Field(
         ...,
+        frozen=True,
         description="ExperimentRun entity id that this candidate belongs to.",
     )
     label: str = Field(
         ...,
+        frozen=True,
         description=(
-            "Run-scoped handle for this candidate (e.g. 'agent-0'): the working "
-            "directory name, evolution-tree key, and target of ``ancestor`` "
-            "references. Unique within a run, not globally — the store-assigned "
-            "``id`` is the durable identity."
+            "Display handle for this candidate (e.g. 'agent-0'), used in reports and the "
+            "evolution tree. Unique within a run, not globally, and not identity."
         ),
     )
     ancestor: str | None = Field(
+        frozen=True,
         default=None,
-        description="Parent Candidate ``label``. None means this is the baseline (round 0).",
-    )
-    round: int = Field(description="Optimization round that produced this candidate. 0 = baseline.")
-    optimization: str = Field(
         description=(
-            "Graph-level description of the architecture change that produced this candidate "
-            "(nodes added/removed/modified, edges changed, prompts rewritten). "
-            "No source file paths or line numbers."
+            "Parent Candidate id. None means this is the baseline, and is the only place that distinction is encoded."
         ),
     )
-    optimization_type: str | None = Field(
-        default=None,
-        description="OptimizationType literal that categorizes the change.",
-    )
-    task_ids: list[str] = Field(
-        default_factory=list,
+    generation: int = Field(
+        frozen=True,
+        default=0,
         description=(
-            "Task ids the Proposer flagged as most exercising this candidate's root "
-            "cause; the coder uses them to validate the fix during subproblem refinement."
+            "Strategy-supplied grouping index. Our loop sets the round and HPO sets the "
+            "generation; a strategy with no such notion leaves it 0."
         ),
     )
-    rewards: dict[str, RewardRecord] = Field(
-        default_factory=dict,
+    generated_from: Proposal = Field(
+        frozen=True,
         description=(
-            "Measurements keyed by reward channel. This is an open set that includes "
-            "'train', 'validation', and 'validation-trajectory'. A channel is a measurement, "
-            "not a dataset split, so adding one costs no entity change."
+            "Immutable snapshot of the Proposal this candidate was built from, so a Proposer "
+            "can read the history of what worked. Every candidate has one, including the "
+            "baseline, whose Proposal asks for the agent under test to be imported unchanged."
+        ),
+    )
+    description: str = Field(
+        frozen=True,
+        description="Human-readable explanation of this candidate; derived from the Proposal when there is one.",
+    )
+    artifact: ResourceRef = Field(
+        ...,
+        frozen=True,
+        description="The completed resource that defines this candidate, written by its Builder.",
+    )
+    rewards: RewardMap = Field(
+        default_factory=RewardMap,
+        description=(
+            "Measurements keyed by reward channel. An open set: 'train', 'validation', "
+            "'insight' and 'validation-trajectory' today. A channel is a measurement, not a "
+            "dataset split — trajectory scoring is a second measurement of the validation "
+            "split — so adding one costs no entity change. Read with rewards[channel], "
+            "which always yields a record; ask 'channel in rewards' to learn whether it "
+            "was ever measured."
         ),
     )
     trajectory_detail: dict[str, Any] | None = Field(
@@ -508,76 +612,120 @@ class Candidate(NemoEntity, entity_type="candidate"):
         description=(
             "Per-node, per-task trajectory scores and explanations "
             "(node_id -> task_id -> {reward, explanation}). Shaped unlike RewardRecord.trials "
-            "and produced by one scorer; revisit when the trajectory-scorer seam lands."
+            "and produced by one scorer."
         ),
     )
-    killed_round: int | None = Field(
+    killed_generation: int | None = Field(
         default=None,
-        description="Round in which this candidate was eliminated. None means still alive.",
+        description="Generation in which this candidate was eliminated. None means still alive.",
+    )
+    discarded: bool = Field(
+        default=False,
+        description=(
+            "True once this candidate has been rolled back. The record and its artifact "
+            "both survive so the rollback is auditable and reversible; listing excludes it "
+            "by default. Distinct from killed_generation, which marks a candidate that "
+            "lost selection but is still part of the run's history."
+        ),
     )
 
+    @model_validator(mode="wrap")
+    @classmethod
+    def _restore_id_from_json(cls, data: Any, handler: Any) -> "Candidate":
+        """Restore the computed ``id`` when deserializing.
+
+        ``id`` is backed by private ``_id``; it serializes but ``model_validate`` ignores
+        computed fields, so a Candidate that has been through JSON comes back with an
+        empty id while its label survives intact. Selection crosses exactly that boundary
+        — survivors are the return value of an LLM method — and an empty id makes every
+        candidate look unselected, so the round marks all of them killed.
+        """
+        instance = handler(data)
+        if isinstance(data, dict) and data.get("id"):
+            instance._id = data["id"]  # type: ignore[attr-defined]
+        return instance
+
+    @model_validator(mode="after")
+    def _projections_agree_with_origin(self) -> "Candidate":
+        """Reject a record whose derived projections disagree with its origin.
+
+        ``ancestor`` and ``description`` are generic, queryable copies of what the
+        embedded Proposal already says. ``commit_candidate`` derives them, so a
+        disagreement means something set a copy independently and the two accounts of
+        this candidate's origin have drifted.
+        """
+        origin = self.generated_from
+        if self.ancestor != origin.ancestor:
+            raise ValueError(f"Candidate ancestor {self.ancestor!r} disagrees with its Proposal's {origin.ancestor!r}")
+        if self.description != origin.description:
+            raise ValueError("Candidate description disagrees with its Proposal's")
+        return self
+
+    @property
+    def is_baseline(self) -> bool:
+        """True for the agent under test as it arrived, before any change."""
+        return self.ancestor is None
+
     def __repr__(self) -> str:
-        parts = [f"Candidate(label={self.label!r}, round={self.round}"]
+        parts = [f"Candidate(label={self.label!r}, generation={self.generation}"]
         if self.ancestor is not None:
             parts.append(f", ancestor={self.ancestor!r}")
-        parts.append(f", optimization={self.optimization!r}")
-        if self.optimization_type is not None:
-            parts.append(f", optimization_type={self.optimization_type!r}")
+        parts.append(f", description={self.description!r}")
+        if self.generated_from is not None:
+            parts.append(f", kind={self.generated_from.kind!r}")
         for channel, record in self.rewards.items():
             if record.metrics:
                 scores = ", ".join(f"{k}={v:.3f}" for k, v in record.metrics.items())
                 parts.append(f", {channel}={{{scores}}}")
-        if self.killed_round is not None:
-            parts.append(f", killed_round={self.killed_round}")
+        if self.killed_generation is not None:
+            parts.append(f", killed_generation={self.killed_generation}")
         parts.append(")")
         return "".join(parts)
 
-    def reward(self, channel: str) -> RewardRecord:
-        """This candidate's measurement on *channel*, empty when unmeasured.
-
-        Returns a blank record rather than ``None`` so call sites read
-        ``candidate.reward("train").metrics`` without a presence check. Use
-        ``channel in candidate.rewards`` to ask whether it was measured at all —
-        an empty record and an unmeasured channel are different things.
-        """
-        return self.rewards.get(channel) or RewardRecord()
-
-    def record_reward(
-        self,
-        channel: str,
-        *,
-        metrics: dict[str, float] | None = None,
-        summary: float | None = None,
-        trials: Sequence[TrialResult] | None = None,
-        metadata: dict[str, DataValue] | None = None,
-    ) -> None:
-        """Merge a measurement into *channel*, leaving unspecified parts untouched.
-
-        Named ``record_`` rather than ``set_`` because it merges: an argument left as
-        ``None`` keeps whatever the channel already holds. Every caller today writes a
-        channel exactly once, so nothing currently depends on that — but the channel set
-        is open, and a second writer adding ``metadata`` to a channel another path
-        measured should not silently drop its ``metrics``. Replace semantics would make
-        that a data loss no test would catch.
-        """
-        current = self.rewards.get(channel) or RewardRecord()
-        update = {
-            key: value
-            for key, value in (
-                ("metrics", metrics),
-                ("summary", summary),
-                ("trials", trials),
-                ("metadata", metadata),
-            )
-            if value is not None
-        }
-        self.rewards = {**self.rewards, channel: current.model_copy(update=update)}
-
     def slim(self) -> "Candidate":
-        """Return a copy without per-trial detail (safe to pass to LLM methods)."""
-        return self.model_copy(
+        """Return a read-only copy without per-trial detail, for passing to LLM methods.
+
+        Read-only because it is lossy: persisting one writes the emptied trials back over
+        the real ones, for every channel at once. The marker that lets
+        ``update_candidate`` refuse it is a private attribute, so it is lost through JSON
+        — which is why a caller whose copies cross that boundary, as an LLM method's
+        return value does, looks the real candidates back up by id rather than relying
+        on the guard.
+        """
+        copy = self.model_copy(
             update={
-                "rewards": {c: r.model_copy(update={"trials": []}) for c, r in self.rewards.items()},
+                "rewards": RewardMap((c, r.model_copy(update={"trials": []})) for c, r in self.rewards.items()),
                 "trajectory_detail": None,
             }
         )
+        copy._slim = True
+        return copy
+
+
+class MetricTarget(BaseModel):
+    """One evaluator-produced metric and the desired direction of change."""
+
+    name: str = Field(min_length=1, description="Exact metric name emitted by the evaluator.")
+    direction: Literal["maximize", "minimize"] = Field(
+        description="Whether higher or lower values are better for this target."
+    )
+    target: float | None = Field(
+        default=None,
+        description=(
+            "Value at which this objective counts as satisfied, in the metric's own "
+            "units. When every targeted objective is met the run stops, so a solved "
+            "problem stops paying for rounds. Unset means no such stop: metrics are not "
+            "required to be normalized, so there is no value that means 'as good as "
+            "possible' for an arbitrary one."
+        ),
+    )
+
+    def is_satisfied_by(self, value: float | None) -> bool:
+        """Whether *value* meets this target. False when either side is absent.
+
+        A missing measurement is not evidence of success, and a target that was never
+        configured must not end a run.
+        """
+        if value is None or self.target is None:
+            return False
+        return value >= self.target if self.direction == "maximize" else value <= self.target

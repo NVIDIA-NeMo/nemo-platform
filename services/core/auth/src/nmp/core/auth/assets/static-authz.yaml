@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Static authorization data - roles, permissions, and endpoint definitions
 # This is bundled with the policy and served by Entity Store
 authz:
@@ -1077,6 +1080,13 @@ authz:
         - intake:write
         - platform:write
     /apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces:
+      post:
+        permissions:
+        - intake.ingest.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/ingest/spans:
       post:
         permissions:
         - intake.ingest.create

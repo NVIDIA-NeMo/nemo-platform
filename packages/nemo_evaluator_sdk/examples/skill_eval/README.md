@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # skill_eval — A/B evaluation of an injected agent skill
 
 Runs one taskset twice through the Fabric agent-eval runtime — once **without** a

@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Client APIs"
 description: ""
 ---
@@ -77,13 +80,11 @@ import asyncio
 
 from nemo_platform import AsyncNeMoPlatform
 
-
 async def main() -> None:
     client = AsyncNeMoPlatform()
     page = await client.workspaces.list()
     for workspace in page.data:
         print(workspace.name)
-
 
 asyncio.run(main())
 ```

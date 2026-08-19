@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Guardrails Troubleshooting
 
 The plugin runs on the IGW path under the entry-point key `nemo-guardrails`. Customer-facing surfaces are `nemo guardrail configs`, `nemo guardrail check`, and `nemo virtual-models`.

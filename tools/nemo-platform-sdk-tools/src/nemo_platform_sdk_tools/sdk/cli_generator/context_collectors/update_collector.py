@@ -88,4 +88,5 @@ class UpdateContextCollector(BaseContextCollector):
             "help_text": sanitize_help_text(command_description),
             "required_fields": required_fields,
             "required_fields_example": build_required_fields_example(parameters, required_fields),
+            "examples": self._cli_config.get_examples(resource_path, method_name),
         }

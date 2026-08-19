@@ -30,6 +30,29 @@ AUTHENTIK_SERVICE_URL_TEMPLATE = '{{ include "nemo-platform-authentik.serviceUrl
 PUBLIC_GATEWAY_URL_TEMPLATE = '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}'
 
 
+def _strip_leading_helm_spdx_comments(template: str) -> str:
+    lines = template.splitlines(keepends=True)
+    idx = 0
+    while idx < len(lines):
+        if lines[idx].startswith("{{/* SPDX-"):
+            idx += 1
+            continue
+        if lines[idx].strip() == "{{/*":
+            block_start = idx
+            idx += 1
+            while idx < len(lines) and lines[idx].strip() != "*/}}":
+                idx += 1
+            if idx < len(lines):
+                idx += 1
+                if any("SPDX-" in line for line in lines[block_start:idx]):
+                    continue
+            idx = block_start
+        break
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    return "".join(lines[idx:])
+
+
 def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
@@ -340,7 +363,9 @@ def test_authentik_umbrella_values_define_one_shared_postgresql_instance() -> No
         secret_template
     )
     assert "authentik-password: {{ $authentikPassword | quote }}" in secret_template
-    assert nemo_secret_template.startswith("{{- if .Values.sharedPostgresql.enabled }}\n{{- $nemoPassword :=")
+    assert _strip_leading_helm_spdx_comments(nemo_secret_template).startswith(
+        "{{- if .Values.sharedPostgresql.enabled }}\n{{- $nemoPassword :="
+    )
     assert nemo_secret_template.rstrip().endswith("{{- end }}")
     assert 'include "nemo-platform-authentik.sharedPostgresql.password"' in nemo_secret_template
     assert "--set=" not in initdb_template

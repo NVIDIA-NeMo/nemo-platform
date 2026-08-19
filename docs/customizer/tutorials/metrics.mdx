@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Checking Your Customization Job Metrics"
 description: ""
 ---
@@ -27,10 +30,95 @@ The time to complete this tutorial is approximately 10 minutes.
 
 ## Available Metrics
 
-Each customization job tracks two key metrics:
+A customization job tracks every numeric metric its backend reports. The two you
+will always find are:
 
-- **Training Loss**: Calculated during training, logged every 10 steps (default, configurable via hyperparameters)
-- **Validation Loss**: Calculated during validation, logged at each validation interval
+- **Training Loss** (`train_loss`): recorded every step the training framework logs one
+- **Validation Loss** (`val_loss`): recorded on every validation pass
+
+Alongside those you will typically see `train_lr` (learning rate) and
+`train_grad_norm`, plus whatever else the algorithm produces — a DPO job also
+reports `train_preference_loss` and `val_accuracy`, for example.
+
+An algorithm that scores validation on something other than a loss reports no
+`val_loss`, and the series stays empty rather than filling with zeros.
+
+### How Metrics Are Named
+
+Each metric is named `<phase>_<metric>`, where the phase is `train` or `val` and
+the metric keeps whatever name the training framework gave it. A metric reported
+during both training and validation therefore stays separate: DPO's `accuracy`
+becomes `train_accuracy` and `val_accuracy` rather than one interleaved series.
+
+`train_loss` and `val_loss` are simply what this rule produces for a metric named
+`loss`.
+
+### Where Metrics Appear
+
+Each metric shows up in two places in a training task's `status_details`:
+
+- **The latest value**, as a top-level field under its full name (`train_loss`,
+  `train_lr`, ...). Present only when the metric was actually reported, so a
+  missing field means no value rather than a zero.
+- **The full history**, under `metrics`, as a list of `{step, epoch, value}`
+  points per metric. This is what the loss curves in the UI are drawn from.
+
+Non-numeric values a framework emits alongside the scalars — histograms, tables,
+nested dictionaries — are not charted and do not appear in either place.
+
+### How Often Metrics Are Sent
+
+Recording and sending are separate, and only the second is throttled.
+
+Every value your training framework logs is recorded, at full resolution. What
+is limited is how often the accumulated set is *sent* to the platform, because
+each update carries the whole history and is written more than once server-side.
+Reports are buffered in memory and sent at most once every ten seconds by
+default; a buffered report loses nothing, since its points travel with the next
+one that goes. The final values are always sent when the job finishes.
+
+The practical effect is that a chart may lag the run by a few seconds, and the
+curve you eventually read is complete.
+
+### Controlling Metric Detail
+
+Two optional fields under `schedule.progress_reporting` change this. Most jobs
+need neither.
+
+- **`min_report_interval_seconds`** (default `10`): the least time between
+  updates reaching the platform. Raise it to spend less training time on
+  reporting; lower it — or set `0`, which sends every logged step — for a
+  progress bar that moves more often. Recording is unaffected either way.
+- **`time_series_metrics`**: which metrics keep a *history* rather than only a
+  latest value. Names are the full ones you read back, so they carry the phase
+  prefix, and glob patterns are accepted: `["*_loss", "*_lr"]`. Omit the field to
+  take your backend's default, which keeps the loss, learning rate and gradient
+  norm. Use `["*"]` to keep a history of everything the backend reports.
+
+A metric left out of `time_series_metrics` is still reported as a latest value
+on every update — only its history is dropped. That keeps throughput counters
+like `train_tps` costing one number instead of several hundred points.
+
+Set them in the `schedule` block when you create the job:
+
+```python
+schedule={
+    "epochs": 3,
+    "progress_reporting": {
+        "min_report_interval_seconds": 30,
+        "time_series_metrics": ["*_loss", "*_lr"],
+    },
+}
+```
+
+<Note>
+
+These control what the *platform* stores. They are unrelated to the training
+framework's own logging cadence — Unsloth's `schedule.logging_steps`, for
+example — which decides how often your framework produces a value in the first
+place, and drives its stdout and any W&B or MLflow run.
+
+</Note>
 
 ## Viewing Your Metrics
 
@@ -64,11 +152,20 @@ for step in status.steps or []:
             print(f"Epoch: {details.get('epoch')}/{details.get('num_epochs')}")
             print(f"Training Loss: {details.get('train_loss')}")
             print(f"Validation Loss: {details.get('val_loss')}")
-            print(f"Learning Rate: {details.get('lr')}")
-            print(f"Gradient Norm: {details.get('grad_norm')}")
+            print(f"Learning Rate: {details.get('train_lr')}")
+            print(f"Gradient Norm: {details.get('train_grad_norm')}")
 ```
 
-The response includes training progress and metrics including loss, learning rate, and validation loss.
+To read the curves rather than the latest values, use the `metrics` payload. It
+carries every metric the job reported, so iterating it picks up backend-specific
+ones without naming them in advance:
+
+```python
+for name, points in (details.get("metrics") or {}).items():
+    if not points:
+        continue
+    print(f"{name}: {len(points)} points, latest {points[-1]['value']}")
+```
 
 ### Using MLflow
 

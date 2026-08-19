@@ -34,6 +34,17 @@ mcp:
       url: /workspace/.venv/bin/email-phishing-analyzer-mcp
 `;
 
+const ATIF_TELEMETRY_YAML = `telemetry:
+  enabled: true
+  provider: relay
+  atif:
+    enabled: true
+    storage:
+      - type: http
+        endpoint: http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif
+        timeout_millis: 3000
+`;
+
 const mockFetchText = (body: string, ok = true) =>
   vi.spyOn(globalThis, 'fetch').mockResolvedValue({
     ok,
@@ -46,7 +57,7 @@ describe('loadSampleAgentConfig', () => {
 
   it('parses the YAML and injects the selected model, preserving the rest', async () => {
     mockFetchText(AGENT_YAML);
-    const config = (await loadSampleAgentConfig('sample-agents/x/agent.yml', 'my-model')) as {
+    const config = (await loadSampleAgentConfig('sample-agents/x/agent.yml', 'my-model', 'ws')) as {
       functions: Record<string, { _type: string }>;
       llms: { llm: { model_name: string; _type: string } };
       workflow: { _type: string };
@@ -59,7 +70,7 @@ describe('loadSampleAgentConfig', () => {
 
   it('throws when the config is missing llms.llm', async () => {
     mockFetchText('workflow:\n  _type: react_agent\n');
-    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm', 'ws')).rejects.toThrow(
       /missing llms\.llm/
     );
   });
@@ -68,14 +79,14 @@ describe('loadSampleAgentConfig', () => {
     // A non-object llm (here a string) would otherwise crash the model_name
     // assignment with a TypeError instead of the clean guard error.
     mockFetchText('llms:\n  llm: some-string\n');
-    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm', 'ws')).rejects.toThrow(
       /missing llms\.llm/
     );
   });
 
   it('injects the model into models.default for a Fabric config', async () => {
     mockFetchText(FABRIC_AGENT_YAML);
-    const config = (await loadSampleAgentConfig('sample-agents/x/agent.yml', 'my-model')) as {
+    const config = (await loadSampleAgentConfig('sample-agents/x/agent.yml', 'my-model', 'ws')) as {
       config_format: string;
       default_harness: string;
       models: { default: { model: string; provider: string } };
@@ -91,22 +102,65 @@ describe('loadSampleAgentConfig', () => {
 
   it('throws when a Fabric config is missing models.default', async () => {
     mockFetchText('config_format: nemo-agents-spec-v1\ndefault_harness: deepagents\n');
-    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm', 'ws')).rejects.toThrow(
       /missing models\.default/
     );
   });
 
   it('throws on an unsupported config_format instead of falling back to NAT', async () => {
     mockFetchText('config_format: nemo-agents-spec-v2\nworkflow:\n  _type: react_agent\n');
-    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm', 'ws')).rejects.toThrow(
       /unsupported config_format: nemo-agents-spec-v2/
     );
   });
 
   it('throws when the fetch fails', async () => {
     mockFetchText('', false);
-    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm', 'ws')).rejects.toThrow(
       /Failed to fetch/
     );
+  });
+
+  it('rebinds the ATIF ingest endpoint to the target workspace', async () => {
+    mockFetchText(`${FABRIC_AGENT_YAML}${ATIF_TELEMETRY_YAML}`);
+    const config = (await loadSampleAgentConfig(
+      'sample-agents/x/agent.yml',
+      'my-model',
+      'mschwab'
+    )) as { telemetry: { atif: { storage: { endpoint: string; timeout_millis: number }[] } } };
+
+    const [storage] = config.telemetry.atif.storage;
+    expect(storage.endpoint).toBe(
+      'http://127.0.0.1:8080/apis/intake/v2/workspaces/mschwab/ingest/atif'
+    );
+    expect(storage.timeout_millis).toBe(3000);
+  });
+
+  it('leaves non-Intake and non-http storage endpoints alone', async () => {
+    mockFetchText(`${FABRIC_AGENT_YAML}telemetry:
+  atif:
+    storage:
+      - type: http
+        endpoint: http://collector:4318/v1/traces
+      - type: file
+        endpoint: http://x/apis/intake/v2/workspaces/default/ingest/atif
+`);
+    const config = (await loadSampleAgentConfig(
+      'sample-agents/x/agent.yml',
+      'my-model',
+      'mschwab'
+    )) as { telemetry: { atif: { storage: { endpoint: string }[] } } };
+
+    const [collector, file] = config.telemetry.atif.storage;
+    expect(collector.endpoint).toBe('http://collector:4318/v1/traces');
+    expect(file.endpoint).toBe('http://x/apis/intake/v2/workspaces/default/ingest/atif');
+  });
+
+  it('leaves a config without ATIF telemetry untouched', async () => {
+    mockFetchText(AGENT_YAML);
+    const config = (await loadSampleAgentConfig('sample-agents/x/agent.yml', 'm', 'ws')) as {
+      telemetry?: unknown;
+    };
+    expect(config.telemetry).toBeUndefined();
   });
 });

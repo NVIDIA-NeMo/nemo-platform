@@ -70,17 +70,17 @@ breaking rename with no compatibility aliases:
 Two names deliberately did **not** change. `optimizer.yaml` and the
 `.nemo-optimizer/` state directory are a shared contract with
 `nemo-insights-plugin`: `PROFILE_FILENAME` and `discover_profile()` live in
-`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` can
-mirror the Platform rows it wrote into `<profile-dir>/.nemo-optimizer/insights.yaml`
-via `--insights-file-output`, which this plugin reads as the default insight when
-the file exists. Rename them only in lockstep with a Platform change to that
-contract. `EvolutionaryOptimizer` and `EvolutionaryOptimizerConfig` also keep
-their names — they describe the optimization algorithm, not the product.
+`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` writes
+`<profile-dir>/.nemo-optimizer/insights.yaml`, which this plugin reads as the
+default insight. Rename them only in lockstep with a Platform change to that
+contract.
 
-At the time of this rename the command group was top-level (`nemo
-experimentalist`), because the platform's `nemo.cli` entry-point group was flat
-and nesting under `nemo agents` needed a Platform-side change first. That change
-has since landed — see the `nemo agents` entry above for the current path.
+`EvolutionaryOptimizer` is now `EvolutionaryStrategy`, in
+`experimentalist/strategies/evolutionary.py`, and is resolved by name like any other
+component (`strategy: evolutionary`).
+
+Run `nemo agents experimentalist components` to see everything this install can resolve,
+including components registered by a separately installed package.
 
 ### 2026-07-21: Curator renamed to Eval Author
 
@@ -109,13 +109,12 @@ instead of restoring Curator imports, configuration, or aliases. The obsolete
   Configure Platform services, trace storage, and Insights analysis according
   to the Platform documentation; this repository does not own a service,
   scheduler, or testbed setup.
-- `nooa` is pinned to an immutable public GitHub revision in the workspace root
-  `pyproject.toml` under `[tool.uv.sources]`; this plugin's `pyproject.toml` only
-  declares the dependency. It is a commit rather than a tag because the callable
-  `@strategy(llm=...)` support this plugin depends on landed after `v0.0.8`.
-  Update the root pin, the matching pin in
-  `examples/tau3-nooa-agent/pyproject.toml`, the revision quoted in
-  `framework-skills/nooa/SKILL.md`, and both lock files together. Keep the
+- `nooa` comes from PyPI. This plugin's `pyproject.toml` declares the floor
+  (`nooa>=0.0.9`), which is the first release carrying the callable
+  `@strategy(llm=...)` support the components depend on. When raising the floor,
+  move it in this plugin, `nemo-insights`, `nemo-eval-author`, and
+  `examples/tau3-nooa-agent/pyproject.toml`, update the tag quoted in
+  `framework-skills/nooa/SKILL.md`, and relock both lock files together. Keep the
   Platform-supplied Insights plugin separate.
 - This branch uses merged Platform PR 718 contracts only. After the Platform
   handoff lands, rebase and repin before adopting any new Platform testbed or

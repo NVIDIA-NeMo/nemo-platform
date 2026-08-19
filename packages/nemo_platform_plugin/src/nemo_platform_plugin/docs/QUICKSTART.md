@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Quickstart: Build Your First NeMo Platform Plugin
 
 A plugin with an HTTP endpoint, a CLI command, a scheduled job, and typed configuration.

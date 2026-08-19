@@ -1,33 +1,49 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Eval Author plugin CLI — ``nemo agents eval-author ...`` subcommands.
+"""Eval Author commands under ``nemo agents eval-author``."""
 
-Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
-``nemo agents eval-author <verb>``.
-
-Scaffolding. Every verb is registered under its final name so the command tree is
-discoverable and the child tickets have a landing spot, and each body exits non-zero
-until its own ticket lands. Flags belong to those tickets, so nothing here declares
-options yet.
-
-This module imports nothing from ``eval_author`` while the command bodies remain
-placeholders. The completed runner resolves the active Platform model pair at run time.
-"""
-
-from typing import ClassVar, NoReturn
+import asyncio
+from pathlib import Path
+from typing import Annotated, ClassVar, NoReturn
 
 import typer
+from nemo_eval_author_plugin.discovery import run as discovery
+from nemo_insights_plugin.contracts.checks import format_report
 from nemo_platform_plugin.cli import NemoCLI
 
 
 def _not_implemented(ctx: typer.Context, ticket: str) -> NoReturn:
-    """Fail loudly, so a placeholder verb can never be mistaken for a successful run.
-
-    The message quotes ``ctx.command_path`` rather than a hardcoded path.
-    """
     typer.echo(f"`{ctx.command_path}` is not implemented yet ({ticket}).", err=True)
     raise typer.Exit(code=1)
+
+
+def _report_discovery(result: discovery.DiscoverResult) -> None:
+    status = format_report(result.report.checks)
+    if status:
+        typer.echo(status)
+    if result.report.run_command:
+        typer.echo("")
+        typer.echo(f"Run: {result.report.run_command}")
+
+    typer.echo("")
+    if result.dry_run:
+        typer.echo("Dry run: no files were uploaded.")
+        typer.echo("")
+        typer.echo(result.markdown, nl=False)
+    elif result.uploaded:
+        remote_path = f"{result.report.agent}/{discovery.REPORT_FILENAME}"
+        typer.echo(f"Uploaded {remote_path} to fileset '{discovery.FILESET_NAME}'.")
+    else:
+        typer.echo(f"Upload failed: {result.upload_error or 'unknown error'}", err=True)
+
+    failures = sum(check.status == "fail" for check in result.report.checks)
+    failures += not result.dry_run and not result.uploaded
+    warnings = sum(check.status == "warn" for check in result.report.checks)
+    failure_label = "failure" if failures == 1 else "failures"
+    warning_label = "warning" if warnings == 1 else "warnings"
+    status = "passed" if result.ok else "failed"
+    typer.echo(f"Final overview: Discovery {status} with {failures} {failure_label} and {warnings} {warning_label}.")
 
 
 class EvalAuthorCLI(NemoCLI):
@@ -41,17 +57,43 @@ class EvalAuthorCLI(NemoCLI):
 
         @app.callback()
         def _root() -> None:
-            """Force subcommand dispatch even when only one verb is registered."""
+            """Select an Eval Author command."""
 
         @app.command("discover")
-        def discover(ctx: typer.Context) -> None:
-            """Discover candidate evaluation cases from agent traces."""
-            # TODO(ASE-677): declare flags and wire discovery.
-            _not_implemented(ctx, "ASE-677")
+        def discover(
+            repo: Annotated[
+                Path,
+                typer.Option("--repo", help="Repository that contains the agent.", exists=True, file_okay=False),
+            ] = Path(),
+            agent: Annotated[
+                str | None,
+                typer.Option("--agent", help="Agent name. The default comes from optimizer.yaml or the directory."),
+            ] = None,
+            dry_run: Annotated[
+                bool,
+                typer.Option("--dry-run", help="Print discovery.md without an upload."),
+            ] = False,
+        ) -> None:
+            """Inspect the repository and record its Harbor preflight.
+
+            WARNING: Use this command only with a trusted repository.
+            Agent imports execute module top-level code.
+            """
+            result = asyncio.run(
+                discovery.discover(
+                    discovery.DiscoverOptions(
+                        repo_root=repo,
+                        agent=agent,
+                        dry_run=dry_run,
+                    )
+                )
+            )
+            _report_discovery(result)
+            raise typer.Exit(code=0 if result.ok else 1)
 
         @app.command("audit")
         def audit(ctx: typer.Context) -> None:
-            """Audit an existing eval suite for coverage gaps."""
+            """Report coverage gaps in an existing eval suite."""
             # TODO(ASE-676): declare flags and wire the audit.
             _not_implemented(ctx, "ASE-676")
 
@@ -63,13 +105,13 @@ class EvalAuthorCLI(NemoCLI):
 
         @app.command("run")
         def run(ctx: typer.Context) -> None:
-            """Run the Eval Author pipeline end to end."""
+            """Run the Eval Author pipeline."""
             # TODO(ASE-673): declare flags and wire the pipeline to run_eval_author.
             _not_implemented(ctx, "ASE-673")
 
         @app.command("doctor")
         def doctor(ctx: typer.Context) -> None:
-            """Diagnose Eval Author setup: credentials, platform, runtime."""
+            """Diagnose credentials, platform access, and the runtime."""
             # TODO(ASE-678): report the prerequisites the other verbs gate on.
             _not_implemented(ctx, "ASE-678")
 

@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: plugin-function
 description: Creates in-process NemoFunction surfaces for NeMo Platform plugins. Use when adding a function, declaring spec_schema, mounting function routes with add_function_routes, understanding the two CLI verbs (run / submit), or streaming NDJSON frames. Trigger keywords - function, NemoFunction, spec_schema, add_function_routes, nemo_platform_plugin.functions, two verbs, run, submit, streaming, NDJSON, FunctionContext.
 ---
@@ -43,14 +46,11 @@ from typing import ClassVar
 from nemo_platform_plugin.function import NemoFunction
 from pydantic import BaseModel
 
-
 class GreetSpec(BaseModel):
     name: str
 
-
 class GreetResponse(BaseModel):
     message: str
-
 
 class GreetFunction(NemoFunction[GreetSpec]):
     name:        ClassVar[str] = "greet"
@@ -102,15 +102,12 @@ from collections.abc import AsyncIterator
 from nemo_platform_plugin.functions.frames import Done, Heartbeat
 from pydantic import BaseModel
 
-
 class TickSpec(BaseModel):
     upto: int
-
 
 class Tick(BaseModel):
     kind: str = "tick"
     n: int
-
 
 class CountFunction(NemoFunction[TickSpec]):
     name = "count"
@@ -204,7 +201,6 @@ Only `{name}` is substituted; the workspace placeholder stays as a live FastAPI 
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
 
-
 class WhoamiFunction(NemoFunction[GreetSpec]):
     name = "whoami"
     spec_schema = GreetSpec
@@ -266,7 +262,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.functions.routes import add_function_routes
-
 
 def test_greet_route_returns_json():
     app = FastAPI()

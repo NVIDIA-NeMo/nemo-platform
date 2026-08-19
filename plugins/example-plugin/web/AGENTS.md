@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Studio plugin web UI — agent instructions
 
 This is the web UI for a NeMo Studio plugin. Studio loads the built bundle at
@@ -62,7 +65,8 @@ resolve the SDK's types, types `host.sdk` as Studio does.
 service ships its own client, and must prefix every request with
 `host.apiBaseUrl` — Studio's dev-server `/apis` proxy is opt-in, so a bare
 `/apis/...` request hits the dev server rather than the platform whenever
-`VITE_PLATFORM_BASE_URL` is set.
+`VITE_PLATFORM_BASE_URL` is set. See `plugins/nemo-iron-swarm/web` for a
+generated client wired this way.
 
 ## Shared UI (`@nemo/common`)
 
@@ -74,7 +78,7 @@ instance Studio renders — same behavior, same styles, no second copy in the
 bundle. See `src/SharedUiPage.tsx`.
 
 ```ts
-import { StudioDataView, useStudioDataViewState } from '@nemo/common';
+import { AssistantChat, StudioDataView, useStudioDataViewState } from '@nemo/common';
 ```
 
 - **Bare specifier only.** A deep `@nemo/common/src/...` import is not
@@ -92,9 +96,33 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   fine (they erase). A shared component that needs data takes it as a prop or
   callback and the caller supplies it from `host.sdk`; `CreateSecretModal`'s
   `onCreate` and `fetchAllPages`' page fetcher are the pattern.
+- **`AssistantChat` is shared.** A plugin can point it at an authenticated,
+  OpenAI-compatible `baseURL`; Studio supplies its current access token and
+  chat runtime. Use `messageContentProps.markdownLinkComponent` when a plugin
+  owns trusted, in-app citation targets. The plugin should still own the panel,
+  prompts, endpoint, and citation behavior specific to its feature.
 - **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is
   unpublished, so there is nothing to install. `src/env.d.ts` declares the `*.css`
   side-effect imports those sources carry.
+- **Out-of-tree plugins vendor a generated `.d.ts` instead.** A plugin living in
+  its own repository can't use `paths` into these sources — resolving them needs
+  this workspace's `node_modules`, including the unpublished `@nemo/sdk`. The
+  whole surface is rolled up into `packages/common/plugin-types/plugin.d.ts`,
+  which is committed here; a plugin repo copies that file in and points its
+  `paths` at it. Whatever the rolled-up file still imports, the consumer has to
+  resolve — check the `import` lines at the top of it rather than assuming this
+  list is current. Published packages (`class-variance-authority`,
+  `@assistant-ui/react` once the chat surface lands) are plain type-only
+  devDependencies. Only `@nemo/sdk/generated/platform/schema` needs a local stub,
+  because it is unpublished; it contributes `PlatformJobLog` and
+  `PlatformJobStatus`, reached solely through `LogViewer` and the job-status
+  constants, so a dozen structural lines cover it.
+- **Regenerate with `pnpm --filter @nemo/common types:plugin` when you change
+  `plugin.ts`.** The `web-plugin-types` CI job regenerates and fails on a diff,
+  so the artifact can't drift from the surface it describes. It can still drift
+  from a plugin's *copy* — nothing in this repo knows about those — and a stale
+  copy compiles happily against a surface that no longer exists, so refresh it
+  deliberately when the surface moves.
 - **CSS is already loaded.** The vendor build stubs stylesheet imports because
   Studio bundles the same files through its own graph. A plugin adds no CSS.
 - **`useStudioDataViewState` syncs to URL search params** on Studio's shared

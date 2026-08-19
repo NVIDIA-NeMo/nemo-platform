@@ -9,9 +9,10 @@ import pytest
 from click.testing import Result
 from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.entities import DatasetRef
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes
 from nemo_platform import AsyncNeMoPlatform
+from nooa import GenerationError
 from typer.testing import CliRunner
 
 
@@ -137,8 +138,10 @@ def _make_paths(tmp_path: Path) -> ExperimentCliPaths:
     template = _make_dir(tmp_path / "template")
     (template / "task.toml").write_text('[task]\nname = "org/test-template"\n', encoding="utf-8")
     (template / "instruction.md").write_text("Test task instructions.\n", encoding="utf-8")
+    agent = _make_dir(tmp_path / "agent")
+    (agent / "harbor_wrapper.py").write_text("class WrappedAgent:\n    pass\n", encoding="utf-8")
     return ExperimentCliPaths(
-        agent=_make_dir(tmp_path / "agent"),
+        agent=agent,
         train=_make_dir(tmp_path / "train"),
         validation=_make_dir(tmp_path / "validation"),
         template=template,
@@ -170,8 +173,10 @@ def test_cli_help_exposes_only_run_and_doctor() -> None:
     ("config_body", "expected_config", "expected_output"),
     [
         pytest.param(
-            "max_rounds: 2\nevaluator:\n  max_attempts: 3\n",
-            EvolutionaryOptimizerConfig.model_validate({"max_rounds": 2, "evaluator": {"max_attempts": 3}}),
+            "max_rounds: 2\noutcome_evaluator_config:\n  max_attempts: 3\n",
+            EvolutionaryOptimizerConfig.model_validate(
+                {"max_rounds": 2, "outcome_evaluator_config": {"max_attempts": 3}}
+            ),
             "configured-summary",
             id="with-config",
         ),
@@ -299,6 +304,29 @@ def test_experiment_cli_exits_nonzero_when_evaluation_has_no_scores(
 
     assert result.exit_code == 1
     assert "produced no scoreable metrics from 3 trial(s)" in result.output
+    assert platform_client.closed
+
+
+def test_experiment_cli_reports_a_failed_generation_without_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    platform_client: FakePlatformClient,
+) -> None:
+    """A step the model cannot finish exits 1 and repeats what the harness reported."""
+
+    async def fail_generation(**_: object) -> str:
+        raise GenerationError(
+            "return_result validation failed after 3 attempts.\nExpected: list[TrialSelection]\nGot: str"
+        )
+
+    paths = _make_paths(tmp_path)
+    monkeypatch.setattr(cli, "run_experimentalist", fail_generation)
+
+    result = _run_experiment(paths.args())
+
+    assert result.exit_code == 1
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert "Expected: list[TrialSelection]" in result.output
     assert platform_client.closed
 
 

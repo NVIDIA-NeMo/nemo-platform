@@ -16,7 +16,8 @@ import {
   buildModelsFromTemplate,
   builderModelFromSelection,
   fetchAutoFillCandidates,
-  resolveTemplateModel,
+  findWorkspaceModel,
+  firstAvailableModel,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type UseFormReturn, useFieldArray, useForm } from 'react-hook-form';
@@ -49,6 +50,35 @@ export interface JobBuilderSeed {
   columns: BuilderColumn[];
   models: BuilderModel[];
 }
+
+/**
+ * A template model auto-fill could not honour: the workspace does not serve `requested`. The
+ * requested name stays in the form so the recipe still reads as the template wrote it; the build
+ * route surfaces the issue and blocks the run until the user picks a model that exists.
+ */
+export interface TemplateModelIssue {
+  /** Builder model id, stable across alias edits — how the issue is matched to live form state. */
+  id: string;
+  alias: string;
+  requested: string;
+}
+
+/** Outcome of a single model's auto-fill lookup: either it ran (with or without a match), or the
+ *  request itself rejected. */
+interface ModelLookupResult {
+  rejected: boolean;
+  resolved: { model: string; provider: string } | null;
+}
+
+/**
+ * The issues that still apply: auto-fill records them once, but the user can resolve one by
+ * picking an available model, which fills in the provider auto-fill could not.
+ */
+export const unresolvedTemplateModelIssues = (
+  issues: TemplateModelIssue[],
+  models: BuilderModel[]
+): TemplateModelIssue[] =>
+  issues.filter((issue) => models.some((model) => model.id === issue.id && !model.provider));
 
 /**
  * Column/model state for the recipe builder. Selecting a column and selecting a model are
@@ -105,32 +135,61 @@ export const useJobBuilder = (
   const nextModelId = useRef(initialModels.current.length);
   const [paletteTab, setPaletteTab] = useState<PaletteTab>('columns');
 
+  const [templateModelIssues, setTemplateModelIssues] = useState<TemplateModelIssue[]>([]);
+  const [autoFillError, setAutoFillError] = useState(false);
   const autoFilled = useRef(false);
-  useEffect(() => {
-    if (autoFilled.current || !workspace) return;
+
+  const runAutoFill = useCallback(() => {
+    if (!workspace) return;
     const pending = getValues('models').filter((model) => !model.provider);
     if (pending.length === 0) return;
     autoFilled.current = true;
+    setAutoFillError(false);
 
     void (async () => {
-      const resolutions = await Promise.all(
+      const resolutions: (readonly [string, ModelLookupResult])[] = await Promise.all(
         pending.map(async (model) => {
           const preferred = model.model || undefined;
-          const candidates = await fetchAutoFillCandidates(workspace, preferred).catch(() => []);
-          return [model.id, resolveTemplateModel(candidates, preferred)] as const;
+          try {
+            const candidates = await fetchAutoFillCandidates(workspace, preferred);
+            const resolved = preferred
+              ? findWorkspaceModel(candidates, preferred)
+              : firstAvailableModel(candidates);
+            return [model.id, { rejected: false, resolved }] as const;
+          } catch {
+            return [model.id, { rejected: true, resolved: null }] as const;
+          }
         })
       );
       const byId = new Map(resolutions);
+      const anyRejected = resolutions.some(([, result]) => result.rejected);
+      if (anyRejected) autoFilled.current = false;
+      setAutoFillError(anyRejected);
+      setTemplateModelIssues(
+        pending.flatMap((model) => {
+          const result = byId.get(model.id);
+          if (!result || result.rejected) return [];
+          return model.model && !result.resolved
+            ? [{ id: model.id, alias: model.alias, requested: model.model }]
+            : [];
+        })
+      );
       setValue(
         'models',
         getValues('models').map((model) => {
-          if (!byId.has(model.id)) return model;
-          const resolved = byId.get(model.id);
-          return resolved ? { ...model, ...resolved } : { ...model, model: '' };
+          const resolved = byId.get(model.id)?.resolved;
+          return resolved
+            ? { ...model, model: resolved.model, provider: resolved.provider }
+            : model;
         })
       );
     })();
   }, [getValues, setValue, workspace]);
+
+  useEffect(() => {
+    if (autoFilled.current) return;
+    runAutoFill();
+  }, [runAutoFill]);
 
   const selectColumn = useCallback((id: string | null) => {
     setSelectedId(id);
@@ -216,6 +275,9 @@ export const useJobBuilder = (
     selectedColumnId: selectedId,
     selectedModelId,
     focusId,
+    templateModelIssues,
+    autoFillError,
+    retryAutoFill: runAutoFill,
     paletteTab,
     setPaletteTab,
     selectColumn,

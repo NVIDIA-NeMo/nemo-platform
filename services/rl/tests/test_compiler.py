@@ -99,6 +99,26 @@ def test_training_step_config_maps_exposed_knobs() -> None:
     assert sc.model.trust_remote_code is True
 
 
+def test_the_reporting_budget_reaches_the_training_step_config() -> None:
+    """From the public DPOTraining to the config the training container reads.
+
+    Every link in the chain defaults, so a dropped one reports at 200 rather than
+    failing -- which is exactly the kind of regression nothing else here notices.
+    """
+    from nmp.customization_common.training.reporting import ProgressReportingConfig
+
+    t = DPOTraining(progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss", "*_accuracy"]))
+    sc = _build_training_step_config(_make_job_output(t), trust_remote_code=False)
+
+    assert sc.schedule.progress_reporting.time_series_metrics == ["*_loss", "*_accuracy"]
+
+
+def test_the_reporting_budget_defaults_when_unstated() -> None:
+    sc = _build_training_step_config(_make_job_output(), trust_remote_code=False)
+
+    assert sc.schedule.progress_reporting.time_series_metrics is None
+
+
 def test_training_step_config_maps_integrations() -> None:
     """job_spec.integrations must reach the step config; otherwise W&B/MLflow are
     silently disabled because the driver's builders read customizer_config.integrations."""

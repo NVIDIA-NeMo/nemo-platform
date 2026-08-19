@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 library_name: transformers
 license: apache-2.0
 license_link: https://huggingface.co/Qwen/Qwen3-8B/blob/main/LICENSE
@@ -127,7 +130,6 @@ In this mode, the model will generate think content wrapped in a `<think>...</th
 
 > [!NOTE]
 > For thinking mode, use `Temperature=0.6`, `TopP=0.95`, `TopK=20`, and `MinP=0` (the default setting in `generation_config.json`). **DO NOT use greedy decoding**, as it can lead to performance degradation and endless repetitions. For more detailed guidance, please refer to the [Best Practices](#best-practices) section.
-
 
 ### `enable_thinking=False`
 

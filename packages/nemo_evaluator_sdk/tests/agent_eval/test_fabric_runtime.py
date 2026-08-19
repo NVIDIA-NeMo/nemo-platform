@@ -1100,3 +1100,107 @@ async def test_fabric_runtime_codex_skills_removed_even_when_run_fails(
     assert not (workspace / ".agents").exists()
     # Provenance is still stamped on the failed trial for the A/B diff.
     assert [prov["name"] for prov in trials[0].metadata["skills"]] == list(names)
+
+
+# --- ATIF token capture -----------------------------------------------------
+
+
+def _atif(tmp_path: Path, payload: Mapping[str, Any]) -> Path:
+    path = tmp_path / "trajectory-abc.atif.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _step(**metrics: int) -> dict[str, Any]:
+    return {"source": "agent", "message": "", "metrics": metrics}
+
+
+def test_final_metrics_totals_are_projected_onto_the_token_keys(tmp_path: Path) -> None:
+    path = _atif(
+        tmp_path,
+        {
+            "schema_version": "ATIF-v1.7",
+            "steps": [_step(prompt_tokens=1)],
+            "final_metrics": {
+                "total_prompt_tokens": 358,
+                "total_completion_tokens": 19324,
+                "total_cached_tokens": 3984621,
+            },
+        },
+    )
+    assert fabric_runtime._atif_token_metadata(path) == {
+        "prompt_tokens": 358,
+        "completion_tokens": 19324,
+        "cache_read_tokens": 3984621,
+    }
+
+
+def test_steps_are_summed_when_the_trajectory_has_no_aggregate_block(tmp_path: Path) -> None:
+    path = _atif(
+        tmp_path,
+        {
+            "schema_version": "ATIF-v1.7",
+            "steps": [_step(prompt_tokens=100, completion_tokens=10), _step(prompt_tokens=58, cached_tokens=7)],
+        },
+    )
+    assert fabric_runtime._atif_token_metadata(path) == {
+        "prompt_tokens": 158,
+        "completion_tokens": 10,
+        "cache_read_tokens": 7,
+    }
+
+
+def test_a_partial_aggregate_does_not_suppress_the_fields_only_the_steps_report(tmp_path: Path) -> None:
+    # Every final_metrics field is optional, so a block reporting only steps/cost validates cleanly.
+    # Resolving per field is what keeps a mid-run flush (the timeout path) from publishing nothing.
+    path = _atif(
+        tmp_path,
+        {
+            "schema_version": "ATIF-v1.7",
+            "steps": [_step(prompt_tokens=100, completion_tokens=10), _step(prompt_tokens=58)],
+            "final_metrics": {"total_steps": 2, "total_cost_usd": 0.12},
+        },
+    )
+    assert fabric_runtime._atif_token_metadata(path) == {"prompt_tokens": 158, "completion_tokens": 10}
+
+
+def test_a_reported_total_wins_over_the_step_sum_for_that_field_alone(tmp_path: Path) -> None:
+    # The aggregate is authoritative where it speaks; the steps fill only the fields it omits.
+    path = _atif(
+        tmp_path,
+        {
+            "schema_version": "ATIF-v1.7",
+            "steps": [_step(prompt_tokens=1, completion_tokens=10)],
+            "final_metrics": {"total_prompt_tokens": 358},
+        },
+    )
+    assert fabric_runtime._atif_token_metadata(path) == {"prompt_tokens": 358, "completion_tokens": 10}
+
+
+def test_an_unvalidatable_aggregate_still_falls_back_to_the_steps(tmp_path: Path) -> None:
+    path = _atif(
+        tmp_path,
+        {
+            "schema_version": "ATIF-v1.7",
+            "steps": [_step(prompt_tokens=158)],
+            "final_metrics": {"total_prompt_tokens": "not-an-int"},
+        },
+    )
+    assert fabric_runtime._atif_token_metadata(path) == {"prompt_tokens": 158}
+
+
+def test_a_trajectory_with_no_counts_anywhere_records_nothing(tmp_path: Path) -> None:
+    path = _atif(tmp_path, {"schema_version": "ATIF-v1.7", "steps": [_step()], "final_metrics": {}})
+    assert fabric_runtime._atif_token_metadata(path) == {}
+
+
+@pytest.mark.parametrize("payload", ["[]", "{ not json", '"a string"'])
+def test_an_unreadable_trajectory_records_nothing_rather_than_failing(tmp_path: Path, payload: str) -> None:
+    path = tmp_path / "trajectory-abc.atif.json"
+    path.write_text(payload, encoding="utf-8")
+    assert fabric_runtime._atif_token_metadata(path) == {}
+
+
+def test_a_missing_trajectory_records_nothing(tmp_path: Path) -> None:
+    assert fabric_runtime._atif_token_metadata(None) == {}
+    assert fabric_runtime._atif_token_metadata(tmp_path / "absent.atif.json") == {}

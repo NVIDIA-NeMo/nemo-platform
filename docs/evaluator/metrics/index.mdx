@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluation Metrics"
 description: ""
 ---
@@ -8,7 +11,7 @@ Metrics define how to score the outputs of your models, agents, or pipelines.
 
 ## What is a metric?
 
-A metric is a scoring definition that evaluates model or agent outputs. In the Evaluator plugin SDK, metrics are inline Python objects passed directly to `evaluator.run(...)` or `evaluator.submit(...)`.
+A metric is a scoring definition that evaluates model or agent outputs. In the Evaluator plugin SDK, metrics are inline Python objects passed directly to `evaluator.submit(...)`.
 
 - **Inputs**: For custom metrics, inputs define scoring logic composed of dataset fields and model outputs; for judge-based custom metrics, this also includes judge-model inputs (for example, judge prompts/rubrics and configuration).
 - **Outputs**: Row-level scores and aggregate statistics.
@@ -41,7 +44,6 @@ Terminology on this page:
 
 Minimal sync evaluation with a built-in metric:
 
-
 ```python
 import os
 
@@ -57,17 +59,18 @@ evaluator: Evaluator = client.evaluator
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"expected": "Paris", "output": "Paris"},
         {"expected": "Berlin", "output": "Munich"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 print(result.aggregate_scores)
 ```
-
 
 ## Execution Modes
 

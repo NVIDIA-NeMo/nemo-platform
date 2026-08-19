@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: guardrails-plugin
 description: Use when working on guardrailing chat completions through the Inference Gateway — creating guardrail configs, attaching the `nemo-guardrails` middleware to a VirtualModel, verifying configs with the `/checks` endpoint, or debugging input/output rail behavior.
 metadata:

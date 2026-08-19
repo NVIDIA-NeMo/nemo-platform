@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import type { RailsStatus } from '@studio/api/guardrail-checks/types';
+import type { ActivatedGuardrail, RailsStatus } from '@studio/api/guardrail-checks/types';
 import {
   detectorMeta,
   listConfiguredDetectors,
@@ -71,13 +71,8 @@ const collectConfigFlows = (data: RailsConfig | undefined): string[] => {
   ];
 };
 
-/** One guardrail the config declares, and whether it actually ran in a given run. */
-export interface ActivatedGuardrail {
-  /** The dedupe identity from [[guardrailId]], and the only safe React key: labels can collide. */
-  id: string;
-  label: string;
-  active: boolean;
-}
+// Declared alongside RunRecord — it is persisted on each run, not just rendered.
+export type { ActivatedGuardrail };
 
 /**
  * Identity for deduping a guardrail: its detector key when the flow registry

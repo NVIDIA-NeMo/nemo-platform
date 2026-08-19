@@ -27,7 +27,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricMetadata,
 )
 from nemo_evaluator_sdk.values.common import SecretRef
-from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
+from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, FILESET_REF_PATTERN, parse_entity_ref
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, RootModel, field_validator
 
 
@@ -252,6 +252,21 @@ def _reject_duplicate_metadata_keys(items: list[MetadataItem]) -> list[MetadataI
 
 #: A task's metadata: key/value annotations with unique keys (duplicates rejected at validation).
 TaskMetadataList: TypeAlias = Annotated[list[MetadataItem], AfterValidator(_reject_duplicate_metadata_keys)]
+
+#: Where a taskset's own files live: one Files reference, ``workspace/fileset#prefix``. A
+#: grouping's files are a directory, not a set of independently addressed blobs, so one reference
+#: says everything a list of per-file entries would — while making it impossible for the two to
+#: disagree about what the taskset ships.
+#:
+#: Same shape as ``bundle_ref`` and ``archive_ref``, so the fragment is required; here it names the
+#: prefix the files sit under rather than a single file. Use a prefix such as ``#files`` to mean
+#: "the whole of this fileset's file area".
+#:
+#: Pinning is arranged by pointing at a location that is not rewritten — a fileset written once, or
+#: a content-addressed prefix inside a shared one. A reference into a location that *is* later
+#: rewritten resolves to whatever it holds when read, which is the contract the Files service gives
+#: every other consumer.
+TasksetFilesRef: TypeAlias = Annotated[str, Field(pattern=FILESET_REF_PATTERN)]
 
 
 def _reject_duplicate_task_refs(refs: list[TaskRef]) -> list[TaskRef]:

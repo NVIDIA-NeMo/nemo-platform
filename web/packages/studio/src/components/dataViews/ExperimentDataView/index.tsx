@@ -21,6 +21,7 @@ import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type { EvaluationFilter, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { EVAL_DURATION_METADATA_KEY, evalDurationMs } from '@studio/api/evaluation/utils';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { ExperimentParetoChart } from '@studio/components/charts/ExperimentParetoChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView/AddToGroupModal';
@@ -54,6 +55,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   latency_ms: 'latency_ms.mean',
   total_latency_ms: 'latency_ms.sum',
   tokens: 'tokens.mean',
+  total_tokens: 'tokens.sum',
   test_case_count: 'test_case_count',
 };
 
@@ -67,6 +69,7 @@ const sortFieldToColumnId = (field: string): string | undefined => {
   if (field.startsWith('cost_usd.')) return 'cost_usd';
   if (field === 'latency_ms.sum') return 'total_latency_ms';
   if (field.startsWith('latency_ms.')) return 'latency_ms';
+  if (field === 'tokens.sum') return 'total_tokens';
   if (field.startsWith('tokens.')) return 'tokens';
   const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
   if (evaluatorMatch) return `evaluator-${evaluatorMatch[1]}`;
@@ -99,6 +102,7 @@ const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'latency_ms') return 'latency_ms.mean';
   if (id === 'total_latency_ms') return 'latency_ms.sum';
   if (id === 'tokens') return 'tokens.mean';
+  if (id === 'total_tokens') return 'tokens.sum';
   // The list columns hold the plural name facets; the API filter params are singular contains-matches.
   if (id === 'agent_names') return 'agent_name';
   if (id === 'agent_versions') return 'agent_version';
@@ -230,13 +234,17 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
 
   // One column per metadata key: keys are lowercased so case variants (e.g. "status"
   // and "Status") collapse into one column rather than producing duplicate headers.
+  // The run duration is excluded because the Duration column below already renders it, formatted;
+  // publish duration is deliberately left in, which is what surfaces publish latency at all.
   const metadataKeys = useMemo(
     () =>
       [
         ...new Set(
           orderedData.flatMap((e) => Object.keys(e.metadata ?? {}).map((k) => k.toLowerCase()))
         ),
-      ].sort(),
+      ]
+        .filter((key) => key !== EVAL_DURATION_METADATA_KEY)
+        .sort(),
     [orderedData]
   );
 
@@ -475,11 +483,32 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
           );
         },
       }),
+      accessor((original) => original.tokens?.sum, {
+        id: 'total_tokens',
+        // Sum of per-test-case means: the rollup is deliberately k-invariant, so this is one pass
+        // through the dataset, not total tokens burned across repeated attempts.
+        header: 'Total tokens (per test case)',
+        enableSorting: true,
+        meta: { title: false, filter: numberRangeFilter('Total tokens (per test case)') },
+        cell: ({ row }) => {
+          const { tokens } = row.original;
+          return <Text>{tokens?.sum != null ? Math.round(tokens.sum).toLocaleString() : '-'}</Text>;
+        },
+      }),
       accessor((original) => original.test_case_count, {
         id: 'test_case_count',
         header: 'Total test cases',
         enableSorting: true,
         cell: ({ row }) => <Text>{String(row.original.test_case_count ?? 0)}</Text>,
+      }),
+      // Written as metadata at publish time, so it is a string and only present for runs that
+      // published successfully. Not sortable: the API sorts metadata lexically, which would order
+      // "9" after "10", and the list pages at 100 so a client-side sort would lie across pages.
+      accessor((original) => evalDurationMs(original.metadata), {
+        id: 'eval_duration',
+        header: 'Duration',
+        enableSorting: false,
+        cell: ({ getValue }) => <Text>{formatDurationMs(getValue<number | undefined>())}</Text>,
       }),
       accessor('created_at', {
         header: 'Created',

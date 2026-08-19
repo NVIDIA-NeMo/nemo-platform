@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-intake
 description: Instrument agents, ingest telemetry into NeMo Intake, and query spans, traces, sessions, and evaluator results. Use when connecting agent code or existing telemetry to Intake, choosing among OTLP, chat-completions, or ATIF, checking Intake and ClickHouse readiness, inspecting agent runs, or attaching evaluation scores outside the Experiments leaderboard workflow.
 license: Apache-2.0
@@ -79,6 +82,7 @@ other failures, report the response and route platform startup problems to `setu
 | **OTLP/HTTP protobuf** | Live, granular telemetry when instrumentation emits **OpenInference** or **OTel GenAI semantic conventions**. Prefer this for ongoing observability and complete agent hierarchies. | `POST .../ingest/otlp/v1/traces` |
 | **Chat completions** | Captured OpenAI-compatible request/response logs, proxy instrumentation, or runtimes without OpenInference or OTel GenAI instrumentation. It represents one model interaction, not a full agent trajectory. | `POST .../ingest/chat-completions` |
 | **ATIF** | Complete agent trajectories with ordered steps and metadata, especially Harbor evaluation trials. | `POST .../ingest/atif` |
+| **Direct spans** | Historical exports from MLflow, LangSmith, Phoenix, Braintrust, or another trace store. | `POST .../ingest/spans` |
 
 All endpoint prefixes are:
 `$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE`.
@@ -88,6 +92,28 @@ you need the semantic attributes and response behavior for OTLP.
 
 Do not translate a native source format without need. Preserve the source's IDs, timestamps,
 hierarchy, inputs, outputs, statuses, errors, and semantic attributes.
+
+## Import an existing trace store
+
+When the user names MLflow, LangSmith, Arize Phoenix, or Braintrust, read only that provider's
+reference below and run its bundled script. Do not load the other provider references.
+
+| Provider | Reference | Script |
+|---|---|---|
+| MLflow | `references/import-mlflow.md` | `scripts/import_mlflow.py` |
+| LangSmith | `references/import-langsmith.md` | `scripts/import_langsmith.py` |
+| Arize Phoenix | `references/import-phoenix.md` | `scripts/import_phoenix.py` |
+| Braintrust | `references/import-braintrust.md` | `scripts/import_braintrust.py` |
+
+Every live import requires an explicit `--project`, `--since`, and `--until`. The scripts write
+spans first, then provider evaluations and human annotations, verify the imported span IDs, and are
+safe to replay. They use the existing SDK client factory, including the active CLI context and OAuth
+token refresh; explicit `--nmp-base-url`, `--workspace`, and `NMP_ACCESS_TOKEN` overrides still
+work. Use `--dry-run` to inspect the direct JSON projection without writing Intake.
+
+Direct imports preserve provider timestamps and reject a complete span batch with `422` when any
+`started_at` falls outside Intake's 90-day ClickHouse TTL. Increase the `spans` and `trace_index`
+table TTLs before importing older history.
 
 ## Instrument code for OTLP
 

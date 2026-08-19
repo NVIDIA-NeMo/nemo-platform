@@ -9,11 +9,22 @@ import {
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
+import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
+import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
-import { targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
+import { type EvalJobRow, targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
 import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
+
+/** Backend caps page_size at 100. Enough to name the experiments behind a panel's worth of rows. */
+const EXPERIMENT_PAGE_SIZE = 100;
+
+/** Statuses that will not change again, so polling can stop. */
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'error', 'cancelled']);
+
+/** A published evaluation plus the experiment name its detail route is nested under. */
+export type AgentEvaluationRow = EvaluationResponse & { experimentName: string | null };
 
 interface UseAgentPanelParams {
   workspace: string;
@@ -58,18 +69,29 @@ export const useAgentDetails = ({
   const agentsData = agentsResponse?.data;
   const deploymentsData = deploymentsResponse?.data;
 
-  // Recent evaluations targeting this agent. The platform's job filter API
-  // doesn't expose ``spec.agent`` as a top-level filter, so we fetch the
-  // workspace's eval jobs and filter client-side. Capped at the most recent
-  // N to keep the panel scannable; the full list is on the evaluations route.
-  const { data: agentEvalsData } = useQuery({
-    queryKey: ['evaluator-jobs', workspace, 'panel', agentName] as const,
+  const { data: agentEvalsResponse } = useListEvaluations(
+    workspace,
+    {
+      filter: { agent_name: agentName ?? '' },
+      page_size: RECENT_EVAL_LIMIT,
+      sort: '-created_at',
+    },
+    { query: { enabled: !!agentName && !!workspace } }
+  );
+
+  const { data: agentJobsData } = useQuery({
+    queryKey: ['evaluator-jobs', workspace, 'agent-panel', agentName] as const,
     queryFn: ({ signal }) =>
       fetchEvaluatorJobs(workspace, signal, (all) => {
-        const matched = all.filter((j) => targetNameForEvalJob(j) === agentName).length;
+        const matched = all.filter((job) => targetNameForEvalJob(job) === agentName).length;
         return matched >= RECENT_EVAL_LIMIT;
       }),
     enabled: !!agentName && !!workspace,
+    refetchInterval: (query) => {
+      const rows = (query.state.data ?? []).map(toEvalJobRow);
+      const live = rows.some((row) => !TERMINAL_JOB_STATUSES.has(row.status ?? ''));
+      return live ? JOB_POLLING_INTERVAL_MS : false;
+    },
   });
 
   const deleteDeploymentMutation = useAgentsDeleteDeployment({
@@ -91,13 +113,30 @@ export const useAgentDetails = ({
     [deploymentsData, agentName]
   );
 
-  const agentEvals = useMemo(() => {
+  const { data: experimentsResponse } = useListExperiments(
+    workspace,
+    { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
+    { query: { enabled: !!agentName && !!workspace } }
+  );
+
+  const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    const all = (agentEvalsData ?? []).map(toEvalJobRow);
-    // Match either the bare agent name or a workspace-prefixed ref.
-    const matches = all.filter((job) => job.agentName === agentName);
-    return matches.slice(0, RECENT_EVAL_LIMIT);
-  }, [agentEvalsData, agentName]);
+    const namesById = new Map(
+      (experimentsResponse?.data ?? []).map((experiment) => [experiment.id, experiment.name])
+    );
+    return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
+      ...evaluation,
+      experimentName: namesById.get(evaluation.experiment_ids[0] ?? '') ?? null,
+    }));
+  }, [agentEvalsResponse, experimentsResponse, agentName]);
+
+  const agentJobs: EvalJobRow[] = useMemo(() => {
+    if (!agentName) return [];
+    return (agentJobsData ?? [])
+      .filter((job) => targetNameForEvalJob(job) === agentName)
+      .slice(0, RECENT_EVAL_LIMIT)
+      .map(toEvalJobRow);
+  }, [agentJobsData, agentName]);
 
   const healthyDeployments = useMemo(
     () => agentDeployments.filter((d) => d.status === 'running'),
@@ -121,6 +160,7 @@ export const useAgentDetails = ({
     agent,
     agentDeployments,
     agentEvals,
+    agentJobs,
     healthyDeployments,
     isDeploying,
     chatDeployment,

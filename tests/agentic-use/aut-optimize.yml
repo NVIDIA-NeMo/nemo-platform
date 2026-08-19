@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # AUT optimization config for agentic-use.
 #
 # This config lives in tests/agentic-use/ (not next to the AUT) on purpose:

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Guardrails Plugin Benchmarks
 
 Local harness for benchmarking the `nemo-guardrails` Inference Gateway
@@ -217,8 +220,9 @@ the tolerances also account for inter-runner variance.
   Other levels still appear in the analyzer's output tables, but pass/fail
   is decided only by these.
 - `DEFAULT_DELTA_P50_TOLERANCE_MS: int` — default tolerance (in ms) applied
-  to every validated concurrency. A check fails when
-  `|observed - baseline| > tolerance`.
+  to every validated concurrency. A check fails only on a regression, when
+  `observed - baseline > tolerance`. Faster results pass regardless of how
+  far below the baseline they are.
 - `DELTA_P50_TOLERANCE_OVERRIDES_MS: dict[int, int]` — per-concurrency
   tolerance overrides (in ms). Levels without an override fall back to the
   default.
@@ -226,9 +230,9 @@ the tolerances also account for inter-runner variance.
   (in ms) per concurrency level. Edit by hand when a real change shifts
   the numbers.
 
-Worked example: at c=16 the override is 200 ms, so a run with observed
-delta_p50 = 1589 (diff +199 from baseline 1390) passes; observed
-delta_p50 = 1591 (diff +201) fails.
+Worked example: at c=16 the override is 200 ms, so runs with observed
+delta_p50 = 1190 (diff -200) or 1589 (diff +199 from baseline 1390) pass;
+observed delta_p50 = 1591 (diff +201) fails.
 
 Notes on the current values:
 

@@ -25,6 +25,15 @@ export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ eval
   // formatDurationMs returns '—' for null/undefined, which is also KVPair's default empty value.
   const avgLatency = formatDurationMs(experiment?.latency_ms?.mean);
 
+  const tokenSum = experiment?.tokens?.sum;
+  const totalTokens =
+    tokenSum != null
+      ? Math.round(tokenSum).toLocaleString(undefined, {
+          notation: 'compact',
+          maximumFractionDigits: 0,
+        })
+      : undefined;
+
   const modelNames = experiment?.model_names ?? [];
   const modelNamesJoined = modelNames.length > 0 ? modelNames.join(', ') : undefined;
   const modelNamesValue: ReactNode = modelNamesJoined ? (
@@ -95,6 +104,8 @@ export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ eval
         <KVPair label="Models" value={modelNamesValue} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair label="Avg Cost" value={avgCost} loading={isLoading} orientation="vertical" />
+        <Divider orientation="vertical" className="grow-0 self-stretch" />
+        <KVPair label="Tokens" value={totalTokens} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair label="Avg Latency" value={avgLatency} loading={isLoading} orientation="vertical" />
       </Flex>

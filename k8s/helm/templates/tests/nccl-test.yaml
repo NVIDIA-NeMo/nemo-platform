@@ -1,3 +1,8 @@
+{{/*
+SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
 {{- /* Chart test (helm test only): resources use helm.sh/hook: test and are not applied on install/upgrade. See https://helm.sh/docs/topics/chart_tests/ */ -}}
 {{- /* kyverno-policy.yaml: only one multinodeNetworking.<cloud>.enabled; $cloud is the active profile. */ -}}
 {{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}

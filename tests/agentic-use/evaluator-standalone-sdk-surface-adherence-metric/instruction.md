@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Add A Custom Surface-Adherence Metric
 
 Use the local standalone Evaluator SDK to draft and exercise a custom metric that scores whether observed Evaluator surfaces stay within a task's allowed surfaces.

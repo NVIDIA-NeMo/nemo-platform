@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # LoRA Customization Job via NeMo Platform Customizer (GPU)
 
 This task tests submitting and running a real LoRA fine-tuning job through the **nemo-customizer** plugin with the **nmp-automodel** backend. Training is dispatched through the NeMo Platform jobs pipeline to GPU containers built from the dev registry.

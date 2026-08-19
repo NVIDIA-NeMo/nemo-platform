@@ -14,7 +14,7 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.sdk import FilesetRef
@@ -47,7 +47,7 @@ from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundEr
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig
 from nemo_platform_plugin.files.types import CreateFilesetRequest
-from nemo_platform_plugin.secrets.client import AsyncSecretsClient
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient, SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from pydantic import SecretStr
 
@@ -65,7 +65,6 @@ HELPFULNESS_PROMPT_V1 = (
     'Return only a JSON object with this shape: {"helpfulness": <integer>}.'
 )
 ONLINE_CHAT_PROMPT_TEMPLATE = {"messages": [{"role": "user", "content": "{{item.prompt}}"}]}
-ExampleExecutionMode = Literal["run", "submit"]
 LOCAL_HELPSTEER2_ROWS = (
     {
         "prompt": "What is the capital of France?",
@@ -280,15 +279,49 @@ async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNe
 
 async def model_with_valid_secret(
     *,
-    execution_mode: ExampleExecutionMode,
     workspace: str,
     client: AsyncNeMoPlatform,
 ) -> Model:
-    """Return a model configured for run or submit NeMo Platform example execution."""
-    if execution_mode == "submit":
-        secret_name = await ensure_submit_evaluator_api_key_secret(workspace, client)
-        return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
-    return model
+    """Return a model carrying the API-key secret that a submitted platform job needs."""
+    secret_name = await ensure_submit_evaluator_api_key_secret(workspace, client)
+    return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
+
+
+def ensure_submit_evaluator_api_key_secret_sync(workspace: str, client: NeMoPlatform) -> str:
+    """Sync mirror of :func:`ensure_submit_evaluator_api_key_secret`."""
+    secret_name = DEFAULT_API_KEY_SECRET.lower().replace("_", "-")
+    secrets = client_from_platform(client, SecretsClient)
+    try:
+        secrets.get_secret(name=secret_name, workspace=workspace)
+    except ClientNotFoundError:
+        api_key = os.getenv(DEFAULT_API_KEY_SECRET) or os.getenv("NVIDIA_API_KEY") or os.getenv("NVIDIA_BUILD_API_KEY")
+        if api_key is None:
+            raise RuntimeError(
+                f"Submit-mode online evaluation needs a platform secret named '{secret_name}' in workspace "
+                f"'{workspace}'. Set NVIDIA_BUILD_API_KEY or NVIDIA_API_KEY to let this "
+                "example create it, or create it manually with: "
+                f"nemo secrets create {secret_name} --value '<api-key>' --workspace {workspace}"
+            ) from None
+        try:
+            secrets.create_secret(
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(api_key)),
+                workspace=workspace,
+            )
+            print("API key secret created for workspace")
+        except ClientConflictError:
+            pass
+    return secret_name
+
+
+def model_with_valid_secret_sync(*, workspace: str, client: NeMoPlatform) -> Model:
+    """Sync mirror of :func:`model_with_valid_secret`.
+
+    The module-level ``model`` names an environment variable, which was correct while the plugin
+    ran evaluations in-process. A submitted job resolves ``api_key_secret`` against platform
+    secrets instead, so the online sync example needs the same substitution the async paths do.
+    """
+    secret_name = ensure_submit_evaluator_api_key_secret_sync(workspace, client)
+    return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
 
 
 def create_helpfulness_metric(judge_model: Model) -> LLMJudgeMetric:
@@ -389,21 +422,12 @@ def _assert_exact_match_result(result: EvaluationResult, *, workflow: str, expec
 async def _evaluate_metric(
     evaluator_plugin_client: AsyncEvaluator,
     *,
-    execution_mode: ExampleExecutionMode,
     metric: Metric,
     dataset: PluginDatasetInput,
     config: RunConfig | RunConfigOnlineModel,
     **run_kwargs: Any,
 ) -> EvaluationResult:
-    """Run or submit based on the requested plugin SDK execution mode."""
-    if execution_mode == "run":
-        return await evaluator_plugin_client.run(
-            metric=metric,
-            dataset=dataset,
-            config=config,
-            **run_kwargs,
-        )
-
+    """Submit the metric as a platform job and wait for its result."""
     job = await evaluator_plugin_client.submit(
         metric=metric,
         dataset=dataset,
@@ -463,7 +487,6 @@ async def _run_online_metric_example_body(
     dataset: PluginDatasetInput,
     workflow_label: str,
     is_online: bool,
-    execution_mode: ExampleExecutionMode,
     limit_samples: int,
 ) -> None:
     """Evaluate one exact-match metric against an already-built dataset.
@@ -480,7 +503,6 @@ async def _run_online_metric_example_body(
         metric = _online_exact_match_metric()
         config = RunConfigOnlineModel(parallelism=4, limit_samples=limit_samples)
         run_kwargs["target"] = await model_with_valid_secret(
-            execution_mode=execution_mode,
             workspace=DEFAULT_WORKSPACE,
             client=client,
         )
@@ -488,7 +510,6 @@ async def _run_online_metric_example_body(
 
     result = await _evaluate_metric(
         evaluator_plugin_client,
-        execution_mode=execution_mode,
         metric=metric,
         dataset=dataset,
         config=config,
@@ -498,7 +519,7 @@ async def _run_online_metric_example_body(
     if not is_online:
         _assert_exact_match_result(
             result,
-            workflow=f"{execution_mode} {workflow_label}",
+            workflow=workflow_label,
             expected_rows=limit_samples,
         )
     else:
@@ -507,14 +528,12 @@ async def _run_online_metric_example_body(
 
 async def run_nmp_online_metric_example(
     is_online: bool = False,
-    execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
     """Evaluate one metric through the plugin SDK using run or submit."""
     _print_example_separator(
         run_nmp_online_metric_example.__name__,
         is_online=is_online,
-        execution_mode=execution_mode,
         limit_samples=limit_samples,
     )
     client = await _new_client()
@@ -525,7 +544,6 @@ async def run_nmp_online_metric_example(
             dataset=dataset,
             workflow_label="exact-match",
             is_online=is_online,
-            execution_mode=execution_mode,
             limit_samples=limit_samples,
         )
     finally:
@@ -534,14 +552,12 @@ async def run_nmp_online_metric_example(
 
 def run_nmp_online_metric_example_sync_client(
     is_online: bool = False,
-    execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
     """Evaluate one metric through the plugin SDK using a sync platform client."""
     _print_example_separator(
         run_nmp_online_metric_example_sync_client.__name__,
         is_online=is_online,
-        execution_mode=execution_mode,
         limit_samples=limit_samples,
     )
     client = _new_sync_client()
@@ -555,38 +571,33 @@ def run_nmp_online_metric_example_sync_client(
         if is_online:
             metric = _online_exact_match_metric()
             config = RunConfigOnlineModel(parallelism=4, limit_samples=limit_samples)
-            run_kwargs["target"] = model
+            run_kwargs["target"] = model_with_valid_secret_sync(
+                workspace=DEFAULT_WORKSPACE,
+                client=client,
+            )
             run_kwargs["prompt_template"] = ONLINE_CHAT_PROMPT_TEMPLATE
 
-        if execution_mode == "run":
-            result = evaluator_plugin_client.run(
-                metric=metric,
-                dataset=dataset,
-                config=config,
-                **run_kwargs,
-            )
-        else:
-            job = evaluator_plugin_client.submit(
-                metric=metric,
-                dataset=dataset,
-                config=config,
-                metric_bundle_packager=CloudpickleMetricBundlePackager(),
-                **run_kwargs,
-            )
-            print(f"Submitted evaluator plugin job: {job.name}")
-            job.wait_until_done(
-                poll_interval_seconds=1,
-                job_timeout_seconds=300,
-                pending_timeout_seconds=120,
-            )
-            result = job.get_result()
-            artifacts_dir = job.download_artifacts(path="evaluation_artifacts")
-            print(f"Saved artifacts under {artifacts_dir}")
+        job = evaluator_plugin_client.submit(
+            metric=metric,
+            dataset=dataset,
+            config=config,
+            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+            **run_kwargs,
+        )
+        print(f"Submitted evaluator plugin job: {job.name}")
+        job.wait_until_done(
+            poll_interval_seconds=1,
+            job_timeout_seconds=300,
+            pending_timeout_seconds=120,
+        )
+        result = job.get_result()
+        artifacts_dir = job.download_artifacts(path="evaluation_artifacts")
+        print(f"Saved artifacts under {artifacts_dir}")
 
         if not is_online:
             _assert_exact_match_result(
                 result,
-                workflow=f"sync {execution_mode} exact-match",
+                workflow="sync submit exact-match",
                 expected_rows=limit_samples,
             )
         else:
@@ -597,14 +608,12 @@ def run_nmp_online_metric_example_sync_client(
 
 async def run_nmp_online_metric_local_file_example(
     is_online: bool = False,
-    execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
     """Evaluate one metric through the plugin SDK using a local JSONL Path dataset."""
     _print_example_separator(
         run_nmp_online_metric_local_file_example.__name__,
         is_online=is_online,
-        execution_mode=execution_mode,
         limit_samples=limit_samples,
     )
     client = await _new_client()
@@ -617,7 +626,6 @@ async def run_nmp_online_metric_local_file_example(
                 dataset=dataset_path,
                 workflow_label="local-file exact-match",
                 is_online=is_online,
-                execution_mode=execution_mode,
                 limit_samples=limit_samples,
             )
     finally:
@@ -627,14 +635,12 @@ async def run_nmp_online_metric_local_file_example(
 async def run_nmp_llm_judge_example(
     is_online: bool = False,
     limit_samples: int = 2,
-    execution_mode: ExampleExecutionMode = "run",
 ) -> None:
     """Evaluate a helpfulness judge through the plugin SDK using run or submit."""
     _print_example_separator(
         run_nmp_llm_judge_example.__name__,
         is_online=is_online,
         limit_samples=limit_samples,
-        execution_mode=execution_mode,
     )
     client = await _new_client()
 
@@ -642,7 +648,6 @@ async def run_nmp_llm_judge_example(
         dataset = await ensure_example_fileset(client)
         run_kwargs: dict[str, Any] = {}
         judge_model = await model_with_valid_secret(
-            execution_mode=execution_mode,
             workspace=DEFAULT_WORKSPACE,
             client=client,
         )
@@ -656,7 +661,6 @@ async def run_nmp_llm_judge_example(
 
         result = await _evaluate_metric(
             evaluator_plugin_client,
-            execution_mode=execution_mode,
             metric=create_helpfulness_metric(judge_model),
             dataset=dataset,
             config=config,
@@ -677,23 +681,28 @@ async def run_nmp_llm_judge_example(
 
 
 async def run_examples(*, include_submit: bool = False, include_model_calls: bool = False) -> None:
-    """Execute the example workflows exposed by this module."""
-    await run_nmp_online_metric_example(is_online=False, execution_mode="run")
-    await run_nmp_online_metric_local_file_example(is_online=False, execution_mode="run")
+    """Execute the example workflows exposed by this module.
 
-    if include_submit:
-        await run_nmp_online_metric_example(is_online=False, execution_mode="submit")
+    Every workflow here submits a platform job, so all of them are gated behind
+    ``include_submit``. The examples that used to run without one went through the plugin's
+    local execution path, which no longer exists — use ``nemo_evaluator_sdk.Evaluator`` for
+    evaluation that does not need a running platform.
+    """
+    if not include_submit:
+        print("All plugin examples submit platform jobs; pass --include-submit to run them.")
+        return
+
+    await run_nmp_online_metric_example(is_online=False)
+    await run_nmp_online_metric_local_file_example(is_online=False)
 
     if include_model_calls:
-        await run_nmp_llm_judge_example(is_online=False, execution_mode="run")
-        if include_submit:
-            await run_nmp_llm_judge_example(is_online=True, execution_mode="submit")
+        await run_nmp_llm_judge_example(is_online=True)
 
 
 def run_sync_examples(*, include_submit: bool = False) -> None:
     """Execute the synchronous example workflows exposed by this module."""
     if include_submit:
-        run_nmp_online_metric_example_sync_client(is_online=False, execution_mode="submit")
+        run_nmp_online_metric_example_sync_client(is_online=False)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -702,7 +711,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--include-submit",
         action="store_true",
-        help="Submit evaluator jobs in addition to run-mode examples.",
+        help="Run the example workflows. Every one submits an evaluator job, so without this flag none of them run.",
     )
     parser.add_argument(
         "--include-model-calls",

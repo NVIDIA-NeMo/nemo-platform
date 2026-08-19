@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Studio sample agent: Fabric (nemo-agents-spec-v1) Email Security Triage.
 # Served as a static asset and fetched by Studio's Create Example Agent flow.
 # `models.default.model` is overwritten with the user's selected model at create

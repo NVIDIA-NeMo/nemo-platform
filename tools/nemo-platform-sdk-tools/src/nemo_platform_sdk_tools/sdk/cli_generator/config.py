@@ -245,6 +245,22 @@ class CLIConfig:
             return wait_config
         return None
 
+    def get_examples(self, resource_path: list[str], method_name: str) -> list[str] | None:
+        """Return endpoint-specific CLI examples when configured."""
+
+        method_config = self.get_method_config(resource_path, method_name)
+        examples = method_config.get("examples") if method_config else None
+        if examples is None:
+            return None
+        resource = ".".join(resource_path)
+        if (
+            not isinstance(examples, list)
+            or not examples
+            or not all(isinstance(example, str) and example.strip() for example in examples)
+        ):
+            raise ValueError(f"Invalid CLI examples for {resource}.{method_name}; expected non-empty strings")
+        return [str(example) for example in examples]
+
     def get_additional_methods(self, resource_path: list[str]) -> dict[str, Any]:
         """Get additional methods for a resource.
 

@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-explore
 description: Captures what a NeMo Platform agent should do before any code or YAML. Explores the user's codebase and docs first, fills in every spec field it can infer, then asks the user only for the gaps. Output feeds nemo-spec. Use over generic brainstorming for any NeMo Platform agent design conversation.
 triggers:

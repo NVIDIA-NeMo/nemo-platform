@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform Agentic Flows Documentation
 
 This directory contains curated documentation of 39 E2E agentic flows for the NeMo Platform, derived from the NeMo Platform v2 Phase 4 Plan of Record (POR).

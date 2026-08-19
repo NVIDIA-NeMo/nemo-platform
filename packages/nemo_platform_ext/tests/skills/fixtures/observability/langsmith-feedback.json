@@ -1,0 +1,21 @@
+{
+  "feedback": [
+    {
+      "created_at": "2024-05-05T23:23:11.077838",
+      "modified_at": "2024-05-05T23:23:11.232962",
+      "session_id": "c919298b-0af2-4517-97a2-0f98ed4a48f8",
+      "run_id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+      "key": "correctness",
+      "score": 1.0,
+      "value": null,
+      "comment": "I gave this score because the answer was correct.",
+      "correction": null,
+      "id": "62104630-c7f5-41dc-8ee2-0acee5c14224",
+      "feedback_source": {
+        "type": "app",
+        "metadata": null,
+        "user_id": "ad52b092-1346-42f4-a934-6e5521562fab"
+      }
+    }
+  ]
+}

@@ -440,6 +440,40 @@ config:
             config.get_wait_config(["customization", "jobs"], "create")
 
 
+class TestGetExamples:
+    def _create_config(self, config_yaml: str) -> CLIConfig:
+        with NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(config_yaml)
+            f.flush()
+            return CLIConfig(Path(f.name))
+
+    def test_returns_configured_examples(self):
+        config = self._create_config("""
+config:
+  - resource: [intake, ingest, spans]
+    methods:
+      create:
+        examples:
+          - nemo intake ingest spans create --input-file spans.json
+""")
+
+        assert config.get_examples(["intake", "ingest", "spans"], "create") == [
+            "nemo intake ingest spans create --input-file spans.json"
+        ]
+
+    def test_rejects_invalid_examples(self):
+        config = self._create_config("""
+config:
+  - resource: [intake, ingest, spans]
+    methods:
+      create:
+        examples: []
+""")
+
+        with pytest.raises(ValueError, match="Invalid CLI examples"):
+            config.get_examples(["intake", "ingest", "spans"], "create")
+
+
 class TestDiscoverEntityTypes:
     """Tests for discover_entity_types function."""
 

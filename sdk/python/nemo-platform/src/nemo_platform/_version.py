@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version as _package_version
 
 __title__ = "nemo_platform"
 try:
-    __version__ = _package_version("nemo-platform-sdk")
+    __version__ = _package_version("nemo-platform")
 except PackageNotFoundError:
     __version__ = "0.0.0"
 # Injected at release time for non-production builds; None for RC and production releases.

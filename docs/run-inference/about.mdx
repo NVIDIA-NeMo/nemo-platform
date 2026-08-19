@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "About Models and Inference"
 description: ""
 ---
@@ -56,7 +59,6 @@ By default, the platform pre-configures an external provider for NVIDIA Build na
 The example below demonstrates how to recreate it in your own workspace.
 For disambiguation purposes, this example names the manually-created version `my-nvidia-build`.
 
-
 <Tabs>
 
 <Tab title="CLI">
@@ -109,7 +111,6 @@ response = client.inference.gateway.provider.post(
 
 </Tabs>
 #### OpenAI
-
 
 <Tabs>
 
@@ -255,7 +256,6 @@ model_name = "my-model"
 provider_name = "my-provider"
 workspace = "default"
 oai_client = client.models.get_openai_client()
-
 
 # Get base URLs for different routing patterns
 client.models.get_openai_route_base_url()

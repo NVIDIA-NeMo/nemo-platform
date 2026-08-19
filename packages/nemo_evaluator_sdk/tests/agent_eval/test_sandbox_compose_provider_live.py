@@ -17,6 +17,11 @@ from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers.compose import (
     DockerComposeSandboxProvider,
 )
 
+# Keep-alive containers ignore SIGTERM; use a 1s stop grace so teardown does not wait
+# the provider default of 30s on every create/close cycle.
+_SHUTDOWN_TIMEOUT_SECONDS = 1.0
+_KEEPALIVE = 'command: ["sleep", "300"]'
+
 
 def _docker_ready() -> bool:
     if shutil.which("docker") is None:
@@ -71,7 +76,7 @@ async def test_no_build_runs_prebuilt_image_without_source_context(tmp_path: Pat
                 "  agent:",
                 f"    image: {image}",
                 "    build: ./missing-context",
-                '    command: ["sh", "-c", "sleep 300"]',
+                f"    {_KEEPALIVE}",
             ]
         )
         + "\n",
@@ -82,6 +87,7 @@ async def test_no_build_runs_prebuilt_image_without_source_context(tmp_path: Pat
         service_topology=_topology("agent"),
         pull_policy="never",
         startup_timeout_seconds=60,
+        shutdown_timeout_seconds=_SHUTDOWN_TIMEOUT_SECONDS,
     )
     try:
         handle = await provider.create(SandboxSpec())
@@ -184,36 +190,37 @@ async def test_build_mode_rebuilds_changed_provisioned_workspace(tmp_path: Path)
                 "  agent:",
                 f"    image: {image}",
                 "    build: ./source",
-                '    command: ["sh", "-c", "sleep 300"]',
+                f"    {_KEEPALIVE}",
             ]
         )
         + "\n",
         encoding="utf-8",
     )
+    provider = DockerComposeSandboxProvider(
+        compose_files=(compose_file,),
+        service_topology=_topology("agent"),
+        build=True,
+        pull_policy="never",
+        startup_timeout_seconds=60,
+        shutdown_timeout_seconds=_SHUTDOWN_TIMEOUT_SECONDS,
+    )
 
     async def evaluate(value: str) -> str:
         (context / "value.txt").write_text(value, encoding="utf-8")
-        provider = DockerComposeSandboxProvider(
-            compose_files=(compose_file,),
-            service_topology=_topology("agent"),
-            build=True,
-            pull_policy="never",
-            startup_timeout_seconds=60,
-        )
+        handle = await provider.create(SandboxSpec())
         try:
-            handle = await provider.create(SandboxSpec())
             result = await provider.exec(handle, "cat /value.txt")
-            await provider.close(handle)
             assert result.ok
             assert result.stdout is not None
             return result.stdout.strip()
         finally:
-            await provider.aclose()
+            await provider.close(handle)
 
     try:
         assert await evaluate("candidate-one") == "candidate-one"
         assert await evaluate("candidate-two") == "candidate-two"
     finally:
+        await provider.aclose()
         subprocess.run(["docker", "image", "rm", "--force", image], capture_output=True, timeout=30)
 
 
@@ -226,7 +233,7 @@ async def test_ordered_override_and_profile_activate_expected_topology(tmp_path:
                 "services:",
                 "  agent:",
                 "    image: busybox:latest",
-                '    command: ["sh", "-c", "sleep 300"]',
+                f"    {_KEEPALIVE}",
             ]
         )
         + "\n",
@@ -239,7 +246,7 @@ async def test_ordered_override_and_profile_activate_expected_topology(tmp_path:
                 "  worker:",
                 "    image: busybox:latest",
                 "    profiles: [extra]",
-                '    command: ["sh", "-c", "sleep 300"]',
+                f"    {_KEEPALIVE}",
             ]
         )
         + "\n",
@@ -251,6 +258,7 @@ async def test_ordered_override_and_profile_activate_expected_topology(tmp_path:
         profiles=("extra",),
         pull_policy="missing",
         startup_timeout_seconds=60,
+        shutdown_timeout_seconds=_SHUTDOWN_TIMEOUT_SECONDS,
     )
     try:
         handle = await provider.create(SandboxSpec())

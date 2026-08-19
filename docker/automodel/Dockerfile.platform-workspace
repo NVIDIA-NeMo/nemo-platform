@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Minimal Platform workspace slice for nmp-automodel container installs.
 # Used as a named build context (platform-workspace).
 # Keep in sync with docker/automodel/pyproject.workspace.toml members.
@@ -10,6 +13,8 @@ COPY docker/automodel/pyproject.workspace.toml pyproject.toml
 # (The docker/ tree moved out of services/automodel/, so it no longer rides in
 # via `COPY services/automodel`; copy it explicitly into the workspace slice.)
 COPY docker/automodel/no_override_requirements.txt docker/automodel/no_override_requirements.txt
+COPY docker/automodel/codec-file-removals.txt docker/automodel/codec-file-removals.txt
+COPY docker/scripts/remove-listed-files.sh docker/scripts/remove-listed-files.sh
 # nemo-platform-sdk hatch build force-includes docs/ from repo root.
 # docs/fern/openapi/openapi.yaml is a symlink to ../../../openapi/openapi.yaml.
 COPY docs docs

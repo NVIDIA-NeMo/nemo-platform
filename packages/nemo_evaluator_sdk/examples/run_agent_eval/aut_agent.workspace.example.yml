@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Task-capable agent-under-test (AUT) config for the `workspace-basic-mcp` task.
 #
 # The deployed agent must have the tools its task needs. `nemo-mcp` currently

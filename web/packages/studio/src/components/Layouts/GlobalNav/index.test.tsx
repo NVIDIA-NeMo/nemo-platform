@@ -16,12 +16,16 @@ vi.mock('@studio/components/UserPopover', () => ({
   UserPopover: () => <div data-testid="user-popover" />,
 }));
 
-vi.mock('@studio/routes/PageLayout/ThemeSwitch', () => ({
+vi.mock('@studio/components/Layouts/GlobalNav/components/ThemeSwitch', () => ({
   ThemeSwitch: () => <div data-testid="theme-switch" />,
 }));
 
 vi.mock('@studio/routes/agents/AssistantChatRoute/AssistantTopBarChat', () => ({
   AssistantTopBarChat: () => <div data-testid="assistant-top-bar-chat" />,
+}));
+
+vi.mock('@studio/components/Layouts/GlobalNav/components/DocumentationLink', () => ({
+  DocumentationLink: () => <div data-testid="documentation-link" />,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {
@@ -78,6 +82,14 @@ describe('GlobalNav', () => {
     localStorage.clear();
     document.documentElement.style.setProperty('--breakpoint-md', '768px');
     mockUseParams({ workspace: 'test-workspace' });
+  });
+
+  it('renders the documentation link', async () => {
+    createMatchMediaMock(true);
+
+    await renderGlobalNav();
+
+    expect(screen.getByTestId('documentation-link')).toBeInTheDocument();
   });
 
   describe('Responsive auto-collapse', () => {

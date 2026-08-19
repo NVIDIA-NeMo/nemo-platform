@@ -107,13 +107,13 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     const observabilityItems = [...optimizerNav, ...tracesNav];
 
     const modelSubItems = [
-      ...modelCompareNav,
-      ...evalNav,
-      ...customizerNav,
-      ...virtualModelsNav,
       ...deploymentsNav,
+      ...customizerNav,
+      ...evalNav,
+      ...modelCompareNav,
+      ...virtualModelsNav,
     ];
-    const datasetSubItems = [...dataDesignerNav, ...safeSynthesizerNav, ...anonymizerNav];
+    const datasetSubItems = [...anonymizerNav, ...dataDesignerNav, ...safeSynthesizerNav];
 
     // Agents and Models link to their own entity list page; the chevron expands the rest.
     const agentsHref = agentItems.length > 0 ? getAgentsListRoute(workspace) : undefined;
@@ -175,8 +175,8 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
 
   const systemNavGroup = useMemo(() => {
     const systemItems = [
-      ...getJobSideNavItems(workspace),
       ...getFilesetSideNavItems(workspace),
+      ...getJobSideNavItems(workspace),
       ...getSettingsSideNavItems(workspace),
     ];
     return systemItems.length > 0 ? [{ group: 'System', items: systemItems }] : [];

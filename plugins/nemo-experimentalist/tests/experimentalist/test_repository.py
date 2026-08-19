@@ -593,7 +593,7 @@ def test_snapshot_subtree_recreates_removed_nested_destination_with_real_git(tmp
     _git(checkout, "add", "pkg/agent/old.py")
     stale = checkout / "pkg" / "agent" / "local-secret.txt"
     stale.write_text("must not survive\n", encoding="utf-8")
-    (checkout / "pkg" / "agent" / "metadata.json").write_text("must not survive\n", encoding="utf-8")
+    (checkout / "pkg" / "agent" / "architecture.md").write_text("must not survive\n", encoding="utf-8")
 
     PRPublisher(agent_dir=checkout)._snapshot_subtree(_winner(tmp_path), "pkg/agent")
 

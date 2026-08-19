@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Data Designer Service Agentic Flows
 
 The Data Designer service generates synthetic datasets using LLMs. It supports schema-based generation, seed data expansion, and preview capabilities.

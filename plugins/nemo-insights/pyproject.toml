@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "nemo-insights-plugin"
 version = "0.1.0"
@@ -8,7 +11,7 @@ dependencies = [
   "httpx",
   "nemo-platform",
   "nemo-platform-plugin",
-  "nooa",
+  "nooa>=0.0.9",
   "opentelemetry-exporter-otlp>=1.42.1",
   "opentelemetry-sdk>=1.42.1",
   "pydantic>=2.12.0",
