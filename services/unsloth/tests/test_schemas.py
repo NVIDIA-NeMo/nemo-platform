@@ -78,6 +78,34 @@ class TestSubShapesIndependently:
         assert sched.epochs == 1
         assert sched.max_steps is None
 
+    def test_the_hf_logging_cadence_is_not_a_jobs_reporting_knob(self) -> None:
+        """`logging_steps` drives stdout and W&B; it never gated Jobs reporting.
+
+        Before the shared naming rule landed it accidentally was the only thing
+        throttling Jobs reports, so raising it from 1 gave proportionally fewer.
+        Nothing throttles now -- every step the trainer logs is reported -- so
+        this is purely HuggingFace's knob again.
+        """
+        assert ScheduleSpec().logging_steps == 1
+
+    def test_a_misspelled_reporting_field_is_rejected(self) -> None:
+        """The fragment is not a NamespacedModel, so it had to forbid extras itself.
+
+        Every model it is embedded in inherits `extra="forbid"`, and this module
+        states the contract: typos become validation errors, not silently-ignored
+        fields. Being the one nested object that ignored them made
+        `time_series_metric` a spelling that parsed and then did nothing.
+        """
+        with pytest.raises(ValidationError):
+            ScheduleSpec.model_validate({"progress_reporting": {"time_series_metric": ["*_loss"]}})
+
+    def test_the_time_series_metrics_default_to_the_backends_choice(self) -> None:
+        """Narrowing is opt-in, so adding the knob changed nobody's curves."""
+        assert ScheduleSpec().progress_reporting.time_series_metrics is None
+        assert ScheduleSpec(
+            progress_reporting={"time_series_metrics": ["*_loss"]}
+        ).progress_reporting.time_series_metrics == ["*_loss"]
+
     def test_training_defaults(self) -> None:
         t = TrainingSpec()
         assert t.training_type == "sft"

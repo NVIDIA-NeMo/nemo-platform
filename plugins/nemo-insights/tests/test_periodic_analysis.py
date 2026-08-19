@@ -232,8 +232,8 @@ def test_make_analyst_backend_always_writes_to_the_platform(tmp_path: Path) -> N
     assert mirrored.mirror is not None and mirrored.mirror.path == tmp_path / "insights.yaml"
 
 
-def test_local_only_is_testbed_plumbing_and_requires_a_path(tmp_path: Path) -> None:
-    """``local_only`` stays reachable for the testbed, which no CLI flag sets."""
+def test_local_only_is_evaluation_plumbing_and_requires_a_path(tmp_path: Path) -> None:
+    """``local_only`` stays reachable for the evaluation, which no CLI flag sets."""
     client = SimpleNamespace()
 
     platform_client = cast(AsyncNeMoPlatform, client)
@@ -295,6 +295,41 @@ def test_local_backend_write_preserves_other_top_level_keys(tmp_path: Path) -> N
         "metadata": "retained",
         "insights": [{"id": "insight-1"}],
     }
+
+
+@pytest.mark.asyncio
+async def test_local_backend_list_preserves_entity_metadata(tmp_path: Path) -> None:
+    backend = LocalAnalystBackend(
+        client=cast(AsyncNeMoPlatform, SimpleNamespace()),
+        path=tmp_path / "insights.yaml",
+    )
+    backend.store.write_records(
+        [
+            {
+                "id": "insight-local-1",
+                "workspace": "default",
+                "title": "Repeated failure",
+                "description": "The agent repeats the same failure.",
+                "agent": "research-agent",
+                "status": "open",
+                "trace_refs": ["trace-1"],
+                "created_at": _STAMP.isoformat(),
+                "updated_at": _STAMP.isoformat(),
+            }
+        ]
+    )
+
+    page = await backend.list_insights(
+        workspace="default",
+        page=1,
+        page_size=10,
+        agent=None,
+        status=None,
+    )
+
+    assert page.data[0].id == "insight-local-1"
+    assert page.data[0].created_at == _STAMP
+    assert page.data[0].updated_at == _STAMP
 
 
 def test_merge_eval_filter_pins_evaluation_id() -> None:

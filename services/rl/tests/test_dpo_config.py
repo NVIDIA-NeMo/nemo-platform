@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the pure config-builder helpers in dpo_config.
+"""Unit tests for the config builders in dpo_config.
 
-These cover the optimizer/scheduler/precision/data/logger builders and the inert
-Megatron block — i.e. everything except ``compile_dpo_config`` itself, which needs
-a real on-disk dataset to prepare and validate.
+Mostly the pure helpers — optimizer, scheduler, precision, data, logger, and the
+inert Megatron block. ``compile_dpo_config`` itself needs a real on-disk dataset
+to prepare and validate, so it is only exercised where nothing else can stand in:
+the reporting budget's hop through the DPO block, which no other layer can see.
 """
 
 from __future__ import annotations
@@ -50,6 +51,21 @@ def _make_step_config(
         parallelism=parallelism or TrainingStepConfig.ParallelismConfig(),
         output_model="out",
     )
+
+
+def _write_preference_dataset(directory: Path, rows: int = 8) -> Path:
+    """The minimum on-disk shape ``prepare_dataset`` and the validator accept."""
+    import json
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "train.jsonl"
+    path.write_text(
+        "".join(
+            json.dumps({"prompt": f"q{i}", "chosen": f"good{i}", "rejected": f"bad{i}"}) + "\n" for i in range(rows)
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _job_ctx(tmp_path: Path) -> NMPJobContext:
@@ -201,3 +217,47 @@ def test_logger_config_has_all_subsections_when_integrations_disabled(tmp_path: 
     # Every backend subsection is present even when disabled (NeMo-RL expects them).
     for key in ("wandb", "swanlab", "tensorboard", "mlflow", "gpu_monitoring"):
         assert key in cfg
+
+
+# --------------------------------------------------------------------------- #
+# compile_dpo_config: the reporting budget's one hop through the DPO block
+# --------------------------------------------------------------------------- #
+
+
+def test_the_reporting_budget_rides_the_dpo_block(tmp_path: Path) -> None:
+    """The compiled DPO config is the only channel from the job to the driver.
+
+    ``max_progress_points`` is not a NeMo-RL field; it rides as an undeclared
+    extra alongside ``steps_per_epoch``, and the driver reads it back with
+    getattr to build the progress callback's gate. Nothing upstream of the
+    driver would notice it being dropped -- the run would simply report at the
+    default forever.
+    """
+    from nmp.customization_common.training.reporting import ProgressReportingConfig
+    from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import compile_dpo_config
+
+    _write_preference_dataset(tmp_path / "data")
+    step_config = _make_step_config(
+        schedule=TrainingStepConfig.ScheduleConfig(
+            progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss"]),
+        ),
+    )
+    step_config.dataset.path = str(tmp_path / "data")
+    step_config.workspace_path = str(tmp_path / "work")
+
+    cfg = compile_dpo_config(step_config, _job_ctx(tmp_path))
+
+    assert cfg["dpo"]["progress_time_series_metrics"] == ["*_loss"]
+
+
+def test_the_dpo_block_carries_the_default_when_unstated(tmp_path: Path) -> None:
+    from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import compile_dpo_config
+
+    _write_preference_dataset(tmp_path / "data")
+    step_config = _make_step_config()
+    step_config.dataset.path = str(tmp_path / "data")
+    step_config.workspace_path = str(tmp_path / "work")
+
+    cfg = compile_dpo_config(step_config, _job_ctx(tmp_path))
+
+    assert cfg["dpo"]["progress_time_series_metrics"] is None, "absent means everything, not nothing"

@@ -1365,12 +1365,13 @@ components:
       - name
       - image
       title: RequestContainer
-      description: Public request container; env entries cannot carry secretRef.
+      description: Public request container.
     RequestEnvVar:
       not:
         required:
         - value
         - valueFrom
+        - secretRef
       properties:
         name:
           type: string
@@ -1382,12 +1383,20 @@ components:
           title: Valuefrom
           additionalProperties: true
           type: object
+        secretRef:
+          $ref: '#/components/schemas/SecretRef'
       additionalProperties: false
       type: object
       required:
       - name
       title: RequestEnvVar
-      description: Public request env vars; secretRef is controller-managed and response-only.
+      description: "Public request env vars.\n\nAn env var carries exactly one value\
+        \ source: a plaintext ``value``, a\n``valueFrom`` projection, or a ``secretRef``\
+        \ pointing at a Platform secret.\n``secretRef`` values are resolved by the\
+        \ substrate backend at deploy time \u2014\ndocker injects the resolved value\
+        \ as a plaintext container env var, while\nk8s materializes a single per-deployment\
+        \ ``Secret`` and mounts it via\n``envFrom`` so the plaintext never lands in\
+        \ the pod manifest."
     ResourceRequirements:
       properties:
         limits:

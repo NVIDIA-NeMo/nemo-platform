@@ -3,7 +3,7 @@
 #
 # Codec cleanup for release image scans. Remove this file and its
 # Dockerfile call when the upstream image contents no longer need this workaround.
-/opt/venv/lib/python3.12/site-packages/_soundfile_data/libsndfile_arm64.so
+/opt/venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so
 /usr/lib/aarch64-linux-gnu/libFLAC.so.12
 /usr/lib/aarch64-linux-gnu/libmp3lame.so.0
 /usr/lib/aarch64-linux-gnu/libogg.so.0

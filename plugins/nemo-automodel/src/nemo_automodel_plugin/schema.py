@@ -9,6 +9,7 @@ from typing import Literal, Self
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from pydantic import Field, model_validator
 
 __all__ = [
@@ -92,6 +93,7 @@ class ScheduleSpec(AutomodelSchema):
     max_steps: int | None = Field(default=None, gt=0)
     val_check_interval: float | None = None
     seed: int | None = None
+    progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
 
 
 class BatchSpec(AutomodelSchema):

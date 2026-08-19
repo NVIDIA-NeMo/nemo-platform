@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 from typing_extensions import Required, Annotated, TypedDict
 
 from ..._utils import PropertyInfo
@@ -31,6 +31,13 @@ class ExperimentUpdateParams(TypedDict, total=False):
 
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
     """Workspace-unique experiment name."""
+
+    baseline_evaluation_name: Optional[str]
+    """Name of this Experiment's baseline Evaluation.
+
+    The Evaluation must already be a live member of the Experiment. Set null to
+    clear the selected baseline.
+    """
 
     default_sort: str
     """
@@ -48,6 +55,12 @@ class ExperimentUpdateParams(TypedDict, total=False):
     insight_id: str
     """Reference to an external insight that seeded this experiment, if any."""
 
+    is_favorite: bool
+    """Whether this Experiment is marked as a favorite.
+
+    Defaults to false on create; omit on update to preserve the existing value.
+    """
+
     metadata: Dict[str, str]
     """Free-form producer metadata for the experiment."""
 
@@ -58,6 +71,12 @@ class ExperimentUpdateParams(TypedDict, total=False):
     `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
     latency (y): both exist for every group, so the chart always has something to
     render before anyone customizes it.
+    """
+
+    show_evaluations_over_time: bool
+    """Whether Studio should display this Experiment's Evaluation results over time.
+
+    Defaults to false on create; omit on update to preserve the existing value.
     """
 
     summary: str

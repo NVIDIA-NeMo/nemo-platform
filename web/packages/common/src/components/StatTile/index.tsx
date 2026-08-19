@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
+import cn from 'classnames';
 import type { FC } from 'react';
 
 export type StatTileStatus = 'success' | 'warning' | 'error' | 'neutral';
@@ -13,6 +14,8 @@ export interface StatTileProps {
   trailingLabelStatus?: StatTileStatus;
   hint?: string;
   hintStatus?: StatTileStatus;
+  className?: string;
+  bordered?: boolean;
 }
 
 const MUTED_CLASS_NAME = 'text-placeholder';
@@ -31,14 +34,18 @@ export const StatTile: FC<StatTileProps> = ({
   trailingLabelStatus,
   hint,
   hintStatus,
-}) => (
-  <Panel className="max-w-sm">
+  className,
+  bordered = true,
+}) => {
+  const content = (
     <Stack gap="density-sm">
       <Text kind="body/regular/sm" className={MUTED_CLASS_NAME}>
         {label}
       </Text>
       <Flex align="baseline" gap="density-sm" wrap="wrap">
-        <Text kind="label/bold/2xl">{value}</Text>
+        <Text kind="label/bold/2xl" className="tabular-nums">
+          {value}
+        </Text>
         {trailingLabel ? (
           <Text
             kind="body/regular/sm"
@@ -54,5 +61,15 @@ export const StatTile: FC<StatTileProps> = ({
         </Text>
       ) : null}
     </Stack>
-  </Panel>
-);
+  );
+
+  if (!bordered) {
+    return content;
+  }
+
+  return (
+    <Panel className={cn('max-w-sm', className)} elevation="high" data-testid="stat-tile-surface">
+      {content}
+    </Panel>
+  );
+};

@@ -1,0 +1,33 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+import { LogViewer } from '@nemo/common/src/components/LogViewer';
+import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
+import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import { Flex } from '@nvidia/foundations-react-core';
+import type { FC } from 'react';
+
+interface Props {
+  customizationJobName: string;
+  workspace: string;
+  jobStatus?: PlatformJobStatus;
+}
+
+export const LogsTab: FC<Props> = ({ customizationJobName, workspace, jobStatus }) => {
+  const { data: logs, isLoading } = useJobLogs({
+    workspace,
+    name: customizationJobName,
+    jobStatus,
+  });
+
+  return (
+    <Flex className="min-h-0 w-full flex-1 pt-4">
+      <LogViewer
+        logs={logs ?? []}
+        isLoading={isLoading}
+        downloadFilename={`${customizationJobName}.log`}
+        fillHeight
+      />
+    </Flex>
+  );
+};

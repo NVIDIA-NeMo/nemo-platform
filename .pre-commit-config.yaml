@@ -119,9 +119,9 @@ repos:
         pass_filenames: false
       - id: copyright-fix
         name: Fix copyright headers
-        entry: uv run script/copyright_fixer.py
+        entry: uv run python tools/lint/copyright_fixer.py
         language: system
-        pass_filenames: true
+        pass_filenames: false
         files: '(^|/)(Dockerfile(\.|$)|Makefile$|.*\.Dockerfile$|.*\.(py|ts|tsx|js|jsx|mjs|cjs|css|md|mdx|ya?ml|toml|sh|bash|rego|hcl|j2|jinja|tpl)$|.*\.(dockerignore|gitignore|gitattributes|helmignore|prettierignore|cursorignore|copyrightignore)$|.*\.env(\..*)?$)'
       - id: check-signoff
         name: Check commit is signed off (DCO)

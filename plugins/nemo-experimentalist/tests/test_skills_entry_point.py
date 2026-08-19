@@ -5,26 +5,26 @@
 
 from __future__ import annotations
 
+from importlib.metadata import entry_points
 from pathlib import Path
 
 
-def test_skills_dir_contains_terminator() -> None:
-    from nemo_experimentalist_plugin.skills import skills_dir
+def test_entry_point_resolves_to_the_skills_dir() -> None:
+    """The nemo.skills entry-point must resolve to a skills_dir holding our skills.
 
-    terminator = skills_dir() / "terminator"
-    assert terminator.is_dir(), (
-        f"Expected 'terminator' subdir under {skills_dir()!r} — got {list(skills_dir().iterdir())}"
-    )
-
-
-def test_entry_point_loads_skills_dir() -> None:
-    """The nemo.skills entry-point must resolve to our skills_dir function."""
-    from importlib.metadata import entry_points
-
+    In a source checkout two distributions advertise this name -- the plugin itself
+    and the `nemo-platform` wrapper that bundles it -- so the guarantee is that every
+    provider agrees on one target, not that only one provider exists.
+    """
     eps = [ep for ep in entry_points(group="nemo.skills") if ep.name == "experimentalist"]
-    assert len(eps) == 1, f"Expected exactly one 'experimentalist' entry-point, got {eps}"
-    loaded = eps[0].load()
-    assert callable(loaded), f"Entry-point did not resolve to a callable: {loaded!r}"
-    result = loaded()
-    assert isinstance(result, Path), f"skills_dir() returned {result!r} (not Path)"
-    assert result.is_dir(), f"skills_dir() returned {result!r} which is not a directory"
+    assert eps, "no 'experimentalist' entry-point in the nemo.skills group"
+    assert len({ep.value for ep in eps}) == 1, f"providers disagree on the target: {eps}"
+
+    skills_dir = eps[0].load()
+    assert callable(skills_dir), f"entry-point did not resolve to a callable: {skills_dir!r}"
+
+    resolved = skills_dir()
+    assert isinstance(resolved, Path), f"skills_dir() returned {resolved!r} (not Path)"
+    assert (resolved / "terminator").is_dir(), (
+        f"expected a 'terminator' subdir under {resolved!r} -- got {list(resolved.iterdir())}"
+    )

@@ -92,6 +92,16 @@ export const DiagnosticsRow: Story = {
   ),
 };
 
+export const Borderless: Story = {
+  render: () => (
+    <Grid cols={2} gap="density-xl" className="max-w-sm">
+      {SUMMARY_TILES.map((tile) => (
+        <StatTile key={tile.label} {...tile} bordered={false} />
+      ))}
+    </Grid>
+  ),
+};
+
 export const HintStatuses: Story = {
   render: () => (
     <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-xl">

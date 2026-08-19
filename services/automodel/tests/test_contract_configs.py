@@ -62,7 +62,7 @@ def test_contract_output_configs_up_to_date_excluding_embedding() -> None:
     env["PYTHONPATH"] = str(REPO_ROOT / "services" / "automodel" / "src")
 
     result = subprocess.run(
-        [sys.executable, str(GENERATE_SCRIPT), "--check"],
+        [sys.executable, str(GENERATE_SCRIPT), "--check", "--exclude", ",".join(sorted(EMBEDDING_CONFIG_STEMS))],
         cwd=CONTRACT_DIR,
         env=env,
         capture_output=True,
@@ -70,9 +70,58 @@ def test_contract_output_configs_up_to_date_excluding_embedding() -> None:
     )
     if result.returncode != 0:
         combined = result.stdout + result.stderr
-        for stem in EMBEDDING_CONFIG_STEMS:
-            if stem in combined:
-                pytest.skip("contract check failed on embedding configs (excluded from v1)")
+        # The embedding configs are excluded by the generator itself, above, so a
+        # failure reaching here is a real one. It used to be inferred instead --
+        # any output mentioning an excluded stem skipped the whole check, which
+        # meant a change touching every config switched the guard off silently.
         if "nemo_automodel" in combined and "ModuleNotFoundError" in combined:
             pytest.skip("nemo_automodel not installed in test env (run in training image CI)")
         pytest.fail(f"contract configs out of date:\n{combined}")
+
+
+def test_the_check_excludes_configs_rather_than_forgiving_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A real mismatch must fail even when an excluded config mismatches too.
+
+    This is the guard that was switched off. The exclusion used to be inferred
+    from the *output*: any run whose failure text mentioned an embedding config
+    skipped entirely. Adding a key to every compiled config made every config
+    mismatch, so the text always mentioned one, so the check silently stopped
+    running -- with no failure and no skip message anyone would look twice at.
+
+    Stubs go in via monkeypatch so they are torn down with the test; a
+    module-scope `nemo_automodel` stub outlives the file that installed it and
+    leaks into whatever else shares the xdist worker.
+    """
+    import importlib.util
+    from unittest.mock import MagicMock
+
+    for name in ("nemo_automodel", "nemo_automodel._transformers", "nemo_automodel._transformers.registry"):
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+
+    spec = importlib.util.spec_from_file_location("_contract_gen_under_test", GENERATE_SCRIPT)
+    assert spec and spec.loader
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    excluded, real = "embed_1b_lora", "gpt_oss_lora"
+    monkeypatch.setattr(
+        gen,
+        "_discover_model_groups",
+        lambda: [("g", [tmp_path / f"{excluded}.json", tmp_path / f"{real}.json"])],
+    )
+    monkeypatch.setattr(
+        gen,
+        "_process_model_group",
+        lambda group, paths, write=False: [(tmp_path / f"{p.stem}.yaml", {"x": 1}) for p in paths],
+    )
+    monkeypatch.setattr(gen, "_dump_yaml", lambda compiled: "MISMATCH\n")
+
+    with pytest.raises(SystemExit):
+        gen._check_all({excluded})
+
+    # ...and excluding everything that can mismatch leaves nothing to fail on,
+    # which is what makes the assertion above about the exclusion and not about
+    # the stub always failing.
+    gen._check_all({excluded, real})

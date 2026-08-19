@@ -59,23 +59,26 @@ def test_effective_namespace_ignores_blank_pod_namespace(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_create_resolves_secrets_before_compiling_workload(
+async def test_create_passes_secret_env_and_unmodified_config(
     k8s_backend: K8sDeploymentBackend,
     mock_entities: AsyncMock,
     mock_sdk: MagicMock,
 ) -> None:
+    # k8s keeps the stored config's secret_ref env vars intact and passes the
+    # resolved secret values separately as secret_env (mounted via a managed
+    # Secret + envFrom), so plaintext never lands in the pod manifest.
     stored = DeploymentConfig(
         name="cfg",
         workspace="default",
         containers=[Container(name="server", image="example:latest")],
     )
-    resolved = stored.model_copy(deep=True)
+    secret_env = {"APP_TOKEN": "app-token-value"}
     mock_entities.get.return_value = stored
 
     with (
         patch(
-            "nemo_deployments_plugin.backends.k8s.backend.resolve_deployment_config_secrets",
-            AsyncMock(return_value=resolved),
+            "nemo_deployments_plugin.backends.k8s.backend.resolve_deployment_secret_env",
+            AsyncMock(return_value=secret_env),
         ) as resolve_mock,
         patch(
             "nemo_deployments_plugin.backends.k8s.backend.deployment_ops.create_deployment",
@@ -92,4 +95,5 @@ async def test_create_resolves_secrets_before_compiling_workload(
 
     resolve_mock.assert_awaited_once_with(mock_sdk, stored)
     assert create_mock.await_args is not None
-    assert create_mock.await_args.kwargs["config"] is resolved
+    assert create_mock.await_args.kwargs["config"] is stored
+    assert create_mock.await_args.kwargs["secret_env"] == secret_env
