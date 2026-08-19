@@ -1,41 +1,88 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import AsyncMock, MagicMock, patch
+"""Provider lookup through the typed Models client, over a mocked httpx transport.
 
+Driving a real ``NeMoPlatform`` -> ``client_from_platform`` -> ``ModelsClient``
+chain asserts the wire contract (method, path, parsed model) rather than
+restating the call the implementation happens to make.
+"""
+
+from __future__ import annotations
+
+import httpx
 import pytest
 from data_designer_nemo.model_provider import get_nmp_provider, get_nmp_provider_async
-from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import ModelProvider
+
+BASE = "http://test:8000"
 
 
-def test_get_nmp_provider_uses_models_client() -> None:
-    sdk = MagicMock()
-    provider = MagicMock()
-    response = MagicMock()
-    response.data.return_value = provider
-    models = MagicMock()
-    models.get_provider.return_value = response
+def _provider_json(name: str = "my-provider", workspace: str = "other", **extra: object) -> dict:
+    base = {
+        "id": f"provider-{name}",
+        "name": name,
+        "workspace": workspace,
+        "host_url": "https://api.example.com",
+        "status": "READY",
+        "status_message": "",
+        "created_at": "2020-01-01T00:00:00Z",
+        "updated_at": "2020-01-01T00:00:00Z",
+    }
+    base.update(extra)
+    return base
 
-    with patch("data_designer_nemo.model_provider.client_from_platform", return_value=models) as make_client:
-        result = get_nmp_provider(sdk, "workspace", "provider")
 
-    make_client.assert_called_once_with(sdk, ModelsClient)
-    models.get_provider.assert_called_once_with(workspace="workspace", name="provider")
-    assert result is provider
+def _recording_transport(payload: dict) -> tuple[httpx.MockTransport, list[httpx.Request]]:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, request=request, json=payload)
+
+    return httpx.MockTransport(handler), seen
+
+
+def test_get_nmp_provider_hits_the_provider_endpoint() -> None:
+    transport, seen = _recording_transport(_provider_json())
+    sdk = NeMoPlatform(base_url=BASE, workspace="default", http_client=httpx.Client(transport=transport))
+
+    result = get_nmp_provider(sdk, "other", "my-provider")
+
+    assert isinstance(result, ModelProvider)
+    assert (result.workspace, result.name) == ("other", "my-provider")
+    assert len(seen) == 1
+    assert seen[0].method == "GET"
+    assert str(seen[0].url) == f"{BASE}/apis/models/v2/workspaces/other/providers/my-provider"
 
 
 @pytest.mark.asyncio
-async def test_get_nmp_provider_async_uses_models_client() -> None:
-    sdk = MagicMock()
-    provider = MagicMock()
-    response = MagicMock()
-    response.data.return_value = provider
-    models = MagicMock()
-    models.get_provider = AsyncMock(return_value=response)
+async def test_get_nmp_provider_async_hits_the_provider_endpoint() -> None:
+    transport, seen = _recording_transport(_provider_json())
+    sdk = AsyncNeMoPlatform(base_url=BASE, workspace="default", http_client=httpx.AsyncClient(transport=transport))
 
-    with patch("data_designer_nemo.model_provider.client_from_platform", return_value=models) as make_client:
-        result = await get_nmp_provider_async(sdk, "workspace", "provider")
+    result = await get_nmp_provider_async(sdk, "other", "my-provider")
 
-    make_client.assert_called_once_with(sdk, AsyncModelsClient)
-    models.get_provider.assert_awaited_once_with(workspace="workspace", name="provider")
-    assert result is provider
+    assert isinstance(result, ModelProvider)
+    assert (result.workspace, result.name) == ("other", "my-provider")
+    assert len(seen) == 1
+    assert seen[0].method == "GET"
+    assert str(seen[0].url) == f"{BASE}/apis/models/v2/workspaces/other/providers/my-provider"
+
+
+@pytest.mark.parametrize(
+    ("host_url", "expected_suffix"),
+    [("https://api.example.com", "/-/v1"), ("https://api.example.com/v1", "/-")],
+)
+def test_provider_route_url_conditionally_appends_v1(host_url: str, expected_suffix: str) -> None:
+    """The endpoint handed to Data Designer and the anonymizer, built from a fetched provider."""
+    transport, _ = _recording_transport(_provider_json(host_url=host_url))
+    sdk = NeMoPlatform(base_url=BASE, workspace="default", http_client=httpx.Client(transport=transport))
+
+    provider = get_nmp_provider(sdk, "other", "my-provider")
+    url = client_from_platform(sdk, ModelsClient).get_provider_route_openai_url(provider)
+
+    assert url == f"{BASE}/apis/inference-gateway/v2/workspaces/other/provider/my-provider{expected_suffix}"
