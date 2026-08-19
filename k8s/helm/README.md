@@ -34,22 +34,29 @@ secrets will not decrypt with a new key.
 
 ## Intake and ClickHouse
 
-Intake is included in the platform API service group. By default, the chart
-deploys a single-node embedded ClickHouse 26.3 LTS service, and Intake creates
-and migrates its own `intake` database on first use.
+NeMo Platform uses ClickHouse to store Intake data such as spans, traces,
+annotations, and evaluator results.
 
-The embedded ClickHouse is intended for development, evaluation, and
-non-critical single-node installations. It does not provide replication or
-automatic backups. For a production deployment that requires high availability,
-set `clickhouse.enabled` to `false` and provide a separately managed ClickHouse:
+By default, the chart deploys an embedded ClickHouse instance (a single-node
+StatefulSet using the official ClickHouse image) to enable quick installation.
+This should not be used for production use, and an external ClickHouse instance
+is recommended.
 
-First, create the credentials Secret in the Helm release namespace. The Secret
-key must match `externalClickhouse.existingSecretPasswordKey`:
+For production, use a managed service such as
+[ClickHouse Cloud](https://clickhouse.com/cloud) or operate ClickHouse
+separately, such as with the official
+[ClickHouse Kubernetes Operator](https://clickhouse.com/docs/products/kubernetes-operator/overview).
+
+To use an external ClickHouse instance, first create the credentials Secret in
+the Helm release namespace. The Secret key must match
+`externalClickhouse.existingSecretPasswordKey`:
 
 ```shell
+NMP_NAMESPACE="your-release-namespace"
+CLICKHOUSE_PASSWORD_FILE="/path/to/clickhouse-password"
 kubectl create secret generic clickhouse-credentials \
-  --namespace <release-namespace> \
-  --from-literal=password='<clickhouse-password>'
+  --namespace "$NMP_NAMESPACE" \
+  --from-file="password=$CLICKHOUSE_PASSWORD_FILE"
 ```
 
 Then configure the external connection:
@@ -68,26 +75,7 @@ externalClickhouse:
   existingSecretPasswordKey: password
 ```
 
-The external user must be allowed to create the configured database, tables,
-materialized views, and indexes because Intake owns its ClickHouse migrations.
-
 ### ClickHouse sizing
-
-Use retained span count as an initial operational threshold, not as a disk-size
-estimate. Span `input`, `output`, and attribute payloads vary substantially.
-Measure `bytes_on_disk` from representative traffic before setting production
-storage:
-
-```sql
-SELECT
-    table,
-    sum(rows) AS physical_rows,
-    formatReadableSize(sum(bytes_on_disk)) AS disk
-FROM system.parts
-WHERE active AND database = 'intake'
-GROUP BY table
-ORDER BY table;
-```
 
 The following are starting points for the current Intake schema and interactive
 query workload:
@@ -189,7 +177,7 @@ and
 | api.tolerations | list | `[]` | Tolerations configuration for the API service. |
 | api.topologySpreadConstraints | list | `[]` | Topology spread constraints for the API service pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
 | basePlatformConfig | string | This object has the following default values for the base platform configuration. | Base platform configuration settings |
-| clickhouse | object | This object has the following default values for the embedded ClickHouse configuration. | Embedded ClickHouse configuration for Intake. The embedded deployment is a single-node convenience topology. Use an external, replicated ClickHouse deployment for production environments that require high availability. These values are used only when `clickhouse.enabled` is true. |
+| clickhouse | object | This object has the following default values for the embedded ClickHouse configuration. | Embedded ClickHouse configuration for Intake. These values are used only when `clickhouse.enabled` is true. |
 | clickhouse.affinity | object | `{}` | Affinity for the ClickHouse pod. |
 | clickhouse.annotations | object | `{}` | Annotations to add to the ClickHouse StatefulSet. |
 | clickhouse.auth.database | string | `"intake"` | ClickHouse database used by Intake. |
@@ -197,14 +185,14 @@ and
 | clickhouse.auth.existingSecretPasswordKey | string | `"password"` | Key in auth.existingSecret containing the ClickHouse password. |
 | clickhouse.auth.password | string | `nil` | ClickHouse password used when auth.existingSecret is empty. If unset, the chart generates a random password. |
 | clickhouse.auth.username | string | `"nemo"` | ClickHouse username used by Intake. |
-| clickhouse.enabled | bool | `true` | Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`. |
+| clickhouse.enabled | bool | `true` | Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`. It is not recommended to use the embedded ClickHouse for production deployments. It is enabled by default for ease of getting started with the platform. |
 | clickhouse.image.pullPolicy | string | `"IfNotPresent"` | ClickHouse image pull policy. |
 | clickhouse.image.repository | string | `"docker.io/clickhouse/clickhouse-server"` | ClickHouse image repository. Intake is tested against the 26.3 LTS release line. |
 | clickhouse.image.tag | string | `"26.3"` | ClickHouse image tag. |
 | clickhouse.livenessProbe | object | This object has the following default values for the liveness probe configuration. | Liveness probe configuration for the ClickHouse container. |
 | clickhouse.nodeSelector | object | `{}` | Node selector for the ClickHouse pod. |
 | clickhouse.persistence.enabled | bool | `true` | Whether to persist embedded ClickHouse data. |
-| clickhouse.persistence.size | string | `"20Gi"` | PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README. |
+| clickhouse.persistence.size | string | `"20Gi"` | PersistentVolumeClaim size. |
 | clickhouse.persistence.storageClass | string | `""` | Storage class for the ClickHouse PVC. If unset, the cluster default is used. |
 | clickhouse.podAnnotations | object | `{}` | Annotations to add to the ClickHouse pod. |
 | clickhouse.podLabels | object | `{}` | Additional labels to add to the ClickHouse pod. |

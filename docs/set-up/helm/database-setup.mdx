@@ -83,3 +83,44 @@ Use individual `host`, `port`, `user`, and `database` values and a secret that c
  existingSecret: my-db-password-secret
  existingSecretPasswordKey: "password" # key in the secret that holds the password
  ```
+
+## ClickHouse for Intake
+
+The NeMo Platform uses ClickHouse to store Intake data such as spans, traces, annotations, and evaluator results.
+
+By default, the NeMo Platform Helm chart deploys an embedded ClickHouse instance (a single-node StatefulSet using the official ClickHouse image) to enable quick installation. This should not be used for production use, and an external ClickHouse instance is recommended.
+
+For production, use a managed service such as [ClickHouse Cloud](https://clickhouse.com/cloud) or operate ClickHouse separately, such as with the official [ClickHouse Kubernetes Operator](https://clickhouse.com/docs/products/kubernetes-operator/overview).
+
+### External ClickHouse Database
+
+To use an external ClickHouse database in the Helm chart:
+
+1. Set `clickhouse.enabled: false` and configure `externalClickhouse`.
+2. Create a Secret containing the ClickHouse password in the same namespace as the NeMo Platform release:
+
+   ```sh
+   NMP_NAMESPACE="your-release-namespace"
+   CLICKHOUSE_PASSWORD_FILE="/path/to/clickhouse-password"
+   kubectl create secret generic clickhouse-credentials \
+     --namespace "$NMP_NAMESPACE" \
+     --from-file="password=$CLICKHOUSE_PASSWORD_FILE"
+   ```
+
+3. Configure the external HTTP endpoint in `values.yaml`:
+
+   ```yaml
+   clickhouse:
+     enabled: false
+
+   externalClickhouse:
+     host: clickhouse.example.internal
+     port: 8443
+     secure: true
+     user: nemo
+     database: intake
+     existingSecret: clickhouse-credentials
+     existingSecretPasswordKey: password
+   ```
+
+   Set `host` to a hostname only, without a URL scheme or path. Set `secure: true` for HTTPS; the common HTTPS port is `8443`.

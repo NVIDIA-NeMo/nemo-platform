@@ -72,6 +72,19 @@ Replace `"nfs"` with your StorageClass name (e.g. `oci-nfs`, `gp3`). For NIM sca
 
 Refer to the [platform configuration documentation](/documentation/self-managed-deployment/config-reference) for the full config reference.
 
+## Embedded ClickHouse Storage
+
+The embedded ClickHouse StatefulSet creates a separate ReadWriteOnce volume. Configure it with a low-latency block StorageClass:
+
+```yaml
+clickhouse:
+  persistence:
+    storageClass: fast-rwo
+    size: 20Gi
+```
+
+The embedded deployment is not recommended for production. For production, use an external ClickHouse instance as described in [Database Setup](/documentation/self-managed-deployment/setup/helm/database-setup#clickhouse-for-intake).
+
 ## Persistent volume options
 
 Use a ReadWriteMany-capable filesystem such as NFS or CephFS so the volume can be mounted read-write across nodes and pods.
@@ -102,6 +115,8 @@ On AKS, Azure Disk (`managed-csi`) only supports ReadWriteOnce (RWO). Use **Azur
 
 1. Enable the [Azure Files CSI driver](https://learn.microsoft.com/en-us/azure/aks/azure-files-csi) if not already installed in your cluster.
 2. Set `core.storage.storageClass` to `azurefile` (or `azurefile-csi` on AKS 1.29+) and `postgresql.persistence.storageClass` to `managed-csi`.
+
+For embedded ClickHouse, also set `clickhouse.persistence.storageClass` to `managed-csi`.
 
 ## Oracle persistent volumes
 

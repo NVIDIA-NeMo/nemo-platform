@@ -5,11 +5,12 @@
 title: "Backup and Restore"
 description: ""
 ---
-NeMo Platform use several storage systems that require backup consideration:
+NeMo Platform uses several storage systems that require backup consideration:
 
 1. **PostgreSQL database**: stores entity metadata and relationships
-2. **Object storage**: stores model files, datasets, and other artifacts
-3. **Persistent Volume Claims (PVC)**: stores Kubernetes persistent data
+2. **ClickHouse database**: stores Intake spans, traces, annotations, and evaluator results
+3. **Object storage**: stores model files, datasets, and other artifacts
+4. **Persistent Volume Claims (PVC)**: stores Kubernetes persistent data
 
 ## PostgreSQL Backup
 
@@ -17,6 +18,13 @@ For PostgreSQL backup and restore procedures, refer to the official PostgreSQL d
 
 - [PostgreSQL Backup and Restore](https://www.postgresql.org/docs/current/backup.html)
 - [Continuous Archiving and Point-in-Time Recovery (PITR)](https://www.postgresql.org/docs/current/continuous-archiving.html)
+
+## ClickHouse Backup
+
+For ClickHouse backup and restore procedures, refer to the official ClickHouse documentation:
+
+- [Backup and restore in ClickHouse](https://clickhouse.com/docs/concepts/features/backup-restore/overview)
+- [Review and restore ClickHouse Cloud backups](https://clickhouse.com/docs/products/cloud/guides/backups/review-and-restore-backups)
 
 ## Object Storage Backup
 
