@@ -82,7 +82,7 @@ _TASK_LIMIT = 2
 #: answer keeps "the plumbing works" separable from "the agent produced nothing".
 _CANNED_ANSWER = "This is a stub response from the NeMo Platform test suite."
 
-#: Stands in for a per-run absolute directory inside a case's `env_overrides`. A committed
+#: Stands in for a per-run absolute directory inside a case's `hydra_params`. A committed
 #: absolute path would be wrong on every machine, so the run substitutes a real one.
 _ABS_ASSETS_PLACEHOLDER = "_ABS_ASSETS"
 
@@ -213,7 +213,7 @@ class GymEnvironmentCase:
     #: Nested config overrides this environment needs beyond the runner's automatic binding. Empty
     #: where the standard `policy_model` wiring is enough; populated as the sweep discovers what an
     #: environment actually requires.
-    env_overrides: Mapping[str, Any] = field(default_factory=dict)
+    hydra_params: Mapping[str, Any] = field(default_factory=dict)
     #: Row field holding this environment's ground truth, and how it wants an answer spelled. When
     #: set, the stub answers each prompt with that row's own correct answer and the rollout test can
     #: assert a perfect score — which is what makes per-task attribution testable (see
@@ -277,7 +277,7 @@ CASES: tuple[GymEnvironmentCase, ...] = (
         # hiding them behind guesswork would make the runner wrong for environments that follow the
         # convention. Recorded here so the cost to a caller is visible.
         bind_resources_server=False,
-        env_overrides={
+        hydra_params={
             "simple_agent": {
                 "responses_api_agents": {"simple_agent": {"resources_server": {"name": "gdpval_resources_server"}}}
             },
@@ -322,7 +322,7 @@ CASES: tuple[GymEnvironmentCase, ...] = (
         #
         # `_ABS_ASSETS` is a placeholder: the rollout test substitutes a real tmp_path, since a
         # committed absolute path would be wrong on every machine.
-        env_overrides={
+        hydra_params={
             "legal_agent_bench": {
                 "resources_servers": {
                     "legal_agent_bench": {
@@ -417,7 +417,7 @@ def _require_environment(gym: str, case: GymEnvironmentCase) -> Path:
     return environment_dir
 
 
-def _selection(case: GymEnvironmentCase, hydra_dir: Path, env_overrides: Mapping[str, Any] | None = None) -> list[str]:
+def _selection(case: GymEnvironmentCase, hydra_dir: Path, hydra_params: Mapping[str, Any] | None = None) -> list[str]:
     """The selection arguments the runner passes to both `gym env validate` and `gym env start`.
 
     ``hydra.run.dir`` mirrors what the runner does: Gym is a Hydra app and writes a timestamped run
@@ -436,7 +436,7 @@ def _selection(case: GymEnvironmentCase, hydra_dir: Path, env_overrides: Mapping
         argv.append(f"+{case.agent}.responses_api_agents.{case.agent}.resources_server.name={case.resources_server}")
     # Resolved overrides when the caller has them, so validate checks the *same* values the rollout
     # would run — an unresolved `_ABS_ASSETS` placeholder would validate a config nothing ever uses.
-    argv.extend(_flatten_overrides(case.env_overrides if env_overrides is None else env_overrides))
+    argv.extend(_flatten_overrides(case.hydra_params if hydra_params is None else hydra_params))
     argv.append(f"hydra.run.dir={hydra_dir}")
     return argv
 
@@ -494,7 +494,7 @@ def _case_overrides(case: GymEnvironmentCase, tmp_path: Path) -> dict[str, Any]:
     """
     assets = tmp_path / "assets"
     assets.mkdir(parents=True, exist_ok=True)
-    rendered = json.dumps(case.env_overrides).replace(_ABS_ASSETS_PLACEHOLDER, str(assets))
+    rendered = json.dumps(case.hydra_params).replace(_ABS_ASSETS_PLACEHOLDER, str(assets))
     return json.loads(rendered)
 
 
@@ -563,7 +563,7 @@ async def test_gym_environment_runs_end_to_end(case: GymEnvironmentCase, tmp_pat
                 # Omit rather than pass None, so the runner's own default stays the single source of
                 # truth for every environment that does not need more.
                 **({"startup_timeout_s": case.startup_timeout_s} if case.startup_timeout_s else {}),
-                env_overrides={
+                hydra_params={
                     "policy_base_url": policy_base_url,
                     "policy_api_key": "stub-key",
                     "policy_model_name": "stub-model",

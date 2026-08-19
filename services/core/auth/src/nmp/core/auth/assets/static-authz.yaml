@@ -1086,6 +1086,13 @@ authz:
         scopes:
         - intake:write
         - platform:write
+    /apis/intake/v2/workspaces/{workspace}/ingest/spans:
+      post:
+        permissions:
+        - intake.ingest.create
+        scopes:
+        - intake:write
+        - platform:write
     /apis/intake/v2/workspaces/{workspace}/sessions/{id}:
       get:
         permissions:

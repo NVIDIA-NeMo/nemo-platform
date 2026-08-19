@@ -1,0 +1,29 @@
+{
+  "data": [
+    {
+      "attributes": [
+        {"key": "openinference.span.kind", "value": {"string_value": "LLM"}},
+        {"key": "input.value", "value": {"string_value": "{\"question\":\"What is the capital of France?\"}"}},
+        {"key": "output.value", "value": {"string_value": "{\"answer\":\"Paris\"}"}},
+        {"key": "llm.model_name", "value": {"string_value": "fixture-model"}},
+        {"key": "fixture.nested", "value": {"kvlist_value": {"values": [{"key": "enabled", "value": {"bool_value": true}}, {"key": "count", "value": {"int_value": 0}}]}}}
+      ],
+      "dropped_attributes_count": 0,
+      "dropped_events_count": 0,
+      "dropped_links_count": 0,
+      "end_time_unix_nano": 1714351752459000000,
+      "events": [{"attributes": [], "dropped_attributes_count": 0, "name": "first-token", "time_unix_nano": 1714351752200000000}],
+      "flags": 1,
+      "kind": "SPAN_KIND_INTERNAL",
+      "links": null,
+      "name": "ChatCompletion",
+      "parent_span_id": "",
+      "span_id": "67f6740bbe1ddc3f",
+      "start_time_unix_nano": 1714351752090000000,
+      "status": {"code": "STATUS_CODE_OK", "message": ""},
+      "trace_id": "df570c035a034cea8df0c162d05127ac",
+      "trace_state": "fixture=1"
+    }
+  ],
+  "next_cursor": null
+}

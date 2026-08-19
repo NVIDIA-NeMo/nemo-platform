@@ -1,0 +1,49 @@
+{
+  "retrieved_at": "2026-08-14",
+  "fixtures": {
+    "mlflow-trace.json": {
+      "urls": [
+        "https://mlflow.org/docs/latest/api_reference/_modules/mlflow/entities/trace.html",
+        "https://mlflow.org/docs/latest/api_reference/_modules/mlflow/entities/span.html"
+      ],
+      "version": "mlflow 3.11.1",
+      "transformations": [
+        "Ran the documented @mlflow.trace and nested span pattern against a local MLflow 3.11.1 tracking store and serialized Trace.to_dict().",
+        "Replaced generated trace, span, assessment, repository, user, and filesystem values with deterministic fixture values while retaining their formats."
+      ]
+    },
+    "langsmith-runs.json": {
+      "urls": ["https://docs.langchain.com/langsmith/run-data-format"],
+      "version": "documentation example retrieved 2026-08-14",
+      "transformations": ["Used the complete documented JSON example without field removal."]
+    },
+    "langsmith-feedback.json": {
+      "urls": ["https://docs.langchain.com/langsmith/feedback-data-format"],
+      "version": "documentation example retrieved 2026-08-14",
+      "transformations": ["Replaced run_id with the documented run fixture ID so the feedback has a local target."]
+    },
+    "phoenix-spans.json": {
+      "urls": [
+        "https://arize.com/docs/phoenix/sdk-api-reference/rest-api/api-reference/spans/search-spans-with-simple-filters-no-dsl"
+      ],
+      "version": "OTLP JSON REST schema retrieved 2026-08-14",
+      "transformations": [
+        "Converted the documentation's schema-valued pseudocode to valid JSON by choosing one legal AnyValue member per attribute and deterministic IDs and timestamps."
+      ]
+    },
+    "phoenix-annotations.json": {
+      "urls": [
+        "https://arize.com/docs/phoenix/tracing/how-to-tracing/feedback-and-annotations/capture-feedback"
+      ],
+      "version": "arize-phoenix >=9.0.0 example retrieved 2026-08-14",
+      "transformations": ["Removed JavaScript-style comments; otherwise retained the documented annotation example."]
+    },
+    "braintrust-project-log.json": {
+      "urls": ["https://www.braintrust.dev/docs/api-reference/logs/fetch-project-logs-get-form"],
+      "version": "REST schema retrieved 2026-08-14",
+      "transformations": [
+        "Converted the documentation's schema-valued pseudocode to valid JSON using deterministic field values while retaining every documented response field."
+      ]
+    }
+  }
+}

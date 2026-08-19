@@ -22,6 +22,7 @@ from .atif_agent_param import AtifAgentParam as AtifAgentParam
 from .chat_message_role import ChatMessageRole as ChatMessageRole
 from .atif_create_params import AtifCreateParams as AtifCreateParams
 from .atif_metrics_param import AtifMetricsParam as AtifMetricsParam
+from .span_create_params import SpanCreateParams as SpanCreateParams
 from .atif_step_user_param import AtifStepUserParam as AtifStepUserParam
 from .atif_tool_call_param import AtifToolCallParam as AtifToolCallParam
 from .atif_step_agent_param import AtifStepAgentParam as AtifStepAgentParam
@@ -30,6 +31,7 @@ from .atif_observation_param import AtifObservationParam as AtifObservationParam
 from .atif_step_system_param import AtifStepSystemParam as AtifStepSystemParam
 from .atif_content_part_param import AtifContentPartParam as AtifContentPartParam
 from .atif_image_source_param import AtifImageSourceParam as AtifImageSourceParam
+from .direct_span_input_param import DirectSpanInputParam as DirectSpanInputParam
 from .atif_final_metrics_param import AtifFinalMetricsParam as AtifFinalMetricsParam
 from .captured_chat_message_param import CapturedChatMessageParam as CapturedChatMessageParam
 from .atif_content_part_text_param import AtifContentPartTextParam as AtifContentPartTextParam

@@ -2279,6 +2279,34 @@ class TestAutoModelPairSelection:
 
         save_pair.assert_not_called()
         assert any("NEMO_FAST_MODEL is ignored" in call.args[0] for call in print_message.call_args_list)
+        printed = " ".join(str(c) for c in print_message.call_args_list)
+        assert "Setup complete with warnings" in printed
+        assert "[green]Setup complete![/green]" not in printed
+
+    def test_setup_complete_is_unqualified_when_default_model_is_set(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="openai"),
+            patch(f"{SETUP_MOD}._get_all_model_entity_ids", return_value=["default/a-model"]),
+            patch(f"{SETUP_MOD}._save_model_pair"),
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+            patch(f"{SETUP_MOD}.console.print") as print_message,
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        printed = " ".join(str(c) for c in print_message.call_args_list)
+        assert "[green]Setup complete![/green]" in printed
+        assert "Setup complete with warnings" not in printed
 
 
 # ---------------------------------------------------------------------------

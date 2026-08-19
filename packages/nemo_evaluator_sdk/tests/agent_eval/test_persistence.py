@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run, read_trials
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, TrialMetricValue
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, TrialError
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
 
@@ -228,3 +228,37 @@ def test_persist_accepts_an_explicit_target_for_an_in_memory_run(tmp_path: Path)
 
     assert location.output_dir == tmp_path
     assert json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))["run_id"] == "r"
+
+
+def test_persist_run_writes_the_error_rollup_to_summary(tmp_path: Path) -> None:
+    summary = AgentEvalSummary(
+        error_trial_ids={"RuntimeError": ["task-a__aaa", "task-b__ccc"], "TimeoutError": ["task-a__bbb"]},
+        error_count=3,
+    )
+    result = AgentEvalResult(run_id="run", tasks=[], trials=[], scores=[], summary=summary)
+
+    persist_run(result, tmp_path)
+
+    payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert payload["error_trial_ids"] == {
+        "RuntimeError": ["task-a__aaa", "task-b__ccc"],
+        "TimeoutError": ["task-a__bbb"],
+    }
+    assert payload["error_count"] == 3
+    # Ids keep their order through sort_keys=True, which sorts mapping keys and not list contents.
+    assert AgentEvalSummary.model_validate(payload).error_trial_ids == summary.error_trial_ids
+
+
+def test_trials_jsonl_round_trips_a_typed_error(tmp_path: Path) -> None:
+    trial = AgentEvalTrial(
+        id="task-a__aaa",
+        task_id="task-a",
+        status=AgentEvalTrialStatus.PARTIAL,
+        error=TrialError(type="RuntimeError", message="boom", traceback="Traceback...\n"),
+    )
+    result = AgentEvalResult(run_id="run", tasks=[], trials=[trial], scores=[], summary=AgentEvalSummary())
+
+    persist_run(result, tmp_path)
+    [reloaded] = read_trials(tmp_path)
+
+    assert reloaded.error == trial.error

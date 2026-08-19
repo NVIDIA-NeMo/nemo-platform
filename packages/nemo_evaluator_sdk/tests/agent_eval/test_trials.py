@@ -1,15 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrial,
     AgentEvalTrialStatus,
+    TrialError,
     resolve_trial_status,
     standard_evidence_descriptors,
 )
+from pydantic import ValidationError
 
 
 def test_trial_accepts_mapping_shaped_evidence_and_serializes_descriptors() -> None:
@@ -80,3 +83,63 @@ def test_standard_evidence_descriptors_builds_documented_keys(tmp_path: Path) ->
     # A missing verifier dir is omitted; trace is optional.
     minimal = standard_evidence_descriptors(logs_dir=tmp_path / "a", final_state_dir=tmp_path / "w")
     assert set(minimal) == {"logs", "final_state"}
+
+
+def test_trial_error_rejects_an_empty_type() -> None:
+    # An empty type would become an empty rollup key, which names nothing. The Harbor adapter
+    # normalises before it gets here; this is the backstop for every other producer.
+    for blank in ("", "   "):
+        with pytest.raises(ValidationError, match="must not be empty"):
+            TrialError(type=blank)
+
+
+def test_trial_error_is_frozen_and_forbids_extras() -> None:
+    error = TrialError(type="RuntimeError")
+
+    with pytest.raises(ValidationError):
+        error.type = "TimeoutError"
+    with pytest.raises(ValidationError):
+        TrialError(type="RuntimeError", stack="...")  # ty: ignore[unknown-argument]
+
+
+def test_trial_error_round_trips_every_field_through_json() -> None:
+    trial = AgentEvalTrial(
+        id="t0",
+        task_id="task-a",
+        status=AgentEvalTrialStatus.PARTIAL,
+        error=TrialError(
+            type="RuntimeError",
+            message="boom",
+            traceback="Traceback (most recent call last):\n",
+            occurred_at=datetime(2026, 8, 13, 17, 22, 32, 230852),
+        ),
+    )
+
+    reloaded = AgentEvalTrial.model_validate(trial.model_dump(mode="json"))
+
+    assert reloaded.error == trial.error
+    assert AgentEvalTrial.model_validate(reloaded.model_dump(mode="json")).error == trial.error
+
+
+def test_error_is_read_only_from_the_typed_field() -> None:
+    # `error` is the single carrier. A bundle written before it existed recorded the type in
+    # free-form metadata, and that is deliberately NOT interpreted: metadata stays opaque, so a
+    # pre-TrialError bundle re-scores with no error rollup rather than a guessed one.
+    trial = AgentEvalTrial.model_validate(
+        {
+            "id": "t0",
+            "task_id": "task-a",
+            "status": "partial",
+            "metadata": {"exception_type": "TimeoutError", "reward": 0.0},
+        }
+    )
+
+    assert trial.error is None
+    assert trial.metadata["exception_type"] == "TimeoutError"  # kept verbatim, just not read
+
+
+def test_a_trial_without_any_error_signal_loads_unchanged() -> None:
+    trial = AgentEvalTrial.model_validate({"id": "t0", "task_id": "task-a", "status": "partial"})
+
+    assert trial.error is None
+    assert trial.metadata == {}
