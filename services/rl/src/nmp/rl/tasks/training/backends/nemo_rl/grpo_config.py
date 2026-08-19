@@ -53,11 +53,15 @@ def _build_lora_cfg(customizer_config: TrainingStepConfig) -> dict[str, Any]:
     use_triton = True if lora is None else lora.use_triton
     if tp > 1:
         use_triton = False
+    target_modules = list(lora.target_modules) if lora and lora.target_modules else []
+    exclude_modules = list(lora.exclude_modules) if lora and lora.exclude_modules else []
     return {
         "enabled": enabled,
-        "target_modules": list(lora.target_modules) if lora and lora.target_modules else [],
-        "exclude_modules": list(lora.exclude_modules) if lora and lora.exclude_modules else [],
-        "match_all_linear": not bool(lora and lora.target_modules),
+        "target_modules": target_modules,
+        "exclude_modules": exclude_modules,
+        # Automodel's ModuleMatcher rejects match_all_linear alongside either list, and falls
+        # through to "every linear layer except the excluded ones" when it is off.
+        "match_all_linear": not (target_modules or exclude_modules),
         "dim": lora.rank if lora else 16,
         "alpha": lora.alpha if lora else 32,
         "dropout": lora.dropout if lora else 0.0,
@@ -65,6 +69,43 @@ def _build_lora_cfg(customizer_config: TrainingStepConfig) -> dict[str, Any]:
         "lora_A_init": "xavier",
         "use_triton": use_triton,
     }
+
+
+def _build_dtensor_cfg(
+    customizer_config: TrainingStepConfig,
+    grpo_hp: GRPOConfig,
+    lora_cfg: dict[str, Any],
+) -> dict[str, Any]:
+    """Map parallelism and backend settings onto NeMo-RL's policy.dtensor_cfg.
+
+    LoRA, expert parallelism and ``automodel_kwargs`` are implemented only by
+    ``DTensorPolicyWorkerV2``, so requesting any of them sets ``_v2``.
+    """
+    parallelism = customizer_config.parallelism
+    expert_parallel_size = parallelism.expert_parallel_size
+    automodel_kwargs = grpo_hp.automodel_kwargs
+    needs_v2 = lora_cfg["enabled"] or expert_parallel_size > 1 or bool(automodel_kwargs)
+
+    dtensor_cfg: dict[str, Any] = {
+        "enabled": True,
+        "cpu_offload": False,
+        "sequence_parallel": parallelism.sequence_parallel,
+        "activation_checkpointing": parallelism.activation_checkpointing,
+        "tensor_parallel_size": parallelism.tensor_parallel_size,
+        "context_parallel_size": parallelism.context_parallel_size,
+        "custom_parallel_plan": None,
+        "env_vars": {"PYTORCH_CUDA_ALLOC_CONF": ""},
+    }
+    # Optional keys stay absent when unset so NeMo-RL's defaults apply.
+    if expert_parallel_size > 1:
+        dtensor_cfg["expert_parallel_size"] = expert_parallel_size
+    if automodel_kwargs:
+        dtensor_cfg["automodel_kwargs"] = dict(automodel_kwargs)
+    if lora_cfg["enabled"]:
+        dtensor_cfg["lora_cfg"] = lora_cfg
+    if needs_v2:
+        dtensor_cfg["_v2"] = True
+    return dtensor_cfg
 
 
 def _count_jsonl_rows(path: Path) -> int:
@@ -290,7 +331,6 @@ def compile_grpo_config(
     cfg["grpo"] = {
         "num_prompts_per_step": num_prompts,
         "num_generations_per_prompt": grpo_hp.num_generations_per_prompt,
-        "num_val_generations_per_prompt": grpo_hp.num_val_generations_per_prompt,
         "max_rollout_turns": grpo_hp.max_rollout_turns,
         "max_num_epochs": epochs,
         "max_num_steps": max_steps,
@@ -358,17 +398,7 @@ def compile_grpo_config(
         "logprob_chunk_size": 2048,
         "offload_optimizer_for_logprob": False,
         "max_grad_norm": grpo_hp.max_grad_norm,
-        "dtensor_cfg": {
-            "enabled": True,
-            "cpu_offload": False,
-            "sequence_parallel": parallelism.sequence_parallel,
-            "activation_checkpointing": parallelism.activation_checkpointing,
-            "tensor_parallel_size": parallelism.tensor_parallel_size,
-            "context_parallel_size": parallelism.context_parallel_size,
-            "custom_parallel_plan": None,
-            "env_vars": {"PYTORCH_CUDA_ALLOC_CONF": ""},
-            **({"lora_cfg": lora_cfg, "_v2": True} if lora_cfg["enabled"] else {}),
-        },
+        "dtensor_cfg": _build_dtensor_cfg(customizer_config, grpo_hp, lora_cfg),
         "megatron_cfg": _megatron_cfg_disabled(precision, grpo_hp.max_grad_norm),
         "optimizer": _build_optimizer_config(customizer_config),
         "scheduler": _build_scheduler_config(customizer_config, max_steps),
@@ -391,10 +421,15 @@ def compile_grpo_config(
                 "async_engine": True,
                 "precision": precision,
                 "kv_cache_dtype": "auto",
-                "tensor_parallel_size": min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node),
+                # Generation shards independently of training: the rollout engine may need
+                # several GPUs to hold inference weights the policy shards differently.
+                "tensor_parallel_size": (
+                    grpo_hp.vllm_tensor_parallel_size
+                    or min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node)
+                ),
                 "pipeline_parallel_size": 1,
                 "expert_parallel_size": 1,
-                "gpu_memory_utilization": 0.5,
+                "gpu_memory_utilization": grpo_hp.vllm_gpu_memory_utilization,
                 "max_model_len": customizer_config.model.max_seq_length,
                 "enforce_eager": True,
                 "expose_http_server": True,
@@ -405,6 +440,11 @@ def compile_grpo_config(
         "dynamic_batching": {"enabled": False},
         "make_sequence_length_divisible_by": parallelism.tensor_parallel_size,
     }
+
+    # NeMo-RL forwards this to the training model as HF config kwargs and to vLLM as
+    # `hf_overrides`, so one setting covers both.
+    if grpo_hp.router_aux_loss_coef is not None:
+        cfg["policy"]["hf_config_overrides"] = {"router_aux_loss_coef": float(grpo_hp.router_aux_loss_coef)}
 
     cfg["data"] = {
         "max_input_seq_length": customizer_config.model.max_seq_length,

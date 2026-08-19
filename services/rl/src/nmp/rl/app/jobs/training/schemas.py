@@ -11,6 +11,7 @@ turns it into the NeMo-RL YAML.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from nmp.customization_common.training.reporting import ProgressReportingConfig
 from nmp.rl.app.constants import DEFAULT_OUTPUT_MODEL_PATH, DEFAULT_SEED, DEFAULT_TRAINING_OUTPUT_PATH
@@ -60,7 +61,6 @@ class GRPOConfig(BaseModel):
 
     num_generations_per_prompt: int = Field(default=8, gt=0)
     num_prompts_per_step: int | None = Field(default=None, gt=0)
-    num_val_generations_per_prompt: int = Field(default=4, gt=0)
     # Rollout sampling. Both land in NeMo-RL's policy.generation block, which is what
     # _prepare_nemo_gym_rows stamps onto every Gym row, so they reach colocated and
     # sandboxed rollouts alike.
@@ -72,6 +72,11 @@ class GRPOConfig(BaseModel):
     ratio_clip_min: float = Field(default=0.2, ge=0.0)
     ratio_clip_max: float = Field(default=0.28, ge=0.0)
     max_grad_norm: float = Field(default=1.0, ge=0.0)
+    # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
+    automodel_kwargs: dict[str, Any] | None = None
+    router_aux_loss_coef: float | None = Field(default=None, ge=0.0)
+    vllm_tensor_parallel_size: int | None = Field(default=None, gt=0)
+    vllm_gpu_memory_utilization: float = Field(default=0.5, gt=0.0, le=1.0)
 
 
 class LoRAConfig(BaseModel):
@@ -171,6 +176,7 @@ class TrainingStepConfig(BaseModel):
         tensor_parallel_size: int = 1
         pipeline_parallel_size: int = 1
         context_parallel_size: int = 1
+        expert_parallel_size: int = 1
         sequence_parallel: bool = False
         activation_checkpointing: bool = False
 

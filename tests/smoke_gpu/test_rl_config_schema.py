@@ -67,8 +67,14 @@ def _write_fixture(root: Path) -> Path:
     return dataset
 
 
-def _compile(root: Path, *, lora: bool) -> dict:
-    """Compile a sandboxed GRPO config the way the training task does."""
+def _compile(root: Path, *, lora: bool, moe: bool = False) -> dict:
+    """Compile a sandboxed GRPO config the way the training task does.
+
+    ``moe`` mirrors NeMo-RL's NemotronH 30B-A3B recipes, whose two shapes differ:
+    ``grpo-nanov3-30BA3B-2n8g-fsdp2-lora.yaml`` uses ``force_hf`` plus an out_proj
+    exclusion and no expert parallelism, while ``grpo-nanov3-30BA3B-2n8g-fsdp2.yaml``
+    uses expert parallelism plus a Transformer-Engine / DeepEP backend block.
+    """
     from nmp.customization_common.service.context import NMPJobContext
     from nmp.rl.app.jobs.training.schemas import (
         GRPOConfig,
@@ -79,6 +85,33 @@ def _compile(root: Path, *, lora: bool) -> dict:
     )
     from nmp.rl.entities.values import FinetuningType, TrainingType
     from nmp.rl.tasks.training.backends.nemo_rl.grpo_config import compile_grpo_config
+
+    moe_backend = {
+        "_target_": "nemo_automodel.components.models.common.utils.BackendConfig",
+        "attn": "te",
+        "linear": "te",
+        "rms_norm": "torch_fp32",
+        "experts": "torch_mm",
+        "enable_deepep": True,
+        "rope_fusion": False,
+        "enable_hf_state_dict_adapter": True,
+    }
+    grpo_kwargs: dict = {"num_generations_per_prompt": 4}
+    if moe:
+        grpo_kwargs |= {
+            "automodel_kwargs": {"force_hf": True} if lora else {"backend": moe_backend},
+            "router_aux_loss_coef": 0.0,
+            "vllm_tensor_parallel_size": 4,
+            "vllm_gpu_memory_utilization": 0.7,
+        }
+    if lora:
+        lora_cfg = (
+            LoRAConfig(rank=128, alpha=512, exclude_modules=["*out_proj*"], use_triton=False)
+            if moe
+            else LoRAConfig(rank=8)
+        )
+    else:
+        lora_cfg = None
 
     dataset = _write_fixture(root)
     step = TrainingStepConfig(
@@ -94,13 +127,17 @@ def _compile(root: Path, *, lora: bool) -> dict:
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
             finetuning_type=FinetuningType.LORA if lora else FinetuningType.ALL_WEIGHTS,
-            grpo=GRPOConfig(num_generations_per_prompt=4),
-            lora=LoRAConfig(rank=8) if lora else None,
+            grpo=GRPOConfig(**grpo_kwargs),
+            lora=lora_cfg,
         ),
         schedule=TrainingStepConfig.ScheduleConfig(epochs=1),
         batch=TrainingStepConfig.BatchConfig(global_batch_size=8, micro_batch_size=1),
         optimizer=TrainingStepConfig.OptimizerConfig(),
-        parallelism=TrainingStepConfig.ParallelismConfig(num_gpus_per_node=1, tensor_parallel_size=1),
+        parallelism=TrainingStepConfig.ParallelismConfig(
+            num_gpus_per_node=8 if moe else 1,
+            tensor_parallel_size=1,
+            expert_parallel_size=8 if moe and not lora else 1,
+        ),
         output_model="out",
         workspace_path=str(root / "workspace"),
     )
@@ -119,12 +156,52 @@ def _compile(root: Path, *, lora: bool) -> dict:
 
 
 @pytest.mark.parametrize("lora", [False, True], ids=["full_weight", "lora"])
-def test_compiled_grpo_config_satisfies_master_config(tmp_path, monkeypatch, lora):
+@pytest.mark.parametrize("moe", [False, True], ids=["dense", "moe"])
+def test_compiled_grpo_config_satisfies_master_config(tmp_path, monkeypatch, lora, moe):
     """The driver builds MasterConfig from this dict; a missing field is fatal there."""
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     from nemo_rl.algorithms.grpo import MasterConfig
 
-    MasterConfig(**_compile(tmp_path, lora=lora))
+    MasterConfig(**_compile(tmp_path, lora=lora, moe=moe))
+
+
+@pytest.mark.parametrize("lora", [False, True], ids=["full_weight", "lora"])
+def test_moe_knobs_land_on_the_keys_nemo_rl_reads(tmp_path, monkeypatch, lora):
+    """Each of these keys is optional in NeMo-RL, so a wrong name or nesting level passes
+    every schema check and does nothing. ``expert_parallel_size`` is read only by
+    ``nemo_rl/models/automodel/setup.py``, ``automodel_kwargs`` only by the v2 worker, and
+    ``hf_config_overrides`` sits on ``policy``, not on ``dtensor_cfg``.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    policy = _compile(tmp_path, lora=lora, moe=True)["policy"]
+    dtensor_cfg = policy["dtensor_cfg"]
+
+    assert dtensor_cfg["_v2"] is True
+    assert dtensor_cfg["automodel_kwargs"]
+    assert policy["hf_config_overrides"] == {"router_aux_loss_coef": 0.0}
+    # Generation shards for capacity; training does not shard tensors at all here.
+    assert policy["generation"]["vllm_cfg"]["tensor_parallel_size"] == 4
+    assert policy["generation"]["vllm_cfg"]["gpu_memory_utilization"] == 0.7
+    assert dtensor_cfg["tensor_parallel_size"] == 1
+
+    if lora:
+        assert dtensor_cfg["lora_cfg"]["exclude_modules"] == ["*out_proj*"]
+        assert dtensor_cfg["lora_cfg"]["match_all_linear"] is False
+        assert "expert_parallel_size" not in dtensor_cfg
+    else:
+        assert dtensor_cfg["expert_parallel_size"] == 8
+
+
+def test_dtensor_cfg_keys_are_known_to_nemo_rl(tmp_path, monkeypatch):
+    """DTensorConfig is a TypedDict, so an invented key is accepted and ignored, never
+    rejected."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    from nemo_rl.models.policy import DTensorConfig
+
+    known = set(DTensorConfig.__required_keys__) | set(DTensorConfig.__optional_keys__)
+    for lora in (False, True):
+        emitted = set(_compile(tmp_path, lora=lora, moe=True)["policy"]["dtensor_cfg"])
+        assert not emitted - known, f"unknown dtensor_cfg keys: {sorted(emitted - known)}"
 
 
 @pytest.mark.parametrize("lora", [False, True], ids=["full_weight", "lora"])

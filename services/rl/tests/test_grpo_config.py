@@ -57,6 +57,7 @@ def _make_grpo_step(
     finetuning_type: FinetuningType = FinetuningType.ALL_WEIGHTS,
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
+    expert_parallel_size: int = 1,
     grpo: GRPOConfig | None = None,
 ) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
@@ -89,6 +90,7 @@ def _make_grpo_step(
         parallelism=TrainingStepConfig.ParallelismConfig(
             num_gpus_per_node=1,
             tensor_parallel_size=tensor_parallel_size,
+            expert_parallel_size=expert_parallel_size,
         ),
         output_model="out",
         workspace_path=str(tmp_path / "workspace"),
@@ -101,6 +103,7 @@ def _prepared_step(
     finetuning_type: FinetuningType = FinetuningType.ALL_WEIGHTS,
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
+    expert_parallel_size: int = 1,
     grpo: GRPOConfig | None = None,
 ) -> tuple[TrainingStepConfig, Path]:
     dataset_pvc = tmp_path / "dataset"
@@ -114,6 +117,7 @@ def _prepared_step(
             finetuning_type=finetuning_type,
             lora=lora,
             tensor_parallel_size=tensor_parallel_size,
+            expert_parallel_size=expert_parallel_size,
             grpo=grpo,
         ),
         dataset_pvc,
@@ -267,10 +271,10 @@ def test_compiled_config_selects_only_prefetched_actors(
     step, _ = _prepared_step(tmp_path)
     cfg = compile_grpo_config(step, job_ctx)
 
-    # _v2 selects DTensorPolicyWorkerV2 -> PY_EXECUTABLES.AUTOMODEL, which is neither
-    # built nor prefetched. Unset (or False) keeps DTensorPolicyWorker -> `fsdp`.
+    # A plain full-weight job asks for nothing v2 implements, so it stays on
+    # DTensorPolicyWorker -> `fsdp`.
     assert not cfg["policy"]["dtensor_cfg"].get("_v2", False)
-    # megatron_cfg would select MegatronPolicyWorker -> `mcore`, also excluded.
+    # megatron_cfg would select MegatronPolicyWorker -> `mcore`.
     assert cfg["policy"]["megatron_cfg"]["enabled"] is False
     # vLLM is the only prefetched generation backend (`vllm`); sglang/trtllm are not.
     assert cfg["policy"]["generation"]["backend"] == "vllm"
@@ -409,16 +413,12 @@ def test_lora_and_v2_stay_coupled(
     lora: LoRAConfig | None,
     expected: bool,
 ) -> None:
-    """``lora_cfg.enabled`` and ``_v2`` must never disagree.
+    """Enabling LoRA must always bring ``_v2`` with it.
 
-    LoRA is implemented only in DTensorPolicyWorkerV2; the V1 DTensorPolicyWorker
-    ignores ``lora_cfg`` entirely. So enabling LoRA without ``_v2`` does not fail --
-    it silently trains full weights and reports success. The reverse (``_v2`` without
-    LoRA) is also wrong: it moves a full-weight run onto PY_EXECUTABLES.AUTOMODEL,
-    which the image does not prefetch.
-
-    The two assertions above cover each case on its own; this pins the relationship,
-    so decoupling them fails here rather than in a training run.
+    LoRA is implemented only in DTensorPolicyWorkerV2; the V1 DTensorPolicyWorker ignores
+    ``lora_cfg`` entirely, so LoRA without ``_v2`` silently trains full weights and reports
+    success. Expert parallelism and ``automodel_kwargs`` also set ``_v2``, so this pins the
+    LoRA direction only.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(tmp_path, finetuning_type=finetuning_type, lora=lora)
@@ -660,3 +660,176 @@ def test_sandbox_ttl_unset_keeps_the_nemo_rl_default(
 
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert sandbox["ttl_s"] == 14_400
+
+
+def test_lora_exclude_modules_turns_off_match_all_linear(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Automodel's ModuleMatcher rejects match_all_linear alongside exclude_modules, and it
+    raises inside the policy worker -- after Ray, vLLM and the Gym sandbox are all up.
+
+    Exclude-only is how NemotronH has to be configured: its Mamba mixer gives LoRA no
+    gradient on out_proj under the CUDA-kernel path.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=128, alpha=512, exclude_modules=["*out_proj*"], use_triton=False),
+    )
+    lora_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]["lora_cfg"]
+
+    assert lora_cfg["exclude_modules"] == ["*out_proj*"]
+    assert lora_cfg["target_modules"] == []
+    assert lora_cfg["match_all_linear"] is False
+
+
+def test_lora_target_modules_turn_off_match_all_linear(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=16, target_modules=["*_proj"]),
+    )
+    lora_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]["lora_cfg"]
+
+    assert lora_cfg["target_modules"] == ["*_proj"]
+    assert lora_cfg["match_all_linear"] is False
+
+
+def test_lora_without_module_lists_matches_all_linear(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No lists at all is the one case that should still adapt every linear layer."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=16),
+    )
+    lora_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]["lora_cfg"]
+
+    assert lora_cfg["match_all_linear"] is True
+    assert lora_cfg["target_modules"] == []
+    assert lora_cfg["exclude_modules"] == []
+
+
+def test_expert_parallel_size_reaches_dtensor_and_selects_v2(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``nemo_rl/models/automodel/setup.py`` is the sole reader of
+    ``dtensor_cfg.expert_parallel_size``. Without ``_v2`` the V1 worker ignores the key and
+    shards nothing, so a full-weight MoE run OOMs with no sign the sharding never happened.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, expert_parallel_size=8)
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert dtensor_cfg["expert_parallel_size"] == 8
+    assert dtensor_cfg["_v2"] is True
+
+
+def test_expert_parallel_size_omitted_when_unused(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert "expert_parallel_size" not in dtensor_cfg
+    assert dtensor_cfg.get("_v2", False) is False
+
+
+def test_automodel_kwargs_reach_dtensor_and_select_v2(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """force_hf is what makes NemotronH loadable at all on the DTensor path."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, automodel_kwargs={"force_hf": True}),
+    )
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert dtensor_cfg["automodel_kwargs"] == {"force_hf": True}
+    assert dtensor_cfg["_v2"] is True
+
+
+def test_automodel_kwargs_omitted_when_unset(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    assert "automodel_kwargs" not in compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+
+def test_router_aux_loss_coef_becomes_an_hf_config_override(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """0.0 is the value an MoE RL run wants, so the field is checked against None, not
+    truthiness -- an ``if coef:`` guard would drop it."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, router_aux_loss_coef=0.0),
+    )
+
+    assert compile_grpo_config(step, job_ctx)["policy"]["hf_config_overrides"] == {"router_aux_loss_coef": 0.0}
+
+
+def test_hf_config_overrides_omitted_when_router_coef_unset(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    assert "hf_config_overrides" not in compile_grpo_config(step, job_ctx)["policy"]
+
+
+def test_vllm_tensor_parallel_size_is_independent_of_training_tp(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 30B model needs several GPUs to hold inference weights while NeMo-RL's recipe for it
+    keeps DTensor at tp=1, since tensor parallelism over hybrid Mamba layers is untested.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        tensor_parallel_size=1,
+        grpo=GRPOConfig(num_generations_per_prompt=4, vllm_tensor_parallel_size=4),
+    )
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+
+    assert policy["generation"]["vllm_cfg"]["tensor_parallel_size"] == 4
+    assert policy["dtensor_cfg"]["tensor_parallel_size"] == 1
+
+
+def test_vllm_tensor_parallel_size_falls_back_to_the_coupled_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset falls back to min(training tp, gpus per node)."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, tensor_parallel_size=2)
+
+    vllm_cfg = compile_grpo_config(step, job_ctx)["policy"]["generation"]["vllm_cfg"]
+    # _prepared_step pins num_gpus_per_node=1, so the min clamps to it.
+    assert vllm_cfg["tensor_parallel_size"] == 1
+
+
+def test_vllm_gpu_memory_utilization_is_configurable(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, vllm_gpu_memory_utilization=0.7),
+    )
+    default_step, _ = _prepared_step(tmp_path)
+
+    assert compile_grpo_config(step, job_ctx)["policy"]["generation"]["vllm_cfg"]["gpu_memory_utilization"] == 0.7
+    assert (
+        compile_grpo_config(default_step, job_ctx)["policy"]["generation"]["vllm_cfg"]["gpu_memory_utilization"] == 0.5
+    )

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self, Union
+from typing import Annotated, Any, Literal, Self, Union
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
@@ -33,6 +33,11 @@ class ParallelismParams(RlSchema):
     tensor_parallel_size: int = Field(default=1, gt=0, description="Tensor parallel size.")
     pipeline_parallel_size: int = Field(default=1, gt=0, description="Pipeline parallel size.")
     context_parallel_size: int = Field(default=1, gt=0, description="Context parallel size.")
+    expert_parallel_size: int = Field(
+        default=1,
+        gt=0,
+        description="Expert parallel size for MoE models. GRPO only; a value above 1 selects the DTensor v2 backend.",
+    )
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
@@ -179,9 +184,6 @@ class GRPOTraining(_TrainingBase):
         "num_generations_per_prompt when omitted; the product of the two must be a "
         "multiple of batch_size.",
     )
-    num_val_generations_per_prompt: int = Field(
-        default=4, gt=0, description="Rollouts sampled per prompt during validation."
-    )
     temperature: float = Field(
         default=1.0,
         gt=0.0,
@@ -209,6 +211,33 @@ class GRPOTraining(_TrainingBase):
     ratio_clip_min: float = Field(default=0.2, ge=0.0, description="Lower PPO-style importance ratio clip bound.")
     ratio_clip_max: float = Field(default=0.28, ge=0.0, description="Upper PPO-style importance ratio clip bound.")
     max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
+
+    # --- Per-architecture backend settings ---
+    automodel_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description="Passed to policy.dtensor_cfg.automodel_kwargs; selects the DTensor v2 backend. "
+        "{'force_hf': true} loads the stock HuggingFace modules; a {'backend': {...}} block picks "
+        "the Transformer-Engine / DeepEP MoE implementation. Unset means Automodel auto-detects.",
+    )
+    router_aux_loss_coef: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="MoE router auxiliary-loss coefficient, applied as a HuggingFace config override. "
+        "Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own value.",
+    )
+    vllm_tensor_parallel_size: int | None = Field(
+        default=None,
+        gt=0,
+        description="Tensor parallel size for the vLLM rollout engine, independent of the policy's. "
+        "Defaults to min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node).",
+    )
+    vllm_gpu_memory_utilization: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description="Fraction of each GPU vLLM reserves for weights plus KV cache. Raise toward 0.7 "
+        "for large models; the rest is left for the colocated policy.",
+    )
 
     @model_validator(mode="after")
     def _lora_defaults(self) -> Self:
@@ -271,12 +300,16 @@ class RlJobOutput(RlSchema):
         training = self.training
         p = training.parallelism
         total_gpus = p.num_gpus_per_node * p.num_nodes
-        model_parallel_size = p.tensor_parallel_size * p.pipeline_parallel_size * p.context_parallel_size
+        # NeMo-RL derives dp_size = world_size // (tp * cp * ep), so ep belongs in this product.
+        model_parallel_size = (
+            p.tensor_parallel_size * p.pipeline_parallel_size * p.context_parallel_size * p.expert_parallel_size
+        )
         if total_gpus % model_parallel_size != 0:
             raise ValueError(
                 f"Total GPUs ({total_gpus}) must be divisible by tensor_parallel_size "
                 f"({p.tensor_parallel_size}) * pipeline_parallel_size ({p.pipeline_parallel_size}) * "
-                f"context_parallel_size ({p.context_parallel_size}) = {model_parallel_size}"
+                f"context_parallel_size ({p.context_parallel_size}) * expert_parallel_size "
+                f"({p.expert_parallel_size}) = {model_parallel_size}"
             )
         derived_dp = total_gpus // model_parallel_size
         gb, mb = training.batch_size, training.micro_batch_size
@@ -289,6 +322,19 @@ class RlJobOutput(RlSchema):
         if isinstance(training, GRPOTraining):
             if not self.environment:
                 raise ValueError("GRPO jobs require an environment fileset reference.")
+            # The rollout engine meshes over the same GPUs under its own rule: vllm_generation.py
+            # asserts world_size % tp == 0, and one engine does not span nodes.
+            vllm_tp = training.vllm_tensor_parallel_size
+            if vllm_tp is not None:
+                if vllm_tp > p.num_gpus_per_node:
+                    raise ValueError(
+                        f"vllm_tensor_parallel_size ({vllm_tp}) cannot exceed num_gpus_per_node "
+                        f"({p.num_gpus_per_node}); a single vLLM engine does not shard across nodes."
+                    )
+                if total_gpus % vllm_tp != 0:
+                    raise ValueError(
+                        f"Total GPUs ({total_gpus}) must be divisible by vllm_tensor_parallel_size ({vllm_tp})."
+                    )
             # The rollout batch is num_prompts_per_step * num_generations_per_prompt, and
             # NeMo-RL shards it by the train batch. When num_prompts_per_step is derived,
             # the floor division can leave the two out of step (e.g. 32 // 5 = 6 -> 30 vs
