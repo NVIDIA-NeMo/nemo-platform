@@ -10,7 +10,7 @@ dependencies = [
     "pydantic>=2",
     # Harbor 0.18 provides the discovery APIs used by this plugin.
     "harbor>=0.18",
-    "nooa",
+    "nooa>=0.0.9",
     "nemo-experimentalist-plugin",
     "nemo-insights-plugin",
     "nemo-platform",
