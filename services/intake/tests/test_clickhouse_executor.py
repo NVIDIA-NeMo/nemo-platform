@@ -29,7 +29,6 @@ class _Client:
         self.statements: list[str] = []
         self.parameters: list[dict[str, Any]] = []
         self.external_data: list[object | None] = []
-        self.settings: list[dict[str, Any] | None] = []
         self.inserts: list[tuple[str, list[tuple[object, ...]], list[str]]] = []
 
     async def query(
@@ -37,12 +36,10 @@ class _Client:
         statement: str,
         *,
         parameters: dict[str, Any],
-        settings: dict[str, Any] | None = None,
         external_data: object | None = None,
     ) -> SimpleNamespace:
         self.statements.append(statement)
         self.parameters.append(parameters)
-        self.settings.append(settings)
         self.external_data.append(external_data)
         if self.error is not None:
             raise self.error
@@ -97,22 +94,6 @@ async def test_executor_returns_mapped_rows_and_bound_parameters() -> None:
     assert rows == [{"session_id": "session-a", "span_count": 3}]
     assert client.statements == [query.statement]
     assert client.parameters == [{"session_id": "session-a"}]
-    assert client.settings == [None]
-
-
-@pytest.mark.asyncio
-async def test_executor_forwards_query_settings_to_the_driver() -> None:
-    client = _Client()
-    query = ClickHouseQuery(
-        name="traces.metrics",
-        statement="SELECT 1",
-        settings={"max_execution_time": 30},
-    )
-
-    await _executor(client).fetch_all(query)
-
-    assert client.settings == [{"max_execution_time": 30}]
-    assert query.bind(workspace="workspace-a").settings == query.settings
 
 
 @pytest.mark.asyncio

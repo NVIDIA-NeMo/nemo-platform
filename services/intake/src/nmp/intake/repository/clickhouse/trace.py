@@ -44,14 +44,6 @@ TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
 }
 
-# Capping the bucket count does not cap the scan, so a wide filter still needs a
-# ceiling on what one rollup may read. Overflow modes default to throw.
-METRIC_QUERY_SETTINGS = {
-    "max_execution_time": 30,
-    "max_memory_usage": 4 * 1024**3,
-    "max_rows_to_read": 200_000_000,
-}
-
 TRACE_COLUMNS = [
     "id",
     "workspace",
@@ -270,12 +262,7 @@ class ClickHouseTraceRepository(TraceRepository):
             ORDER BY bucket_start ASC
         """
         rows = await self._executor.fetch_all(
-            ClickHouseQuery(
-                name="traces.metrics",
-                statement=statement,
-                parameters=parameters,
-                settings=METRIC_QUERY_SETTINGS,
-            )
+            ClickHouseQuery(name="traces.metrics", statement=statement, parameters=parameters)
         )
         return [_row_to_metric_point(row, bucket=bucket) for row in rows]
 
