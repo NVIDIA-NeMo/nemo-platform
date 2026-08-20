@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CodeSnippet, Flex, Spinner, Text } from '@nvidia/foundations-react-core';
+import { CodeSnippet, Text } from '@nvidia/foundations-react-core';
+import { PayloadPending } from '@studio/components/IntakeDetail/IntakeComponents/PayloadPending';
 import {
   autoFormat,
   parseJsonPayload,
@@ -16,16 +17,6 @@ const MarkdownContent = lazy(() =>
   import('@nemo/common/src/components/MarkdownContent').then((module) => ({
     default: module.MarkdownContent,
   }))
-);
-
-const PayloadPending: FC = () => (
-  <Flex
-    align="center"
-    justify="center"
-    className="min-h-[160px] rounded-md border border-base bg-surface-raised p-density-xl"
-  >
-    <Spinner size="medium" aria-label="Rendering payload" />
-  </Flex>
 );
 
 interface SpanPayloadViewProps {

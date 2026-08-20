@@ -130,7 +130,11 @@ describe('SpanPayloadView', () => {
   it('renders markdown payloads as formatted content once the renderer loads', async () => {
     renderRoute(<SpanPayloadView value="# Findings" format="md" emptyMessage={EMPTY_MESSAGE} />);
 
-    expect(await screen.findByRole('heading', { name: 'Findings' })).toBeInTheDocument();
+    // Generous timeout: the renderer is a dynamic import, so a cold module cache
+    // can take longer than findBy's 1s default.
+    expect(
+      await screen.findByRole('heading', { name: 'Findings' }, { timeout: 5_000 })
+    ).toBeInTheDocument();
   });
 
   it('falls back to raw when JSON is requested for a payload that is not JSON', () => {
@@ -174,7 +178,9 @@ describe('SpanPayloadFormatToggle', () => {
 
     await user.click(screen.getByRole('button', { name: 'View input as markdown' }));
 
-    expect(await screen.findByRole('heading', { name: 'Findings' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Findings' }, { timeout: 5_000 })
+    ).toBeInTheDocument();
   });
 
   it('drops the JSON formatting when the raw view is selected', async () => {
