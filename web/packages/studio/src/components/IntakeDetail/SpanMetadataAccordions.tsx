@@ -18,6 +18,10 @@ import {
   buildSpanSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/spanKeyValues';
 import { SpanPayloadBlock } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadBlock';
+import {
+  SpanPayloadRendererControl,
+  SpanPayloadViewMode,
+} from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadRendererControl';
 import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/registry';
 import type { SpanSectionId } from '@studio/components/IntakeDetail/SpanTemplates/types';
 import { type FC, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,6 +33,12 @@ const LLM_PARAMETER_KEYS: ReadonlySet<string> = new Set(['model', 'provider', 'p
 const DEFAULT_OPEN: ReadonlySet<SpanSectionId> = new Set(['kind', 'llm', 'input', 'output']);
 
 type GenericSectionId = Exclude<SpanSectionId, 'kind'>;
+type PayloadSectionId = Extract<GenericSectionId, 'input' | 'output'>;
+
+const DEFAULT_PAYLOAD_VIEW_MODES: Record<PayloadSectionId, SpanPayloadViewMode> = {
+  input: SpanPayloadViewMode.raw,
+  output: SpanPayloadViewMode.raw,
+};
 
 interface SpanSectionContext {
   span: Span;
@@ -39,6 +49,7 @@ interface SpanSectionContext {
   usageEntries: readonly KeyValueEntry[];
   /** Bumped to focus the Annotations note field. */
   focusNoteNonce?: number;
+  payloadViewModes: Record<PayloadSectionId, SpanPayloadViewMode>;
 }
 
 // ── Generic section bodies (render the same way for every kind) ──────────────
@@ -56,20 +67,22 @@ const UsageSection: FC<SpanSectionContext> = ({ usageEntries }) => (
   </Stack>
 );
 
-const InputSection: FC<SpanSectionContext> = ({ span }) => (
+const InputSection: FC<SpanSectionContext> = ({ span, payloadViewModes }) => (
   <Stack className="min-w-0">
     <SpanPayloadBlock
       value={span.input}
       emptyMessage="No input payload was captured for this span."
+      viewMode={payloadViewModes.input}
     />
   </Stack>
 );
 
-const OutputSection: FC<SpanSectionContext> = ({ span }) => (
+const OutputSection: FC<SpanSectionContext> = ({ span, payloadViewModes }) => (
   <Stack className="min-w-0">
     <SpanPayloadBlock
       value={span.output}
       emptyMessage="No output payload was captured for this span."
+      viewMode={payloadViewModes.output}
     />
   </Stack>
 );
@@ -153,6 +166,21 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     () => buildSpanLlmEntries(span).filter((entry) => !LLM_PARAMETER_KEYS.has(entry.id)),
     [span]
   );
+  const [payloadViewState, setPayloadViewState] = useState<{
+    spanId: string;
+    modes: Record<PayloadSectionId, SpanPayloadViewMode>;
+  }>(() => ({ spanId: span.span_id, modes: { ...DEFAULT_PAYLOAD_VIEW_MODES } }));
+  // Reset during render when selection moves to a different span. React
+  // discards this render and retries synchronously, so a new payload never
+  // commits using the previous span's rendering mode.
+  if (payloadViewState.spanId !== span.span_id) {
+    setPayloadViewState({
+      spanId: span.span_id,
+      modes: { ...DEFAULT_PAYLOAD_VIEW_MODES },
+    });
+  }
+  const payloadViewModes =
+    payloadViewState.spanId === span.span_id ? payloadViewState.modes : DEFAULT_PAYLOAD_VIEW_MODES;
 
   const template = useMemo(() => getSpanTemplate(span.kind), [span.kind]);
 
@@ -207,12 +235,29 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     summaryEntries,
     usageEntries,
     focusNoteNonce,
+    payloadViewModes,
   };
   const genericItems: IntakeAccordionItem[] = accordionSectionIds.map((id) => {
     const { value, label, Body } = SECTIONS[id];
     const slotLabel =
       id === 'annotations' ? annotationsSectionLabel(label, annotationCount) : sectionLabel(label);
-    return { value, slotLabel, slotContent: <Body {...context} /> };
+    const payloadSectionId: PayloadSectionId | null = id === 'input' || id === 'output' ? id : null;
+    const slotEnd = payloadSectionId ? (
+      <SpanPayloadRendererControl
+        sectionLabel={label}
+        value={payloadViewModes[payloadSectionId]}
+        onValueChange={(viewMode) =>
+          setPayloadViewState((current) => ({
+            spanId: span.span_id,
+            modes: {
+              ...(current.spanId === span.span_id ? current.modes : DEFAULT_PAYLOAD_VIEW_MODES),
+              [payloadSectionId]: viewMode,
+            },
+          }))
+        }
+      />
+    ) : undefined;
+    return { value, slotLabel, slotEnd, slotContent: <Body {...context} /> };
   });
   // Annotations leads, then the kind's custom sections, then the remaining
   // generic sections (e.g. Metadata).
