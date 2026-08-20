@@ -10,7 +10,6 @@ import asyncio
 import logging
 import os
 import uuid
-from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -23,12 +22,7 @@ if __package__ in {None, ""}:
 
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
-from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import (
-    EffectiveCodexRuntime,
-    RuntimeChoice,
-    print_codex_agent_models,
-    resolve_codex_runtime,
-)
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget, AgentEvalTrial
 from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel, SecretRef
@@ -46,11 +40,12 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "profbench-agent-eval-out
 DEFAULT_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 DEFAULT_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
 DEFAULT_API_KEY_SECRET = os.getenv("NMP_EVALUATOR_DEFAULT_API_KEY_SECRET", "NVIDIA_API_KEY")
+DEFAULT_FABRIC_CODEX_MODEL = "gpt-5.4"
 
 
 class AgentChoice(StrEnum):
     MODEL = "model"
-    CODEX = "codex"
+    FABRIC_CODEX = "fabric-codex"
 
 
 class ProfBenchMode(StrEnum):
@@ -74,7 +69,6 @@ async def run_profbench_mode(
     run_instance_id: str | None = None,
     agent: AgentChoice = AgentChoice.MODEL,
     agent_model: str | None = None,
-    runtime: RuntimeChoice = RuntimeChoice.DOCKER,
 ) -> None:
     """Run one ProfBench mode.
 
@@ -101,23 +95,21 @@ async def run_profbench_mode(
     trials: list[AgentEvalTrial] | None = None
     params: RunConfigOnlineModel | None = None
     benchmark_labels = {key: str(value) for key, value in benchmark.metadata.items()}
+    tasks = benchmark.tasks
     if mode is ProfBenchMode.LIVE_CANDIDATE:
-        target, params, score_source, effective_codex_runtime = _live_candidate_target(
-            agent=agent,
-            agent_model=agent_model,
-            runtime=runtime,
-            output_dir=output_dir,
+        target, params, score_source = _live_candidate_target(
+            agent=agent, agent_model=agent_model, output_dir=output_dir
         )
-        if effective_codex_runtime is not None:
-            print(f"Codex runtime: {effective_codex_runtime}")
         benchmark_labels["score_source"] = score_source
+        if agent is AgentChoice.FABRIC_CODEX:
+            tasks = [_as_candidate_task(task) for task in tasks]
     else:
         trials = benchmark.trials
         if mode is ProfBenchMode.LIVE_JUDGE:
             benchmark_labels["score_source"] = "live_judge"
 
     result = await AgentEvaluator().run(
-        tasks=benchmark.tasks,
+        tasks=tasks,
         trials=trials,
         target=target,
         config=AgentEvalRunConfig(
@@ -149,7 +141,6 @@ async def run_examples(
     run_instance_id: str | None = None,
     agent: AgentChoice = AgentChoice.MODEL,
     agent_model: str | None = None,
-    runtime: RuntimeChoice = RuntimeChoice.DOCKER,
 ) -> None:
     """Execute the enabled ProfBench agent-eval modes under one shared run folder."""
     output_root = _resolve_profbench_output_root(output_root)
@@ -185,7 +176,6 @@ async def run_examples(
             run_instance_id=run_instance_id,
             agent=agent,
             agent_model=agent_model,
-            runtime=runtime,
         )
     else:
         print("Skipping live ProfBench candidate example. Remove --no-run-live-candidate to run it.")
@@ -242,62 +232,63 @@ def _judge_model() -> Model:
     )
 
 
-# ProfBench-specific Codex policy. Runtime *selection* is generic (resolve_codex_runtime, in the SDK);
-# ProfBench owns only how a task is framed for the agent and how the resulting score is labeled.
-# ProfBench runs Codex as a *candidate* whose single text answer a live judge grades, so the prompt
-# forbids tool chatter and the score_source records the candidate+judge topology.
-PROFBENCH_SCORE_SOURCE = {
-    EffectiveCodexRuntime.LOCAL_CLI: "codex_cli_candidate_and_live_judge",
-    EffectiveCodexRuntime.DOCKER_CLI: "codex_docker_cli_candidate_and_live_judge",
-    EffectiveCodexRuntime.DOCKER_SANDBOX: "docker_sandbox_candidate_and_live_judge",
+#: Fabric config for the coding-agent candidate: the Codex CLI harness, run once per task as a
+#: subprocess. ``sandbox: read-only`` because ProfBench grades a text answer and the agent has no
+#: reason to write files. A plain mapping (rather than nemo_fabric's typed config) keeps this module
+#: importable without the native Fabric stack installed.
+PROFBENCH_FABRIC_CODEX_CONFIG = {
+    "metadata": {"name": "profbench-candidate"},
+    "harness": {"adapter_id": "nvidia.fabric.codex", "settings": {"sandbox": "read-only"}},
+    # The Codex adapter refuses to start without a model provider, so the config carries a default
+    # rather than deferring to the CLI's own; `--agent-model` overrides it.
+    "models": {"default": {"provider": "openai", "model": DEFAULT_FABRIC_CODEX_MODEL}},
+    "runtime": {"mode": "oneshot", "transport": "cli"},
 }
 
+#: ProfBench grades one block of answer text against a rubric, so tool logs and commentary read as a
+#: worse answer. A chat model gives a bare answer already; a coding agent has to be told.
+PROFBENCH_CANDIDATE_PREAMBLE = (
+    "Answer the task below. Return only the final answer text; do not include analysis, "
+    "markdown fences, tool logs, or commentary.\n\n"
+)
 
-def profbench_codex_prompt(task: AgentEvalTask) -> str:
-    """Frame a task as a ProfBench candidate: return only the final answer text, no tooling chatter."""
-    return (
-        "Answer the ProfBench task below. Return only the final answer text; do not include "
-        "analysis, markdown fences, tool logs, or commentary.\n\n"
-        f"Task id: {task.id}\n"
-        f"Intent: {task.intent}\n"
-        f"Inputs: {task.inputs}\n"
-    )
+
+def _as_candidate_task(task: AgentEvalTask) -> AgentEvalTask:
+    """Prefix a task's instruction with the answer-only framing, leaving grading untouched.
+
+    ``FabricAgentRuntime`` sends ``inputs['instruction']`` verbatim, so the framing has to live in
+    the task. Only the agent arm gets it: the baseline and live-judge arms score recorded responses
+    that were never prompted this way, and re-framing them would change what is being compared.
+    """
+    inputs = dict(task.inputs)
+    # Read through ``agent_prompt`` rather than ``inputs`` directly: it rejects a task with no
+    # instruction, and prefixing the preamble onto an empty one would make that value truthy and
+    # silently run the agent on the preamble alone.
+    inputs["instruction"] = PROFBENCH_CANDIDATE_PREAMBLE + task.agent_prompt()
+    return task.model_copy(update={"inputs": inputs})
 
 
 def _live_candidate_target(
-    *,
-    agent: AgentChoice,
-    agent_model: str | None,
-    runtime: RuntimeChoice,
-    output_dir: Path,
-    env: Mapping[str, str] = os.environ,
-) -> tuple[
-    AgentEvalTarget,
-    RunConfigOnlineModel | None,
-    str,
-    EffectiveCodexRuntime | None,
-]:
-    if agent == AgentChoice.MODEL:
+    *, agent: AgentChoice, agent_model: str | None, output_dir: Path
+) -> tuple[AgentEvalTarget, RunConfigOnlineModel | None, str]:
+    if agent is AgentChoice.MODEL:
         return (
             _evaluated_model(agent_model),
-            RunConfigOnlineModel(
-                parallelism=2,
-                inference=InferenceParams(temperature=0.0, max_tokens=32768),
-            ),
+            RunConfigOnlineModel(parallelism=2, inference=InferenceParams(temperature=0.0, max_tokens=32768)),
             "fresh_candidate_and_live_judge",
-            None,
         )
-    if agent == AgentChoice.CODEX:
-        # SDK picks the runtime; ProfBench supplies the candidate prompt and the score_source label.
-        target, effective_runtime = resolve_codex_runtime(
-            runtime=runtime,
+    # Trajectory capture is off: it needs the nemo-relay gateway, and the rubric judge scores the
+    # answer text, not the agent's steps.
+    return (
+        FabricAgentRuntime(
+            config=PROFBENCH_FABRIC_CODEX_CONFIG,
             model=agent_model,
-            output_dir=output_dir,
-            env=env,
-            prompt_builder=profbench_codex_prompt,
-        )
-        return target, None, PROFBENCH_SCORE_SOURCE[effective_runtime], effective_runtime
-    raise ValueError(f"unsupported ProfBench agent {agent!r}")
+            work_root=output_dir / "evidence" / "fabric",
+            capture_trajectory=False,
+        ),
+        None,
+        "fabric_codex_candidate_and_live_judge",
+    )
 
 
 def _print_example_separator(name: str) -> None:
@@ -341,38 +332,21 @@ if __name__ == "__main__":
         type=AgentChoice,
         choices=list(AgentChoice),
         default=AgentChoice.MODEL,
-        help="Candidate agent for live-candidate mode. Use 'codex' for Codex-backed candidate generation.",
-    )
-    parser.add_argument(
-        "--runtime",
-        type=RuntimeChoice,
-        choices=list(RuntimeChoice),
-        default=RuntimeChoice.DOCKER,
         help=(
-            "Runtime for --agent codex. Default: docker. Docker uses SDK Docker when OPENAI_API_KEY is an "
-            "OpenAI secret key and runs Codex CLI inside Docker otherwise. Use local to force the host Codex CLI."
+            "Candidate for live-candidate mode. 'model' calls the chat-completions model directly; "
+            "'fabric-codex' drives the Codex CLI through NeMo Fabric."
         ),
     )
     parser.add_argument(
         "--agent-model",
         default=None,
         help=(
-            "Model name for the selected candidate agent. With --agent codex --runtime local this "
-            "is passed to `codex exec --model`; with --agent codex --runtime docker this is passed "
-            "to the effective Codex runtime; with --agent model it overrides the evaluated model name."
+            "Model for the live candidate. With --agent model it overrides the evaluated model name; "
+            "with --agent fabric-codex it is a `provider/model` slug applied to the Fabric config "
+            "(the harness default is used when omitted)."
         ),
     )
-    parser.add_argument(
-        "--list-agent-models",
-        action="store_true",
-        help="List locally visible Codex model slugs for --agent codex and exit.",
-    )
     args = parser.parse_args()
-    if args.list_agent_models:
-        if args.agent != AgentChoice.CODEX:
-            parser.error("--list-agent-models is only supported with --agent codex")
-        print_codex_agent_models()
-        raise SystemExit(0)
     configure_example_logging()
 
     asyncio.run(
@@ -383,6 +357,5 @@ if __name__ == "__main__":
             output_root=args.output_dir,
             agent=args.agent,
             agent_model=args.agent_model,
-            runtime=args.runtime,
         )
     )

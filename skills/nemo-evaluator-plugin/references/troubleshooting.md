@@ -31,7 +31,7 @@ nemo evaluator agent-evaluate explain
 | Result download fails while progress shows 100% | Metric progress finished before the platform job finalized artifacts | Call `job.wait_until_done()` before `get_result()` or `download_artifacts()` |
 | Agent-eval rejects the spec | Both or neither of `target` and `trials` were provided | Provide exactly one |
 | Taskset evaluation lacks held-out reference data | Stored tasks do not carry grader-only `reference` | Use inline `AgentEvalTaskInput` when the metric needs held-out per-task data |
-| Runner target fails to start | The runtime dependency, CLI, config, credentials, or Docker access is missing | Check the selected Codex, Fabric, or Harbor runner prerequisites |
+| Runner target fails to start | The runtime dependency, CLI, config, credentials, or Docker access is missing | Check the selected runner's prerequisites |
 
 ## Debug in the smallest scope
 

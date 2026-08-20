@@ -60,7 +60,7 @@ from nemo_evaluator.api.schemas import TaskInputs
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
     AgentEvalTaskInput,
-    CodexRunnerTarget,
+    FabricRunnerTarget,
 )
 
 spec = AgentEvalInputSpec(
@@ -72,7 +72,12 @@ spec = AgentEvalInputSpec(
             metrics=[metric_bundle],
         )
     ],
-    target=CodexRunnerTarget(),
+    target=FabricRunnerTarget(
+        config={
+            "metadata": {"name": "geography-smoke"},
+            "harness": {"adapter_id": "nvidia.fabric.codex"},
+        }
+    ),
     max_concurrent_tasks=2,
     fail_fast=False,
     labels={"benchmark": "geography-smoke"},
@@ -100,7 +105,6 @@ reported score. See
 | --- | --- |
 | `ModelTarget` | Generate trials through an OpenAI-compatible model endpoint |
 | `AgentTarget` | Generate trials through a generic HTTP or NeMo Agent Toolkit agent |
-| `CodexRunnerTarget` | Drive the Codex CLI runner |
 | `FabricRunnerTarget` | Run a configured NeMo [Fabric](https://github.com/nvidia/nemo-fabric) runner |
 | `HarborRunnerTarget` | Run a Harbor task suite in Docker |
 
