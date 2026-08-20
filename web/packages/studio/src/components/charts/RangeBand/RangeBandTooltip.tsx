@@ -52,7 +52,11 @@ export const RangeBandTooltip: FC<Props> = ({
   if (entries.length === 0) return null;
 
   return (
-    <ChartTooltipSurface label={formatLabel(label as string | number)}>
+    <ChartTooltipSurface
+      label={
+        typeof label === 'string' || typeof label === 'number' ? formatLabel(label) : undefined
+      }
+    >
       {entries.map((entry) => (
         <Stack key={entry.id} gap="1">
           <ChartTooltipRow

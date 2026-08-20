@@ -12,9 +12,10 @@ import { ReferenceLine } from 'recharts';
  * in a component would hide the `<ReferenceLine>` and it would silently never render.
  */
 export const renderReferenceLines = (lines: ChartReferenceLine[] = []): ReactElement[] =>
-  lines.map((line) => (
+  lines.map((line, index) => (
     <ReferenceLine
-      key={`ref-${line.y}-${line.label ?? ''}`}
+      // Index included because `ChartReferenceLine` carries no id and two lines may share a y/label.
+      key={`ref-${index}-${line.y}-${line.label ?? ''}`}
       y={line.y}
       stroke={line.color ?? REFERENCE_LINE_COLOR}
       strokeDasharray="4 4"

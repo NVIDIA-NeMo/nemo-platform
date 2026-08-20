@@ -28,7 +28,7 @@ export const ChartLegend: FC<Props> = ({
         key={item.id}
         kind="tertiary"
         size="tiny"
-        disabled={!interactive}
+        disabled={!interactive || !onToggle}
         aria-pressed={!item.hidden}
         className={classNames('gap-1.5', item.hidden && 'opacity-40')}
         onClick={() => onToggle?.(item.id)}

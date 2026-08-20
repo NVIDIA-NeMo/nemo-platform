@@ -84,6 +84,7 @@ describe('formatXValueDefault', () => {
   it('formats numbers, strings, and dates', () => {
     expect(formatXValueDefault(16000)).toBe('16K');
     expect(formatXValueDefault('Step 1')).toBe('Step 1');
-    expect(formatXValueDefault(new Date(0))).toContain('Jan');
+    // Mid-month noon UTC: no real time zone offset can push this out of January.
+    expect(formatXValueDefault(new Date(Date.UTC(2024, 0, 15, 12)))).toContain('Jan');
   });
 });
