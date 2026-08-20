@@ -297,6 +297,15 @@ EOF
 # Excluding here keeps them out of this layer - removing them later would leave them extractable.
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/nemo-rl
 
+# TEMPORARY: NemotronH on DTensor v2 dies in Automodel's parallelizer, which reaches for
+# model.backbone.layers while both the stock-HF and Automodel NemotronH name the trunk
+# `model` (only the HF checkpoint KEYS use a backbone. prefix). Fixed on Automodel main
+# (parallelizer.py: `inner = model.backbone if hasattr(model, "backbone") else model.model`)
+# but NVIDIA-NeMo/RL main still pins 24b47e8, which predates it. Drop this once the
+# submodule is bumped past that fix.
+COPY docker/rl/patches/automodel-nemotronh-trunk.patch /tmp/
+RUN cd /opt/nemo-rl && git apply -p1 --verbose /tmp/automodel-nemotronh-trunk.patch && rm /tmp/automodel-nemotronh-trunk.patch
+
 # Install the workspace ROOT (nemo-rl) editable. --no-install-project above installed every
 # DEPENDENCY and workspace MEMBER (incl. nemo-gym) but skipped the root; this adds it with --no-deps
 # (deps already present). .git is on disk now, so nemo_rl.__version__ picks up its +<sha> suffix.

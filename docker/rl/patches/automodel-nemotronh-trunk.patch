@@ -1,0 +1,33 @@
+--- a/3rdparty/Automodel-workspace/Automodel/nemo_automodel/components/distributed/parallelizer.py
++++ b/3rdparty/Automodel-workspace/Automodel/nemo_automodel/components/distributed/parallelizer.py
+@@ -335,7 +335,11 @@
+         assert not sequence_parallel, "Sequence parallelism is not supported for NemotronHForCausalLM"
+         logger.info("Custom parallel plan is not supported for NemotronHForCausalLM. Using NemotronH-specific TP plan.")
+ 
+-        layers: torch.nn.ModuleList = model.backbone.layers
++        # Automodel's own NemotronH (models/nemotron_v3/model.py) and transformers v5's
++        # both name the trunk `model`; only the HF *checkpoint* keys use a `backbone.`
++        # prefix. Resolve either, matching upstream parallelizer.py.
++        inner = model.backbone if hasattr(model, "backbone") else model.model
++        layers: torch.nn.ModuleList = inner.layers
+         tp_mesh = device_mesh[tp_mesh_name]
+         if tp_mesh.size() > 1:
+             model_tp_plan: dict[str, ParallelStyle] = {
+@@ -349,7 +353,7 @@
+ 
+             parallelize_module(model, tp_mesh, model_tp_plan)
+ 
+-            for layer in model.backbone.layers:
++            for layer in inner.layers:
+                 if layer.block_type == "mlp":
+                     parallelize_module(layer, tp_mesh, mlp_tp_plan)
+ 
+@@ -1310,7 +1314,7 @@
+         "Gemma4ForConditionalGeneration": ["model.language_model.layers"],
+     }
+     LLM_MODEL_CLS_TO_LAYERS = {
+-        "NemotronHForCausalLM": ["backbone.layers"],
++        "NemotronHForCausalLM": ["backbone.layers", "model.layers"],
+         GPT2LMHeadModel: ["transformer.h"],
+     }
+ 
