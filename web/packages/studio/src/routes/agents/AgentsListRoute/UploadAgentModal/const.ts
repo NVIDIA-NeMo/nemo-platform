@@ -8,6 +8,9 @@ import { z } from 'zod';
 export const AGENT_CONFIG_FILENAME = 'agent.yaml';
 export const FABRIC_CONFIG_FORMAT = 'nemo-agents-spec-v1';
 
+// Container staging skips this file, so its bytes never reach a deployment.
+const AGENT_SPEC_FILENAME = 'AGENT-SPEC.md';
+
 // Mirrors MAX_AGENT_SPEC_STAGED_BYTES / _FILES in nemo_agents_plugin.entities. The
 // platform only enforces these when the deployment stages the fileset, which is long
 // after the upload, so the same limits are checked here to fail while the user is looking.
@@ -90,6 +93,32 @@ export const validateAgentEntries = (entries: UploadAgentEntry[]): string | unde
   const bytes = totalEntryBytes(entries);
   if (bytes > MAX_AGENT_SPEC_BYTES) {
     return `That directory is ${Math.round(bytes / 1000)} KB; the limit is ${Math.round(MAX_AGENT_SPEC_BYTES / 1000)} KB. Point at a directory containing only the agent's own files.`;
+  }
+
+  return undefined;
+};
+
+/**
+ * Return the first file that is not valid UTF-8, or undefined.
+ *
+ * Container deployments read every staged file with `read_text(encoding="utf-8")`
+ * and refuse the whole deployment on a decode error, so a binary file uploads
+ * fine and then breaks the agent at deploy time — in docker and k8s only, since
+ * subprocess deployments never read the contents. The ignore list already drops
+ * the usual culprits (`.pyc`, `.so`); this catches the rest.
+ */
+export const findNonUtf8Path = async (
+  entries: UploadAgentEntry[]
+): Promise<string | undefined> => {
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+
+  for (const entry of entries) {
+    if (entry.path.split('/').pop() === AGENT_SPEC_FILENAME) continue;
+    try {
+      decoder.decode(await entry.file.arrayBuffer());
+    } catch {
+      return entry.path;
+    }
   }
 
   return undefined;

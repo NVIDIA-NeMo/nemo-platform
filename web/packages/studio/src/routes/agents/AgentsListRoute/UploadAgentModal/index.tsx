@@ -13,6 +13,7 @@ import {
   AGENT_CONFIG_FILENAME,
   agentNameFromConfig,
   collectAgentEntries,
+  findNonUtf8Path,
   parseAgentConfig,
   totalEntryBytes,
   uploadAgentFormSchema,
@@ -92,6 +93,15 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     if (problem) {
       setEntries([]);
       setSelectionError(problem);
+      return;
+    }
+
+    const binaryPath = await findNonUtf8Path(collected);
+    if (binaryPath) {
+      setEntries([]);
+      setSelectionError(
+        `${binaryPath} is not a text file. Agent files are delivered to container deployments as text, so the agent would fail to deploy. Remove it and try again.`
+      );
       return;
     }
 

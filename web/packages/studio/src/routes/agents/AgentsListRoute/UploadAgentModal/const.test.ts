@@ -6,6 +6,7 @@ import {
   agentNameFromConfig,
   agentSpecFilesetName,
   collectAgentEntries,
+  findNonUtf8Path,
   isIgnoredPath,
   MAX_AGENT_SPEC_FILES,
   parseAgentConfig,
@@ -134,5 +135,48 @@ describe('agentNameFromConfig', () => {
 describe('agentSpecFilesetName', () => {
   it('matches the platform convention', () => {
     expect(agentSpecFilesetName('calc')).toBe('calc-spec');
+  });
+});
+
+describe('findNonUtf8Path', () => {
+  const binaryEntry = (path: string, bytes: number[]): UploadAgentEntry => ({
+    path,
+    file: new File([new Uint8Array(bytes)], path.split('/').pop() ?? path),
+  });
+
+  const textEntry = (path: string, contents: string): UploadAgentEntry => ({
+    path,
+    file: new File([contents], path.split('/').pop() ?? path),
+  });
+
+  it('names the first file that is not valid UTF-8', async () => {
+    const entries = [
+      textEntry('agent.yaml', 'name: calc\n'),
+      binaryEntry('logo.bin', [0xff, 0xfe, 0x00, 0x62]),
+    ];
+
+    await expect(findNonUtf8Path(entries)).resolves.toBe('logo.bin');
+  });
+
+  it('accepts multi-byte UTF-8, an empty file, and a BOM', async () => {
+    const entries = [
+      textEntry('agent.yaml', 'description: café ☕ — 名前\n'),
+      textEntry('empty.md', ''),
+      binaryEntry('bom.md', [0xef, 0xbb, 0xbf, 0x68, 0x69]),
+    ];
+
+    await expect(findNonUtf8Path(entries)).resolves.toBeUndefined();
+  });
+
+  it('ignores AGENT-SPEC.md, which container staging never reads', async () => {
+    const entries = [binaryEntry('AGENT-SPEC.md', [0xff, 0xfe, 0x00])];
+
+    await expect(findNonUtf8Path(entries)).resolves.toBeUndefined();
+  });
+
+  it('rejects a lone UTF-16 surrogate sequence', async () => {
+    const entries = [binaryEntry('utf16.md', [0xed, 0xa0, 0x80])];
+
+    await expect(findNonUtf8Path(entries)).resolves.toBe('utf16.md');
   });
 });
