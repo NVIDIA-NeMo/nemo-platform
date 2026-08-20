@@ -2450,7 +2450,7 @@
               },
               "details": "Pathological inputs could cause DoS through consumePhrase when parsing an email address according to RFC 5322.",
               "id": "GO-2026-4977",
-              "modified": "2026-07-16T10:29:36.746311235Z",
+              "modified": "2026-08-20T10:58:07.429072708Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2469,7 +2469,8 @@
               "related": [
                 "CGA-m28j-j59g-3rp3",
                 "RHSA-2026:17713",
-                "RHSA-2026:17714"
+                "RHSA-2026:17714",
+                "RHSA-2026:54552"
               ],
               "schema_version": "1.7.5",
               "summary": "Quadratic string concatenation in consumePhrase in net/mail"
@@ -2616,7 +2617,7 @@
               },
               "details": "When using LookupCNAME with the cgo DNS resolver, a very long CNAME response can trigger a double-free of C memory and a crash.",
               "id": "GO-2026-4981",
-              "modified": "2026-08-14T10:42:16.677296862Z",
+              "modified": "2026-08-20T10:58:07.045813199Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2665,6 +2666,7 @@
                 "RHSA-2026:53415",
                 "RHSA-2026:54168",
                 "RHSA-2026:54191",
+                "RHSA-2026:54552",
                 "RHSA-2026:54757"
               ],
               "schema_version": "1.7.5",
@@ -2817,7 +2819,7 @@
               },
               "details": "Well-crafted inputs reaching ParseAddress, ParseAddressList, and ParseDate were able to trigger excessive CPU exhaustion and memory allocations.",
               "id": "GO-2026-4986",
-              "modified": "2026-07-16T10:29:37.872339347Z",
+              "modified": "2026-08-20T10:58:07.288490401Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2836,7 +2838,9 @@
               "related": [
                 "CGA-h3rh-hg4q-4x4p",
                 "RHSA-2026:23262",
-                "RHSA-2026:23264"
+                "RHSA-2026:23264",
+                "RHSA-2026:54552",
+                "RHSA-2026:54883"
               ],
               "schema_version": "1.7.5",
               "summary": "Quadratic string concatentation in consumeComment in net/mail"
