@@ -149,25 +149,31 @@ const TemplateCard: FC<TemplateCardProps> = ({ template, workspace }) => {
   };
 
   return (
-    <Card className="h-full">
+    <Card>
       <Stack gap="density-md" className="h-full">
         <Stack gap="density-xs" className="flex-1">
-          <Flex align="center" justify="between">
-            <Text kind="label/bold/sm" className="text-subtle">
-              {template.trainingLabel}
-            </Text>
-            {requiresHfToken && (
-              <Flex align="center" gap="density-xs" className="text-subtle">
-                <KeyRound size={12} />
-                <Text kind="label/regular/xs">HF token</Text>
-              </Flex>
-            )}
-          </Flex>
-          <Text kind="title/sm">{template.title}</Text>
-          <Text kind="body/regular/sm" className="text-subtle">
+          <Text kind="label/regular/sm" className="text-secondary">
+            {template.publisher}
+          </Text>
+          <Text kind="body/bold/xl">{template.title}</Text>
+          <Text kind="body/regular/sm" className="text-secondary">
             {template.description}
           </Text>
         </Stack>
+
+        {/* Footer stats — same three, same order, on every card so the collection
+            can be compared by scanning down a column. */}
+        <Flex align="center" gap="density-md">
+          <Text kind="label/regular/sm" className="text-placeholder">
+            {`${template.stats.totalParams} params · ${template.stats.activeParams} active · ${template.stats.gpus} GPUs`}
+          </Text>
+          {requiresHfToken && (
+            <Flex align="center" gap="density-xs" className="text-placeholder">
+              <KeyRound size={12} />
+              <Text kind="label/regular/sm">HF token</Text>
+            </Flex>
+          )}
+        </Flex>
 
         <Stack gap="density-sm">
           {error && (
@@ -209,10 +215,15 @@ export const CustomizationTemplates: FC = () => {
 
   return (
     <Stack gap="density-md">
-      <Text kind="label/bold/sm" className="text-subtle uppercase tracking-wide">
-        Quick Start Templates
-      </Text>
-      <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-md">
+      <Stack gap="density-xs">
+        <Text kind="body/regular/sm" className="text-subtle">
+          Each recipe fine-tunes a Nemotron mixture-of-experts model to read a database schema and
+          turn a plain-English question into a working SQL query, training on BIRD-SQL. The
+          expert-parallel and LoRA settings come from the NVIDIA Nemotron cookbook, so you only
+          pick a size and start.
+        </Text>
+      </Stack>
+      <Grid cols={{ base: 1, md: 3 }} gap="density-md">
         {CUSTOMIZATION_TEMPLATES.map((template) => (
           <TemplateCard key={template.id} template={template} workspace={workspace} />
         ))}

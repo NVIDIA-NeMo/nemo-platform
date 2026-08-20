@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
-import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
-import type {
-  Adapter,
-  ModelEntity,
-  ModelsListModelsParams,
-} from '@nemo/sdk/generated/platform/schema';
+import type { Adapter, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import {
   Button,
   Flex,
@@ -21,7 +16,6 @@ import {
 } from '@nvidia/foundations-react-core';
 import { CustomizationTemplates } from '@studio/components/customizer/CustomizationTemplates';
 import { CustomModelsDataView } from '@studio/components/dataViews/CustomModelsDataView';
-import { DEFAULT_CUSTOM_MODELS_FILTER } from '@studio/components/dataViews/CustomModelsDataView/constants';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { CUSTOMIZER_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
@@ -31,7 +25,6 @@ import { getEvaluationResultsRoute, getIntakeTracesRoute } from '@studio/routes/
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
-const CUSTOM_MODELS_FILTER = JSON.stringify(DEFAULT_CUSTOM_MODELS_FILTER);
 
 export const CustomizationJobListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -43,16 +36,6 @@ export const CustomizationJobListRoute: FC = () => {
   );
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
-  const { data: modelsCheck } = useModelsListModels(
-    workspace,
-    {
-      page: 1,
-      page_size: 1,
-      filter: CUSTOM_MODELS_FILTER as unknown as ModelsListModelsParams['filter'],
-    },
-    { query: { staleTime: 0, refetchOnWindowFocus: true } }
-  );
-  const hasModels = (modelsCheck?.pagination?.total_results ?? 0) > 0;
 
   useBreadcrumbs({
     items: [{ slotLabel: 'Custom Models' }],
@@ -67,16 +50,15 @@ export const CustomizationJobListRoute: FC = () => {
           slotDescription="Create, manage, and deploy custom AI models with fine-tuning and prompt tuning."
           slotActions={
             <Flex gap="density-sm" align="center">
-              {CUSTOMIZER_ENABLED && hasModels && (
+              {CUSTOMIZER_ENABLED && (
                 <Button kind="secondary" onClick={() => setIsTemplateModalOpen(true)}>
-                  Start from Template
+                  Start from a Template
                 </Button>
               )}
               <CustomizeModelButton workspace={workspace} />
             </Flex>
           }
         />
-        {CUSTOMIZER_ENABLED && !hasModels && <CustomizationTemplates />}
         <CustomModelsDataView
           workspace={workspace}
           onRowClick={(model: ModelEntity, tab: ModelPanelTab, adapter?: Adapter) => {
