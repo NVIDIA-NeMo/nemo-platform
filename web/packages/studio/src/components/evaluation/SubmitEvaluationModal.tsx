@@ -357,7 +357,15 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   const { data: evaluationsResponse, isLoading: isEvaluationsLoading } = useListEvaluations(
     workspace,
-    { page_size: LIST_PAGE_SIZE, sort: '-created_at' },
+    // Scope the "use existing evaluation" list to the current agent. agent_name matches against
+    // the Evaluation's denormalized agent_names (populated from ingested span telemetry), so an
+    // evaluation only appears once it has runs tagged with this agent. selectedAgent is seeded
+    // from the agentProp on the agent detail page and set by the in-modal picker otherwise.
+    {
+      page_size: LIST_PAGE_SIZE,
+      sort: '-created_at',
+      ...(selectedAgent ? { filter: { agent_name: selectedAgent } } : {}),
+    },
     { query: { enabled: open && mode === MODE_EXPERIMENT } }
   );
   const evaluations = evaluationsResponse?.data ?? [];
