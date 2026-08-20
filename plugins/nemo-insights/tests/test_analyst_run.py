@@ -182,6 +182,7 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
     client = FakeClient()
     seen: dict[str, object] = {}
     _stub_pipeline(monkeypatch, seen)
+    monkeypatch.setenv(run_module.ANALYST_OBSERVABILITY_ENV, "true")
 
     class FailingObservability:
         def shutdown(self) -> None:
