@@ -52,7 +52,6 @@ async def run_analyst(
     since: datetime | None = None,
     evaluation_id: str | None = None,
     model_refs: ConfiguredModelRefs | None = None,
-    ethos_label: str = "ETHOS",
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
 
@@ -61,7 +60,7 @@ async def run_analyst(
 
     Args:
         agent: Agent under test.
-        ethos: Optional Ethos or analysis-context Markdown for the agent under test.
+        ethos: Optional Ethos Markdown for the agent under test.
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
         client: Platform client to use. This function closes it before returning.
@@ -75,7 +74,6 @@ async def run_analyst(
         evaluation_id: Optional run scope; AND-pinned onto every span read.
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
-        ethos_label: Source label for the supplied content.
     """
     observability = None
     model_clients: ConfiguredModelClients | None = None
@@ -107,7 +105,6 @@ async def run_analyst(
                 deps=deps,
                 agent=agent,
                 ethos=ethos,
-                ethos_label=ethos_label,
             )
             result = await _run_agent(analyst, verbose=verbose)
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)

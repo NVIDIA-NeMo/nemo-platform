@@ -147,11 +147,12 @@ Notes:
 
 
 ETHOS_HEADER = """
-## {ethos_label}
+## Ethos
 
-Use this content to understand what the agent is supposed to do and what
-success looks like. Content labeled ETHOS is the agent's contract. Content
-labeled README analysis context (not ETHOS) is unvalidated repository context.
+Use this as the contract for what the agent is supposed to do, what
+success looks like, and what behavior should be flagged as divergence.
+Flag agent divergence from the Ethos. The Ethos was authored by the
+developer of the application and should be considered the purpose and goals.
 """
 
 KICKOFF = (
@@ -170,7 +171,6 @@ class Analyst(Agent):
         deps: AnalystDeps,
         agent: str,
         ethos: str | None = None,
-        ethos_label: str = "ETHOS",
         **kwargs: Any,
     ) -> None:
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
@@ -184,7 +184,7 @@ class Analyst(Agent):
 
         instructions = INSTRUCTIONS.format(agent=agent)
         if ethos and ethos.strip():
-            instructions = f"{instructions}\n{ETHOS_HEADER.format(ethos_label=ethos_label)}\n\n{ethos.strip()}\n"
+            instructions = f"{instructions}\n{ETHOS_HEADER}\n\n{ethos.strip()}\n"
         self.context["analyst_instructions"] = instructions
 
     async def fetch_spans(
@@ -361,7 +361,6 @@ def build_analyst_agent(
     deps: AnalystDeps,
     agent: str,
     ethos: str | None = None,
-    ethos_label: str = "ETHOS",
     llm: UnifiedLLM | None = None,
     **kwargs: Any,
 ) -> Analyst:
@@ -370,7 +369,6 @@ def build_analyst_agent(
         deps=deps,
         agent=agent,
         ethos=ethos,
-        ethos_label=ethos_label,
         llm=llm,
         **kwargs,
     )

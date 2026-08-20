@@ -298,7 +298,6 @@ class BenchmarkAdapter:
         return await run_analyst(
             agent=str(record["agent"]),
             ethos=policy,
-            ethos_label="Benchmark policy analysis context (not ETHOS)",
             workspace=workspace,
             base_url=str(record["base_url"]),
             client=make_client(str(record["base_url"])),

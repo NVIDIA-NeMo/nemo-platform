@@ -14,7 +14,6 @@ from nemo_insights_plugin.preflight import (
     check_environment,
     check_ethos,
     check_profile,
-    read_ethos,
 )
 from nemo_insights_plugin.profile import AnalysisProfile
 from nemo_platform import NeMoPlatformError
@@ -159,24 +158,6 @@ def test_ethos_unreadable_is_required_failure(tmp_path: Path, monkeypatch: pytes
     assert results[0].severity == "required"
     assert "permission denied" in results[0].message
     assert results[0].hint == "ensure the file is readable and encoded as UTF-8"
-
-
-def test_read_ethos_labels_ethos_and_readme_context(tmp_path: Path) -> None:
-    ethos = tmp_path / "ETHOS.md"
-    ethos.write_text("# Ethos", encoding="utf-8")
-    content, label, results = read_ethos(ethos, None)
-
-    assert content == "# Ethos"
-    assert label == "ETHOS"
-    assert results[0].status == "pass"
-
-    readme = tmp_path / "README.md"
-    readme.write_text("# Repository", encoding="utf-8")
-    content, label, results = read_ethos(readme, None)
-
-    assert content == "# Repository"
-    assert label == "README analysis context (not ETHOS)"
-    assert results[0].status == "pass"
 
 
 def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:

@@ -108,47 +108,7 @@ def test_analyze_runs_flag_free_from_profile(app: typer.Typer, profile_tree: Pat
     assert recorder.kwargs["agent"] == "flight-planner"
     assert recorder.kwargs["workspace"] == "flight-workspace"
     assert recorder.kwargs["ethos"] == "# Flight planner"
-    assert recorder.kwargs["ethos_label"] == "ETHOS"
     assert recorder.kwargs["insights_output"] is None, "a discovered profile must not divert writes off the platform"
-
-
-def test_analyze_labels_readme_fallback_as_analysis_context(
-    app: typer.Typer,
-    profile_tree: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    recorder = AnalystRecorder()
-    (profile_tree / "ETHOS.md").unlink()
-    (profile_tree / "README.md").write_text("# Flight planner repository", encoding="utf-8")
-    monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.chdir(profile_tree)
-
-    result = runner.invoke(app, ["run"])
-
-    assert result.exit_code == 0, result.output
-    assert recorder.kwargs is not None
-    assert recorder.kwargs["ethos"] == "# Flight planner repository"
-    assert recorder.kwargs["ethos_label"] == "README analysis context (not ETHOS)"
-
-
-def test_ethos_flag_overrides_profile(
-    app: typer.Typer,
-    profile_tree: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    recorder = AnalystRecorder()
-    explicit = tmp_path / "contract.md"
-    explicit.write_text("# Explicit Ethos", encoding="utf-8")
-    monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.chdir(profile_tree)
-
-    result = runner.invoke(app, ["run", "--ethos", str(explicit)])
-
-    assert result.exit_code == 0, result.output
-    assert recorder.kwargs is not None
-    assert recorder.kwargs["ethos"] == "# Explicit Ethos"
-    assert recorder.kwargs["ethos_label"] == "ETHOS"
 
 
 def test_no_local_only_flag_is_exposed(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:

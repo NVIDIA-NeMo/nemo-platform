@@ -681,10 +681,9 @@ def _ctx(tmp_path: Path) -> JobContext:
     )
 
 
-def _analyze_spec(agent: str = "research-agent", ethos: str | None = None) -> AnalyzeSpec:
+def _analyze_spec(agent: str = "research-agent") -> AnalyzeSpec:
     return AnalyzeSpec(
         agent=agent,
-        ethos=ethos,
         default_model="default/gpt-5",
         fast_model="default/gpt-5-mini",
     )
@@ -706,7 +705,7 @@ def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     sdk = _SyncSdk()
 
     result = AnalyzeJob().run(
-        _analyze_spec(ethos="# Research agent Ethos").model_dump(mode="json"),
+        _analyze_spec().model_dump(mode="json"),
         ctx=_ctx(tmp_path),
         sdk=cast(NeMoPlatform, sdk),
     )
@@ -724,7 +723,6 @@ def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert updates[-1]["last_submitted_job"] == "insights-job-1"
     assert (tmp_path / "persistent" / "analysis-report.txt").read_text() == "analysis report"
     assert calls[0]["client"] is async_client
-    assert calls[0]["ethos"] == "# Research agent Ethos"
     assert calls[0]["model_refs"] == ConfiguredModelRefs(
         default="default/gpt-5",
         fast="default/gpt-5-mini",

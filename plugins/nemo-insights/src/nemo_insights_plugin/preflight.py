@@ -100,73 +100,56 @@ def check_ethos(
     ethos_error: str | None,
 ) -> list[CheckResult]:
     """Check the optional Ethos content, including explicit UTF-8 readability."""
-    return read_ethos(ethos_path, ethos_error)[2]
+    return read_ethos(ethos_path, ethos_error)[1]
 
 
 def read_ethos(
     ethos_path: Path | None,
     ethos_error: str | None,
-) -> tuple[str | None, str | None, list[CheckResult]]:
-    """Read optional Ethos or README context and return its source label and check."""
+) -> tuple[str | None, list[CheckResult]]:
+    """Read the optional Ethos as UTF-8 and return its readiness check."""
     if ethos_error is not None:
-        return (
-            None,
-            None,
-            [
-                CheckResult(
-                    name="ethos",
-                    group="artifacts",
-                    status="fail",
-                    severity="required",
-                    message=ethos_error,
-                )
-            ],
-        )
+        return None, [
+            CheckResult(
+                name="ethos",
+                group="artifacts",
+                status="fail",
+                severity="required",
+                message=ethos_error,
+            )
+        ]
     if ethos_path is None:
-        return (
-            None,
-            None,
-            [
-                CheckResult(
-                    name="ethos",
-                    group="artifacts",
-                    status="pass",
-                    severity="advisory",
-                    message="Ethos omitted (optional)",
-                )
-            ],
-        )
-    try:
-        content = ethos_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return (
-            None,
-            None,
-            [
-                CheckResult(
-                    name="ethos",
-                    group="artifacts",
-                    status="fail",
-                    severity="required",
-                    message=f"Could not read Ethos content {ethos_path} as UTF-8: {exc}",
-                    hint="ensure the file is readable and encoded as UTF-8",
-                )
-            ],
-        )
-    label = "README analysis context (not ETHOS)" if ethos_path.name == "README.md" else "ETHOS"
-    return (
-        content,
-        label,
-        [
+        return None, [
             CheckResult(
                 name="ethos",
                 group="artifacts",
                 status="pass",
-                severity="required",
-                message=f"{label} readable at {ethos_path}",
+                severity="advisory",
+                message="Ethos omitted (optional)",
             )
-        ],
-    )
+        ]
+    try:
+        content = ethos_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return None, [
+            CheckResult(
+                name="ethos",
+                group="artifacts",
+                status="fail",
+                severity="required",
+                message=f"Could not read Ethos {ethos_path} as UTF-8: {exc}",
+                hint="ensure the file is readable and encoded as UTF-8",
+            )
+        ]
+    return content, [
+        CheckResult(
+            name="ethos",
+            group="artifacts",
+            status="pass",
+            severity="required",
+            message=f"Ethos readable at {ethos_path}",
+        )
+    ]
 
 
 def check_models() -> list[CheckResult]:

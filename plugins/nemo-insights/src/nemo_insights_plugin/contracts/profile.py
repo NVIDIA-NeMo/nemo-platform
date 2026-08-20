@@ -93,7 +93,7 @@ def load_env_file(path: Path, env: MutableMapping[str, str] = os.environ) -> lis
 
 
 def resolve_ethos_path(profile_dir: Path, configured: str | None) -> Path | None:
-    """Resolve configured Ethos content or a conventional profile-local file."""
+    """Resolve a configured Ethos or the conventional profile-local file."""
     if configured is not None:
         path = resolve_profile_path(configured, profile_dir)
         if not path.is_file():

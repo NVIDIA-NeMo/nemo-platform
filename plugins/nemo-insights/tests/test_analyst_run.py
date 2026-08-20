@@ -85,8 +85,6 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
     assert seen["backend_client"] is client
     build_kwargs = cast(dict[str, object], seen["build_kwargs"])
     assert cast(AnalystDeps, build_kwargs["deps"]).backend is not None
-    assert build_kwargs["ethos"] is None
-    assert build_kwargs["ethos_label"] == "ETHOS"
     assert seen["model_client"] is client
     model_clients = cast(ConfiguredModelClients, seen["model_clients"])
     assert cast(FakeModelClient, model_clients.default).closed

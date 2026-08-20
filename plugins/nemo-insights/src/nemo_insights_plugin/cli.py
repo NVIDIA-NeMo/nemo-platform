@@ -52,7 +52,6 @@ _PREFLIGHT_PROBES: AnalysisProbes | None = None
 class _ResolvedAnalysis:
     agent: str
     ethos: str | None
-    ethos_label: str | None
     workspace: str
     base_url: str
     insights_output: Path | None
@@ -129,7 +128,7 @@ def _resolve_analysis(
             ethos_path = pick_ethos(profile)
         except ProfileError as exc:
             ethos_error = str(exc)
-    ethos_content, ethos_label, ethos_checks = read_ethos(ethos_path, ethos_error)
+    ethos_content, ethos_checks = read_ethos(ethos_path, ethos_error)
 
     resolved_base_url = resolve_base_url(base_url)
     validate_insights_file(insights_output)
@@ -137,7 +136,6 @@ def _resolve_analysis(
     return _ResolvedAnalysis(
         agent=resolved_agent,
         ethos=ethos_content,
-        ethos_label=ethos_label,
         workspace=resolved_workspace,
         base_url=resolved_base_url,
         insights_output=insights_output,
@@ -183,7 +181,6 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
         return await run_analyst(
             agent=analysis.agent,
             ethos=analysis.ethos,
-            ethos_label=analysis.ethos_label or "ETHOS",
             workspace=analysis.workspace,
             base_url=analysis.base_url,
             client=client,
@@ -218,7 +215,7 @@ def analyze(
     ethos: Path | None = typer.Option(
         None,
         "--ethos",
-        help="Path to Markdown content that describes the agent under test.",
+        help="Path to a markdown file describing the agent under test (its Ethos).",
         exists=True,
         readable=True,
     ),
@@ -262,7 +259,7 @@ def analyze(
 ) -> None:
     """Run the analyst agent against a running NMP instance.
 
-    Builds the analyst agent with ``--agent`` and optional ``--ethos`` content
+    Builds the analyst agent with ``--agent`` (and optional ``--ethos``)
     formatted into its instructions and tools scoped
     to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
     prints whatever the agent returns. Insights are written to the
@@ -312,7 +309,7 @@ def doctor(
                 ethos_path = pick_ethos(profile)
             except ProfileError as exc:
                 ethos_error = str(exc)
-        _, _, ethos_results = read_ethos(ethos_path, ethos_error)
+        _, ethos_results = read_ethos(ethos_path, ethos_error)
 
         async def _flow() -> list[CheckResult]:
             results = check_profile(profile, profile_error)

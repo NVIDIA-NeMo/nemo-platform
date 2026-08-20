@@ -133,12 +133,12 @@ def load_tasks(data_dir: Path, domain: str) -> dict[str, dict]:
 
 
 def read_policy(data_dir: Path, domain: str) -> str | None:
-    """Return the domain policy Markdown as unvalidated Analyst context.
+    """Return the domain policy markdown (the analyst's Ethos), or None.
 
     A tau2 checkout nests domains under ``tau2/domains/<domain>/``; some data
     dirs are flat (``domains/<domain>/``). For each layout, tries ``policy.md``
     then ``main_policy.md`` (Telecom uses the latter). Returns the first file
-    found, else ``None`` (the Analyst then runs without this context).
+    found, else ``None`` (the analyst then runs without Ethos).
     """
     for base in (data_dir / "tau2" / "domains", data_dir / "domains"):
         domain_dir = base / domain

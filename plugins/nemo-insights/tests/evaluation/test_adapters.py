@@ -354,23 +354,11 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     async def fake_run_analyst(
-        *,
-        agent,
-        ethos,
-        ethos_label,
-        workspace,
-        base_url,
-        client,
-        insights_output,
-        local_only,
-        verbose,
-        since,
-        evaluation_id,
+        *, agent, ethos, workspace, base_url, client, insights_output, local_only, verbose, since, evaluation_id
     ):
         seen.update(
             agent=agent,
             ethos=ethos,
-            ethos_label=ethos_label,
             workspace=workspace,
             base_url=base_url,
             evaluation_id=evaluation_id,
@@ -397,7 +385,6 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     assert ran_tau2["v"] is False  # analyze never runs tau2
     assert seen["agent"] == "tau2-airline"
     assert seen["ethos"] == "POLICY"
-    assert seen["ethos_label"] == "Benchmark policy analysis context (not ETHOS)"
     assert seen["workspace"] == "tau2-airline"  # the stable REALISTIC workspace, never the oracle one
     assert seen["evaluation_id"] == "tau2-airline-20260626-000000-abcd"  # run-scoped
     assert seen["base_url"] == "http://localhost:8080"
