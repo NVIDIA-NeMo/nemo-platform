@@ -135,7 +135,7 @@ class OptimizeArchitecture(Skill):
 
     ```python
     class IssueTriager(Agent):
-        '''Subagent specialized in parsing GitHub issues into structured bug reports.'''
+        '''Subagent that parses GitHub issues into structured bug reports.'''
         search = CodeSearchTool()
 
         async def triage(self, issue: str, repo: str) -> BugReport:

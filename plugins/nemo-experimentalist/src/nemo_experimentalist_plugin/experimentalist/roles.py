@@ -127,7 +127,7 @@ class Analyzer(Component):
         evaluation: EvaluationResult,
         peer_evaluations: dict[str, EvaluationResult] | None = None,
         round_num: int | None = None,
-        agent_spec: Path | None = None,
+        ethos: Path | None = None,
     ) -> object:
         """Diagnose why *candidate* scored what it did, for the Proposer to act on.
 

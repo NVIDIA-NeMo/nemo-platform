@@ -44,7 +44,7 @@ def build_run_reporter(
 async def run_experimentalist(
     *,
     agent: str | Path | None = None,
-    agent_spec: str | None = None,
+    ethos: str | None = None,
     insight: Path | str | None,
     train_dataset: DatasetRef,
     validation_dataset: DatasetRef,
@@ -63,7 +63,7 @@ async def run_experimentalist(
             referenced by ``insight``. A local directory path or a git ``url@ref``; a git
             source is fetched by the backend and enables opening a draft PR/MR for
             the winner against that ref.
-        agent_spec: Optional URI of a markdown file describing the agent under test.
+        ethos: Optional URI of the ETHOS.md file that describes the agent under test.
             Materialized by the backend and threaded to components that use it.
         insight: Optional Mode 1 insight — a local Insight file path or a platform
             insight id (fetched from the platform by the backend).
@@ -122,7 +122,7 @@ async def run_experimentalist(
                 workspace=workspace,
                 root=experiment_dir,
                 agent=agent,
-                agent_spec=agent_spec,
+                ethos=ethos,
                 insight=insight,
                 train_dataset=train_dataset,
                 validation_dataset=validation_dataset,

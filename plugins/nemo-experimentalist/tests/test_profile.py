@@ -28,7 +28,7 @@ experiment_config:
     rounds: 2
 framework_skills: [./skills]
 workspace: flight-workspace
-agent_spec: ./AGENT-SPEC.md
+ethos: ./ETHOS.md
 """
 
 
@@ -60,11 +60,17 @@ def test_load_minimal_profile_defaults(tmp_path: Path) -> None:
     profile = load_profile(write_profile(tmp_path))
     assert profile.agent == "flight-planner"
     assert profile.agent_source == "."
-    assert profile.agent_spec is None
+    assert profile.ethos is None
     assert profile.experiment_config is None
     assert profile.framework_skills == []
     assert profile.workspace == "default"
     assert profile.profile_dir == tmp_path.resolve()
+
+
+def test_profile_accepts_ethos_field(tmp_path: Path) -> None:
+    profile = load_profile(write_profile(tmp_path, MINIMAL + "ethos: ./ETHOS.md\n"))
+
+    assert profile.ethos == "./ETHOS.md"
 
 
 def test_missing_required_field_names_it(tmp_path: Path) -> None:
@@ -98,7 +104,7 @@ def test_full_profile_matches_shared_contract_shape(tmp_path: Path) -> None:
 
     assert profile.agent == "flight-planner"
     assert profile.workspace == "flight-workspace"
-    assert profile.agent_spec == "./AGENT-SPEC.md"
+    assert profile.ethos == "./ETHOS.md"
 
 
 def test_profile_directory_anchors_shared_insights_path(tmp_path: Path) -> None:

@@ -53,7 +53,7 @@ or scaffold one. Before running it, make sure you have:
 
 - agent source code and locked dependencies. For PR/MR publication, use a Git
   repository with a clean working tree and a pushed baseline revision;
-- an `AGENT-SPEC.md` covering the agent's **Goal**, **Scope**, **Tools**, and
+- an `ETHOS.md` covering the agent's **Goal**, **Scope**, **Tools**, and
   **Evaluation** contract, including access configuration and constraints but
   never secret values;
 - versioned, Harbor-compatible train and validation datasets. Keep a separate
@@ -66,9 +66,9 @@ or scaffold one. Before running it, make sure you have:
 - an `optimizer.yaml` profile, or the explicit inputs described below.
 
 Record the agent revision, dataset versions, configuration, and result path
-with each run so another operator can reproduce it. If the agent or its spec
-does not exist yet, use `nemo-explore` to design it and `nemo-spec` to create
-the spec before returning here.
+with each run so another operator can reproduce it. If the agent or its Ethos
+doesn't exist, use `nemo-explore` to design it and `nemo-ethos` to create the
+Ethos before returning here.
 
 ## Configure the environment
 
@@ -199,11 +199,11 @@ from the current directory.
 
 | Input | Purpose | Required |
 | --- | --- | --- |
-| `--profile` | The `optimizer.yaml` profile containing the agent, datasets, workspace, and optional config. | No; discovered when present. |
+| `--profile` | The `optimizer.yaml` profile containing the agent, Ethos, datasets, workspace, and optional configuration. | No; discovered when present. |
 | `--insight` / `--insight-id` | The problem to improve. `--insight` accepts a local Insight file or a platform Insight ID; `--insight-id` selects an entry in a local multi-Insight file. | Insight-driven mode. |
 | `--no-insight` | Disables profile Insight discovery for an explicit evaluation run. | Explicit mode. |
 | `--agent` | Local agent directory or Git URL. A Git URL enables candidate branch and PR/MR publication. | Explicit mode; optional when an Insight supplies the agent. |
-| `--agent-spec` | Markdown description of the agent. | Optional; use the profile or conventional `AGENT-SPEC.md` when available. |
+| `--ethos` | The `ETHOS.md` file that describes the agent. | Optional; use the profile or conventional `ETHOS.md` when available. |
 | `--train-dataset` / `--validation-dataset` | Separate local Harbor datasets or registry references used to measure improvement. | Yes, unless the profile supplies both. |
 | `--task-template` | A directory containing one Harbor task template (`task.toml`, with placeholder values). In Insight-driven mode, Eval Author copies and fills it for representative failing traces to create the targeted evaluation suite. | Required in Insight-driven mode unless the profile supplies it. |
 | `--config` | YAML or JSON **mapping** that validates as the Experimentalist run configuration: top-level run limits plus optional `source`, `storage`, `goal_config`, `coder`, `analyzer`, `proposer`, `evaluator`, and `eval_author` sections. It does not configure model endpoints or model tiers. | No; profile or defaults apply. |
@@ -213,7 +213,7 @@ from the current directory.
 
 An `optimizer.yaml` profile must identify the agent and its source, one task
 template, and independent train and validation datasets. It can also set the
-workspace, agent specification, run configuration, and framework skills. The
+workspace, Ethos, run configuration, and framework skills. The
 Analyst and Experimentalist share this profile, allowing the latter to use the
 default Insight created by the former.
 
@@ -376,7 +376,7 @@ Insight.
 $NEMO agents experimentalist run \
   --no-insight \
   --agent path-or-git-url \
-  --agent-spec path/to/AGENT-SPEC.md \
+  --ethos path/to/ETHOS.md \
   --train-dataset path-or-harbor-ref \
   --validation-dataset path-or-harbor-ref \
   --workspace <workspace> \

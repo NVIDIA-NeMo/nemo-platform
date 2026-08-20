@@ -63,7 +63,7 @@ class PreparedInputs:
 
     agent_dir: Path
     agent_name: str
-    agent_spec: Path | None
+    ethos: Path | None
     insight_ref: str | None
     datasets: dict[str, Dataset]
 
@@ -79,7 +79,7 @@ class ExperimentRunner:
         root: Working directory for run artifacts.
         agent: Baseline agent — a local directory, a git ``url@ref``, or None to take
             the agent the Insight names.
-        agent_spec: Optional URI of a markdown description of the agent under test.
+        ethos: Optional URI of the ETHOS.md file that describes the agent under test.
         insight: Optional Insight id or local Insight file.
         train_dataset: Dataset reference the strategy develops against.
         validation_dataset: Dataset reference the winner is selected on.
@@ -96,7 +96,7 @@ class ExperimentRunner:
         workspace: str,
         root: Path,
         agent: str | Path | None,
-        agent_spec: str | None = None,
+        ethos: str | None = None,
         insight: str | Path | None = None,
         train_dataset: DatasetRef,
         validation_dataset: DatasetRef,
@@ -113,7 +113,7 @@ class ExperimentRunner:
         self._workspace = workspace
         self._root = root.resolve()
         self._agent = agent
-        self._agent_spec = agent_spec
+        self._ethos = ethos
         self._insight = insight
         self._train_dataset = train_dataset
         self._validation_dataset = validation_dataset
@@ -139,7 +139,7 @@ class ExperimentRunner:
             run=run,
             root=self._root,
             agent_dir=inputs.agent_dir,
-            agent_spec=inputs.agent_spec,
+            ethos=inputs.ethos,
             datasets=inputs.datasets,
             evaluator=evaluator,
             resuming=resuming,
@@ -225,12 +225,12 @@ class ExperimentRunner:
             clone_depth=self._config.source.clone_depth,
         )
 
-        agent_spec: Path | None = None
-        if self._agent_spec is not None:
-            agent_spec = await self._backend.get_agent_spec(
+        ethos: Path | None = None
+        if self._ethos is not None:
+            ethos = await self._backend.get_ethos(
                 workspace=self._workspace,
-                spec=self._agent_spec,
-                dest=self._root / "AGENT-SPEC.md",
+                ethos=self._ethos,
+                dest=self._root / "ETHOS.md",
             )
 
         if insight is not None:
@@ -272,7 +272,7 @@ class ExperimentRunner:
         return PreparedInputs(
             agent_dir=agent_dir,
             agent_name=str(agent_ref),
-            agent_spec=agent_spec,
+            ethos=ethos,
             insight_ref=str(self._insight) if self._insight is not None else None,
             datasets=datasets,
         )

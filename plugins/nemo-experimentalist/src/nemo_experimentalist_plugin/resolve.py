@@ -29,7 +29,7 @@ from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.repository import looks_like_git
 from nemo_experimentalist_plugin.profile import AgentProfile
 from nemo_insights_plugin.contracts.insights import InsightsFileError, load_insights_document
-from nemo_insights_plugin.contracts.profile import ProfileError, resolve_agent_spec_path, resolve_profile_path
+from nemo_insights_plugin.contracts.profile import ProfileError, resolve_ethos_path, resolve_profile_path
 from pydantic import BaseModel, ValidationError
 
 
@@ -282,7 +282,7 @@ class EffectiveExperimentPlan(BaseModel):
     """Pure effective values shared by Experiment and Doctor before downloads."""
 
     agent: str | None
-    agent_spec: str | None
+    ethos: str | None
     insight: str | None
     insight_id: str | None
     train_dataset: str
@@ -301,7 +301,7 @@ class ResolvedExperimentInputs(BaseModel):
     """Everything ``run_experimentalist`` needs after materialization."""
 
     agent: str | None
-    agent_spec: str | None
+    ethos: str | None
     insight: str | None
     train_dataset: DatasetRef
     validation_dataset: DatasetRef
@@ -311,19 +311,19 @@ class ResolvedExperimentInputs(BaseModel):
     framework_skills_dirs: list[Path]
 
 
-def _read_agent_spec_path(spec: Path) -> str:
+def _read_ethos_path(ethos: Path) -> str:
     try:
-        spec.read_text(encoding="utf-8")
+        ethos.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        raise ResolveError(f"Could not read agent_spec {spec}: {exc}") from None
-    return str(spec)
+        raise ResolveError(f"Could not read ethos {ethos}: {exc}") from None
+    return str(ethos)
 
 
 def build_effective_experiment_plan(
     *,
     profile: AgentProfile | None,
     agent: str | None = None,
-    agent_spec: str | None = None,
+    ethos: str | None = None,
     insight: str | None = None,
     insight_id: str | None = None,
     no_insight: bool = False,
@@ -373,15 +373,15 @@ def build_effective_experiment_plan(
         )
     assert train is not None and validation is not None
 
-    if agent_spec is not None:
-        spec = resolve_profile_path(agent_spec, cwd)
-        if not spec.is_file():
-            raise ResolveError(f"Explicit agent_spec {agent_spec!r} does not exist (resolved to {spec})")
-        resolved_spec = _read_agent_spec_path(spec)
+    if ethos is not None:
+        ethos_path = resolve_profile_path(ethos, cwd)
+        if not ethos_path.is_file():
+            raise ResolveError(f"Explicit ethos {ethos!r} does not exist (resolved to {ethos_path})")
+        resolved_ethos = _read_ethos_path(ethos_path)
     elif profile is not None:
-        resolved_spec = pick_agent_spec(profile)
+        resolved_ethos = pick_ethos(profile)
     else:
-        resolved_spec = None
+        resolved_ethos = None
     skills = (
         list(framework_skills)
         if framework_skills
@@ -389,7 +389,7 @@ def build_effective_experiment_plan(
     )
     return EffectiveExperimentPlan(
         agent=resolved_agent,
-        agent_spec=resolved_spec,
+        ethos=resolved_ethos,
         insight=effective_insight.ref,
         insight_id=effective_insight.selector,
         train_dataset=train,
@@ -410,7 +410,7 @@ async def resolve_experiment_inputs(
     profile: AgentProfile | None,
     scratch_dir: Path,
     agent: str | None = None,
-    agent_spec: str | None = None,
+    ethos: str | None = None,
     insight: str | None = None,
     insight_id: str | None = None,
     no_insight: bool = False,
@@ -429,7 +429,7 @@ async def resolve_experiment_inputs(
         plan = build_effective_experiment_plan(
             profile=profile,
             agent=agent,
-            agent_spec=agent_spec,
+            ethos=ethos,
             insight=insight,
             insight_id=insight_id,
             no_insight=no_insight,
@@ -478,7 +478,7 @@ async def resolve_experiment_inputs(
     )
     return ResolvedExperimentInputs(
         agent=plan.agent,
-        agent_spec=plan.agent_spec,
+        ethos=plan.ethos,
         insight=resolved_insight,
         train_dataset=DatasetRef(uri=train_uri, metadata={"id": "train"}),
         validation_dataset=DatasetRef(uri=validation_uri, metadata={"id": "validation"}),
@@ -494,13 +494,13 @@ def profile_storage_flags(profile: AgentProfile) -> dict:
     return _resolve_config(None, profile).storage.model_dump(exclude_unset=True)
 
 
-def pick_agent_spec(profile: AgentProfile) -> str | None:
-    """Resolve and read-check the configured or conventional agent spec."""
+def pick_ethos(profile: AgentProfile) -> str | None:
+    """Resolve and read-check the configured or conventional Ethos."""
     try:
-        spec = resolve_agent_spec_path(profile.profile_dir, profile.agent_spec)
+        ethos = resolve_ethos_path(profile.profile_dir, profile.ethos)
     except ProfileError as exc:
         raise ResolveError(str(exc)) from None
-    return _read_agent_spec_path(spec) if spec is not None else None
+    return _read_ethos_path(ethos) if ethos is not None else None
 
 
 def _resolve_config(config_payload: Any | None, profile: AgentProfile | None) -> EvolutionaryOptimizerConfig:

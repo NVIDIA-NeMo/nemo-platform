@@ -204,43 +204,43 @@ async def test_get_agent_code_git_suppresses_legacy_called_process_error(
 
 
 # ---------------------------------------------------------------------------
-# get_agent_spec — local path copies to dest and returns dest
+# get_ethos — local path copies to dest and returns dest
 # ---------------------------------------------------------------------------
 
 
-async def test_get_agent_spec_local_copies_to_dest_and_returns_dest(tmp_path: Path) -> None:
-    spec_file = tmp_path / "AGENT-SPEC.md"
-    spec_file.write_text("# My Agent\nDoes things.\n")
-    dest = tmp_path / "workspace" / "AGENT-SPEC.md"
+async def test_get_ethos_local_copies_to_dest_and_returns_dest(tmp_path: Path) -> None:
+    ethos_file = tmp_path / "ETHOS.md"
+    ethos_file.write_text("# My agent\nDoes things.\n")
+    dest = tmp_path / "workspace" / "ETHOS.md"
 
-    result = await _local_backend(tmp_path).get_agent_spec(workspace="w", spec=str(spec_file), dest=dest)
+    result = await _local_backend(tmp_path).get_ethos(workspace="w", ethos=str(ethos_file), dest=dest)
 
     assert result == dest
-    assert dest.read_text() == "# My Agent\nDoes things.\n"
+    assert dest.read_text() == "# My agent\nDoes things.\n"
 
 
-async def test_get_agent_spec_local_missing_raises(tmp_path: Path) -> None:
-    dest = tmp_path / "workspace" / "AGENT-SPEC.md"
-    with pytest.raises(FileNotFoundError, match="Agent spec not found"):
-        await _local_backend(tmp_path).get_agent_spec(workspace="w", spec=str(tmp_path / "nonexistent.md"), dest=dest)
+async def test_get_ethos_local_missing_raises(tmp_path: Path) -> None:
+    dest = tmp_path / "workspace" / "ETHOS.md"
+    with pytest.raises(FileNotFoundError, match="Ethos not found"):
+        await _local_backend(tmp_path).get_ethos(workspace="w", ethos=str(tmp_path / "nonexistent.md"), dest=dest)
 
 
-async def test_get_agent_spec_directory_raises(tmp_path: Path) -> None:
-    dest = tmp_path / "workspace" / "AGENT-SPEC.md"
-    with pytest.raises(FileNotFoundError, match="Agent spec not found"):
-        await _local_backend(tmp_path).get_agent_spec(workspace="w", spec=str(tmp_path), dest=dest)
+async def test_get_ethos_directory_raises(tmp_path: Path) -> None:
+    dest = tmp_path / "workspace" / "ETHOS.md"
+    with pytest.raises(FileNotFoundError, match="Ethos not found"):
+        await _local_backend(tmp_path).get_ethos(workspace="w", ethos=str(tmp_path), dest=dest)
 
 
-async def test_get_agent_spec_remote_delegates_to_files(tmp_path: Path) -> None:
-    spec_file = tmp_path / "AGENT-SPEC.md"
-    spec_file.write_text("# Remote Agent\n")
-    dest = tmp_path / "workspace" / "AGENT-SPEC.md"
+async def test_get_ethos_remote_delegates_to_files(tmp_path: Path) -> None:
+    ethos_file = tmp_path / "ETHOS.md"
+    ethos_file.write_text("# Remote agent\n")
+    dest = tmp_path / "workspace" / "ETHOS.md"
     backend = _local_backend(tmp_path / "backend")
 
-    result = await backend.get_agent_spec(workspace="w", spec=str(spec_file), dest=dest)
+    result = await backend.get_ethos(workspace="w", ethos=str(ethos_file), dest=dest)
 
     assert result == dest
-    assert dest.read_text() == "# Remote Agent\n"
+    assert dest.read_text() == "# Remote agent\n"
 
 
 # ---------------------------------------------------------------------------

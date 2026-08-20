@@ -665,7 +665,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
         evaluation: EvaluationResult,
         peer_evaluations: dict[str, EvaluationResult] | None = None,
         round_num: int | None = None,
-        agent_spec: Path | None = None,
+        ethos: Path | None = None,
     ) -> AgentAnalysis:
         """Run the full analysis pipeline for one agent in one optimization round.
 
@@ -675,7 +675,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
             evaluation: The evaluation result to analyze.
             peer_evaluations: Optional peer evaluation results keyed by agent id.
             round_num: Current optimization round number, if available.
-            agent_spec: Markdown description of the agent under test, when the run has one.
+            ethos: The ETHOS.md file for the agent under test, when the run has one.
 
         Returns:
             AgentAnalysis: per-trial diagnostics, failure classification, and peer
@@ -738,7 +738,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
                     workspace=self._workspace_path,
                     config=self._config.rationalizer,
                     framework_skills_dirs=self._framework_skills_dirs,
-                ).run(task, agent_spec=agent_spec)
+                ).run(task, ethos=ethos)
                 for task in unique_tasks.values()
             ],
             return_exceptions=True,

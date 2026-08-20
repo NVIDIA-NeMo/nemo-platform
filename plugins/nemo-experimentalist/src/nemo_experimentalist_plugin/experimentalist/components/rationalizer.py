@@ -94,35 +94,35 @@ class Rationalizer(Agent):
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
-    async def run(self, task: Task, agent_spec: Path | None = None) -> Rationale:
+    async def run(self, task: Task, ethos: Path | None = None) -> Rationale:
         """Generate a correct reasoning trace for the task.
 
         Args:
             task: The evaluator task to rationalize.
-            agent_spec: optional path to a materialized agent-spec file.
+            ethos: Optional path to a materialized ETHOS.md file.
 
         Returns:
             Rationale: minimal chain-of-thought steps a correct agent would follow.
 
         """
-        spec_digest = ""
-        if agent_spec is not None and agent_spec.exists():
+        ethos_digest = ""
+        if ethos is not None and ethos.exists():
             import hashlib
 
-            spec_digest = hashlib.sha256(agent_spec.read_bytes()).hexdigest()[:16]
-        key = cache.task_hash(f"{task.id}:{spec_digest}")
+            ethos_digest = hashlib.sha256(ethos.read_bytes()).hexdigest()[:16]
+        key = cache.task_hash(f"{task.id}:{ethos_digest}")
         cached = cache.load(self._workspace_path, key, Rationale)
         if cached is not None:
             return cached
         async with task.start_deps() as runtime:
-            rationale = await self.solve(task, runtime, agent_spec=agent_spec)
-            rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
+            rationale = await self.solve(task, runtime, ethos=ethos)
+            rationale = await self.verify(task, runtime, rationale, ethos=ethos)
             cache.store(self._workspace_path, key, rationale)
         return rationale
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=120.0)))
     async def verify(
-        self, task: Task, runtime: DependencyRuntime | None, rationale: Rationale, agent_spec: Path | None = None
+        self, task: Task, runtime: DependencyRuntime | None, rationale: Rationale, ethos: Path | None = None
     ) -> Rationale:  # pyright: ignore[reportReturnType]
         """Execute the rationale against the live task runtime and augment until it scores 100%.
 
@@ -130,7 +130,7 @@ class Rationalizer(Agent):
             task: Evaluator task being rationalized.
             runtime: Dependency runtime to use for re-running actions.
             rationale: Draft rationale to verify.
-            agent_spec: Optional path to a materialized agent-spec file; read
+            ethos: Optional path to a materialized ETHOS.md file; read
                 as private context before executing (same as in ``solve()``).
 
         Returns:
@@ -224,7 +224,7 @@ class Rationalizer(Agent):
         ...
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def solve(self, task: Task, runtime: DependencyRuntime | None, agent_spec: Path | None = None) -> Rationale:  # pyright: ignore[reportReturnType]
+    async def solve(self, task: Task, runtime: DependencyRuntime | None, ethos: Path | None = None) -> Rationale:  # pyright: ignore[reportReturnType]
         """Solve the task and record each action as a RationaleStep as you go.
 
         Args:
@@ -235,16 +235,16 @@ class Rationalizer(Agent):
             Rationale whose steps are the actual execution trace.
 
 
-        ## Agent spec — private context, never a rationale step
+        ## Ethos — private context, never a rationale step
 
-        If ``agent_spec`` is not None, read it as private setup before writing
+        If ``ethos`` is not None, read it as private setup before writing
         any steps. This is Rationalizer-only context — the AUT never reads its
-        own spec at runtime, so do NOT include this as a ``RationaleStep``:
+        own Ethos at runtime, so do NOT include this as a ``RationaleStep``:
 
         ```python
-        if agent_spec is not None and agent_spec.exists():
-            spec_text = agent_spec.read_text()
-            print(spec_text[:3000])
+        if ethos is not None and ethos.exists():
+            ethos_text = ethos.read_text()
+            print(ethos_text[:3000])
         ```
 
         Use it to understand the agent's scope and goal: what problem it
@@ -254,27 +254,27 @@ class Rationalizer(Agent):
         action the AUT itself takes from its task instruction and live
         environment — not rationalizer setup work.
 
-        ## Spec-given facts are pre-known — do not rediscover or justify them
+        ## Ethos facts are pre-known — do not rediscover or justify them
 
-        Everything the agent spec states is a GIVEN the AUT already possesses:
+        Everything that the Ethos states is a GIVEN the AUT already possesses:
         the tools it has and their calling conventions, the schema, the I/O
         format and output path, how to reach the runtime (container, endpoint,
-        credentials), and any fixed domain terminology. The spec IS the agent's
+        credentials), and any fixed domain terminology. The Ethos IS the agent's
         equipment — the AUT does not discover it at runtime, so the rationale
         must NOT contain steps that rediscover or re-derive it.
 
         Concretely, do NOT emit steps that:
         - locate or identify the runtime container / endpoint (the access
-          method is spec-given),
+          method is defined in the Ethos),
         - grep the app source for helper/tool function names or signatures,
         - inspect files to learn the schema, table/column names, or the
           expected response category/format.
 
         These are not AUT actions — they are the rationalizer re-proving what
-        the spec already told the agent, and they add pure noise. Start the
+        the Ethos already told the agent, and they add pure noise. Start the
         trace from the first step that consumes genuinely unknown, task-specific
         information (the live query result, the actual data, the count). Only
-        facts NOT in the spec — the values the AUT must obtain from the live
+        facts NOT in the Ethos — the values the AUT must obtain from the live
         environment for this specific task — require a grounding observation.
 
         ## Output contract — write from the AUT's perspective
@@ -291,13 +291,13 @@ class Rationalizer(Agent):
 
         The AUT's first step is always reading or interpreting the task
         instruction. It has no access to private references, hidden tests,
-        evaluator metadata, or the agent spec you read above. Do not include
+        evaluator metadata, or the Ethos that you read earlier. Do not include
         any step the AUT could not have taken from its task instruction and
         live environment alone.
 
         Your job is to privately solve the task (using all your privileged
         access), then reconstruct the steps as the AUT would have taken them.
-        The rationalizer's own setup work — reading the agent spec, inspecting
+        The rationalizer's own setup work — reading the Ethos, inspecting
         private references, running hidden checks — never appears in the steps.
 
         ## Why reconstruct, not replay
@@ -358,7 +358,7 @@ class Rationalizer(Agent):
         I need to create '/results/' before writing."; action: "Create '/results/' and write the output."
 
         Never write generic motivation like "need more data." Never write from
-        the rationalizer's perspective ("I read the agent spec and learned...").
+        the rationalizer's perspective ("I read the Ethos and learned...").
 
         ## Traceability rule — values must be earned
 
@@ -505,11 +505,11 @@ class Rationalizer(Agent):
         sample data, or any other runtime state the AUT has access to.
         These observations explain why each later action is necessary.
 
-        Limit this to task-specific unknowns NOT already given by the spec. Do
-        not add steps that rediscover spec-given facts (schema, tool names and
-        signatures, runtime access method, output format) — see "Spec-given
-        facts are pre-known" above. If the only thing a would-be Step 2 does is
-        re-confirm what the spec states, drop it and go straight to executing.
+        Limit this to task-specific unknowns NOT already given by the Ethos. Do
+        not add steps that rediscover Ethos facts (schema, tool names and
+        signatures, runtime access method, output format) — see "Ethos facts
+        are pre-known" earlier. If the only thing a possible Step 2 does is
+        reconfirm what the Ethos states, drop it and go straight to executing.
 
         **Step 3: Execute — one step per distinct requirement**
 
@@ -517,8 +517,8 @@ class Rationalizer(Agent):
         Do not collapse independent operations into a single combined call. Each
         requirement gets its own targeted action and its own observation.
 
-        Use the tools and environment variables described in the agent spec —
-        read the spec to discover their names and calling conventions; do not
+        Use the tools and environment variables described in the Ethos —
+        read the Ethos to discover their names and calling conventions; do not
         assume them. If the task runtime exposes services or endpoints, probe them.
 
         Each result may point to further work. Follow every lead: fetch what is
@@ -592,7 +592,7 @@ class Rationalizer(Agent):
         - No step references private evaluator infrastructure — test scripts,
           hidden ground-truth files, oracle paths, or rationalizer setup work
           that the AUT could not reach from its task instruction alone.
-        - No step rediscovers a spec-given fact — no container/endpoint
+        - No step rediscovers an Ethos fact — no container/endpoint
           identification, no grepping for tool/helper names, no inspecting the
           schema or expected output format. Those are pre-known; the trace
           starts from the first genuinely task-specific action.

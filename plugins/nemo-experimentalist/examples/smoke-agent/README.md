@@ -11,9 +11,9 @@ The agent is **wrong on purpose**. Five known weaknesses, each paired with a
 group of Harbor tasks that surfaces it, so a run can be asserted to have
 *repaired* something rather than merely completed.
 
-> **Nothing inside `agent/` or `AGENT-SPEC.md` may describe what this fixture
+> **Nothing inside `agent/` or `ETHOS.md` may describe what this fixture
 > measures.** `agent_source` points at `agent/`, so it is copied into every
-> candidate workspace and read by the Coder, and the spec reaches the LLM
+> candidate workspace and read by the Coder, and the Ethos reaches the LLM
 > components by a separate route. A description in either would hand the Coder
 > the diagnosis the fixture exists to test. Everything else here — this file,
 > `configs/`, `scripts/`, `dataset/` — is never copied and can say whatever is
@@ -52,8 +52,8 @@ agent/                         ONLY this is copied to the Coder (agent_source)
 agent/agent.py                 the code under optimization
 agent/main.py                  container entry point
 agent/harbor_wrapper.py        Harbor upload + exec adapter
-AGENT-SPEC.md                  behaviour contract read by the LLM components
-optimizer.yaml                 profile: agent source, spec, g1 datasets
+ETHOS.md                       behavior contract read by the LLM components
+optimizer.yaml                 profile: agent source, Ethos, g1 datasets
 optimizer-full.yaml            profile: the generated combined datasets
 optimizer-generalization.yaml  profile: same agent, g4 datasets (see Scenarios)
 configs/short.yaml             loop settings shared by the per-group gate checks
@@ -207,7 +207,7 @@ Two are held out of the combined set, for different reasons.
 `g4-dispatch-order`'s healthy outcome — baseline retained — is the opposite of
 the combined scenario's, and one run cannot assert both. `g5-edge-cases` is only
 reachable with trajectory scoring on, and the combined scenario runs with it off:
-measured over runs made after the spec stated the sentinel, no candidate closed
+measured over runs made after the Ethos stated the sentinel, no candidate closed
 it without a goal tree and most did with one. Trajectory scoring is not
 dependable enough to leave on yet, so the group is out until it is.
 `build_all_group.py` records the numbers and the condition for putting it back.

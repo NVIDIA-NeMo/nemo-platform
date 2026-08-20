@@ -35,7 +35,7 @@ class AgentProfile(BaseModel):
     task_template: str
     datasets: DatasetsSpec
     agent_source: str = "."
-    agent_spec: str | None = None
+    ethos: str | None = None
     experiment_config: dict | str | None = None
     framework_skills: list[str] = []
     workspace: str = "default"
