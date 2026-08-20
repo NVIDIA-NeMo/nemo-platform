@@ -5,3 +5,6 @@
 /opt/nemo_rl_venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so
 /opt/ray_venvs/*/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so
 /opt/uv_cache/archive-v0/*/_soundfile_data/libsndfile_*.so
+/opt/nemo_rl_venv/lib/python3.*/site-packages/soundfile.py
+/opt/ray_venvs/*/lib/python3.*/site-packages/soundfile.py
+/opt/uv_cache/archive-v0/*/soundfile.py
