@@ -43,6 +43,46 @@ nemo evaluator agent-evaluate submit \
   --spec-file skills/nemo-evaluator-plugin/assets/specs/fabric_agent_eval.json
 ```
 
+A `GymAgentTaskRunner` already working under `AgentEvaluator()` can be submitted directly, without
+describing its configuration a second time as a spec. Pass the live runner as `target` and a stored taskset as
+`tasks`:
+
+```python
+from nemo_evaluator.api.schemas import TasksetRef
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
+
+runner = GymAgentTaskRunner(
+    config=GymRuntimeConfig(
+        agent="simple_agent",
+        agent_config="c.yaml",
+        resources_server="mcqa",
+    )
+)
+job = client.evaluator.submit(tasks=TasksetRef("my-suite"), target=runner)
+job.wait_until_done()
+```
+
+`submit` has two shapes discriminated by what is supplied: `tasks` + `target` evaluates a stored
+taskset, and `metric` + `dataset` evaluates rows. Supplying both, or passing a runner to the row
+path, raises `TypeError` rather than running the wrong job. The row-only options — `config`,
+`field_mapping`, `prompt_template`, `metric_bundle_packager` — are refused on the taskset path,
+because a taskset run is configured by its runner instead.
+
+Only a Gym runner can be converted into a target spec today. `submit` does that conversion with
+`runner_to_target` (`nemo_evaluator.jobs.runner_targets`), which raises `UnsubmittableRunnerError`
+for any other runner — for those, write the job input by hand with the matching runner target and
+submit it, through the SDK or the CLI.
+
+A Gym runner carrying state with no JSON form is refused for a different reason, and has a different
+remedy. `hydra_params` is `dict[str, Any]`, so a callable or live object survives construction and
+is rejected at submit. Writing the target by hand does not help: a hand-built `GymRunnerTarget`
+fails the same `model_dump(mode="json")`, and a CLI `--spec` payload cannot encode the value either.
+Replace it with something JSON-representable, or keep the run in-process with
+`AgentEvaluator().run(...)`.
+
+`submit` returns an `AgentEvaluatorJobResource`, which is read differently from the dataset-driven
+job handle — see [Read results](#read-results).
+
 ## Build the job input
 
 `AgentEvalInputSpec.tasks` accepts an inline task list or a stored `TasksetRef`.
@@ -92,8 +132,8 @@ Task metrics score against the task-driven template context
 dataset-driven `item.*` context.
 
 Use `TasksetRef("default/geography")` with `submit` for persisted tasks. Stored
-tasks do not include grader-only `reference`; use inline tasks when metrics
-require held-out per-task data.
+tasks carry the grader-only `reference` field too, so held-out per-task data
+survives into taskset-driven runs; inline tasks are for one-off submissions.
 
 Set `views` on a task to roll two or more of its metric outputs into one named,
 reported score. See
@@ -107,6 +147,7 @@ reported score. See
 | `AgentTarget` | Generate trials through a generic HTTP or NeMo Agent Toolkit agent |
 | `FabricRunnerTarget` | Run a configured NeMo [Fabric](https://github.com/nvidia/nemo-fabric) runner |
 | `HarborRunnerTarget` | Run a Harbor task suite in Docker |
+| `GymRunnerTarget` | Run a Gym environment and agent |
 
 `ModelTarget` owns its `prompt_template` and online model params.
 `AgentTarget` owns its agent request configuration. Runner targets are resolved
@@ -190,6 +231,12 @@ written as a run bundle:
 Use the in-memory result for programmatic follow-up and the bundle for
 inspection, sharing, or rescoring. Platform jobs persist the bundle and create
 a queryable record under `client.evaluator.agent_eval_results`.
+
+A platform job hands back an `AgentEvaluatorJobResource`, which is not the
+dataset-driven job handle: it offers `name`, `job`, `get_job_status()`,
+`check_if_complete()`, and `wait_until_done()`, but no `get_result()` or
+`download_artifacts()`. Read the scores through
+`client.evaluator.agent_eval_results`.
 
 Inspect failed and partial trials and score diagnostics before interpreting
 aggregate values; a high mean with low coverage can hide missing or failed

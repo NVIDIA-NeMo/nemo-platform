@@ -48,14 +48,14 @@ metric for a rubric, RAG workflow, or tool-calling evaluation.
 | Fast metric iteration without NeMo Platform | `nemo_evaluator_sdk.Evaluator` |
 | Dataset-driven platform job | `client.evaluator.submit(...)` or `nemo evaluator evaluate submit` |
 | Multiple inline/stored metric refs in one job | `nemo evaluator evaluate submit` with an `EvaluateInputSpec` |
-| Task-driven platform job | `nemo evaluator agent-evaluate submit` |
+| Task-driven platform job | `client.evaluator.submit(tasks=..., target=<runner>)` or `nemo evaluator agent-evaluate submit` |
 | Reusable platform definitions and result indexes | `client.evaluator.metrics`, `.tasks`, `.tasksets`, `.eval_results`, `.agent_eval_results` |
 
 Default to `submit` for every plugin evaluation. The plugin's local execution
-path — `client.evaluator.run()` and the `nemo evaluator ... run` CLI verb — is
-being retired, so do not build on it even though `--help` still lists it. For
-fast metric iteration without the platform, use the standalone
-`nemo_evaluator_sdk.Evaluator` instead.
+path is being retired: the `nemo evaluator ... run` CLI verb still exists but
+should not be built on, even though `--help` still lists it. For fast metric
+iteration without the platform, use the standalone `nemo_evaluator_sdk.Evaluator`
+instead.
 
 - Read [SDK Execution](references/execution.md) for datasets, targets,
 configuration, field mapping, job lifecycle, and custom metric packaging.
@@ -151,9 +151,9 @@ Use `AgentEvaluator().run(...)` for standalone task-driven SDK evaluation. Its
 **Platform job evaluation**
 
 Use the plugin `agent-evaluate submit` job for platform task evaluation. Its
-target is a `ModelTarget`, `AgentTarget`, `FabricRunnerTarget`, or
-`HarborRunnerTarget`; alternatively provide precomputed `trials`. Provide
-exactly one of `target` or `trials`.
+target is a `ModelTarget`, `AgentTarget`, `FabricRunnerTarget`,
+`HarborRunnerTarget`, or `GymRunnerTarget`; alternatively provide precomputed
+`trials`. Provide exactly one of `target` or `trials`.
 
 Submission accepts inline tasks or a stored `TasksetRef`. Stored tasksets are
 resolved in the target workspace.
