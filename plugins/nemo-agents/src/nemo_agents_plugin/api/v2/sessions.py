@@ -189,6 +189,21 @@ async def close_session(
             detail=f"Session '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except NemoEntityConflictError as exc:
+        try:
+            latest_session = await entity_client.get(AgentSession, name=name, workspace=workspace)
+        except NemoEntityNotFoundError as get_exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session '{name}' not found in workspace '{workspace}'.",
+            ) from get_exc
+        except Exception as get_exc:
+            logger.exception("Failed to get session '%s' after close conflict", name)
+            raise HTTPException(status_code=500, detail="Failed to get session.") from get_exc
+
+        if latest_session.status is SessionStatus.CLOSED:
+            await _cleanup_fabric_runtime(entity_client, latest_session)
+            return latest_session
+
         raise HTTPException(
             status_code=409,
             detail=f"Session '{name}' is being modified concurrently.",

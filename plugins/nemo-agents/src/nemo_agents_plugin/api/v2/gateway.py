@@ -54,8 +54,7 @@ router = APIRouter()
 _PROXY_READ_METHODS = ["GET", "HEAD", "OPTIONS"]
 _PROXY_WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
-# Headers we strip before forwarding to the agent process (hop-by-hop + platform-internal)
-_HOP_BY_HOP = {
+_HOP_BY_HOP_HEADERS = {
     "host",
     "connection",
     "keep-alive",
@@ -65,11 +64,19 @@ _HOP_BY_HOP = {
     "trailers",
     "transfer-encoding",
     "upgrade",
-    # platform-internal headers should not leak to the agent process
+}
+
+# Platform-internal headers should not leak to the agent process
+_PLATFORM_INTERNAL_HEADERS = {
     "x-nmp-principal-id",
     "x-nmp-principal-on-behalf-of",
 }
 
+# Headers we strip before forwarding to the agent process (hop-by-hop + platform-internal + session ID)
+_REQUEST_HEADERS_TO_STRIP = _HOP_BY_HOP_HEADERS | _PLATFORM_INTERNAL_HEADERS | {SESSION_ID_HEADER.lower()}
+
+# Headers we strip before forwarding to the client (hop-by-hop + platform-internal)
+_RESPONSE_HEADERS_TO_STRIP = _HOP_BY_HOP_HEADERS | _PLATFORM_INTERNAL_HEADERS
 
 # ---------------------------------------------------------------------------
 # Endpoint resolution — subprocess vs. container mode
@@ -436,11 +443,7 @@ async def _proxy(
         target_url = f"{target_url}?{request.url.query}"
 
     # Build forwarded headers — strip hop-by-hop and platform-internal headers
-    headers = {
-        k: v
-        for k, v in request.headers.items()
-        if k.lower() not in _HOP_BY_HOP and k.lower() != SESSION_ID_HEADER.lower()
-    }
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in _REQUEST_HEADERS_TO_STRIP}
     if session_id is not None:
         headers[SESSION_ID_HEADER] = session_id
 
@@ -470,7 +473,7 @@ async def _proxy(
             ) as response:
                 status_code_holder[0] = response.status_code
                 for k, v in response.headers.items():
-                    if k.lower() not in _HOP_BY_HOP:
+                    if k.lower() not in _RESPONSE_HEADERS_TO_STRIP:
                         response_headers[k] = v
                 # Translate agent 5xx responses into 502 Bad Gateway.
                 # aread() consumes the full body before raising so the connection

@@ -229,13 +229,34 @@ class TestCloseSession:
 
         assert response.status_code == 404
 
-    def test_close_returns_409_for_concurrent_update(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        mock_entity_client.get.return_value = _make_session()
+    def test_close_is_idempotent_after_concurrent_close(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        active_session = _make_session()
+        closed_session = _make_session(status=SessionStatus.CLOSED)
+        mock_entity_client.get.side_effect = [active_session, closed_session]
+        mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
+
+        with patch.object(sessions_router_module, "_cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+            response = client.post(f"{BASE}/session-one/close")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "closed"
+        assert mock_entity_client.get.await_count == 2
+        cleanup.assert_awaited_once_with(mock_entity_client, closed_session)
+
+    def test_close_returns_409_for_other_concurrent_update(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        active_session = _make_session()
+        concurrently_updated_session = _make_session()
+        mock_entity_client.get.side_effect = [active_session, concurrently_updated_session]
         mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
 
         response = client.post(f"{BASE}/session-one/close")
 
         assert response.status_code == 409
+        assert mock_entity_client.get.await_count == 2
 
 
 class TestDeleteSession:

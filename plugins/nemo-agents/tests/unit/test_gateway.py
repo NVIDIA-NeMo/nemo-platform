@@ -121,11 +121,13 @@ def _make_httpx_mock(
     status_code: int,
     body: bytes = b"",
     content_type: str = "application/json",
+    response_headers: dict[str, str] | None = None,
 ) -> MagicMock:
     """Build the full async-context-manager chain for httpx.AsyncClient().stream()."""
     mock_response = MagicMock()
     mock_response.status_code = status_code
-    mock_response.headers = httpx.Headers({"content-type": content_type})
+    headers = {"content-type": content_type, **(response_headers or {})}
+    mock_response.headers = httpx.Headers(headers)
 
     async def _aiter_bytes():
         if body:
@@ -276,6 +278,24 @@ class TestProxyByDeploymentName:
 
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers.get("content-type", "")
+
+    def test_session_id_response_header_forwarded(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        dep = _make_deployment(status="running", endpoint="http://localhost:9001")
+        mock_entity_client.get = AsyncMock(return_value=dep)
+        httpx_mock = _make_httpx_mock(
+            200,
+            b'{"ok": true}',
+            response_headers={SESSION_ID_HEADER: "runtime-session-1"},
+        )
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 200
+        assert resp.headers[SESSION_ID_HEADER] == "runtime-session-1"
 
     def test_connection_error_returns_502(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         dep = _make_deployment(status="running", endpoint="http://localhost:9001")
