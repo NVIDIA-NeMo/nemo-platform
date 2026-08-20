@@ -35,6 +35,7 @@ from nemo_agents_plugin.fabric.serving_models import (
 from nemo_agents_plugin.fabric.session_manager import (
     DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
     DEFAULT_MAX_CONCURRENT_INVOCATIONS,
+    DEFAULT_MAX_LIVE_SESSIONS,
     DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS,
     FabricSessionManager,
     FabricSessionStartError,
@@ -57,12 +58,15 @@ class FabricServingSettings:
     """Operational settings for the Platform-owned Fabric server."""
 
     max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS
+    max_live_sessions: int = DEFAULT_MAX_LIVE_SESSIONS
     idle_session_timeout_seconds: float = DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS
     session_cleanup_interval_seconds: float = DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS
 
     def __post_init__(self) -> None:
         if self.max_concurrent_invocations < 0:
             raise ValueError("max_concurrent_invocations must be greater than or equal to zero.")
+        if self.max_live_sessions < 0:
+            raise ValueError("max_live_sessions must be greater than or equal to zero.")
         if self.idle_session_timeout_seconds <= 0:
             raise ValueError("idle_session_timeout_seconds must be greater than zero.")
         if self.session_cleanup_interval_seconds <= 0:
@@ -257,6 +261,7 @@ def create_fabric_serving_app(
             base_dir=config_path.parent,
             session_registry=session_registry,
             max_concurrent_invocations=settings.max_concurrent_invocations,
+            max_live_sessions=settings.max_live_sessions,
         )
         app.state.session_manager = session_manager
         cleanup_shutdown = asyncio.Event()
@@ -391,6 +396,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Maximum concurrent Fabric invocations; use 0 for unlimited.",
     )
     parser.add_argument(
+        "--max-live-sessions",
+        type=int,
+        default=DEFAULT_MAX_LIVE_SESSIONS,
+        help="Maximum concurrently live sessions; the least recently used idle one is evicted above it. Use 0 for unlimited.",
+    )
+    parser.add_argument(
         "--idle-session-timeout-seconds",
         type=float,
         default=DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
@@ -412,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
             args.agent_config,
             settings=FabricServingSettings(
                 max_concurrent_invocations=args.max_concurrent_invocations,
+                max_live_sessions=args.max_live_sessions,
                 idle_session_timeout_seconds=args.idle_session_timeout_seconds,
                 session_cleanup_interval_seconds=args.session_cleanup_interval_seconds,
             ),
