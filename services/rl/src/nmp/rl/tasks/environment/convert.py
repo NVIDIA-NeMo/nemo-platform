@@ -303,11 +303,13 @@ def _load_verifiers_dataset_rows(
     seed: int | None,
 ) -> list[dict[str, Any]]:
     try:
-        import verifiers as vf
+        # Optional `conversion` extra, so it is absent from the default environment.
+        import verifiers as vf  # ty: ignore[unresolved-import]
     except ImportError as exc:
         raise RuntimeError(
-            "verifiers is required for pi-to-gym-conversion dataset generation; "
-            "it is a declared nmp-rl dependency — run `uv sync --package nmp-rl`"
+            "verifiers is required for pi-to-gym-conversion dataset generation; it lives in "
+            "the optional `conversion` extra — run "
+            "`uv sync --package nmp-rl --extra conversion`"
         ) from exc
 
     env = vf.load_environment(vf_env_id, **vf_env_args)

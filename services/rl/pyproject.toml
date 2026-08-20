@@ -16,12 +16,9 @@ dependencies = [
     "pydantic-settings>=2.6.1",
     "httpx>=0.27.0",
     "tenacity>=8.5.0",
-    # Required by pi-to-gym-conversion to vendor hub wheel closures (uv envs omit pip by default).
-    "pip>=25.0",
-    # Version-aware wheel selection in pi-to-gym-conversion.
+    # Imported at module scope by tasks/environment/convert.py, which the package __init__
+    # pulls in — so it is reachable from the training path, not just the conversion CLI.
     "packaging>=24.0",
-    # Required by pi-to-gym-conversion to materialize Gym JSONL from hub envs.
-    "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@v0.1.14",
 ]
 
 # Heavy ML deps (nemo-rl, ray, megatron, etc.) are NOT declared here: they are built
@@ -34,6 +31,16 @@ dependencies = [
 integrations = [
     "wandb>=0.25.1",
     "mlflow-skinny",
+]
+# Only pi-to-gym-conversion needs these, and it runs on an internet-capable host rather
+# than in the training image. Kept out of the core deps so the training image does not
+# carry a git-sourced package it never imports: convert.py imports verifiers lazily, and
+# pip is only ever invoked as a subprocess.
+conversion = [
+    # Vendors hub wheel closures; uv environments omit pip by default.
+    "pip>=25.0",
+    # Materializes Gym JSONL from hub environments.
+    "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@v0.1.14",
 ]
 
 [project.scripts]

@@ -138,8 +138,14 @@ class VerifiersAgentInstanceConfig(BaseModel):
     """Fields under ``responses_api_agents.verifiers_agent`` in an environment's Hydra YAML.
 
     This is the config that loads a verifiers environment and points it at the model to
-    roll out against. Sampling fields (``max_tokens``, ``temperature``, ``top_p``) are
-    overwritten per row by the compiler's generation settings.
+    roll out against.
+
+    ``max_tokens`` here wins over the job's ``max_new_tokens``: the compiler stamps that
+    onto every row as ``responses_create_params.max_output_tokens``, but the verifiers_agent
+    server reads ``max_tokens`` from this config and drops the row value. The effective cap
+    is ``min(max_tokens, max_seq_length - prompt_len)``, applied by vLLM's
+    ``_clamp_max_tokens``. ``max_new_tokens`` only takes effect once the agent honours
+    ``max_output_tokens``.
     """
 
     model_config = ConfigDict(extra="allow", protected_namespaces=())

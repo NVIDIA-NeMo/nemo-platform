@@ -85,6 +85,7 @@ rollouts) and a **dataset** (the Gym JSONL rows fed through it). See
    any other way are packaged the same way and treated identically:
 
    ```bash
+   uv sync --package nmp-rl --extra conversion   # verifiers + pip; not in the training image
    pi-to-gym-conversion --hub-id primeintellect/ascii-tree --out-dir ./ascii-tree-pkg
    ```
 
