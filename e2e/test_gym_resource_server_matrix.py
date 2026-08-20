@@ -3,8 +3,6 @@
 
 """Manual NMP job matrix for Gym's declared agent/resources-server pairs."""
 
-from __future__ import annotations
-
 import json
 import os
 import tarfile
@@ -282,7 +280,7 @@ def _validate_gym_matrix_result(
 
     extract_dir = case_dir / "results"
     with tarfile.open(archive_path) as archive:
-        archive.extractall(extract_dir)  # noqa: S202 - trusted first-party job artifact, not user input
+        archive.extractall(extract_dir, filter="data")
 
     # A single input and one repeat must produce exactly one persisted trial.
     trials_files = list(extract_dir.rglob("trials.jsonl"))
