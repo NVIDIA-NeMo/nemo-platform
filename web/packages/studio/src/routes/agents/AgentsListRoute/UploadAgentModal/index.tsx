@@ -166,7 +166,14 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
       errorText={errorMessage}
     >
       <Stack gap="density-md">
-        <input ref={inputRef} type="file" multiple hidden onChange={onDirectoryPicked} />
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          hidden
+          data-testid="agent-directory-input"
+          onChange={onDirectoryPicked}
+        />
         <Button kind="secondary" onClick={() => inputRef.current?.click()} disabled={isPending}>
           {directoryName ? 'Choose a different directory' : 'Choose directory'}
         </Button>
