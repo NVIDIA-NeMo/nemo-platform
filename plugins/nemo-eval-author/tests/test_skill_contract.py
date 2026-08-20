@@ -24,6 +24,9 @@ These tests are that enforcement:
 - The check contract matches ``nemo_insights_plugin.contracts.checks``, so a
   report from the skill reads the same as one from the platform command.
 - Discovery reports a valid suite runnable and names the rung a broken one fails.
+- The bundled scripts write no files. ``SKILL.md`` tells the agent where to save
+  the report, because where a file belongs in someone's repository is a judgement
+  rather than a fact about their evals.
 
 These tests compare the skill against this repository, never against Harbor's
 rules. The skill reimplements no Harbor rule: it asks Harbor for every verdict,
@@ -178,22 +181,27 @@ def test_frontmatter_carries_every_required_field(skill_dir: Path) -> None:
 
 
 @pytest.mark.parametrize("skill_dir", _SKILL_DIRS, ids=lambda path: path.name)
-def test_no_skill_grants_write_access(skill_dir: Path) -> None:
-    """Eval Author proposes and never mutates, so a Write grant would contradict the core."""
+def test_no_skill_can_edit_what_it_did_not_write(skill_dir: Path) -> None:
+    """Eval Author creates its own report and changes nothing that was already there.
+
+    ``Write`` covers the discovery report, which is the one artifact a sub-flow
+    leaves behind. ``Edit`` would let it rewrite files that predate it, which is the
+    permission customers declined to grant and the reason these ship as skills.
+    """
     frontmatter, _ = _frontmatter_and_body(skill_dir)
     tools = set(frontmatter["allowed-tools"])
-    assert not {"Write", "Edit", "MultiEdit", "NotebookEdit"} & tools, (
-        f"{skill_dir.name} writes nothing, so {sorted(tools)} is too broad"
+    assert not {"Edit", "MultiEdit", "NotebookEdit"} & tools, (
+        f"{skill_dir.name} edits nothing that predates it, so {sorted(tools)} is too broad"
     )
 
 
 def test_the_core_routes_and_the_sub_flow_executes() -> None:
-    """The core only picks a sub-flow, so it has no reason to run anything."""
+    """The core only picks a sub-flow, so it neither runs nor saves anything."""
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
-    assert "Bash" not in core_tools, f"the core routes and explains; {sorted(core_tools)} lets it execute"
+    assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     for skill_dir in _SUB_FLOW_DIRS:
         tools = set(_frontmatter_and_body(skill_dir)[0]["allowed-tools"])
-        assert "Bash" in tools, f"{skill_dir.name} runs a bundled script, which needs Bash"
+        assert {"Bash", "Write"} <= tools, f"{skill_dir.name} runs a script and saves a report; it has {sorted(tools)}"
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -429,15 +437,13 @@ def test_discover_finds_configs_without_pyyaml(suite: Path) -> None:
     assert "harbor-job.yaml" in parse["message"]
 
 
-def test_discover_writes_a_markdown_report_only_where_asked(suite: Path, tmp_path: Path) -> None:
-    out = tmp_path / "reports" / "discovery.md"
+def test_discovery_writes_no_files(suite: Path) -> None:
+    """The scripts report and the agent saves, which is what makes the skill safe to run."""
+    before = {path.relative_to(suite).as_posix() for path in suite.rglob("*")}
 
-    _run_discover(suite, "--out", str(out))
+    _run_discover(suite)
 
-    assert out.is_file(), "--out must create the report and its parent directory"
-    text = out.read_text(encoding="utf-8")
-    assert text.startswith("# Discovery report for")
-    assert "Proven by Harbor: yes" in text
+    assert {path.relative_to(suite).as_posix() for path in suite.rglob("*")} == before
 
 
 def test_discover_fails_with_a_hint_when_the_path_is_missing(tmp_path: Path) -> None:

@@ -12,7 +12,9 @@ description: >-
   to run an eval suite they did not write, hand a suite to a cheaper model, or
   asks "can I run these evals?", "why won't my Harbor config resolve?", "which
   env vars does this suite need?", "where are the evals in this repo?", or "why
-  did Harbor skip my task?". Reads the repository and writes nothing to it.
+  did Harbor skip my task?". Changes none of your source, and leaves behind
+  `.eval-author/discovery.md` so your team and the next model read the verdict
+  without Harbor and without discovering again.
 triggers:
   - can I run the evals in this repo
   - where are the Harbor evals in this repository
@@ -31,7 +33,7 @@ compatibility: >-
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
-allowed-tools: [Bash, Read, Grep, Glob]
+allowed-tools: [Bash, Read, Write, Grep, Glob]
 ---
 
 # Eval Author: discover
@@ -83,8 +85,8 @@ configs to a depth of four directories and finds datasets at any depth.
 .venv/bin/python <skill_dir>/scripts/discover.py --repo .
 ```
 
-One JSON object goes to stdout. Add `--out discovery.md` to also write a Markdown
-report, and `--compact` for single-line JSON.
+One JSON object goes to stdout, and `--compact` puts it on one line. The script
+writes no files; you save the report in **Step 5**.
 
 The exit code carries the verdict, so check it:
 
@@ -132,8 +134,8 @@ rung's failure often disappears once you fix a higher one.
 
 ## Step 4: verify before you report
 
-Discovery writes nothing to the repository, so verification means confirming the
-report describes the repository the user meant:
+Discovery changes none of the user's source, so verification means confirming the
+report describes the repository they meant:
 
 1. `proven` is `true`. When it is `false`, report only that Harbor is missing.
 2. `repo_root` is the repository they named.
@@ -142,9 +144,19 @@ report describes the repository the user meant:
    declare no `datasets` or `tasks` list.
 4. `task_count` is in the range they expect. A count of zero with a passing `tasks`
    check means the config resolves tasks from a registry, not from disk.
-
 Report `proven`, `runnable`, and the failing check names. Never describe a suite as
 ready to run while `runnable` is `false`.
+
+## Step 5: save the report
+
+Write the report to `.eval-author/discovery.md`, so the next model and the user's
+teammates inherit the findings instead of rerunning discovery to get them back.
+Lead with the JSON as front matter, verbatim, then the verdict, the failing checks
+by name, and the run command. Never paraphrase a check; its wording is the evidence.
+
+Leave the file in the working tree and say where it is. Committing it is the user's
+call, and worth suggesting. Do not touch their `.gitignore`. A rerun replaces the
+file rather than merging into it.
 
 ## Files in this skill
 

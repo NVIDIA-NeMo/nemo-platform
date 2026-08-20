@@ -12,6 +12,15 @@ repository. There is no CLI and no service. A customer points their agent at
 | [`eval-author`](src/nemo_eval_author_plugin/skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](src/nemo_eval_author_plugin/skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
 
+## Where findings go
+
+`eval-author-discover` leaves a report at `.eval-author/discovery.md`, carrying the
+JSON as front matter so a later model reads the verdict without Harbor. It is
+visible and worth committing: a teammate who reads it skips the discovery pass.
+
+The scripts write no files. They report to stdout and the skill tells the agent
+where to save, because that is a judgement about someone's repository.
+
 ## Why skills instead of an agent
 
 Harbor tasks live in the customer's repository, so an agent that proposes changes

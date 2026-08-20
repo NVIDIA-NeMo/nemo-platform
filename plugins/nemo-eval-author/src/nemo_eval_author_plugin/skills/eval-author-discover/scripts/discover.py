@@ -32,13 +32,13 @@ standard library, and a repository holding Harbor evaluations has Harbor by
 construction. PyYAML, pydantic, and toml arrive with it.
 
 Usage:
-    discover.py [--repo PATH] [--out PATH] [--compact]
+    discover.py [--repo PATH] [--compact]
 
     --repo PATH    Repository to inspect. Defaults to the working directory.
-    --out PATH     Also write the Markdown report to PATH.
     --compact      Emit single-line JSON.
 
-Prints a JSON report on stdout.
+Prints a JSON report on stdout and writes nothing. ``SKILL.md`` tells the agent
+where to save it.
 
 Exit codes:
     0  every repository-owned config passed every required check
@@ -63,7 +63,7 @@ from pathlib import Path
 # machine without Harbor and make the probe claim an install that is not there.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _checks import CheckResult, format_report, required_failures  # noqa: E402
+from _checks import CheckResult, required_failures  # noqa: E402
 from providers.harbor import _probe  # noqa: E402
 from providers.harbor._inventory import RepositoryScan, scan_repository  # noqa: E402
 
@@ -141,33 +141,6 @@ def _run_command(repo_root: Path, configs: list[dict]) -> str | None:
     return "cd {} && harbor job start -c {}".format(repo_root, runnable[0]["path"])
 
 
-def _render_markdown(report: dict, grouped: list[CheckResult]) -> str:
-    """Render the report as Markdown with a status block per config."""
-    lines = ["# Discovery report for `{}`".format(report["repo_root"])]
-    lines.extend(["", "Proven by Harbor: {}".format("yes" if report["proven"] else "no")])
-    # Validation checks belong to a config, so they render under that config.
-    status = format_report([result for result in grouped if result.group != "validation"])
-    if status:
-        lines.extend(["", "```text", status, "```"])
-    if report["configs"]:
-        lines.extend(["", "## Harbor entrypoints"])
-    for config in report["configs"]:
-        lines.extend(
-            [
-                "",
-                "### `{}` (`{}`)".format(config["name"], config["path"]),
-                "",
-                "Runnable: {}".format("true" if config["runnable"] else "false"),
-            ]
-        )
-        if config["checks"]:
-            rendered = format_report([CheckResult(**item) for item in config["checks"]])
-            lines.extend(["", "```text", rendered, "```"])
-    if report["run_command"]:
-        lines.extend(["", "```bash", report["run_command"], "```"])
-    return "\n".join(lines) + "\n"
-
-
 def _fail(message: str, hint: str) -> int:
     json.dump({"error": message, "hint": hint}, sys.stdout, indent=2)
     sys.stdout.write("\n")
@@ -177,7 +150,6 @@ def _fail(message: str, hint: str) -> int:
 async def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Record whether a repository's Harbor evaluations are ready to run.")
     parser.add_argument("--repo", type=Path, default=Path(), help="Repository to inspect.")
-    parser.add_argument("--out", type=Path, default=None, help="Also write the Markdown report to this path.")
     parser.add_argument("--compact", action="store_true", help="Emit single-line JSON.")
     args = parser.parse_args(argv)
 
@@ -226,11 +198,6 @@ async def _main(argv: list[str] | None = None) -> int:
         "checks": [result.as_dict() for result in grouped],
     }
     report["run_command"] = _run_command(repo_root, configs)
-
-    if args.out is not None:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(_render_markdown(report, grouped), encoding="utf-8")
-        report["report_path"] = args.out.as_posix()
 
     json.dump(report, sys.stdout, indent=None if args.compact else 2)
     sys.stdout.write("\n")

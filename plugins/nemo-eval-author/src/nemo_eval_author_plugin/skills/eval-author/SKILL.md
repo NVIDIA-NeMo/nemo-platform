@@ -12,7 +12,7 @@ description: >-
   "help me with my evals", "what's the state of the eval suite here?", "are these
   evals any good?", "I inherited this repo and there are Harbor tasks in it", or
   when you need to pick between the Eval Author sub-flows. Routes to a sub-flow;
-  reads the repository and changes nothing in it.
+  changes none of your source, and saves what it finds under `.eval-author/`.
 triggers:
   - help me with the evals in this repo
   - what is the state of the eval suite here
@@ -91,9 +91,10 @@ discover.
 These hold for every sub-flow. They exist because the repository belongs to the
 user, not to you.
 
-- **Propose, never mutate.** Read the repository and report. Do not create, edit,
-  move, or reformat anything in it. A sub-flow that writes a report file writes it
-  only where the user pointed.
+- **Propose, never mutate.** Read the user's source and report on it. Do not edit,
+  move, or reformat any of it, including its `.gitignore`. The one thing you add is
+  your own report under `.eval-author/`, which is theirs to commit or ignore. The
+  bundled scripts write nothing at all; saving is your job, not theirs.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   report that and stop. Do not install it into the user's environment.
 - **Do not run the suite.** Prove it can run and hand over the command. Starting a
