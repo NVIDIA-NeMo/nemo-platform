@@ -307,8 +307,14 @@ COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/n
 # (parallelizer.py: `inner = model.backbone if hasattr(model, "backbone") else model.model`)
 # but NVIDIA-NeMo/RL main still pins 24b47e8, which predates it. Drop this once the
 # submodule is bumped past that fix.
-COPY docker/rl/patches/automodel-nemotronh-trunk.patch /tmp/
-RUN cd /opt/nemo-rl && git apply -p1 --verbose /tmp/automodel-nemotronh-trunk.patch && rm /tmp/automodel-nemotronh-trunk.patch
+#
+# Bind-mounted rather than COPY-ed: this stage already runs as ${BUILD_UID}, so a COPY would
+# land root-owned and could not be cleaned up afterwards, and anything left behind ships in
+# the layer. The mount keeps the patch out of the image entirely.
+RUN --mount=type=bind,source=docker/rl/patches/automodel-nemotronh-trunk.patch,target=/patches/nemotronh.patch \
+    cd /opt/nemo-rl && \
+    git apply --check -p1 /patches/nemotronh.patch && \
+    git apply -p1 --verbose /patches/nemotronh.patch
 
 # Install the workspace ROOT (nemo-rl) editable. --no-install-project above installed every
 # DEPENDENCY and workspace MEMBER (incl. nemo-gym) but skipped the root; this adds it with --no-deps
