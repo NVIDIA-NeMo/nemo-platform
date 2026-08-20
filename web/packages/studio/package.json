@@ -67,7 +67,6 @@
     "classnames": "catalog:",
     "handlebars": "catalog:",
     "hyparquet": "catalog:",
-    "jsonc-parser": "3.3.1",
     "lucide-react": "catalog:",
     "modern-tour": "^0.1.1",
     "oidc-client-ts": "catalog:",

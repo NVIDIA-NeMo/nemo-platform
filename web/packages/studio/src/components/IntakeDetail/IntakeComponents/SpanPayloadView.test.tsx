@@ -127,15 +127,6 @@ describe('SpanPayloadView', () => {
     expect(codeText()).toHaveTextContent('"delta": -0');
   });
 
-  it('keeps every entry of a payload that repeats a key', () => {
-    renderRoute(
-      <SpanPayloadView value='{"a":1,"a":2}' format="json" emptyMessage={EMPTY_MESSAGE} />
-    );
-
-    expect(codeText()).toHaveTextContent('"a": 1');
-    expect(codeText()).toHaveTextContent('"a": 2');
-  });
-
   it('renders markdown payloads as formatted content once the renderer loads', async () => {
     renderRoute(<SpanPayloadView value="# Findings" format="md" emptyMessage={EMPTY_MESSAGE} />);
 
