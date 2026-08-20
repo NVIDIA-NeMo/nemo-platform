@@ -210,13 +210,13 @@ async def test_get_agent_code_git_suppresses_legacy_called_process_error(
 
 async def test_get_ethos_local_copies_to_dest_and_returns_dest(tmp_path: Path) -> None:
     ethos_file = tmp_path / "ETHOS.md"
-    ethos_file.write_text("# My agent\nDoes things.\n")
+    ethos_file.write_text("# My Agent\nDoes things.\n")
     dest = tmp_path / "workspace" / "ETHOS.md"
 
     result = await _local_backend(tmp_path).get_ethos(workspace="w", ethos=str(ethos_file), dest=dest)
 
     assert result == dest
-    assert dest.read_text() == "# My agent\nDoes things.\n"
+    assert dest.read_text() == "# My Agent\nDoes things.\n"
 
 
 async def test_get_ethos_local_missing_raises(tmp_path: Path) -> None:
@@ -233,14 +233,14 @@ async def test_get_ethos_directory_raises(tmp_path: Path) -> None:
 
 async def test_get_ethos_remote_delegates_to_files(tmp_path: Path) -> None:
     ethos_file = tmp_path / "ETHOS.md"
-    ethos_file.write_text("# Remote agent\n")
+    ethos_file.write_text("# Remote Agent\n")
     dest = tmp_path / "workspace" / "ETHOS.md"
     backend = _local_backend(tmp_path / "backend")
 
     result = await backend.get_ethos(workspace="w", ethos=str(ethos_file), dest=dest)
 
     assert result == dest
-    assert dest.read_text() == "# Remote agent\n"
+    assert dest.read_text() == "# Remote Agent\n"
 
 
 # ---------------------------------------------------------------------------

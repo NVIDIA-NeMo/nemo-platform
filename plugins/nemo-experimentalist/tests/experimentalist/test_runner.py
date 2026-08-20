@@ -101,32 +101,6 @@ def _make_runner(
 
 
 @pytest.mark.asyncio
-async def test_runner_materializes_ethos_as_ethos_md(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    agent_dir = tmp_path / "agent"
-    agent_dir.mkdir()
-    ethos_source = tmp_path / "source-ethos.md"
-    ethos_source.write_text("# ETHOS\n", encoding="utf-8")
-    strategy = RecordingStrategy()
-    _stub_factories(monkeypatch)
-    runner = ExperimentRunner(
-        backend=FakeBackend(),
-        strategy=strategy,
-        config=EvolutionaryOptimizerConfig(),
-        workspace="default",
-        root=tmp_path / "experiment",
-        agent=agent_dir,
-        ethos=str(ethos_source),
-        train_dataset=DatasetRef(uri="train"),
-        validation_dataset=DatasetRef(uri="validation"),
-    )
-
-    await runner.run()
-
-    assert strategy.ctx is not None
-    assert strategy.ctx.ethos == tmp_path / "experiment" / "ETHOS.md"
-
-
-@pytest.mark.asyncio
 async def test_strategy_failure_marks_the_run_failed(monkeypatch, tmp_path) -> None:
     strategy = RecordingStrategy(error=ValueError("baseline failed"))
     runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)

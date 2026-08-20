@@ -79,7 +79,7 @@ class ExperimentRunner:
         root: Working directory for run artifacts.
         agent: Baseline agent — a local directory, a git ``url@ref``, or None to take
             the agent the Insight names.
-        ethos: Optional URI of the ETHOS.md file that describes the agent under test.
+        ethos: Optional URI of a markdown description of the agent under test.
         insight: Optional Insight id or local Insight file.
         train_dataset: Dataset reference the strategy develops against.
         validation_dataset: Dataset reference the winner is selected on.

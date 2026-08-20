@@ -104,7 +104,7 @@ class ExperimentalistCLI(NemoCLI):
             ethos: str | None = typer.Option(
                 None,
                 "--ethos",
-                help="URI of the ETHOS.md file that describes the agent under test.",
+                help="URI of a markdown file describing the agent under test (its Ethos).",
             ),
             insight: str | None = typer.Option(
                 None,

@@ -99,7 +99,7 @@ class StrategyContext(BuilderContext, Protocol):
     #: Evaluator-domain datasets keyed by split. ``validation`` is always present.
     datasets: Mapping[str, Dataset]
 
-    #: ETHOS.md file for the agent under test, when the run has one.
+    #: Markdown description of the agent under test, when the run has one.
     ethos: Path | None
 
     @property

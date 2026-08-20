@@ -322,7 +322,7 @@ class GoalTreeGenerator(Agent):
 
         # Inputs you should consult
 
-        - `ETHOS.md` in the workspace root. Read it through self.shell. This is the
+        - `ETHOS.md` in the workspace root. Read it via self.shell. This is the
           canonical description of the domain and what the agent is being asked to do.
         - 3 to 5 examples from the dataset. Use task inputs, visible
           resources, and metric specs to understand the task shape and scoring surface.
@@ -537,7 +537,7 @@ class GoalTreeGenerator(Agent):
             goal_tree: the current goal tree to refine.
             analysis: round analysis markdown used to inform reweighting.
             round_num: the current generation number, stamped on any new nodes.
-            ethos: Optional path to a materialized ETHOS.md file.
+            ethos: optional path to a materialized ETHOS.md file.
 
         Returns:
             GoalTree: the updated, structurally valid goal tree.

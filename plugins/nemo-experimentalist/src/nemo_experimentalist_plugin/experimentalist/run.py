@@ -63,7 +63,7 @@ async def run_experimentalist(
             referenced by ``insight``. A local directory path or a git ``url@ref``; a git
             source is fetched by the backend and enables opening a draft PR/MR for
             the winner against that ref.
-        ethos: Optional URI of the ETHOS.md file that describes the agent under test.
+        ethos: Optional URI of a markdown file describing the agent under test.
             Materialized by the backend and threaded to components that use it.
         insight: Optional Mode 1 insight — a local Insight file path or a platform
             insight id (fetched from the platform by the backend).

@@ -67,8 +67,8 @@ or scaffold one. Before running it, make sure you have:
 
 Record the agent revision, dataset versions, configuration, and result path
 with each run so another operator can reproduce it. If the agent or its Ethos
-doesn't exist, use `nemo-explore` to design it and `nemo-ethos` to create the
-Ethos before returning here.
+does not exist yet, use `nemo-explore` to design it and `nemo-spec` to create
+the Ethos before returning here.
 
 ## Configure the environment
 
@@ -199,11 +199,11 @@ from the current directory.
 
 | Input | Purpose | Required |
 | --- | --- | --- |
-| `--profile` | The `optimizer.yaml` profile containing the agent, Ethos, datasets, workspace, and optional configuration. | No; discovered when present. |
+| `--profile` | The `optimizer.yaml` profile containing the agent, datasets, workspace, and optional config. | No; discovered when present. |
 | `--insight` / `--insight-id` | The problem to improve. `--insight` accepts a local Insight file or a platform Insight ID; `--insight-id` selects an entry in a local multi-Insight file. | Insight-driven mode. |
 | `--no-insight` | Disables profile Insight discovery for an explicit evaluation run. | Explicit mode. |
 | `--agent` | Local agent directory or Git URL. A Git URL enables candidate branch and PR/MR publication. | Explicit mode; optional when an Insight supplies the agent. |
-| `--ethos` | The `ETHOS.md` file that describes the agent. | Optional; use the profile or conventional `ETHOS.md` when available. |
+| `--ethos` | Markdown description of the agent. | Optional; use the profile or conventional `ETHOS.md` when available. |
 | `--train-dataset` / `--validation-dataset` | Separate local Harbor datasets or registry references used to measure improvement. | Yes, unless the profile supplies both. |
 | `--task-template` | A directory containing one Harbor task template (`task.toml`, with placeholder values). In Insight-driven mode, Eval Author copies and fills it for representative failing traces to create the targeted evaluation suite. | Required in Insight-driven mode unless the profile supplies it. |
 | `--config` | YAML or JSON **mapping** that validates as the Experimentalist run configuration: top-level run limits plus optional `source`, `storage`, `goal_config`, `coder`, `analyzer`, `proposer`, `evaluator`, and `eval_author` sections. It does not configure model endpoints or model tiers. | No; profile or defaults apply. |

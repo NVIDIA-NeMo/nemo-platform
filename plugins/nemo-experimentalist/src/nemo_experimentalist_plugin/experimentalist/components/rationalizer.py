@@ -99,7 +99,7 @@ class Rationalizer(Agent):
 
         Args:
             task: The evaluator task to rationalize.
-            ethos: Optional path to a materialized ETHOS.md file.
+            ethos: optional path to a materialized ETHOS.md file.
 
         Returns:
             Rationale: minimal chain-of-thought steps a correct agent would follow.
@@ -254,9 +254,9 @@ class Rationalizer(Agent):
         action the AUT itself takes from its task instruction and live
         environment — not rationalizer setup work.
 
-        ## Ethos facts are pre-known — do not rediscover or justify them
+        ## Ethos-given facts are pre-known — do not rediscover or justify them
 
-        Everything that the Ethos states is a GIVEN the AUT already possesses:
+        Everything the Ethos states is a GIVEN the AUT already possesses:
         the tools it has and their calling conventions, the schema, the I/O
         format and output path, how to reach the runtime (container, endpoint,
         credentials), and any fixed domain terminology. The Ethos IS the agent's
@@ -265,7 +265,7 @@ class Rationalizer(Agent):
 
         Concretely, do NOT emit steps that:
         - locate or identify the runtime container / endpoint (the access
-          method is defined in the Ethos),
+          method is Ethos-given),
         - grep the app source for helper/tool function names or signatures,
         - inspect files to learn the schema, table/column names, or the
           expected response category/format.
@@ -291,7 +291,7 @@ class Rationalizer(Agent):
 
         The AUT's first step is always reading or interpreting the task
         instruction. It has no access to private references, hidden tests,
-        evaluator metadata, or the Ethos that you read earlier. Do not include
+        evaluator metadata, or the Ethos you read above. Do not include
         any step the AUT could not have taken from its task instruction and
         live environment alone.
 
@@ -506,10 +506,10 @@ class Rationalizer(Agent):
         These observations explain why each later action is necessary.
 
         Limit this to task-specific unknowns NOT already given by the Ethos. Do
-        not add steps that rediscover Ethos facts (schema, tool names and
-        signatures, runtime access method, output format) — see "Ethos facts
-        are pre-known" earlier. If the only thing a possible Step 2 does is
-        reconfirm what the Ethos states, drop it and go straight to executing.
+        not add steps that rediscover Ethos-given facts (schema, tool names and
+        signatures, runtime access method, output format) — see "Ethos-given
+        facts are pre-known" above. If the only thing a would-be Step 2 does is
+        re-confirm what the Ethos states, drop it and go straight to executing.
 
         **Step 3: Execute — one step per distinct requirement**
 
@@ -592,7 +592,7 @@ class Rationalizer(Agent):
         - No step references private evaluator infrastructure — test scripts,
           hidden ground-truth files, oracle paths, or rationalizer setup work
           that the AUT could not reach from its task instruction alone.
-        - No step rediscovers an Ethos fact — no container/endpoint
+        - No step rediscovers an Ethos-given fact — no container/endpoint
           identification, no grepping for tool/helper names, no inspecting the
           schema or expected output format. Those are pre-known; the trace
           starts from the first genuinely task-specific action.

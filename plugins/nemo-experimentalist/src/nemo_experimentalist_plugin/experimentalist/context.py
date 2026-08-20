@@ -121,7 +121,7 @@ class ExperimentContext:
         root: Working directory for the run's artifacts.
         agent_dir: The agent under test, materialized by the runner. A strategy forks
             candidates from here; it must not write into it.
-        ethos: Optional ETHOS.md file for the agent under test.
+        ethos: Optional markdown description of the agent under test.
         datasets: Evaluator-domain datasets keyed by split. ``validation`` is always
             present; ``train`` and ``insight`` are present when the run has them.
         evaluator: OutcomeEvaluator component the run was configured with.

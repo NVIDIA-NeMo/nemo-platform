@@ -52,7 +52,7 @@ agent/                         ONLY this is copied to the Coder (agent_source)
 agent/agent.py                 the code under optimization
 agent/main.py                  container entry point
 agent/harbor_wrapper.py        Harbor upload + exec adapter
-ETHOS.md                       behavior contract read by the LLM components
+ETHOS.md                       behaviour contract read by the LLM components
 optimizer.yaml                 profile: agent source, Ethos, g1 datasets
 optimizer-full.yaml            profile: the generated combined datasets
 optimizer-generalization.yaml  profile: same agent, g4 datasets (see Scenarios)

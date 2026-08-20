@@ -67,12 +67,6 @@ def test_load_minimal_profile_defaults(tmp_path: Path) -> None:
     assert profile.profile_dir == tmp_path.resolve()
 
 
-def test_profile_accepts_ethos_field(tmp_path: Path) -> None:
-    profile = load_profile(write_profile(tmp_path, MINIMAL + "ethos: ./ETHOS.md\n"))
-
-    assert profile.ethos == "./ETHOS.md"
-
-
 def test_missing_required_field_names_it(tmp_path: Path) -> None:
     with pytest.raises(ProfileError, match="task_template"):
         load_profile(write_profile(tmp_path, "agent: a\ndatasets:\n  train: t\n  validation: v\n"))

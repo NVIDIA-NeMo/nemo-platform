@@ -162,9 +162,9 @@ win. "Required" below means required *when the profile does not supply it*.
 
 | Flag | What it does | Required |
 | --- | --- | --- |
-| `--profile` | The `optimizer.yaml` holding agent, source, Ethos, datasets, task template, and workspace. | No — discovered by walking up from the working directory. |
+| `--profile` | The `optimizer.yaml` holding agent, source, datasets, task template, and workspace. | No — discovered by walking up from the working directory. |
 | `--agent` | Baseline agent: a local directory, or a Git URL that also enables PR/MR publication. | Unless the profile or the Insight names one. |
-| `--ethos` | The `ETHOS.md` file that describes the agent under test. | No — falls back to the profile, then `ETHOS.md`. |
+| `--ethos` | Markdown describing the agent under test. | No — falls back to the profile, then `ETHOS.md`. |
 | `--insight` | The problem to work on: a local Insight file or a platform Insight ID. | No — defaults to `.nemo-optimizer/insights.yaml` beside the profile. |
 | `--insight-id` | Picks one entry out of a multi-Insight file: exact ID or title, otherwise a zero-based index. | Only for a file holding several Insights. |
 | `--no-insight` | Switches to dataset-driven mode. Cannot be combined with `--insight` or `--insight-id`. | Dataset-driven mode. |

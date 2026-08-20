@@ -118,7 +118,7 @@ Manual spot-checks use Harbor with `harbor_wrapper.py:WrappedAgent`.
 - Inference parameters (temperature, max_tokens): **allowed**
 - Additional deterministic LangChain tools: **allowed**
 - Task data (`tests/`, `solution/`): **allowed only via oracle fix PRs** — changes here affect benchmark integrity
-- Ethos: **not allowed** (the Ethos is the contract; only the developer edits it)
+- Ethos: **not allowed** (Ethos is the contract; only the developer edits it)
 
 ## Signals
 

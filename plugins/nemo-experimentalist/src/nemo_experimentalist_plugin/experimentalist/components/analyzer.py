@@ -675,7 +675,7 @@ class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
             evaluation: The evaluation result to analyze.
             peer_evaluations: Optional peer evaluation results keyed by agent id.
             round_num: Current optimization round number, if available.
-            ethos: The ETHOS.md file for the agent under test, when the run has one.
+            ethos: Markdown description of the agent under test, when the run has one.
 
         Returns:
             AgentAnalysis: per-trial diagnostics, failure classification, and peer

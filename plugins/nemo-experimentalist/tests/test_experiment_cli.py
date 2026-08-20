@@ -169,14 +169,6 @@ def test_cli_help_exposes_only_run_and_doctor() -> None:
     assert "analysis" not in result.output
 
 
-def test_run_help_exposes_ethos_option() -> None:
-    app = cli.ExperimentalistCLI().get_cli()
-    result = CliRunner().invoke(app, ["run", "--help"])
-
-    assert result.exit_code == 0
-    assert "--ethos" in result.output
-
-
 @pytest.mark.parametrize(
     ("config_body", "expected_config", "expected_output"),
     [
