@@ -187,7 +187,6 @@ enabled-plugins = [
   "nemo-evaluator-plugin",
   "nemo-insights-plugin",
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
-  "nemo-eval-author-plugin ; python_full_version < '3.14'",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
   "nemo-safe-synthesizer-plugin",
