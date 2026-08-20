@@ -51,7 +51,7 @@ async def test_nooa_codeact_returns_typed_analyst_result_and_receives_prompt() -
     analyst = build_analyst_agent(
         deps=AnalystDeps(agent="target-agent", workspace="private-workspace"),
         agent="target-agent",
-        agent_spec="# Expected behavior\nBe accurate.",
+        ethos="# Expected behavior\nBe accurate.",
         llm=fake,
     )
 
@@ -63,11 +63,26 @@ async def test_nooa_codeact_returns_typed_analyst_result_and_receives_prompt() -
     assert result.updated_insights == []
     rendered_messages = json.dumps(fake.last_messages)
     assert "target-agent" in rendered_messages
+    assert "## ETHOS" in rendered_messages
     assert "Expected behavior" in rendered_messages
     assert "One method, two modes" in rendered_messages
     assert "private-workspace" not in rendered_messages
     assert fake.last_tools is not None
     assert {tool.name for tool in fake.last_tools} == {"execute_python", "return_result"}
+
+
+def test_readme_context_header_does_not_claim_ethos() -> None:
+    analyst = build_analyst_agent(
+        deps=AnalystDeps(agent="target-agent", workspace="workspace"),
+        agent="target-agent",
+        ethos="# Repository context",
+        ethos_label="README analysis context (not ETHOS)",
+        llm=FakeLLMClient(),
+    )
+
+    instructions = cast(Any, analyst.context)["analyst_instructions"]
+    assert "## README analysis context (not ETHOS)" in instructions
+    assert "## ETHOS\n" not in instructions
 
 
 class _SpanBackend:

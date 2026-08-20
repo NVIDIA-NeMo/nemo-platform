@@ -90,7 +90,7 @@ class IntakeAdapter:
         client = self._basic_auth_client() if cfg.get("auth") == "basic" else make_client(str(cfg["base_url"]))
         return await run_analyst(
             agent=cfg["agent"],
-            agent_spec=None,
+            ethos=None,
             workspace=cfg["workspace"],
             base_url=cfg["base_url"],
             client=client,
@@ -297,7 +297,8 @@ class BenchmarkAdapter:
         )
         return await run_analyst(
             agent=str(record["agent"]),
-            agent_spec=policy,
+            ethos=policy,
+            ethos_label="Benchmark policy analysis context (not ETHOS)",
             workspace=workspace,
             base_url=str(record["base_url"]),
             client=make_client(str(record["base_url"])),

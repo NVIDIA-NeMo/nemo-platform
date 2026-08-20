@@ -34,20 +34,22 @@ The profile contract consumed by Insights is deliberately small:
 
 ```yaml
 agent: research-agent
-agent_spec: AGENT-SPEC.md  # optional
-workspace: default         # optional; defaults to "default"
+ethos: ETHOS.md     # optional
+workspace: default  # optional; defaults to "default"
 ```
 
-Only `agent`, `agent_spec`, and `workspace` are consumed by Insights.
+Only `agent`, `ethos`, and `workspace` are consumed by Insights.
 Unknown experiment-owned fields are ignored, while the reserved `profile_dir`
-field is rejected. `agent` is required. Relative `agent_spec` paths are
-resolved relative to the profile. When it is omitted, Insights looks for
-`AGENT-SPEC.md`, then `README.md`, beside the profile.
+field is rejected. `agent` is required. Relative `ethos` paths resolve from the
+profile directory. When `ethos` is omitted, Insights looks for `ETHOS.md`, then
+`README.md`, beside the profile. The Analyst labels README content exactly
+`README analysis context (not ETHOS)`. It doesn't validate either file with
+`parse_ethos()`.
 
 An adjacent `.env` is loaded when a profile is found, without replacing
 variables already set in the shell. For this shared profile workflow,
 `NMP_BASE_URL` is the only base-URL environment variable. Resolution order is
-explicit command-line flags, then profile values (for `agent`, `agent_spec`,
+explicit command-line flags, then profile values (for `agent`, `ethos`,
 and `workspace`) or `NMP_BASE_URL` (for the base URL), then the built-in
 defaults. `--base-url` takes precedence over `NMP_BASE_URL`.
 

@@ -69,10 +69,13 @@ The Analyst reads telemetry; it cannot create it. Confirm all three:
   it names what is missing and how to set it. Don't reach for the
   Experimentalist's configuration; that is a different contract.
 
-An `AGENT-SPEC.md` is optional but makes the Analyst materially better. It
+An `ETHOS.md` file is optional but makes the Analyst materially better. It
 carries the intent behind the agent — what it is for, its constraints, what
 counts as success — none of which is recoverable from code or traces, so
-without it the Analyst can only judge an agent against itself.
+without it the Analyst can only judge an agent against itself. If the profile
+has no `ETHOS.md` file, the Analyst uses `README.md` as unvalidated
+`README analysis context (not ETHOS)`. It doesn't validate either file with
+`parse_ethos()`.
 
 ## Pre-flight
 
@@ -93,12 +96,12 @@ only ever warn.
 nemo agents analyst run --agent <agent-name> --workspace <workspace>
 ```
 
-Add `--agent-spec AGENT-SPEC.md` to tell it what the agent is supposed to do,
+Add `--ethos ETHOS.md` to tell it what the agent is supposed to do,
 and `--verbose` to stream its tool calls and reasoning to stderr. Expect several
 minutes; it surveys many sessions before drilling into any of them.
 
 From an agent directory, an `optimizer.yaml` profile supplies `agent`,
-`workspace`, and `agent_spec`, so the flags above become optional:
+`workspace`, and `ethos`, so these flags become optional:
 
 ```bash
 nemo agents analyst run

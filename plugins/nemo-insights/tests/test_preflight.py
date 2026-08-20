@@ -11,9 +11,10 @@ from nemo_insights_plugin import preflight
 from nemo_insights_plugin.contracts.checks import format_report, required_failures
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
-    check_agent_spec,
     check_environment,
+    check_ethos,
     check_profile,
+    read_ethos,
 )
 from nemo_insights_plugin.profile import AnalysisProfile
 from nemo_platform import NeMoPlatformError
@@ -120,19 +121,19 @@ def test_remote_workspace_probe_treats_client_construction_failures_as_advisory(
     assert asyncio.run(preflight._default_workspace_ok("https://platform.example", "default", "agent")) is False
 
 
-def test_profile_and_agent_spec_failures_are_required(tmp_path: Path) -> None:
+def test_profile_and_ethos_failures_are_required(tmp_path: Path) -> None:
     profile_results = check_profile(None, None)
-    spec_results = check_agent_spec(None, "configured agent spec does not exist")
+    ethos_results = check_ethos(None, "configured Ethos does not exist")
 
     assert required_failures(profile_results) == profile_results
-    assert required_failures(spec_results) == spec_results
+    assert required_failures(ethos_results) == ethos_results
 
 
-def test_agent_spec_invalid_utf8_is_required_failure(tmp_path: Path) -> None:
-    spec = tmp_path / "AGENT-SPEC.md"
-    spec.write_bytes(b"\xff\xfe")
+def test_ethos_invalid_utf8_is_required_failure(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_bytes(b"\xff\xfe")
 
-    results = check_agent_spec(spec, None)
+    results = check_ethos(ethos, None)
 
     assert results[0].status == "fail"
     assert results[0].severity == "required"
@@ -140,19 +141,19 @@ def test_agent_spec_invalid_utf8_is_required_failure(tmp_path: Path) -> None:
     assert results[0].hint == "ensure the file is readable and encoded as UTF-8"
 
 
-def test_agent_spec_unreadable_is_required_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    spec = tmp_path / "AGENT-SPEC.md"
-    spec.write_text("# Agent", encoding="utf-8")
+def test_ethos_unreadable_is_required_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Agent", encoding="utf-8")
     original_read_text = Path.read_text
 
-    def deny_spec_read(path: Path, encoding: str | None = None, errors: str | None = None) -> str:
-        if path == spec:
+    def deny_ethos_read(path: Path, encoding: str | None = None, errors: str | None = None) -> str:
+        if path == ethos:
             raise PermissionError("permission denied")
         return original_read_text(path, encoding=encoding, errors=errors)
 
-    monkeypatch.setattr(Path, "read_text", deny_spec_read)
+    monkeypatch.setattr(Path, "read_text", deny_ethos_read)
 
-    results = check_agent_spec(spec, None)
+    results = check_ethos(ethos, None)
 
     assert results[0].status == "fail"
     assert results[0].severity == "required"
@@ -160,10 +161,28 @@ def test_agent_spec_unreadable_is_required_failure(tmp_path: Path, monkeypatch: 
     assert results[0].hint == "ensure the file is readable and encoded as UTF-8"
 
 
+def test_read_ethos_labels_ethos_and_readme_context(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos", encoding="utf-8")
+    content, label, results = read_ethos(ethos, None)
+
+    assert content == "# Ethos"
+    assert label == "ETHOS"
+    assert results[0].status == "pass"
+
+    readme = tmp_path / "README.md"
+    readme.write_text("# Repository", encoding="utf-8")
+    content, label, results = read_ethos(readme, None)
+
+    assert content == "# Repository"
+    assert label == "README analysis context (not ETHOS)"
+    assert results[0].status == "pass"
+
+
 def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:
     profile = AnalysisProfile(agent="a", profile_dir=tmp_path)
-    (tmp_path / "AGENT-SPEC.md").write_text("# Agent", encoding="utf-8")
-    results = check_profile(profile, None) + check_agent_spec(tmp_path / "AGENT-SPEC.md", None)
+    (tmp_path / "ETHOS.md").write_text("# Agent", encoding="utf-8")
+    results = check_profile(profile, None) + check_ethos(tmp_path / "ETHOS.md", None)
     results += asyncio.run(
         check_environment(
             agent="a",

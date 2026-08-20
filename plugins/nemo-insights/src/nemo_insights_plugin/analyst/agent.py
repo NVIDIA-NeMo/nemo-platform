@@ -18,8 +18,8 @@ that persists.
 The result is delivered through Nooa's ``return_result`` helper and validated
 against the ``AnalystResult`` schema.
 
-The analyst's persona, task, the agent-under-test name, and the optional AUT
-spec are all formatted into the instructions by ``build_analyst_agent``; the
+The analyst's persona, task, agent-under-test name, and optional Ethos content
+are all formatted into the instructions by ``build_analyst_agent``; the
 run is seeded with only the minimal ``KICKOFF`` request. The per-run config the
 methods need is carried in :class:`~nemo_insights_plugin.analyst.deps.AnalystDeps`.
 Workspace and base URL aren't in the instructions because the methods are already
@@ -50,7 +50,7 @@ MAX_SUMMARY_TOKENS = 80_000
 #
 # This is the analyst context prompt and the only long-form prompt
 # the analyst gets — there is no separate user-message brief. ``{agent}`` is
-# formatted in by ``build_analyst_agent`` and the optional AUT spec is appended
+# formatted in by ``build_analyst_agent`` and optional Ethos content is appended
 # as the final paragraph. Nooa owns the CodeAct protocol and method catalog, so
 # this text covers only the analyst's persona,
 # principles, and method — it deliberately does not document the tools or
@@ -146,13 +146,12 @@ Notes:
 """
 
 
-AGENT_SPEC_HEADER = """
-## Agent Spec
+ETHOS_HEADER = """
+## {ethos_label}
 
-Use this as the contract for what the agent is supposed to do, what
-success looks like, and what behavior should be flagged as divergence.
-Flag agent divergence from the spec. The spec was authored by the
-developer of the application and should be considered the purpose and goals.
+Use this content to understand what the agent is supposed to do and what
+success looks like. Content labeled ETHOS is the agent's contract. Content
+labeled README analysis context (not ETHOS) is unvalidated repository context.
 """
 
 KICKOFF = (
@@ -170,7 +169,8 @@ class Analyst(Agent):
         *,
         deps: AnalystDeps,
         agent: str,
-        agent_spec: str | None = None,
+        ethos: str | None = None,
+        ethos_label: str = "ETHOS",
         **kwargs: Any,
     ) -> None:
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
@@ -183,8 +183,8 @@ class Analyst(Agent):
         )
 
         instructions = INSTRUCTIONS.format(agent=agent)
-        if agent_spec and agent_spec.strip():
-            instructions = f"{instructions}\n{AGENT_SPEC_HEADER}\n\n{agent_spec.strip()}\n"
+        if ethos and ethos.strip():
+            instructions = f"{instructions}\n{ETHOS_HEADER.format(ethos_label=ethos_label)}\n\n{ethos.strip()}\n"
         self.context["analyst_instructions"] = instructions
 
     async def fetch_spans(
@@ -360,7 +360,8 @@ def build_analyst_agent(
     *,
     deps: AnalystDeps,
     agent: str,
-    agent_spec: str | None = None,
+    ethos: str | None = None,
+    ethos_label: str = "ETHOS",
     llm: UnifiedLLM | None = None,
     **kwargs: Any,
 ) -> Analyst:
@@ -368,7 +369,8 @@ def build_analyst_agent(
     return Analyst(
         deps=deps,
         agent=agent,
-        agent_spec=agent_spec,
+        ethos=ethos,
+        ethos_label=ethos_label,
         llm=llm,
         **kwargs,
     )

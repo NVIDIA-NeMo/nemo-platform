@@ -75,7 +75,7 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
 
     report = await run_module.run_analyst(
         agent="agent",
-        agent_spec=None,
+        ethos=None,
         workspace="workspace",
         base_url="https://platform",
         client=cast(AsyncNeMoPlatform, client),
@@ -85,6 +85,8 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
     assert seen["backend_client"] is client
     build_kwargs = cast(dict[str, object], seen["build_kwargs"])
     assert cast(AnalystDeps, build_kwargs["deps"]).backend is not None
+    assert build_kwargs["ethos"] is None
+    assert build_kwargs["ethos_label"] == "ETHOS"
     assert seen["model_client"] is client
     model_clients = cast(ConfiguredModelClients, seen["model_clients"])
     assert cast(FakeModelClient, model_clients.default).closed
@@ -112,7 +114,7 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
     with pytest.raises(RuntimeError, match="backend failed"):
         await run_module.run_analyst(
             agent="agent",
-            agent_spec=None,
+            ethos=None,
             workspace="workspace",
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
@@ -133,7 +135,7 @@ async def test_client_closed_when_model_resolution_raises(monkeypatch: pytest.Mo
     with pytest.raises(RuntimeError, match="model resolution failed"):
         await run_module.run_analyst(
             agent="agent",
-            agent_spec=None,
+            ethos=None,
             workspace="workspace",
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
@@ -190,7 +192,7 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
     with pytest.raises(RuntimeError, match="shutdown failed"):
         await run_module.run_analyst(
             agent="agent",
-            agent_spec=None,
+            ethos=None,
             workspace="workspace",
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
