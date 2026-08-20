@@ -76,7 +76,9 @@ describe('createAgentFromUpload', () => {
 
     await createAgentFromUpload(params());
 
-    expect(order).toEqual(['upload:agent.yaml', 'upload:mcps/calculator.py', 'createAgent']);
+    // Uploads run concurrently, so only their completion before the create is guaranteed.
+    expect(order.at(-1)).toBe('createAgent');
+    expect(order.slice(0, -1).sort()).toEqual(['upload:agent.yaml', 'upload:mcps/calculator.py']);
     expect(agentsCreateAgent).toHaveBeenCalledWith('ws', {
       name: 'calc',
       description: 'Adds numbers',

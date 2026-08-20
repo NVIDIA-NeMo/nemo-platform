@@ -106,7 +106,7 @@ describe('UploadAgentModal', () => {
     await submit(dialog, user);
 
     await waitFor(() => expect(created).toHaveLength(1));
-    expect(uploaded).toEqual(['agent.yaml', 'mcps/calculator.py']);
+    expect([...uploaded].sort()).toEqual(['agent.yaml', 'mcps/calculator.py']);
     expect(created[0]?.name).toBe('calc');
   });
 

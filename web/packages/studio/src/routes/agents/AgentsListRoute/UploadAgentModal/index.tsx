@@ -36,7 +36,7 @@ import type {
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { type ChangeEventHandler, type FC, useCallback, useEffect, useRef, useState } from 'react';
+import { type ChangeEventHandler, type FC, useCallback, useRef, useState } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
@@ -54,7 +54,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   const [entries, setEntries] = useState<UploadAgentEntry[]>([]);
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
-  const [replaceOrphan, setReplaceOrphan] = useState(false);
+  const [replaceArmedFor, setReplaceArmedFor] = useState<string | null>(null);
 
   const {
     mutateAsync: createAgent,
@@ -84,11 +84,9 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   });
 
   const watchedName = useWatch({ control, name: 'name' });
-
-  // The armed replace targets one fileset; a different name must re-confirm.
-  useEffect(() => {
-    setReplaceOrphan(false);
-  }, [watchedName]);
+  // Derived, not stored: an armed replace targets one fileset, so editing the name
+  // disarms it in the same render rather than one render later.
+  const replaceOrphan = replaceArmedFor !== null && replaceArmedFor === watchedName?.trim();
 
   const resetAndClose = () => {
     resetMutation();
@@ -96,7 +94,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     setEntries([]);
     setDirectoryName('');
     setSelectionError(undefined);
-    setReplaceOrphan(false);
+    setReplaceArmedFor(null);
     onClose();
   };
 
@@ -155,16 +153,12 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   };
 
   const onSubmit: SubmitHandler<UploadAgentFormData> = async (formData) => {
+    const name = formData.name.trim();
     try {
-      await createAgent({
-        workspace,
-        name: formData.name.trim(),
-        entries,
-        replaceOrphanedFileset: replaceOrphan,
-      });
+      await createAgent({ workspace, name, entries, replaceOrphanedFileset: replaceOrphan });
     } catch (error) {
       // An orphaned fileset is recoverable, so the next submit replaces it.
-      setReplaceOrphan(error instanceof AgentSpecFilesetOrphanError);
+      setReplaceArmedFor(error instanceof AgentSpecFilesetOrphanError ? name : null);
     }
   };
 

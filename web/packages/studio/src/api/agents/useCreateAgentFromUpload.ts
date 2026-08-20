@@ -110,15 +110,27 @@ const agentExists = async (workspace: string, agentName: string): Promise<boolea
   }
 };
 
+// One request per file, so a 500-file agent is 500 round trips. Run a bounded number at
+// once: unbounded Promise.all would queue them all against the browser's per-host limit
+// and lose the first error behind hundreds of in-flight requests.
+const UPLOAD_CONCURRENCY = 6;
+
 const uploadEntries = async (
   workspace: string,
   filesetName: string,
   entries: UploadAgentEntry[]
 ): Promise<void> => {
-  for (const entry of entries) {
-    const blob = new Blob([await entry.file.arrayBuffer()], { type: 'application/octet-stream' });
-    await filesUploadFile(workspace, filesetName, entry.path, blob);
-  }
+  const queue = [...entries];
+  const worker = async (): Promise<void> => {
+    for (let entry = queue.shift(); entry; entry = queue.shift()) {
+      const blob = new Blob([await entry.file.arrayBuffer()], { type: 'application/octet-stream' });
+      await filesUploadFile(workspace, filesetName, entry.path, blob);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(UPLOAD_CONCURRENCY, entries.length) }, () => worker())
+  );
 };
 
 const rollback = async (workspace: string, filesetName: string): Promise<void> => {
