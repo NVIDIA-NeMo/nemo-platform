@@ -8,6 +8,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import {
   useCustomizationCreateAutomodelJob,
+  useCustomizationCreateRlJob,
   useCustomizationCreateUnslothJob,
 } from '@nemo/sdk/generated/customizer/api';
 import {
@@ -22,15 +23,19 @@ import {
 import { CustomizationFilesetSelect } from '@studio/components/customizer/CustomizationFilesetSelect';
 import { BackendSelectionSection } from '@studio/components/NewCustomizationForm/BackendSelectionSection';
 import { ComputeResourcesSection } from '@studio/components/NewCustomizationForm/ComputeResourcesSection';
+import { DpoParametersSection } from '@studio/components/NewCustomizationForm/DpoParametersSection';
 import { GeneralParametersSection } from '@studio/components/NewCustomizationForm/GeneralParametersSection';
+import { GrpoParametersSection } from '@studio/components/NewCustomizationForm/GrpoParametersSection';
 import { LoraParametersSection } from '@studio/components/NewCustomizationForm/LoraParametersSection';
 import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/ModelSelectionSection';
+import { RewardEnvironmentSection } from '@studio/components/NewCustomizationForm/RewardEnvironmentSection';
 import { TrainingMethodSection } from '@studio/components/NewCustomizationForm/TrainingMethodSection';
 import { getWorkspaceCustomizationJobDetailsRoute } from '@studio/routes/utils';
 import {
   FORM_DEFAULTS,
   customizationFormSchema,
   formToAutomodelCreate,
+  formToRlCreate,
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
@@ -64,6 +69,7 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
         ...FORM_DEFAULTS.unsloth,
         model: { ...FORM_DEFAULTS.unsloth.model, name: initialModel ?? '' },
       },
+      rl: { ...FORM_DEFAULTS.rl, model: initialModel ?? '' },
     };
   }, [initialModel, initialValues]);
 
@@ -83,8 +89,15 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
     control: form.control,
     name: 'unsloth.training.finetuning_type',
   });
+  // Bound to `grpo.trainingType` rather than `rl.training.type`: the form holds one
+  // `rl.training` object, and flipping the union discriminator in place would leave it
+  // carrying the other arm's fields. `formToRlCreate` sets `type` from this on submit.
+  const grpoTrainingType = useWatch({ control: form.control, name: 'grpo.trainingType' });
   const finetuningType = backend === 'automodel' ? automodelFinetuningType : unslothFinetuningType;
-  const isLora = finetuningType === 'lora' || finetuningType === 'lora_merged';
+  const isLora =
+    backend !== 'rl' && (finetuningType === 'lora' || finetuningType === 'lora_merged');
+  const isDpo = backend === 'rl' && grpoTrainingType !== 'grpo';
+  const isGrpo = backend === 'rl' && grpoTrainingType === 'grpo';
 
   const { mutateAsync: createAutomodel, isPending: isPendingAutomodel } =
     useCustomizationCreateAutomodelJob({
@@ -112,7 +125,19 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
       },
     });
 
-  const isPending = isPendingAutomodel || isPendingUnsloth;
+  const { mutateAsync: createRl, isPending: isPendingRl } = useCustomizationCreateRlJob({
+    mutation: {
+      onSuccess: (job) => {
+        toast.success('Fine-tuning job started');
+        navigate(getWorkspaceCustomizationJobDetailsRoute(workspace, job.name));
+      },
+      onError: (error: Error) => {
+        toast.error(getErrorMessage(error, 'Failed to create fine-tuning job'));
+      },
+    },
+  });
+
+  const isPending = isPendingAutomodel || isPendingUnsloth || isPendingRl;
 
   const onSubmit = async (fields: CustomizationFormFields) => {
     setValidationErrors([]);
@@ -120,6 +145,8 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
       await createAutomodel({ workspace, data: formToAutomodelCreate(fields) }).catch(
         () => undefined
       );
+    } else if (fields.backend === 'rl') {
+      await createRl({ workspace, data: formToRlCreate(fields) }).catch(() => undefined);
     } else {
       await createUnsloth({ workspace, data: formToUnslothCreate(fields) }).catch(() => undefined);
     }
@@ -181,14 +208,26 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                     <ModelSelectionSection />
                     <Divider />
                     <TrainingMethodSection />
+                    {isGrpo && (
+                      <>
+                        <Divider />
+                        <RewardEnvironmentSection />
+                      </>
+                    )}
                     <Divider />
                     <CustomizationFilesetSelect disabled={isPending} />
                     <Divider />
-                    <GeneralParametersSection />
+                    {isGrpo ? <GrpoParametersSection /> : <GeneralParametersSection />}
                     {isLora && (
                       <>
                         <Divider />
                         <LoraParametersSection />
+                      </>
+                    )}
+                    {isDpo && (
+                      <>
+                        <Divider />
+                        <DpoParametersSection />
                       </>
                     )}
                     <Divider />
