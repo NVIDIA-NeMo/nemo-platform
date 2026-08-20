@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
-from nmp.intake.spans.domain import SpanKind, SpanStatus
+from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -704,6 +704,91 @@ def test_atif_mapping_keeps_tool_error_on_tool_span() -> None:
     assert root.status == SpanStatus.SUCCESS
     assert llm.status == SpanStatus.SUCCESS
     assert tool.status == SpanStatus.ERROR
+
+
+QUOTED_ERROR_CONTENT = '{"success":true,"snippet":"[ERROR] Failed to download package"}'
+
+
+def _tool_result_spans(results: list[dict[str, Any]]) -> list[IntakeSpan]:
+    """Map a single tool-using step whose observation carries the given results."""
+    step: dict[str, Any] = {
+        "step_id": 2,
+        "source": "agent",
+        "message": "using a tool",
+        "tool_calls": [
+            {"tool_call_id": result["source_call_id"], "function_name": f"tool_{index}"}
+            for index, result in enumerate(results)
+        ],
+        "observation": {"results": results},
+    }
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [{"step_id": 1, "source": "user", "message": "search the incident archive"}, step],
+        }
+    )
+    return trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+
+def test_atif_mapping_keeps_successful_tool_result_that_quotes_an_error() -> None:
+    spans = _tool_result_spans(
+        [{"source_call_id": "call-1", "content": QUOTED_ERROR_CONTENT, "extra": {"is_error": False}}]
+    )
+
+    tool = next(span for span in spans if span.kind == SpanKind.TOOL)
+    assert tool.status == SpanStatus.SUCCESS
+    assert Span.from_domain(tool).error_message is None
+    assert all(span.status == SpanStatus.SUCCESS for span in spans)
+
+
+def test_atif_mapping_marks_tool_error_from_explicit_result_extra() -> None:
+    spans = _tool_result_spans([{"source_call_id": "call-1", "content": "all good", "extra": {"is_error": True}}])
+
+    tool = next(span for span in spans if span.kind == SpanKind.TOOL)
+    assert tool.status == SpanStatus.ERROR
+    assert Span.from_domain(tool).error_message == "all good"
+
+
+def test_atif_mapping_resolves_parallel_tool_results_independently() -> None:
+    spans = _tool_result_spans(
+        [
+            {"source_call_id": "call-1", "content": QUOTED_ERROR_CONTENT, "extra": {"is_error": False}},
+            {"source_call_id": "call-2", "content": "tool crashed", "extra": {"is_error": True}},
+        ]
+    )
+
+    tools = {span.name: span for span in spans if span.kind == SpanKind.TOOL}
+    assert tools["tool_0"].status == SpanStatus.SUCCESS
+    assert tools["tool_1"].status == SpanStatus.ERROR
+
+
+def test_atif_mapping_keeps_legacy_text_marker_without_explicit_status() -> None:
+    spans = _tool_result_spans([{"source_call_id": "call-1", "content": QUOTED_ERROR_CONTENT}])
+
+    tool = next(span for span in spans if span.kind == SpanKind.TOOL)
+    assert tool.status == SpanStatus.ERROR
+
+
+def test_atif_mapping_keeps_successful_subagent_result_that_quotes_an_error() -> None:
+    spans = _tool_result_spans(
+        [
+            {
+                "source_call_id": "call-1",
+                "content": QUOTED_ERROR_CONTENT,
+                "extra": {"is_error": False},
+                "subagent_trajectory_ref": [{"trajectory_id": "subagent-trajectory-1"}],
+            }
+        ]
+    )
+
+    subagent = next(span for span in spans if span.name.startswith("subagent-"))
+    assert subagent.status == SpanStatus.SUCCESS
 
 
 def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -> None:
