@@ -437,7 +437,7 @@ async def test_registry_concurrent_suspension_transition_reports_expiration() ->
 
     assert not changed
     assert effective_status == "EXPIRED"
-    entity_client.get.assert_awaited()
+    assert entity_client.get.await_count == 2
     entity_client.update.assert_awaited_once()
 
 

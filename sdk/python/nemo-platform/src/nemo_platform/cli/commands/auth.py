@@ -931,7 +931,10 @@ def suspend_access_key(
     ctx: typer.Context,
     jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to suspend.")],
 ) -> None:
-    """Temporarily suspend a Scoped Access Key owned by the current user."""
+    """Temporarily suspend a Scoped Access Key owned by the current user.
+
+    Unlike revocation, suspension is reversible until the key expires.
+    """
     try:
         result = _access_key_issuer(ctx).suspend(jti)
     except AccessKeyFeatureDisabledError as exc:

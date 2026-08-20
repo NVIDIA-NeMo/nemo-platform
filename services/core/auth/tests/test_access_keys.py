@@ -72,7 +72,7 @@ class InMemoryAccessKeyRegistry:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         if jti in self.revoked:
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be suspended")
-        if self._status(jti, key) == "EXPIRED":
+        if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC):
             return False, "EXPIRED"
         changed = jti not in self.suspended
         self.suspended.add(jti)
@@ -84,7 +84,7 @@ class InMemoryAccessKeyRegistry:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         if jti in self.revoked:
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be unsuspended")
-        if self._status(jti, key) == "EXPIRED":
+        if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC):
             return False, "EXPIRED"
         changed = jti in self.suspended
         self.suspended.discard(jti)
@@ -599,6 +599,22 @@ def test_unsuspend_reports_expired_status_for_key_that_expired_while_suspended(c
     assert unsuspended.status_code == 200
     assert unsuspended.json() == {"jti": jti, "status": "EXPIRED", "changed": False}
     assert client.get("/v2/access-keys").json()["data"][0]["status"] == "EXPIRED"
+
+
+@pytest.mark.parametrize("action", ["suspend", "unsuspend"])
+def test_suspension_transition_reports_expired_at_expiration_boundary(client, action):
+    created = client.post("/v2/access-keys", json={"name": "ci-intake", "expires_in_seconds": 3600}).json()
+    jti = created["jti"]
+    if action == "unsuspend":
+        assert client.post(f"/v2/access-keys/{jti}/suspend").status_code == 200
+
+    registry = client.app.dependency_overrides[get_access_key_registry]()
+    registry.keys[jti].expires_at = datetime.now(tz=UTC)
+
+    response = client.post(f"/v2/access-keys/{jti}/{action}")
+
+    assert response.status_code == 200
+    assert response.json() == {"jti": jti, "status": "EXPIRED", "changed": False}
 
 
 @pytest.mark.parametrize("action", ["suspend", "unsuspend"])

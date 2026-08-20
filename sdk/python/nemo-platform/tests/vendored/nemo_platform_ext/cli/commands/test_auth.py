@@ -691,6 +691,10 @@ def test_auth_access_keys_help_exposes_lifecycle_commands() -> None:
     assert_exit_code(revoke_help, 0)
     assert "Stable ID of the Scoped Access Key" in " ".join(revoke_help.output.split())
 
+    suspend_help = runner.invoke(app, ["auth", "access-keys", "suspend", "--help"])
+    assert_exit_code(suspend_help, 0)
+    assert "Unlike revocation, suspension is reversible until the key expires" in " ".join(suspend_help.output.split())
+
 
 def test_auth_tokens_group_is_not_exposed() -> None:
     result = runner.invoke(app, ["auth", "tokens", "create"])
