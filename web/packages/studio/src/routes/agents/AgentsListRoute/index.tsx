@@ -15,6 +15,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
 import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal';
+import { UploadAgentModal } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { CircleAlert } from 'lucide-react';
 import { type FC, useState } from 'react';
@@ -28,6 +29,7 @@ export const AgentsListRoute: FC = () => {
   const navigate = useNavigate();
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
   const [isCreateExampleOpen, setCreateExampleOpen] = useState(false);
+  const [isUploadOpen, setUploadOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<AgentTableRow | null>(null);
   const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
 
@@ -64,9 +66,14 @@ export const AgentsListRoute: FC = () => {
           slotHeading="Agents"
           slotDescription="View and manage AI agents and their deployments."
           slotActions={
-            <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
-              Create Example Agent
-            </Button>
+            <Stack direction="row" gap="density-md">
+              <Button kind="secondary" onClick={() => setUploadOpen(true)}>
+                Upload Agent
+              </Button>
+              <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
+                Create Example Agent
+              </Button>
+            </Stack>
           }
         />
         <AgentsTable
@@ -81,6 +88,11 @@ export const AgentsListRoute: FC = () => {
         onClose={() => setCreateExampleOpen(false)}
         workspace={workspace}
         existingAgents={loadedAgents}
+      />
+      <UploadAgentModal
+        open={isUploadOpen}
+        onClose={() => setUploadOpen(false)}
+        workspace={workspace}
       />
       <CloneAgentModal
         open={cloneSource !== null}
