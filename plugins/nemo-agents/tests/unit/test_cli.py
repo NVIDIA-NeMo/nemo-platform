@@ -19,6 +19,11 @@ from nemo_agents_plugin.cli import (
     AgentsCLI,
     _check_agent_root_bounds,
 )
+from nemo_agents_plugin.ethos_migrate import (
+    LEGACY_CONTRACT_FILENAME,
+    LEGACY_PACKAGE_SUFFIX,
+    registration_migration_warning,
+)
 from typer.testing import CliRunner
 
 
@@ -274,11 +279,14 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         workspace="default",
         agent_root=tmp_path,
         base_url="http://test",
+        omit_legacy_contract=False,
     )
 
 
-def test_create_fabric_uploads_ethos_fileset(tmp_path) -> None:
-    config = tmp_path / "agent.yaml"
+def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package = tmp_path / "agents" / f"fabric-agent{LEGACY_PACKAGE_SUFFIX}"
+    package.mkdir(parents=True)
+    config = package / "agent.yaml"
     config.write_text(
         "\n".join(
             [
@@ -292,6 +300,8 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path) -> None:
             ]
         )
     )
+    (package / LEGACY_CONTRACT_FILENAME).write_text("# Contract\n")
+    monkeypatch.chdir(tmp_path)
     normalized_config = {
         "config_format": "nemo-agents-spec-v1",
         "name": "fabric-agent",
@@ -311,10 +321,21 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path) -> None:
     uploaded: dict[str, Any] = {}
 
     def fake_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
-        uploaded["local_dir"] = local_dir
+        uploaded["files"] = {path.relative_to(local_dir).as_posix() for path in local_dir.rglob("*") if path.is_file()}
         uploaded["fileset"] = fileset
         uploaded["workspace"] = workspace
         uploaded["sdk_base_url"] = sdk.base_url
+
+    class FakeFiles:
+        def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
+            uploaded["deleted"] = (remote_path, fileset, workspace)
+            from nemo_platform import NotFoundError
+
+            raise NotFoundError(
+                response=httpx.Response(404, request=httpx.Request("DELETE", "http://test")),
+                body=None,
+                message="not found",
+            )
 
     app = AgentsCLI().get_cli()
     with (
@@ -323,14 +344,16 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path) -> None:
         patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
         patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
     ):
-        mock_sdk.return_value = type("SDK", (), {"base_url": "http://test"})()
+        mock_sdk.return_value = type("SDK", (), {"base_url": "http://test", "files": FakeFiles()})()
         result = CliRunner().invoke(
             app,
             ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
         )
 
     assert result.exit_code == 0, result.stderr
-    assert uploaded["local_dir"] == tmp_path
+    assert result.stderr.splitlines()[-3:] == list(registration_migration_warning("fabric-agent", "default", config))
+    assert uploaded["files"] == {"agent.yaml"}
+    assert uploaded["deleted"] == (LEGACY_CONTRACT_FILENAME, "fabric-agent-ethos", "default")
     assert uploaded["fileset"] == "fabric-agent-ethos"
     assert uploaded["workspace"] == "default"
     assert uploaded["sdk_base_url"] == "http://test"

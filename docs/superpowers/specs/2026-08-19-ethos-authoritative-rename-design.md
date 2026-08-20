@@ -103,8 +103,9 @@ agent_spec:            -> ethos:
 AnalyzeSpec.agent_spec -> AnalyzeSpec.ethos
 ```
 
-The prior forms are not runtime aliases. Only the migration module reads them
-to convert profile values. Rename `split_agent_spec()` in the Experimentalist
+The prior forms are not runtime aliases. Child plugin changes rename their
+owned profile values. The Platform migrator does not discover or rewrite
+developer-managed profiles. Rename `split_agent_spec()` in the Experimentalist
 repository helper to `split_agent_source_uri()`. The helper splits
 `<url@ref>#<agent_path>`, so its name must not preserve an unrelated meaning.
 
@@ -137,24 +138,36 @@ Routing tests use `nemo-ethos`.
 
 ## Migration command
 
-`nemo agents ethos migrate` converts package, Fileset, and profile references.
-The `ethos` command group sits beside `deployments` in the `nemo-agents` CLI.
+`nemo agents ethos migrate` converts the package and Fileset that the Platform
+writes. The `ethos` command group sits beside `deployments` in the
+`nemo-agents` CLI.
 
 | Option | Behavior |
 | --- | --- |
 | `--name` | Identifies one agent name. The value must be one path component. |
 | `--workspace` | Selects the Fileset workspace. |
-| `--agents-root` | Selects the local agent package directory. |
 | `--base-url` | Selects the platform API endpoint. |
-| `--profile` | Adds an external `optimizer.yaml` file. You can repeat this option. |
 | `--dry-run` | Assesses the selected mode without writes or deletions. |
 | `--cleanup` | Selects cleanup mode. |
 
-The command finds external profiles from explicit `--profile` values and the
-first `optimizer.yaml` found while walking from the current directory to the
-file system root. It also converts package-local profiles in staged output.
-It resolves external paths before deduplicating them. The command does not scan
-outside these sources.
+The local source is always `agents/<agent-name>-spec/`. The command does not
+discover or modify standalone contracts, external profiles, or other
+developer-managed repository files.
+
+When `nemo agents create` receives `agent.yaml` from the canonical source
+package, it prints the following warning and continues registration:
+
+```text
+Warning: This package uses the legacy AGENT-SPEC.md format.
+Upgrade to ETHOS.md using:
+nemo agents ethos migrate --name AGENT_NAME --workspace WORKSPACE
+```
+
+The command substitutes the selected agent name and workspace.
+Registration omits `AGENT-SPEC.md` from the target Ethos Fileset and removes
+that path when a retained target contains it. The printed migration command can
+then add `ETHOS.md` without a target conflict. Registration uploads all other
+package artifacts unchanged.
 
 ### Additive mode
 
@@ -162,13 +175,14 @@ Without `--cleanup`, the command is additive and rerunnable:
 
 1. Discover a local package, a Fileset, or matching files from both sources.
 2. Merge the sources. Files present in one source copy into staging. Shared files must have equal bytes.
-3. Rename the contract, rewrite only its identity region, and convert package-local profiles.
-4. Reject prior literals in target text and paths, and validate `ETHOS.md` with `parse_ethos()`.
+3. Rename the contract and rewrite only its identity region.
+4. Validate `ETHOS.md` with `parse_ethos()`.
 5. Build or complete the local package and Fileset targets.
 6. Verify both target manifests.
-7. Rewrite known external profiles after both targets verify.
 
 The command does not modify or delete the source package or source Fileset.
+It preserves all other package paths and bytes without scanning their content
+for prior terminology.
 
 A partial target can receive missing files when every file it contains matches
 the staged output. A target that contains an extra file or different bytes is a
@@ -179,7 +193,7 @@ conflict. The command checks both targets before it writes either target.
 With `--cleanup`, the command only removes prior artifacts:
 
 1. Require complete, matching local and Fileset targets.
-2. Require a valid `ETHOS.md`, no prior target literals, converted package profiles, and converted known external profiles.
+2. Require a valid `ETHOS.md`.
 3. Delete the source local package if it remains.
 4. Delete the source Fileset if it remains.
 
@@ -191,13 +205,11 @@ when its source artifact remains.
 ### Dry run and errors
 
 `--dry-run` performs the selected mode's assessment without local writes,
-profile writes, Fileset creation, upload, or deletion. It can download a
-Fileset to assess it.
+Fileset creation, upload, or deletion. It can download a Fileset to assess it.
 
 Source files that differ at the same relative path cause a conflict before any
-write. Invalid agent names, package-root or descendant symlinks, malformed
-profiles, invalid target contracts, and prior literals also fail before the
-command reports success.
+write. Invalid agent names, package-root or descendant symlinks, and invalid
+target contracts also fail before the command reports success.
 
 ## Legacy-term boundary
 
@@ -248,10 +260,9 @@ Merge them in this order:
 ### Analyst scope
 
 Analyst renames the profile key, resolver, CLI option, header, parameters, and
-`AnalyzeSpec.agent_spec` field to their Ethos forms. It labels submitted content
-as ETHOS or `README analysis context (not ETHOS)`. A README file remains
-repository context, not a schema fallback. Analyst does not validate either file
-with `parse_ethos()`.
+`AnalyzeSpec.agent_spec` field to their Ethos forms. It preserves the existing
+profile resolution and README fallback behavior. It adds no validation,
+labeling, or other behavior.
 
 ### Experimentalist scope
 
@@ -265,9 +276,10 @@ documentation, tests, and smoke-agent profiles follow.
 - Additive migration preserves all 13 section bodies and the complete source package and Fileset.
 - Source-only files reach the staged package. Divergent shared source files leave artifacts unchanged.
 - Compatible partial local and Fileset targets receive missing files. Extra or divergent target files fail before a target write.
-- Cleanup requires matching valid targets and converted known profiles. A cleanup rerun completes after either deletion.
-- Dry runs write no local files, profiles, or Filesets.
-- The CLI exposes `--cleanup` and omits `--experiment-dir`.
+- Cleanup requires matching valid targets. A cleanup rerun completes after either deletion.
+- Dry runs write no local files or Filesets.
+- The CLI exposes `--cleanup` and omits `--agents-root`, `--profile`, and `--experiment-dir`.
+- Registration of a canonical source package prints the migration command and otherwise continues unchanged.
 - `nemo-ethos` handles migration results through the exit status. No runtime alias remains, and the boundary check passes.
 
 ## Verification

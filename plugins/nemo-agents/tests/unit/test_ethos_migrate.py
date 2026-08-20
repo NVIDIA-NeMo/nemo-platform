@@ -13,7 +13,12 @@ from unittest.mock import patch
 import httpx
 import pytest
 from nemo_agents_plugin.cli import AgentsCLI
-from nemo_agents_plugin.ethos_migrate import MigrationError, MigrationRequest, run_migration
+from nemo_agents_plugin.ethos_migrate import (
+    MigrationError,
+    MigrationRequest,
+    registration_migration_warning,
+    run_migration,
+)
 from typer.testing import CliRunner
 
 AGENT = "acme-bot"
@@ -112,15 +117,12 @@ class SDK:
 def request(
     root: Path,
     *,
-    profiles: tuple[Path, ...] = (),
     dry_run: bool = False,
     cleanup: bool = False,
 ) -> MigrationRequest:
     return MigrationRequest(
         agent=AGENT,
         agents_root=root,
-        start_dir=root,
-        profiles=profiles,
         dry_run=dry_run,
         cleanup=cleanup,
     )
@@ -134,20 +136,32 @@ def legacy_files() -> dict[str, str]:
     return {"AGENT-SPEC.md": contract(), "agent.yaml": "name: acme-bot\n"}
 
 
-def external_profile() -> str:
-    return f"agent_spec: {OLD}/AGENT-SPEC.md\nother: keep\n"
-
-
-def package_profile() -> str:
-    return "agent_spec: AGENT-SPEC.md\nother: keep\n"
-
-
-def test_cli_registers_cleanup_and_removes_experiment_dir() -> None:
+def test_cli_exposes_only_platform_migration_options() -> None:
     result = CliRunner().invoke(AgentsCLI().get_cli(), ["ethos", "migrate", "--help"])
 
     assert result.exit_code == 0
     assert "--cleanup" in result.stdout
+    assert "--dry-run" in result.stdout
+    assert "--agents-root" not in result.stdout
+    assert "--profile" not in result.stdout
     assert "--experiment-dir" not in result.stdout
+
+
+def test_registration_warning_prints_the_migration_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package = tmp_path / "agents" / OLD
+    tree(package, legacy_files())
+    agent_config = package / "agent.yaml"
+    monkeypatch.chdir(tmp_path)
+
+    assert registration_migration_warning(AGENT, "default", agent_config) == (
+        "Warning: This package uses the legacy AGENT-SPEC.md format.",
+        "Upgrade to ETHOS.md using:",
+        "nemo agents ethos migrate --name acme-bot --workspace default",
+    )
+    assert registration_migration_warning(AGENT, "default", tmp_path / "agent.yaml") == ()
+    escaped_package = tmp_path / "escaped-spec"
+    tree(escaped_package, legacy_files())
+    assert registration_migration_warning("../escaped", "default", escaped_package / "agent.yaml") == ()
 
 
 @pytest.mark.parametrize("name", ("", ".", "..", "../escape", "a/b"))
@@ -181,98 +195,27 @@ def test_rejects_a_file_as_a_package_root(tmp_path: Path) -> None:
         run_migration(request(tmp_path), sdk=SDK())
 
 
-def test_migrates_a_local_package_and_converts_profiles(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, {**legacy_files(), "optimizer.yaml": package_profile()})
-    external = tmp_path / "optimizer.yaml"
-    external.write_text(external_profile())
+def test_migrates_platform_package_without_rewriting_other_files(tmp_path: Path) -> None:
+    profile = "agent_spec: ./AGENT-SPEC.md\nother: keep\n"
+    readme = "Developer-owned agent spec instructions stay unchanged.\n"
+    tree(
+        tmp_path / OLD,
+        {
+            **legacy_files(),
+            "optimizer.yaml": profile,
+            "README.md": readme,
+        },
+    )
     sdk = SDK()
 
-    report = run_migration(request(tmp_path, profiles=(external,)), sdk=sdk)
+    report = run_migration(request(tmp_path), sdk=sdk)
 
     assert report.outcome == "migrated"
     assert (tmp_path / OLD / "AGENT-SPEC.md").is_file()
     assert (tmp_path / NEW / "ETHOS.md").is_file()
-    assert "agent_spec" not in external.read_text()
-    assert f"ethos: {NEW}/ETHOS.md" in external.read_text()
-    assert "agent_spec" not in (tmp_path / NEW / "optimizer.yaml").read_text()
-    assert (("default", NEW)) in sdk.files.filesets.trees
-
-
-def test_leaves_an_unrelated_external_profile_unchanged(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text("other: keep\n")
-
-    run_migration(request(tmp_path, profiles=(external,)), sdk=SDK())
-
-    assert external.read_text() == "other: keep\n"
-
-
-@pytest.mark.parametrize(
-    "payload",
-    (
-        "agent_spec:\n",
-        "ethos:\n",
-        f"ethos: {OLD}/AGENT-SPEC.md\n",
-        f"agent_spec: {OLD}/AGENT-SPEC.md\nethos: stale/ETHOS.md\n",
-    ),
-)
-def test_dry_run_rejects_invalid_external_profiles(tmp_path: Path, payload: str) -> None:
-    tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text(payload)
-    sdk = SDK()
-
-    with pytest.raises(MigrationError, match="profile"):
-        run_migration(request(tmp_path, profiles=(external,), dry_run=True), sdk=sdk)
-
-    assert not (tmp_path / NEW).exists()
-    assert not sdk.files.filesets.trees
-
-
-def test_dry_run_does_not_change_a_rewriteable_external_profile(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text(external_profile())
-    original = external.read_bytes()
-
-    run_migration(request(tmp_path, profiles=(external,), dry_run=True), sdk=SDK())
-
-    assert external.read_bytes() == original
-
-
-def test_accepts_a_home_relative_ethos_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    tree(home / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text(f"ethos: ~/{NEW}/ETHOS.md\n")
-
-    run_migration(request(home, profiles=(external,)), sdk=SDK())
-
-    assert external.read_text() == f"ethos: ~/{NEW}/ETHOS.md\n"
-
-
-def test_rejects_a_stale_ethos_profile(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text("ethos: another-agent-ethos/ETHOS.md\n")
-
-    with pytest.raises(MigrationError, match="target"):
-        run_migration(request(tmp_path, profiles=(external,)), sdk=SDK())
-
-
-def test_does_not_overwrite_a_profile_tmp_sibling(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text(external_profile())
-    sibling = external.with_suffix(".tmp")
-    sibling.write_text("preserve\n")
-
-    run_migration(request(tmp_path, profiles=(external,)), sdk=SDK())
-
-    assert sibling.read_text() == "preserve\n"
+    assert (tmp_path / NEW / "optimizer.yaml").read_text() == profile
+    assert (tmp_path / NEW / "README.md").read_text() == readme
+    assert ("default", NEW) in sdk.files.filesets.trees
 
 
 def test_migrates_a_fileset_only_source(tmp_path: Path) -> None:
@@ -380,39 +323,18 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not sdk.files.filesets.trees
 
 
-def test_rejects_invalid_contract_and_legacy_literals(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, {**legacy_files(), "readme.md": "agent_spec remains"})
-
-    with pytest.raises(MigrationError, match="legacy"):
-        run_migration(request(tmp_path), sdk=SDK())
-
-
-def test_allows_documented_legacy_substrings(tmp_path: Path) -> None:
-    tree(
-        tmp_path / OLD,
-        {
-            **legacy_files(),
-            "nemo-agents-spec-v1.txt": "agent-specific behavior\n",
-        },
-    )
-
-    run_migration(request(tmp_path), sdk=SDK())
-
-    assert (tmp_path / NEW / "nemo-agents-spec-v1.txt").is_file()
-
-
-def test_rejects_a_descendant_profile_symlink(tmp_path: Path) -> None:
+def test_rejects_a_descendant_symlink(tmp_path: Path) -> None:
     tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "external.yaml"
-    external.write_text(external_profile())
-    link = tmp_path / OLD / "nested" / "optimizer.yaml"
+    external = tmp_path / "external.txt"
+    external.write_text("preserve\n")
+    link = tmp_path / OLD / "nested" / "prompt.txt"
     link.parent.mkdir()
     link.symlink_to(external)
 
     with pytest.raises(MigrationError, match="symlink"):
         run_migration(request(tmp_path), sdk=SDK())
 
-    assert "agent_spec" in external.read_text()
+    assert external.read_text() == "preserve\n"
 
 
 def test_cleanup_requires_complete_targets_then_deletes_each_legacy_copy(tmp_path: Path) -> None:
@@ -427,22 +349,6 @@ def test_cleanup_requires_complete_targets_then_deletes_each_legacy_copy(tmp_pat
 
     assert not (tmp_path / OLD).exists()
     assert ("default", OLD) not in sdk.files.filesets.trees
-
-
-def test_cleanup_blocks_an_unconverted_external_profile(tmp_path: Path) -> None:
-    tree(tmp_path / OLD, legacy_files())
-    external = tmp_path / "optimizer.yaml"
-    external.write_text(external_profile())
-    sdk = SDK()
-    remote(sdk, OLD, legacy_files())
-    run_migration(request(tmp_path), sdk=sdk)
-
-    external.write_text(external_profile())
-    with pytest.raises(MigrationError, match="converted profile"):
-        run_migration(request(tmp_path, profiles=(external,), cleanup=True), sdk=sdk)
-
-    assert (tmp_path / OLD).exists()
-    assert ("default", OLD) in sdk.files.filesets.trees
 
 
 def test_cleanup_dry_run_preserves_legacy_artifacts(tmp_path: Path) -> None:

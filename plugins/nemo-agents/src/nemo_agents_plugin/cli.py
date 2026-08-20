@@ -40,7 +40,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -64,7 +66,6 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
-    ETHOS_LOCAL_ROOT,
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
@@ -765,8 +766,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        migration_warning: tuple[str, ...] = ()
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            from nemo_agents_plugin.ethos_migrate import registration_migration_warning
+
+            migration_warning = registration_migration_warning(name, workspace, agent_config)
+            for line in migration_warning:
+                typer.echo(line, err=True)
         elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
             # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
             # user context at deploy time.
@@ -796,6 +803,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     workspace=workspace,
                     agent_root=agent_config.parent,
                     base_url=base_url,
+                    omit_legacy_contract=bool(migration_warning),
                 )
             except Exception as exc:
                 typer.echo(
@@ -1213,20 +1221,6 @@ def _register_ethos_commands(app: typer.Typer) -> None:
     def ethos_migrate(
         name: str = typer.Option(..., "--name", "-n", help="Agent name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        agents_root: Path = typer.Option(
-            Path(ETHOS_LOCAL_ROOT),
-            "--agents-root",
-            help="Directory holding local agent packages.",
-        ),
-        profile: Optional[list[str]] = typer.Option(
-            None,
-            "--profile",
-            help=(
-                "Path to an optimizer.yaml to convert. Repeatable. The command also converts the "
-                "profile found by walking up from the current directory and any profile inside the "
-                "agent's package; pass every other one explicitly."
-            ),
-        ),
         dry_run: bool = typer.Option(
             False,
             "--dry-run",
@@ -1239,10 +1233,10 @@ def _register_ethos_commands(app: typer.Typer) -> None:
         ),
         base_url: BaseUrlOption = None,
     ) -> None:
-        """Move an agent's Ethos package, Fileset, and profile keys to their final names.
+        """Move an agent's platform-managed package and Fileset to their Ethos names.
 
         Additive migration preserves legacy artifacts. Cleanup deletes them only
-        after matching targets and converted profiles are verified.
+        after matching targets are verified.
         """
         from nemo_agents_plugin.ethos_migrate import (
             MigrationError,
@@ -1263,8 +1257,6 @@ def _register_ethos_commands(app: typer.Typer) -> None:
         request = MigrationRequest(
             agent=name,
             workspace=workspace,
-            agents_root=agents_root,
-            profiles=tuple(Path(value) for value in profile or ()),
             dry_run=dry_run,
             cleanup=cleanup,
         )
@@ -1711,21 +1703,50 @@ def _upload_ethos_fileset(
     workspace: str,
     agent_root: Path,
     base_url: str,
+    omit_legacy_contract: bool = False,
 ) -> None:
     """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
     Agent YAML must live in a dedicated agent root so sibling artifacts
-    (skills, prompts) upload without shipping an unrelated checkout tree.
+    (skills, prompts) upload without shipping an unrelated checkout tree. A
+    legacy contract is omitted so the explicit migration can complete the
+    target Fileset without a conflict.
     """
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
     _check_agent_root_bounds(agent_root)
+    fileset = ethos_fileset_name(agent_name)
+    sdk = _platform_sdk(base_url)
+    if omit_legacy_contract:
+        from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
+        from nemo_platform import NotFoundError as PlatformNotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
+        with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
+            staged = Path(directory) / agent_root.name
+            shutil.copytree(agent_root, staged)
+            (staged / LEGACY_CONTRACT_FILENAME).unlink()
+            upload_to_fileset(
+                staged,
+                fileset=fileset,
+                workspace=workspace,
+                sdk=sdk,
+            )
+        try:
+            sdk.files.delete(
+                remote_path=LEGACY_CONTRACT_FILENAME,
+                fileset=fileset,
+                workspace=workspace,
+            )
+        except (PlatformNotFoundError, PluginNotFoundError):
+            pass
+        return
     upload_to_fileset(
         agent_root,
-        fileset=ethos_fileset_name(agent_name),
+        fileset=fileset,
         workspace=workspace,
-        sdk=_platform_sdk(base_url),
+        sdk=sdk,
     )
 
 
