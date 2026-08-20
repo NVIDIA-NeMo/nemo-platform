@@ -32,9 +32,10 @@ ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
 # CVE bumps: uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on
-# 0.11.x); Python 3.13.14 clears 5 CVEs. Both are scanned at their installed path - see README.md.
+# 0.11.x); Python 3.13.15 clears scanner-visible Python 3.13.14 CVEs. Both are scanned at their
+# installed path - see README.md.
 ARG UV_VERSION=0.11.33
-ARG PYTHON_VERSION=3.13.14
+ARG PYTHON_VERSION=3.13.15
 ARG CMAKE_VERSION=4.0.3
 
 # ---- RL source (+ its submodules, incl. Gym) via BuildKit's git ADD ----
@@ -56,12 +57,15 @@ RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages
 
 # openssl is the only dpkg package here with an out-of-SLA CVE. Upgraded explicitly rather than via
 # a blanket `apt-get upgrade`, which would also pull newer CUDA packages from the NVIDIA repos.
-RUN apt-get update && \
+RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target=/tmp/remove-listed-apt-packages.sh,readonly \
+    --mount=type=bind,source=docker/customizer/removals/apt/nmp-rl-base.txt,target=/tmp/apt-package-removals.txt,readonly \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim ccache gnupg \
         build-essential ca-certificates \
         libibverbs-dev && \
     apt-get install -y --only-upgrade openssl libssl3t64 && \
+    bash /tmp/remove-listed-apt-packages.sh /tmp/apt-package-removals.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # CMake (CUDA extension builds: transformer-engine, mamba-ssm, ...).

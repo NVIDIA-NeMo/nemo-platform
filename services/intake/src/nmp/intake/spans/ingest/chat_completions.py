@@ -162,8 +162,8 @@ async def ingest_chat_completion(
     span = _chat_completion_to_span(workspace=workspace, body=body, ingested_at=ingested_at)
     await service.ingest_batch(TraceBatch(spans=[span]))
     context = body.evaluation_context
-    if denormalizer is not None and context is not None and context.evaluation_id:
-        denormalizer.mark_dirty(workspace=workspace, evaluation_id=context.evaluation_id)
+    if denormalizer is not None and context is not None and context.evaluation_name:
+        denormalizer.mark_dirty(workspace=workspace, evaluation_name=context.evaluation_name)
     return ChatCompletionsIngestResponse(
         session_id=span.session_id,
         span_id=span.external_span_id,
@@ -235,8 +235,8 @@ def _build_attribute_bags(
     semantic = SpanSemanticAttributes(
         model=_as_str(response.get("model")) or _as_str(request.get("model")),
         provider=body.provider or _infer_provider(response),
-        evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
-        test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
+        evaluation_name=evaluation_context.evaluation_name if evaluation_context is not None else None,
+        test_case_name=evaluation_context.test_case_name if evaluation_context is not None else None,
         error_type=error_type,
         error_message=error_message,
         input_tokens=input_tokens,

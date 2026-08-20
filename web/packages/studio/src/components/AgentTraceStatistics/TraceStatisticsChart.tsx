@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ChartXValue } from '@nemo/common/src/components/charts/types';
 import { ComparisonLineChart } from '@nemo/common/src/components/ComparisonLineChart/index';
-import type {
-  ComparisonSeries,
-  ComparisonXValue,
-} from '@nemo/common/src/components/ComparisonLineChart/types';
+import type { ComparisonSeries } from '@nemo/common/src/components/ComparisonLineChart/types';
 import { Card, Stack, Text } from '@nvidia/foundations-react-core';
 import type {
   TraceStatisticsBucket,
@@ -61,7 +59,7 @@ const SERIES: SeriesSpec[] = [
 
 const DEFAULT_HEIGHT = 320;
 
-const asDate = (value: ComparisonXValue): Date =>
+const asDate = (value: ChartXValue): Date =>
   value instanceof Date ? value : new Date(value as number);
 
 export const TraceStatisticsChart: FC<Props> = ({
@@ -84,7 +82,7 @@ export const TraceStatisticsChart: FC<Props> = ({
     [buckets]
   );
 
-  const formatXValue = (value: ComparisonXValue): string =>
+  const formatXValue = (value: ChartXValue): string =>
     formatBucketTick(asDate(value).getTime(), range);
 
   return (

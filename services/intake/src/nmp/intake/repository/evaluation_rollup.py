@@ -20,7 +20,7 @@ class ScoreRollup:
 
 @dataclass
 class EvaluationRollup:
-    evaluation_id: str
+    evaluation_name: str
     run_count: int = 0
     test_case_count: int = 0
     model_names: list[str] = field(default_factory=list)
@@ -44,7 +44,7 @@ class EvaluationRollupRepository(ABC):
         self,
         *,
         workspace: str,
-        evaluation_ids: list[str],
+        evaluation_names: list[str],
     ) -> dict[str, EvaluationRollup]:
-        """Return rollups keyed by Evaluation ID."""
+        """Return rollups keyed by Evaluation name."""
         pass

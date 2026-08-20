@@ -24,5 +24,13 @@ __all__ = ["SpanEvaluationContext"]
 
 class SpanEvaluationContext(BaseModel):
     evaluation_id: Optional[str] = None
+    """Deprecated alias for evaluation_name. Use evaluation_name instead."""
+
+    evaluation_name: Optional[str] = None
+    """Name of an existing Evaluation."""
 
     test_case_id: Optional[str] = None
+    """Deprecated alias for test_case_name. Use test_case_name instead."""
+
+    test_case_name: Optional[str] = None
+    """Optional producer-supplied test case name."""

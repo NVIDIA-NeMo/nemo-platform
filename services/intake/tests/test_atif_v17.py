@@ -23,11 +23,8 @@ from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from pydantic import ValidationError
 
 EVALUATION_CONTEXT: dict[str, Any] = {
-    "evaluation_id": "eval-sample-agent-baseline",
-    "evaluation_sha": "abc132901",
-    "evaluation_run_id": "evalrun-01JZ8Q7K6V7R3X9N2M4P5A6B7C",
-    "test_case_id": "sample-test-case",
-    "metadata": {"attempt": 1},
+    "evaluation_name": "eval-sample-agent-baseline",
+    "test_case_name": "sample-test-case",
 }
 
 
@@ -456,7 +453,7 @@ def test_atif_v17_subagent_ref_requires_resolution_key() -> None:
     assert AtifSubagentTrajectoryRef(trajectory_path="subagents/sub-trajectory.json").trajectory_path is not None
 
 
-def test_evaluation_context_ignores_retired_fields() -> None:
+def test_evaluation_context_normalizes_deprecated_fields_and_ignores_retired_fields() -> None:
     # Retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted and dropped rather
     # than rejected, so stale producers keep ingesting without ingest erroring on unknown fields.
     context = EvaluationContext.model_validate(
@@ -468,9 +465,14 @@ def test_evaluation_context_ignores_retired_fields() -> None:
             "metadata": {"attempt": 1},
         }
     )
-    assert context.evaluation_id == "eval-1"
-    assert context.test_case_id == "case-1"
-    assert context.model_dump() == {"evaluation_id": "eval-1", "test_case_id": "case-1"}
+    assert context.evaluation_name == "eval-1"
+    assert context.test_case_name == "case-1"
+    assert context.model_dump() == {
+        "evaluation_name": "eval-1",
+        "test_case_name": "case-1",
+        "evaluation_id": "eval-1",
+        "test_case_id": "case-1",
+    }
 
 
 def test_atif_ingest_request_rejects_legacy_top_level_project() -> None:
@@ -510,19 +512,19 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
 
     root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
-    assert root.attributes_string["nemo.evaluation.name"] == EVALUATION_CONTEXT["evaluation_id"]
+    assert root.attributes_string["nemo.evaluation.name"] == EVALUATION_CONTEXT["evaluation_name"]
     # sha/run_id/metadata are dropped by the trimmed ingest EvaluationContext, so they never
     # reach the span from the JSON evaluation_context path.
     assert "nemo.experiment.sha" not in root.attributes_string
     assert "nemo.experiment.run_id" not in root.attributes_string
     assert "evaluation.id" not in root.attributes_string
-    assert root.attributes_string["nemo.test_case.id"] == EVALUATION_CONTEXT["test_case_id"]
+    assert root.attributes_string["nemo.test_case.name"] == EVALUATION_CONTEXT["test_case_name"]
     assert "nemo.experiment.metadata" not in root.attributes_string
 
     root_response = Span.from_domain(root)
     assert root_response.evaluation_context is not None
-    assert root_response.evaluation_context.evaluation_id == EVALUATION_CONTEXT["evaluation_id"]
-    assert root_response.evaluation_context.test_case_id == EVALUATION_CONTEXT["test_case_id"]
+    assert root_response.evaluation_context.evaluation_name == EVALUATION_CONTEXT["evaluation_name"]
+    assert root_response.evaluation_context.test_case_name == EVALUATION_CONTEXT["test_case_name"]
     assert root_response.raw_attributes is not None
     root_raw = json.loads(root_response.raw_attributes)
     assert "evaluation_context" not in root_raw
@@ -533,7 +535,7 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     assert child_response.evaluation_context is None
     assert "evaluation.id" not in child.attributes_string
     assert "nemo.evaluation.name" not in child.attributes_string
-    assert "nemo.test_case.id" not in child.attributes_string
+    assert "nemo.test_case.name" not in child.attributes_string
 
 
 def test_atif_mapping_uses_root_final_metrics_when_steps_have_no_metrics() -> None:

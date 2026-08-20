@@ -60,6 +60,34 @@ def test_span_attribute_catalog_extracts_source_aliases_and_consumed_keys():
     }
 
 
+def test_span_semantic_attributes_use_name_based_evaluation_fields():
+    semantic, consumed_keys = SpanSemanticAttributes.from_source_attributes(
+        {
+            "nemo.evaluation.name": "evaluation-a",
+            "nemo.test_case.name": "case-a",
+        }
+    )
+
+    assert semantic.evaluation_name == "evaluation-a"
+    assert semantic.test_case_name == "case-a"
+    assert "evaluation_id" not in SpanSemanticAttributes.model_fields
+    assert "test_case_id" not in SpanSemanticAttributes.model_fields
+    assert consumed_keys == {"nemo.evaluation.name", "nemo.test_case.name"}
+
+    bags = semantic.to_bags()
+    assert bags.string["nemo.test_case.name"] == "case-a"
+    assert "nemo.test_case.id" not in bags.string
+
+
+def test_span_semantic_attributes_read_deprecated_test_case_bag_key():
+    semantic, consumed_keys = SpanSemanticAttributes.from_source_attributes({"nemo.test_case.id": "case-a"})
+    restored = SpanSemanticAttributes.from_bags(SpanAttributeBags(string={"nemo.test_case.id": "case-a"}))
+
+    assert semantic.test_case_name == "case-a"
+    assert restored.test_case_name == "case-a"
+    assert consumed_keys == {"nemo.test_case.id"}
+
+
 def test_span_semantic_attributes_normalizes_source_layers_with_span_precedence():
     normalized = SpanSemanticAttributes.from_source_attribute_layers(
         resource_attributes={
@@ -169,6 +197,15 @@ def test_span_attribute_catalog_predicates_include_existence_guard(operator: str
 def test_span_attribute_catalog_rejects_ordering_on_string_fields():
     with pytest.raises(ValueError, match="only supports equality"):
         where_clause("model", ">", "gpt-4")
+
+
+def test_test_case_filter_queries_canonical_and_deprecated_bag_keys():
+    sql, params = where_clause("test_case_name", "=", "case-a")
+
+    assert " OR " in sql
+    assert params["test_case_name_key"] == "nemo.test_case.name"
+    assert params["test_case_name_key_alias_1"] == "nemo.test_case.id"
+    assert params["test_case_name_value"] == "case-a"
 
 
 def test_span_attribute_catalog_rejects_non_numeric_numeric_filters():

@@ -31,7 +31,7 @@ def _atif_body(*, started_at: datetime, evaluation_id: str, cost_usd: float, off
     return {
         "schema_version": "ATIF-v1.7",
         "session_id": f"{evaluation_id}-session",
-        "evaluation_context": {"evaluation_id": evaluation_id, "test_case_id": "case-1"},
+        "evaluation_context": {"evaluation_name": evaluation_id, "test_case_name": "case-1"},
         "extra": {"task_name": "case-1", "verifier_result": {"rewards": {"reward": 1.0}}},
         "agent": {"name": "sample-agent", "version": "1.0.0", "model_name": "provider/sample-model"},
         "steps": [

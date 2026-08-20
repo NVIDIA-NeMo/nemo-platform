@@ -19,8 +19,20 @@ Two failure classes are caught at .so load time, before any GPU device is touche
 from glob import glob
 
 import pytest
+from python_package_versions import assert_python_package_min_versions
 
 SOUNDFILE_LIBSNDFILE_PATTERN = "/opt/venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so"
+MINIMUM_PYTHON_PACKAGE_VERSIONS = {
+    "bitsandbytes": "0.49.2",
+    "mamba-ssm": "2.3.0",
+    "nvidia-dali-cuda130": "2.2.0",
+    "wandb": "0.28.2",
+}
+
+
+@pytest.mark.smoke_nmp_automodel_training
+def test_python_package_min_versions():
+    assert_python_package_min_versions(MINIMUM_PYTHON_PACKAGE_VERSIONS)
 
 
 @pytest.mark.smoke_nmp_automodel_training
@@ -57,4 +69,13 @@ def test_nmp_automodel_training_importable():
 @pytest.mark.smoke_nmp_automodel_training
 def test_soundfile_libsndfile_removed():
     remaining = sorted(glob(SOUNDFILE_LIBSNDFILE_PATTERN))
-    assert remaining == [], f"codec cleanup left scanner-visible libsndfile files: {remaining}"
+    assert remaining == [], f"file cleanup left scanner-visible libsndfile files: {remaining}"
+
+
+@pytest.mark.smoke_nmp_automodel_training
+def test_dali_still_importable_after_file_cleanup():
+    import importlib.metadata
+
+    import nvidia.dali  # noqa: F401
+
+    assert importlib.metadata.version("nvidia-dali-cuda130")

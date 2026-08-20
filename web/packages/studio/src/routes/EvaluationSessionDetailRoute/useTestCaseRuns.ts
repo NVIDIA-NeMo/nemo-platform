@@ -9,7 +9,7 @@ import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/sch
 import { useQueries } from '@tanstack/react-query';
 
 /**
- * Every run (session) of `testCaseId` across the evaluations in an experiment group.
+ * Every run (session) of `testCaseName` across the evaluations in an experiment group.
  *
  * The sessions endpoint is scoped to a single evaluation, so this fans out one
  * query per evaluation (Option A) and flattens the results. A group-scoped
@@ -18,17 +18,17 @@ import { useQueries } from '@tanstack/react-query';
 export function useTestCaseRuns({
   workspace,
   evaluationNames,
-  testCaseId,
+  testCaseName,
 }: {
   workspace: string;
   evaluationNames: string[];
-  testCaseId: string | null | undefined;
+  testCaseName: string | null | undefined;
 }): { runs: EvaluationSessionResponse[]; isLoading: boolean } {
-  const enabled = Boolean(testCaseId) && evaluationNames.length > 0;
+  const enabled = Boolean(testCaseName) && evaluationNames.length > 0;
 
   const results = useQueries({
     queries: evaluationNames.map((name) => {
-      const params = { filter: { test_case_id: testCaseId ?? '' }, page_size: 1000 };
+      const params = { filter: { test_case_name: testCaseName ?? '' }, page_size: 1000 };
       return {
         queryKey: getListEvaluationSessionsQueryKey(workspace, name, params),
         queryFn: ({ signal }: { signal: AbortSignal }) =>

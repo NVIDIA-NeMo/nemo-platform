@@ -34,8 +34,18 @@ class TraceFilter(BaseModel):
     session_id: str | None = Field(default=None, description="Filter by session id.")
     status: SpanStatus | None = Field(default=None, description="Filter by root span status.")
     started_at: DatetimeFilter | None = Field(default=None, description="Filter by root span start timestamp.")
-    evaluation_id: str | None = Field(default=None, description="Filter by root-span evaluation id.")
-    test_case_id: str | None = Field(default=None, description="Filter by root-span evaluation test case id.")
+    evaluation_name: str | None = Field(default=None, description="Filter by Evaluation name.")
+    test_case_name: str | None = Field(default=None, description="Filter by test case name.")
+    evaluation_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for evaluation_name. Use evaluation_name instead.",
+    )
+    test_case_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for test_case_name. Use test_case_name instead.",
+    )
 
 
 class Trace(BaseModel):
@@ -101,9 +111,9 @@ class Trace(BaseModel):
 
 
 def _evaluation_context(trace: IntakeTrace) -> EvaluationContext | None:
-    if trace.evaluation_id is None:
+    if trace.evaluation_name is None:
         return None
     return EvaluationContext(
-        evaluation_id=trace.evaluation_id,
-        test_case_id=trace.test_case_id,
+        evaluation_name=trace.evaluation_name,
+        test_case_name=trace.test_case_name,
     )

@@ -3,7 +3,7 @@
 
 from datetime import datetime, timezone
 
-from nmp.intake.api.v2.experiments.schemas import EvaluationSessionResponse
+from nmp.intake.api.v2.experiments.schemas import EvaluationSessionFilter, EvaluationSessionResponse
 from nmp.intake.repository.evaluation_session import EvaluationSessionRow
 from nmp.intake.spans.domain import SpanStatus
 
@@ -17,6 +17,22 @@ def test_evaluation_session_from_row_preserves_detailed_payloads() -> None:
 
     assert response.input == input_text
     assert response.output == output_text
+    assert response.test_case_name == "case"
+    assert response.model_dump()["test_case_id"] == "case"
+
+
+def test_evaluation_session_schema_deprecates_only_test_case_id() -> None:
+    properties = EvaluationSessionResponse.model_json_schema()["properties"]
+
+    assert properties["test_case_name"].get("deprecated") is not True
+    assert properties["test_case_id"]["deprecated"] is True
+
+
+def test_evaluation_session_filter_deprecates_only_test_case_id() -> None:
+    properties = EvaluationSessionFilter.model_json_schema()["properties"]
+
+    assert properties["test_case_name"].get("deprecated") is not True
+    assert properties["test_case_id"]["deprecated"] is True
 
 
 def test_evaluation_session_from_row_applies_payload_modes() -> None:
@@ -37,7 +53,7 @@ def _session_row(input_text: str, output_text: str) -> EvaluationSessionRow:
         workspace="default",
         evaluation_name="evaluation",
         session_id="session",
-        test_case_id="case",
+        test_case_name="case",
         trace_id="trace",
         root_span_id="root",
         started_at=now,

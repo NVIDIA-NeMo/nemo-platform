@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Late cleanup for bundled or non-package-managed files in nmp-rl-training.
+/opt/nemo_rl_venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so
+/opt/ray_venvs/*/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so
+/opt/uv_cache/archive-v0/*/_soundfile_data/libsndfile_*.so

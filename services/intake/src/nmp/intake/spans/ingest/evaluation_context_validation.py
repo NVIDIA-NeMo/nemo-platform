@@ -17,18 +17,18 @@ async def validate_evaluation_context(
 ) -> None:
     if context is None:
         return
-    experiment_id = context.evaluation_id
-    if not experiment_id:
+    evaluation_name = context.evaluation_name
+    if not evaluation_name:
         return
     try:
-        experiment = await entity_client.get(Experiment, name=experiment_id, workspace=workspace)
+        experiment = await entity_client.get(Experiment, name=evaluation_name, workspace=workspace)
     except EntityNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Evaluation '{experiment_id}' must be created before it can be logged.",
+            detail=f"Evaluation '{evaluation_name}' must be created before it can be logged.",
         ) from exc
     if experiment.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Evaluation '{experiment_id}' has been deleted and cannot accept new sessions.",
+            detail=f"Evaluation '{evaluation_name}' has been deleted and cannot accept new sessions.",
         )
