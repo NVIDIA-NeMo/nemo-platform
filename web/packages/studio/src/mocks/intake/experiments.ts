@@ -46,12 +46,12 @@ export const mockExperimentsPage = (): ExperimentResponsesPage => ({
 const mockRun = (
   evaluationName: string,
   sessionId: string,
-  testCaseId: string
+  testCaseName: string
 ): EvaluationSessionResponse => ({
   workspace: WORKSPACE,
   evaluation_name: evaluationName,
   session_id: sessionId,
-  test_case_id: testCaseId,
+  test_case_name: testCaseName,
   trace_id: `trace-${sessionId}`,
   root_span_id: `${sessionId}-root`,
   started_at: '2026-01-01T00:00:00Z',
@@ -61,19 +61,19 @@ const mockRun = (
 // Runs of a test case, keyed by evaluation name. The primary session
 // `session-agent-run-001` lives in `my-experiment` alongside a sibling run, and
 // `my-experiment-v2` contributes a third run — so the compare selector has options.
-const RUNS_BY_EVALUATION: Record<string, (testCaseId: string) => EvaluationSessionResponse[]> = {
-  'my-experiment': (testCaseId) => [
-    mockRun('my-experiment', 'session-agent-run-001', testCaseId),
-    mockRun('my-experiment', 'session-agent-run-002', testCaseId),
+const RUNS_BY_EVALUATION: Record<string, (testCaseName: string) => EvaluationSessionResponse[]> = {
+  'my-experiment': (testCaseName) => [
+    mockRun('my-experiment', 'session-agent-run-001', testCaseName),
+    mockRun('my-experiment', 'session-agent-run-002', testCaseName),
   ],
-  'my-experiment-v2': (testCaseId) => [
-    mockRun('my-experiment-v2', 'session-agent-run-101', testCaseId),
+  'my-experiment-v2': (testCaseName) => [
+    mockRun('my-experiment-v2', 'session-agent-run-101', testCaseName),
   ],
 };
 
 export const mockEvaluationSessionsPage = (
   evaluationName: string,
-  testCaseId: string | null
+  testCaseName: string | null
 ): EvaluationSessionResponsesPage => ({
-  data: testCaseId ? (RUNS_BY_EVALUATION[evaluationName]?.(testCaseId) ?? []) : [],
+  data: testCaseName ? (RUNS_BY_EVALUATION[evaluationName]?.(testCaseName) ?? []) : [],
 });

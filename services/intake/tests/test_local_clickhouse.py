@@ -26,6 +26,7 @@ from nmp.intake.local_clickhouse import (
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
     ProvisioningMode,
+    _ensure_clickhouse_data_directory_access,
     _ensure_data_directory_identity,
     _expected_labels,
     _managed_container_name,
@@ -56,6 +57,7 @@ class FakeContainer:
         host_port: int = 55123,
         user: str = "default",
         password: str = "",
+        exec_results: list[FakeExecResult] | None = None,
     ) -> None:
         self.name = name
         self.status = status
@@ -75,6 +77,7 @@ class FakeContainer:
         self.removed = False
         self.restart_policy_updates: list[dict[str, str]] = []
         self.exec_calls: list[tuple[list[str], str | None]] = []
+        self.exec_results = list(exec_results or [])
 
     def reload(self) -> None:
         return None
@@ -93,7 +96,7 @@ class FakeContainer:
 
     def exec_run(self, command: list[str], *, user: str | None = None) -> FakeExecResult:
         self.exec_calls.append((command, user))
-        return FakeExecResult()
+        return self.exec_results.pop(0) if self.exec_results else FakeExecResult()
 
     def remove(self) -> None:
         self.removed = True
@@ -175,6 +178,44 @@ def test_default_unconfigured_url_is_locally_managed(monkeypatch: pytest.MonkeyP
     monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_URL", raising=False)
 
     assert should_provision_local_clickhouse(ClickHouseConfig()) is True
+
+
+def test_clickhouse_data_directory_is_repaired_as_root_and_verified_as_clickhouse() -> None:
+    container = FakeContainer(name="clickhouse", image="clickhouse/clickhouse-server")
+
+    _ensure_clickhouse_data_directory_access(container)
+
+    assert container.exec_calls == [
+        (
+            [
+                "sh",
+                "-c",
+                "mkdir -p /var/lib/clickhouse/tmp && chown -R clickhouse:clickhouse /var/lib/clickhouse",
+            ],
+            "root",
+        ),
+        (
+            [
+                "sh",
+                "-c",
+                'probe=$(mktemp /var/lib/clickhouse/tmp/.nmp-write-probe.XXXXXX) && rm -f "$probe"',
+            ],
+            "clickhouse",
+        ),
+    ]
+
+
+def test_clickhouse_data_directory_reports_nonwritable_directory() -> None:
+    container = FakeContainer(
+        name="clickhouse",
+        image="clickhouse/clickhouse-server",
+        exec_results=[FakeExecResult(), FakeExecResult(exit_code=1, output=b"Permission denied")],
+    )
+
+    with pytest.raises(
+        LocalClickHouseProvisioningError, match="not writable by the clickhouse user: Permission denied"
+    ):
+        _ensure_clickhouse_data_directory_access(container)
 
 
 def test_explicit_default_url_is_externally_managed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -425,6 +466,23 @@ def test_ensure_data_directory_identity_reuses_unreadable_marker(tmp_path: Path)
     data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     identity_path = data_dir / ".nmp-clickhouse-identity"
     identity_path.chmod(0)
+
+    assert _ensure_data_directory_identity(data_dir, manage_permissions=True) == data_instance_id
+
+
+def test_ensure_data_directory_identity_tolerates_rootless_bind_mount_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_dir = tmp_path / "intake-clickhouse"
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
+    original_chmod = Path.chmod
+
+    def reject_container_owned_paths(path: Path, mode: int, *, follow_symlinks: bool = True) -> None:
+        if path in {data_dir, data_dir / "tmp"}:
+            raise PermissionError("Operation not permitted")
+        original_chmod(path, mode, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "chmod", reject_container_owned_paths)
 
     assert _ensure_data_directory_identity(data_dir, manage_permissions=True) == data_instance_id
 

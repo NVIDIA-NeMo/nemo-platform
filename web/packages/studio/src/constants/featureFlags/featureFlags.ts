@@ -54,6 +54,7 @@ import { z } from 'zod';
 // Add new flags here. Each flag maps an env var to a typed value.
 
 export const flagDefinitions = {
+  agentOverviewEnabled: booleanFlag('VITE_FF_AGENT_OVERVIEW_ENABLED', false),
   agentsEnabled: previewFlag('VITE_FF_AGENTS_ENABLED', true),
   anonymizerEnabled: booleanFlag('VITE_FF_ANONYMIZER_ENABLED', false),
   baseModelsEnabled: previewFlag('VITE_FF_BASE_MODELS_ENABLED', true),

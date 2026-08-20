@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 #: IGW mock-provider prefix, and the env var the in-process IGW config reads it from. Applied to
 #: *this* (test) process via the ``_igw_mock_prefix`` fixture (not at import) so it never leaks into
 #: unrelated unit suites that merely collect this conftest; passed to the platform subprocess via
-#: each fixture's ``hydra_params``.
+#: each fixture's ``env_vars``.
 MOCK_PROVIDER_PREFIX = "igw-mock-"
 MOCK_PROVIDER_PREFIX_ENVVAR = "NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX"
 CLICKHOUSE_XDIST_GROUP = "nmp_intake_clickhouse"
@@ -94,7 +94,7 @@ def running_platform(
     *,
     run_args: list[str],
     base_url: str,
-    hydra_params: dict[str, str] | None = None,
+    env_vars: dict[str, str] | None = None,
     ready_timeout: float = 180.0,
 ) -> Iterator[str]:
     """Run ``nemo services run`` bound to ``base_url``'s port, yield the URL, then tear it down.
@@ -112,7 +112,7 @@ def running_platform(
     process = subprocess.Popen(
         ["uv", "run", "nemo", "services", "run", *run_args, "--port", str(port)],
         cwd=REPO_ROOT,
-        env={**os.environ, "NMP_BASE_URL": base_url, **(hydra_params or {})},
+        env={**os.environ, "NMP_BASE_URL": base_url, **(env_vars or {})},
     )
     try:
         _wait_for_ready(base_url, timeout=ready_timeout, process=process)
@@ -138,7 +138,7 @@ def _igw_mock_prefix() -> Iterator[None]:
     var: the override is honored ahead of the cached/env config, so it works regardless of when the
     IGW config was first read, whereas a whole-repo run can read and cache that config before any
     plugin-local hook fires. The platform *subprocess* gets the same prefix via each fixture's
-    ``hydra_params``.
+    ``env_vars``.
     """
     with igw_mock_provider_mode(MOCK_PROVIDER_PREFIX):
         yield
@@ -186,6 +186,16 @@ def _materialize_subprocess_config(work_root: Path, *, base_url: str, auth_enabl
     return config_path
 
 
+#: The platform's entity store defaults to the *developer's* data directory
+#: (``~/.local/share/nemo/nmp-platform.db``). These fixtures already point file storage at a
+#: per-run temp dir, so leaving the database shared both writes test entities into a real local
+#: platform and breaks reruns: metric bundles are content-addressed, so the second run finds last
+#: run's bundle entity, skips the upload as a duplicate, and then fails to download a blob that
+#: went away with the previous run's temp dir. Pointing NMP_DATA_DIR at the same work root keeps
+#: entities and blobs with the same lifetime.
+DATA_DIR_ENVVAR = "NMP_DATA_DIR"
+
+
 @pytest.fixture(scope="session")
 def subprocess_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Session-scoped platform with the subprocess jobs backend + IGW mock-provider mode.
@@ -196,12 +206,14 @@ def subprocess_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[st
     or key. Codex-dependent tests gate themselves with ``@requires_codex``; this fixture does not, so
     Model/Agent tests (which need only the running IGW) can use it without codex installed.
     """
-    config_path = _materialize_subprocess_config(tmp_path_factory.mktemp("platform"), base_url=AGENT_PLATFORM_BASE_URL)
+    work_root = tmp_path_factory.mktemp("platform")
+    config_path = _materialize_subprocess_config(work_root, base_url=AGENT_PLATFORM_BASE_URL)
     with running_platform(
         run_args=["--service-group", "all", "--controller-group", "all"],
         base_url=AGENT_PLATFORM_BASE_URL,
-        hydra_params={
+        env_vars={
             "NMP_CONFIG_FILE_PATH": str(config_path),
+            DATA_DIR_ENVVAR: str(work_root / "data"),
             MOCK_PROVIDER_PREFIX_ENVVAR: MOCK_PROVIDER_PREFIX,
         },
     ) as base_url:
@@ -216,14 +228,14 @@ def auth_subprocess_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterat
     authenticates its online IGW inference under auth (no bearer). Test-side calls authenticate as an
     internal service principal (which the default PDP policy grants full permissions).
     """
-    config_path = _materialize_subprocess_config(
-        tmp_path_factory.mktemp("auth-platform"), base_url=AGENT_AUTH_PLATFORM_BASE_URL, auth_enabled=True
-    )
+    work_root = tmp_path_factory.mktemp("auth-platform")
+    config_path = _materialize_subprocess_config(work_root, base_url=AGENT_AUTH_PLATFORM_BASE_URL, auth_enabled=True)
     with running_platform(
         run_args=["--service-group", "all", "--controller-group", "all"],
         base_url=AGENT_AUTH_PLATFORM_BASE_URL,
-        hydra_params={
+        env_vars={
             "NMP_CONFIG_FILE_PATH": str(config_path),
+            DATA_DIR_ENVVAR: str(work_root / "data"),
             MOCK_PROVIDER_PREFIX_ENVVAR: MOCK_PROVIDER_PREFIX,
         },
     ) as base_url:
@@ -283,12 +295,11 @@ def docker_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """
     if not _docker_available():
         pytest.skip("docker daemon not available")
-    config_path = _materialize_docker_config(
-        tmp_path_factory.mktemp("docker-platform"), base_url=AGENT_DOCKER_PLATFORM_BASE_URL
-    )
+    work_root = tmp_path_factory.mktemp("docker-platform")
+    config_path = _materialize_docker_config(work_root, base_url=AGENT_DOCKER_PLATFORM_BASE_URL)
     with running_platform(
         run_args=["--service-group", "all", "--controller-group", "all"],
         base_url=AGENT_DOCKER_PLATFORM_BASE_URL,
-        hydra_params={"NMP_CONFIG_FILE_PATH": str(config_path)},
+        env_vars={"NMP_CONFIG_FILE_PATH": str(config_path), DATA_DIR_ENVVAR: str(work_root / "data")},
     ) as base_url:
         yield base_url

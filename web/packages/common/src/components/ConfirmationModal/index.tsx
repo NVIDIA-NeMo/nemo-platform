@@ -18,7 +18,10 @@ interface FormFields {
 
 type SubmitButtonColor = NonNullable<ComponentProps<typeof LoadingButton>['color']>;
 
-export interface ConfirmationModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
+export interface ConfirmationModalProps extends Pick<
+  FormModalProps,
+  'open' | 'onClose' | 'cancelButtonText'
+> {
   /** Return true when the action succeeded (shows success toast); false shows error toast. */
   onConfirm: () => boolean | Promise<boolean>;
   title: string;
@@ -50,6 +53,7 @@ export const ConfirmationModal: FC<ConfirmationModalProps> = ({
   successText = 'Done.',
   errorText = 'Something went wrong. Please try again.',
   submitButtonText = 'Confirm',
+  cancelButtonText,
   submitButtonColor,
   suppressResultToasts = false,
   onNotify,
@@ -100,6 +104,7 @@ export const ConfirmationModal: FC<ConfirmationModalProps> = ({
       open={open}
       title={title}
       submitButtonText={submitButtonText}
+      cancelButtonText={cancelButtonText}
       disabled={isPending}
       submitDisabled={simpleConfirm ? false : !isValid}
       loading={isPending}

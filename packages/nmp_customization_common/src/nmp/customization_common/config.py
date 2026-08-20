@@ -7,7 +7,7 @@ from nmp.common.config import create_service_config_class, get_service_config
 from pydantic import Field
 
 
-class CustomizationCommonConfig(create_service_config_class("customizer")):  # type: ignore[misc]
+class CustomizationCommonConfig(create_service_config_class("customizer")):  # ty: ignore[unsupported-base]
     """Environment variables use the ``NMP_CUSTOMIZER_`` prefix."""
 
     tasks_image: str | None = Field(

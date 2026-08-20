@@ -43,6 +43,8 @@ export interface AgentTraceStatisticsProps {
   onRunAgent?: () => void;
   /** Empty-state action: open the tracing setup docs. */
   onLearnMore?: () => void;
+  /** Muted note after the heading, e.g. how the traces are scoped. */
+  caption?: string;
   isPending?: boolean;
   chartHeight?: number;
 }
@@ -54,6 +56,7 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
   onViewTraces,
   onRunAgent,
   onLearnMore,
+  caption,
   isPending,
   chartHeight,
 }) => {
@@ -62,10 +65,17 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
   const isEmpty = !isPending && traces.length === 0;
 
   return (
-    <Stack gap="density-xl">
-      <Flex justify="between" align="center" gap="density-md" wrap="wrap">
-        <Text kind="title/md">Trace statistics</Text>
-        <Flex gap="density-md" align="center">
+    <Stack gap="4">
+      <Flex justify="between" align="center" gap="2" wrap="wrap">
+        <Flex align="center" gap="3">
+          <Text kind="title/md">Trace statistics</Text>
+          {caption ? (
+            <Text kind="body/regular/md" className="text-secondary">
+              {caption}
+            </Text>
+          ) : null}
+        </Flex>
+        <Flex gap="2" align="center">
           {onViewTraces && !isEmpty ? (
             <Button kind="tertiary" onClick={onViewTraces}>
               <ListTree size={16} aria-hidden />

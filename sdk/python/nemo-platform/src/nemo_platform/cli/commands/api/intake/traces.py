@@ -42,7 +42,7 @@ def list_traces(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, and test_case_name.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
@@ -50,12 +50,18 @@ def list_traces(
     filter_evaluation_id: Annotated[
         str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
     ] = None,
+    filter_evaluation_name: Annotated[
+        str | None, typer.Option("--filter.evaluation-name", rich_help_panel="Filter Options")
+    ] = None,
     filter_session_id: Annotated[
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
     ] = None,
     filter_status: Annotated[str | None, typer.Option("--filter.status", rich_help_panel="Filter Options")] = None,
     filter_test_case_id: Annotated[
         str | None, typer.Option("--filter.test-case-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_test_case_name: Annotated[
+        str | None, typer.Option("--filter.test-case-name", rich_help_panel="Filter Options")
     ] = None,
     mode: Annotated[
         Literal["summary", "preview", "detailed"] | None,
@@ -94,9 +100,11 @@ def list_traces(
             filter,
             id=filter_id,
             evaluation_id=filter_evaluation_id,
+            evaluation_name=filter_evaluation_name,
             session_id=filter_session_id,
             status=filter_status,
             test_case_id=filter_test_case_id,
+            test_case_name=filter_test_case_name,
         ),
         mode=mode,
         page=page,

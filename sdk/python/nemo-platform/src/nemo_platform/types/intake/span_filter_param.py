@@ -34,7 +34,10 @@ class SpanFilterParam(TypedDict, total=False):
     """Filter by agent application name (e.g. 'claude-code', 'codex')."""
 
     evaluation_id: str
-    """Filter by evaluation id."""
+    """Deprecated alias for evaluation_name. Use evaluation_name instead."""
+
+    evaluation_name: str
+    """Filter by Evaluation name."""
 
     kind: SpanKind
     """Filter by normalized span kind."""
@@ -64,7 +67,10 @@ class SpanFilterParam(TypedDict, total=False):
     """Filter by normalized span status."""
 
     test_case_id: str
-    """Filter by dataset test case id."""
+    """Deprecated alias for test_case_name. Use test_case_name instead."""
+
+    test_case_name: str
+    """Filter by test case name."""
 
     tool_name: str
     """Filter by tool name."""

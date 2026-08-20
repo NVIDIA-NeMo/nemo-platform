@@ -42,9 +42,9 @@ def _session_record(session_id: str) -> dict[str, Any]:
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     return {
         "workspace": "default",
-        "evaluation_id": "evaluation-a",
+        "evaluation_name": "evaluation-a",
         "session_id": session_id,
-        "test_case_id": "case-a",
+        "test_case_name": "case-a",
         "trace_id": f"trace-{session_id}",
         "root_span_id": f"root-{session_id}",
         "start_time": now,
@@ -81,7 +81,7 @@ async def test_list_sessions_maps_rows_and_binds_all_request_values() -> None:
         workspace=workspace,
         evaluation_name=evaluation_name,
         status=SpanStatus.ERROR,
-        test_case_id=test_case_id,
+        test_case_name=test_case_id,
         page=2,
         page_size=5,
         mode="preview",
@@ -107,9 +107,12 @@ async def test_list_sessions_maps_rows_and_binds_all_request_values() -> None:
         assert test_case_id not in query.statement
         assert query.parameters["workspace"] == workspace
         assert query.parameters["evaluation_name"] == evaluation_name
+        assert "evaluation_name = %(evaluation_name)s" in query.statement
+        assert "evaluation_id = %(evaluation_name)s" not in query.statement
     for query in executor.queries[:2]:
-        assert query.parameters["test_case_id"] == test_case_id
+        assert query.parameters["test_case_name"] == test_case_id
         assert query.parameters["status"] == "error"
+        assert "test_case_name = %(test_case_name)s" in query.statement
     assert executor.queries[1].parameters["limit"] == 5
     assert executor.queries[1].parameters["offset"] == 5
     assert "'' AS input" in executor.queries[1].statement
@@ -188,6 +191,7 @@ async def test_metric_sort_rejects_unbounded_session_set_after_count() -> None:
 
 
 def test_build_order_by_uses_registered_expressions_in_key_order() -> None:
+    assert _SORT_EXPR_PAGE["test_case_name"] == "test_case_name"
     assert (
         _build_order_by(
             [("cost_total_usd", True), ("latency_ms", False)],

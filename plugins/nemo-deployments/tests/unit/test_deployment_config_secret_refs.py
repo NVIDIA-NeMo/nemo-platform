@@ -7,27 +7,33 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_deployments_plugin.api.v2.deployment_configs import create_deployment_config
-from nemo_deployments_plugin.entities import DeploymentConfig
+from nemo_deployments_plugin.entities import DeploymentConfig, SecretRef
 from nemo_deployments_plugin.schema import CreateDeploymentConfigRequest, RequestContainer, RequestEnvVar
 from pydantic import ValidationError
 
 
-def test_request_env_var_rejects_secret_ref() -> None:
-    with pytest.raises(ValidationError, match="secretRef"):
-        RequestEnvVar.model_validate(
-            {
-                "name": "NGC_API_KEY",
-                "secretRef": {"workspace": "system", "name": "ngc-api-key"},
-            }
-        )
+def test_request_env_var_accepts_secret_ref() -> None:
+    env = RequestEnvVar.model_validate(
+        {
+            "name": "APP_TOKEN",
+            "secretRef": {"workspace": "default", "name": "app-token"},
+        }
+    )
+    assert env.secret_ref == SecretRef(workspace="default", name="app-token")
+    entity = env.to_entity()
+    assert entity.secret_ref == SecretRef(workspace="default", name="app-token")
+    assert entity.value is None
 
 
-def test_request_env_var_schema_forbids_value_and_value_from_together() -> None:
+def test_request_env_var_schema_forbids_multiple_sources_together() -> None:
     schema = RequestEnvVar.model_json_schema(by_alias=True)
-    assert schema["not"] == {"required": ["value", "valueFrom"]}
+    assert schema["not"] == {"required": ["value", "valueFrom", "secretRef"]}
 
     with pytest.raises(ValidationError, match="only one"):
         RequestEnvVar(name="FOO", value="bar", valueFrom={"fieldRef": {"fieldPath": "metadata.name"}})
+
+    with pytest.raises(ValidationError, match="only one"):
+        RequestEnvVar(name="FOO", value="bar", secretRef=SecretRef(workspace="default", name="app-token"))
 
 
 def test_create_request_accepts_plain_env_values() -> None:

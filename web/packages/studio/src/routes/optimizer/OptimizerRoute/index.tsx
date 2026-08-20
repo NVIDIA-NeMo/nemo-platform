@@ -11,7 +11,14 @@ import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { Flex, PageHeader, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import {
+  type DropdownEntry,
+  Flex,
+  PageHeader,
+  Stack,
+  Tag,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { type InsightListItem, useOptimizerListInsights } from '@studio/api/optimizer';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -126,7 +133,7 @@ export const OptimizerRoute: FC = () => {
     rowActionsColumn({
       size: ROW_ACTIONS_COLUMN_SIZE,
       enableResizing: false,
-      rowActions: () => [],
+      rowActions: (): DropdownEntry[] => [],
     }),
   ];
 

@@ -30,7 +30,7 @@ const mockSession = {
   root_span_id: 'span-root-1',
   started_at: '2025-01-01T00:00:00Z',
   status: 'success',
-  test_case_id: 'case-1',
+  test_case_name: 'case-1',
   input: 'Session input',
   output: 'Session output',
 };
@@ -142,7 +142,7 @@ describe('EvaluationSessionsDataView', () => {
       http.get(SESSIONS_URL, () =>
         HttpResponse.json({
           ...mockSessionsPage,
-          data: [{ ...mockSession, trace_id: '', test_case_id: 'no-trace-case' }],
+          data: [{ ...mockSession, trace_id: '', test_case_name: 'no-trace-case' }],
         })
       )
     );

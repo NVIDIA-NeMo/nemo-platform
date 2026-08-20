@@ -15,7 +15,7 @@ const SESSION_TRACES_PAGE_SIZE = 1000;
 
 /**
  * Loads a session's summary, its traces, and their span trajectories — plus the
- * explorer bundle the span views need and the session's producer test_case_id.
+ * explorer bundle the span views need and the session's producer test case name.
  *
  * Shared by the single session detail view and the test-case comparison columns;
  * React Query dedupes the fetches when the same session renders in more than one
@@ -101,8 +101,8 @@ export function useSessionTrajectories(workspace: string, sessionId: string) {
     [isSessionSpansFetching, sessionSpansError, sessionSpansResponse, trajectories]
   );
 
-  const testCaseId = traces.find((trace) => trace.evaluation_context?.test_case_id)
-    ?.evaluation_context?.test_case_id;
+  const testCaseName = traces.find((trace) => trace.evaluation_context?.test_case_name)
+    ?.evaluation_context?.test_case_name;
 
   return {
     session,
@@ -113,6 +113,6 @@ export function useSessionTrajectories(workspace: string, sessionId: string) {
     isTracesLoading,
     trajectories,
     explorer,
-    testCaseId,
+    testCaseName,
   };
 }

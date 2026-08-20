@@ -722,7 +722,7 @@ def test_evaluate_job_uses_the_configured_test_case_id_column(tmp_path: Path, mo
     )
 
     assert client.atif_calls[0]["session_id"] == "job-1:q-1"
-    assert client.atif_calls[0]["evaluation_context"]["test_case_id"] == "q-1"
+    assert client.atif_calls[0]["evaluation_context"]["test_case_name"] == "q-1"
 
 
 def test_evaluate_job_without_a_job_id_cannot_publish(tmp_path: Path, mocker: MockerFixture) -> None:

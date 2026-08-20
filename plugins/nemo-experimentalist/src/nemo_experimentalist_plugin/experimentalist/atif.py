@@ -66,8 +66,8 @@ def build_ingest_payload(
 
     Args:
         ref(ResourceRef): Resource reference to the ATIF trajectory file.
-        evaluation_name(str): Evaluation name, used as ``evaluation_context.evaluation_id``.
-        task_id(str): Test case id, used as ``evaluation_context.test_case_id``.
+        evaluation_name(str): Evaluation name, used as ``evaluation_context.evaluation_name``.
+        task_id(str): Test case name, used as ``evaluation_context.test_case_name``.
         agent_attrs(dict[str, str]): OTLP-style agent attributes used as fallbacks.
 
     Returns:
@@ -75,8 +75,8 @@ def build_ingest_payload(
     """
     trajectory = _load(ref)
     trajectory["evaluation_context"] = {
-        "evaluation_id": evaluation_name,
-        "test_case_id": task_id,
+        "evaluation_name": evaluation_name,
+        "test_case_name": task_id,
     }
     agent = trajectory.get("agent")
     if not isinstance(agent, dict):

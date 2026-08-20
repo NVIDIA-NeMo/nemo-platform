@@ -92,6 +92,14 @@ def k8s_deployment_configmap_name(workspace: str, deployment_name: str) -> str:
     )
 
 
+def k8s_deployment_secret_name(workspace: str, deployment_name: str) -> str:
+    """Kubernetes Secret name for a deployment's resolved secret env vars."""
+    return k8s_safe_name(
+        f"dep-sec-{workspace}-{deployment_name}",
+        hash_input=f"{deployment_key(workspace, deployment_name)}/secret",
+    )
+
+
 def deployment_identity_labels(
     workspace: str,
     name: str,

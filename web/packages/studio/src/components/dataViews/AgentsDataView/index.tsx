@@ -26,7 +26,7 @@ import {
 } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Button, Text } from '@nvidia/foundations-react-core';
+import { Button, type DropdownEntry, Text } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { MODEL_COMPARE_ENABLED } from '@studio/constants/environment';
@@ -40,6 +40,15 @@ import { useNavigate } from 'react-router';
 
 export type { Agent, AgentDeployment };
 
+/** A model entry in a `nemo-agents-spec-v1` config, under `models` or on a harness. */
+export interface AgentSpecModel {
+  provider?: string;
+  model?: string;
+  api_key_env?: string;
+  temperature?: number;
+  settings?: Record<string, unknown>;
+}
+
 export interface AgentConfig {
   functions?: Record<string, { _type: string }>;
   llms?: Record<
@@ -52,6 +61,9 @@ export interface AgentConfig {
       base_url?: string;
     }
   >;
+  /** `nemo-agents-spec-v1` named models, e.g. `{ default: { model: 'nvidia-…' } }`. */
+  models?: Record<string, AgentSpecModel>;
+  harnesses?: Record<string, { kind?: string; model?: AgentSpecModel }>;
   workflow?: {
     _type: string;
     tool_names?: string[];
@@ -282,7 +294,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     rowActionsColumn({
       size: ROW_ACTIONS_COLUMN_SIZE,
       enableResizing: false,
-      rowActions: (row: AgentTableRow) => [
+      rowActions: (row: AgentTableRow): DropdownEntry[] => [
         {
           children: 'Deploy',
           onSelect: () => onCreateDeployment?.(row.name),
