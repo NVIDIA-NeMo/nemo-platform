@@ -1389,6 +1389,9 @@ async def test_proxy_request_wraps_certain_errors_in_502(mock_proxy_client, next
     mock_response = Mock(spec=aiohttp.ClientResponse)
     mock_response.status = status_code
     mock_response.closed = False
+    mock_response.headers = CIMultiDict(
+        {"content-type": "application/json", "content-length": "24", "retry-after": "30"}
+    )
     mock_response.read = AsyncMock(return_value=b'{"error": "model not found on backend"}')
     mock_proxy_client.request = AsyncMock(return_value=mock_response)
 
@@ -1398,6 +1401,10 @@ async def test_proxy_request_wraps_certain_errors_in_502(mock_proxy_client, next
     assert exc_info.value.status_code == 502
     assert f"Backend returned {status_code}" in exc_info.value.detail
     assert "model not found on backend" in exc_info.value.detail
+    assert exc_info.value.headers is not None
+    assert exc_info.value.headers.get("retry-after") == "30"
+    assert "content-type" not in exc_info.value.headers
+    assert "content-length" not in exc_info.value.headers
 
 
 @pytest.mark.asyncio
@@ -1409,6 +1416,9 @@ async def test_proxy_request_passes_through_other_backend_errors(mock_proxy_clie
     mock_response = Mock(spec=aiohttp.ClientResponse)
     mock_response.status = status_code
     mock_response.closed = False
+    mock_response.headers = CIMultiDict(
+        {"content-type": "application/json", "content-length": "24", "retry-after": "30"}
+    )
     mock_response.read = AsyncMock(return_value=b'{"error": "rate limit exceeded"}')
     mock_proxy_client.request = AsyncMock(return_value=mock_response)
 
@@ -1417,6 +1427,39 @@ async def test_proxy_request_passes_through_other_backend_errors(mock_proxy_clie
 
     assert exc_info.value.status_code == status_code
     assert "rate limit exceeded" in exc_info.value.detail
+    assert exc_info.value.headers is not None
+    assert exc_info.value.headers.get("retry-after") == "30"
+    # The upstream body's framing headers describe a body we're not forwarding
+    # (FastAPI generates its own JSON error body), so they must not leak through.
+    assert "content-length" not in exc_info.value.headers
+    assert "content-type" not in exc_info.value.headers
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_drops_headers_named_by_connection_on_error(mock_proxy_client, next_request_info):
+    """A backend can name additional hop-by-hop headers via Connection; those must not forward either."""
+    import aiohttp
+
+    mock_response = Mock(spec=aiohttp.ClientResponse)
+    mock_response.status = 503
+    mock_response.closed = False
+    mock_response.headers = CIMultiDict(
+        {
+            "connection": "x-backend-only",
+            "x-backend-only": "internal-secret",
+            "retry-after": "30",
+        }
+    )
+    mock_response.read = AsyncMock(return_value=b'{"error": "unavailable"}')
+    mock_proxy_client.request = AsyncMock(return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await proxy_request(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.headers is not None
+    assert exc_info.value.headers.get("retry-after") == "30"
+    assert "connection" not in exc_info.value.headers
+    assert "x-backend-only" not in exc_info.value.headers
 
 
 @pytest.mark.asyncio
@@ -1546,7 +1589,30 @@ async def test_fetch_proxy_response_reports_json_processing_failure(
     assert exc_info.value.detail == (
         "Inference Gateway could not parse the upstream response as JSON for inference middleware processing."
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_forwards_retry_after_on_backend_error(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """A 429/503 from the backend keeps its Retry-After header so the evaluator's resilience layer can read it."""
+    mock_proxy_response.status = 429
+    mock_proxy_response.headers = CIMultiDict(
+        [("content-type", "application/json"), ("content-length", "24"), ("retry-after", "30")]
+    )
+    mock_proxy_response.read = AsyncMock(return_value=b'{"error": "rate limited"}')
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.headers is not None
+    assert exc_info.value.headers.get("retry-after") == "30"
     assert "backend returned" not in exc_info.value.detail.lower()
+    # The upstream body's framing headers describe a body we're not forwarding
+    # (FastAPI generates its own JSON error body), so they must not leak through.
+    assert "content-length" not in exc_info.value.headers
+    assert "content-type" not in exc_info.value.headers
 
 
 @pytest.mark.asyncio

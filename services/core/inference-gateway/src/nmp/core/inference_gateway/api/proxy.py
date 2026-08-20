@@ -101,6 +101,16 @@ RESPONSE_HEADERS_TO_DROP = frozenset(
         "date",  # fastapi adds its own date response header
     }
 )
+# On the error path, FastAPI builds a brand-new JSON body for the HTTPException; it does
+# not reuse the upstream response body, so most upstream headers either describe a body
+# we're not forwarding (Content-Length, Content-Type, ...) or are hop-by-hop and shouldn't
+# cross this boundary at all. Rather than deny-listing every such header (and needing to
+# remember to add the next one), only forward headers a caller actually needs.
+ERROR_RESPONSE_HEADERS_TO_FORWARD = frozenset(
+    {
+        "retry-after",  # read by the evaluator's resilience layer to set its retry backoff floor
+    }
+)
 
 
 def normalize_proxy_url(host_url: str, trailing_uri: str) -> str:
@@ -302,6 +312,22 @@ def _filter_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDict[str]
     return CIMultiDict((k, v) for k, v in headers.items() if k.lower() not in RESPONSE_HEADERS_TO_DROP)
 
 
+def _filter_error_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDict[str]:
+    """Filter response headers for forwarding onto a synthesized error body.
+
+    Unlike :func:`_filter_response_headers`, which drops a known-bad set and
+    forwards everything else, this only forwards headers on
+    :data:`ERROR_RESPONSE_HEADERS_TO_FORWARD`. The error path raises a new
+    HTTPException with its own body rather than forwarding the upstream body
+    byte-for-byte, so most upstream headers (framing headers describing that
+    body, hop-by-hop headers, anything backend-internal) should not cross this
+    boundary at all; an allowlist means a new upstream header type can never
+    leak through by default the way a deny-list would require remembering to
+    block it.
+    """
+    return CIMultiDict((k, v) for k, v in headers.items() if k.lower() in ERROR_RESPONSE_HEADERS_TO_FORWARD)
+
+
 def _close_response(response: aiohttp.ClientResponse | None):
     """Close an aiohttp response if it's open."""
     if response and not response.closed:
@@ -355,6 +381,7 @@ async def proxy_request(http_client: ClientSession, next_request_info: NextReque
 
         if response.status >= 400:
             error_body = await _read_error_body(response)
+            error_headers = dict(_filter_error_response_headers(response.headers))
             _close_response(response)
             logger.warning(
                 "Backend error %d from %s: %s",
@@ -368,10 +395,10 @@ async def proxy_request(http_client: ClientSession, next_request_info: NextReque
                     if error_body
                     else f"Backend returned {response.status}"
                 )
-                raise HTTPException(status_code=502, detail=detail)
+                raise HTTPException(status_code=502, detail=detail, headers=error_headers)
             else:
                 detail = error_body if error_body else str(response.status)
-                raise HTTPException(status_code=response.status, detail=detail)
+                raise HTTPException(status_code=response.status, detail=detail, headers=error_headers)
 
         response_headers = _filter_response_headers(response.headers)
 
@@ -494,6 +521,7 @@ async def fetch_proxy_response(
 
         if response.status >= 400:
             error_body = await _read_error_body(response)
+            error_headers = dict(_filter_error_response_headers(response.headers))
             _close_response(response)
             logger.warning(
                 "Backend error %d from %s: %s",
@@ -507,10 +535,10 @@ async def fetch_proxy_response(
                     if error_body
                     else f"Backend returned {response.status}"
                 )
-                raise HTTPException(status_code=502, detail=detail)
+                raise HTTPException(status_code=502, detail=detail, headers=error_headers)
             else:
                 detail = error_body if error_body else str(response.status)
-                raise HTTPException(status_code=response.status, detail=detail)
+                raise HTTPException(status_code=response.status, detail=detail, headers=error_headers)
 
         response_headers = _filter_response_headers(response.headers)
         status_code = response.status
