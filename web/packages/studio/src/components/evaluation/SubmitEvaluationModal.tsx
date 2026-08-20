@@ -26,7 +26,7 @@ import {
   useListEvaluations,
   useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
-import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import { Anchor, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
@@ -574,7 +574,17 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         <Stack gap="density-xl">
           {agentProp ? (
             <Stack gap="density-xs">
-              <Text kind="body/semibold/lg">{agentProp}</Text>
+              <Text kind="body/regular/sm">
+                Run evaluation via NeMo evaluator&apos;s built in runner. Evaluator supports
+                Harbor and Gym runners as well.{' '}
+                <Anchor
+                  href="https://docs.nvidia.com/nemo/evaluator/nightly"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Learn more
+                </Anchor>
+              </Text>
               {deploymentError && (
                 <Text kind="body/regular/sm" className="text-[var(--text-color-feedback-danger)]">
                   {deploymentError}
