@@ -544,8 +544,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
           {agentProp ? (
             <Stack gap="density-md">
               <Text kind="body/regular/md">
-                Run evaluation via NeMo evaluator&apos;s built in runner. Evaluator supports
-                Harbor and Gym runners as well.
+                Run evaluation via NeMo evaluator&apos;s built in runner. Evaluator supports Harbor
+                and Gym runners as well.
               </Text>
               <Button
                 asChild
