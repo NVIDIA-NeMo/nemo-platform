@@ -15,8 +15,10 @@ from pathlib import Path
 import pytest
 import yaml
 from evaluation import cli
+from nemo_insights_plugin.analyst.observability import AnalystEvaluationContext
 
 _REAL_LOAD_REGISTRY = cli.load_registry
+_REAL_REGISTER_ANALYSIS_EVALUATION = cli._register_analysis_evaluation
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +45,14 @@ def isolate_checked_in_insights(monkeypatch, tmp_path):
     }
     monkeypatch.setattr(cli, "load_registry", load_registry_with_test_intake)
     monkeypatch.setattr(cli, "INSIGHTS_DIR", tmp_path / "checked-in-insights", raising=False)
+    monkeypatch.setattr(
+        cli,
+        "_register_analysis_evaluation",
+        lambda **_kwargs: AnalystEvaluationContext(
+            evaluation_name="nemo-analyst-test",
+            test_case_name="test-subject",
+        ),
+    )
     if helpers["check_in"] is not None:
         monkeypatch.setattr(
             cli,
@@ -221,6 +231,100 @@ def test_analyze_live_happy_path(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "REPORT-OK" in out
     assert "Insights written" in out
+
+
+def test_analyze_registers_and_tags_analyst_run_by_default(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(cli, "TMP", tmp_path)
+    monkeypatch.setattr(cli, "_register_analysis_evaluation", _REAL_REGISTER_ANALYSIS_EVALUATION)
+    monkeypatch.setattr(cli, "mint_agent_id", lambda _base: "nemo-analyst-run-1")
+    calls: dict[str, object] = {}
+
+    def fake_ensure_experiment_group(base_url, workspace, name):
+        calls["experiment"] = (base_url, workspace, name)
+        return "experiment-1"
+
+    def fake_create_experiment(base_url, workspace, **kwargs):
+        calls["evaluation"] = (base_url, workspace, kwargs)
+
+    async def fake_analyze(self, *, record, since, verbose, out_path):
+        calls["observability"] = self.analyst_evaluation
+        return "REPORT-OK"
+
+    monkeypatch.setattr(cli, "ensure_experiment_group", fake_ensure_experiment_group)
+    monkeypatch.setattr(cli, "create_experiment", fake_create_experiment)
+    monkeypatch.setattr("evaluation.adapters.IntakeAdapter.analyze", fake_analyze)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "evaluation",
+            "analyze",
+            "nvq",
+            "--live",
+            "--base",
+            "http://localhost:8080",
+            "--set",
+            "agent=smoke-agent",
+            "--set",
+            "workspace=default",
+            "--no-baseline-update",
+        ],
+    )
+
+    cli.main()
+
+    assert calls["experiment"] == (
+        "http://localhost:8080",
+        "default",
+        "nemo-analyst",
+    )
+    assert calls["evaluation"] == (
+        "http://localhost:8080",
+        "default",
+        {
+            "name": "nemo-analyst-run-1",
+            "experiment_group_id": "experiment-1",
+            "dataset_name": "nemo-analyst:smoke-agent",
+            "dataset_version": "live",
+            "metadata": {
+                "subject": "nvq",
+                "target_agent": "smoke-agent",
+                "test_case_name": "nvq",
+                "state": "live",
+            },
+        },
+    )
+    context = calls["observability"]
+    assert isinstance(context, AnalystEvaluationContext)
+    assert context.evaluation_name == "nemo-analyst-run-1"
+    assert context.test_case_name == "nvq"
+    assert "Experiment 'nemo-analyst', Evaluation 'nemo-analyst-run-1'" in capsys.readouterr().out
+
+
+def test_register_analysis_evaluation_leaves_custom_intake_auth_unchanged(monkeypatch):
+    from evaluation.registry import Subject
+
+    subject = Subject(
+        "custom-intake",
+        "intake",
+        {
+            "agent": "custom-agent",
+            "workspace": "default",
+            "base_url": "https://intake.example",
+            "auth": "basic",
+        },
+    )
+    monkeypatch.setattr(cli, "ensure_experiment_group", lambda *_args, **_kwargs: pytest.fail("must not register"))
+
+    assert (
+        _REAL_REGISTER_ANALYSIS_EVALUATION(
+            subject=subject,
+            subject_name=subject.name,
+            record=None,
+            state_label="live",
+        )
+        is None
+    )
 
 
 def test_analyze_checks_in_insights_with_spdx_and_provenance_by_default(
@@ -1102,6 +1206,7 @@ def test_analyze_glamr_live_base_preserves_remote_auth(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(cli, "load_registry", lambda _path: {"glamr": glamr})
+    monkeypatch.setattr(cli, "_register_analysis_evaluation", _REAL_REGISTER_ANALYSIS_EVALUATION)
     monkeypatch.setattr(cli, "_load_dotenv", lambda *args, **kwargs: None)
     monkeypatch.setattr(cli, "TMP", tmp_path)
     monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
@@ -1110,9 +1215,14 @@ def test_analyze_glamr_live_base_preserves_remote_auth(monkeypatch, tmp_path):
     built: dict[str, object] = {}
     real_build_adapter = cli.build_adapter
 
-    def capture_build_adapter(subject: Subject) -> EvaluationAdapter:
+    def capture_build_adapter(
+        subject: Subject,
+        *,
+        analyst_evaluation: AnalystEvaluationContext | None = None,
+    ) -> EvaluationAdapter:
         built.update(subject.config)
-        return real_build_adapter(subject)
+        built["analyst_evaluation"] = analyst_evaluation
+        return real_build_adapter(subject, analyst_evaluation=analyst_evaluation)
 
     async def fake_analyze(
         self: IntakeAdapter,
@@ -1133,6 +1243,8 @@ def test_analyze_glamr_live_base_preserves_remote_auth(monkeypatch, tmp_path):
     )
 
     cli.main()
+
+    assert built["analyst_evaluation"] is None
 
     assert built["base_url"] == "https://override.example"
     assert {key: built[key] for key in cli._REMOTE_AUTH_KEYS} == {

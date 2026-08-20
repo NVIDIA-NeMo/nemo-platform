@@ -23,6 +23,7 @@ from evaluation.otlp_build import session_id_for, sim_to_spans
 from evaluation.otlp_ingest import export_spans, post_evaluator_results, trace_id_for
 from evaluation.registry import Subject
 from evaluation.tau2run import load_tasks, policy_version, read_policy, resolve_paths, run_tau2
+from nemo_insights_plugin.analyst.observability import AnalystEvaluationContext
 from nemo_insights_plugin.analyst.run import run_analyst
 from nemo_insights_plugin.client import make_client
 from nemo_platform import AsyncNeMoPlatform
@@ -48,8 +49,9 @@ class EvaluationAdapter(Protocol):
 class IntakeAdapter:
     """Analyze an agent's existing Intake traces (no production step)."""
 
-    def __init__(self, subject: Subject) -> None:
+    def __init__(self, subject: Subject, *, analyst_evaluation: AnalystEvaluationContext | None = None) -> None:
         self.subject = subject
+        self.analyst_evaluation = analyst_evaluation
 
     def check(self) -> list[str]:
         """Unmet prerequisites for this subject (empty list = ready to run)."""
@@ -98,6 +100,7 @@ class IntakeAdapter:
             local_only=True,
             verbose=verbose,
             since=since,
+            analyst_evaluation=self.analyst_evaluation,
         )
 
     def _basic_auth_client(self) -> AsyncNeMoPlatform:
@@ -115,8 +118,9 @@ class IntakeAdapter:
 class BenchmarkAdapter:
     """Run a benchmark to produce traces, ingest them, then analyze."""
 
-    def __init__(self, subject: Subject) -> None:
+    def __init__(self, subject: Subject, *, analyst_evaluation: AnalystEvaluationContext | None = None) -> None:
         self.subject = subject
+        self.analyst_evaluation = analyst_evaluation
 
     def check(self) -> list[str]:
         """Unmet prerequisites for this benchmark (empty list = ready to run)."""
@@ -306,6 +310,7 @@ class BenchmarkAdapter:
             verbose=verbose,
             since=since,
             evaluation_id=evaluation_id,
+            analyst_evaluation=self.analyst_evaluation,
         )
 
 
@@ -315,11 +320,15 @@ _ADAPTERS: dict[str, type[IntakeAdapter] | type[BenchmarkAdapter]] = {
 }
 
 
-def build_adapter(subject: Subject) -> EvaluationAdapter:
+def build_adapter(
+    subject: Subject,
+    *,
+    analyst_evaluation: AnalystEvaluationContext | None = None,
+) -> EvaluationAdapter:
     """Construct the adapter for a subject's ``type``."""
     cls = _ADAPTERS.get(subject.type)
     if cls is None:
         raise SystemExit(
             f"evaluation '{subject.name}' has unknown type '{subject.type}'. Known types: {', '.join(sorted(_ADAPTERS))}."
         )
-    return cls(subject)
+    return cls(subject, analyst_evaluation=analyst_evaluation)
