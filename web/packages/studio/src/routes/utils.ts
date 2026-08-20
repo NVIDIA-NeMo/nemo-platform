@@ -633,10 +633,6 @@ export const getAgentMonitorRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.agentMonitor, { workspace });
 };
 
-export const getAgentEvaluationsListRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.agentEvaluationsList, { workspace });
-};
-
 export const getAgentEvaluationDetailRoute = (workspace: string, agentEvalJobName: string) => {
   return generatePath(ROUTES.workspace.agentEvaluationDetail, {
     workspace,

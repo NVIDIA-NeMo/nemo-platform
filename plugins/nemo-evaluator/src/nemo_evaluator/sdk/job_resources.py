@@ -17,6 +17,7 @@ from time import monotonic
 from typing import TypeAlias, cast
 
 import httpx
+from nemo_evaluator.jobs.agent_spec import AgentEvalSpec
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.utils import filter_aggregate_scores
@@ -28,6 +29,10 @@ from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
 from pydantic import BaseModel
 
 EvaluatorJob: TypeAlias = BaseJob[EvaluateSpec]
+#: The agent counterpart. Separate because the two jobs' specs genuinely differ — an agent job
+#: carries tasks and a runner target where a row job carries metrics and a dataset — so reusing
+#: `EvaluatorJob` here would fail validation on every field of the spec that came back.
+AgentEvaluatorJob: TypeAlias = BaseJob[AgentEvalSpec]
 
 _TERMINAL_FAILURE_STATUSES = frozenset({"error", "cancelled", "failed"})
 _TERMINAL_SUCCESS_STATUS = "completed"
@@ -204,6 +209,107 @@ def _poll_until_terminal(
             pending_elapsed += sleep_duration
         else:
             elapsed += sleep_duration
+
+
+class AgentEvaluatorJobResource:
+    """High-level SDK handle for a submitted agent-evaluation job.
+
+    Deliberately *not* a subclass of, or base for, :class:`EvaluatorJobResource`. The polling half
+    of the two is identical today, but the result half is not: a row evaluation publishes
+    ``aggregate-scores`` and ``row-scores`` artifacts, while an agent evaluation publishes
+    ``agent-eval-results`` and ``summary`` and produces trials rather than rows. Sharing a base to
+    save the polling duplication would put :meth:`EvaluatorJobResource.get_result` on this class,
+    where it would fetch row-score routes an agent job never writes — a method whose type says
+    "results" and whose behaviour is a 404. The duplication is the cheaper mistake while the two
+    shapes are still settling.
+
+    **No ``get_result`` yet.** Reading the trial bundle back means downloading and parsing this
+    job's artifacts, which nothing does today, and the name ``AgentEvalResult`` is already taken by
+    two different types — the persisted API record and the SDK's trials-and-scores bundle. That
+    distinction deserves its own change rather than being settled as a side effect of submission.
+    Until then, the persisted record is queryable::
+
+        evaluator.agent_eval_results.list(job_id=job.name)
+
+    **No ``download_artifacts`` either**, for the same reason: the row job publishes an ``artifacts``
+    result and this one does not — it saves ``agent-eval-results`` and ``summary``. Offering the
+    row job's downloader here would 404. What remains is status and polling, which the platform
+    serves per job regardless of what produced it.
+    """
+
+    def __init__(
+        self,
+        *,
+        job: AgentEvaluatorJob,
+        http_client: httpx.Client,
+        base_url: str,
+        workspace: str,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        """Store the job identity and HTTP client used for status calls."""
+        self._job = job
+        self._http_client = http_client
+        self._base_url = http_utils.base_url(base_url)
+        self._workspace = workspace
+        self._headers = dict(headers or {})
+        self._job_base_url = http_utils.job_route_base_url(
+            raw_base_url=self._base_url,
+            workspace=self._workspace,
+            job_name=self.name,
+        )
+
+    @property
+    def name(self) -> str:
+        """Return the agent-evaluation job name."""
+        return self._job.name
+
+    @property
+    def job(self) -> AgentEvaluatorJob:
+        """Return the raw job payload captured at resource creation."""
+        return self._job
+
+    def get_job_status(self) -> PlatformJobStatusResponse:
+        """Fetch the current job status from the evaluator plugin API."""
+        response = self._http_client.get(
+            http_utils.job_route_resource_url(job_base_url=self._job_base_url, resource_path=_RES_STATUS),
+            headers=self._headers,
+        )
+        response.raise_for_status()
+        return PlatformJobStatusResponse.model_validate(response.json())
+
+    def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
+        """Return whether the job has completed.
+
+        Args:
+            raise_if_not_complete: When true, raise ``RuntimeError`` for any status other than
+                ``completed``.
+
+        Returns:
+            ``True`` only when the current status is ``completed``.
+        """
+        return _status_is_complete(self.get_job_status(), raise_if_not_complete)
+
+    def wait_until_done(
+        self,
+        *,
+        poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
+        job_timeout_seconds: float = _DEFAULT_JOB_TIMEOUT_SECONDS,
+        pending_timeout_seconds: float = _DEFAULT_PENDING_TIMEOUT_SECONDS,
+    ) -> None:
+        """Block until the job reaches a terminal platform status.
+
+        Raises:
+            RuntimeError: If the job reaches a terminal failure status.
+            TimeoutError: If polling exceeds configured timeouts.
+        """
+        status = _poll_until_terminal(
+            self.get_job_status,
+            job_name=self.name,
+            timeout=job_timeout_seconds,
+            pending_timeout=pending_timeout_seconds,
+            poll_interval=poll_interval_seconds,
+        )
+        _raise_for_terminal_status(status)
 
 
 class EvaluatorJobResource:

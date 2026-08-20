@@ -14,7 +14,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useEntitiesListWorkspaceMembers } from '@nemo/sdk/generated/platform/api';
 import type { WorkspaceMember } from '@nemo/sdk/generated/platform/schema';
-import { Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Text } from '@nvidia/foundations-react-core';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { Pencil, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo } from 'react';
@@ -116,14 +116,14 @@ export const MembersDataView: FC<MembersDataViewProps> = ({
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (member: WorkspaceMemberWithId) => [
+          rowActions: (member: WorkspaceMemberWithId): DropdownEntry[] => [
             {
-              slotLeft: <Pencil />,
+              slotStart: <Pencil />,
               children: 'Edit Role',
               onSelect: () => onEditMember(member),
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Remove',
               danger: true,
               onSelect: () => onRemoveMember(member),

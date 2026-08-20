@@ -12,20 +12,15 @@ Full request schemas for the three intake ingest endpoints. All are under
 ```json
 {
   "evaluation_context": {
-    "evaluation_id": "my-eval-baseline",
-    "test_case_id": "dataset/case-001"
+    "evaluation_name": "my-eval-baseline",
+    "test_case_name": "dataset/case-001"
   }
 }
 ```
 
-- `evaluation_id` is the Evaluation's **name** (not its entity id); `test_case_id` is optional (which
-  task/test case this run covers).
+- `test_case_name` is optional and identifies which task or test case the run covers.
 - The referenced Evaluation **must already exist** (create it first) or the request is rejected with
   `400 "…must be created before it can be logged."`
-- The model is lenient (`extra="ignore"`): retired keys (`evaluation_sha`, `evaluation_run_id`,
-  `metadata`) are accepted but dropped — only `evaluation_id` and `test_case_id` survive.
-- A deprecated `experiment_context` `{experiment_id, test_case_id}` shape is still accepted;
-  `evaluation_context` wins if both are present. Use `evaluation_context`.
 
 ---
 
@@ -46,7 +41,7 @@ automatically; you don't call `/evaluator-results` separately for Harbor runs.
 {
   "schema_version": "ATIF-v1.5",
   "session_id": "d074dfb7-3691-443c-b137-720d75e40afa",
-  "evaluation_context": { "evaluation_id": "my-eval-baseline", "test_case_id": "my-dataset/case-a" },
+  "evaluation_context": { "evaluation_name": "my-eval-baseline", "test_case_name": "my-dataset/case-a" },
   "agent": { "name": "my-agent", "version": "1.0.0", "model_name": "provider/model" },
   "final_metrics": {
     "total_prompt_tokens": 51701, "total_completion_tokens": 255,
@@ -107,7 +102,7 @@ to this shape and publishing it as an Evaluation.
   "session_id": "session-001",
   "provider": "openai",
   "cost_usd": 0.0001,
-  "evaluation_context": { "evaluation_id": "my-eval-baseline", "test_case_id": "case-001" }
+  "evaluation_context": { "evaluation_name": "my-eval-baseline", "test_case_name": "case-001" }
 }
 ```
 
@@ -131,11 +126,11 @@ the root span:
 
 | Meaning | Span attribute key |
 |---|---|
-| Evaluation (by name) | **`nemo.evaluation.name`** |
-| Test case | **`nemo.test_case.id`** |
+| Evaluation | **`nemo.evaluation.name`** |
+| Test case | **`nemo.test_case.name`** |
 
-> Set `nemo.evaluation.name` to the Evaluation's **name** (not its id), matching the `evaluation_id`
-> field used by the JSON `evaluation_context` on the other endpoints.
+These attributes correspond to `evaluation_name` and `test_case_name` in the JSON `evaluation_context`
+used by the other ingest endpoints.
 
 Cost/token/model attributes are read from standard GenAI / OpenInference keys (first match wins):
 
@@ -161,7 +156,7 @@ export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${NMP_BASE_URL}/apis/intake/v2/worksp
 export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL="http/protobuf"
 ```
 
-Then set `nemo.evaluation.name` (+ `nemo.test_case.id`) on the root span of each run.
+Then set `nemo.evaluation.name` (+ `nemo.test_case.name`) on the root span of each run.
 
 ---
 
@@ -196,6 +191,8 @@ be outside the batch. Timestamps require an offset. Structured inputs, outputs, 
 attributes retain native JSON types. Known semantic attributes populate queryable fields; other
 attributes appear in detailed reads under `raw_attributes`. Reposting the same
 `(source, trace_id, span_id)` updates the existing logical span.
+
+String inputs and outputs are stored verbatim; objects and arrays are serialized as JSON.
 
 The default ClickHouse TTL is 90 days from `started_at`. If any span is outside that window, Intake
 returns `422` before writing the batch and instructs the operator to increase the `spans` and

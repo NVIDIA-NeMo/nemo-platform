@@ -441,6 +441,6 @@ def _row_to_span(
 def _none_if_zero_datetime(value: Any) -> datetime | None:
     if value is None:
         return None
-    if value.timestamp() == 0:
+    if value == _ZERO_DATETIME or (value.tzinfo is None and value == _ZERO_DATETIME.replace(tzinfo=None)):
         return None
     return value

@@ -14,8 +14,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Any, ClassVar
+from typing import Any
 
+import pytest
 from nemo_evaluator.api.schemas import (
     EvaluatorTaskDefinition,
     HarborTaskDefinition,
@@ -28,8 +29,7 @@ from nemo_evaluator.content_hash import DIGEST_PATTERN, canonical_payload, conte
 from nemo_evaluator.entities import TaskEntity, TasksetEntity
 from nemo_evaluator.revisions import head_digest
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticReducer, SemanticView, ViewSignal
-from nemo_platform_plugin.entities import EntityBase
-from pydantic import Field
+from pydantic import ValidationError
 
 _DEFAULT_VIEWS = {
     "correctness": SemanticView(
@@ -204,6 +204,11 @@ def test_empty_and_populated_metadata_value_differ() -> None:
     assert content_hash(a) != content_hash(b)
 
 
+def test_metadata_rejects_non_json_value() -> None:
+    with pytest.raises(ValidationError):
+        MetadataItem.model_validate({"key": "invalid", "value": object()})
+
+
 def test_absent_field_collapses_onto_its_default() -> None:
     """Documented behavior, asserted so a future change to it is deliberate: ``model_dump``
     materializes defaults, so "unset" and "set to the default" are indistinguishable. A model
@@ -211,22 +216,10 @@ def test_absent_field_collapses_onto_its_default() -> None:
     assert content_hash(_task(inputs=TaskInputs())) == content_hash(_task(inputs=TaskInputs(instruction=None)))
 
 
-class _NumericEntity(EntityBase):
-    """Local entity for canonicalization properties the real task schemas can't express.
-
-    ``TaskInputs`` is ``extra="forbid"`` with a single string field, so no current entity carries a
-    number. The canonicalizer is schema-agnostic, so exercise it directly rather than not at all.
-    """
-
-    __entity_type__: ClassVar[str] = "test_numeric"
-
-    value: float | int = Field(description="A number, to pin JSON numeric rendering.")
-
-
 def test_int_and_float_render_distinctly() -> None:
     """``1`` and ``1.0`` are distinguishable values, and JSON renders them distinctly."""
-    assert content_hash(_NumericEntity(name="n", workspace="default", value=1)) != content_hash(
-        _NumericEntity(name="n", workspace="default", value=1.0)
+    assert content_hash(_task(inputs=TaskInputs.model_validate({"value": 1}))) != content_hash(
+        _task(inputs=TaskInputs.model_validate({"value": 1.0}))
     )
 
 

@@ -43,7 +43,13 @@ async def resolve_secret_ref(sdk: AsyncNeMoPlatform, secret_ref: SecretRef) -> s
 
 
 async def resolve_deployment_config_secrets(sdk: AsyncNeMoPlatform, config: DeploymentConfig) -> DeploymentConfig:
-    """Return an execution-only copy whose secret references have resolved values."""
+    """Return an execution-only copy whose secret references have plaintext values.
+
+    Used by substrates that cannot mount a managed secret object (docker,
+    openshell): every ``secret_ref`` env var is resolved to a plaintext
+    ``EnvVar.value``. Vars that resolve to ``None`` (best-effort NGC only) are
+    omitted so mock/local images can still start.
+    """
     resolved = config.model_copy(deep=True)
     for container in (*resolved.init_containers, *resolved.containers):
         env: list[EnvVar] = []
@@ -55,22 +61,65 @@ async def resolve_deployment_config_secrets(sdk: AsyncNeMoPlatform, config: Depl
     return resolved
 
 
-async def _resolve_env_var(sdk: AsyncNeMoPlatform, item: EnvVar) -> EnvVar | None:
-    """Resolve an authorized secret-backed environment variable.
+async def resolve_deployment_secret_env(sdk: AsyncNeMoPlatform, config: DeploymentConfig) -> dict[str, str]:
+    """Collect resolved secret values for every ``secret_ref`` env var.
 
-    NGC credentials are best-effort: when neither the configured secret nor the
-    process-environment fallback is available, omit the variable so mock/local
-    NIM images can still start. Unauthorized references and secret-service
-    access failures remain hard errors.
+    Used by the k8s substrate to materialize a single per-deployment ``Secret``
+    that is mounted via ``envFrom``, so plaintext never lands in the pod
+    manifest. The returned mapping is keyed by the env var name across all
+    containers. Later containers win on duplicate names, matching the
+    single-Secret-per-deployment projection.
+
+    Best-effort NGC semantics are preserved: a ``secret_ref`` that resolves to
+    ``None`` is omitted rather than raising. Unauthorized references and
+    secret-service access failures remain hard errors via ``_resolve_secret_value``.
+    """
+    secret_env: dict[str, str] = {}
+    for container in (*config.init_containers, *config.containers):
+        for item in container.env:
+            if item.secret_ref is None:
+                continue
+            value = await _resolve_secret_value(sdk, item)
+            if value is not None:
+                secret_env[item.name] = value
+    return secret_env
+
+
+async def _resolve_env_var(sdk: AsyncNeMoPlatform, item: EnvVar) -> EnvVar | None:
+    """Resolve a secret-backed environment variable to a plaintext ``EnvVar``.
+
+    Non-secret vars pass through unchanged. Secret vars that resolve to ``None``
+    (best-effort NGC only) are omitted (returns ``None``).
     """
     if item.secret_ref is None:
         return item
-    ngc_secret_ref = platform_ngc_secret_ref()
-    if item.name != "NGC_API_KEY" or item.secret_ref != ngc_secret_ref:
-        raise SecretResolutionError(f"Unsupported secret reference for environment variable {item.name!r}")
-    value = await resolve_secret_ref(sdk, item.secret_ref)
-    if value is None:
-        value = os.environ.get(get_platform_config().ngc_api_key_env_var)
+    value = await _resolve_secret_value(sdk, item)
     if value is None:
         return None
     return EnvVar(name=item.name, value=value)
+
+
+async def _resolve_secret_value(sdk: AsyncNeMoPlatform, item: EnvVar) -> str | None:
+    """Resolve the plaintext value for a secret-backed env var.
+
+    NGC credentials are best-effort: when neither the configured secret nor the
+    process-environment fallback is available, return ``None`` so callers can
+    omit the variable and mock/local NIM images can still start. All other
+    references are resolved via the Secrets service; a missing secret is a hard
+    error, as is any secret-service access failure.
+    """
+    if item.secret_ref is None:
+        raise SecretResolutionError(f"Environment variable {item.name!r} has no secret reference to resolve")
+    value = await resolve_secret_ref(sdk, item.secret_ref)
+    if value is not None:
+        return value
+
+    # Only reached when the Secrets service had no value: fall back to the NGC
+    # process-env only for the platform NGC key, otherwise it is a hard error.
+    is_ngc = item.name == "NGC_API_KEY" and item.secret_ref == platform_ngc_secret_ref()
+    if is_ngc:
+        return os.environ.get(get_platform_config().ngc_api_key_env_var)
+    raise SecretResolutionError(
+        f"Secret {item.secret_ref.workspace}/{item.secret_ref.name} for environment "
+        f"variable {item.name!r} could not be resolved"
+    )

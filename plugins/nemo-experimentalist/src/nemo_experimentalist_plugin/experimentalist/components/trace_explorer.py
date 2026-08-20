@@ -1468,6 +1468,7 @@ class TraceExplorer:
     def task_name(self) -> str | None:
         """Task identifier recorded by trace or evaluator metadata."""
         attribute_names = (
+            "nemo.test_case.name",
             "nemo.test_case.id",
             "test_case.id",
             "task.name",

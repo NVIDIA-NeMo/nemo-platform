@@ -21,7 +21,7 @@ from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 from nemo_deployments_plugin.backends.labels import deployment_identity_labels
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
-from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
+from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_secret_env
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
@@ -103,7 +103,10 @@ class K8sDeploymentBackend(DeploymentBackend):
     ) -> BackendStatusUpdate:
         try:
             config = await self._load_deployment_config(workspace, config_name)
-            config = await resolve_deployment_config_secrets(self._sdk, config)
+            # k8s keeps secret_ref env vars intact and mounts their resolved
+            # values through a single per-deployment Secret via envFrom, so the
+            # plaintext never lands in the pod manifest.
+            secret_env = await resolve_deployment_secret_env(self._sdk, config)
         except NemoEntityNotFoundError:
             return BackendStatusUpdate(
                 status="FAILED",
@@ -126,6 +129,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 backend_config=backend_config,
                 config=config,
                 executor_image_pull_secrets=self._executor_config.image_pull_secrets,
+                secret_env=secret_env,
             )
 
         return await job_ops.create_job(
@@ -138,6 +142,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             backend_config=backend_config,
             config=config,
             executor_image_pull_secrets=self._executor_config.image_pull_secrets,
+            secret_env=secret_env,
         )
 
     async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:

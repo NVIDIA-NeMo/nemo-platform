@@ -73,7 +73,7 @@ const listEvaluationSessionsWithModeFallback = async (
 // Column id → API sort field. All session sort fields are direct 1:1 matches so no
 // translation is needed beyond listing the sortable ids.
 const SESSION_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
-  test_case_id: 'test_case_id',
+  test_case_name: 'test_case_name',
   started_at: 'started_at',
   ended_at: 'ended_at',
   latency_ms: 'latency_ms',
@@ -119,7 +119,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       filter: {
         ...dataViewState.apiFilter.filter,
         ...(dataViewState.debouncedSearchBar && {
-          test_case_id: dataViewState.debouncedSearchBar,
+          test_case_name: dataViewState.debouncedSearchBar,
         }),
       },
     };
@@ -184,12 +184,12 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
   const makeColumns: ComponentProps<typeof DataViewRoot<SessionRow>>['makeColumns'] = ({
     accessor,
   }) => [
-    accessor('test_case_id', {
+    accessor('test_case_name', {
       header: 'Test case',
       enableSorting: true,
       size: 200,
       cell: ({ row }) => {
-        const value = row.original.test_case_id;
+        const value = row.original.test_case_name;
         if (!value) return <Text>-</Text>;
         return (
           <Tooltip slotContent={value} className={tooltipClassName} side="bottom">
@@ -297,7 +297,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     <StudioDataView
       dataViewState={dataViewState}
       makeColumns={makeColumns}
-      searchField="test_case_id"
+      searchField="test_case_name"
       onRowClick={(row) => {
         if (row.trace_id) {
           navigate(

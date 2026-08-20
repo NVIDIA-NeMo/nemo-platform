@@ -3,12 +3,12 @@
 
 """LLM judge metric runtime implementation."""
 
+import asyncio
 import logging
 from copy import copy, deepcopy
 from typing import Any, Literal, Protocol, Self
 
 import nemo_evaluator_sdk.inference as inference
-from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.inference import InferenceFn, InferenceHookParams
 from nemo_evaluator_sdk.inference import new_hooks as _new_inference_hooks
 from nemo_evaluator_sdk.metrics.hooks import HooksBase
@@ -78,6 +78,7 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
     _use_max_completion_tokens: bool = False
     _api_key: str | None = None
     _client: AsyncOpenAI | None = PrivateAttr(default=None)
+    _preflight_lock: asyncio.Lock | None = PrivateAttr(default=None)
     _inference_fn: InferenceFn | None = None
     _parsers: dict[str, ScoreParser] = PrivateAttr(default_factory=dict)
     _score_dumps: dict[str, dict[str, Any]] = PrivateAttr(default_factory=dict)
@@ -121,12 +122,13 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
                 {
                     k: v
                     for k, v in self.__pydantic_private__.items()
-                    if v is not PydanticUndefined and k not in {"_client", "_api_key"}
+                    if v is not PydanticUndefined and k not in {"_client", "_api_key", "_preflight_lock"}
                 },
                 memo=memo,
             )
             private_attrs["_client"] = None
             private_attrs["_api_key"] = None
+            private_attrs["_preflight_lock"] = None
             object.__setattr__(m, "__pydantic_private__", private_attrs)
 
         return m
@@ -198,6 +200,8 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         await resolve_model_refs(self, model_resolver)
         self._client = None
         self._api_key = None
+        # `_preflight_lock` is deliberately not reset: clearing it mid-run would split preflight
+        # synchronisation and let an in-flight scorer send an unprobed request.
         self._ensure_default_prompt_template()
         preprocess_hooks, postprocess_hooks = new_hooks(self)
         self.with_hooks(preprocess=preprocess_hooks, postprocess=postprocess_hooks)
@@ -219,7 +223,7 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
     async def preflight(self) -> None:
         """Resolve structured-output mode once before parallel inference starts."""
         model = self._require_model()
-        if model.format != ModelFormat.NVIDIA_NIM or not self.structured_output:
+        if not self.structured_output:
             return
 
         structured_hook: InferenceStructuredOutput | None = None
@@ -232,19 +236,22 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
             return
 
         mode = await detect_structured_output_mode(
-            format=model.format,
             model=model,
             inference_fn=self.inference_fn,
             api_key=self._api_key,
-            probe_schema={
-                "type": "object",
-                "properties": {"__nmp_probe_score": {"type": "integer"}},
-                "required": ["__nmp_probe_score"],
-                "additionalProperties": False,
-            },
         )
         structured_hook.set_mode(mode)
-        _logger.info("NIM structured output mode selected: %s", mode.value)
+        _logger.info("Structured output mode selected for %s: %s", model.name, mode.value)
+
+    def _require_preflight_lock(self) -> asyncio.Lock:
+        """Return this metric's preflight lock, created lazily to keep the metric deep-copyable."""
+        if self._preflight_lock is None:
+            self._preflight_lock = asyncio.Lock()
+        return self._preflight_lock
+
+    def _has_unresolved_structured_output_hook(self) -> bool:
+        """Return whether a structured-output hook is still carrying an unprobed default."""
+        return any(isinstance(hook, InferenceStructuredOutput) and not hook.resolved for hook in self._preprocess_hooks)
 
     def secrets(self) -> dict[str, SecretRef]:
         """Return secret env mappings required by this metric."""
@@ -340,6 +347,13 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output for one item/sample pair."""
+        # Public API: a caller may score without an executor having run preflight. Locked because
+        # concurrent direct callers would otherwise each probe the same endpoint.
+        if self._has_unresolved_structured_output_hook():
+            async with self._require_preflight_lock():
+                if self._has_unresolved_structured_output_hook():
+                    await self.preflight()
+
         item = input.row.data
         sample = input.candidate
         request = self._render_request(item, sample)
@@ -392,8 +406,7 @@ def _selected_rubric_label(score: MetricScore) -> str | None:
 
 def new_hooks(params: _LLMJudgeHookParams | None):
     """Initialize preprocess and postprocess hooks for the LLM judge."""
-    model_format = params.model.format if params and isinstance(params.model, Model) else ModelFormat.NVIDIA_NIM
-    return _new_inference_hooks(params, model_format=model_format)
+    return _new_inference_hooks(params)
 
 
 def generate_structured_output(params: _LLMJudgeHookParams) -> dict | None:

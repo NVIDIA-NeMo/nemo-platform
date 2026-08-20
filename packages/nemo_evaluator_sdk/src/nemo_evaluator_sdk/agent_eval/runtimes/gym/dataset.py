@@ -17,7 +17,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import _RUNTIME_KEYS, NG_TASK_INDEX, _read_jsonl
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
+    _RUNTIME_KEYS,
+    NG_TASK_INDEX,
+    _read_jsonl,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import GymRewardMetric
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 
@@ -101,9 +105,6 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     ground-truth fields, ``agent_ref``, and so on) on ``metadata['gym_row_extras']``.
     Together with ``inputs['gym_row']`` those reconstruct the complete source row,
     which :class:`GymAgentTaskRunner` re-materializes into the dataset it hands to Gym.
-    They are kept disjoint deliberately: the task record is persisted to the run
-    bundle's ``tasks.jsonl``, and ``responses_create_params`` is usually the bulk of a
-    row, so storing it in both places would write every dataset twice per run.
 
     **One distinct row is one task.** Duplicate rows collapse (identity is row content,
     so they are by definition the same task) and are reported as a warning: repeated
@@ -215,15 +216,16 @@ def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int
     the rollout→task join total and order-independent, and confines the run to the tasks we asked for.
 
     The row is reassembled from ``inputs['gym_row']`` (``responses_create_params``) and
-    ``metadata['gym_row_extras']`` (everything else), which :func:`discover_gym_tasks` keeps disjoint
-    so the run bundle doesn't store the same payload twice. Any pre-existing ``_ng_*`` fields are
-    stripped: ours is authoritative, and Gym assigns ``_ng_rollout_index`` itself per attempt.
+    ``metadata['gym_row_extras']`` (everything else), which :func:`discover_gym_tasks` writes as
+    a plain dict that remains structured through submitted job specs. Any pre-existing ``_ng_*``
+    fields are stripped: ours is authoritative, and Gym assigns ``_ng_rollout_index`` itself per
+    attempt.
     """
     index_to_task_id: dict[int, str] = {}
     seen_task_ids: set[str] = set()
     lines: list[str] = []
     for index, task in enumerate(tasks):
-        # The source row is stored split across inputs/metadata so the run bundle doesn't persist
+        # The source row is split across inputs and metadata so the run bundle doesn't persist
         # responses_create_params twice; reassemble it here.
         extras = task.metadata.get("gym_row_extras")
         params = task.inputs.get("gym_row")

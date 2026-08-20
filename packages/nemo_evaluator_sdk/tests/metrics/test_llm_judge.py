@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
+import json
 import math
 from copy import deepcopy
 from types import SimpleNamespace
@@ -420,6 +422,11 @@ def test_json_parser_no_structured_output():
     assert score.stats.rubric_distribution[1].count == 1
 
 
+def _is_structured_output_probe(request: dict) -> bool:
+    """Identify a preflight structured-output probe by its marker schema."""
+    return "__nmp_probe_score" in json.dumps(request)
+
+
 class TestLLMJudgeMetric:
     def test_rejects_duplicate_score_names(self):
         with pytest.raises(ValueError, match="score names must be unique"):
@@ -764,6 +771,9 @@ class TestLLMJudgeMetric:
 
         async def inference_fn(*args, **kwargs):
             request = kwargs.get("request", args[1])
+            if _is_structured_output_probe(request):
+                # Preflight probes share this inference_fn; they are not scoring requests.
+                return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
             captured_requests.append(deepcopy(request))
             if len(captured_requests) == 1:
                 raise error
@@ -832,6 +842,9 @@ class TestLLMJudgeMetric:
 
         async def inference_fn(*args, **kwargs):
             request = kwargs.get("request", args[1])
+            if _is_structured_output_probe(request):
+                # Preflight probes share this inference_fn; they are not scoring requests.
+                return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
             captured_requests.append(deepcopy(request))
             if len(captured_requests) == 1:
                 raise error
@@ -875,6 +888,25 @@ class TestLLMJudgeMetric:
         assert detect.await_args.kwargs["model"].default_headers == {"X-NMP-Principal-Id": "service:evaluator"}
         structured_hook = next(hook for hook in metric._preprocess_hooks if hasattr(hook, "mode"))
         assert structured_hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
+
+    @pytest.mark.asyncio
+    async def test_preflight_selects_structured_output_mode_for_non_nim_formats(self, mocker: MockerFixture):
+        """Mode selection is driven by detection for every format, not just NIM."""
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.OPEN_AI}),
+            scores=[_make_metric_score()],
+        )
+        detect = mocker.patch(
+            "nemo_evaluator_sdk.metrics.llm_judge.detect_structured_output_mode",
+            new_callable=mocker.AsyncMock,
+            return_value=StructuredOutputMode.OPENAI_RESPONSE_FORMAT,
+        )
+
+        await metric.preflight()
+
+        detect.assert_awaited_once()
+        structured_hook = next(hook for hook in metric._preprocess_hooks if hasattr(hook, "mode"))
+        assert structured_hook.mode == StructuredOutputMode.OPENAI_RESPONSE_FORMAT
 
     @pytest.mark.asyncio
     async def test_preflight_is_noop_without_structured_output(self, mocker: MockerFixture):
@@ -1148,15 +1180,31 @@ class TestGenerateStructuredOutput:
         assert metric.structured_output == explicit
         assert "accuracy" in metric._parsers
 
-    def test_render_request_preserves_nim_max_thinking_tokens_with_structured_output(self):
+    def test_render_request_preserves_nvext_max_thinking_tokens_with_structured_output(self):
+        """Structured output must merge into an existing extra_body.nvext, not replace it."""
         metric = LLMJudgeMetric.model_construct(
-            model=_make_model(ModelFormat.NVIDIA_NIM),
+            model=_make_model(),
             scores=[RubricScore(name="quality", rubric=[Rubric(label="good", value=1), Rubric(label="bad", value=0)])],
             inference=InferenceParams.model_validate({"extra_body": {"nvext": {"max_thinking_tokens": 256}}}),
         )
         item = {"question": "What is AI?"}
         sample = {"output_text": "AI is artificial intelligence"}
         request = metric._render_request(item, sample)
+
+        assert request["extra_body"]["nvext"]["max_thinking_tokens"] == 256
+        assert "response_format" in request
+
+    def test_render_request_merges_nvext_guided_json_beside_max_thinking_tokens(self):
+        """The nvext placement still deep-merges once preflight selects it."""
+        metric = LLMJudgeMetric.model_construct(
+            model=_make_model(),
+            scores=[RubricScore(name="quality", rubric=[Rubric(label="good", value=1), Rubric(label="bad", value=0)])],
+            inference=InferenceParams.model_validate({"extra_body": {"nvext": {"max_thinking_tokens": 256}}}),
+        )
+        for hook in metric._preprocess_hooks:
+            if isinstance(hook, InferenceStructuredOutput):
+                hook.set_mode(StructuredOutputMode.NVEXT_GUIDED_JSON)
+        request = metric._render_request({"question": "What is AI?"}, {"output_text": "AI is intelligence"})
 
         assert request["extra_body"]["nvext"]["max_thinking_tokens"] == 256
         assert "guided_json" in request["extra_body"]["nvext"]
@@ -1204,14 +1252,17 @@ def test_new_hooks_with_defaults():
     assert pre[0].params == {"temperature": 0.9}
     assert isinstance(pre[1], InferenceStructuredOutput)
     assert pre[1].inference_param == {
-        "extra_body": {
-            "nvext": {
-                "guided_json": {
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "structured_output",
+                "schema": {
                     "type": "object",
                     "properties": {"quality": {"enum": ["good", "bad"], "type": "string"}},
                     "required": ["quality"],
-                }
-            }
+                },
+                "strict": False,
+            },
         }
     }
     assert isinstance(pre[2], LogHook), "log hook"
@@ -1221,8 +1272,12 @@ def test_new_hooks_with_defaults():
     assert pre[2] == post[0], "pre and post should have the same instance of log hook"
 
 
-def test_new_hooks_openai_format_uses_response_format():
-    """Test that new_hooks uses response_format for OpenAI model format."""
+def test_new_hooks_defaults_to_response_format_before_probing():
+    """new_hooks installs response_format as the PROVISIONAL default, not because of the format.
+
+    Selection is endpoint-driven; preflight replaces this. Named away from "openai format uses
+    response_format" so it cannot be read as licence to restore format-based selection.
+    """
     metric = LLMJudgeMetric.model_validate(
         {
             "name": "test-judge",
@@ -1253,8 +1308,12 @@ def test_new_hooks_openai_format_uses_response_format():
     assert structured_output_hook.inference_param["response_format"]["type"] == "json_schema"
 
 
-def test_new_hooks_nim_format_uses_nvext():
-    """Test that new_hooks uses nvext for NIM model format."""
+def test_new_hooks_nim_format_no_longer_forces_nvext():
+    """A `nim` label must not preselect nvext: preflight decides from the endpoint.
+
+    Hardcoding nvext here is what made integrate.api.nvidia.com fall back to an unenforced prompt
+    instruction, since that endpoint rejects nvext.guided_json outright.
+    """
     metric = LLMJudgeMetric.model_validate(
         {
             "name": "test-judge",
@@ -1281,8 +1340,8 @@ def test_new_hooks_nim_format_uses_nvext():
             break
 
     assert structured_output_hook is not None, "Expected InferenceStructuredOutput hook"
-    assert "extra_body" in structured_output_hook.inference_param
-    assert "nvext" in structured_output_hook.inference_param["extra_body"]
+    assert "extra_body" not in structured_output_hook.inference_param
+    assert "response_format" in structured_output_hook.inference_param
 
 
 # =============================================================================
@@ -1487,3 +1546,102 @@ def test_llm_judge_top_level_system_prompt_and_reasoning_still_work():
     assert len(metric._postprocess_hooks) == 2
     assert isinstance(metric._postprocess_hooks[1], TransformReasoningOutput)
     assert metric._postprocess_hooks[1].end_reasoning_token == "</think>"
+
+
+@pytest.mark.asyncio
+async def test_compute_scores_probes_the_endpoint_when_called_directly(mocker: MockerFixture):
+    """compute_scores is public API: a caller can score without any executor running preflight.
+
+    Without self-preflight the judge would send the provisional encoding new_hooks guessed, and an
+    endpoint that ignores it would silently drop the constraint.
+    """
+    metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
+    seen: list[dict] = []
+
+    async def inference_fn(*args, **kwargs):
+        request = kwargs.get("request", args[1])
+        seen.append(request)
+        if _is_structured_output_probe(request):
+            # Endpoint honours only nvext.guided_json.
+            if "nvext" in request.get("extra_body", {}):
+                return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
+            return {"choices": [{"message": {"content": "prose, not json"}}]}
+        return {"choices": [{"message": {"content": '{"helpfulness": 3}'}}]}
+
+    metric.set_inference_fn(inference_fn)
+
+    await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+    scoring = [r for r in seen if not _is_structured_output_probe(r)]
+    assert [r for r in seen if _is_structured_output_probe(r)], "expected the endpoint to be probed"
+    assert scoring[0]["extra_body"]["nvext"]["guided_json"] is not None
+
+
+@pytest.mark.asyncio
+async def test_compute_scores_self_preflight_keeps_the_unresolved_model_ref_error():
+    """Self-preflight must not change the failure a caller sees for an unresolved ModelRef.
+
+    preflight() calls _require_model(), which raises for a ModelRef. compute_scores already raised
+    the same error at its own _require_model() call, so the guard only moves it earlier -- it must
+    not turn into a different or less actionable exception.
+    """
+    metric = LLMJudgeMetric(model=ModelRef(root="workspace/judge"), scores=[_make_metric_score()])
+
+    with pytest.raises(ValueError, match="has not been resolved"):
+        await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+
+@pytest.mark.asyncio
+async def test_concurrent_direct_compute_scores_probe_the_endpoint_once():
+    """Direct callers may gather many compute_scores() with no run session to cache detection.
+
+    Without serialising the self-preflight, every concurrent call would see an unresolved hook and
+    probe the same endpoint at once -- hundreds of extra requests before any scoring happens.
+    """
+    metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
+    probes: list[dict] = []
+
+    async def inference_fn(*args, **kwargs):
+        request = kwargs.get("request", args[1])
+        if _is_structured_output_probe(request):
+            probes.append(request)
+            await asyncio.sleep(0.01)  # widen the stampede window
+            return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
+        return {"choices": [{"message": {"content": '{"helpfulness": 3}'}}]}
+
+    metric.set_inference_fn(inference_fn)
+
+    await asyncio.gather(*(compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"}) for _ in range(8)))
+
+    assert len(probes) == 1, f"expected a single probe for 8 concurrent callers, got {len(probes)}"
+
+
+class TestPreflightLockLifecycle:
+    """Pin where the preflight lock is and is not cleared.
+
+    Clearing it in resolve_models() looks tidy and is actively harmful: that method rebuilds the
+    hooks as unresolved, so dropping the lock mid-flight splits synchronisation and lets an
+    in-flight scorer render through the rebuilt hook, sending a guessed encoding with only a
+    warning. A lock retained from another event loop instead fails loudly on its next contended
+    acquire. Deep copies are a different case -- a copy is a new object and must start fresh.
+    """
+
+    @pytest.mark.asyncio
+    async def test_resolve_models_keeps_the_preflight_lock(self):
+        metric = LLMJudgeMetric(model=ModelRef(root="workspace/judge"), scores=[_make_metric_score()])
+        lock = metric._require_preflight_lock()
+
+        await metric.resolve_models(_RegisteredModelResolver())
+
+        assert metric._preflight_lock is lock, (
+            "resolve_models must not clear the preflight lock: doing so splits preflight "
+            "synchronisation while a concurrent compute_scores() is mid-probe"
+        )
+
+    def test_deepcopy_starts_with_a_fresh_preflight_lock(self):
+        metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
+        metric._require_preflight_lock()
+
+        clone = deepcopy(metric)
+
+        assert clone._preflight_lock is None

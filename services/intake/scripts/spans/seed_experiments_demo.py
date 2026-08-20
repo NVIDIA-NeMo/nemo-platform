@@ -516,7 +516,7 @@ def _seed_sessions(
         prompt_tokens = max(10, int(rng.gauss(spec.prompt_tokens_mean, spec.prompt_tokens_mean * 0.25)))
         completion_tokens = max(5, int(rng.gauss(spec.completion_tokens_mean, spec.completion_tokens_mean * 0.3)))
 
-        test_case_id = f"case-{i:04d}"
+        test_case_name = f"case-{i:04d}"
         run_id = f"run-{i // 25:02d}"
         # Spread sessions across the ~5.5h prior to "now" so the Studio timeline looks varied.
         offset_seconds = (i / max(1, spec.n_sessions)) * 5.5 * 3600
@@ -531,9 +531,9 @@ def _seed_sessions(
         )
         atif_body = _demo_atif_body(
             base_started_at=base_started_at,
-            evaluation_id=spec.name,
+            evaluation_name=spec.name,
             run_id=run_id,
-            test_case_id=test_case_id,
+            test_case_name=test_case_name,
             cost_usd=cost_usd,
             latency_ms=latency_ms,
             offset_seconds=offset_seconds,
@@ -571,9 +571,9 @@ def _seed_sessions(
 def _demo_atif_body(
     *,
     base_started_at: datetime,
-    evaluation_id: str,
+    evaluation_name: str,
     run_id: str,
-    test_case_id: str,
+    test_case_name: str,
     cost_usd: float,
     latency_ms: int,
     offset_seconds: float,
@@ -585,7 +585,7 @@ def _demo_atif_body(
 ) -> dict[str, Any]:
     session_started_at = base_started_at + timedelta(seconds=offset_seconds)
     finished_at = session_started_at + timedelta(milliseconds=latency_ms)
-    session_id = f"{evaluation_id}-{run_id}-{test_case_id}"
+    session_id = f"{evaluation_name}-{run_id}-{test_case_name}"
     # `extra.verifier` carries the timing block (used by the rollup for session latency).
     # We omit `extra.verifier_result` so ATIF ingest doesn't auto-create a `harbor.verifier`
     # evaluator alongside our cleanly-named ones from POST /evaluator-results.
@@ -593,12 +593,12 @@ def _demo_atif_body(
         "schema_version": "ATIF-v1.7",
         "session_id": session_id,
         "evaluation_context": {
-            "evaluation_id": evaluation_id,
-            "test_case_id": test_case_id,
+            "evaluation_name": evaluation_name,
+            "test_case_name": test_case_name,
         },
         "extra": {
-            "task_id": test_case_id,
-            "task_name": test_case_id,
+            "task_id": test_case_name,
+            "task_name": test_case_name,
             "verifier": {
                 "started_at": _iso(session_started_at),
                 "finished_at": _iso(finished_at),
@@ -614,14 +614,14 @@ def _demo_atif_body(
                 "step_id": 1,
                 "timestamp": _iso(session_started_at),
                 "source": "user",
-                "message": f"test case: {test_case_id}",
+                "message": f"test case: {test_case_name}",
             },
             {
                 "step_id": 2,
                 "timestamp": _iso(finished_at),
                 "source": "agent",
                 "model_name": model_name,
-                "message": f"solved {test_case_id}",
+                "message": f"solved {test_case_name}",
                 "metrics": {
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,

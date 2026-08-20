@@ -114,6 +114,19 @@ class ExperimentGroup(EntityBase):
         coerce anything that isn't a config mapping to the cost-vs-latency default."""
         return value if isinstance(value, dict | ParetoConfig) else ParetoConfig()
 
+    is_favorite: bool = Field(
+        default=False,
+        description="Whether this Experiment is marked as a favorite.",
+    )
+    show_evaluations_over_time: bool = Field(
+        default=False,
+        description="Whether this Experiment should display Evaluation results over time.",
+    )
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description="Name of this Experiment's baseline Evaluation, if one has been selected.",
+    )
+
     is_deleted: bool = Field(
         default=False,
         description=(
@@ -186,7 +199,6 @@ class Experiment(EntityBase):
         default=None,
         description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
     )
-
     is_deleted: bool = Field(
         default=False,
         description=(

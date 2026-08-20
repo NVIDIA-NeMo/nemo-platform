@@ -22,6 +22,7 @@ from nemo_deployments_plugin.entities import (
     Probe,
     ResourceRequirements,
     RestartPolicy,
+    SecretRef,
     Volume,
     VolumeBackendConfig,
     VolumeMount,
@@ -36,33 +37,48 @@ def _default_request_access_modes() -> list[AccessMode]:
 
 
 class RequestEnvVar(BaseModel):
-    """Public request env vars; secretRef is controller-managed and response-only."""
+    """Public request env vars.
+
+    An env var carries exactly one value source: a plaintext ``value``, a
+    ``valueFrom`` projection, or a ``secretRef`` pointing at a Platform secret.
+    ``secretRef`` values are resolved by the substrate backend at deploy time —
+    docker injects the resolved value as a plaintext container env var, while
+    k8s materializes a single per-deployment ``Secret`` and mounts it via
+    ``envFrom`` so the plaintext never lands in the pod manifest.
+    """
 
     name: str
     value: str | None = None
     value_from: dict[str, Any] | None = Field(default=None, alias="valueFrom")
+    secret_ref: SecretRef | None = Field(default=None, alias="secretRef")
 
     model_config = ConfigDict(
         populate_by_name=True,
         extra="forbid",
         json_schema_extra={
             # Keep the OpenAPI contract aligned with validate_single_source.
-            "not": {"required": ["value", "valueFrom"]},
+            "not": {"required": ["value", "valueFrom", "secretRef"]},
         },
     )
 
     @model_validator(mode="after")
     def validate_single_source(self) -> RequestEnvVar:
-        if self.value is not None and self.value_from is not None:
-            raise ValueError("EnvVar may define only one of value or valueFrom")
+        sources = (self.value, self.value_from, self.secret_ref)
+        if sum(source is not None for source in sources) > 1:
+            raise ValueError("EnvVar may define only one of value, valueFrom, or secretRef")
         return self
 
     def to_entity(self) -> EnvVar:
-        return EnvVar(name=self.name, value=self.value, valueFrom=self.value_from)
+        return EnvVar(
+            name=self.name,
+            value=self.value,
+            valueFrom=self.value_from,
+            secretRef=self.secret_ref,
+        )
 
 
 class RequestContainer(BaseModel):
-    """Public request container; env entries cannot carry secretRef."""
+    """Public request container."""
 
     name: str
     image: str
@@ -86,7 +102,11 @@ class CreateDeploymentConfigRequest(BaseModel):
     volume_mounts: list[VolumeMount] = Field(default_factory=list)
     config_files: list[ConfigFile] = Field(default_factory=list)
     restart_policy: RestartPolicy = "Always"
-    backoff_limit: int = 6
+    backoff_limit: int = Field(
+        default=6,
+        ge=1,
+        description="Retry limit for OnFailure deployments; must be positive. Never deployments disable retries internally.",
+    )
     drift_recovery: DriftRecoveryPolicy | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig)

@@ -23,7 +23,7 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useSecretsDeleteSecret, useSecretsListSecrets } from '@nemo/sdk/generated/platform/api';
 import type { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
-import { Stack, Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { EditSecretModal } from '@studio/routes/SecretsListRoute/EditSecretModal';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Pencil, Trash } from 'lucide-react';
@@ -144,9 +144,9 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({ workspace, onCreate,
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (secret: SecretWithId) => [
+          rowActions: (secret: SecretWithId): DropdownEntry[] => [
             {
-              slotLeft: <Pencil />,
+              slotStart: <Pencil />,
               children: 'Edit',
               onSelect: () => {
                 setModalSecret(secret);
@@ -154,7 +154,7 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({ workspace, onCreate,
               },
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => {

@@ -79,7 +79,7 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
   );
 
   const makeColumns: ComponentProps<typeof StudioDataView<EvalJobRow>>['makeColumns'] = useCallback(
-    ({ accessor }) => [
+    ({ accessor }, { rowActionsColumn }) => [
       accessor('name', {
         header: 'Job',
         cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
@@ -115,8 +115,16 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
           <DurationCell row={row.original} durationMs={getValue<number | undefined>()} />
         ),
       }),
+      rowActionsColumn({
+        rowActions: (row) => [
+          {
+            children: 'View job',
+            onSelect: () => navigate(evalJobDetailRoute(workspace, row)),
+          },
+        ],
+      }),
     ],
-    [durationMsFor]
+    [durationMsFor, navigate, workspace]
   );
 
   return (

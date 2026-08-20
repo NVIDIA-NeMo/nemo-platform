@@ -25,7 +25,7 @@ import type {
   VirtualModel,
   VirtualModelFilter,
 } from '@nemo/sdk/generated/platform/schema';
-import { Stack, Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
@@ -220,7 +220,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
               DropdownContent: { className: 'min-w-[156px]' },
             },
           },
-          rowActions: (vm: VirtualModelWithId) => [
+          rowActions: (vm: VirtualModelWithId): DropdownEntry[] => [
             {
               children: 'View',
               onSelect: () => openDetailsPanel(vm),

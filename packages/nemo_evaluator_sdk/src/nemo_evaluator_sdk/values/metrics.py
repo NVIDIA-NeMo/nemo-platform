@@ -178,7 +178,6 @@ class LLMJudge(MetricBase):
                 "endpoint": "https://api.openai.com/v1",
                 "name": "gpt-4o",
                 "api_key_secret": "secret/my_openai_api_key",
-                "format": "openai",
             }
         ],
     )

@@ -115,8 +115,8 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     ];
     const datasetSubItems = [...anonymizerNav, ...dataDesignerNav, ...safeSynthesizerNav];
 
-    // Agents and Models link to their own entity list page; the chevron expands the rest.
-    const agentsHref = agentItems.length > 0 ? getAgentsListRoute(workspace) : undefined;
+    // Agents and Models link to their own entity list page; the chevron expands any sub-items.
+    const agentsHref = showAgents ? getAgentsListRoute(workspace) : undefined;
     const modelsHref = BASE_MODELS_ENABLED ? getWorkspaceBaseModelsRoute(workspace) : undefined;
 
     const componentItems = [

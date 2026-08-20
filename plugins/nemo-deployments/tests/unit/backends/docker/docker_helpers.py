@@ -119,9 +119,9 @@ def lora_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConfig
     )
 
 
-def container_attrs(*, status: str = "running", exit_code: int = 0) -> dict[str, Any]:
+def container_attrs(*, status: str = "running", exit_code: int = 0, restart_count: int = 0) -> dict[str, Any]:
     del status
     return {
         "State": {"ExitCode": exit_code, "StartedAt": "2026-01-01T00:00:00Z"},
-        "RestartCount": 0,
+        "RestartCount": restart_count,
     }

@@ -17,7 +17,7 @@ import { type FC, type ReactNode, useEffect } from 'react';
 interface TestCaseCompareProps {
   workspace: string;
   experimentName: string;
-  testCaseId: string | null | undefined;
+  testCaseName: string | null | undefined;
   /** The run shown in the left column (the session the route is on). */
   primarySessionId: string;
   primaryRun: EvaluationSessionResponse | undefined;
@@ -41,7 +41,7 @@ const CompareEmpty: FC<{ heading: string; message: string }> = ({ heading, messa
 export const TestCaseCompare: FC<TestCaseCompareProps> = ({
   workspace,
   experimentName,
-  testCaseId,
+  testCaseName,
   primarySessionId,
   primaryRun,
   compareSessionId,
@@ -63,16 +63,16 @@ export const TestCaseCompare: FC<TestCaseCompareProps> = ({
     setBreadcrumbs(breadcrumbs);
   }, [setBreadcrumbs, workspace, experimentName]);
 
-  const heading = testCaseId
-    ? `Test case comparison — Test case ${testCaseId}`
+  const heading = testCaseName
+    ? `Test case comparison — Test case ${testCaseName}`
     : 'Test case comparison';
 
   const renderRightColumn = () => {
-    if (!testCaseId) {
+    if (!testCaseName) {
       return (
         <CompareEmpty
           heading="Cannot compare"
-          message="This session has no test case ID. Comparison requires a producer-supplied test case ID."
+          message="This session has no test case name. Comparison requires a producer-supplied test case name."
         />
       );
     }

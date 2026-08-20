@@ -26,8 +26,16 @@ from nemo_deployments_plugin.backends.labels import (
     MANAGED_BY_KEY,
     k8s_deployment_configmap_name,
     k8s_deployment_resource_name,
+    k8s_deployment_secret_name,
 )
-from nemo_deployments_plugin.entities import ConfigFile, Container, ContainerPort
+from nemo_deployments_plugin.entities import (
+    ConfigFile,
+    Container,
+    ContainerPort,
+    DeploymentConfig,
+    EnvVar,
+    SecretRef,
+)
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
@@ -262,6 +270,152 @@ async def test_create_deployment_adopted_service_failure_keeps_configmap(
     assert update.status == "FAILED"
     mock_k8s_clients.apps_v1.delete_namespaced_deployment.assert_not_called()
     mock_k8s_clients.core_v1.delete_namespaced_config_map.assert_not_called()
+
+
+def _config_with_secret_env() -> DeploymentConfig:
+    base = sample_always_config()
+    container = base.containers[0].model_copy(
+        update={"env": [EnvVar(name="APP_TOKEN", secretRef=SecretRef(workspace="default", name="app-token"))]}
+    )
+    return base.model_copy(update={"containers": [container]})
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_creates_managed_secret(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = _config_with_secret_env()
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
+
+    update = await deployment_ops.create_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={},
+        config=config,
+        secret_env={"APP_TOKEN": "app-token-value"},
+    )
+
+    assert update.status != "FAILED"
+    mock_k8s_clients.core_v1.create_namespaced_secret.assert_called_once()
+    secret_body = mock_k8s_clients.core_v1.create_namespaced_secret.call_args.kwargs["body"]
+    assert secret_body.metadata.name == k8s_deployment_secret_name("default", "task")
+    assert secret_body.string_data == {"APP_TOKEN": "app-token-value"}
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_no_secret_when_secret_env_empty(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = sample_always_config()
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
+
+    await deployment_ops.create_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={},
+        config=config,
+        secret_env={},
+    )
+
+    mock_k8s_clients.core_v1.create_namespaced_secret.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_rolls_back_secret_when_service_create_fails(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = _config_with_secret_env()
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.create_namespaced_service.side_effect = ApiException(status=500)
+    identity_labels = always_identity_labels(backoff_limit=config.backoff_limit)
+    mock_k8s_clients.core_v1.read_namespaced_secret.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+
+    update = await deployment_ops.create_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={},
+        config=config,
+        secret_env={"APP_TOKEN": "app-token-value"},
+    )
+
+    assert update.status == "FAILED"
+    mock_k8s_clients.core_v1.create_namespaced_secret.assert_called_once()
+    mock_k8s_clients.core_v1.delete_namespaced_secret.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_removes_managed_secret(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    identity_labels = always_identity_labels()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.read_namespaced_config_map.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+    mock_k8s_clients.core_v1.read_namespaced_secret.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+
+    update = await deployment_ops.delete_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        backend_config={},
+        expected_labels=identity_labels,
+    )
+
+    assert update.status == "SUCCEEDED"
+    mock_k8s_clients.core_v1.delete_namespaced_secret.assert_called_once_with(
+        name=k8s_deployment_secret_name("default", "task"),
+        namespace="default",
+        _request_timeout=mock_k8s_clients.request_timeout,
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_skips_foreign_secret(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    identity_labels = always_identity_labels()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.read_namespaced_config_map.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+    # A secret with mismatched labels must not be deleted.
+    mock_k8s_clients.core_v1.read_namespaced_secret.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels={MANAGED_BY_KEY: "other-plugin"}),
+    )
+
+    await deployment_ops.delete_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        backend_config={},
+        expected_labels=identity_labels,
+    )
+
+    mock_k8s_clients.core_v1.delete_namespaced_secret.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -38,7 +38,11 @@ rules:
   verbs: ["get", "list", "create", "delete"]
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["create", "delete"]
+  # get/list are required by the deployments k8s backend: it reads a managed
+  # Secret to enforce the ownership-label guard before create (409 conflict) and
+  # before delete. Without get, delete_deployment fails with 403 and the
+  # Deployment is stuck in DELETING. Mirrors the configmaps verb set.
+  verbs: ["get", "list", "create", "delete"]
 {{- if .Values.rbac.volcanoEnabled }}
 # Volcano
 - apiGroups: ["batch.volcano.sh"]

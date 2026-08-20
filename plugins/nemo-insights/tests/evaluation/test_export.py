@@ -29,6 +29,9 @@ class Doc:
         assert exclude_none, "export must dump SDK models with exclude_none=True"
         return {k: v for k, v in self.payload.items() if v is not None}
 
+    def __getattr__(self, name):
+        return self.payload[name]
+
 
 def _paginator(items):
     async def gen():
@@ -53,14 +56,27 @@ class FakeClient:
 
             def list(self, **kwargs):
                 outer.calls.append((self.name, kwargs))
-                return _paginator(outer.docs.get((self.name, kwargs["workspace"]), []))
+                items = outer.docs.get((self.name, kwargs["workspace"]), [])
+                filters = kwargs.get("filter") or {}
+                for key in ("evaluation_id", "trace_id", "session_id"):
+                    if key in filters:
+                        items = [item for item in items if item.payload.get(key) == filters[key]]
+                return _paginator(items)
 
         class _Intake:
             spans = _Collection("spans")
             annotations = _Collection("annotations")
             evaluator_results = _Collection("evaluator_results")
+            traces = _Collection("traces")
+
+        class _Experiments:
+            async def retrieve(self, name, **kwargs):
+                outer.calls.append(("experiments", {"name": name, **kwargs}))
+                return outer.docs[("experiments", kwargs["workspace"])][0]
 
         self.intake = _Intake()
+        self.experiments = _Experiments()
+        self.evaluations = _Collection("evaluations")
 
     async def close(self):
         self.closed = True
@@ -189,6 +205,66 @@ def test_export_closes_injected_client(tmp_path):
     )
 
     assert client.closed
+
+
+def test_export_experiment_scope_includes_complete_traces(tmp_path, monkeypatch):
+    docs = {
+        ("experiments", "ws-a"): [Doc(id="experiment-id", evaluation_count=2)],
+        ("evaluations", "ws-a"): [Doc(name="eval-b"), Doc(name="eval-a")],
+        ("traces", "ws-a"): [
+            Doc(id="trace-a", session_id="session-a", evaluation_id="eval-a", span_count=2),
+            Doc(id="trace-b", session_id="session-b", evaluation_id="eval-b", span_count=1),
+        ],
+        ("spans", "ws-a"): [
+            Doc(span_id="root-a", trace_id="trace-a", started_at="2026-07-01T10:00:00Z"),
+            Doc(span_id="child-a", trace_id="trace-a", started_at="2026-07-01T10:00:01Z"),
+            Doc(span_id="root-b", trace_id="trace-b", started_at="2026-07-02T10:00:00Z"),
+            Doc(span_id="unrelated", trace_id="other", started_at="2026-07-03T10:00:00Z"),
+        ],
+        ("annotations", "ws-a"): [
+            Doc(annotation_id="a", session_id="session-a"),
+            Doc(annotation_id="other", session_id="other"),
+        ],
+        ("evaluator_results", "ws-a"): [Doc(evaluator_result_id="e", session_id="session-b")],
+    }
+    client = _install_fake_client(monkeypatch, docs)
+
+    stats = export.export_workspaces(
+        "http://localhost:8080",
+        ["ws-a"],
+        tmp_path,
+        since=None,
+        experiment="prod-latest-completed",
+    )
+
+    assert stats["workspaces"]["ws-a"] == {"spans": 3, "annotations": 1, "evaluator_results": 1}
+    selection = stats["selections"]["ws-a"]
+    assert selection["evaluation_names"] == ["eval-a", "eval-b"]
+    assert selection["trace_ids"] == ["trace-a", "trace-b"]
+    assert selection["expected_spans"] == 3
+    assert all("trace_id" in call["filter"] for call in client.calls_for("spans"))
+    assert all("evaluation_id" not in call["filter"] for call in client.calls_for("spans"))
+
+
+def test_export_experiment_scope_rejects_source_drift(tmp_path, monkeypatch):
+    docs = {
+        ("experiments", "ws-a"): [Doc(id="experiment-id", evaluation_count=1)],
+        ("evaluations", "ws-a"): [Doc(name="eval-a")],
+        ("traces", "ws-a"): [
+            Doc(id="trace-a", session_id="session-a", evaluation_id="eval-a", span_count=2),
+        ],
+        ("spans", "ws-a"): [Doc(span_id="root-a", trace_id="trace-a", started_at="2026-07-01T10:00:00Z")],
+    }
+    _install_fake_client(monkeypatch, docs)
+
+    with pytest.raises(RuntimeError, match="source changed during capture"):
+        export.export_workspaces(
+            "http://localhost:8080",
+            ["ws-a"],
+            tmp_path,
+            since=None,
+            experiment="prod-latest-completed",
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -356,10 +432,11 @@ def test_fetch_platform_info_none_when_unreachable(monkeypatch):
 
 
 def _fake_export(seen):
-    def fake(base_url, workspaces, out_dir, *, since, client=None):
+    def fake(base_url, workspaces, out_dir, *, since, experiment=None, client=None):
         seen["base_url"] = base_url
         seen["workspaces"] = list(workspaces)
         seen["since"] = since
+        seen["experiment"] = experiment
         seen["client"] = client
         for ws in workspaces:
             ws_dir = out_dir / "export" / ws
@@ -367,11 +444,14 @@ def _fake_export(seen):
             (ws_dir / "spans.jsonl").write_text('{"span_id": "s1"}\n', encoding="utf-8")
             (ws_dir / "annotations.jsonl").write_text("", encoding="utf-8")
             (ws_dir / "evaluator_results.jsonl").write_text("", encoding="utf-8")
-        return {
+        result = {
             "workspaces": {ws: {"spans": 1, "annotations": 0, "evaluator_results": 0} for ws in workspaces},
             "min_start_time": "2026-07-01T00:00:00+00:00",
             "max_start_time": "2026-07-02T00:00:00+00:00",
         }
+        if experiment:
+            result["selections"] = {workspaces[0]: {"kind": "experiment", "experiment": experiment}}
+        return result
 
     return fake
 
@@ -452,6 +532,29 @@ def test_snapshot_export_passes_since_through(tmp_path, monkeypatch):
     assert seen["since"] == since
 
 
+def test_snapshot_export_passes_experiment_scope(tmp_path, monkeypatch):
+    seen: dict = {}
+    monkeypatch.setattr(artifact.export, "export_workspaces", _fake_export(seen))
+    monkeypatch.setattr(artifact, "fetch_platform_info", lambda url: None)
+    subject = _subject(
+        "kernel-factory",
+        "intake",
+        workspace="kf-prod-evals",
+        base_url="u",
+        experiment="prod-latest-completed",
+    )
+    (tmp_path / "tmp").mkdir()
+
+    artifact.snapshot_export([subject], tmp_path / "b.tar.zst", tmp_path / "tmp", since=None)
+
+    assert seen["experiment"] == "prod-latest-completed"
+    extract = tmp_path / "extract"
+    extract.mkdir()
+    subprocess.run(["tar", "--zstd", "-xf", str(tmp_path / "b.tar.zst"), "-C", str(extract)], check=True)
+    manifest = json.loads((extract / "state" / "manifest.json").read_text())
+    assert manifest["selections"]["kf-prod-evals"]["experiment"] == "prod-latest-completed"
+
+
 def test_snapshot_export_dedupes_workspaces_across_subjects(tmp_path, monkeypatch):
     seen: dict = {}
     monkeypatch.setattr(artifact.export, "export_workspaces", _fake_export(seen))
@@ -461,6 +564,15 @@ def test_snapshot_export_dedupes_workspaces_across_subjects(tmp_path, monkeypatc
     (tmp_path / "tmp").mkdir()
     artifact.snapshot_export([a, b], tmp_path / "b.tar.zst", tmp_path / "tmp", since=None)
     assert seen["workspaces"] == ["shared"]
+
+
+def test_snapshot_export_rejects_shared_experiment_workspace(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifact.export, "export_workspaces", _fake_export({}))
+    a = _subject("a", "intake", workspace="shared", base_url="u", experiment="run-a")
+    b = _subject("b", "intake", workspace="shared", base_url="u")
+    (tmp_path / "tmp").mkdir()
+    with pytest.raises(SystemExit, match="shared"):
+        artifact.snapshot_export([a, b], tmp_path / "b.tar.zst", tmp_path / "tmp", since=None)
 
 
 def test_snapshot_export_conflicting_base_urls_exit(tmp_path, monkeypatch):

@@ -70,7 +70,7 @@ async def _upload_trace_otlp(
     path = Path(urlparse(ref.uri).path)
     attrs: dict[str, str] = {
         "nemo.evaluation.name": evaluation_name,
-        "nemo.test_case.id": task_id,
+        "nemo.test_case.name": task_id,
         "nemo.trial.id": trial_id,
         **(extra_attrs or {}),
     }
@@ -727,7 +727,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             trace_id = uri.removeprefix("intake://traces/")
             trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
             ctx = getattr(trace, "evaluation_context", None)
-            if ctx is None or getattr(ctx, "evaluation_id", None) != evaluation_name:
+            if ctx is None or getattr(ctx, "evaluation_name", None) != evaluation_name:
                 rows: list[dict] = []
                 async for span in self.client.intake.spans.list(
                     workspace=workspace,
@@ -738,7 +738,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     rows.append(span.model_dump(mode="json", exclude_none=True))
                 attrs = {
                     "nemo.evaluation.name": evaluation_name,
-                    "nemo.test_case.id": trial.task_id,
+                    "nemo.test_case.name": trial.task_id,
                     "nemo.trial.id": trial.id,
                     **agent_attrs,
                 }

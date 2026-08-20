@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values.models import (
     Model,
     filter_auth_headers,
@@ -112,3 +113,26 @@ class TestModelDefaultHeaders:
         )
 
         assert model.default_headers == {header_name: "value"}
+
+
+class TestDeprecatedFormatField:
+    """`format` is deprecated and ignored; these pin the contract API consumers see."""
+
+    def test_format_defaults_to_openai(self):
+        model = Model(url="https://judge.example.test/v1/chat/completions", name="judge-model")
+
+        assert model.format == ModelFormat.OPEN_AI
+
+    def test_format_is_marked_deprecated_in_the_json_schema(self):
+        # The published OpenAPI spec is generated from this schema, so the deprecation signal
+        # reaching API consumers depends on this flag rather than on the docstring.
+        assert Model.model_json_schema()["properties"]["format"]["deprecated"] is True
+
+    def test_format_is_still_accepted_so_existing_callers_keep_working(self):
+        model = Model(
+            url="https://judge.example.test/v1/chat/completions",
+            name="judge-model",
+            format=ModelFormat.NVIDIA_NIM,
+        )
+
+        assert model.format == ModelFormat.NVIDIA_NIM

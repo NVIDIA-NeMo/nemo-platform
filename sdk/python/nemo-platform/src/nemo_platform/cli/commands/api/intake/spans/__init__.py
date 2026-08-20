@@ -51,7 +51,7 @@ def list_spans(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, trace_id, parent_span_id, project, evaluation_name, test_case_name, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
@@ -61,6 +61,9 @@ def list_spans(
     ] = None,
     filter_evaluation_id: Annotated[
         str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_evaluation_name: Annotated[
+        str | None, typer.Option("--filter.evaluation-name", rich_help_panel="Filter Options")
     ] = None,
     filter_kind: Annotated[str | None, typer.Option("--filter.kind", rich_help_panel="Filter Options")] = None,
     filter_model: Annotated[str | None, typer.Option("--filter.model", rich_help_panel="Filter Options")] = None,
@@ -76,6 +79,9 @@ def list_spans(
     filter_status: Annotated[str | None, typer.Option("--filter.status", rich_help_panel="Filter Options")] = None,
     filter_test_case_id: Annotated[
         str | None, typer.Option("--filter.test-case-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_test_case_name: Annotated[
+        str | None, typer.Option("--filter.test-case-name", rich_help_panel="Filter Options")
     ] = None,
     filter_tool_name: Annotated[
         str | None, typer.Option("--filter.tool-name", rich_help_panel="Filter Options")
@@ -119,6 +125,7 @@ def list_spans(
             agent_id=filter_agent_id,
             agent_name=filter_agent_name,
             evaluation_id=filter_evaluation_id,
+            evaluation_name=filter_evaluation_name,
             kind=filter_kind,
             model=filter_model,
             parent_span_id=filter_parent_span_id,
@@ -128,6 +135,7 @@ def list_spans(
             source=filter_source,
             status=filter_status,
             test_case_id=filter_test_case_id,
+            test_case_name=filter_test_case_name,
             tool_name=filter_tool_name,
             trace_id=filter_trace_id,
         ),

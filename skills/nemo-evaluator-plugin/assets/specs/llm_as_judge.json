@@ -36,7 +36,7 @@
             "name": "nvidia/nemotron-3-super-120b-a12b",
             "host_url": null,
             "api_key_secret": "NVIDIA_API_KEY",
-            "format": "nim"
+            "format": "openai"
           },
           "scores": [
             {
@@ -84,7 +84,7 @@
           "ignore_request_failure": false,
           "job_type": "online"
         },
-        "digest": "f06c95859ec1b45d596a29b92a81e85c9b585fb850a42a26e2cd7fa9adb4003f",
+        "digest": "521535470f2c5cce64c4936a1bfcca39e5554e80e926f75cb6dbbcc9c8cd5d9c",
         "kind": "inline"
       }
     }
@@ -108,7 +108,7 @@
     "name": "nvidia/nemotron-3-super-120b-a12b",
     "host_url": null,
     "api_key_secret": "NVIDIA_API_KEY",
-    "format": "nim"
+    "format": "openai"
   },
   "prompt_template": {
     "messages": [

@@ -24,7 +24,7 @@ import {
   ModelDeploymentFilter,
   ModelDeploymentStatus,
 } from '@nemo/sdk/generated/platform/schema';
-import { Stack, Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
@@ -113,9 +113,9 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
         rowActionsColumn({
           size: 58,
           enableResizing: false,
-          rowActions: (deployment: ModelDeployment) => [
+          rowActions: (deployment: ModelDeployment): DropdownEntry[] => [
             {
-              slotLeft: <Trash2 />,
+              slotStart: <Trash2 />,
               children: 'Delete',
               disabled:
                 deployment.status === ModelDeploymentStatus.DELETED ||

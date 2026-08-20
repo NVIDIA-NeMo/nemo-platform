@@ -149,6 +149,7 @@ def test_snapshot_export_scopes_authentication_to_each_subject(
         *,
         since: object,
         client: object | None,
+        experiment: str | None = None,
     ) -> dict:
         exports.append((workspaces, client))
         return {
