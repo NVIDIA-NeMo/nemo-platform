@@ -132,6 +132,8 @@ class ArtifactRunner:
         trace = work_dir / "results" / "trial-task" / "attempt-0" / "traces" / "trace.jsonl"
         trace.parent.mkdir(parents=True)
         trace.write_text('{"resourceSpans":[]}\n', encoding="utf-8")
+        sibling_trace = trace.with_name("summary.json")
+        sibling_trace.write_text('{"summary":"complete"}\n', encoding="utf-8")
         return EvaluationResult(
             id="artifact-result",
             trials=[
@@ -145,7 +147,12 @@ class ArtifactRunner:
                         "host_path": str(work_dir / "results"),
                         "token": _TOKEN,
                     },
-                    resources={"outside": ResourceRef(uri=Path("/etc/hosts").as_uri(), description="must not escape")},
+                    resources={
+                        "trace-directory": ResourceRef(uri=trace.parent.as_uri(), description="trace directory"),
+                        "same-trace-directory": ResourceRef(uri=trace.parent.as_uri(), description="same directory"),
+                        "sibling-trace": ResourceRef(uri=sibling_trace.as_uri(), description="sibling trace"),
+                        "outside": ResourceRef(uri=Path("/etc/hosts").as_uri(), description="must not escape"),
+                    },
                 )
             ],
         )
@@ -214,6 +221,15 @@ def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
 
     trial = payload["result"]["trials"][0]
     assert trial["trace"]["uri"] == ("nemo-harbor-bridge:///artifacts/results/trial-task/attempt-0/traces/trace.jsonl")
+    assert trial["resources"]["trace-directory"]["uri"] == (
+        "nemo-harbor-bridge:///artifacts/results/trial-task/attempt-0/traces"
+    )
+    assert trial["resources"]["same-trace-directory"]["uri"] == (
+        "nemo-harbor-bridge:///artifacts/results/trial-task/attempt-0/traces"
+    )
+    assert trial["resources"]["sibling-trace"]["uri"] == (
+        "nemo-harbor-bridge:///artifacts/results/trial-task/attempt-0/traces/summary.json"
+    )
     assert trial["resources"]["outside"]["uri"].startswith("nemo-harbor-bridge:///unavailable/")
     assert trial["outputs"] == {
         "host_path": "[HOST_PATH_REDACTED]",
@@ -228,6 +244,7 @@ def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
     extract_directory_archive(archive, extracted)
     trace_path = extracted / "results" / "trial-task" / "attempt-0" / "traces" / "trace.jsonl"
     assert trace_path.read_text(encoding="utf-8") == '{"resourceSpans":[]}\n'
+    assert (trace_path.parent / "summary.json").read_text(encoding="utf-8") == '{"summary":"complete"}\n'
 
 
 @pytest.mark.parametrize(

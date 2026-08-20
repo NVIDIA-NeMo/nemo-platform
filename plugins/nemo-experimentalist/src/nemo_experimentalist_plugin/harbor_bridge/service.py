@@ -250,15 +250,23 @@ def _copy_result_resource(
         if source.stat().st_size > max_bytes:
             raise ValueError("Harbor result resource exceeds the bridge artifact limit")
         target = destination / source.name
-        destination.mkdir(parents=True)
+        destination.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         return target
     if not stat.S_ISDIR(mode):
         raise ValueError("Harbor result resource must be a regular file or directory")
-    archive = scratch / f"{destination.name}.tar.gz"
+    archive = scratch / f"{uuid4().hex}.tar.gz"
     create_directory_archive(source, archive, max_bytes=max_bytes, max_files=max_files)
-    extract_directory_archive(archive, destination, max_bytes=max_bytes, max_files=max_files)
-    archive.unlink()
+    if destination.exists():
+        extracted = scratch / uuid4().hex
+        try:
+            extract_directory_archive(archive, extracted, max_bytes=max_bytes, max_files=max_files)
+            shutil.copytree(extracted, destination, dirs_exist_ok=True)
+        finally:
+            shutil.rmtree(extracted, ignore_errors=True)
+    else:
+        extract_directory_archive(archive, destination, max_bytes=max_bytes, max_files=max_files)
+    archive.unlink(missing_ok=True)
     return destination
 
 
