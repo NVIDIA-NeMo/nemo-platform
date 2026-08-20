@@ -17,8 +17,9 @@ This package lives inside the Experimentalist plugin and uses its evaluator, sta
 and trace helpers directly. Experimentalist insight mode imports and runs Eval Author
 before optimization begins.
 
-The `nemo agents eval-author` command group lives in the separate
-[Eval Author plugin](../../../../nemo-eval-author/README.md).
+The customer-facing path is a skill rather than an agent, and the
+[Eval Author package](../../../../nemo-eval-author/README.md) holds those skills. It
+has no CLI and shares no code with this agent.
 
 ## Current Files
 

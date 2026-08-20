@@ -293,11 +293,7 @@ nemo-deployments-plugin = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-eval-author-plugin = [
-  "pydantic>=2",
-  "harbor>=0.18",
-  "nemo-experimentalist-plugin",
   "nemo-insights-plugin",
-  "nemo-platform-plugin",
   "pyyaml>=6.0.3",
 ]
 
@@ -569,7 +565,6 @@ insights = "nemo_insights_plugin.cli:InsightsCLI"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli.agents"]
-eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
 experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"
 analyst = "nemo_insights_plugin.analyst.cli:AnalystCLI"
 

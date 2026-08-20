@@ -71,10 +71,10 @@ version = "0.0.0"
 [dependency-groups]
 # Insights analyst plugin convenience group.
 insights = ["nemo-insights-plugin"]
-# Experimentalist and Eval Author support Python 3.12 and 3.13. Both are listed so the
-# `nemo agents eval-author` commands are installed alongside Experimentalist. The
-# dependency is one arrow: Eval Author borrows the Experimentalist platform client
-# (see plugins/nemo-eval-author/README.md).
+# Experimentalist and Eval Author support Python 3.12 and 3.13. Eval Author ships skills
+# rather than code, and imports nothing from Experimentalist. It is grouped here so that
+# installing Experimentalist also makes the Eval Author tests visible to root test
+# discovery (see tests/discovery_exclusions.py).
 experimentalist = [
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
   "nemo-eval-author-plugin ; python_full_version < '3.14'",
