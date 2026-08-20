@@ -314,7 +314,12 @@ jobs:
 
       - name: Print Docker bake graph
         shell: bash
-        run: make docker-print TARGET=docker-cpu
+        run: |
+          target=docker-cpu
+          if [ "${PUBLISH_IMAGES}" = "true" ]; then
+            target=docker-cpu-ci
+          fi
+          make docker-print TARGET="${target}"
 
       - name: Build CPU images
         if: env.PUBLISH_IMAGES != 'true'
@@ -324,7 +329,7 @@ jobs:
       - name: Build and publish CPU images
         if: env.PUBLISH_IMAGES == 'true'
         shell: bash
-        run: make docker-push TARGET=docker-cpu
+        run: make docker-push TARGET=docker-cpu-ci
 
       - name: Save fastembed model cache
         if: steps.fastembed-cache.outputs.cache-hit != 'true'
@@ -567,6 +572,7 @@ jobs:
           uv run --frozen pytest \
             e2e \
             -v \
+            -m "not gym_e2e" \
             --run-e2e \
             --no-cov \
             --junitxml=report-kubernetes-e2e.xml
@@ -578,6 +584,69 @@ jobs:
           kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
           artifact-name: kind-e2e-kubernetes-artifacts
           junit-report: report-kubernetes-e2e.xml
+          services-log-dir: ${{ runner.temp }}/e2e-services-logs
+
+  kind-gym-e2e:
+    name: Kind Gym agent-evaluate e2e
+    needs: [changes, build-cpu-smoke-images]
+    if: >
+      !cancelled() &&
+      needs.build-cpu-smoke-images.result == 'success' &&
+      needs.build-cpu-smoke-images.outputs.publish_images == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-gym-e2e
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Kind cluster for Gym evaluation
+        uses: ./.github/actions/setup-kind-cluster
+        with:
+          kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
+          image-registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          image-tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+          kind-image-pull-token: ${{ github.token }}
+          kind-image-pull-user: ${{ github.actor }}
+
+      - name: Pre-pull Gym task image
+        shell: bash
+        env:
+          KIND_IMAGE_PULL_TOKEN: ${{ github.token }}
+          KIND_IMAGE_PULL_USER: ${{ github.actor }}
+          IMAGE_REGISTRY: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          IMAGE_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+        run: e2e/k8s/scripts/prepull_kind_images.sh "${IMAGE_REGISTRY}/nmp-gym-tasks:${IMAGE_TAG}"
+
+      - name: Run Gym agent-evaluate e2e test
+        shell: bash
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+        run: |
+          test -n "${NMP_E2E_CLUSTER_URL}"
+          export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
+          uv run --frozen pytest \
+            e2e/test_evaluator_plugin.py \
+            -v \
+            -m gym_e2e \
+            --run-e2e \
+            --no-cov \
+            --junitxml=report-kubernetes-gym-e2e.xml
+
+      - name: Finalize Kind Gym e2e
+        if: always()
+        uses: ./.github/actions/finalize-kind-e2e
+        with:
+          kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
+          artifact-name: kind-gym-e2e-kubernetes-artifacts
+          junit-report: report-kubernetes-gym-e2e.xml
           services-log-dir: ${{ runner.temp }}/e2e-services-logs
 
   helm-lint:
@@ -2040,6 +2109,7 @@ jobs:
       - docker-bake-graph
       - build-cpu-smoke-images
       - kind-cpu-smoke
+      - kind-gym-e2e
       - helm-lint
       - helm-chart-verifier
       - lint
