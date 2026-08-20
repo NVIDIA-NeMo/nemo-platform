@@ -37,6 +37,11 @@ SOUNDFILE_LIBSNDFILE_PATTERNS = (
     "/opt/nemo_rl_venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so",
     "/opt/ray_venvs/*/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so",
     "/opt/uv_cache/archive-v0/*/_soundfile_data/libsndfile_*.so",
+    # The shim is removed with the codec; see docker/rl/codec-file-removals.txt for why
+    # keeping it is worse than not shipping soundfile at all.
+    "/opt/nemo_rl_venv/lib/python3.*/site-packages/soundfile.py",
+    "/opt/ray_venvs/*/lib/python3.*/site-packages/soundfile.py",
+    "/opt/uv_cache/archive-v0/*/soundfile.py",
 )
 BASE_VENV_MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "wandb": "0.28.2",
@@ -237,6 +242,27 @@ def test_worker_venvs_symlink_into_shared_cache():
 def test_soundfile_libsndfile_removed():
     remaining = sorted(path for pattern in SOUNDFILE_LIBSNDFILE_PATTERNS for path in glob(pattern))
     assert remaining == [], f"file cleanup left scanner-visible libsndfile files: {remaining}"
+
+
+@pytest.mark.smoke_nmp_rl_training
+def test_transformers_audio_backend_probe_is_off():
+    """Removing the codec must also switch off the probe that guards its import.
+
+    ``transformers.audio_utils`` does ``if is_soundfile_available(): import soundfile``,
+    and that probe is ``find_spec("soundfile")`` -- file presence, not loadability. Delete
+    the codec but keep the module and the probe says yes to a backend that then fails to
+    dlopen, so ``from transformers import AutoProcessor`` raises. That import is at module
+    scope in ``nemo_rl.algorithms.grpo``, so the GRPO driver dies before it reads a config.
+    """
+    from transformers.utils.import_utils import is_soundfile_available
+
+    assert not is_soundfile_available()
+
+
+@pytest.mark.smoke_nmp_rl_training
+def test_grpo_driver_module_imports():
+    """The exact import the GRPO driver performs first, and the one the codec strip broke."""
+    from nemo_rl.algorithms.grpo import MasterConfig  # noqa: F401
 
 
 @pytest.mark.smoke_nmp_rl_training
