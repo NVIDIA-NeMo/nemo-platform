@@ -296,6 +296,11 @@ def test_run_rejects_trials_and_target_together() -> None:
         )
 
 
+def test_run_rejects_neither_trials_nor_target() -> None:
+    with pytest.raises(ValueError, match="provide exactly one"):
+        AgentEvaluator().run_sync(tasks=[_task()])
+
+
 @pytest.mark.asyncio
 async def test_run_writes_nothing_until_persist_is_called(tmp_path: Path) -> None:
     # The point of the change: computing an evaluation and storing one are separate decisions, so a

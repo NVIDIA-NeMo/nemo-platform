@@ -166,17 +166,19 @@ class AgentEvaluator:
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
         started_at = datetime.now(UTC)
 
-        if (trials is None) == (target is None):
-            raise ValueError("provide exactly one of trials or target")
+        seam_error = "provide exactly one of trials or target"
+        if trials is not None and target is not None:
+            raise ValueError(seam_error)
 
         async with begin_evaluation_session():
-            # Branch on which seam was supplied so the type checker can narrow ``target`` to a
-            # concrete ``AgentEvalTarget`` without a cast.
+            # Branch on which seam was supplied so the type checker narrows each of ``trials`` and
+            # ``target`` to a concrete type without a cast. The final arm is the "neither" case.
             if trials is not None:
                 trial_list = list(trials)
-            else:
-                assert target is not None
+            elif target is not None:
                 trial_list = await self._generate_trials(tasks=task_list, target=target, config=runtime_config)
+            else:
+                raise ValueError(seam_error)
             scores = await self._score_trials(
                 tasks=task_list,
                 trials=trial_list,
