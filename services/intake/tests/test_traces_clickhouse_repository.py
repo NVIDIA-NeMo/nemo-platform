@@ -206,10 +206,10 @@ async def test_detailed_mode_adds_trace_aggregate_block():
     assert "AS trace_spans" in client.queries[2]
     assert "span_versions.trace_id IN %(page_trace_ids)s" in client.queries[2]
     assert "(span_versions.source_format, span_versions.trace_id) IN %(page_trace_keys)s" in client.queries[2]
-    assert "argMax(span_versions.input," not in client.queries[2]
-    assert "argMax(span_versions.output," not in client.queries[2]
-    assert "argMax(span_versions.attributes_string," in client.queries[2]
-    assert "argMax(span_versions.attributes_number," in client.queries[2]
+    assert "FROM spans AS span_versions FINAL" in client.queries[2]
+    assert "argMax(span_versions." not in client.queries[2]
+    assert "span_versions.attributes_string AS attributes_string" in client.queries[2]
+    assert "span_versions.attributes_number AS attributes_number" in client.queries[2]
     assert "sumIf" in client.queries[2]
     assert "groupUniqArrayIf" in client.queries[2]
     assert "count() AS span_count" in client.queries[2]
@@ -597,7 +597,7 @@ async def test_trace_metrics_total_bucket_collapses_to_one_row_without_a_start()
 
 
 @pytest.mark.asyncio
-async def test_trace_metrics_reads_tokens_from_deduplicated_spans():
+async def test_trace_metrics_reads_tokens_from_final_spans():
     client = _Client([_QueryResult([], _METRIC_COLUMNS)])
     repository = _repository(client)
 
@@ -608,9 +608,10 @@ async def test_trace_metrics_reads_tokens_from_deduplicated_spans():
     )
 
     query = client.queries[0]
-    # spans is a ReplacingMergeTree, so the rollup must go through the argMax dedup
-    # helper rather than summing raw rows.
-    assert "argMax(span_versions." in query
+    # spans is a ReplacingMergeTree, so the rollup must read through FINAL rather
+    # than summing raw versions.
+    assert "FROM spans AS span_versions FINAL" in query
+    assert "argMax(span_versions." not in query
     assert "LEFT JOIN rollups" in query
     # session_id leads the spans sort key after workspace, so it must be carried from
     # the selected roots for the primary key to prune before the trace-id bloom filter.

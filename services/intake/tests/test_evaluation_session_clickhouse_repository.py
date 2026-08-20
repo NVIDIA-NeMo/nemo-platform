@@ -118,6 +118,8 @@ async def test_list_sessions_maps_rows_and_binds_all_request_values() -> None:
     assert "'' AS input" in executor.queries[1].statement
     assert "'' AS output" in executor.queries[1].statement
     assert "substringUTF8(root_input, 1, %(payload_char_limit)s) AS input" in executor.queries[2].statement
+    assert "FROM spans AS span_versions FINAL" in executor.queries[2].statement
+    assert "argMax(span_versions." not in executor.queries[2].statement
     assert executor.queries[2].parameters["page_session_ids"] == ["session-a"]
     assert executor.queries[2].parameters["page_trace_ids"] == ["trace-session-a"]
     assert executor.queries[2].parameters["page_storage_keys"] == [
@@ -151,6 +153,9 @@ async def test_metric_sort_uses_bounded_page_then_restores_hydration_order() -> 
         "evaluation_sessions.metric_sort.page",
         "evaluation_sessions.hydrate",
     ]
+    assert "FROM spans AS span_versions FINAL" in executor.queries[1].statement
+    assert "argMax(span_versions." not in executor.queries[1].statement
+    assert "FROM spans AS span_versions FINAL" in executor.queries[2].statement
     assert executor.queries[2].parameters["page_session_ids"] == ["session-b", "session-a"]
 
 

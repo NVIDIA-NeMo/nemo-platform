@@ -609,16 +609,18 @@ def current_spans_sql(
     *,
     extra_where_sql: str | None = None,
 ) -> str:
+    """Read current span versions without materialising wide aggregate states.
+
+    ``spans`` is a ReplacingMergeTree, so ``FINAL`` applies its latest-write-wins
+    semantics. Callers should scope by ``session_id`` when possible because it
+    follows ``workspace`` in the table's sorting key.
+    """
     source_alias = "span_versions"
     columns = [
-        *[f"{source_alias}.{column} AS {column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS],
-        *[
-            f"argMax({source_alias}.{column}, ({source_alias}.event_ts, {source_alias}.is_deleted)) AS {column}"
-            for column in _CURRENT_SPAN_VALUE_COLUMNS
-        ],
+        f"{source_alias}.{column} AS {column}"
+        for column in (*_CURRENT_SPAN_IDENTITY_COLUMNS, *_CURRENT_SPAN_VALUE_COLUMNS)
     ]
     columns_sql = ",\n                ".join(columns)
-    group_by_sql = ", ".join(f"{source_alias}.{column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS)
     where_sql = f"{source_alias}.workspace = %(workspace)s"
     if extra_where_sql is not None:
         where_sql = f"{where_sql}\n                AND {extra_where_sql}"
@@ -626,9 +628,8 @@ def current_spans_sql(
         (
             SELECT
                 {columns_sql}
-            FROM {table} AS {source_alias}
+            FROM {table} AS {source_alias} FINAL
             WHERE {where_sql}
-            GROUP BY {group_by_sql}
         )
     """
 
