@@ -255,8 +255,8 @@ async def test_list_traces_maps_detailed_row():
     assert trace.output == "root output"
     assert trace.duration_ms == 2500
     assert trace.project == "project-a"
-    assert trace.evaluation_id == "experiment-a"
-    assert trace.test_case_id == "case-a"
+    assert trace.evaluation_name == "experiment-a"
+    assert trace.test_case_name == "case-a"
     assert trace.input_tokens == 420
     assert trace.output_tokens == 310
     assert trace.cached_tokens == 128
@@ -389,7 +389,7 @@ async def test_root_filters_use_trace_index_columns():
     await repository.list_traces(
         filters=TraceListFilter(
             workspace="workspace-a",
-            evaluation_id="experiment-a",
+            evaluation_name="experiment-a",
         ),
         page=1,
         page_size=10,
@@ -397,9 +397,9 @@ async def test_root_filters_use_trace_index_columns():
         mode="detailed",
     )
 
-    assert "trace_roots.evaluation_id = %(filter_evaluation_id)s" in client.queries[0]
+    assert "trace_roots.evaluation_name = %(filter_evaluation_name)s" in client.queries[0]
     assert "candidate_spans" not in client.queries[0]
-    assert client.parameters[0]["filter_evaluation_id"] == "experiment-a"
+    assert client.parameters[0]["filter_evaluation_name"] == "experiment-a"
 
 
 def _trace_row(
@@ -420,8 +420,8 @@ def _trace_row(
         "input": "root input" if detailed else "",
         "output": "root output" if detailed else "",
         "project": "project-a",
-        "evaluation_id": "experiment-a",
-        "test_case_id": "case-a",
+        "evaluation_name": "experiment-a",
+        "test_case_name": "case-a",
         "started_at": started_at,
         "ended_at": ended_at,
         "status": "error",

@@ -17,6 +17,18 @@ Two failure classes are caught at .so load time, before any GPU device is touche
 """
 
 import pytest
+from python_package_versions import assert_python_package_min_versions
+
+MINIMUM_PYTHON_PACKAGE_VERSIONS = {
+    "mamba-ssm": "2.3.0",
+    "transformers": "5.8.1",
+    "wandb": "0.28.2",
+}
+
+
+@pytest.mark.smoke_nmp_customizer_tasks
+def test_python_package_min_versions():
+    assert_python_package_min_versions(MINIMUM_PYTHON_PACKAGE_VERSIONS)
 
 
 @pytest.mark.smoke_nmp_customizer_tasks

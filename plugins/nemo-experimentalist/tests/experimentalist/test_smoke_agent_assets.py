@@ -15,6 +15,7 @@ import hashlib
 import importlib.util
 import re
 import shutil
+import subprocess
 import sys
 import tomllib
 from collections.abc import Iterable
@@ -61,6 +62,19 @@ def _expected_tag() -> str:
 def _template_toml() -> Path:
     """Return the canonical task shape."""
     return _EXAMPLE_DIR / "dataset" / "task-template" / "task.toml"
+
+
+def test_trace_recorder_imports_the_native_harbor_evaluator() -> None:
+    """The recorder must import the evaluator symbols from their public module."""
+    recorder = _EXAMPLE_DIR / "scripts" / "record_traces.py"
+    result = subprocess.run(
+        ["uv", "run", str(recorder), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 @functools.cache

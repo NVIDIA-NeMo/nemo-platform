@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 )
 
@@ -193,12 +193,12 @@ func TestNewLogExporterCachesWorkloadAuthAcrossExports(t *testing.T) {
 	}
 
 	record := sdklog.Record{}
-	record.SetBody(otellog.StringValue("first"))
+	record.SetBody(attribute.StringValue("first"))
 	if err := exporter.Export(context.Background(), []sdklog.Record{record}); err != nil {
 		t.Fatalf("first export returned error: %v", err)
 	}
 
-	record.SetBody(otellog.StringValue("second"))
+	record.SetBody(attribute.StringValue("second"))
 	if err := exporter.Export(context.Background(), []sdklog.Record{record}); err != nil {
 		t.Fatalf("second export returned error: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestNewLogExporterUsesServiceIdentityPrincipalHeadersWithoutWorkloadTokenFi
 	}()
 
 	record := sdklog.Record{}
-	record.SetBody(otellog.StringValue("service identity auth"))
+	record.SetBody(attribute.StringValue("service identity auth"))
 	if err := exporter.Export(context.Background(), []sdklog.Record{record}); err != nil {
 		t.Fatalf("export returned error: %v", err)
 	}

@@ -67,6 +67,20 @@ class GymAgentTaskRunner:
         self._config = config
         self._run_aggregations: dict[str, Any] | None = None
 
+    @property
+    def config(self) -> GymRuntimeConfig:
+        """The settings this runner was constructed with.
+
+        Read-only, and the whole config rather than a property per field: unlike the Codex and
+        Fabric runtimes, everything shaping a Gym run already lives in one validated object.
+
+        Exposed so a live runner can be described as the job-spec target that reproduces it, without
+        reaching into a private attribute from another package. ``runner_info()`` cannot serve that
+        purpose — it redacts credential-shaped values, so what it returns is provenance to read, not
+        configuration to rebuild from.
+        """
+        return self._config
+
     def run_aggregate_scores(self) -> Sequence[AggregateScore]:
         """Gym's ``agent_metrics`` mapped onto typed aggregate scores, namespaced ``runner.gym.<metric>``.
 

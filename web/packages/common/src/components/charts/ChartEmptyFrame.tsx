@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  GRID_PROPS,
   chartMargin,
   xAxisLabelProps,
   yAxisLabelProps,
-} from '@nemo/common/src/components/ComparisonLineChart/chartFrame';
-import { AXIS_COLOR } from '@nemo/common/src/components/ComparisonLineChart/consts';
+} from '@nemo/common/src/components/charts/frame';
+import { AXIS_COLOR } from '@nemo/common/src/components/charts/tokens';
 import { Text } from '@nvidia/foundations-react-core';
 import type { FC } from 'react';
-import { CartesianGrid, LineChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, type LineChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 interface Props {
   message: string;
@@ -17,6 +18,11 @@ interface Props {
   xAxisLabel?: string;
   yAxisLabel?: string;
   showGrid?: boolean;
+  /**
+   * The chart element the caller's real plot uses. `LineChart` and `ComposedChart` happen to
+   * render this frame identically today, but that rests on recharts internals — do not inline one.
+   */
+  chart: typeof LineChart;
 }
 
 /** Two rows are enough to give the axes a domain to draw against. */
@@ -24,11 +30,11 @@ const PLACEHOLDER_ROWS = [{ x: 0 }, { x: 1 }];
 const PLACEHOLDER_DOMAIN: [number, number] = [0, 1];
 
 /**
- * The chart frame — axes, labels, and grid — with the empty message centered in the plot area.
- * Keeping the frame means the component holds its size and the reader can see what the chart
- * *would* show once data arrives. Tick labels stay off so no scale is implied.
+ * Axes and grid with the message centered, so the component holds its size and shows what the
+ * chart *would* look like. Tick labels stay off so no scale is implied.
  */
-export const ComparisonLineChartEmpty: FC<Props> = ({
+export const ChartEmptyFrame: FC<Props> = ({
+  chart: Chart,
   message,
   height,
   xAxisLabel,
@@ -37,15 +43,8 @@ export const ComparisonLineChartEmpty: FC<Props> = ({
 }) => (
   <div className="relative w-full">
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={PLACEHOLDER_ROWS} margin={chartMargin(xAxisLabel, yAxisLabel)}>
-        {showGrid && (
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke={AXIS_COLOR}
-            strokeOpacity={0.5}
-            vertical={false}
-          />
-        )}
+      <Chart data={PLACEHOLDER_ROWS} margin={chartMargin(xAxisLabel, yAxisLabel)}>
+        {showGrid && <CartesianGrid {...GRID_PROPS} />}
         <XAxis
           dataKey="x"
           type="number"
@@ -60,7 +59,7 @@ export const ComparisonLineChartEmpty: FC<Props> = ({
           stroke={AXIS_COLOR}
           label={yAxisLabelProps(yAxisLabel)}
         />
-      </LineChart>
+      </Chart>
     </ResponsiveContainer>
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <Text kind="body/regular/md" className="text-placeholder">

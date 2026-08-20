@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-# require >= 1.25.12 for CVE-2026-25679, CVE-2026-39822, and other Go stdlib CVEs
-FROM golang:1.25.12 AS build
+# require >= 1.26.7 for current Go stdlib security fixes
+FROM golang:1.26.7 AS build
 COPY ./services/core/jobs/jobs-launcher /app/services/jobs-launcher
 WORKDIR /app/services/jobs-launcher
 RUN go mod download

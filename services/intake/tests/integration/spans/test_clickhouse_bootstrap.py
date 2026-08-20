@@ -42,6 +42,7 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
         ("ch_trace_index_0004_nemo_keys",),
         ("ch_trace_index_0005_evaluation_id",),
         ("ch_trace_index_0006_nemo_evaluation_name",),
+        ("ch_trace_index_0007_nemo_test_case_name",),
     ]
     expected_ttl = {
         ClickHouseTable.SPANS: "TTL toDate(start_time) + toIntervalDay(90)",

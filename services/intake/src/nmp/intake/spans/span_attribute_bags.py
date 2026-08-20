@@ -18,6 +18,7 @@ from nmp.intake.spans.span_attribute_catalog import (
     AttributeBag,
     AttributeSpec,
     SpanAttributeField,
+    bag_keys,
     from_bag,
     scaled_decimal_to_int,
     spec_for_field,
@@ -50,7 +51,11 @@ class SpanAttributeBags:
     def get_field(self, field: SpanAttributeField | str) -> str | int | float | bool | Decimal | None:
         spec = spec_for_field(field)
         bag = self._bag_for_spec(spec)
-        return from_bag(bag.get(spec.bag_key), spec)
+        for key in bag_keys(spec):
+            value = from_bag(bag.get(key), spec)
+            if value is not None:
+                return value
+        return None
 
     def put_field(self, field: SpanAttributeField | str, value: Any) -> None:
         self.put_spec(spec_for_field(field), value)

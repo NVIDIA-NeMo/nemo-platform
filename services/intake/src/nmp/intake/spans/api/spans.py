@@ -42,18 +42,19 @@ API_TAG = "Spans"
 # rather than a rejected request. test_spans_filter_contract.py holds that line: it
 # asserts every name below has a catalog entry, and that no SpanFilter field is
 # published without a way to serve it.
-ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
-    {
-        "agent_id",
-        "agent_name",
-        "evaluation_id",
-        "model",
-        "project",
-        "provider",
-        "test_case_id",
-        "tool_name",
-    }
-)
+ATTRIBUTE_EQ_FILTER_FIELD_MAP = {
+    "agent_id": "agent_id",
+    "agent_name": "agent_name",
+    "evaluation_name": "evaluation_name",
+    "evaluation_id": "evaluation_name",
+    "model": "model",
+    "project": "project",
+    "provider": "provider",
+    "test_case_name": "test_case_name",
+    "test_case_id": "test_case_name",
+    "tool_name": "tool_name",
+}
+ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(ATTRIBUTE_EQ_FILTER_FIELD_MAP)
 
 
 @router.get(
@@ -64,7 +65,7 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=SpanFilter,
         filter_description=(
-            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, "
+            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation_name, test_case_name, "
             "source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. "
             "Every field takes one exact value, except started_at, which takes gte and lte."
         ),
@@ -223,7 +224,11 @@ def _span_filter(workspace: str, parsed: ParsedFilter) -> SpanListFilter:
         elif comparison.field == "parent_span_id":
             filters.external_parent_span_id = require_string_value(comparison)
         elif comparison.field in ATTRIBUTE_EQ_FILTER_FIELDS:
-            _add_attribute_eq_filter(filters, comparison.field, require_string_value(comparison))
+            _add_attribute_eq_filter(
+                filters,
+                ATTRIBUTE_EQ_FILTER_FIELD_MAP[comparison.field],
+                require_string_value(comparison),
+            )
         elif comparison.field == "source":
             filters.source_format = require_string_value(comparison)
         elif comparison.field == "kind":

@@ -82,4 +82,7 @@ class EvaluationSessionResponse(BaseModel):
     """Sum of output tokens across this session's spans."""
 
     test_case_id: Optional[str] = None
-    """Producer-supplied test case identifier; null when the producer did not set one."""
+    """Deprecated alias for test_case_name. Use test_case_name instead."""
+
+    test_case_name: Optional[str] = None
+    """Test case name; null when the producer did not set one."""

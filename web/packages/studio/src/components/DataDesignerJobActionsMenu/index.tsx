@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  type QuickActionItem,
-  QuickActionsMenuRoot,
-} from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
+import { type ActionMenuItem, ActionsMenu } from '@nemo/common/src/components/ActionsMenu';
+import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { CJobCancellableStatuses } from '@nemo/common/src/constants/query';
 import {
   getDataDesignerListCreateJobsQueryKey,
@@ -21,6 +19,10 @@ import { useNavigate } from 'react-router';
 
 interface DataDesignerJobActionsMenuProps {
   job: DataDesignerJob;
+  /** 'icon' renders the ellipsis trigger (tables); 'labeled' renders an "Actions" button (details page). */
+  variant?: 'icon' | 'labeled';
+  /** Page-specific actions listed above the job-level ones, e.g. Transform and Split. */
+  additionalActions?: ActionMenuItem[];
   /** Include a "View details" entry. Used in the table row, omitted on the details page. */
   includeViewDetails?: boolean;
   /** When provided, adds a "View config" entry that invokes this callback. */
@@ -32,12 +34,14 @@ interface DataDesignerJobActionsMenuProps {
 }
 
 /**
- * Quick-actions menu for a single Data Designer job: View details (optional), Clone, Cancel
- * (when cancellable), and Delete. Shared by the jobs table and the job details page so both
+ * Actions menu for a single Data Designer job: any caller-supplied actions, View details
+ * (optional), Clone, Cancel (when cancellable), and Delete. Shared by the jobs table and the job details page so both
  * expose the same actions. Owns its own delete modal; cancel errors are surfaced via callback.
  */
 export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = ({
   job,
+  variant = 'icon',
+  additionalActions = [],
   includeViewDetails = false,
   onViewConfig,
   onDeleted,
@@ -82,7 +86,8 @@ export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = (
 
   const isCancellable = job.status != null && CJobCancellableStatuses.includes(job.status);
 
-  const actions: QuickActionItem[] = [
+  const actions: ActionMenuItem[] = [
+    ...additionalActions,
     ...(includeViewDetails
       ? [
           {
@@ -124,7 +129,11 @@ export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = (
 
   return (
     <>
-      <QuickActionsMenuRoot actions={actions} />
+      {variant === 'labeled' ? (
+        <ActionsMenu actions={actions} label="Actions" />
+      ) : (
+        <QuickActionsMenuRoot actions={actions} />
+      )}
       {showDeleteModal && (
         <DeleteJobModal
           jobs={[job]}

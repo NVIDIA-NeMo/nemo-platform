@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import ast
 import asyncio
 import json
 import logging
@@ -33,7 +34,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborDependencyRuntime,
     HarborVerifierValidationError,
     _chmod_path_chain,
-    _python_syntax_failure,
+    _python_findings,
     _shell_syntax_failure,
     _trial_error,
     _trial_metric_spec,
@@ -760,6 +761,8 @@ async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeyp
     assert FakeJob.created_config.agents[0].import_path.endswith(".harbor_wrapper:WrappedAgent")
     assert FakeJob.created_config.datasets[0].path == dataset_dir.resolve()
     assert FakeJob.created_config.datasets[0].task_names == ["task-a", "task-b"]
+    # Verifiers read traces from TRACE_DIR; without it every trace-based metric scores blind.
+    assert FakeJob.created_config.verifier.env == {"TRACE_DIR": DEFAULT_TRACE_ARTIFACT_SOURCE}
 
     first_trial = result.trials[0]
     assert first_trial.id == "task-a__0"
@@ -870,15 +873,15 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
     dataset = HarborDataset.from_path(dataset_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "preflight")
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
-    compile_calls = 0
-    original_compile = compile
+    parse_calls = 0
+    original_parse = ast.parse
 
-    def counting_compile(source, filename, mode):
-        nonlocal compile_calls
-        compile_calls += 1
-        return original_compile(source, filename, mode)
+    def counting_parse(source, *args, **kwargs):
+        nonlocal parse_calls
+        parse_calls += 1
+        return original_parse(source, *args, **kwargs)
 
-    monkeypatch.setattr("builtins.compile", counting_compile)
+    monkeypatch.setattr(ast, "parse", counting_parse)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
         await HarborNativeOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
@@ -888,22 +891,116 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
     assert "task 'task-b'" in message
     assert message.count("check_tool_hallucination.py:3:13") == 2
     assert "SyntaxError: expected 'except' or 'finally' block" in message
-    assert compile_calls == 1
+    assert parse_calls == 1
     assert fake_job.create_calls == 0
     assert fake_job.run_calls == 0
 
 
-def test_python_syntax_failure_reports_recursion_error(
+@pytest.mark.asyncio
+async def test_validate_rejects_verifier_evidence_that_cannot_resolve_in_the_container(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    blind_source = (
+        "import pathlib\n"
+        'instruction = pathlib.Path("/tests/instruction.md").read_text()\n'
+        'climbed = pathlib.Path("/tests/../instruction.md").read_text()\n'
+        'expected = pathlib.Path("/tests/expected.txt").read_text()\n'
+    )
+    _write(dataset_dir / "blind" / "task.toml", "")
+    _write(dataset_dir / "blind" / "tests" / "check_coverage.py", blind_source)
+    _write(dataset_dir / "blind" / "tests" / "expected.txt", "40\n")
+    _write(dataset_dir / "blind" / "instruction.md", "Total the hours.\n")
+
+    with pytest.raises(HarborVerifierValidationError) as exc_info:
+        await HarborDataset.from_path(dataset_dir).validate()
+
+    message = str(exc_info.value)
+    # instruction.md sits beside the task, not in tests/, so /tests/instruction.md is empty
+    # at run time, and climbing to it with .. reaches it on the host but not in the
+    # container. expected.txt is in tests/, which Harbor does mount, so it must pass.
+    assert "check_coverage.py:2: reads /tests/instruction.md, which no file provides" in message
+    assert "check_coverage.py:3: reads /tests/../instruction.md, which no file provides" in message
+    assert "expected.txt" not in message
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_a_verifier_that_defaults_instead_of_raising_on_a_failed_read(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    swallowing_source = (
+        "import pathlib\n"
+        "def read_text(path):\n"
+        "    try:\n"
+        "        return path.read_text(encoding='utf-8')\n"
+        "    except Exception:\n"
+        '        return ""\n'
+        "def find_total(rows):\n"
+        "    try:\n"
+        "        return rows['total']\n"
+        "    except KeyError:\n"
+        "        return None\n"
+    )
+    _write(dataset_dir / "swallows" / "task.toml", "")
+    _write(dataset_dir / "swallows" / "tests" / "check_coverage.py", swallowing_source)
+
+    with pytest.raises(HarborVerifierValidationError) as exc_info:
+        await HarborDataset.from_path(dataset_dir).validate()
+
+    message = str(exc_info.value)
+    # An empty string stands in for the file that was never read, and every metric
+    # computed from it reports a measurement that never happened. A handler naming the
+    # exception it expects is a deliberate sentinel, not a swallowed read.
+    assert "check_coverage.py:6: catches every exception and returns ''" in message
+    assert message.count("catches every exception") == 1
+
+
+@pytest.mark.asyncio
+async def test_validate_accepts_a_verifier_reading_evidence_the_task_ships(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    source = (
+        "import os, pathlib\n"
+        'rubric = pathlib.Path("/tests/judge_rubric.md").read_text()\n'
+        'traces = pathlib.Path(os.environ["TRACE_DIR"])\n'
+    )
+    _write(dataset_dir / "sighted" / "task.toml", "")
+    _write(dataset_dir / "sighted" / "tests" / "check_coverage.py", source)
+    _write(dataset_dir / "sighted" / "tests" / "judge_rubric.md", "Answer states the total.\n")
+
+    await HarborDataset.from_path(dataset_dir).validate()
+
+
+@pytest.mark.asyncio
+async def test_validate_accepts_a_verifier_that_only_names_a_missing_tests_path_in_prose(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    # The contract names /tests/instruction.md to rule it out, so a verifier explaining
+    # why it reads something else quotes that path without ever opening it.
+    python_source = (
+        '"""Score the total. The instruction is a prompt, not /tests/instruction.md."""\n'
+        "import os, pathlib\n"
+        "# Nothing provides /tests/instruction.md, so the rubric carries the reference.\n"
+        'rubric = pathlib.Path("/tests/judge_rubric.md").read_text()\n'
+        'traces = pathlib.Path(os.environ["TRACE_DIR"])\n'
+    )
+    shell_source = "#!/usr/bin/env bash\n# /tests/instruction.md is never mounted.\npython /tests/check_coverage.py\n"
+    _write(dataset_dir / "prose" / "task.toml", "")
+    _write(dataset_dir / "prose" / "tests" / "check_coverage.py", python_source)
+    _write(dataset_dir / "prose" / "tests" / "test.sh", shell_source)
+    _write(dataset_dir / "prose" / "tests" / "judge_rubric.md", "Answer states the total.\n")
+
+    await HarborDataset.from_path(dataset_dir).validate()
+
+
+def test_python_findings_report_recursion_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raise_recursion_error(_source, _filename, _mode):
+    def raise_recursion_error(_source, **_kwargs):
         raise RecursionError("maximum recursion depth exceeded during compilation")
 
-    monkeypatch.setattr("builtins.compile", raise_recursion_error)
+    monkeypatch.setattr(ast, "parse", raise_recursion_error)
 
-    failure = _python_syntax_failure("deeply nested source", tmp_path / "check.py")
+    failure, swallowed, references = _python_findings("deeply nested source", tmp_path / "check.py")
 
+    assert swallowed == []
+    assert references == []
     assert failure is not None
     assert failure.error == "RecursionError: maximum recursion depth exceeded during compilation"
     assert failure.line is None

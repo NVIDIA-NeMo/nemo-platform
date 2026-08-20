@@ -4083,16 +4083,16 @@ paths:
         schema:
           description: "Comma-separated list of fields to sort by, applied in order\
             \ (the first field dominates); prefix a field with '-' for descending\
-            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at,\
             \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
             \ sessions are ordered by started_at ascending."
           title: Sort
           type: string
         description: "Comma-separated list of fields to sort by, applied in order\
           \ (the first field dominates); prefix a field with '-' for descending \u2014\
-          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
-          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
-          \ ordered by started_at ascending."
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at,\
+          \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, sessions\
+          \ are ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
@@ -4100,7 +4100,7 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/EvaluationSessionFilter'
-        description: Filter sessions by test_case_id and status.
+        description: Filter sessions by test_case_name and status.
       responses:
         '200':
           description: Successful Response
@@ -4688,9 +4688,9 @@ paths:
         schema:
           $ref: '#/components/schemas/SpanFilter'
         description: Filter spans by session_id, trace_id, parent_span_id, project,
-          evaluation_id, test_case_id, source, kind, status, model, tool_name, provider,
-          agent_id, agent_name, and started_at. Every field takes one exact value,
-          except started_at, which takes gte and lte.
+          evaluation_name, test_case_name, source, kind, status, model, tool_name,
+          provider, agent_id, agent_name, and started_at. Every field takes one exact
+          value, except started_at, which takes gte and lte.
       responses:
         '200':
           description: Successful Response
@@ -4930,7 +4930,7 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_id, and test_case_id.
+          root span started_at, evaluation_name, and test_case_name.
       responses:
         '200':
           description: Successful Response
@@ -11055,24 +11055,28 @@ components:
       description: Schema for updating an entity.
     EvaluationContext:
       properties:
+        evaluation_name:
+          title: Evaluation Name
+          description: Name of an existing Evaluation.
+          type: string
+        test_case_name:
+          title: Test Case Name
+          description: Optional producer-supplied test case name.
+          type: string
         evaluation_id:
           title: Evaluation Id
-          description: Name of an existing Evaluation.
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
+          deprecated: true
           type: string
         test_case_id:
           title: Test Case Id
-          description: Optional producer-supplied test case id.
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
       type: object
       title: EvaluationContext
-      description: 'Evaluation context accepted by ingest endpoints (the canonical
-        shape).
-
-
-        ``extra="ignore"`` so a producer still sending retired keys (evaluation_sha,
-        evaluation_run_id,
-
-        metadata) keeps ingesting without error rather than being rejected.'
+      description: Identifies the Evaluation and optional test case associated with
+        ingested telemetry.
     EvaluationFilter:
       additionalProperties: false
       description: Filter for listing Evaluations.
@@ -11389,7 +11393,7 @@ components:
           type: integer
           title: Test Case Count
           description: Number of distinct test cases in the evaluation, i.e. distinct
-            test_case_id values (sessions with no test_case_id each count as their
+            test_case_name values (sessions with no test_case_name each count as their
             own). A test case run k times counts once; the rollup metrics are averaged
             per test case before pooling across test cases.
           default: 0
@@ -11448,8 +11452,13 @@ components:
       additionalProperties: false
       description: Filter for listing EvaluationSessions.
       properties:
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         test_case_id:
-          description: Filter by producer-supplied test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
         status:
@@ -11469,10 +11478,14 @@ components:
         session_id:
           type: string
           title: Session Id
+        test_case_name:
+          title: Test Case Name
+          description: Test case name; null when the producer did not set one.
+          type: string
         test_case_id:
           title: Test Case Id
-          description: Producer-supplied test case identifier; null when the producer
-            did not set one.
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
         trace_id:
           type: string
@@ -18365,11 +18378,23 @@ components:
       title: Span
     SpanEvaluationContext:
       properties:
+        evaluation_name:
+          title: Evaluation Name
+          description: Name of an existing Evaluation.
+          type: string
+        test_case_name:
+          title: Test Case Name
+          description: Optional producer-supplied test case name.
+          type: string
         evaluation_id:
           title: Evaluation Id
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
+          deprecated: true
           type: string
         test_case_id:
           title: Test Case Id
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
       additionalProperties: false
       type: object
@@ -18388,12 +18413,22 @@ components:
           description: Filter by project name.
           title: Project
           type: string
+        evaluation_name:
+          description: Filter by Evaluation name.
+          title: Evaluation Name
+          type: string
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         evaluation_id:
-          description: Filter by evaluation id.
+          deprecated: true
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
           title: Evaluation Id
           type: string
         test_case_id:
-          description: Filter by dataset test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
         source:
@@ -18973,12 +19008,22 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by root span start timestamp.
+        evaluation_name:
+          description: Filter by Evaluation name.
+          title: Evaluation Name
+          type: string
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         evaluation_id:
-          description: Filter by root-span evaluation id.
+          deprecated: true
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
           title: Evaluation Id
           type: string
         test_case_id:
-          description: Filter by root-span evaluation test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
       title: TraceFilter

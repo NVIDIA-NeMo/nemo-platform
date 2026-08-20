@@ -377,7 +377,7 @@ def test_filter_experiments_by_baseline_evaluation_name(client: TestClient) -> N
 
 def test_evaluation_read_degrades_when_rollup_hydration_fails(client: TestClient) -> None:
     class FailingRollupRepository:
-        async def get_rollups(self, *, workspace: str, evaluation_ids: list[str]) -> dict:
+        async def get_rollups(self, *, workspace: str, evaluation_names: list[str]) -> dict:
             raise RuntimeError("clickhouse unavailable")
 
     group = _create_group(client)

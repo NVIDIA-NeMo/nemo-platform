@@ -134,9 +134,9 @@ async def ingest_spans(
     spans = [item for item, _ in converted]
     await service.ingest_batch(TraceBatch(spans=spans))
     if denormalizer is not None:
-        evaluation_names = {semantic.evaluation_id for _, semantic in converted if semantic.evaluation_id}
+        evaluation_names = {semantic.evaluation_name for _, semantic in converted if semantic.evaluation_name}
         for evaluation_name in evaluation_names:
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_name)
+            denormalizer.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)
     return Response(status_code=status.HTTP_201_CREATED)
 
 

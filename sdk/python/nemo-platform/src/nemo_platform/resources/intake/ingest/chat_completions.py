@@ -101,11 +101,8 @@ class ChatCompletionsResource(SyncAPIResource):
           cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
               Intake stores it as semantic cost_total_usd on spans.
 
-          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
-
-              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-              evaluation_run_id, metadata) keeps ingesting without error rather than being
-              rejected.
+          evaluation_context: Identifies the Evaluation and optional test case associated with ingested
+              telemetry.
 
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
@@ -207,11 +204,8 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
           cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
               Intake stores it as semantic cost_total_usd on spans.
 
-          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
-
-              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-              evaluation_run_id, metadata) keeps ingesting without error rather than being
-              rejected.
+          evaluation_context: Identifies the Evaluation and optional test case associated with ingested
+              telemetry.
 
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 

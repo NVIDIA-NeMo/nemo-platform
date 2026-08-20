@@ -30,10 +30,10 @@ def _repository(executor: _Executor) -> ClickHouseEvaluationRollupRepository:
 async def test_evaluation_rollups_anchor_on_root_session_membership():
     executor = _Executor(
         [
-            [{"evaluation_id": "exp-a", "run_count": 3, "test_case_count": 2}],
+            [{"evaluation_name": "exp-a", "run_count": 3, "test_case_count": 2}],
             [
                 {
-                    "evaluation_id": "exp-a",
+                    "evaluation_name": "exp-a",
                     "evaluator_name": "reward",
                     "sum": 3.0,
                     "mean": 0.75,
@@ -46,7 +46,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
             ],
             [
                 {
-                    "evaluation_id": "exp-a",
+                    "evaluation_name": "exp-a",
                     "model_names": ["model-b", "model-a"],
                     "agent_names": ["agent-a"],
                     "agent_versions": ["1.0.0", "1.0.1"],
@@ -77,7 +77,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     )
     repository = _repository(executor)
 
-    rollups = await repository.get_rollups(workspace="default", evaluation_ids=["exp-a"])
+    rollups = await repository.get_rollups(workspace="default", evaluation_names=["exp-a"])
 
     rollup = rollups["exp-a"]
     assert rollup.run_count == 3
@@ -125,10 +125,13 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     ]
     statements = [query.statement for query in executor.queries]
     assert "FROM trace_index FINAL" in statements[0]
+    assert "evaluation_name" in statements[0]
+    assert "test_case_name" in statements[0]
     assert "count() AS run_count" in statements[0]
-    assert "uniqExactIf(test_case_id, test_case_id != '')" in statements[0]
+    assert "uniqExactIf(test_case_name, test_case_name != '')" in statements[0]
     assert "AS test_case_count" in statements[0]
-    assert "evaluation_id IN (%(evaluation_id_0)s)" in statements[0]
+    assert "evaluation_name IN (%(evaluation_name_0)s)" in statements[0]
+    assert "LIMIT 1 BY workspace, session_id, evaluation_name" in statements[0]
     assert "ORDER BY root_started_at ASC, root_span_id ASC" in statements[0]
     assert "FROM evaluator_results FINAL" in statements[1]
     assert "quantileExact(0.5)(value) AS median" in statements[1]
@@ -137,9 +140,11 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "sessions.session_id = results.session_id" in statements[1]
     # Scores are reduced to one value per (session, evaluator), then averaged per test case before the
     # distribution rollup, so the mean is test-case-weighted and count tracks test cases.
-    assert "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in statements[1]
+    assert (
+        "GROUP BY sessions.evaluation_name, sessions.session_id, sessions.test_case_name, results.name" in statements[1]
+    )
     assert "test_case_scores AS" in statements[1]
-    assert "WHERE sessions.test_case_id != ''" in statements[1]
+    assert "WHERE sessions.test_case_name != ''" in statements[1]
     assert "test_case_metrics AS" in statements[2]
     assert "current_session_spans AS" in statements[2]
     assert "(workspace, session_id) IN (SELECT DISTINCT workspace, session_id FROM scoped_sessions)" in statements[2]
@@ -152,7 +157,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "latency_p99" in statements[2]
     assert "tokens_p99" in statements[2]
     assert "sessions.trace_id = spans.trace_id" not in statements[2]
-    assert executor.queries[0].parameters["evaluation_id_0"] == "exp-a"
+    assert executor.queries[0].parameters["evaluation_name_0"] == "exp-a"
     assert executor.queries[2].parameters["model_key"] == "gen_ai.request.model"
     assert "input_tokens_key" in executor.queries[2].parameters
     assert "output_tokens_key" in executor.queries[2].parameters
@@ -170,7 +175,10 @@ def test_score_rollup_cte_builders_compose_the_pipeline():
     session_scores = _session_scores_cte("evaluator_results")
     assert "avg(results.value) AS value" in session_scores
     assert "FROM evaluator_results FINAL" in session_scores
-    assert "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in session_scores
+    assert (
+        "GROUP BY sessions.evaluation_name, sessions.session_id, sessions.test_case_name, results.name"
+        in session_scores
+    )
 
     # Fixed denominator: distinct sessions per test case.
     assert "count(DISTINCT session_id) AS session_count" in _test_case_sessions_cte()
@@ -185,4 +193,4 @@ def test_score_rollup_cte_builders_compose_the_pipeline():
     test_case_scores = _test_case_scores_cte()
     assert "coalesce(sum(scores.value), 0) / test_cases.session_count AS value" in test_case_scores
     assert "LEFT JOIN session_scores AS scores" in test_case_scores
-    assert "INNER JOIN evaluators ON evaluators.evaluation_id = test_cases.evaluation_id" in test_case_scores
+    assert "INNER JOIN evaluators ON evaluators.evaluation_name = test_cases.evaluation_name" in test_case_scores

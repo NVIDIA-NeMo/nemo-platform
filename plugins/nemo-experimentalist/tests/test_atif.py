@@ -75,8 +75,8 @@ def test_build_ingest_payload_stamps_evaluation_context(tmp_path):
         agent_attrs={},
     )
     assert payload["evaluation_context"] == {
-        "evaluation_id": "exp-1",
-        "test_case_id": "tau3-airline/case-a",
+        "evaluation_name": "exp-1",
+        "test_case_name": "tau3-airline/case-a",
     }
 
 

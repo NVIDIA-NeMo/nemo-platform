@@ -26,12 +26,13 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import ANY, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.runner.backend import DeploymentInfo
+from nemo_agents_plugin.runner.fabric_artifact_staging import FabricArtifactStagingError
 from nemo_agents_plugin.runner.in_memory import InMemoryRunnerBackend, _resolve_nat_bin
 from nemo_platform_plugin.config import Configuration, nmp_user_data_dir
 
@@ -529,3 +530,137 @@ def test_resolve_nat_bin_falls_back_to_container_path(monkeypatch: pytest.Monkey
     monkeypatch.setattr(sys, "executable", str(fake_python))
 
     assert _resolve_nat_bin() == "/app/.venv/bin/nat"
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_stages_ethos_fileset_into_base_dir(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    staged: list[dict[str, Any]] = []
+
+    async def _stage_fabric_ethos_dir(
+        *,
+        workspace: str,
+        agent_name: str,
+        agent_config: dict[str, Any],
+        base_dir: Path,
+        sdk: Any,
+    ) -> None:
+        del sdk
+        staged.append({"workspace": workspace, "agent_name": agent_name, "base_dir": base_dir})
+        assert not (base_dir / "agent.yaml").exists()
+        (base_dir / "mcps").mkdir()
+        (base_dir / "mcps" / "calculator.py").write_text("print(1)\n")
+        assert agent_config == config
+
+    async def _validate_platform_agent_config(config_: dict[str, Any], *, base_dir: Path) -> Any:
+        del config_, base_dir
+        return SimpleNamespace(agent_config=SimpleNamespace(name="fabric-agent"))
+
+    fake_process = SimpleNamespace(pid=4343, returncode=None, poll=lambda: None)
+
+    def _spawn_fabric(self_, name, config_path, log_path, port, credential_env=None):  # noqa: ANN001
+        del self_, name, config_path, port, credential_env
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("")
+        return fake_process
+
+    with (
+        patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config),
+        patch("nemo_agents_plugin.runner.in_memory.stage_fabric_ethos_dir", _stage_fabric_ethos_dir),
+        patch("nemo_agents_plugin.runner.in_memory.get_async_platform_sdk", MagicMock()),
+        patch.object(InMemoryRunnerBackend, "_spawn_fabric", _spawn_fabric),
+    ):
+        info = await backend.create_deployment("ws", "fabric-dep", config, port=49212, agent="fabric-agent")
+
+    base_dir = Path(info.extra["base_dir"])
+    assert staged == [{"workspace": "ws", "agent_name": "fabric-agent", "base_dir": base_dir}]
+    assert (base_dir / "mcps" / "calculator.py").exists()
+    assert yaml.safe_load((base_dir / "agent.yaml").read_text()) == config
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_cleans_base_dir_when_staging_fails(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    base_dir = tmp_path / "system" / "ws" / "fabric-dep-fabric"
+
+    async def _stage_fabric_ethos_dir(**kwargs: Any) -> None:
+        del kwargs
+        raise FabricArtifactStagingError("skills/review missing")
+
+    with (
+        patch("nemo_agents_plugin.runner.in_memory.stage_fabric_ethos_dir", _stage_fabric_ethos_dir),
+        patch("nemo_agents_plugin.runner.in_memory.get_async_platform_sdk", MagicMock()),
+    ):
+        with pytest.raises(FabricArtifactStagingError, match="skills/review"):
+            await backend.create_deployment("ws", "fabric-dep", config, port=0, agent="fabric-agent")
+
+    assert not base_dir.exists()
+    assert await backend.get_deployment_status("ws", "fabric-dep") is None
+
+
+@pytest.mark.asyncio
+async def test_redeploy_after_crash_does_not_merge_previous_fileset(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+
+    def _sdk_serving(skill_name: str) -> MagicMock:
+        async def _download(*, local_path: str, fileset: str | None = None, workspace: str | None = None) -> None:
+            del fileset, workspace
+            skills = Path(local_path) / "skills"
+            skills.mkdir(parents=True, exist_ok=True)
+            (skills / skill_name).write_text("# skill\n")
+
+        sdk = MagicMock()
+        sdk.files = SimpleNamespace(download=_download)
+        return sdk
+
+    async def _validate(config_: dict[str, Any], *, base_dir: Path) -> Any:
+        del config_, base_dir
+        return SimpleNamespace(agent_config=SimpleNamespace(name="fabric-agent"))
+
+    fake_process = SimpleNamespace(pid=5150, returncode=None, poll=lambda: None)
+
+    def _spawn_fabric(self_, name, config_path, log_path, port, credential_env=None):  # noqa: ANN001
+        del self_, name, config_path, port, credential_env
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("")
+        return fake_process
+
+    base_dirs: list[Path] = []
+    for skill_name in ("old.md", "new.md"):
+        with (
+            patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate),
+            patch(
+                "nemo_agents_plugin.runner.in_memory.get_async_platform_sdk",
+                return_value=_sdk_serving(skill_name),
+            ),
+            patch.object(InMemoryRunnerBackend, "_spawn_fabric", _spawn_fabric),
+        ):
+            info = await backend.create_deployment("ws", "dep", config, port=49300, agent="fabric-agent")
+        base_dirs.append(Path(info.extra["base_dir"]))
+        # Crash case: in-memory state disappears without delete_deployment's rmtree.
+        backend._processes.pop(("ws", "dep"), None)
+        backend._deployments.pop(("ws", "dep"), None)
+
+    assert base_dirs[0] == base_dirs[1]
+    assert sorted(path.name for path in (base_dirs[1] / "skills").iterdir()) == ["new.md"]

@@ -7,7 +7,7 @@ from nmp.common.config import create_service_config_class
 from pydantic import Field
 
 
-class HelloWorldConfig(create_service_config_class("hello_world")):  # type: ignore[unsupported-base]
+class HelloWorldConfig(create_service_config_class("hello_world")):  # ty: ignore[unsupported-base]
     """Configuration for the Hello World service.
 
     This configuration is loaded from the 'hello_world' section of the

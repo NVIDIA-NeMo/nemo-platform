@@ -23,8 +23,8 @@ class _CapturingRefresher:
     def __init__(self) -> None:
         self.marked: list[tuple[str, str]] = []
 
-    def mark_dirty(self, *, workspace: str, evaluation_id: str) -> None:
-        self.marked.append((workspace, evaluation_id))
+    def mark_dirty(self, *, workspace: str, evaluation_name: str) -> None:
+        self.marked.append((workspace, evaluation_name))
 
 
 def _entity(
@@ -49,7 +49,7 @@ def _rollup(
     name: str, *, agent_names: list[str], agent_versions: list[str], model_names: list[str]
 ) -> EvaluationRollup:
     return EvaluationRollup(
-        evaluation_id=name,
+        evaluation_name=name,
         agent_names=agent_names,
         agent_versions=agent_versions,
         model_names=model_names,
