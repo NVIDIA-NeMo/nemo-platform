@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent invocation job skeleton."""
+"""Execute-agent job."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from nemo_agents_plugin.fabric.invocation import (
     invoke_agent_config_request_once,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeTimeoutError
-from nemo_agents_plugin.tasks.invoke.workdir import (
+from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
     materialize_agent_workdir,
     validate_agent_workdir,
@@ -54,23 +54,23 @@ FABRIC_ERROR_RESULT_NAME = "fabric_error"
 FABRIC_RUN_RESULT_FILENAME = "fabric_run_result.json"
 FABRIC_ERROR_FILENAME = "fabric_error.json"
 SUCCESSFUL_FABRIC_STATUSES = {"succeeded"}
-DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS = 60 * 60
-DEFAULT_AGENT_INVOCATION_IMAGE_NAME = "nmp-api"
+DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS = 60 * 60
+DEFAULT_AGENT_EXECUTION_IMAGE_NAME = "nmp-api"
 
 
-class AgentInvocationJobConfig(BaseModel):
+class ExecuteAgentJobConfig(BaseModel):
     model_config = {"json_schema_mode_override": "validation"}
 
     agent: str = Field(pattern=ENTITY_REF_PATTERN, description="Agent entity name or workspace/name ref.")
     input: str = Field(description="Prompt to pass to the agent.")
     workdir: AgentWorkdir | None = Field(
         default=None,
-        description="Optional working directory configuration for the invocation.",
+        description="Optional working directory configuration for the execution.",
     )
     timeout_seconds: float = Field(
-        default=DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS,
+        default=DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
         gt=0,
-        description="Maximum time to wait for Fabric to return an invocation result.",
+        description="Maximum time to wait for Fabric to return an execution result.",
     )
 
 
@@ -81,22 +81,22 @@ class ResolvedAgentConfig(BaseModel):
     config_format: str
 
 
-class AgentInvocationStepConfig(BaseModel):
-    request: AgentInvocationJobConfig
+class ExecuteAgentStepConfig(BaseModel):
+    request: ExecuteAgentJobConfig
     agent: ResolvedAgentConfig
     workdir: AgentWorkdir | None = None
 
 
-class AgentInvocationJob(NemoJob):
-    name: ClassVar[str] = "invoke"
-    description: ClassVar[str] = "Invoke an agent as a scheduled platform job."
+class ExecuteAgentJob(NemoJob):
+    name: ClassVar[str] = "execute"
+    description: ClassVar[str] = "Execute an agent to completion as a scheduled platform job."
     container: ClassVar[str] = "cpu-tasks"
-    input_spec_schema: ClassVar[type[BaseModel]] = AgentInvocationJobConfig
-    spec_schema: ClassVar[type[BaseModel]] = AgentInvocationStepConfig
+    input_spec_schema: ClassVar[type[BaseModel]] = ExecuteAgentJobConfig
+    spec_schema: ClassVar[type[BaseModel]] = ExecuteAgentStepConfig
 
     @staticmethod
-    def _invocation_image() -> str:
-        return AgentsConfig.get().deployments.default_image or get_qualified_image(DEFAULT_AGENT_INVOCATION_IMAGE_NAME)
+    def _execution_image() -> str:
+        return AgentsConfig.get().deployments.default_image or get_qualified_image(DEFAULT_AGENT_EXECUTION_IMAGE_NAME)
 
     @classmethod
     async def to_spec(  # type: ignore[override]
@@ -108,8 +108,8 @@ class AgentInvocationJob(NemoJob):
         async_sdk: object,
         is_local: bool,
     ) -> BaseModel:
-        """Validates an ``AgentInvocationJobConfig`` (external-facing) and resolves
-        it to an ``AgentInvocationStepConfig`` (internal). Validating entity references
+        """Validates an ``ExecuteAgentJobConfig`` (external-facing) and resolves
+        it to an ``ExecuteAgentStepConfig`` (internal). Validating entity references
         in this step ensures errors surface to the user on their create request; storing
         resolved values on the step config obviates the need for a second fetch from the Job,
         and ensures we have an immutable snapshot of referenced entities as they existed
@@ -118,7 +118,7 @@ class AgentInvocationJob(NemoJob):
         them as a named result before doing any work.
         """
         del is_local
-        request = cast(AgentInvocationJobConfig, input_spec)
+        request = cast(ExecuteAgentJobConfig, input_spec)
         agent_ref = parse_entity_ref(request.agent, default_workspace=workspace)
         typed_entity_client = cast(Any, entity_client)
         try:
@@ -140,7 +140,7 @@ class AgentInvocationJob(NemoJob):
             sdk = cast(AsyncNeMoPlatform, async_sdk)
             workdir = await validate_agent_workdir(request.workdir, sdk.files, default_workspace=workspace)
 
-        return AgentInvocationStepConfig(
+        return ExecuteAgentStepConfig(
             request=request,
             agent=ResolvedAgentConfig(
                 name=agent.name,
@@ -164,18 +164,18 @@ class AgentInvocationJob(NemoJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         del workspace, entity_client, job_name, async_sdk, options
-        step_config = AgentInvocationStepConfig.model_validate(spec)
+        step_config = ExecuteAgentStepConfig.model_validate(spec)
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
-                    name="invoke-agent",
+                    name="execute-agent",
                     executor=CPUExecutionProviderSpec(
                         profile=profile or "default",
                         provider="cpu",
                         container=ContainerSpec(
-                            image=cls._invocation_image(),
+                            image=cls._execution_image(),
                             entrypoint=["python", "-m"],
-                            command=["nemo_agents_plugin.tasks.invoke"],
+                            command=["nemo_agents_plugin.tasks.execute"],
                         ),
                     ),
                     config=step_config.model_dump(mode="json"),
@@ -185,7 +185,7 @@ class AgentInvocationJob(NemoJob):
         )
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
-        step_config = AgentInvocationStepConfig.model_validate(config)
+        step_config = ExecuteAgentStepConfig.model_validate(config)
         _validate_agent_config_format(step_config.agent.config_format)
         agent_config = _validate_agent_config(step_config.agent.config)
 
@@ -289,13 +289,13 @@ def _validate_agent_config_format(config_format: str) -> None:
     if config_format != FABRIC_AGENT_CONFIG_FORMAT:
         raise ValueError(
             f"Config format {config_format!r} is not supported; "
-            f"agents.invoke jobs only support {FABRIC_AGENT_CONFIG_FORMAT!r}."
+            f"agents.execute jobs only support {FABRIC_AGENT_CONFIG_FORMAT!r}."
         )
 
 
 def _validate_agent_config(config: dict) -> AgentConfig:
     agent_config = AgentConfig.model_validate(config)
     if agent_config.environment.provider != "local":
-        raise ValueError("agents.invoke jobs only support local Fabric environments.")
+        raise ValueError("agents.execute jobs only support local Fabric environments.")
 
     return agent_config
