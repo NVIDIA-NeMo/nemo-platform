@@ -68,7 +68,7 @@ export const AgentsListRoute: FC = () => {
           slotActions={
             <Stack direction="row" gap="density-md">
               <Button kind="secondary" onClick={() => setUploadOpen(true)}>
-                Upload Agent
+                Integrate agent
               </Button>
               <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
                 Create Example Agent

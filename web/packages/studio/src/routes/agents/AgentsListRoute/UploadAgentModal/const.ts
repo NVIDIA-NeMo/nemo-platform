@@ -6,6 +6,14 @@ import YAML from 'yaml';
 import { z } from 'zod';
 
 export const AGENT_CONFIG_FILENAME = 'agent.yaml';
+
+/** Copy shown on the coding-agent tab, per the Figma design. */
+export const AGENT_INTEGRATION_PROMPT =
+  'Integrate my agent with NeMo Platform using the agent integration skill and connect it to platform.';
+
+/** The command the CLI tab offers; mirrors what `nemo agents create` takes. */
+export const agentCreateCliCommand = (agentName?: string): string =>
+  `nemo agents create \\\n  --name ${agentName?.trim() || '<agent-name>'} \\\n  --agent-config ./${AGENT_CONFIG_FILENAME}`;
 export const FABRIC_CONFIG_FORMAT = 'nemo-agents-spec-v1';
 
 // Container staging skips this file, so its bytes never reach a deployment.

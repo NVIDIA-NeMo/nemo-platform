@@ -7,13 +7,26 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
-import { Button, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  CodeSnippet,
+  Stack,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+  Text,
+  UploadInputElement,
+  UploadRoot,
+  UploadTrigger,
+} from '@nvidia/foundations-react-core';
 import {
   AgentSpecFilesetOrphanError,
   useCreateAgentFromUpload,
 } from '@studio/api/agents/useCreateAgentFromUpload';
 import {
   AGENT_CONFIG_FILENAME,
+  AGENT_INTEGRATION_PROMPT,
+  agentCreateCliCommand,
   agentNameFromConfig,
   collectAgentEntries,
   findNonUtf8Path,
@@ -29,7 +42,7 @@ import type {
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { type ChangeEventHandler, type FC, useEffect, useRef, useState } from 'react';
+import { type ChangeEventHandler, type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
@@ -39,15 +52,15 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   const queryClient = useQueryClient();
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const setDirectoryInput = useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node;
+    // webkitdirectory is absent from React's input attribute types.
+    node?.setAttribute('webkitdirectory', '');
+  }, []);
   const [entries, setEntries] = useState<UploadAgentEntry[]>([]);
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
   const [replaceOrphan, setReplaceOrphan] = useState(false);
-
-  // webkitdirectory is absent from React's input attribute types.
-  useEffect(() => {
-    inputRef.current?.setAttribute('webkitdirectory', '');
-  }, [open]);
 
   const {
     mutateAsync: createAgent,
@@ -156,8 +169,9 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     <FormModal
       open={open}
       onClose={resetAndClose}
-      title="Upload Agent"
-      instruction={`Select a directory containing ${AGENT_CONFIG_FILENAME}. Its skills, MCP servers, and prompts are uploaded with it.`}
+      className="w-[720px] max-w-[90vw]"
+      title="Integrate an agent with NeMo Platform"
+      instruction="Integrated agents allow users to evaluate, optimize, and deploy agents."
       submitButtonText={replaceOrphan ? 'Replace and create' : 'Create'}
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
@@ -165,29 +179,67 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
       submitDisabled={entries.length === 0}
       errorText={errorMessage}
     >
-      <Stack gap="density-md">
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          hidden
-          data-testid="agent-directory-input"
-          onChange={onDirectoryPicked}
-        />
-        <Button kind="secondary" onClick={() => inputRef.current?.click()} disabled={isPending}>
-          {directoryName ? 'Choose a different directory' : 'Choose directory'}
-        </Button>
-        {entries.length > 0 ? (
-          <Text kind="body/regular/sm">
-            {`${directoryName} — ${entries.length} files, ${Math.max(1, Math.round(totalEntryBytes(entries) / 1000))} KB`}
-          </Text>
-        ) : null}
-      </Stack>
-      <ControlledTextInput
-        useControllerProps={{ control, name: 'name' }}
-        label="Name"
-        formFieldProps={{ slotError: errors.name?.message }}
-      />
+      <TabsRoot defaultValue="upload" className="w-full min-w-0">
+        <TabsList>
+          <TabsTrigger value="prompt">Coding agent prompt</TabsTrigger>
+          <TabsTrigger value="cli">CLI command</TabsTrigger>
+          <TabsTrigger value="upload">Upload agent configuration</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="prompt" className="px-0 w-full">
+          <Stack gap="density-xs">
+            <Text kind="label/semibold/md">Agent prompt</Text>
+            <CodeSnippet
+              className="min-w-full"
+              value={AGENT_INTEGRATION_PROMPT}
+              language="text"
+              kind="block"
+            />
+          </Stack>
+        </TabsContent>
+
+        <TabsContent value="cli" className="px-0 w-full">
+          <Stack gap="density-xs">
+            <Text kind="label/semibold/md">CLI command</Text>
+            <CodeSnippet
+              className="min-w-full"
+              value={agentCreateCliCommand(watchedName)}
+              language="bash"
+              kind="block"
+            />
+          </Stack>
+        </TabsContent>
+
+        <TabsContent value="upload" className="px-0 w-full">
+          <Stack gap="density-md">
+            <Text kind="label/semibold/md">Select agent config files</Text>
+            <UploadRoot multiple disabled={isPending}>
+              <UploadTrigger
+                className="w-full"
+                slotAnchor={directoryName ? 'Choose a different directory' : 'Choose a directory'}
+                slotHeaderText=" containing agent.yaml."
+              >
+                <UploadInputElement
+                  ref={setDirectoryInput}
+                  data-testid="agent-directory-input"
+                  multiple
+                  onChange={onDirectoryPicked}
+                />
+              </UploadTrigger>
+            </UploadRoot>
+            {entries.length > 0 ? (
+              <Text kind="body/regular/sm">
+                {`${directoryName} — ${entries.length} files, ${Math.max(1, Math.round(totalEntryBytes(entries) / 1000))} KB`}
+              </Text>
+            ) : null}
+            <ControlledTextInput
+              useControllerProps={{ control, name: 'name' }}
+              label="Name"
+              formFieldProps={{ slotError: errors.name?.message }}
+            />
+          </Stack>
+        </TabsContent>
+      </TabsRoot>
     </FormModal>
   );
 };

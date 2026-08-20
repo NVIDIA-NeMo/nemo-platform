@@ -170,3 +170,33 @@ describe('UploadAgentModal', () => {
     expect(await within(dialog).findByText(/is not a text file/)).toBeInTheDocument();
   });
 });
+
+describe('UploadAgentModal tabs', () => {
+  it('offers the designed coding-agent prompt', async () => {
+    const user = userEvent.setup();
+    mockPlatform();
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
+
+    expect(
+      await within(dialog).findByText(/Integrate my agent with NeMo Platform/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows a CLI command carrying the entered name', async () => {
+    const user = userEvent.setup();
+    mockPlatform();
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    pickDirectory(dialog);
+    await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
+
+    await user.click(within(dialog).getByRole('tab', { name: 'CLI command' }));
+
+    await waitFor(() => expect(dialog).toHaveTextContent('nemo agents create'));
+    expect(dialog).toHaveTextContent('--name calc');
+  });
+});
