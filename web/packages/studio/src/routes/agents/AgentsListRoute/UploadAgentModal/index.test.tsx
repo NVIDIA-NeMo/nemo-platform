@@ -168,3 +168,19 @@ describe('UploadAgentModal', () => {
     expect(await within(dialog).findByText(/is not a text file/)).toBeInTheDocument();
   });
 });
+
+describe('UploadAgentModal oversized pick', () => {
+  it('rejects a directory far larger than an agent, naming the count', async () => {
+    mockPlatform();
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    // A real accidental pick was 880k files; only length is read before the guard fires.
+    fireEvent.change(within(dialog).getByTestId('agent-directory-input'), {
+      target: { files: { length: 880_000 } },
+    });
+
+    expect(await within(dialog).findByText(/880,000 files/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
+  });
+});

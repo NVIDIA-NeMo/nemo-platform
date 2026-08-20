@@ -16,6 +16,16 @@ const AGENT_SPEC_FILENAME = 'AGENT-SPEC.md';
 export const MAX_AGENT_SPEC_BYTES = 900_000;
 export const MAX_AGENT_SPEC_FILES = 500;
 
+// A directory picker hands over every descendant, so a mistaken pick can arrive with
+// hundreds of thousands of entries. Reject on the raw count before mapping, filtering or
+// sorting any of them — the ignore list cannot be applied without touching every entry.
+export const MAX_PICKED_FILES = 1_000;
+
+export const tooManyPickedFiles = (pickedCount: number): string | undefined =>
+  pickedCount > MAX_PICKED_FILES
+    ? `That directory holds ${pickedCount.toLocaleString()} files, far more than an agent directory should. Point at the agent's own directory.`
+    : undefined;
+
 const IGNORED_DIRECTORIES = new Set([
   '__pycache__',
   '.git',

@@ -9,7 +9,9 @@ import {
   findNonUtf8Path,
   isIgnoredPath,
   MAX_AGENT_SPEC_FILES,
+  MAX_PICKED_FILES,
   parseAgentConfig,
+  tooManyPickedFiles,
   validateAgentEntries,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
 import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
@@ -90,7 +92,9 @@ describe('validateAgentEntries', () => {
   });
 
   it('accepts a directory within both limits', () => {
-    expect(validateAgentEntries([entry('agent.yaml'), entry('mcps/calculator.py')])).toBeUndefined();
+    expect(
+      validateAgentEntries([entry('agent.yaml'), entry('mcps/calculator.py')])
+    ).toBeUndefined();
   });
 });
 
@@ -178,5 +182,16 @@ describe('findNonUtf8Path', () => {
     const entries = [binaryEntry('utf16.md', [0xed, 0xa0, 0x80])];
 
     await expect(findNonUtf8Path(entries)).resolves.toBe('utf16.md');
+  });
+});
+
+describe('tooManyPickedFiles', () => {
+  it('rejects a pick far larger than any agent directory', () => {
+    expect(tooManyPickedFiles(880_000)).toMatch(/880,000 files/);
+  });
+
+  it('allows a pick within the inspectable ceiling', () => {
+    expect(tooManyPickedFiles(MAX_PICKED_FILES)).toBeUndefined();
+    expect(tooManyPickedFiles(12)).toBeUndefined();
   });
 });

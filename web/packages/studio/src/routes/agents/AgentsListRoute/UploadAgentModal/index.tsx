@@ -24,6 +24,7 @@ import {
   collectAgentEntries,
   findNonUtf8Path,
   parseAgentConfig,
+  tooManyPickedFiles,
   totalEntryBytes,
   uploadAgentFormSchema,
   validateAgentEntries,
@@ -100,11 +101,25 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   };
 
   const onDirectoryPicked: ChangeEventHandler<HTMLInputElement> = async (event) => {
-    const picked = Array.from(event.target.files ?? []);
-    event.target.value = '';
-    if (picked.length === 0) return;
+    // Read the count off the FileList before materialising it: an accidental pick can
+    // carry hundreds of thousands of files, and Array.from on that is itself the stall.
+    const fileList = event.target.files;
+    const pickedCount = fileList?.length ?? 0;
+    if (pickedCount === 0) return;
 
+    const oversized = tooManyPickedFiles(pickedCount);
+    if (oversized) {
+      event.target.value = '';
+      setEntries([]);
+      setDirectoryName('');
+      setSelectionError(oversized);
+      return;
+    }
+
+    const picked = Array.from(fileList ?? []);
+    event.target.value = '';
     setDirectoryName(picked[0]?.webkitRelativePath.split('/')[0] ?? '');
+
     const collected = collectAgentEntries(picked);
 
     const problem = validateAgentEntries(collected);
