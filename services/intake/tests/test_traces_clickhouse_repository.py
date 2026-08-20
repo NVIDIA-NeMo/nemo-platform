@@ -402,6 +402,25 @@ async def test_root_filters_use_trace_index_columns():
     assert client.parameters[0]["filter_evaluation_name"] == "experiment-a"
 
 
+@pytest.mark.asyncio
+async def test_agent_filter_uses_the_trace_index_column():
+    client = _Client()
+    repository = _repository(client)
+
+    await repository.list_traces(
+        filters=TraceListFilter(workspace="workspace-a", agent_name="support-bot"),
+        page=1,
+        page_size=10,
+        sort="started_at",
+        mode="detailed",
+    )
+
+    assert "trace_roots.agent_name = %(filter_agent_name)s" in client.queries[0]
+    # Agent scoping must not fall back to probing the spans attribute map.
+    assert "candidate_spans" not in client.queries[0]
+    assert client.parameters[0]["filter_agent_name"] == "support-bot"
+
+
 def _trace_row(
     *,
     trace_id: str = "trace-a",
@@ -439,3 +458,168 @@ def _trace_row(
         "ingested_at": ingested_at,
     }
     return tuple(values[column] for column in TRACE_COLUMNS)
+
+
+_METRIC_COLUMNS = [
+    "bucket_start",
+    "run_count",
+    "failed_run_count",
+    *[
+        f"{field}_{suffix}"
+        for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens", "cost_usd")
+        for suffix in ("sum", "mean", "quantiles")
+    ],
+    "latency_ms_mean",
+    "latency_ms_quantiles",
+]
+
+
+def _metric_row(*, bucket_start, run_count, failed_run_count, **rollups):
+    """Build one _METRIC_COLUMNS-shaped row; unnamed rollups come back empty."""
+
+    row = [bucket_start, run_count, failed_run_count]
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens", "cost_usd"):
+        row.extend(rollups.get(field, (None, None, [])))
+    row.extend(rollups.get("latency_ms", (None, [])))
+    return tuple(row)
+
+
+@pytest.mark.asyncio
+async def test_trace_metrics_buckets_by_day_in_the_requested_timezone():
+    bucket_start = datetime(2026, 8, 14, tzinfo=timezone.utc)
+    client = _Client(
+        [
+            _QueryResult(
+                [
+                    _metric_row(
+                        bucket_start=bucket_start,
+                        run_count=3,
+                        failed_run_count=1,
+                        input_tokens=(300, 100.0, [180.0, 190.0]),
+                        output_tokens=(150, 50.0, [90.0, 95.0]),
+                        cost_usd=(0.5, 0.16, [0.3, 0.4]),
+                        latency_ms=(2000.0, [1200.0, 3900.0, 4300.0, 4800.0]),
+                    )
+                ],
+                _METRIC_COLUMNS,
+            )
+        ]
+    )
+    repository = _repository(client)
+
+    points = await repository.trace_metrics(
+        filters=TraceListFilter(workspace="workspace-a", agent_name="support-bot"),
+        bucket="day",
+        timezone_name="America/Los_Angeles",
+    )
+
+    query = client.queries[0]
+    assert "toStartOfDay(trace_roots.root_started_at, %(metrics_timezone)s)" in query
+    assert "trace_roots.agent_name = %(filter_agent_name)s" in query
+    assert client.parameters[0]["metrics_timezone"] == "America/Los_Angeles"
+    assert client.parameters[0]["filter_agent_name"] == "support-bot"
+
+    assert len(points) == 1
+    point = points[0]
+    assert point.bucket_start == bucket_start
+    assert point.run_count == 3
+    assert point.failed_run_count == 1
+    assert point.input_tokens.sum == 300
+    assert point.input_tokens.mean == 100.0
+    assert point.input_tokens.p90 == 180.0
+    assert point.input_tokens.p99 == 190.0
+    assert point.cost_usd.sum == 0.5
+    assert point.latency_ms.mean == 2000.0
+    assert point.latency_ms.p50 == 1200.0
+    assert point.latency_ms.p95 == 4300.0
+    assert point.latency_ms.p99 == 4800.0
+    # A mean is not derivable from percentiles, so it must come from the query.
+    assert "avg(roots.latency_ms) AS latency_ms_mean" in query
+    # One combined aggregate per metric rather than a quantile state per percentile.
+    assert "quantiles(0.9, 0.99)(rollups.input_tokens) AS input_tokens_quantiles" in query
+    assert "quantiles(0.5, 0.9, 0.95, 0.99)(roots.latency_ms) AS latency_ms_quantiles" in query
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("bucket", "expected_sql"),
+    [
+        ("hour", "toStartOfHour(trace_roots.root_started_at, %(metrics_timezone)s)"),
+        ("week", "toDateTime(toStartOfWeek(trace_roots.root_started_at, 1, %(metrics_timezone)s)"),
+        ("month", "toDateTime(toStartOfMonth(trace_roots.root_started_at, %(metrics_timezone)s)"),
+    ],
+)
+async def test_trace_metrics_supports_coarser_buckets(bucket, expected_sql):
+    client = _Client([_QueryResult([], _METRIC_COLUMNS)])
+    repository = _repository(client)
+
+    await repository.trace_metrics(
+        filters=TraceListFilter(workspace="workspace-a"),
+        bucket=bucket,
+        timezone_name="UTC",
+    )
+
+    assert expected_sql in client.queries[0]
+
+
+@pytest.mark.asyncio
+async def test_trace_metrics_total_bucket_collapses_to_one_row_without_a_start():
+    client = _Client(
+        [
+            _QueryResult(
+                [
+                    _metric_row(
+                        bucket_start=datetime(1970, 1, 1, tzinfo=timezone.utc),
+                        run_count=5,
+                        failed_run_count=0,
+                    )
+                ],
+                _METRIC_COLUMNS,
+            )
+        ]
+    )
+    repository = _repository(client)
+
+    points = await repository.trace_metrics(
+        filters=TraceListFilter(workspace="workspace-a"),
+        bucket="total",
+        timezone_name="UTC",
+    )
+
+    assert "toStartOfDay" not in client.queries[0]
+    # The constant bucket value is an implementation detail and must not surface.
+    assert points[0].bucket_start is None
+    assert points[0].run_count == 5
+    # Traces with no token attributes report null rather than a misleading zero.
+    assert points[0].input_tokens.sum is None
+    assert points[0].input_tokens.p90 is None
+    assert points[0].latency_ms.p50 is None
+
+
+@pytest.mark.asyncio
+async def test_trace_metrics_reads_tokens_from_deduplicated_spans():
+    client = _Client([_QueryResult([], _METRIC_COLUMNS)])
+    repository = _repository(client)
+
+    await repository.trace_metrics(
+        filters=TraceListFilter(workspace="workspace-a"),
+        bucket="day",
+        timezone_name="UTC",
+    )
+
+    query = client.queries[0]
+    # spans is a ReplacingMergeTree, so the rollup must go through the argMax dedup
+    # helper rather than summing raw rows.
+    assert "argMax(span_versions." in query
+    assert "LEFT JOIN rollups" in query
+    # session_id leads the spans sort key after workspace, so it must be carried from
+    # the selected roots for the primary key to prune before the trace-id bloom filter.
+    assert "span_versions.session_id IN (SELECT session_id FROM roots)" in query
+    # The rollup CTE must be scoped by source_format too, not just trace_id, so a
+    # trace_id shared across ingest formats does not drag in unrelated spans.
+    assert (
+        "(span_versions.source_format, span_versions.trace_id) IN (SELECT source_format, trace_id FROM roots)" in query
+    )
+    # Joined on the full trace identity, matching the trace hydration query.
+    assert "roots.workspace = rollups.workspace" in query
+    assert "roots.source_format = rollups.source_format" in query

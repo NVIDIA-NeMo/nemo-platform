@@ -46,6 +46,7 @@ class TraceFilter(BaseModel):
         deprecated=True,
         description="Deprecated alias for test_case_name. Use test_case_name instead.",
     )
+    agent_name: str | None = Field(default=None, description="Filter by root-span agent name.")
 
 
 class Trace(BaseModel):
@@ -69,6 +70,8 @@ class Trace(BaseModel):
         ),
     )
     evaluation_context: EvaluationContext | None = None
+    agent_name: str | None = None
+    agent_version: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None
@@ -80,6 +83,14 @@ class Trace(BaseModel):
     cost_usd: float | None = None
     cost_input_usd: float | None = None
     cost_output_usd: float | None = None
+    models: list[str] | None = Field(
+        default=None,
+        description="Distinct models used across the trace's spans. Omitted in summary mode.",
+    )
+    providers: list[str] | None = Field(
+        default=None,
+        description="Distinct inference providers used across the trace's spans. Omitted in summary mode.",
+    )
     span_count: int | None = Field(default=None, ge=0)
     error_count: int | None = Field(default=None, ge=0)
 
@@ -94,6 +105,8 @@ class Trace(BaseModel):
             input=text_for_mode(trace.input, mode=mode),
             output=text_for_mode(trace.output, mode=mode),
             evaluation_context=_evaluation_context(trace),
+            agent_name=trace.agent_name,
+            agent_version=trace.agent_version,
             started_at=trace.started_at,
             ended_at=trace.ended_at,
             duration_ms=trace.duration_ms,
@@ -105,6 +118,8 @@ class Trace(BaseModel):
             cost_usd=trace.cost_usd,
             cost_input_usd=trace.cost_input_usd,
             cost_output_usd=trace.cost_output_usd,
+            models=trace.models,
+            providers=trace.providers,
             span_count=trace.span_count,
             error_count=trace.error_count,
         )

@@ -256,6 +256,8 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
     # Ingest writes canonical keys, while the backfill must preserve associations on historical rows.
     evaluation_name_expr = _coalesced_string_attribute(SpanAttributeField.EVALUATION_NAME)
     test_case_name_expr = _coalesced_string_attribute(SpanAttributeField.TEST_CASE_NAME)
+    agent_name_key = spec_for_field(SpanAttributeField.AGENT_NAME).bag_key
+    agent_version_key = spec_for_field(SpanAttributeField.AGENT_VERSION).bag_key
 
     # Note this is logically a single table. CH requires creating an underlying table and then a view that writes to that table.
     client.command(
@@ -276,6 +278,9 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             evaluation_name String DEFAULT '',
             test_case_name String DEFAULT '',
 
+            agent_name String DEFAULT '',
+            agent_version String DEFAULT '',
+
             root_started_at DateTime64(6) CODEC(Delta(8), ZSTD(1)),
             root_ended_at Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
             latency_ms Nullable(Float64),
@@ -287,6 +292,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             INDEX idx_session_id session_id TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_evaluation_name evaluation_name TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_test_case_name test_case_name TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_agent_name agent_name TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_root_status root_status TYPE set(4) GRANULARITY 4,
             INDEX idx_source_format source_format TYPE set(8) GRANULARITY 4
         )
@@ -314,6 +320,8 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             attributes_string['{project_key}'] AS project,
             {evaluation_name_expr} AS evaluation_name,
             {test_case_name_expr} AS test_case_name,
+            attributes_string['{agent_name_key}'] AS agent_name,
+            attributes_string['{agent_version_key}'] AS agent_version,
             start_time AS root_started_at,
             nullIf(end_time, toDateTime64(0, 6)) AS root_ended_at,
             if(end_time = toDateTime64(0, 6), NULL, dateDiff('millisecond', start_time, end_time)) AS latency_ms,
@@ -366,6 +374,11 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     # and the trace_index columns now describe the name values they store. Rebuild the derived table
     # and MV with canonical columns while the backfill coalesces canonical and historical bag keys.
     ("ch_trace_index_0007_nemo_test_case_name", _create_trace_index_schema),
+    # trace_index gained ``agent_name`` / ``agent_version`` so agent-scoped trace
+    # listing and metric rollups filter on a real column instead of scanning the spans attribute
+    # map. Rebuild backfills them from ``spans``, which shares trace_index's retention window, so
+    # no retained history is lost. A separate revision because 0007 already shipped.
+    ("ch_trace_index_0008_agent", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

@@ -10,13 +10,23 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseExternalData, ClickHouseQuery
 from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.repository.trace import TraceRepository
-from nmp.intake.spans.domain import IntakeTrace, TraceListFilter, TraceMode
+from nmp.intake.spans.domain import (
+    CostRollup,
+    IntakeTrace,
+    LatencyRollup,
+    TokenRollup,
+    TraceListFilter,
+    TraceMetricBucket,
+    TraceMetricPoint,
+    TraceMode,
+)
 from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
 from nmp.intake.spans.span_rollups import METRIC_ATTRIBUTE_FIELDS, metric_aggregate_columns
 from nmp.intake.spans.storage import (
@@ -32,6 +42,14 @@ logger = logging.getLogger(__name__)
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
+}
+
+# Capping the bucket count does not cap the scan, so a wide filter still needs a
+# ceiling on what one rollup may read. Overflow modes default to throw.
+METRIC_QUERY_SETTINGS = {
+    "max_execution_time": 30,
+    "max_memory_usage": 4 * 1024**3,
+    "max_rows_to_read": 200_000_000,
 }
 
 TRACE_COLUMNS = [
@@ -86,6 +104,7 @@ _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 class _TracePageRef:
     source_format: str
     trace_id: str
+    session_id: str
     started_at_us: int
 
     @classmethod
@@ -93,6 +112,7 @@ class _TracePageRef:
         return cls(
             source_format=str(row["source_format"]),
             trace_id=str(row["id"]),
+            session_id=str(row["session_id"]),
             started_at_us=int(row["started_at_us"]),
         )
 
@@ -199,6 +219,65 @@ class ClickHouseTraceRepository(TraceRepository):
             mode=mode,
         )
         return result.data[0] if result.data else None
+
+    async def trace_metrics(
+        self,
+        *,
+        filters: TraceListFilter,
+        bucket: TraceMetricBucket,
+        timezone_name: str,
+    ) -> list[TraceMetricPoint]:
+        trace_index_table = self._executor.table(ClickHouseTable.TRACE_INDEX)
+        spans_table = self._executor.table(ClickHouseTable.SPANS)
+        roots_sql, parameters = _metric_roots_sql(
+            trace_index_table=trace_index_table,
+            filters=filters,
+            bucket=bucket,
+        )
+        # Reuses the same per-trace span rollup as trace hydration, rescoped from a
+        # page of trace refs to whatever the filter selected.
+        rollups_sql, rollup_parameters = _trace_aggregates_sql(
+            spans_table,
+            extra_where_sql=(
+                # session_id engages the spans primary key, trace_id drives the bloom
+                # filter, and the tuple keeps a trace_id shared across source formats
+                # from pulling in unrelated spans.
+                "span_versions.session_id IN (SELECT session_id FROM roots)\n"
+                "                AND span_versions.trace_id IN (SELECT trace_id FROM roots)\n"
+                "                AND (span_versions.source_format, span_versions.trace_id) "
+                "IN (SELECT source_format, trace_id FROM roots)"
+            ),
+        )
+        parameters.update(rollup_parameters)
+        parameters["metrics_timezone"] = timezone_name
+
+        statement = f"""
+            WITH
+            roots AS (
+                {roots_sql}
+            ),
+            rollups AS (
+                {rollups_sql}
+            )
+            SELECT
+                {_metric_select_columns()}
+            FROM roots
+            LEFT JOIN rollups
+                ON roots.workspace = rollups.workspace
+                AND roots.source_format = rollups.source_format
+                AND roots.trace_id = rollups.trace_id
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+        """
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="traces.metrics",
+                statement=statement,
+                parameters=parameters,
+                settings=METRIC_QUERY_SETTINGS,
+            )
+        )
+        return [_row_to_metric_point(row, bucket=bucket) for row in rows]
 
     async def latest_trace_started_at_by_group(
         self,
@@ -338,6 +417,8 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
         "traces.project AS project",
         "traces.evaluation_name AS evaluation_name",
         "traces.test_case_name AS test_case_name",
+        "traces.agent_name AS agent_name",
+        "traces.agent_version AS agent_version",
         "traces.started_at AS started_at",
         "traces.ended_at AS ended_at",
         "traces.status AS status",
@@ -383,6 +464,8 @@ def _trace_index_select_columns(*, mode: TraceMode) -> tuple[str, dict[str, Any]
         "nullIf(trace_roots.project, '') AS project",
         "nullIf(trace_roots.evaluation_name, '') AS evaluation_name",
         "nullIf(trace_roots.test_case_name, '') AS test_case_name",
+        "nullIf(trace_roots.agent_name, '') AS agent_name",
+        "nullIf(trace_roots.agent_version, '') AS agent_version",
         "trace_roots.root_started_at AS started_at",
         "trace_roots.root_ended_at AS ended_at",
         "trace_roots.root_status AS status",
@@ -391,17 +474,32 @@ def _trace_index_select_columns(*, mode: TraceMode) -> tuple[str, dict[str, Any]
     return ",\n            ".join(columns), text_query_parameters(mode)
 
 
-def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
+# session_id leads the spans sort key after workspace, so restricting it lets the
+# primary key prune before the trace-id bloom filter widens the granule set.
+_PAGE_TRACE_REFS_WHERE_SQL = (
+    "span_versions.session_id IN %(page_session_ids)s\n"
+    "                AND span_versions.trace_id IN %(page_trace_ids)s\n"
+    "                AND (span_versions.source_format, span_versions.trace_id) "
+    "IN %(page_trace_keys)s"
+)
+
+
+def _trace_aggregates_sql(
+    table: str,
+    *,
+    extra_where_sql: str = _PAGE_TRACE_REFS_WHERE_SQL,
+    extra_select_sql: str = "",
+) -> tuple[str, dict[str, Any]]:
+    """Build the per-trace span rollup shared by trace hydration and metric buckets.
+
+    Both callers must read through ``current_spans_sql``: spans is a
+    ReplacingMergeTree, so summing raw rows would double-count re-ingested spans.
+    """
     source_alias = "trace_spans"
     select_columns, parameters = _trace_aggregate_select_columns(source_alias)
-    current_spans = current_spans_sql(
-        table,
-        extra_where_sql=(
-            "span_versions.trace_id IN %(page_trace_ids)s\n"
-            "                AND (span_versions.source_format, span_versions.trace_id) "
-            "IN %(page_trace_keys)s"
-        ),
-    )
+    if extra_select_sql:
+        select_columns = f"{select_columns},\n            {extra_select_sql}"
+    current_spans = current_spans_sql(table, extra_where_sql=extra_where_sql)
     query = f"""
         SELECT
             {select_columns}
@@ -445,6 +543,7 @@ def _trace_page_parameters(refs: Sequence[_TracePageRef]) -> dict[str, object]:
     return {
         "page_trace_ids": [ref.trace_id for ref in refs],
         "page_trace_keys": [ref.trace_key for ref in refs],
+        "page_session_ids": sorted({ref.session_id for ref in refs}),
         "page_started_at_min_us": min(started_at_us),
         "page_started_at_max_us": max(started_at_us),
     }
@@ -464,6 +563,7 @@ def _reconcile_hydrated_page(
 _TRACE_INDEX_FILTER_COLUMNS = {
     "evaluation_name": "evaluation_name",
     "test_case_name": "test_case_name",
+    "agent_name": "agent_name",
 }
 
 
@@ -561,6 +661,8 @@ def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:
         project=row.get("project") or None,
         evaluation_name=row.get("evaluation_name") or None,
         test_case_name=row.get("test_case_name") or None,
+        agent_name=row.get("agent_name") or None,
+        agent_version=row.get("agent_version") or None,
         started_at=row["started_at"],
         ended_at=ended_at,
         duration_ms=_duration_ms(row["started_at"], ended_at),
@@ -578,6 +680,134 @@ def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:
         span_count=int_or_none(row.get("span_count")),
         error_count=int_or_none(row.get("error_count")),
     )
+
+
+# ClickHouse resolves these against the caller's timezone so buckets line up with the
+# user's calendar rather than the server's. Week starts Monday (mode 1).
+# toStartOfWeek/Month return Date, toStartOfDay returns DateTime. Cast so every bucket
+# yields the same type; otherwise some buckets deserialize to naive datetimes and others
+# to timezone-aware ones, and chart clients see inconsistent offsets.
+_METRIC_BUCKET_EXPRESSIONS = {
+    "hour": "toStartOfHour(trace_roots.root_started_at, %(metrics_timezone)s)",
+    "day": "toStartOfDay(trace_roots.root_started_at, %(metrics_timezone)s)",
+    "week": "toDateTime(toStartOfWeek(trace_roots.root_started_at, 1, %(metrics_timezone)s), %(metrics_timezone)s)",
+    "month": "toDateTime(toStartOfMonth(trace_roots.root_started_at, %(metrics_timezone)s), %(metrics_timezone)s)",
+}
+
+
+def _metric_roots_sql(
+    *,
+    trace_index_table: str,
+    filters: TraceListFilter,
+    bucket: TraceMetricBucket,
+) -> tuple[str, dict[str, Any]]:
+    """Build the deduplicated root-span CTE the metric buckets group over."""
+
+    where_sql, parameters = _trace_index_where(filters, qualifier="trace_roots")
+    query = f"""
+        SELECT
+            trace_roots.workspace AS workspace,
+            trace_roots.source_format AS source_format,
+            trace_roots.trace_id AS trace_id,
+            trace_roots.session_id AS session_id,
+            {_metric_bucket_expression(bucket)} AS bucket_start,
+            trace_roots.root_status AS root_status,
+            trace_roots.latency_ms AS latency_ms
+        FROM {trace_index_table} AS trace_roots FINAL
+        WHERE {where_sql}
+        ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
+        LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
+    """
+    return query, parameters
+
+
+_TOKEN_ROLLUP_FIELDS = ("input_tokens", "output_tokens", "cached_tokens", "total_tokens")
+_SUMMED_ROLLUP_QUANTILES = (0.9, 0.99)
+_LATENCY_QUANTILES = (0.5, 0.9, 0.95, 0.99)
+
+
+def _quantiles_expression(expression: str, quantiles: Sequence[float]) -> str:
+    # One combined aggregate rather than a quantile state per percentile.
+    return f"quantiles({', '.join(str(quantile) for quantile in quantiles)})({expression})"
+
+
+def _metric_select_columns() -> str:
+    columns = [
+        "roots.bucket_start AS bucket_start",
+        "count() AS run_count",
+        "countIf(roots.root_status = 'error') AS failed_run_count",
+    ]
+    for field in (*_TOKEN_ROLLUP_FIELDS, "cost_usd"):
+        source = f"rollups.{field}"
+        columns.extend(
+            (
+                f"sum({source}) AS {field}_sum",
+                f"avg({source}) AS {field}_mean",
+                f"{_quantiles_expression(source, _SUMMED_ROLLUP_QUANTILES)} AS {field}_quantiles",
+            )
+        )
+    columns.extend(
+        (
+            # Percentiles cannot yield a mean, and the design needs one; it is also what
+            # makes an aggregate latency-per-token ratio derivable client-side.
+            "avg(roots.latency_ms) AS latency_ms_mean",
+            f"{_quantiles_expression('roots.latency_ms', _LATENCY_QUANTILES)} AS latency_ms_quantiles",
+        )
+    )
+    return ",\n                ".join(columns)
+
+
+def _metric_bucket_expression(bucket: TraceMetricBucket) -> str:
+    if bucket == "total":
+        # A constant collapses the filtered range into one row; the value is discarded.
+        return "toDateTime(0)"
+    try:
+        return _METRIC_BUCKET_EXPRESSIONS[bucket]
+    except KeyError:
+        raise ValueError(f"Unsupported trace metric bucket: {bucket}") from None
+
+
+def _row_to_metric_point(row: dict[str, Any], *, bucket: TraceMetricBucket) -> TraceMetricPoint:
+    return TraceMetricPoint(
+        bucket_start=None if bucket == "total" else row["bucket_start"],
+        run_count=int(row["run_count"]),
+        # Counts failed *runs* (root status), unlike the span-level error_count on the
+        # trace rollups, which counts failed spans within one trace.
+        failed_run_count=int(row["failed_run_count"]),
+        **{field: _token_rollup(row, field) for field in _TOKEN_ROLLUP_FIELDS},
+        cost_usd=CostRollup(
+            sum=float_or_none(row.get("cost_usd_sum")),
+            mean=_finite_or_none(row.get("cost_usd_mean")),
+            **_named_quantiles(row, "cost_usd", _SUMMED_ROLLUP_QUANTILES),
+        ),
+        latency_ms=LatencyRollup(
+            mean=_finite_or_none(row.get("latency_ms_mean")),
+            **_named_quantiles(row, "latency_ms", _LATENCY_QUANTILES),
+        ),
+    )
+
+
+def _token_rollup(row: dict[str, Any], field: str) -> TokenRollup:
+    return TokenRollup(
+        sum=int_or_none(row.get(f"{field}_sum")),
+        mean=_finite_or_none(row.get(f"{field}_mean")),
+        **_named_quantiles(row, field, _SUMMED_ROLLUP_QUANTILES),
+    )
+
+
+def _named_quantiles(row: dict[str, Any], field: str, quantiles: Sequence[float]) -> dict[str, float | None]:
+    values: Sequence[Any] = row.get(f"{field}_quantiles") or ()
+    return {
+        f"p{round(quantile * 100)}": _finite_or_none(values[index]) if index < len(values) else None
+        for index, quantile in enumerate(quantiles)
+    }
+
+
+def _finite_or_none(value: Any) -> float | None:
+    """Drop the NaN ClickHouse yields for an aggregate over an empty bucket."""
+
+    number = float_or_none(value)
+    return None if number is None or not isfinite(number) else number
 
 
 def _duration_ms(started_at: datetime, ended_at: datetime | None) -> float | None:

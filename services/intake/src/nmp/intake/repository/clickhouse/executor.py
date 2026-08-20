@@ -37,6 +37,7 @@ class ClickHouseQuery:
     statement: str
     parameters: Mapping[str, object] = field(default_factory=dict)
     external_data: ClickHouseExternalData | None = None
+    settings: Mapping[str, object] | None = None
 
     def bind(self, **parameters: object) -> ClickHouseQuery:
         """Return a copy with additional bound parameters."""
@@ -46,6 +47,7 @@ class ClickHouseQuery:
             statement=self.statement,
             parameters={**self.parameters, **parameters},
             external_data=self.external_data,
+            settings=self.settings,
         )
 
 
@@ -86,17 +88,20 @@ class ClickHouseExecutor:
 
     async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, Any]]:
         started_at = perf_counter()
+        settings = dict(query.settings) if query.settings is not None else None
         try:
             if query.external_data is None:
                 result = await self._client.query(
                     query.statement,
                     parameters=dict(query.parameters),
+                    settings=settings,
                 )
             else:
                 external_data = query.external_data
                 result = await self._client.query(
                     query.statement,
                     parameters=dict(query.parameters),
+                    settings=settings,
                     external_data=ExternalData(
                         file_name=external_data.file_name,
                         data=external_data.data,

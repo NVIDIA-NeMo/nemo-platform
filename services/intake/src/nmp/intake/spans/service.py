@@ -26,6 +26,8 @@ from nmp.intake.spans.domain import (
     SpanListFilter,
     TraceBatch,
     TraceListFilter,
+    TraceMetricBucket,
+    TraceMetricPoint,
     TraceMode,
 )
 
@@ -141,6 +143,15 @@ class IntakeSpansService:
         if trace is None:
             raise TraceNotFoundError(workspace, trace_id)
         return trace
+
+    async def trace_metrics(
+        self,
+        *,
+        filters: TraceListFilter,
+        bucket: TraceMetricBucket,
+        timezone_name: str,
+    ) -> list[TraceMetricPoint]:
+        return await self._traces.trace_metrics(filters=filters, bucket=bucket, timezone_name=timezone_name)
 
     async def latest_trace_started_at_by_group(
         self,

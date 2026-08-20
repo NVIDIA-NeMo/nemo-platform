@@ -19,36 +19,24 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .span_status import SpanStatus
-from ..shared_params.datetime_filter import DatetimeFilter
+from .trace_filter_param import TraceFilterParam
+from .trace_metric_bucket_param import TraceMetricBucketParam
 
-__all__ = ["TraceFilterParam"]
+__all__ = ["TraceGetMetricsParams"]
 
 
-class TraceFilterParam(TypedDict, total=False):
-    id: str
-    """Filter by canonical Intake trace id."""
+class TraceGetMetricsParams(TypedDict, total=False):
+    workspace: str
 
-    agent_name: str
-    """Filter by root-span agent name."""
+    bucket: TraceMetricBucketParam
+    """Time bucket granularity. total collapses the filtered range into a single row."""
 
-    evaluation_id: str
-    """Deprecated alias for evaluation_name. Use evaluation_name instead."""
+    filter: TraceFilterParam
+    """Filter the traces the metrics are computed over.
 
-    evaluation_name: str
-    """Filter by Evaluation name."""
+    Accepts the same fields as the traces list, so agent_name scopes the rollup to
+    one agent. Without a started_at lower bound the rollup covers the last 7 days.
+    """
 
-    session_id: str
-    """Filter by session id."""
-
-    started_at: DatetimeFilter
-    """Filter by root span start timestamp."""
-
-    status: SpanStatus
-    """Filter by root span status."""
-
-    test_case_id: str
-    """Deprecated alias for test_case_name. Use test_case_name instead."""
-
-    test_case_name: str
-    """Filter by test case name."""
+    timezone: str
+    """IANA timezone the buckets are aligned to, e.g. America/Los_Angeles."""
