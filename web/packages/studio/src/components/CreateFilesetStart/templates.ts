@@ -5,6 +5,12 @@ import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
 import { DEFAULT_BUILD_MODEL_NAME, DEFAULT_EMBEDDER_MODEL_NAME } from '@studio/constants/constants';
 import {
+  SEED_AVAILABLE_COLUMNS_KEY,
+  SEED_FILE_PATH_KEY,
+  SEED_FILESET_REF_KEY,
+  SEED_SAMPLING_STRATEGY_KEY,
+} from '@studio/routes/DataDesignerJobBuildRoute/columns';
+import {
   Braces,
   Code2,
   FlaskConical,
@@ -37,10 +43,20 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     id: 'phishing-eval-corpus',
     title: 'Phishing email triage (evaluation set)',
     description:
-      'Labeled synthetic emails for the email-phishing-analyzer benchmark: the label is sampled, not model-authored, so recall and precision stay trustworthy. Difficulty is sampled alongside it — near-miss and ambiguous rows keep the baseline off 100%.',
+      'Labeled emails for the email-phishing-analyzer benchmark, grounded in a real corpus file: source, sender, and intents come straight from the seed dataset (real infrastructure and classifier signal, never model-authored), while label and difficulty are sampled — near-miss and ambiguous rows keep the baseline off 100%.',
     icon: MailWarning,
     tag: { label: 'Evaluation', color: 'red', kind: 'outline' },
     columns: [
+      {
+        columnType: 'seed-dataset',
+        name: 'source_emails',
+        values: {
+          [SEED_FILESET_REF_KEY]: '',
+          [SEED_FILE_PATH_KEY]: '',
+          [SEED_SAMPLING_STRATEGY_KEY]: 'ordered',
+          [SEED_AVAILABLE_COLUMNS_KEY]: 'source,intents,sender',
+        },
+      },
       {
         columnType: 'sampler',
         samplerType: SamplerType.category,
@@ -66,15 +82,6 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
       {
         columnType: 'sampler',
         samplerType: SamplerType.category,
-        name: 'sender_domain',
-        values: {
-          values:
-            'acct-verify-service.example, mail-secure-billing.example, hr-benefits-portal.example, northwind-traders.example, contoso-freight.example, fabrikam-payroll.example, adatum-it.example, tailwind-cloudapps.example',
-        },
-      },
-      {
-        columnType: 'sampler',
-        samplerType: SamplerType.category,
         name: 'recipient_role',
         values: {
           values:
@@ -85,7 +92,7 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         columnType: 'llm-text',
         name: 'subject',
         values: {
-          prompt: `Write the subject line of a {{ difficulty }} {{ label }} email that uses the "{{ tactic }}" angle, sent from {{ sender_domain }} to a {{ recipient_role }}.\n\n${SYNTHETIC_CORPUS_RULES}\n\nReturn only the subject line, with no quotes and no prefix.`,
+          prompt: `Write the subject line of a {{ difficulty }} {{ label }} email that uses the "{{ tactic }}" angle, sent from {{ sender }} to a {{ recipient_role }}. The email falls under the "{{ source }}" category, with this classifier signal: {{ intents }}.\n\n${SYNTHETIC_CORPUS_RULES}\n\nReturn only the subject line, with no quotes and no prefix.`,
           model_alias: 'default',
         },
       },
@@ -93,7 +100,7 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         columnType: 'llm-text',
         name: 'body',
         values: {
-          prompt: `Write the plain-text body of a {{ label }} email.\n\nContext:\n- Tactic: {{ tactic }}\n- Difficulty: {{ difficulty }}\n- Sender domain: {{ sender_domain }}\n- Recipient: a {{ recipient_role }}\n- Subject: {{ subject }}\n\n${SYNTHETIC_CORPUS_RULES}\n\nLabel fidelity — this decides the ground truth, so do not drift:\n- If the label is "legitimate", the email must be genuinely benign. A "near_miss" legitimate email may sound alarming (a real security alert, a real password-change confirmation) but must contain no actual phishing indicator.\n- If the label is "phishing", the difficulty controls how loud the tells are: "obvious" = several (mismatched sender, urgent threat, credential link), "subtle" = one or two, "near_miss" = a single quiet tell such as a lookalike domain.\n\nWrite 80–200 words. Return only the body text.`,
+          prompt: `Write the plain-text body of a {{ label }} email.\n\nContext:\n- Tactic: {{ tactic }}\n- Difficulty: {{ difficulty }}\n- Sender: {{ sender }}\n- Recipient: a {{ recipient_role }}\n- Subject: {{ subject }}\n- Category: {{ source }}\n- Classifier signal: {{ intents }}\n\n${SYNTHETIC_CORPUS_RULES}\n\nLabel fidelity — this decides the ground truth, so do not drift:\n- If the label is "legitimate", the email must be genuinely benign. A "near_miss" legitimate email may sound alarming (a real security alert, a real password-change confirmation) but must contain no actual phishing indicator.\n- If the label is "phishing", the difficulty controls how loud the tells are: "obvious" = several (mismatched sender, urgent threat, credential link), "subtle" = one or two, "near_miss" = a single quiet tell such as a lookalike domain.\n\nWrite 80–200 words. Return only the body text.`,
           model_alias: 'default',
         },
       },

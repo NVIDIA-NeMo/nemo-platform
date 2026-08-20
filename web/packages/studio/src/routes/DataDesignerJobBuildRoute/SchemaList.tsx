@@ -3,6 +3,7 @@
 
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
+  buildNameMaps,
   getColumnReferences,
   topologicalSortColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
@@ -28,7 +29,7 @@ export const SchemaList: FC<SchemaListProps> = ({ selectedId, onSelect, onDelete
   const columnRecord = useWatch({ control, name: 'columns' });
   const columns = useMemo(() => topologicalSortColumns(columnRecord), [columnRecord]);
   const referencesById = useMemo(() => {
-    const knownNames = new Set(columns.map((column) => column.name).filter(Boolean));
+    const { knownNames } = buildNameMaps(columns);
     return new Map(columns.map((column) => [column.id, getColumnReferences(column, knownNames)]));
   }, [columns]);
 
