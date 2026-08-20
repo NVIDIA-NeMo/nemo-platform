@@ -32,18 +32,9 @@ export class AgentSpecFilesetConflictError extends Error {
   }
 }
 
-/**
- * Create a Fabric agent from a picked directory.
- *
- * Two phases, because the platform has no endpoint that takes config and files
- * together: the agent entity is created first so the name is reserved (and a
- * duplicate returns 409), then the directory is uploaded into the conventional
- * `{agent}-spec` fileset that deployments read.
- *
- * Both are rolled back on failure. Deleting the fileset is safe here only
- * because an existing one is refused up front — so anything this flow uploaded
- * into it, this flow created.
- */
+// Two phases: no endpoint takes config and files together. Creating the agent first
+// reserves the name. Deleting the fileset on rollback is safe only because an existing
+// one is refused up front, so anything in it was put there by this flow.
 export const createAgentFromUpload = async ({
   workspace,
   name,
@@ -87,11 +78,6 @@ const assertFilesetAvailable = async (workspace: string, filesetName: string): P
   throw new AgentSpecFilesetConflictError(filesetName);
 };
 
-/**
- * Upload sequentially. The files service takes one file per request, and a
- * directory is bounded at 500 files, so ordered failure beats saturating the
- * browser's connection pool for a marginal speedup.
- */
 const uploadEntries = async (
   workspace: string,
   filesetName: string,

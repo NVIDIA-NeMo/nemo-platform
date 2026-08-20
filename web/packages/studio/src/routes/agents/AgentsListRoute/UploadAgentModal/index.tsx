@@ -40,7 +40,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
 
-  // webkitdirectory is not in React's input attribute types; set it on the node instead.
+  // webkitdirectory is absent from React's input attribute types.
   useEffect(() => {
     inputRef.current?.setAttribute('webkitdirectory', '');
   }, [open]);
@@ -111,7 +111,9 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
       setValue('name', agentNameFromConfig(config) ?? '', { shouldValidate: true });
     } catch (error) {
       setEntries([]);
-      setSelectionError(getErrorMessage(error as Error, `Could not read ${AGENT_CONFIG_FILENAME}`));
+      setSelectionError(
+        getErrorMessage(error as Error) || `Could not read ${AGENT_CONFIG_FILENAME}`
+      );
       return;
     }
 
@@ -127,9 +129,10 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     }
   };
 
+  // No fallback argument: getErrorMessage prefers one over a plain Error's own message.
   const errorMessage =
     selectionError ??
-    (createError ? getErrorMessage(createError as Error, 'Failed to create agent') : undefined);
+    (createError ? getErrorMessage(createError as Error) || 'Failed to create agent' : undefined);
 
   return (
     <FormModal

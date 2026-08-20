@@ -11,9 +11,7 @@ export const FABRIC_CONFIG_FORMAT = 'nemo-agents-spec-v1';
 // Container staging skips this file, so its bytes never reach a deployment.
 const AGENT_SPEC_FILENAME = 'AGENT-SPEC.md';
 
-// Mirrors MAX_AGENT_SPEC_STAGED_BYTES / _FILES in nemo_agents_plugin.entities. The
-// platform only enforces these when the deployment stages the fileset, which is long
-// after the upload, so the same limits are checked here to fail while the user is looking.
+// Mirrors MAX_AGENT_SPEC_STAGED_BYTES / _FILES; the platform only enforces them at deploy.
 export const MAX_AGENT_SPEC_BYTES = 900_000;
 export const MAX_AGENT_SPEC_FILES = 500;
 
@@ -42,7 +40,7 @@ export const uploadAgentFormSchema = z.object({
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Use lowercase letters, numbers, and hyphens'),
 });
 
-/** Fileset holding an agent's spec. Convention only — the Agent entity stores no reference. */
+/** Convention only — the Agent entity stores no reference to it. */
 export const agentSpecFilesetName = (agentName: string): string => `${agentName}-spec`;
 
 export const isIgnoredPath = (path: string): boolean => {
@@ -55,13 +53,7 @@ export const isIgnoredPath = (path: string): boolean => {
   return IGNORED_EXTENSIONS.some((extension) => filename.endsWith(extension));
 };
 
-/**
- * Map picked files to fileset-relative paths, dropping build artifacts.
- *
- * A directory picker reports `webkitRelativePath` rooted at the chosen directory
- * (`calculator-agent/mcps/calculator.py`); the fileset holds the contents, not the
- * directory itself, so the first segment is stripped.
- */
+/** The fileset holds the directory's contents, so the picked root is stripped from each path. */
 export const collectAgentEntries = (files: File[]): UploadAgentEntry[] => {
   const entries: UploadAgentEntry[] = [];
 
@@ -78,7 +70,6 @@ export const collectAgentEntries = (files: File[]): UploadAgentEntry[] => {
 export const totalEntryBytes = (entries: UploadAgentEntry[]): number =>
   entries.reduce((total, entry) => total + entry.file.size, 0);
 
-/** Returns the first blocking problem with the picked directory, or undefined. */
 export const validateAgentEntries = (entries: UploadAgentEntry[]): string | undefined => {
   if (entries.length === 0) return 'That directory has no uploadable files.';
 
@@ -98,15 +89,7 @@ export const validateAgentEntries = (entries: UploadAgentEntry[]): string | unde
   return undefined;
 };
 
-/**
- * Return the first file that is not valid UTF-8, or undefined.
- *
- * Container deployments read every staged file with `read_text(encoding="utf-8")`
- * and refuse the whole deployment on a decode error, so a binary file uploads
- * fine and then breaks the agent at deploy time — in docker and k8s only, since
- * subprocess deployments never read the contents. The ignore list already drops
- * the usual culprits (`.pyc`, `.so`); this catches the rest.
- */
+// Container deployments read every staged file as text and fail on a decode error.
 export const findNonUtf8Path = async (
   entries: UploadAgentEntry[]
 ): Promise<string | undefined> => {
@@ -126,7 +109,6 @@ export const findNonUtf8Path = async (
 
 export class AgentConfigParseError extends Error {}
 
-/** Parse `agent.yaml` and confirm it is the Platform-owned Fabric contract. */
 export const parseAgentConfig = (text: string): Record<string, unknown> => {
   let parsed: unknown;
   try {
@@ -154,6 +136,5 @@ export const parseAgentConfig = (text: string): Record<string, unknown> => {
   return config;
 };
 
-/** The config's own name, used to prefill the form. */
 export const agentNameFromConfig = (config: Record<string, unknown>): string | undefined =>
   typeof config.name === 'string' && config.name.trim() ? config.name.trim() : undefined;
