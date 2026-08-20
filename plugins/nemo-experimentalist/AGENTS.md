@@ -25,15 +25,14 @@ Experimentalist imports nothing from `nemo-eval-author-plugin`, so the package c
 `uv` had to resolve is gone.
 
 - The agent's borrows of the evaluator, staging, trace, tools, and reporting helpers are
-  intra-package imports, so `_BORROWED_BEHAVIOUR` in
-  `plugins/nemo-eval-author/tests/test_plugin_boundary.py` drops from ten modules to one.
+  intra-package imports. The Eval Author plugin's boundary ratchet existed to drive those
+  ten borrows to zero, so it went away with them.
+- `tests/test_contract_dependency.py` asserts that this plugin never declares
+  `nemo-eval-author-plugin` as a dependency, which is what keeps the cycle broken.
 - `plugins/nemo-eval-author/` keeps the `nemo agents eval-author` command group and its
-  `discovery/` package, which still borrows `make_client`.
+  `discovery/` package, whose one remaining borrow is `make_client`.
 - Agent tests live in `tests/eval_author/`. This plugin's `conftest.py` already covers the
   isolation those tests need, so the Eval Author copy went away.
-
-Do not add an import from Experimentalist into the Eval Author plugin. Duplicate the
-helper instead.
 
 ### 2026-07-31: Command group nested under `nemo agents`
 
