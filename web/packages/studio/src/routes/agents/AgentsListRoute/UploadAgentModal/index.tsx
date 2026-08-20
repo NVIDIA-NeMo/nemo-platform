@@ -8,12 +8,7 @@ import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
 import {
-  CodeSnippet,
   Stack,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
   Text,
   UploadInputElement,
   UploadRoot,
@@ -25,8 +20,6 @@ import {
 } from '@studio/api/agents/useCreateAgentFromUpload';
 import {
   AGENT_CONFIG_FILENAME,
-  AGENT_INTEGRATION_PROMPT,
-  agentCreateCliCommand,
   agentNameFromConfig,
   collectAgentEntries,
   findNonUtf8Path,
@@ -170,7 +163,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
       open={open}
       onClose={resetAndClose}
       className="w-[720px] max-w-[90vw]"
-      title="Integrate an agent with NeMo Platform"
+      title="Upload agent configuration"
       instruction="Integrated agents allow users to evaluate, optimize, and deploy agents."
       submitButtonText={replaceOrphan ? 'Replace and create' : 'Create'}
       onSubmit={handleSubmit(onSubmit)}
@@ -179,67 +172,33 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
       submitDisabled={entries.length === 0}
       errorText={errorMessage}
     >
-      <TabsRoot defaultValue="upload" className="w-full min-w-0">
-        <TabsList>
-          <TabsTrigger value="prompt">Coding agent prompt</TabsTrigger>
-          <TabsTrigger value="cli">CLI command</TabsTrigger>
-          <TabsTrigger value="upload">Upload agent configuration</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="prompt" className="px-0 w-full">
-          <Stack gap="density-xs">
-            <Text kind="label/semibold/md">Agent prompt</Text>
-            <CodeSnippet
-              className="min-w-full"
-              value={AGENT_INTEGRATION_PROMPT}
-              language="text"
-              kind="block"
+      <Stack gap="density-md">
+        <Text kind="label/semibold/md">Select agent config files</Text>
+        <UploadRoot multiple disabled={isPending}>
+          <UploadTrigger
+            className="w-full"
+            slotAnchor={directoryName ? 'Choose a different directory' : 'Choose a directory'}
+            slotHeaderText=" containing agent.yaml."
+          >
+            <UploadInputElement
+              ref={setDirectoryInput}
+              data-testid="agent-directory-input"
+              multiple
+              onChange={onDirectoryPicked}
             />
-          </Stack>
-        </TabsContent>
-
-        <TabsContent value="cli" className="px-0 w-full">
-          <Stack gap="density-xs">
-            <Text kind="label/semibold/md">CLI command</Text>
-            <CodeSnippet
-              className="min-w-full"
-              value={agentCreateCliCommand(watchedName)}
-              language="bash"
-              kind="block"
-            />
-          </Stack>
-        </TabsContent>
-
-        <TabsContent value="upload" className="px-0 w-full">
-          <Stack gap="density-md">
-            <Text kind="label/semibold/md">Select agent config files</Text>
-            <UploadRoot multiple disabled={isPending}>
-              <UploadTrigger
-                className="w-full"
-                slotAnchor={directoryName ? 'Choose a different directory' : 'Choose a directory'}
-                slotHeaderText=" containing agent.yaml."
-              >
-                <UploadInputElement
-                  ref={setDirectoryInput}
-                  data-testid="agent-directory-input"
-                  multiple
-                  onChange={onDirectoryPicked}
-                />
-              </UploadTrigger>
-            </UploadRoot>
-            {entries.length > 0 ? (
-              <Text kind="body/regular/sm">
-                {`${directoryName} — ${entries.length} files, ${Math.max(1, Math.round(totalEntryBytes(entries) / 1000))} KB`}
-              </Text>
-            ) : null}
-            <ControlledTextInput
-              useControllerProps={{ control, name: 'name' }}
-              label="Name"
-              formFieldProps={{ slotError: errors.name?.message }}
-            />
-          </Stack>
-        </TabsContent>
-      </TabsRoot>
+          </UploadTrigger>
+        </UploadRoot>
+        {entries.length > 0 ? (
+          <Text kind="body/regular/sm">
+            {`${directoryName} — ${entries.length} files, ${Math.max(1, Math.round(totalEntryBytes(entries) / 1000))} KB`}
+          </Text>
+        ) : null}
+        <ControlledTextInput
+          useControllerProps={{ control, name: 'name' }}
+          label="Name"
+          formFieldProps={{ slotError: errors.name?.message }}
+        />
+      </Stack>
     </FormModal>
   );
 };
