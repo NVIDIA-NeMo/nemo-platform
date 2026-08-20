@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { agentsCreateAgent, agentsDeleteAgent } from '@nemo/sdk/generated/agents/api';
+import { agentsCreateAgent, agentsGetAgent } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import {
   filesCreateFileset,
@@ -22,38 +22,43 @@ export interface CreateAgentFromUploadParams {
   workspace: string;
   name: string;
   entries: UploadAgentEntry[];
+  replaceOrphanedFileset?: boolean;
 }
 
+/** An agent of this name already exists; its spec fileset is not ours to take. */
 export class AgentSpecFilesetConflictError extends Error {
   constructor(public readonly filesetName: string) {
     super(
-      `A fileset named "${filesetName}" already exists. It holds the spec for an agent of this name — possibly one that was deleted, since deleting an agent leaves its fileset behind. Delete it with \`nemo files filesets delete ${filesetName}\`, or choose a different name.`
+      `An agent named "${filesetName.replace(/-spec$/, '')}" already owns the fileset "${filesetName}". Choose a different name.`
     );
   }
 }
 
-// Two phases: no endpoint takes config and files together. Creating the agent first
-// reserves the name. Deleting the fileset on rollback is safe only because an existing
-// one is refused up front, so anything in it was put there by this flow.
+/** A spec fileset with no agent behind it — an abandoned upload, or an agent since deleted. */
+export class AgentSpecFilesetOrphanError extends Error {
+  constructor(public readonly filesetName: string) {
+    super(
+      `A fileset named "${filesetName}" already exists, but no agent owns it — an upload that did not finish, or an agent that was deleted, since deleting an agent leaves its fileset behind. Replacing it discards its current contents.`
+    );
+  }
+}
+
+// Files first: the fileset reserves the name, and a create-time validation that needs a
+// base_dir can only see files that are already uploaded. Deleting the fileset on rollback
+// is safe because an existing one is either refused or replaced deliberately above.
 export const createAgentFromUpload = async ({
   workspace,
   name,
   entries,
+  replaceOrphanedFileset = false,
 }: CreateAgentFromUploadParams): Promise<Agent> => {
   const filesetName = agentSpecFilesetName(name);
-
-  await assertFilesetAvailable(workspace, filesetName);
 
   const configEntry = entries.find((entry) => entry.path === AGENT_CONFIG_FILENAME);
   if (!configEntry) throw new Error(`No ${AGENT_CONFIG_FILENAME} in the selected directory.`);
   const config = parseAgentConfig(await configEntry.file.text());
 
-  const agent = await agentsCreateAgent(workspace, {
-    name,
-    description: typeof config.description === 'string' ? config.description : '',
-    config,
-    config_format: FABRIC_CONFIG_FORMAT,
-  });
+  await claimFileset(workspace, name, filesetName, replaceOrphanedFileset);
 
   try {
     await filesCreateFileset(workspace, {
@@ -61,21 +66,48 @@ export const createAgentFromUpload = async ({
       description: `Agent spec for ${name}`,
     });
     await uploadEntries(workspace, filesetName, entries);
+
+    return await agentsCreateAgent(workspace, {
+      name,
+      description: typeof config.description === 'string' ? config.description : '',
+      config,
+      config_format: FABRIC_CONFIG_FORMAT,
+    });
   } catch (error) {
-    await rollback(workspace, name, filesetName);
+    await rollback(workspace, filesetName);
     throw error;
   }
-
-  return agent;
 };
 
-const assertFilesetAvailable = async (workspace: string, filesetName: string): Promise<void> => {
+const claimFileset = async (
+  workspace: string,
+  agentName: string,
+  filesetName: string,
+  replaceOrphanedFileset: boolean
+): Promise<void> => {
   try {
     await filesRetrieveFileset(workspace, filesetName);
   } catch {
     return;
   }
-  throw new AgentSpecFilesetConflictError(filesetName);
+
+  if (await agentExists(workspace, agentName)) {
+    throw new AgentSpecFilesetConflictError(filesetName);
+  }
+  if (!replaceOrphanedFileset) {
+    throw new AgentSpecFilesetOrphanError(filesetName);
+  }
+
+  await filesDeleteFileset(workspace, filesetName);
+};
+
+const agentExists = async (workspace: string, agentName: string): Promise<boolean> => {
+  try {
+    await agentsGetAgent(workspace, agentName);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const uploadEntries = async (
@@ -89,15 +121,8 @@ const uploadEntries = async (
   }
 };
 
-const rollback = async (
-  workspace: string,
-  agentName: string,
-  filesetName: string
-): Promise<void> => {
-  await Promise.allSettled([
-    agentsDeleteAgent(workspace, agentName),
-    filesDeleteFileset(workspace, filesetName),
-  ]);
+const rollback = async (workspace: string, filesetName: string): Promise<void> => {
+  await filesDeleteFileset(workspace, filesetName).catch(() => undefined);
 };
 
 export type UseCreateAgentFromUploadOptions = Omit<

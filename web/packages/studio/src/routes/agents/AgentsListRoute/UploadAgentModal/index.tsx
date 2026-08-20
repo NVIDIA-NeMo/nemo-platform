@@ -8,7 +8,10 @@ import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
 import { Button, Stack, Text } from '@nvidia/foundations-react-core';
-import { useCreateAgentFromUpload } from '@studio/api/agents/useCreateAgentFromUpload';
+import {
+  AgentSpecFilesetOrphanError,
+  useCreateAgentFromUpload,
+} from '@studio/api/agents/useCreateAgentFromUpload';
 import {
   AGENT_CONFIG_FILENAME,
   agentNameFromConfig,
@@ -27,7 +30,7 @@ import type {
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type ChangeEventHandler, type FC, useEffect, useRef, useState } from 'react';
-import { type SubmitHandler, useForm } from 'react-hook-form';
+import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
 export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, workspace }) => {
@@ -39,6 +42,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   const [entries, setEntries] = useState<UploadAgentEntry[]>([]);
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
+  const [replaceOrphan, setReplaceOrphan] = useState(false);
 
   // webkitdirectory is absent from React's input attribute types.
   useEffect(() => {
@@ -72,12 +76,20 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     mode: 'onChange',
   });
 
+  const watchedName = useWatch({ control, name: 'name' });
+
+  // The armed replace targets one fileset; a different name must re-confirm.
+  useEffect(() => {
+    setReplaceOrphan(false);
+  }, [watchedName]);
+
   const resetAndClose = () => {
     resetMutation();
     resetForm({ name: '' });
     setEntries([]);
     setDirectoryName('');
     setSelectionError(undefined);
+    setReplaceOrphan(false);
     onClose();
   };
 
@@ -123,9 +135,15 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
 
   const onSubmit: SubmitHandler<UploadAgentFormData> = async (formData) => {
     try {
-      await createAgent({ workspace, name: formData.name.trim(), entries });
-    } catch {
-      // surfaced via errorText
+      await createAgent({
+        workspace,
+        name: formData.name.trim(),
+        entries,
+        replaceOrphanedFileset: replaceOrphan,
+      });
+    } catch (error) {
+      // An orphaned fileset is recoverable, so the next submit replaces it.
+      setReplaceOrphan(error instanceof AgentSpecFilesetOrphanError);
     }
   };
 
@@ -140,7 +158,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
       onClose={resetAndClose}
       title="Upload Agent"
       instruction={`Select a directory containing ${AGENT_CONFIG_FILENAME}. Its skills, MCP servers, and prompts are uploaded with it.`}
-      submitButtonText="Create"
+      submitButtonText={replaceOrphan ? 'Replace and create' : 'Create'}
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
       loading={isPending}
