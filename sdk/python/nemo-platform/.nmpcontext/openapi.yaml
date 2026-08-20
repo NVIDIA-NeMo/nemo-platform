@@ -4933,7 +4933,7 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_name, and test_case_name.
+          root span started_at, evaluation_name, test_case_name, and agent_name.
       responses:
         '200':
           description: Successful Response
@@ -4941,6 +4941,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TracesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces/metrics:
+    get:
+      tags:
+      - Traces
+      summary: Get Trace Metrics
+      operationId: get_trace_metrics_apis_intake_v2_workspaces__workspace__traces_metrics_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: bucket
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TraceMetricBucketParam'
+          description: Time bucket granularity. total collapses the filtered range
+            into a single row.
+          default: day
+        description: Time bucket granularity. total collapses the filtered range into
+          a single row.
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          type: string
+          description: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+          default: UTC
+          title: Timezone
+        description: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TraceFilter'
+        description: Filter the traces the metrics are computed over. Accepts the
+          same fields as the traces list, so agent_name scopes the rollup to one agent.
+          Without a started_at lower bound the rollup covers the last 7 days.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceMetrics'
+        '400':
+          description: Unsupported query parameter or unknown timezone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
+        '503':
+          description: ClickHouse spans storage unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
         '422':
           description: Validation Error
           content:
@@ -9846,6 +9924,22 @@ components:
       type: object
       title: ContextBloatDetectionConfig
       description: Configuration for context bloat / context manipulation detection.
+    CostRollupResponse:
+      properties:
+        sum:
+          title: Sum
+          type: number
+        mean:
+          title: Mean
+          type: number
+        p90:
+          title: P90
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: CostRollupResponse
     CreateAdapterRequest:
       properties:
         name:
@@ -14179,6 +14273,25 @@ components:
         labels
 
         must include a `name` to identify what the score measures.'
+    LatencyRollupResponse:
+      properties:
+        mean:
+          title: Mean
+          type: number
+        p50:
+          title: P50
+          type: number
+        p90:
+          title: P90
+          type: number
+        p95:
+          title: P95
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: LatencyRollupResponse
     LinearLayerSpec:
       properties:
         name:
@@ -18818,6 +18931,23 @@ components:
       - task
       title: TaskPrompt
       description: Configuration for prompts that will be used for a specific task.
+    TokenRollupResponse:
+      properties:
+        sum:
+          title: Sum
+          type: integer
+          minimum: 0.0
+        mean:
+          title: Mean
+          type: number
+        p90:
+          title: P90
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: TokenRollupResponse
     ToolCallConfig:
       properties:
         tool_call_parser:
@@ -18939,6 +19069,12 @@ components:
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        agent_name:
+          title: Agent Name
+          type: string
+        agent_version:
+          title: Agent Version
+          type: string
         started_at:
           type: string
           format: date-time
@@ -18977,6 +19113,20 @@ components:
         cost_output_usd:
           title: Cost Output Usd
           type: number
+        models:
+          title: Models
+          description: Distinct models used across the trace's spans. Omitted in summary
+            mode.
+          items:
+            type: string
+          type: array
+        providers:
+          title: Providers
+          description: Distinct inference providers used across the trace's spans.
+            Omitted in summary mode.
+          items:
+            type: string
+          type: array
         span_count:
           title: Span Count
           type: integer
@@ -19029,8 +19179,80 @@ components:
           description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
+        agent_name:
+          description: Filter by root-span agent name.
+          title: Agent Name
+          type: string
       title: TraceFilter
       type: object
+    TraceMetricBucketParam:
+      type: string
+      enum:
+      - total
+      - hour
+      - day
+      - week
+      - month
+      title: TraceMetricBucketParam
+    TraceMetricPointResponse:
+      properties:
+        bucket_start:
+          title: Bucket Start
+          description: Start of the bucket in the requested timezone. Omitted when
+            bucket=total.
+          type: string
+          format: date-time
+        run_count:
+          type: integer
+          minimum: 0.0
+          title: Run Count
+          description: Agent runs started in this bucket.
+        failed_run_count:
+          type: integer
+          minimum: 0.0
+          title: Failed Run Count
+          description: Runs whose root span ended in error.
+        input_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        output_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        cached_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        total_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        cost_usd:
+          $ref: '#/components/schemas/CostRollupResponse'
+        latency_ms:
+          $ref: '#/components/schemas/LatencyRollupResponse'
+      type: object
+      required:
+      - run_count
+      - failed_run_count
+      - input_tokens
+      - output_tokens
+      - cached_tokens
+      - total_tokens
+      - cost_usd
+      - latency_ms
+      title: TraceMetricPointResponse
+    TraceMetrics:
+      properties:
+        bucket:
+          $ref: '#/components/schemas/TraceMetricBucketParam'
+        timezone:
+          type: string
+          title: Timezone
+        data:
+          items:
+            $ref: '#/components/schemas/TraceMetricPointResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - bucket
+      - timezone
+      - data
+      title: TraceMetrics
     TraceSortField:
       type: string
       enum:

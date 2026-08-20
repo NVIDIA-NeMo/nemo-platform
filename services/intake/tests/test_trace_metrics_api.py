@@ -179,3 +179,16 @@ def _api_routes(routes: Iterable[object]) -> Iterator[APIRoute]:
         included = getattr(route, "original_router", None)
         if included is not None:
             yield from _api_routes(included.routes)
+
+
+def test_metrics_route_documents_its_error_responses() -> None:
+    """400 and 503 are both reachable, so generated clients must know about them."""
+
+    route = next(
+        route for route in _api_routes(trace_metrics.router.routes) if route.endpoint is trace_metrics.get_trace_metrics
+    )
+
+    assert set(route.responses) == {400, 503}
+    for status_code in (400, 503):
+        schema = route.responses[status_code]["content"]["application/json"]["schema"]
+        assert schema["required"] == ["detail"]

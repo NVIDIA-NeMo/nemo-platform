@@ -25,6 +25,17 @@ router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Traces"
 _ALLOWED_QUERY_PARAMS = frozenset({"bucket", "timezone", "filter"})
 _DEFAULT_WINDOW = timedelta(days=7)
+_DETAIL_BODY = {
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+                "required": ["detail"],
+            }
+        }
+    },
+}
 
 
 @router.get(
@@ -40,6 +51,10 @@ _DEFAULT_WINDOW = timedelta(days=7)
             "lower bound the rollup covers the last 7 days."
         ),
     ),
+    responses={
+        400: {"description": "Unsupported query parameter or unknown timezone", **_DETAIL_BODY},
+        503: {"description": "ClickHouse spans storage unavailable", **_DETAIL_BODY},
+    },
 )
 async def get_trace_metrics(
     workspace: str,
