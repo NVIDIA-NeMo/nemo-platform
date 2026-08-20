@@ -2425,10 +2425,14 @@ components:
           default: 1.0
         max_new_tokens:
           title: Max New Tokens
-          description: Cap on tokens generated per rollout turn. Defaults to max_seq_length,
+          description: 'Cap on tokens generated per rollout turn. Defaults to max_seq_length,
             which lets a rollout run until the context is exhausted; vLLM clamps it
-            to whatever the prompt leaves. Set it lower to bound response length and
-            rollout duration. Cannot exceed max_seq_length.
+            to whatever the prompt leaves. Cannot exceed max_seq_length. NOTE: NeMo
+            Gym''s verifiers_agent does not yet honour this -- it reads max_tokens
+            from its own environment config and drops the per-row value, so the effective
+            cap is min(agent max_tokens, max_seq_length - prompt_len). Until that
+            is fixed, bound response length through max_seq_length or the environment''s
+            own max_tokens.'
           type: integer
           exclusiveMinimum: 0.0
         normalize_rewards:

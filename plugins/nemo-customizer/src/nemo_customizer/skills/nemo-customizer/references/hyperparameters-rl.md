@@ -111,8 +111,9 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 | `vllm_tensor_parallel_size` | `null` | Tensor parallelism for the rollout engine alone. Defaults to `min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node)`. Set it when the model needs several GPUs to hold inference weights but you want the policy trained at a different tensor-parallel size. |
 | `vllm_gpu_memory_utilization` | `0.5` | Fraction of each GPU vLLM reserves for weights plus KV cache. Raise toward `0.7` for large models, which otherwise cannot load their weight shard. |
 | `val_at_start` | `false` | Run validation **before** the first training step. Enable to measure uplift: baseline and result come from one job on the same data and generation settings, instead of a separate baseline run that must be kept in sync. Costs a full rollout pass, hence off by default. Ignored without a `validation.jsonl`. **GRPO only** — DPO always validates at step 0, since its validation needs no generation. |
+| `max_new_tokens` | `null` → `max_seq_length` | Cap on tokens generated per rollout turn. **Known limitation:** NeMo Gym's `verifiers_agent` does not yet honour this — see below. |
 | `normalize_rewards` | `true` | |
-| `overlong_filtering` | `false` | Zero the loss contribution of rollouts truncated by `max_new_tokens`, so the policy is not penalised for responses it was cut off from finishing. Enable when a low `max_new_tokens` truncates many rollouts. |
+| `overlong_filtering` | `false` | Zero the loss contribution of rollouts truncated at the generation cap, so the policy is not penalised for responses it was cut off from finishing. Enable when many rollouts are truncated. |
 | `max_rollout_turns` | `1` | Multi-turn rollouts; most math envs use `1`. |
 | `ref_policy_kl_penalty` | `0.0` | KL coefficient in the GRPO loss. |
 | `ratio_clip_min` / `ratio_clip_max` | `0.2` / `0.28` | PPO-style ratio clip bounds. |
@@ -121,6 +122,12 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 ### `parallelism`
 
 Same block as automodel (`num_nodes`, `num_gpus_per_node`, `tensor_parallel_size`, `pipeline_parallel_size`, `context_parallel_size`, `sequence_parallel`), plus `expert_parallel_size` for MoE policy training (GRPO only; read by the DTensor v2 backend, and setting it above `1` selects v2). Divisibility rule (enforced by `RlJobOutput.validate_for_training`): `total_gpus = num_nodes × num_gpus_per_node` must be divisible by `tensor_parallel_size × pipeline_parallel_size × context_parallel_size × expert_parallel_size`, and `batch_size` by `micro_batch_size × data_parallel_size`. **Multi-node (`num_nodes > 1`)** additionally requires the platform to set `NMP_RL_MULTINODE_SHARED_STORAGE_PATH` (shared filesystem for Ray's cross-node coordination); the compiler fails fast otherwise.
+
+### Known limitation: `max_new_tokens` does not reach the agent
+
+The compiler stamps `max_new_tokens` onto `policy.generation.max_new_tokens`, and NeMo-RL puts it on every rollout row as `responses_create_params.max_output_tokens`. NeMo Gym's `verifiers_agent` then **drops it** — it reads `max_tokens` from its own environment config instead. The effective per-turn cap is therefore `min(agent max_tokens, max_seq_length - prompt_len)`, the second term applied by vLLM's `_clamp_max_tokens`.
+
+This is not fatal, because the cap is a minimum of the two and `max_seq_length` is under your control. But until the agent honours `max_output_tokens`, bound response length through `max_seq_length`, or through `max_tokens` in the environment package's own config — not through `max_new_tokens`.
 
 ### How validation sampling works
 

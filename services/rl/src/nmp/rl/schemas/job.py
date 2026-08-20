@@ -198,8 +198,11 @@ class GRPOTraining(_TrainingBase):
         gt=0,
         description="Cap on tokens generated per rollout turn. Defaults to max_seq_length, "
         "which lets a rollout run until the context is exhausted; vLLM clamps it to whatever "
-        "the prompt leaves. Set it lower to bound response length and rollout duration. "
-        "Cannot exceed max_seq_length.",
+        "the prompt leaves. Cannot exceed max_seq_length. NOTE: NeMo Gym's verifiers_agent "
+        "does not yet honour this -- it reads max_tokens from its own environment config and "
+        "drops the per-row value, so the effective cap is "
+        "min(agent max_tokens, max_seq_length - prompt_len). Until that is fixed, bound "
+        "response length through max_seq_length or the environment's own max_tokens.",
     )
     normalize_rewards: bool = Field(default=True, description="Normalize rewards within each prompt group.")
     overlong_filtering: bool = Field(
