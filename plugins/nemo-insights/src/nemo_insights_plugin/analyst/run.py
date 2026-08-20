@@ -53,6 +53,7 @@ async def run_analyst(
     since: datetime | None = None,
     evaluation_id: str | None = None,
     analyst_evaluation: AnalystEvaluationContext | None = None,
+    enable_observability: bool = True,
     model_refs: ConfiguredModelRefs | None = None,
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
@@ -76,6 +77,8 @@ async def run_analyst(
         evaluation_id: Optional run scope; AND-pinned onto every span read.
         analyst_evaluation: Optional Evaluation and test-case
             identity attached to the Analyst's own OTLP trace.
+        enable_observability: Whether this run may export the Analyst's own
+            OTLP trace. The environment variable can still disable export.
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
     """
@@ -98,7 +101,7 @@ async def run_analyst(
             since=since,
             evaluation_id=evaluation_id,
         )
-        if base_url and _analyst_observability_enabled():
+        if base_url and enable_observability and _analyst_observability_enabled():
             observability = setup_analyst_observability(
                 base_url=base_url,
                 workspace=workspace,

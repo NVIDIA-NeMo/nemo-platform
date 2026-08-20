@@ -240,3 +240,25 @@ async def test_evaluation_context_is_forwarded_to_default_on_observability(monke
         "evaluation_context": evaluation_context,
     }
     assert seen["shutdown"] is True
+
+
+async def test_per_run_observability_opt_out_skips_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient()
+    seen: dict[str, object] = {}
+    _stub_pipeline(monkeypatch, seen)
+
+    def fail_setup(**kwargs: object) -> None:
+        raise AssertionError(f"unexpected observability setup: {kwargs}")
+
+    monkeypatch.setattr(run_module, "setup_analyst_observability", fail_setup)
+
+    await run_module.run_analyst(
+        agent="remote-agent",
+        agent_spec=None,
+        workspace="default",
+        base_url="https://remote.example",
+        client=cast(AsyncNeMoPlatform, client),
+        enable_observability=False,
+    )
+
+    assert client.closed

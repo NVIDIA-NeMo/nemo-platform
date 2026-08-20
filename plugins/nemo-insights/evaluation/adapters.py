@@ -101,6 +101,7 @@ class IntakeAdapter:
             verbose=verbose,
             since=since,
             analyst_evaluation=self.analyst_evaluation,
+            enable_observability=cfg.get("auth") != "basic",
         )
 
     def _basic_auth_client(self) -> AsyncNeMoPlatform:

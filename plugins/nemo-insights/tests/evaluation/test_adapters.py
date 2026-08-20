@@ -112,6 +112,7 @@ async def test_intake_analyze_basic_auth_injects_built_client(monkeypatch: pytes
 
     assert report == "REPORT"
     assert calls["client"] is sentinel
+    assert calls["enable_observability"] is False
     assert built == {
         "base_url": "https://agenthub.aire.nvidia.com",
         "username": "intake",
@@ -147,6 +148,7 @@ async def test_intake_analyze_calls_run_analyst(monkeypatch, tmp_path: Path):
     assert calls["base_url"] == "u"
     assert calls["agent_spec"] is None
     assert calls["client"] is built_client
+    assert calls["enable_observability"] is True
 
 
 async def test_intake_analyze_missing_keys_exits(tmp_path: Path):
