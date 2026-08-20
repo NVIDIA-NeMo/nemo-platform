@@ -15,27 +15,20 @@ import {
 } from '@nemo/common/src/components/charts/frame';
 import { renderReferenceLines } from '@nemo/common/src/components/charts/referenceLines';
 import { AXIS_COLOR, DEFAULT_CHART_HEIGHT } from '@nemo/common/src/components/charts/tokens';
-import {
-  renderAnnotations,
-  renderSeriesLines,
-} from '@nemo/common/src/components/ComparisonLineChart/chartLayers';
-import { ComparisonTooltip } from '@nemo/common/src/components/ComparisonLineChart/ComparisonTooltip';
-import type { ComparisonLineChartProps } from '@nemo/common/src/components/ComparisonLineChart/types';
-import { useComparisonChartModel } from '@nemo/common/src/components/ComparisonLineChart/useComparisonChartModel';
-import { hasPlottableData } from '@nemo/common/src/components/ComparisonLineChart/utils';
 import { Stack } from '@nvidia/foundations-react-core';
-import { CartesianGrid, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
-export * from '@nemo/common/src/components/ComparisonLineChart/consts';
-export * from '@nemo/common/src/components/ComparisonLineChart/types';
-export * from '@nemo/common/src/components/ComparisonLineChart/utils';
+import { renderBands, renderSeriesLines } from '@studio/components/charts/RangeBand/chartLayers';
+import { DEFAULT_BAND_OPACITY } from '@studio/components/charts/RangeBand/consts';
+import { RangeBandTooltip } from '@studio/components/charts/RangeBand/RangeBandTooltip';
+import type { RangeBandProps } from '@studio/components/charts/RangeBand/types';
+import { useRangeBandChartModel } from '@studio/components/charts/RangeBand/useRangeBandChartModel';
+import { hasPlottableBands } from '@studio/components/charts/RangeBand/utils';
+import { CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 /**
- * Multi-series line chart for comparing runs, models, or variants over a shared x axis.
- * Series are colored from the shared palette, the legend toggles them on and off, and hovering a
- * legend entry fades the others so a single line can be read out of a crowded chart.
+ * Multi-series band chart: a shaded envelope per series, optionally with a center line. The line
+ * comes from `data` alone — see the "Line off-center in the band" story.
  */
-export const ComparisonLineChart = ({
+export const RangeBand = ({
   series,
   xAxis,
   xAxisLabel,
@@ -45,6 +38,7 @@ export const ComparisonLineChart = ({
   yAxisMax,
   height = DEFAULT_CHART_HEIGHT,
   curve = 'monotone',
+  bandOpacity = DEFAULT_BAND_OPACITY,
   showGrid = true,
   showLegend = true,
   legendPosition = 'top',
@@ -52,7 +46,6 @@ export const ComparisonLineChart = ({
   legendInteractive = true,
   showMarks,
   referenceLines,
-  annotations,
   formatXValue,
   formatYValue,
   loading = false,
@@ -60,12 +53,11 @@ export const ComparisonLineChart = ({
   initialHiddenSeriesIds,
   onVisibleSeriesChange,
   className,
-}: ComparisonLineChartProps) => {
-  const model = useComparisonChartModel({
+}: RangeBandProps) => {
+  const model = useRangeBandChartModel({
     series,
     xAxis,
     xAxisType,
-    annotations,
     formatXValue,
     formatYValue,
     initialHiddenSeriesIds,
@@ -92,15 +84,15 @@ export const ComparisonLineChart = ({
   const showBottomLegend = hasLegend && legendPosition === 'bottom';
 
   if (loading) {
-    return <ChartSkeleton height={height} testId="comparison-line-chart-skeleton" />;
+    return <ChartSkeleton height={height} testId="range-band-skeleton" />;
   }
 
-  if (!hasPlottableData(series, xAxis)) {
+  if (!hasPlottableBands(series, xAxis)) {
     return (
       <Stack className={className}>
         {renderHeader(false)}
         <ChartEmptyFrame
-          chart={LineChart}
+          chart={ComposedChart}
           message={emptyMessage}
           height={height}
           xAxisLabel={xAxisLabel}
@@ -116,7 +108,7 @@ export const ComparisonLineChart = ({
     <Stack className={className}>
       {renderHeader(legendInteractive)}
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart
+        <ComposedChart
           className="[&_.recharts-surface]:overflow-visible"
           data={model.rows}
           margin={chartMargin(xAxisLabel, yAxisLabel)}
@@ -142,21 +134,26 @@ export const ComparisonLineChart = ({
           <Tooltip
             cursor={CURSOR_LINE}
             content={
-              <ComparisonTooltip
+              <RangeBandTooltip
                 series={model.visibleSeries}
                 formatLabel={model.formatPlotValue}
                 formatValue={model.formatSeriesValue}
               />
             }
           />
+          {/* Bands first so the center lines draw on top of them. */}
+          {renderBands(model.visibleSeries, {
+            type: curve,
+            hoveredId: model.hoveredId,
+            bandOpacity,
+          })}
           {renderReferenceLines(referenceLines)}
-          {renderAnnotations(model.resolvedAnnotations)}
           {renderSeriesLines(model.visibleSeries, {
             curve,
             hoveredId: model.hoveredId,
             showMarks,
           })}
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
       {showBottomLegend && <div className="pt-2">{renderLegend(legendInteractive)}</div>}
     </Stack>

@@ -6,10 +6,15 @@ import type { FC } from 'react';
 
 interface Props {
   height: number;
+  /**
+   * Required rather than defaulted: each chart's tests target its own id, and a default would
+   * let a new caller silently ship someone else's.
+   */
+  testId: string;
 }
 
-export const ComparisonLineChartSkeleton: FC<Props> = ({ height }) => (
-  <Stack gap="density-sm" className="w-full" data-testid="comparison-line-chart-skeleton">
+export const ChartSkeleton: FC<Props> = ({ height, testId }) => (
+  <Stack gap="density-sm" className="w-full" data-testid={testId}>
     {/* eslint-disable-next-line no-restricted-syntax */}
     <div className="w-full" style={{ height }}>
       <Skeleton className="w-full h-full" />
