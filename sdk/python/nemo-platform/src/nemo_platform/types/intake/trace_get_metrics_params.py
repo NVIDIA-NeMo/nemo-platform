@@ -17,35 +17,26 @@
 
 from __future__ import annotations
 
-from typing_extensions import Literal, TypedDict
+from typing_extensions import TypedDict
 
-from .trace_sort_field import TraceSortField
 from .trace_filter_param import TraceFilterParam
+from .trace_metric_bucket_param import TraceMetricBucketParam
 
-__all__ = ["TraceListParams"]
+__all__ = ["TraceGetMetricsParams"]
 
 
-class TraceListParams(TypedDict, total=False):
+class TraceGetMetricsParams(TypedDict, total=False):
     workspace: str
 
+    bucket: TraceMetricBucketParam
+    """Time bucket granularity. total collapses the filtered range into a single row."""
+
     filter: TraceFilterParam
-    """
-    Filter root-span-backed traces by id, session_id, root status, root span
-    started_at, evaluation_name, test_case_name, and agent_name.
-    """
+    """Filter the traces the metrics are computed over.
 
-    mode: Literal["summary", "preview", "detailed"]
-    """Response mode.
-
-    summary returns root-span fields without payloads or rollups; preview adds
-    token, cost, and span-count rollups plus 300-character input/output previews;
-    detailed returns rollups and full payloads.
+    Accepts the same fields as the traces list, so agent_name scopes the rollup to
+    one agent. Without a started_at lower bound the rollup covers the last 7 days.
     """
 
-    page: int
-    """Page number."""
-
-    page_size: int
-    """Page size."""
-
-    sort: TraceSortField
+    timezone: str
+    """IANA timezone the buckets are aligned to, e.g. America/Los_Angeles."""

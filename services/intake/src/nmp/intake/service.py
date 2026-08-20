@@ -20,7 +20,7 @@ from nmp.intake.local_clickhouse import (
 )
 from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
 from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
-from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
+from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, trace_metrics, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
 from nmp.intake.spans.ingest import spans as span_ingest
@@ -56,6 +56,12 @@ class IntakeService(Service[IntakeConfig]):
         """Return routers for the intake service."""
         return [
             RouterConfig(spans.router, tag="Spans", description="ClickHouse-backed span read endpoints"),
+            # Must precede traces: /traces/metrics would otherwise bind to /traces/{id}.
+            RouterConfig(
+                trace_metrics.router,
+                tag="Traces",
+                description="Time-bucketed trace metric rollups",
+            ),
             RouterConfig(traces.router, tag="Traces", description="ClickHouse-backed trace summary read endpoints"),
             RouterConfig(sessions.router, tag="Sessions", description="ClickHouse-backed session detail endpoints"),
             RouterConfig(
