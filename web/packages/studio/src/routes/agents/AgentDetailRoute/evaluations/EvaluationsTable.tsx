@@ -10,6 +10,7 @@ import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { deleteEvaluation, getListEvaluationsQueryKey } from '@nemo/sdk/generated/platform/api';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
+import { type EvalJobRow, evalJobDetailRoute } from '@studio/api/evaluation/utils';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import {
   evaluatorScores,
@@ -20,20 +21,30 @@ import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlaskConical, Trash } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface EvaluationsTableProps {
   workspace: string;
   evaluations: AgentEvaluationRow[];
+  /** All evaluator jobs for the agent (any status), used to link a published evaluation back to
+   *  the job that produced it. Absent until the reverse join finds a match. */
+  jobs: EvalJobRow[];
 }
 
 /** Every published evaluation for the agent, ungrouped. */
-export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluations }) => {
+export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluations, jobs }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dataViewState = useStudioDataViewState();
   const [deleteRows, setDeleteRows] = useState<AgentEvaluationRow[]>([]);
+  // Reverse of JobsTable's job -> evaluation link: a completed job carries the evaluation it
+  // published to, so index by that name to recover the job from an evaluation row.
+  const jobByEvaluation = useMemo(() => {
+    const map: Record<string, EvalJobRow> = {};
+    for (const job of jobs) if (job.evaluationName) map[job.evaluationName] = job;
+    return map;
+  }, [jobs]);
 
   const handleDelete = useCallback(
     async (rows: AgentEvaluationRow[]) => {
@@ -55,7 +66,7 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
 
   const makeColumns: ComponentProps<typeof StudioDataView<AgentEvaluationRow>>['makeColumns'] =
     useCallback(
-      ({ accessor }, { rowSelectionColumn }) => [
+      ({ accessor }, { rowSelectionColumn, rowActionsColumn }) => [
         rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
         accessor('name', {
           header: 'Evaluation',
@@ -109,8 +120,21 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
           cell: ({ row }) =>
             row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : '—',
         }),
+        rowActionsColumn({
+          rowActions: (row) => {
+            const job = jobByEvaluation[row.name];
+            return job
+              ? [
+                  {
+                    children: 'View job',
+                    onSelect: () => navigate(evalJobDetailRoute(workspace, job)),
+                  },
+                ]
+              : false;
+          },
+        }),
       ],
-      []
+      [jobByEvaluation, navigate, workspace]
     );
 
   return (
