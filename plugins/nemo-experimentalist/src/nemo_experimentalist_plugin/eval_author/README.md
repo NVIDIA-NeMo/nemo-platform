@@ -8,15 +8,17 @@
 > **WARNING:** Use Eval Author only with a trusted repository.
 > An agent import executes module top-level code.
 
-The top-level `nemo_eval_author_plugin.eval_author` package is the canonical Eval Author
+The top-level `nemo_experimentalist_plugin.eval_author` package is the canonical Eval Author
 implementation. It turns an Experimentalist Insight and its production trace refs into
 evaluator dataset changes, creating or augmenting regression signals that
 capture the failure mode before optimization begins.
 
-This package hard-depends on Experimentalist for evaluator, staging, and trace
-helpers. Experimentalist insight mode imports and runs this Eval Author before
-beginning optimization (both packages are installed via the `experimentalist`
-uv group).
+This package lives inside the Experimentalist plugin and uses its evaluator, staging,
+and trace helpers directly. Experimentalist insight mode imports and runs Eval Author
+before optimization begins.
+
+The `nemo agents eval-author` command group lives in the separate
+[Eval Author plugin](../../../../nemo-eval-author/README.md).
 
 ## Current Files
 
@@ -85,8 +87,8 @@ The returned Python contract is documented in the
 import asyncio
 from pathlib import Path
 
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_eval_author_plugin.eval_author.run import run_eval_author
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
+from nemo_experimentalist_plugin.eval_author.run import run_eval_author
 from nemo_experimentalist_plugin.entities import DatasetRef
 
 async def main() -> None:
@@ -105,35 +107,17 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## Discovery CLI
+## Agent models
 
-`nemo agents eval-author discover` validates one repository-owned Harbor config and writes no repository files.
+Run `nemo setup` and select the default and fast models for the active Platform
+context. Eval Author uses the default model for authoring and the fast model for
+summarization. Press Enter at the fast-model prompt to reuse the default model.
 
-The command accepts these flags:
+The selections are workspace-qualified Platform Model Entity IDs. The Platform
+routes each request to the provider registered for that entity and reads its
+credential from Platform Secrets; Eval Author does not accept separate provider,
+endpoint, key, or model environment variables.
 
-- `--repo` selects the repository. The current directory is the default.
-- `--agent` sets the name. Without it, a string `agent` in root `optimizer.yaml` takes precedence over the repository directory slug.
-- `--dry-run` prints the report and uploads no files.
-
-Discovery does not infer or generate a config. The preflight includes:
-
-- Harbor validates the schema, agent concurrency limits, task directories, and dataset coverage. Harbor also resolves the job.
-- Discovery identifies required environment variables. Harbor imports the agent and validates the environment backend.
-- `harbor job start --print-config` loads the config file.
-
-The `ETHOS.md` and trace checks are advisory.
-Each invocation repeats the preflight and records one `sha256:<digest>` fingerprint plus the input file count. The fingerprint never skips validation.
-
-Without `--dry-run`, the command uploads only `<agent>/discovery.md` to the `nemo-eval-author` fileset.
-Only a runnable report includes `cd <repo-root> && harbor job start -c <repo-relative-path>`.
-
-A standard run returns exit code 0 only for a runnable report and a successful upload.
-A dry run returns exit code 0 only if the report is runnable.
-All other outcomes return exit code 1. The command still uploads a report for an absent or rejected config.
-
-## Planned Commands
-
-- `nemo agents eval-author audit` will report coverage gaps against `ETHOS.md` and will not change the current Harbor suite.
-- `nemo agents eval-author propose` will draft Harbor tasks and verifier patches for review.
-- `nemo agents eval-author run` will run `discover`, `audit`, and `propose` as one pipeline.
-- `nemo agents eval-author doctor` will check credentials, platform access, and the runtime for the other commands.
+For non-interactive and isolated environments, `NEMO_DEFAULT_MODEL` and
+`NEMO_FAST_MODEL` can override the stored selections. Values must still use
+`workspace/model-name` and refer to Model Entities on the target Platform.

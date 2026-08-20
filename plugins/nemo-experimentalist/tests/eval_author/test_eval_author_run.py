@@ -10,10 +10,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from nemo_eval_author_plugin.eval_author import run as eval_author_run
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, ResourceRef, Task
+from nemo_experimentalist_plugin.eval_author import run as eval_author_run
+from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_insights_plugin.entities import Insight

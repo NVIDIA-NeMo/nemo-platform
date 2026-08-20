@@ -12,10 +12,10 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from nemo_eval_author_plugin.eval_author import agent as eval_author_module
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, MetricAuthoringResult
 from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
+from nemo_experimentalist_plugin.eval_author import agent as eval_author_module
+from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, MetricAuthoringResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
     TraceAnalyzerConfig,

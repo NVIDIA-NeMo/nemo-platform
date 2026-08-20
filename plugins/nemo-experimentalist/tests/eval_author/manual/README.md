@@ -29,7 +29,7 @@ and stops.
 
 ### `intake_tool_checks.py`
 
-Exercises every tool in `nemo_eval_author_plugin.traces` against live data. It finds a
+Exercises every tool in `nemo_experimentalist_plugin.eval_author.traces` against live data. It finds a
 workspace that holds agent-scoped spans, then runs the checks against it, so it needs
 no configuration. It prints one line per check and exits nonzero if any check fails.
 
