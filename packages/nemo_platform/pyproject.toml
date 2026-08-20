@@ -295,12 +295,10 @@ nemo-deployments-plugin = [
 nemo-eval-author-plugin = [
   "pydantic>=2",
   "harbor>=0.18",
-  "nooa>=0.0.9",
   "nemo-experimentalist-plugin",
   "nemo-insights-plugin",
   "nemo-platform-plugin",
   "pyyaml>=6.0.3",
-  "tomlkit>=0.13.3",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -342,7 +340,6 @@ nemo-experimentalist-plugin = [
   "protobuf>=6.0.0",
   "nooa>=0.0.9",
   "pyyaml>=6.0.3",
-  "nemo-eval-author-plugin",
   "nemo-insights-plugin",
   "nemo-platform-plugin",
   "tomlkit>=0.13.3",
