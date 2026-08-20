@@ -36,9 +36,9 @@ from nemo_insights_plugin.preflight import (
     check_environment,
     check_models,
     check_profile,
-    read_agent_spec,
+    read_ethos,
 )
-from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
+from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_ethos
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.nooa_model_client import configured_model_refs
@@ -51,12 +51,12 @@ _PREFLIGHT_PROBES: AnalysisProbes | None = None
 @dataclass(frozen=True)
 class _ResolvedAnalysis:
     agent: str
-    agent_spec: str | None
+    ethos: str | None
     workspace: str
     base_url: str
     insights_output: Path | None
     profile_dir: Path | None
-    spec_checks: tuple[CheckResult, ...]
+    ethos_checks: tuple[CheckResult, ...]
 
 
 def _load_profile_or_error(profile_path: Path | None) -> tuple[AnalysisProfile | None, str | None]:
@@ -99,7 +99,7 @@ def _one_line_error(exc: BaseException) -> str:
 def _resolve_analysis(
     *,
     agent: str | None,
-    agent_spec: Path | None,
+    ethos: Path | None,
     workspace: str | None,
     base_url: str | None,
     profile_path: Path | None,
@@ -121,26 +121,26 @@ def _resolve_analysis(
     else:
         resolved_workspace = profile.workspace if profile is not None else DEFAULT_WORKSPACE
 
-    spec_path = agent_spec
-    spec_error: str | None = None
-    if spec_path is None and profile is not None:
+    ethos_path = ethos
+    ethos_error: str | None = None
+    if ethos_path is None and profile is not None:
         try:
-            spec_path = pick_agent_spec(profile)
+            ethos_path = pick_ethos(profile)
         except ProfileError as exc:
-            spec_error = str(exc)
-    spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
+            ethos_error = str(exc)
+    ethos_content, ethos_checks = read_ethos(ethos_path, ethos_error)
 
     resolved_base_url = resolve_base_url(base_url)
     validate_insights_file(insights_output)
 
     return _ResolvedAnalysis(
         agent=resolved_agent,
-        agent_spec=spec_content,
+        ethos=ethos_content,
         workspace=resolved_workspace,
         base_url=resolved_base_url,
         insights_output=insights_output,
         profile_dir=profile.profile_dir if profile is not None else None,
-        spec_checks=tuple(spec_checks),
+        ethos_checks=tuple(ethos_checks),
     )
 
 
@@ -168,7 +168,7 @@ def _prepare_mirror(insights_output: Path | None) -> Path | None:
 
 
 async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
-    checks = list(analysis.spec_checks)
+    checks = list(analysis.ethos_checks)
     checks.extend(check_models())
     _preflight_or_exit(checks)
 
@@ -180,7 +180,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             raise ClientConstructionError(str(exc)) from None
         return await run_analyst(
             agent=analysis.agent,
-            agent_spec=analysis.agent_spec,
+            ethos=analysis.ethos,
             workspace=analysis.workspace,
             base_url=analysis.base_url,
             client=client,
@@ -212,10 +212,10 @@ def analyze(
         "--agent",
         help="Name of the agent (agent under test) the analyst should focus on.",
     ),
-    agent_spec: Path | None = typer.Option(
+    ethos: Path | None = typer.Option(
         None,
-        "--agent-spec",
-        help="Path to a markdown file describing the agent under test (its spec).",
+        "--ethos",
+        help="Path to a markdown file describing the agent under test (its Ethos).",
         exists=True,
         readable=True,
     ),
@@ -259,8 +259,8 @@ def analyze(
 ) -> None:
     """Run the analyst agent against a running NMP instance.
 
-    Builds the analyst agent with ``--agent`` (and optional
-    ``--agent-spec``) formatted into its instructions and tools scoped
+    Builds the analyst agent with ``--agent`` (and optional ``--ethos``)
+    formatted into its instructions and tools scoped
     to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
     prints whatever the agent returns. Insights are written to the
     platform, and mirrored to ``--insights-file-output`` when given.
@@ -268,7 +268,7 @@ def analyze(
     try:
         analysis = _resolve_analysis(
             agent=agent,
-            agent_spec=agent_spec,
+            ethos=ethos,
             workspace=workspace,
             base_url=base_url,
             profile_path=profile_path,
@@ -302,18 +302,18 @@ def doctor(
             profile, profile_error = _load_profile_or_error(profile_path)
         except ProfileError as exc:
             profile, profile_error = None, str(exc)
-        spec_path: Path | None = None
-        spec_error: str | None = None
+        ethos_path: Path | None = None
+        ethos_error: str | None = None
         if profile is not None:
             try:
-                spec_path = pick_agent_spec(profile)
+                ethos_path = pick_ethos(profile)
             except ProfileError as exc:
-                spec_error = str(exc)
-        _, spec_results = read_agent_spec(spec_path, spec_error)
+                ethos_error = str(exc)
+        _, ethos_results = read_ethos(ethos_path, ethos_error)
 
         async def _flow() -> list[CheckResult]:
             results = check_profile(profile, profile_error)
-            results.extend(spec_results)
+            results.extend(ethos_results)
             results.extend(
                 await check_environment(
                     agent=profile.agent if profile is not None else None,

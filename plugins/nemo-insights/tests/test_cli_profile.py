@@ -92,7 +92,7 @@ def profile_tree(tmp_path: Path) -> Path:
         "workspace: flight-workspace\n",
         encoding="utf-8",
     )
-    (tmp_path / "AGENT-SPEC.md").write_text("# Flight planner", encoding="utf-8")
+    (tmp_path / "ETHOS.md").write_text("# Flight planner", encoding="utf-8")
     return tmp_path
 
 
@@ -107,7 +107,7 @@ def test_analyze_runs_flag_free_from_profile(app: typer.Typer, profile_tree: Pat
     assert recorder.kwargs is not None
     assert recorder.kwargs["agent"] == "flight-planner"
     assert recorder.kwargs["workspace"] == "flight-workspace"
-    assert recorder.kwargs["agent_spec"] == "# Flight planner"
+    assert recorder.kwargs["ethos"] == "# Flight planner"
     assert recorder.kwargs["insights_output"] is None, "a discovered profile must not divert writes off the platform"
 
 
@@ -706,45 +706,45 @@ def test_analyze_accepts_existing_insights_file_without_insights_key(
 
 
 @pytest.mark.parametrize("command", ["doctor", "run"])
-def test_commands_reject_invalid_utf8_agent_spec(
+def test_commands_reject_invalid_utf8_ethos(
     app: typer.Typer,
     profile_tree: Path,
     monkeypatch: pytest.MonkeyPatch,
     command: str,
 ) -> None:
-    (profile_tree / "AGENT-SPEC.md").write_bytes(b"\xff\xfe")
+    (profile_tree / "ETHOS.md").write_bytes(b"\xff\xfe")
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, [command])
 
     assert result.exit_code == 1
-    assert "agent spec" in result.output.lower()
+    assert "ethos" in result.output.lower()
     assert "UTF-8" in result.output
     assert "Traceback" not in result.output
 
 
 @pytest.mark.parametrize("command", ["doctor", "run"])
-def test_commands_reject_unreadable_agent_spec(
+def test_commands_reject_unreadable_ethos(
     app: typer.Typer,
     profile_tree: Path,
     monkeypatch: pytest.MonkeyPatch,
     command: str,
 ) -> None:
-    spec = profile_tree / "AGENT-SPEC.md"
+    ethos = profile_tree / "ETHOS.md"
     original_read_text = Path.read_text
 
-    def deny_spec_read(path: Path, encoding: str | None = None, errors: str | None = None) -> str:
-        if path == spec:
+    def deny_ethos_read(path: Path, encoding: str | None = None, errors: str | None = None) -> str:
+        if path == ethos:
             raise PermissionError("permission denied")
         return original_read_text(path, encoding=encoding, errors=errors)
 
-    monkeypatch.setattr(Path, "read_text", deny_spec_read)
+    monkeypatch.setattr(Path, "read_text", deny_ethos_read)
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, [command])
 
     assert result.exit_code == 1
-    assert "agent spec" in result.output.lower()
+    assert "ethos" in result.output.lower()
     assert "permission denied" in result.output
     assert "ensure the file is readable and encoded as UTF-8" in result.output
     assert "Traceback" not in result.output

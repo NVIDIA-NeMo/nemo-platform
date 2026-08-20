@@ -13,7 +13,7 @@ from pydantic import BaseModel, ValidationError
 
 PROFILE_FILENAME = "optimizer.yaml"
 DEFAULT_BASE_URL = "http://localhost:8080"
-_AGENT_SPEC_FILENAMES = ("AGENT-SPEC.md", "README.md")
+_ETHOS_FILENAMES = ("ETHOS.md", "README.md")
 
 ProfileModel = TypeVar("ProfileModel", bound=BaseModel)
 
@@ -92,14 +92,14 @@ def load_env_file(path: Path, env: MutableMapping[str, str] = os.environ) -> lis
     return loaded
 
 
-def resolve_agent_spec_path(profile_dir: Path, configured: str | None) -> Path | None:
-    """Resolve a configured agent spec or the conventional profile-local file."""
+def resolve_ethos_path(profile_dir: Path, configured: str | None) -> Path | None:
+    """Resolve a configured Ethos or the conventional profile-local file."""
     if configured is not None:
         path = resolve_profile_path(configured, profile_dir)
         if not path.is_file():
-            raise ProfileError(f"Profile agent_spec {configured!r} does not exist (resolved to {path})")
+            raise ProfileError(f"Profile ethos {configured!r} does not exist (resolved to {path})")
         return path
-    for name in _AGENT_SPEC_FILENAMES:
+    for name in _ETHOS_FILENAMES:
         candidate = profile_dir / name
         if candidate.is_file():
             return candidate
