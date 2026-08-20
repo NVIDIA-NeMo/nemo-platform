@@ -9,7 +9,7 @@ from fastapi.routing import APIRoute
 from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
 from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
-from nemo_agents_plugin.jobs.invoke import AgentInvocationJob
+from nemo_agents_plugin.jobs.execute import ExecuteAgentJob
 from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 from nemo_agents_plugin.service import AgentsService
 from nemo_optimization.jobs.optimize import OptimizeJob
@@ -46,8 +46,8 @@ def test_evaluate_suite_job_route_matches_generated_submit_path() -> None:
     assert submit_path_for(EvaluateSuiteJob, workspace="{workspace}") in _mounted_post_paths()
 
 
-def test_invoke_job_route_matches_generated_submit_path() -> None:
-    assert submit_path_for(AgentInvocationJob, workspace="{workspace}") in _mounted_post_paths()
+def test_execute_job_route_matches_generated_submit_path() -> None:
+    assert submit_path_for(ExecuteAgentJob, workspace="{workspace}") in _mounted_post_paths()
 
 
 def test_optimize_skills_job_route_matches_generated_submit_path() -> None:

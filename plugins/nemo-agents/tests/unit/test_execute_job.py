@@ -14,19 +14,19 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.entities import Agent
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
-from nemo_agents_plugin.jobs.invoke import (
-    DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS,
+from nemo_agents_plugin.jobs.execute import (
+    DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
     FABRIC_ERROR_RESULT_NAME,
     FABRIC_RUN_RESULT_NAME,
     INPUT_WORKDIR_RESULT_NAME,
     OUTPUT_ARTIFACTS_RESULT_NAME,
     OUTPUT_WORKDIR_RESULT_NAME,
-    AgentInvocationJob,
-    AgentInvocationJobConfig,
-    AgentInvocationStepConfig,
+    ExecuteAgentJob,
+    ExecuteAgentJobConfig,
+    ExecuteAgentStepConfig,
     ResolvedAgentConfig,
 )
-from nemo_agents_plugin.tasks.invoke.workdir import (
+from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
     AgentWorkdirArtifactMount,
     _canonical_files_ref,
@@ -73,14 +73,14 @@ def _resolved_agent(name: str = "calc", workspace: str = "default") -> ResolvedA
 
 
 def test_job_config_defaults_to_bounded_fabric_timeout() -> None:
-    config = AgentInvocationJobConfig(agent="calc", input="hello")
+    config = ExecuteAgentJobConfig(agent="calc", input="hello")
 
-    assert config.timeout_seconds == DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS
+    assert config.timeout_seconds == DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS
 
 
 def test_job_config_rejects_non_positive_fabric_timeout() -> None:
     with pytest.raises(ValueError, match="greater than 0"):
-        AgentInvocationJobConfig(agent="calc", input="hello", timeout_seconds=0)
+        ExecuteAgentJobConfig(agent="calc", input="hello", timeout_seconds=0)
 
 
 @pytest.mark.asyncio
@@ -88,19 +88,19 @@ async def test_to_spec_resolves_bare_agent_against_route_workspace() -> None:
     entity_client = AsyncMock()
     entity_client.get.return_value = _agent()
 
-    spec = await AgentInvocationJob.to_spec(
-        AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="calc", input="hello"),
         workspace="default",
         entity_client=entity_client,
         async_sdk=_sdk_with_files(),
         is_local=False,
     )
 
-    step_config = AgentInvocationStepConfig.model_validate(spec)
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
     assert step_config.agent.name == "calc"
     assert step_config.agent.workspace == "default"
     assert step_config.request.input == "hello"
-    assert step_config.request.timeout_seconds == DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS
+    assert step_config.request.timeout_seconds == DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS
     assert step_config.workdir is None
     assert (
         step_config.agent.config["models"]["default"]["base_url"]
@@ -114,8 +114,8 @@ async def test_to_spec_preserves_explicit_agent_workspace() -> None:
     entity_client = AsyncMock()
     entity_client.get.return_value = _agent(workspace="research")
 
-    await AgentInvocationJob.to_spec(
-        AgentInvocationJobConfig(agent="research/calc", input="hello"),
+    await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="research/calc", input="hello"),
         workspace="default",
         entity_client=entity_client,
         async_sdk=_sdk_with_files(),
@@ -131,8 +131,8 @@ async def test_to_spec_rejects_missing_agent() -> None:
     entity_client.get.side_effect = NemoEntityNotFoundError("missing")
 
     with pytest.raises(ValueError, match="Agent 'missing' not found"):
-        await AgentInvocationJob.to_spec(
-            AgentInvocationJobConfig(agent="missing", input="hello"),
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="missing", input="hello"),
             workspace="default",
             entity_client=entity_client,
             async_sdk=_sdk_with_files(),
@@ -146,8 +146,8 @@ async def test_to_spec_rejects_non_fabric_agent() -> None:
     entity_client.get.return_value = _agent(config_format="nat-workflow-v1")
 
     with pytest.raises(ValueError, match="only support 'nemo-agents-spec-v1'"):
-        await AgentInvocationJob.to_spec(
-            AgentInvocationJobConfig(agent="calc", input="hello"),
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="calc", input="hello"),
             workspace="default",
             entity_client=entity_client,
             async_sdk=_sdk_with_files(),
@@ -166,8 +166,8 @@ async def test_to_spec_rejects_malformed_fabric_agent_config() -> None:
     )
 
     with pytest.raises(ValueError, match="default_harness"):
-        await AgentInvocationJob.to_spec(
-            AgentInvocationJobConfig(agent="calc", input="hello"),
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="calc", input="hello"),
             workspace="default",
             entity_client=entity_client,
             async_sdk=_sdk_with_files(),
@@ -186,8 +186,8 @@ async def test_to_spec_rejects_non_local_fabric_environment() -> None:
     )
 
     with pytest.raises(ValueError, match="only support local Fabric environments"):
-        await AgentInvocationJob.to_spec(
-            AgentInvocationJobConfig(agent="calc", input="hello"),
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="calc", input="hello"),
             workspace="default",
             entity_client=entity_client,
             async_sdk=_sdk_with_files(),
@@ -201,15 +201,15 @@ async def test_to_spec_validates_and_canonicalizes_base_workdir() -> None:
     entity_client.get.return_value = _agent()
     sdk = _sdk_with_files()
 
-    spec = await AgentInvocationJob.to_spec(
-        AgentInvocationJobConfig(agent="calc", input="hello", workdir=AgentWorkdir(base_workdir="source#project")),
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="calc", input="hello", workdir=AgentWorkdir(base_workdir="source#project")),
         workspace="default",
         entity_client=entity_client,
         async_sdk=sdk,
         is_local=False,
     )
 
-    step_config = AgentInvocationStepConfig.model_validate(spec)
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
     assert step_config.workdir is not None
     assert step_config.workdir.base_workdir == "default/source#project/"
     sdk.files.list.assert_awaited_once_with(remote_path="default/source#project/")
@@ -221,10 +221,8 @@ async def test_to_spec_rejects_single_file_base_workdir() -> None:
     entity_client.get.return_value = _agent()
 
     with pytest.raises(ValueError, match="non-empty directory"):
-        await AgentInvocationJob.to_spec(
-            AgentInvocationJobConfig(
-                agent="calc", input="hello", workdir=AgentWorkdir(base_workdir="source#README.md")
-            ),
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="calc", input="hello", workdir=AgentWorkdir(base_workdir="source#README.md")),
             workspace="default",
             entity_client=entity_client,
             async_sdk=_sdk_with_files(data=[]),
@@ -396,15 +394,15 @@ def test_materialize_agent_workdir_replaces_base_directory_for_directory_mount(t
 
 @pytest.mark.asyncio
 async def test_compile_produces_single_cpu_step_with_canonical_config() -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
         workdir=AgentWorkdir(base_workdir="default/source#project/"),
     )
 
-    with patch("nemo_agents_plugin.jobs.invoke.AgentsConfig.get") as get_config:
+    with patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config:
         get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
-        platform_spec = await AgentInvocationJob.compile(
+        platform_spec = await ExecuteAgentJob.compile(
             workspace="default",
             spec=spec,
             entity_client=MagicMock(),
@@ -415,10 +413,10 @@ async def test_compile_produces_single_cpu_step_with_canonical_config() -> None:
     steps = list(platform_spec["steps"])
     assert len(steps) == 1
     step = steps[0]
-    assert step["name"] == "invoke-agent"
+    assert step["name"] == "execute-agent"
     assert step["executor"]["provider"] == "cpu"
     assert step["executor"]["container"]["image"] == "registry.example/nmp-api:test"
-    assert step["executor"]["container"]["command"] == ["nemo_agents_plugin.tasks.invoke"]
+    assert step["executor"]["container"]["command"] == ["nemo_agents_plugin.tasks.execute"]
     assert step["config"] == spec.model_dump(mode="json")
     step_config = cast(dict[str, Any], step["config"])
     assert cast(dict[str, Any], step_config["request"])["input"] == "hello"
@@ -427,17 +425,17 @@ async def test_compile_produces_single_cpu_step_with_canonical_config() -> None:
 
 @pytest.mark.asyncio
 async def test_compile_falls_back_to_qualified_api_image() -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
     )
 
     with (
-        patch("nemo_agents_plugin.jobs.invoke.AgentsConfig.get") as get_config,
-        patch("nemo_agents_plugin.jobs.invoke.get_qualified_image", return_value="qualified/nmp-api:dev"),
+        patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config,
+        patch("nemo_agents_plugin.jobs.execute.get_qualified_image", return_value="qualified/nmp-api:dev"),
     ):
         get_config.return_value.deployments.default_image = ""
-        platform_spec = await AgentInvocationJob.compile(
+        platform_spec = await ExecuteAgentJob.compile(
             workspace="default",
             spec=spec,
             entity_client=MagicMock(),
@@ -453,15 +451,15 @@ async def test_compile_falls_back_to_qualified_api_image() -> None:
 
 
 def test_run_without_input_workdir_saves_empty_input_snapshot(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
     )
 
     async def _invoke(request: Any) -> FabricRuntimeResult:
         assert request.input == "hello"
         assert request.base_dir == ctx.storage.ephemeral / "fabric"
-        assert request.timeout_seconds == DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS
+        assert request.timeout_seconds == DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS
         (request.base_dir / "workspace" / "answer.txt").write_text("done\n")
         (request.base_dir / "artifacts" / "trace.json").write_text("{}\n")
         return FabricRuntimeResult(
@@ -473,8 +471,8 @@ def test_run_without_input_workdir_saves_empty_input_snapshot(ctx: JobContext) -
             request_id="request-1",
         )
 
-    with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-        result = AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert result["status"] == "completed"
     assert result["fabric_status"] == "succeeded"
@@ -491,8 +489,8 @@ def test_run_without_input_workdir_saves_empty_input_snapshot(ctx: JobContext) -
 
 
 def test_run_threads_custom_timeout_to_fabric(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello", timeout_seconds=12.5),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello", timeout_seconds=12.5),
         agent=_resolved_agent(),
     )
 
@@ -500,15 +498,15 @@ def test_run_threads_custom_timeout_to_fabric(ctx: JobContext) -> None:
         assert request.timeout_seconds == 12.5
         return FabricRuntimeResult(status="succeeded")
 
-    with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-        result = AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert result["status"] == "completed"
 
 
 def test_run_rejects_non_fabric_step_config(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=ResolvedAgentConfig(
             name="calc",
             workspace="default",
@@ -518,12 +516,12 @@ def test_run_rejects_non_fabric_step_config(ctx: JobContext) -> None:
     )
 
     with pytest.raises(ValueError, match="only support 'nemo-agents-spec-v1'"):
-        AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
 
 def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(
             agent="calc",
             input="hello",
             workdir=AgentWorkdir(base_workdir="source#project/"),
@@ -554,8 +552,8 @@ def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
         (request.base_dir / "artifacts" / "artifact.txt").write_text("artifact\n")
         return FabricRuntimeResult(status="succeeded", response="done")
 
-    with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-        result = AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
 
     assert result["status"] == "completed"
     assert result["input_workdir"]["name"] == "input_workdir"
@@ -570,8 +568,8 @@ def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
 
 
 def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(
             agent="calc",
             input="hello",
             workdir=AgentWorkdir(base_workdir="source#project/"),
@@ -596,8 +594,8 @@ def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext) ->
     async def _invoke(request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(status="succeeded")
 
-    with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-        result = AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
 
     assert result["status"] == "completed"
     assert result["input_workdir"]["name"] == "input_workdir"
@@ -607,8 +605,8 @@ def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext) ->
 
 
 def test_run_clears_stale_artifacts_dir_before_invoking(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
     )
     stale_artifacts = ctx.storage.ephemeral / "fabric" / "artifacts"
@@ -620,8 +618,8 @@ def test_run_clears_stale_artifacts_dir_before_invoking(ctx: JobContext) -> None
         (request.base_dir / "artifacts" / "fresh.txt").write_text("fresh\n")
         return FabricRuntimeResult(status="succeeded")
 
-    with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-        result = AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert result["status"] == "completed"
     saved_artifacts = ctx.storage.persistent / "results" / "output_artifacts"
@@ -630,8 +628,8 @@ def test_run_clears_stale_artifacts_dir_before_invoking(ctx: JobContext) -> None
 
 
 def test_run_failed_download_does_not_register_partial_result(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(
             agent="calc",
             input="hello",
             workdir=AgentWorkdir(base_workdir="source#project/"),
@@ -643,14 +641,14 @@ def test_run_failed_download_does_not_register_partial_result(ctx: JobContext) -
     sdk.files.download.side_effect = RuntimeError("download failed")
 
     with pytest.raises(RuntimeError, match="download failed"):
-        AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
 
     assert not (ctx.storage.persistent / "results" / "input_workdir").exists()
 
 
 def test_run_failed_fabric_result_saves_results_and_marks_job_failed(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
     )
 
@@ -661,8 +659,8 @@ def test_run_failed_fabric_result_saves_results_and_marks_job_failed(ctx: JobCon
             error={"stage": "invoke", "message": "adapter failed"},
         )
 
-    with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-        result = AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert result["status"] == "failed"
     assert result["fabric_status"] == "failed"
@@ -674,8 +672,8 @@ def test_run_failed_fabric_result_saves_results_and_marks_job_failed(ctx: JobCon
 
 
 def test_run_fabric_exception_saves_best_effort_error_results(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
     )
 
@@ -684,10 +682,10 @@ def test_run_fabric_exception_saves_best_effort_error_results(ctx: JobContext) -
         raise RuntimeError("fabric exploded")
 
     with (
-        patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
         pytest.raises(RuntimeError, match="fabric exploded"),
     ):
-        AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert (ctx.storage.persistent / "results" / INPUT_WORKDIR_RESULT_NAME).is_dir()
     assert (ctx.storage.persistent / "results" / OUTPUT_WORKDIR_RESULT_NAME / "partial.txt").read_text() == "partial\n"
@@ -699,8 +697,8 @@ def test_run_fabric_exception_saves_best_effort_error_results(ctx: JobContext) -
 
 
 def test_run_fabric_exception_preserves_original_error_if_result_save_fails(ctx: JobContext) -> None:
-    spec = AgentInvocationStepConfig(
-        request=AgentInvocationJobConfig(agent="calc", input="hello"),
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
     )
     original_save = ctx.results.save
@@ -717,17 +715,17 @@ def test_run_fabric_exception_preserves_original_error_if_result_save_fails(ctx:
     cast(Any, ctx.results).save = _save
 
     with (
-        patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
         pytest.raises(RuntimeError, match="fabric exploded"),
     ):
-        AgentInvocationJob().run(spec.model_dump(mode="json"), ctx=ctx)
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert (ctx.storage.persistent / "results" / FABRIC_ERROR_RESULT_NAME).exists()
 
 
-def test_invoke_job_create_route_stores_canonical_step_config() -> None:
+def test_execute_job_create_route_stores_canonical_step_config() -> None:
     app = FastAPI()
-    app.include_router(add_job_routes(AgentInvocationJob), prefix="/apis/agents/v2/workspaces/{workspace}")
+    app.include_router(add_job_routes(ExecuteAgentJob), prefix="/apis/agents/v2/workspaces/{workspace}")
 
     entity_client = AsyncMock()
     entity_client.get.return_value = _agent()
@@ -744,7 +742,7 @@ def test_invoke_job_create_route_stores_canonical_step_config() -> None:
         response = MagicMock()
         response.data.return_value = SimpleNamespace(
             id="job-1",
-            name="invoke-1",
+            name="execute-1",
             description=None,
             workspace="default",
             created_at=None,
@@ -761,9 +759,9 @@ def test_invoke_job_create_route_stores_canonical_step_config() -> None:
     fake_jobs = SimpleNamespace(create_job=_create_job)
     with patch("nemo_platform_plugin.jobs.api_factory.client_from_platform", return_value=fake_jobs):
         response = TestClient(app).post(
-            "/apis/agents/v2/workspaces/default/jobs/invoke",
+            "/apis/agents/v2/workspaces/default/jobs/execute",
             json={
-                "name": "invoke-1",
+                "name": "execute-1",
                 "spec": {"agent": "calc", "input": "hello", "workdir": {"base_workdir": "source#project"}},
             },
         )
@@ -788,8 +786,8 @@ def test_invoke_job_create_route_stores_canonical_step_config() -> None:
         "agent": "calc",
         "input": "hello",
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
-        "timeout_seconds": DEFAULT_AGENT_INVOCATION_TIMEOUT_SECONDS,
+        "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
     }
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
-    assert body.platform_spec.steps[0].name == "invoke-agent"
+    assert body.platform_spec.steps[0].name == "execute-agent"
     assert response.json()["spec"]["workdir"]["base_workdir"] == "default/source#project/"
