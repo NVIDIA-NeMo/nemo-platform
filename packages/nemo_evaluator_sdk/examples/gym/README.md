@@ -9,11 +9,13 @@ Mapping: one Gym dataset → one run; each distinct row → one `AgentEvalTask` 
 
 ## Prerequisites
 
-**1. NeMo Gym installed in the same environment as the SDK**, plus the target environment's own dependencies. Environments ship in the `nemo-gym` wheel — `resources_servers` and friends install beside `nemo_gym`, configs and `data/example.jsonl` included — so no checkout is needed:
+**1. NeMo Gym installed in its own environment, with that environment's `bin` on `PATH`**, plus the target environment's own dependencies. Gym imports Ray at module load and nemo-platform excludes Ray by constraint, so the two generally cannot share a virtualenv; the runner resolves `gym` from `PATH` only. Environments ship in the `nemo-gym` wheel — `resources_servers` and friends install beside `nemo_gym`, configs and `data/example.jsonl` included — so no checkout is needed:
 
 ```bash
-pip install nemo-gym
-pip install tiktoken        # mcqa's own dependency; each resources_server ships a requirements.txt
+uv venv ~/gym-env --python 3.12
+# tiktoken is mcqa's own dependency; each resources_server ships a requirements.txt
+uv pip install --python ~/gym-env/bin/python nemo-gym tiktoken
+export PATH="$HOME/gym-env/bin:$PATH"
 ```
 
 The runner shells out to whatever `gym` is on PATH. There is deliberately no setting for a checkout, another venv, or a search root: this config becomes a serialized job spec when Gym runs as a platform job, and a local path means nothing on the other side of that boundary.
@@ -115,5 +117,6 @@ logging.getLogger("nemo_evaluator_sdk.agent_eval.runtimes.gym").setLevel(logging
 
 - [`../harbor/`](../harbor/) — the same `AgentEvaluator` seam driven by the Harbor runtime.
 - [`../fabric_harness_runtimes.py`](../fabric_harness_runtimes.py) — the Fabric runtime equivalent.
-- [`gym_runtime.py`](../../src/nemo_evaluator_sdk/agent_eval/runtimes/gym_runtime.py) — `GymRuntimeConfig` field reference plus the attribution and teardown rationale.
+- [`gym/config.py`](../../src/nemo_evaluator_sdk/agent_eval/runtimes/gym/config.py) — `GymRuntimeConfig` field reference.
+- [`gym/runtime.py`](../../src/nemo_evaluator_sdk/agent_eval/runtimes/gym/runtime.py) — the attribution and teardown rationale.
 - [NeMo Gym documentation](https://github.com/NVIDIA-NeMo/Gym) — authoring environments, agents, and datasets.
