@@ -3090,33 +3090,6 @@ components:
       - request
       - agent
       title: AgentInvocationStepConfig
-    AgentWorkdir:
-      properties:
-        base_workdir:
-          title: Base Workdir
-          description: Optional Files reference for the initial working directory.
-          type: string
-        artifact_mounts:
-          items:
-            $ref: '#/components/schemas/AgentWorkdirArtifactMount'
-          type: array
-          title: Artifact Mounts
-          description: Optional fileset artifacts to layer into the working directory.
-      type: object
-      title: AgentWorkdir
-    AgentWorkdirArtifactMount:
-      properties:
-        ref:
-          type: string
-          title: Ref
-        mount_path:
-          type: string
-          title: Mount Path
-      type: object
-      required:
-      - ref
-      - mount_path
-      title: AgentWorkdirArtifactMount
     AgentSession:
       properties:
         name:
@@ -3213,6 +3186,33 @@ components:
         The session entity owns Platform-level conversation identity only. Live
 
         harness state remains process-local to the deployment''s serving runtime.'
+    AgentWorkdir:
+      properties:
+        base_workdir:
+          title: Base Workdir
+          description: Optional Files reference for the initial working directory.
+          type: string
+        artifact_mounts:
+          items:
+            $ref: '#/components/schemas/AgentWorkdirArtifactMount'
+          type: array
+          title: Artifact Mounts
+          description: Optional fileset artifacts to layer into the working directory.
+      type: object
+      title: AgentWorkdir
+    AgentWorkdirArtifactMount:
+      properties:
+        ref:
+          type: string
+          title: Ref
+        mount_path:
+          type: string
+          title: Mount Path
+      type: object
+      required:
+      - ref
+      - mount_path
+      title: AgentWorkdirArtifactMount
     AnalyzeBatchConfig:
       properties:
         batch:
