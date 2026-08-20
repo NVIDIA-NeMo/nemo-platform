@@ -23,6 +23,7 @@ import pytest
 from nemo_platform_ext.local import process
 from nemo_platform_ext.local.services import ServiceRunConfig
 from nemo_platform_ext.local.transport import probe_status, wait_for_status
+from nmp.common.controller import ControllerManager
 
 
 def _free_tcp_port() -> int:
@@ -71,8 +72,7 @@ def test_create_app_starts_and_joins_controller_threads() -> None:
 
 @pytest.mark.integration
 def test_create_app_controller_thread_join_timeout() -> None:
-    """A controller that ignores the stop signal should not hang shutdown —
-    ``thread.join(timeout=5)`` should return even if the controller is still running."""
+    """A stuck controller must not hang shutdown."""
     started = threading.Event()
 
     def stubborn_controller(stop_signal: threading.Event) -> None:
@@ -97,13 +97,13 @@ def test_create_app_controller_thread_join_timeout() -> None:
 
         from fastapi.testclient import TestClient
 
-        # The TestClient __exit__ triggers lifespan exit, which calls thread.join(timeout=5).
-        # This should NOT hang forever — the 5s timeout should let shutdown proceed.
-        with TestClient(app):
-            assert started.wait(timeout=2.0), "controller thread did not start"
-
-        # If we got here, shutdown didn't hang. The stubborn thread is still running
-        # but as a daemon thread it will be cleaned up when the test process exits.
+        manager = ControllerManager.get_instance()
+        try:
+            with TestClient(app):
+                assert started.wait(timeout=2.0), "controller thread did not start"
+        finally:
+            # Avoid leaking singleton state into later integration tests.
+            manager.clear()
 
 
 @pytest.mark.integration

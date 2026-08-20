@@ -94,24 +94,13 @@ def test_sidecar_failure_is_logged_without_affecting_controller_health(caplog: p
 
 
 def test_self_tracking_sidecar_is_pending_before_its_thread_runs_any_code() -> None:
-    """A self-tracking sidecar must be visible as pending the instant its thread
-    is started, not only once that thread gets scheduled and runs its own
-    await_controller_registration call.
-
-    Regression test: unlike controllers (pre-registered synchronously on the
-    parent thread before thread.start()), a self-tracking sidecar's own
-    await_controller_registration call used to run only inside its spawned
-    thread — leaving a window between thread creation and that line executing
-    where a crash (or a readiness probe) would see no trace of it at all.
-    """
+    """Expose a self-tracking sidecar before its thread is scheduled."""
     manager = ControllerManager.get_instance()
     stop_signal = threading.Event()
     thread_may_proceed = threading.Event()
 
     def run(stop_signal: threading.Event) -> None:
-        # Blocks before doing anything else, including auth-proxy's own
-        # await_controller_registration call — simulates the gap between
-        # thread creation and the thread's first line of code executing.
+        # Hold the thread before its own registration call.
         thread_may_proceed.wait(timeout=2)
         stop_signal.wait(timeout=2)
 

@@ -157,24 +157,11 @@ def test_registered_sidecar_loop_is_removed_after_each_lifespan() -> None:
 
 
 def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
-    """A self-tracking sidecar's still-running resource must not be untracked by
-    the generic runner shutdown path, even after its own wrapper thread (and its
-    registered loop) has exited.
-
-    Regression test: mirrors auth-proxy's real shape, where the *registered*
-    loop (health_loop) exits promptly once the shared stop_signal is set,
-    independent of whether the *separate* resource thread it monitors (the
-    uvicorn thread) is still alive. A naive "is the registered loop's thread
-    still alive" check can't see that gap, so the generic
-    join_and_untrack_runner_threads must not call stop_tracking_controller at
-    all for a self-tracking sidecar (see registry.SELF_TRACKING_SIDECARS) —
-    that decision belongs entirely to the sidecar itself.
-    """
+    """Leave tracking to a sidecar whose resource outlives its wrapper."""
     manager = ControllerManager.get_instance()
     manager.clear()
     registered = threading.Event()
-    # Deliberately never set: models a resource thread that outlives the
-    # sidecar's wrapper thread, the way auth-proxy's uvicorn thread can.
+    # Model a resource that outlives its sidecar wrapper.
     hang_forever = threading.Event()
     resource_thread = threading.Thread(target=lambda: hang_forever.wait(timeout=5), daemon=True)
 
@@ -188,8 +175,7 @@ def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
 
     def run(stop_signal: threading.Event) -> None:
         resource_thread.start()
-        # health_loop stand-in: shares the sidecar's own stop_signal, so it
-        # exits promptly once shutdown starts, regardless of resource_thread.
+        # The health loop stops independently of the resource thread.
         health_loop = Loop(
             waiter=TimedLoopWaiter(sleep_secs=0.01, stop_signal=stop_signal),
             controller=_ResourceController(),
@@ -201,8 +187,7 @@ def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
         registered.set()
         stop_signal.wait(timeout=5.0)
         health_loop.join(timeout=2.0)
-        # Deliberately not calling stop_tracking_controller: resource_thread
-        # may still be alive even though health_loop has already stopped.
+        # The sidecar intentionally leaves the live resource tracked.
 
     try:
         with (

@@ -16,11 +16,7 @@ from nmp.platform_runner.registry import SELF_TRACKING_SIDECARS
 
 logger = logging.getLogger(__name__)
 
-# Self-tracking sidecars (e.g. auth-proxy) can take longer than a single
-# generic thread join to shut down gracefully on their own: auth-proxy alone
-# budgets up to ~15s (uvicorn drain + health-loop join) before its wrapper
-# thread returns. The shared join budget must be at least that large, or its
-# join can exhaust the deadline and starve every thread joined after it.
+# Covers auth-proxy's Uvicorn and health-loop shutdown budgets.
 RUNNER_JOIN_TIMEOUT_SECONDS = 16.0
 
 
@@ -51,11 +47,7 @@ def _start_runner_threads(
     kind, thread_prefix = ("Controller", "controller") if track_controller_health else ("Sidecar", "sidecar")
 
     for name, run_func in run_funcs.items():
-        # Self-tracking sidecars also call this themselves once their thread
-        # starts running, but doing it here too (on the parent thread, before
-        # the thread even exists) closes the gap between thread creation and
-        # that first line executing, during which the sidecar would otherwise
-        # be invisible to validate_all_healthy.
+        # Pre-register self-tracking sidecars before their thread is scheduled.
         if track_controller_health or name in SELF_TRACKING_SIDECARS:
             manager.await_controller_registration(name)
 
@@ -92,25 +84,10 @@ def join_and_untrack_runner_threads(
     *,
     join_timeout: float,
 ) -> None:
-    """Join runner threads and drop their ControllerManager health tracking.
+    """Join threads within one shared deadline and untrack those that stop.
 
-    A thread that's still alive after ``join_timeout`` is left tracked (and
-    thus unhealthy) rather than untracked, since untracking it would make the
-    still-running controller/sidecar silently disappear from health checks.
-    ``ControllerManager.stop_tracking_controller`` additionally refuses to
-    drop a registered loop whose own thread is still alive — but that only
-    protects loops the wrapper thread here directly owns. A sidecar that
-    spawns and monitors its own sub-thread (e.g. auth-proxy's uvicorn thread)
-    can have its wrapper thread exit before that sub-thread does, so its name
-    must be excluded from ``names`` entirely and left to self-manage its own
-    tracking end-to-end (see ``registry.SELF_TRACKING_SIDECARS``).
-
-    ``join_timeout`` bounds the *total* time spent joining, not a per-thread
-    budget — otherwise shutdown time scales with the number of controllers
-    and sidecars instead of staying capped. Threads are polled concurrently
-    against that shared deadline (rather than joined one at a time) so a
-    thread earlier in ``threads`` that's merely slow to stop can't consume
-    the whole budget and starve threads joined after it.
+    Live threads remain unhealthy. Self-tracking sidecars are omitted from
+    ``names`` because they own resource threads that are not visible here.
     """
     deadline = time.monotonic() + join_timeout
     pending = list(threads)

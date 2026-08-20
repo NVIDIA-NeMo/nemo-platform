@@ -185,17 +185,15 @@ class _ServerThreadController(Controller):
     def is_healthy(self) -> bool:
         return self._thread.is_alive()
 
+    @property
+    def unhealthy_reason(self) -> str | None:
+        if self._thread.is_alive():
+            return None
+        return "auth-proxy uvicorn thread is not running"
+
 
 def run(parent_stop_signal: threading.Event | None = None) -> None:
-    """Sidecar entrypoint. Serves the loopback auth-proxy until stopped.
-
-    Sidecars aren't fed into ControllerManager by the generic runner thread
-    wrapper, so a setup failure here (missing env var, bad upstream URL, ...)
-    would otherwise be logged and silently dropped, invisible to readiness —
-    the auth-proxy self-registers (and self-associates via
-    ``controller_registration_context``, in case it's invoked outside the
-    generic wrapper too) to avoid that gap.
-    """
+    """Serve the auth proxy and report its lifecycle through ControllerManager."""
     if parent_stop_signal is None:
         _run_untracked()
         return
@@ -211,7 +209,6 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
         _log_startup(host=host, port=port, base_url=base_url, principal=principal, on_behalf_of=on_behalf_of)
 
         thread = threading.Thread(target=server.run, name="auth-proxy-uvicorn", daemon=True)
-        thread.start()
 
         health_loop = Loop(
             waiter=TimedLoopWaiter(sleep_secs=1.0, stop_signal=parent_stop_signal),
@@ -219,37 +216,56 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
             stop_signal=parent_stop_signal,
         )
         health_loop.name = "auth-proxy"
-        health_loop_registered = False
         try:
+            # Register first so stale tracking blocks a second server bind.
             manager.register(health_loop.name, health_loop)
-            health_loop_registered = True
+        except Exception:
+            manager.mark_controller_failed("auth-proxy")
+            raise
+
+        try:
+            thread.start()
+        except Exception:
+            manager.unregister(health_loop.name)
+            manager.mark_controller_failed("auth-proxy")
+            raise
+
+        try:
             health_loop.start()
         except Exception:
-            _join_uvicorn_thread(server, thread, context="after startup failed")
-            if health_loop_registered:
-                manager.unregister(health_loop.name)
+            uvicorn_still_alive = _join_uvicorn_thread(server, thread, context="after startup failed")
             manager.mark_controller_failed("auth-proxy")
+            if uvicorn_still_alive:
+                _watch_delayed_uvicorn_exit(manager, thread)
+            else:
+                manager.unregister(health_loop.name)
             raise
 
         try:
             while not parent_stop_signal.is_set():
                 parent_stop_signal.wait(timeout=1)
         finally:
-            # health_loop stops as soon as parent_stop_signal is set, regardless of
-            # whether the uvicorn thread it monitors is still alive — so its own
-            # liveness can't be used to tell whether the uvicorn thread hung. Track
-            # that separately here rather than relying solely on
-            # stop_tracking_controller's generic "is the registered loop still
-            # alive" check, which only sees health_loop's thread, not uvicorn's.
+            # The health loop may stop before Uvicorn, so check Uvicorn directly.
             uvicorn_still_alive = _join_uvicorn_thread(server, thread, context="in time")
             health_loop.join(timeout=5)
             if uvicorn_still_alive:
                 logger.warning(
                     "Leaving health tracking in place for %r; its uvicorn thread did not finish in time", "auth-proxy"
                 )
+                _watch_delayed_uvicorn_exit(manager, thread)
             else:
                 manager.stop_tracking_controller("auth-proxy")
             logger.info("auth-proxy sidecar stopped")
+
+
+def _watch_delayed_uvicorn_exit(manager: ControllerManager, thread: threading.Thread) -> None:
+    """Drop auth-proxy tracking after a delayed Uvicorn exit."""
+
+    def _wait_and_untrack() -> None:
+        thread.join()
+        manager.stop_tracking_controller("auth-proxy")
+
+    threading.Thread(target=_wait_and_untrack, name="auth-proxy-uvicorn-cleanup", daemon=True).start()
 
 
 def _build_server() -> tuple[str, str, str | None, str, int, uvicorn.Server]:

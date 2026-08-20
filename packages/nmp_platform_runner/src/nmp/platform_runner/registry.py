@@ -41,12 +41,7 @@ AVAILABLE_SIDECARS: dict[str, str] = {
     "auth-proxy": "nmp.common.auth.workload_proxy.main:run",
 }
 
-# Sidecars that register with ControllerManager and untrack themselves end-to-end
-# (see workload_proxy/main.py). The generic runner shutdown path must not also
-# call stop_tracking_controller for these: its "is the wrapper thread still
-# alive" check can't see a sidecar's own sub-thread (e.g. auth-proxy's uvicorn
-# thread), so a redundant call there could silently undo the sidecar's own,
-# more accurate decision to leave a still-running sub-thread tracked.
+# These sidecars own health tracking for resource threads hidden from the runner.
 SELF_TRACKING_SIDECARS: frozenset[str] = frozenset({"auth-proxy"})
 
 SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
@@ -55,11 +50,7 @@ SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
 
 
 def check_no_controller_sidecar_collision(controller_names: Iterable[str], sidecar_names: Iterable[str]) -> None:
-    """Raise if a controller and a sidecar share a name.
-
-    ``ControllerManager`` tracks controllers and sidecars by name; a collision
-    would make their health tracking indistinguishable.
-    """
+    """Reject names that make controller and sidecar health indistinguishable."""
     collisions = set(controller_names) & set(sidecar_names)
     if collisions:
         raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")

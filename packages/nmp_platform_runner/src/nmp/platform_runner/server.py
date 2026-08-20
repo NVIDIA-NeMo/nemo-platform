@@ -346,8 +346,8 @@ def build_platform_app(
         )
     service_instances = order_services_by_dependencies(service_instances)
 
-    # create_app() below performs the same collision check on the loaded run
-    # funcs, which cover exactly resolved.controllers/resolved.sidecars.
+    # Fail before loading colliding functions; create_app() checks direct callers.
+    check_no_controller_sidecar_collision(resolved.controllers, resolved.sidecars)
     controller_run_funcs = _load_run_functions(sorted(resolved.controllers), resolved.available_controllers)
     sidecar_run_funcs = _load_run_functions(sorted(resolved.sidecars), AVAILABLE_SIDECARS)
 

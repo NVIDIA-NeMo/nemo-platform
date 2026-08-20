@@ -35,6 +35,10 @@ class ControllerManager:
         """Private constructor. Use get_instance() to get the singleton instance."""
         if ControllerManager._instance is not None:
             raise RuntimeError("Use ControllerManager.get_instance() to get the singleton instance")
+        self._init_state()
+
+    def _init_state(self) -> None:
+        """Initialize mutable singleton state."""
         self._loops: Dict[str, Loop] = {}
         self._reported_health: Dict[str, bool] = {}
         self._controllers_awaiting_registration: set[str] = set()
@@ -53,15 +57,9 @@ class ControllerManager:
         """
         with cls._instance_lock:
             if cls._instance is None:
-                cls._instance = cls.__new__(cls)
-                cls._instance._loops = {}
-                cls._instance._reported_health = {}
-                cls._instance._controllers_awaiting_registration = set()
-                cls._instance._registered_controllers = set()
-                cls._instance._controller_loops = {}
-                cls._instance._loop_controllers = {}
-                cls._instance._controller_context = local()
-                cls._instance._lock = RLock()
+                instance = cls.__new__(cls)
+                instance._init_state()
+                cls._instance = instance
         return cls._instance
 
     def await_controller_registration(self, name: str) -> None:
@@ -71,23 +69,11 @@ class ControllerManager:
             self._registered_controllers.discard(name)
 
     def mark_controller_failed(self, name: str) -> None:
-        """Record that a runner-owned controller exited unexpectedly.
-
-        Currently identical to await_controller_registration: a failed
-        controller is simply missing again until it (re-)registers. Kept as
-        a separate method so the two call sites (startup vs. failure) stay
-        independently named and can diverge again without a call-site edit.
-        """
+        """Record an unexpected exit as a missing controller registration."""
         self.await_controller_registration(name)
 
     def stop_tracking_controller(self, name: str) -> None:
-        """Remove runner-owned controller state during platform shutdown.
-
-        A registered loop backed by a still-running thread (e.g. a sidecar's
-        internal health-tracking loop that outlives its wrapper thread) is
-        left tracked rather than dropped, so a controller whose own thread
-        never finished doesn't silently disappear from health checks.
-        """
+        """Remove controller state unless one of its loops is still running."""
         with self._lock:
             still_running = {
                 loop_name
@@ -214,12 +200,7 @@ class ControllerManager:
         with self._lock:
             loops = self._loops.copy()
             missing_controllers = self._controllers_awaiting_registration - self._registered_controllers
-            # A controller can land in missing_controllers either because it never
-            # registered a loop, or because it registered fine and later exited
-            # unexpectedly (mark_controller_failed() re-adds it here without
-            # touching _controller_loops). Distinguish the two for logging so the
-            # reason doesn't claim a controller "never registered" when it ran
-            # successfully first.
+            # Owned loops distinguish startup failures from later exits.
             previously_registered = {name for name in missing_controllers if self._controller_loops.get(name)}
 
         if not loops and not missing_controllers:
@@ -238,8 +219,7 @@ class ControllerManager:
             self._log_health_transition(name, False, reason)
 
         for name, loop in loops.items():
-            # Runner-level startup/exit failure takes precedence when a
-            # controller and its registered loop use the same name.
+            # Runner-level failure takes precedence over a same-named loop.
             if name in missing_controllers:
                 continue
             # Check if loop has is_healthy property (duck typing)

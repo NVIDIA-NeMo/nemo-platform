@@ -222,12 +222,7 @@ def test_controller_skips_wait_when_no_dependencies(monkeypatch: pytest.MonkeyPa
 def test_registration_name_collision_still_runs_shutdown_and_reports_failure(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A loop-name collision during registration must not leak the adapter's event loop.
-
-    Regression test: register() raising previously skipped straight past
-    loop.start()/loop.join(), so on_shutdown() never ran and the adapter's
-    asyncio event loop (already primed by on_startup()) was never closed.
-    """
+    """Close the adapter event loop when loop registration collides."""
     manager = ControllerManager.get_instance()
     manager.register("controller-plugin-test-controller", MagicMock(is_healthy=True, unhealthy_reason=None))
 

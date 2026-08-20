@@ -285,9 +285,9 @@ def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
     def fake_create_app(
         services,
         controller_run_funcs=None,
-        sidecar_run_funcs=None,
         http_client=None,
         access_key_lifecycle_http_client=None,
+        sidecar_run_funcs=None,
     ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
@@ -325,9 +325,9 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
     def fake_create_app(
         services,
         controller_run_funcs=None,
-        sidecar_run_funcs=None,
         http_client=None,
         access_key_lifecycle_http_client=None,
+        sidecar_run_funcs=None,
     ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
@@ -565,7 +565,8 @@ def test_create_app_reports_controller_that_crashes_before_registration(monkeypa
                 server.create_app(services=[], controller_run_funcs={"models": crashing_controller})
             ) as client:
                 assert crashed.wait(timeout=2)
-                response = client.get("/health/ready")
+                # The wrapper records failure after crashed is set.
+                response = _wait_for_response(client, "/health/ready", 503)
                 status = client.get("/status").json()
 
         assert response.status_code == 503
