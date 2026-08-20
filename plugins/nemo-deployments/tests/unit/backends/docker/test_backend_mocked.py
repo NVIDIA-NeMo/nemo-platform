@@ -181,7 +181,7 @@ async def test_config_files_tar_carries_parent_dirs_and_mode(
     ``put_archive`` does not create missing parents, so a tar carrying only the
     leaf fails for any path below the image's existing tree.
     """
-    mock_entities.get.return_value = config_files_config(path="/tmp/nemo/sub/agent.yaml")
+    mock_entities.get.return_value = config_files_config(path="/tmp/nemo/sub/agent.yaml", mode=0o600)
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     created = MagicMock(id="abc123")
     mock_docker_client.containers.create.return_value = created
@@ -196,11 +196,11 @@ async def test_config_files_tar_carries_parent_dirs_and_mode(
 
     (_, archive), _ = created.put_archive.call_args
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r") as tar:
-        dirs = {m.name for m in tar.getmembers() if m.isdir()}
+        dirs = {m.name: m.mode for m in tar.getmembers() if m.isdir()}
         files = {m.name: m.mode for m in tar.getmembers() if m.isfile()}
 
-    assert dirs == {"tmp", "tmp/nemo", "tmp/nemo/sub"}
-    assert files == {"tmp/nemo/sub/agent.yaml": 0o644}
+    assert dirs == {"tmp": 0o1777, "tmp/nemo": 0o777, "tmp/nemo/sub": 0o755}
+    assert files == {"tmp/nemo/sub/agent.yaml": 0o600}
 
 
 @pytest.mark.asyncio

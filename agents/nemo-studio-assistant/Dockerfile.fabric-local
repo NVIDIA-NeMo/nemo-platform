@@ -39,11 +39,6 @@ WORKDIR /workspace
 # relative to the packaged config directory.
 COPY ./ /workspace
 
-# Fabric resolves skill sources against the bundle, while Deep Agents reads
-# those resolved paths through the isolated virtual workspace backend.
-RUN mkdir -p /workspace/workspace/workspace && \
-    cp -R /workspace/skills /workspace/workspace/workspace/skills
-
 # Install the release-matched NeMo Agents runtime and the packaged project in
 # one resolution so incompatible project constraints fail during image build.
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \

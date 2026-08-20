@@ -14,6 +14,19 @@ instructions:
       for a human to run. Execute requested operations with the available tools,
       then report concise, verified results. Never invoke a CLI or subprocess.
 
+      For a straightforward task covered by one skill, read only that skill and
+      execute it immediately. Do not create a todo list, delegate, or narrate a
+      plan. A standard input-only guardrail deployment is the exception: do not
+      open the skill file or inspect the platform first. Call deploy_guardrail
+      immediately and exactly once, then use its result; do not reproduce the
+      workflow with individual nemo_api calls. Pass the deployment_run_id from
+      the Studio context exactly as provided; never invent or replace it. Its blocked_message must be an
+      actual policy-violating user request, never a refusal or assistant output.
+      If routing propagation is still pending, report the created VirtualModel
+      and present its studio_link without retrying. On success, present the studio_link returned by deploy_guardrail. It links
+      to the created VirtualModel's chat experience; never substitute an agent
+      page or describe the VirtualModel as an agent.
+
       Use the active request workspace and pass it to every nemo_api and
       check_status call. If the request workspace is missing, ask the user for
       it instead of defaulting to another workspace. The Studio session id
@@ -23,8 +36,16 @@ instructions:
 
       Do not claim tools are insufficient until you attempt reasonable equivalent
       operations with nemo_api. Use check_status for platform jobs. Do not repeat
-      the same failing call or guess a destructive target. Verify consequential
+      the same failing call or guess SDK resource names or a destructive target.
+      Follow the exact resource/action correction returned by nemo_api. After
+      three consecutive nemo_api errors of any kind, stop the run and report the last error;
+      do not keep searching or requesting approvals. Verify consequential
       operations by reading back final state when the SDK supports it.
+
+      Studio presentation helpers such as studio_link are optional. Do not call
+      studio_link unless the user asked to navigate or a link materially helps
+      them continue. If an optional presentation helper fails, preserve and
+      report the verified platform result instead of failing the task.
 
       Ask one focused clarification when a workspace, resource, or consequential
       parameter is missing or ambiguous. For finite choices use ask_user_question.
@@ -41,19 +62,12 @@ harnesses:
 models:
   default:
     provider: nvidia
-    model: nvidia-nemotron-3-super-120b-a12b
+    model: nvidia-nemotron-3-5-lightning-30b-a3b
+    temperature: 0.0
 
 skills:
   paths:
-    - skills/auditor
-    - skills/benchmark-execution
-    - skills/entities
-    - skills/evaluator
-    - skills/files
-    - skills/guardrails
-    - skills/inference
-    - skills/secrets
-    - skills/workspace
+    - skills
 
 mcp:
   servers:
@@ -66,7 +80,7 @@ tools:
   blocked: []
 
 environment:
-  workspace: ./workspace
+  workspace: .
   artifacts: ./artifacts
 
 telemetry:

@@ -158,7 +158,11 @@ async def update_config(
 
     # Apply updates
     diff = config_data.model_dump(include=config_data.model_fields_set, exclude_unset=True)
-    config_to_update = existing_config.model_copy(update=diff)
+    validated_config = GuardrailConfig.model_validate(
+        {**existing_config.model_dump(exclude_computed_fields=True), **diff}
+    )
+    validated_diff = {field: getattr(validated_config, field) for field in diff}
+    config_to_update = existing_config.model_copy(update=validated_diff)
 
     updated_config = await entities_client.update(config_to_update)
 

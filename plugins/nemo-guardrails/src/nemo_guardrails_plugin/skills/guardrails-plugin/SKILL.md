@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: guardrails-plugin
-description: Use when working on guardrailing chat completions through the Inference Gateway — creating guardrail configs, attaching the `nemo-guardrails` middleware to a VirtualModel, verifying configs with the `/checks` endpoint, or debugging input/output rail behavior.
+description: Use when working on guardrailing chat completions through the Inference Gateway API — creating guardrail configs, validating them with the `/checks` endpoint, attaching `nemo-guardrails` middleware to a VirtualModel, or proving guarded behavior.
 metadata:
   owner: guardrails
   maturity: active
@@ -11,118 +11,190 @@ metadata:
 
 # Guardrails Plugin
 
-Use this skill when the task is about applying input/output rails to chat-completions traffic served by the NeMo Inference Gateway (IGW). The plugin runs as an in-process inference middleware on the IGW path; the customer-facing surfaces are:
+Use this skill for API-driven input and output rails on chat-completions traffic served by the NeMo Inference Gateway (IGW). Prefer the REST API throughout. Do not translate these operations into `nemo` CLI commands when an HTTP/API tool is available.
 
-- `nemo guardrail configs ...` — CRUD on the `GuardrailConfig` entity (stored rails configurations).
-- `nemo guardrail check` — standalone evaluator that runs rails against a single message without going through IGW. Use this to validate a config before binding it to a VirtualModel.
-- `nemo virtual-models create|update` — attaches the plugin via `--request-middleware` / `--response-middleware`.
-- `nemo inference gateway model post v1/chat/completions <vm-name>` — guardrailed chat call.
+## API surfaces
 
-## Current Surfaces
+All paths below are relative to the NeMo Platform base URL (locally, `http://localhost:8080`):
 
-- An `nemo.inference_middleware` plugin registered under the key `nemo-guardrails`.
-- A `GuardrailConfig` entity exposed through `nemo guardrail configs`.
-- A standalone `/v2/workspaces/{workspace}/checks` endpoint exposed through `nemo guardrail check`.
-- A `MiddlewareCall` contract (`name: "nemo-guardrails"`, `config_type: "guardrail_config"`) consumed by IGW VirtualModels via `--request-middleware` and `--response-middleware`.
+| Purpose | Method and path |
+|---|---|
+| List or create stored configs | `GET/POST /apis/guardrails/v2/workspaces/{workspace}/configs` |
+| Read, update, or delete a config | `GET/PATCH/DELETE /apis/guardrails/v2/workspaces/{workspace}/configs/{name}` |
+| Validate a config against messages | `POST /apis/guardrails/v2/workspaces/{workspace}/checks` |
+| List or create VirtualModels | `GET/POST /apis/inference-gateway/v2/workspaces/{workspace}/virtual-models` |
+| Read, update, or delete a VirtualModel | `GET/PATCH/DELETE /apis/inference-gateway/v2/workspaces/{workspace}/virtual-models/{name}` |
+| Send OpenAI-compatible inference | `POST /apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions` |
+| List routable VirtualModels | `GET /apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models` |
 
-## CLI Quickstart
+Use the deployment's normal authorization headers when authentication is enabled. Never print credentials or include them in saved examples.
 
-> **Prerequisites**
-> - Activate the Python virtual environment before invoking the CLI: `source .venv/bin/activate`. `nemo` and `nmp` are aliases for the same binary.
-> - The default workspace is `default`; override with `--workspace <name>` or `NMP_WORKSPACE`.
-> - For `nemo guardrail check` alone you need a config and a main LLM entity reachable through IGW. For chat-time guardrailing on a VirtualModel you also need a real backend model entity the VirtualModel can proxy to (see the `nemo-secrets` and `inference` skills for provider setup).
+## Preconditions
 
-### 1 — Create a guardrail config
+Before creating anything:
 
-Self-check input rail against the request's main LLM (no task LLM required):
+1. Verify `GET /health/ready` returns HTTP `200` and `{"status":"ready"}`. If it does not, stop and report the observed status. Do not work around an unhealthy platform.
+2. Resolve an existing, reachable backend ModelEntity in `<workspace>/<name>` form. The examples below call it `default/<backend-model>`.
+3. Use an auto-discovered ModelEntity served through IGW. Do not invent or manually register a served-model identifier.
+4. For any existing config or VirtualModel with the requested name, fetch it first. Reuse it only if its definition matches the user's requested policy and routing; otherwise ask before replacing or patching it.
 
-```bash
-nemo guardrail configs create content-safety \
-  --workspace default \
-  --description "Self-check input rail" \
-  --data '{
-    "rails": {"input": {"flows": ["self check input"]}},
-    "prompts": [{
-      "task": "self_check_input",
-      "content": "Your task is to check if the user message below complies with safety policy.\n\nUser message: {{ user_input }}\n\nQuestion: Should this message be blocked (Yes or No)?\nAnswer:"
-    }]
-  }'
+## API workflow
+
+Follow this sequence for any Guardrails task. Derive config names, policies, test messages, workspace, backend model, and VirtualModel name from the user's request.
+
+### 1. Create a stored guardrail config
+
+Request:
+
+```http
+POST /apis/guardrails/v2/workspaces/default/configs
+Content-Type: application/json
 ```
-
-For larger payloads prefer `--input-file config.json` over inline `--data` JSON.
-
-The remaining CRUD verbs follow the same shape — pass only the fields you want to change on `update`:
-
-```bash
-nemo guardrail configs list
-nemo guardrail configs get <name>
-nemo guardrail configs update <name> --description "<new description>"
-nemo guardrail configs delete <name>
-```
-
-### 2 — Verify the config with `/checks`
-
-```bash
-nemo guardrail check \
-  --workspace default \
-  --model default/<main-model> \
-  --messages '[{"role": "user", "content": "Your message here"}]' \
-  --guardrails '{"config_id": "default/content-safety"}' \
-  --max-tokens 256
-```
-
-`--model` is the LLM the rails self-check against; any task LLMs the config references (e.g. `content_safety`) must also be reachable through IGW. A blocked response has `"status": "blocked"` in the output.
-
-### 3 — Attach the config to a VirtualModel
-
-Output rails only (block bad bot responses):
-
-```bash
-nemo virtual-models create vm-guarded \
-  --workspace default \
-  --models '[{"model":"default/<backend-model>","backend_format":"OPENAI_CHAT"}]' \
-  --response-middleware '[{
-    "name":"nemo-guardrails",
-    "config_type":"guardrail_config",
-    "config_id":"default/content-safety"
-  }]'
-```
-
-For input rails only, swap in `--request-middleware`. For full coverage, attach the **same** `MiddlewareCall` to **both** lists — each list dispatches its hook independently, so a config with both `rails.input.flows` and `rails.output.flows` attached to only one list silently no-ops on the other side.
-
-Inline configs work too — replace `config_id` with `config`:
 
 ```json
 {
-  "name": "nemo-guardrails",
-  "config_type": "guardrail_config",
-  "config": {"rails": {...}, "prompts": [...]}
+  "name": "<config-name>",
+  "description": "<what this policy protects>",
+  "data": {
+    "rails": {
+      "input": {
+        "flows": ["self check input"]
+      }
+    },
+    "prompts": [
+      {
+        "task": "self_check_input",
+        "content": "Check whether the user message violates this policy:\n<POLICY TEXT>\n\nUser message: {{ user_input }}\n\nShould this message be blocked (Yes or No)?\nAnswer:"
+      }
+    ]
+  }
 }
 ```
 
-### 4 — Make a guardrailed chat call
+Require HTTP `201`. On `409`, fetch the named config and compare its `data` with the intended policy. Do not silently reuse a config with different rules. Use `PATCH` only when the user intends to update the existing policy.
 
-```bash
-nemo inference gateway model post v1/chat/completions vm-guarded \
-  --workspace default \
-  --body '{
-    "model":"default/<backend-model>",
-    "messages":[{"role":"user","content":"Hello"}],
-    "max_tokens":256
-  }'
+The example is an input-only self-check rail. Adapt `rails`, `prompts`, and optional task models to the requested policy. For output protection, configure output flows and later attach the middleware call to `response_middleware`. For both phases, configure both and attach to both middleware lists.
+
+### 2. Validate the config before attachment
+
+Validate representative messages against the stored config:
+
+```http
+POST /apis/guardrails/v2/workspaces/default/checks
+Content-Type: application/json
 ```
 
-`body["model"]` is the backend entity ID and also acts as the rails' **main** LLM (self-check flows call it). The VirtualModel name comes from the URL path.
-
-When a rail blocks, the response content is exactly:
-
+```json
+{
+  "model": "default/<backend-model>",
+  "messages": [
+    {
+      "role": "user",
+      "content": "<message expected to be blocked or allowed>"
+    }
+  ],
+  "guardrails": {
+    "config_id": "default/<config-name>"
+  },
+  "max_tokens": 256,
+  "temperature": 0
+}
 ```
-I'm sorry, I can't respond to that.
+
+Require HTTP `200` and compare the top-level `status` with the expected outcome:
+
+- A message expected to violate the policy must return `"status": "blocked"`.
+- A message expected to comply must return `"status": "success"`.
+
+Treat `unknown`, a missing or unexpected status, a timeout, or any non-`200` response as validation failure. Test at least one blocked case and one allowed control whenever the policy is intended to distinguish them. Stop and report failures; never attach an unvalidated config to a VirtualModel.
+
+### 3. Attach the config to a VirtualModel
+
+Only after validation succeeds, create or update the target VirtualModel. This example attaches an input rail:
+
+```http
+POST /apis/inference-gateway/v2/workspaces/default/virtual-models
+Content-Type: application/json
 ```
 
-For streaming responses, set `"stream": true` in the body and `rails.output.streaming.chunk_size` in the config. The canned refusal arrives as a single non-streamed chunk if an output rail blocks mid-stream.
+```json
+{
+  "name": "<virtual-model-name>",
+  "default_model_entity": "default/<backend-model>",
+  "models": [
+    {
+      "model": "default/<backend-model>",
+      "backend_format": "OPENAI_CHAT"
+    }
+  ],
+  "request_middleware": [
+    {
+      "name": "nemo-guardrails",
+      "config_type": "guardrail_config",
+      "config_id": "default/<config-name>"
+    }
+  ],
+  "response_middleware": [],
+  "post_response_middleware": []
+}
+```
 
-## MiddlewareCall Contract
+Require HTTP `201` for creation. On `409`, fetch the existing VirtualModel and compare it with the requested routing and middleware. Use `PATCH` when the user intends to modify that VirtualModel; preserve unrelated middleware entries and their order unless the user explicitly asks to replace them.
+
+For an input rail, place the call in `request_middleware`. For an output rail, place it in `response_middleware`. For a config with both input and output flows, put the same call in both lists.
+
+### 4. Verify the inference path
+
+Wait until `GET /apis/inference-gateway/v2/workspaces/default/openai/-/v1/models` includes `default/<virtual-model-name>`. The routing cache refreshes asynchronously, so poll the API rather than assuming the create or update response is immediately routable.
+
+Request:
+
+```http
+POST /apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "default/<virtual-model-name>",
+  "messages": [
+    {
+      "role": "user",
+      "content": "<verification message>"
+    }
+  ],
+  "max_tokens": 256
+}
+```
+
+Exercise the cases established during `/checks` validation and confirm inference behavior matches the policy. When an input or output rail blocks, the response content is expected to be `I'm sorry, I can't respond to that.` Confirm an allowed control still returns a normal response.
+
+### 5. Read back and report
+
+Fetch the config and VirtualModel after mutation. Report:
+
+- The stored config ID and enabled input/output flows.
+- The target VirtualModel and backend ModelEntity.
+- Whether the middleware call is attached to request, response, or both phases.
+- The `/checks` results and inference verification results.
+- Any validation, cache propagation, or backend errors encountered.
+
+## General config and middleware contract
+
+A stored config create body is:
+
+```json
+{
+  "name": "<config-name>",
+  "description": "<optional description>",
+  "data": {
+    "rails": {},
+    "prompts": []
+  }
+}
+```
+
+A Guardrails middleware call is always:
 
 ```json
 {
@@ -132,38 +204,31 @@ For streaming responses, set `"stream": true` in the body and `rails.output.stre
 }
 ```
 
-- `name` is always `"nemo-guardrails"` (the entry-point key).
-- `config_type` is always `"guardrail_config"`.
-- Provide `config_id` for stored configs (recommended — easier to update and reuse) or `config` for inline rails payloads.
+Use `config_id` for stored, reusable configs. For development-only inline configs, replace `config_id` with `config`; never provide both.
 
-## Rails Config
+Request middleware executes input flows. Response middleware executes output flows. A config containing both phases must be attached to both lists; attaching it to only one list silently omits the other phase.
 
-The plugin consumes the standard `nemoguardrails` `RailsConfig` shape. The **main** LLM is always the request's model (the `body["model"]` on chat completions) or `--model` (on `nemo guardrail check`) — entries with `type: "main"` in `models[]` are ignored. Add `models[]` only for task LLMs (`content_safety`, `topic_control`, `jailbreak_detection`, `embeddings`) that flows explicitly reference via `$model=<type>`.
+## Rails config rules
 
-See [Rails Config Reference](resources/rails-config.md) for the field reference, full-coverage examples (self-check input + output), custom keyword-blocking prompts, and streaming output rails.
+The plugin consumes the standard `nemoguardrails` `RailsConfig` shape. The main LLM is the check request's `model` or, on the inference path, the backend ModelEntity selected by the VirtualModel. Entries with `type: "main"` in `models[]` are ignored; omit them.
 
-For content-safety classifiers, see [Content Safety with a Task LLM](resources/content-safety.md).
+Add `models[]` only for task LLMs such as `content_safety`, `topic_control`, `jailbreak_detection`, or `embeddings`. Those ModelEntity IDs must also be reachable through IGW.
 
-## Common Gotchas
+See [Rails Config Reference](resources/rails-config.md) for full input/output examples, custom policies, and streaming output rails. See [Content Safety with a Task LLM](resources/content-safety.md) for classifier-backed moderation.
 
-- **VirtualModels live at the top level** as `nemo virtual-models` (with hyphen), not under `nemo inference` and not `virtualmodels`.
-- **For standalone verification, use `nemo guardrail check`.** For guardrailed chat completions, use `nemo inference gateway model post v1/chat/completions <vm-name>`.
-- **Names are positional** for `nemo guardrail configs create <name>` and `nemo virtual-models create <name>`.
-- **`--data` (configs) and `--body` / `--models` / `--*-middleware` (VirtualModels) take JSON strings.** Watch shell quoting for embedded backticks/quotes — prefer `--input-file` for large payloads.
-- **The `guardrails` field on a chat-completions request body is options-only** (`options.log`, `return_choice`). It does **not** set the rails config — that comes from the VirtualModel's `MiddlewareCall`. Unsupported fields like `guardrails.config_id` are rejected with `422`.
-- **Each middleware list dispatches its own hook independently.** For input + output coverage, attach to both `--request-middleware` and `--response-middleware`.
-- **Output rails reject `n > 1`** in the completion request, and streaming with output rails requires `rails.output.streaming.enabled=true` when a streaming subsection is supplied — otherwise the plugin rejects the path with `400`.
-- **Task LLMs and the main LLM must be reachable through IGW.** Use auto-discovered entity IDs from `nemo inference providers get ... | jq '.served_models[].model_entity_id'` for both `--models` and any `models[]` entry in the rails config. The provider reconciler re-syncs `served_models` from upstream auto-discovery and drops manually-registered entries on every refresh.
+## Failure handling and gotchas
 
-See [Guardrails Troubleshooting](resources/troubleshooting.md) for symptom→fix tables, the agentic-use mock-LLM harness, and failure-case deep dives.
-
-## Config Updates
-
-IGW's `StabilizedRailsConfigCache` is keyed on `(workspace, name, updated_at)`. A `PATCH` or `DELETE` on a `GuardrailConfig` advances `updated_at`, so the next IGW request retrieves the new entity, misses the cache, and rebuilds — there is no explicit cross-service invalidation, the freshness comes from the cache key. Inline `config` payloads have no entity revision to key on and are re-stabilized on every request.
+- The `guardrails` object in a normal chat-completions body contains runtime options only. It does not select the stored middleware config; the VirtualModel does that.
+- The standalone `/checks` endpoint does accept `guardrails.config_id` and must be used before attachment.
+- A VirtualModel create or update is persisted before IGW's routing cache sees it. Poll the OpenAI models endpoint; do not use fixed sleeps as proof of readiness.
+- A stored config update changes `updated_at`; IGW resolves the new revision on cache refresh. Re-run both blocked and allowed `/checks` assertions after every update.
+- Output rails reject `n > 1`. Streaming output rails require `rails.output.streaming.enabled: true` when a streaming block is configured.
+- A task LLM or main LLM that is not reachable through IGW makes the workflow invalid. Stop and surface that dependency instead of substituting an arbitrary model.
+- When a rail blocks on the inference path, the expected response content is exactly `I'm sorry, I can't respond to that.`
 
 ## Python SDK
 
-The plugin doesn't ship its own SDK accessor — guardrail configs and VirtualModel attachment go through the platform SDK:
+When the assistant has the Python platform SDK rather than a generic HTTP tool, use the same API resources:
 
 ```python
 from nemo_platform import NeMoPlatform
@@ -172,4 +237,4 @@ client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
 configs = client.guardrail.configs.list()
 ```
 
-VirtualModels are created via `client.inference.virtual_models.create(...)` with `request_middleware` / `response_middleware` lists of `MiddlewareCall` dicts.
+Create configs through `client.guardrail.configs` and VirtualModels through `client.inference.virtual_models`. Preserve the same validation gates and read-back verification described above.

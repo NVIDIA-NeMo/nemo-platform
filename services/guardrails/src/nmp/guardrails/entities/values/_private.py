@@ -1544,9 +1544,14 @@ class RailsConfig(Value):
         if isinstance(rails, Rails):
             config_data = rails.config.model_dump() if rails.config else {}
             input_flows = getattr(rails.input, "flows", []) if rails.input else []
-        else:
+        elif isinstance(rails, dict):
             config_data = rails.get("config") or {}
             input_flows = (rails.get("input") or {}).get("flows") or []
+        else:
+            # Leave invalid shapes to the typed ``rails`` field validator. This
+            # model validator must not turn a normal validation error into an
+            # AttributeError that crashes config list/read endpoints.
+            return values
 
         jailbreak_config = (config_data.get("jailbreak_detection") if isinstance(config_data, dict) else None) or {}
         has_model_flow = JAILBREAK_FLOW_MODEL in input_flows
