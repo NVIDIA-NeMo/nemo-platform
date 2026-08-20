@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from .atif_step_param import AtifStepParam as AtifStepParam
 from .atif_agent_param import AtifAgentParam as AtifAgentParam
+from .json_value_param import JsonValueParam as JsonValueParam
 from .chat_message_role import ChatMessageRole as ChatMessageRole
 from .atif_create_params import AtifCreateParams as AtifCreateParams
 from .atif_metrics_param import AtifMetricsParam as AtifMetricsParam

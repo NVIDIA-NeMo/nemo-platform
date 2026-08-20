@@ -3854,7 +3854,8 @@ paths:
         '404':
           description: Evaluation not found
         '409':
-          description: Attempt to change an immutable field
+          description: Attempt to change an immutable field, or remove a baseline
+            membership
         '422':
           description: Validation Error
           content:
@@ -3904,6 +3905,8 @@ paths:
             is empty
         '404':
           description: Evaluation not found
+        '409':
+          description: Attempt to remove a baseline Evaluation from its Experiment
         '422':
           description: Validation Error
           content:
@@ -3933,6 +3936,8 @@ paths:
           description: Successful Response
         '404':
           description: Evaluation not found
+        '409':
+          description: Evaluation is selected as an Experiment's baseline
         '422':
           description: Validation Error
           content:
@@ -4333,9 +4338,10 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, insight_id, is_deleted, or a metadata
-          key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return
-          only soft-deleted experiments; omit to see only live ones.
+        description: Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time,
+          baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>).
+          Pass is_deleted=true to return only soft-deleted experiments; omit to see
+          only live ones.
       responses:
         '200':
           description: Successful Response
@@ -4406,7 +4412,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentRequest'
+              $ref: '#/components/schemas/ExperimentUpdateRequest'
       responses:
         '200':
           description: Successful Response
@@ -4414,6 +4420,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExperimentResponse'
+        '400':
+          description: The baseline Evaluation does not exist or is not a live member
         '404':
           description: Experiment not found
         '409':
@@ -11804,6 +11812,19 @@ components:
           description: Filter experiments by the id of the insight that seeded them.
           title: Insight Id
           type: string
+        is_favorite:
+          description: Filter experiments by favorite status.
+          title: Is Favorite
+          type: boolean
+        show_evaluations_over_time:
+          description: Filter experiments by whether Studio should display Evaluation
+            results over time.
+          title: Show Evaluations Over Time
+          type: boolean
+        baseline_evaluation_name:
+          description: Filter experiments by the name of their selected baseline Evaluation.
+          title: Baseline Evaluation Name
+          type: string
         is_deleted:
           description: When true, returns only soft-deleted experiments. Omit (or
             false) to see only live experiments.
@@ -11858,6 +11879,19 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        is_favorite:
+          type: boolean
+          title: Is Favorite
+          description: Whether this Experiment is marked as a favorite. Defaults to
+            false on create; omit on update to preserve the existing value.
+          default: false
+        show_evaluations_over_time:
+          type: boolean
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time. Defaults to false on create; omit on update to preserve
+            the existing value.
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -11894,6 +11928,22 @@ components:
           title: Default Sort
         pareto:
           $ref: '#/components/schemas/ParetoConfig'
+        is_favorite:
+          type: boolean
+          title: Is Favorite
+          description: Whether this Experiment is marked as a favorite.
+          default: false
+        show_evaluations_over_time:
+          type: boolean
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time.
+          default: false
+        baseline_evaluation_name:
+          title: Baseline Evaluation Name
+          description: Name of this Experiment's selected baseline Evaluation, if
+            any.
+          type: string
         created_at:
           title: Created At
           type: string
@@ -11939,6 +11989,73 @@ components:
       required:
       - data
       title: ExperimentResponsesPage
+    ExperimentUpdateRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Workspace-unique experiment name.
+        description:
+          title: Description
+          description: Human-readable purpose of the experiment.
+          type: string
+        insight_id:
+          title: Insight Id
+          description: Reference to an external insight that seeded this experiment,
+            if any.
+          type: string
+        summary:
+          title: Summary
+          description: Human- or agent-authored summary of the experiment's findings.
+          type: string
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata for the experiment.
+          additionalProperties:
+            type: string
+          type: object
+        default_sort:
+          type: string
+          title: Default Sort
+          description: 'Default sort for this experiment''s evaluations list, as a
+            `sort`-param string: a comma-separated, ordered list of fields where the
+            first is the primary sort and the rest break ties (leading ''-'' on a
+            field = descending), e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults
+            to ''-created_at''. Accepts any field the evaluations list `sort` param
+            does; clients apply it as the list `sort` param.'
+          default: -created_at
+        pareto:
+          allOf:
+          - $ref: '#/components/schemas/ParetoConfig'
+          description: Default X/Y metrics for the experiment's Pareto view. Omit
+            to preserve the existing value on update; on create, defaults to cost
+            vs. latency.
+        is_favorite:
+          type: boolean
+          title: Is Favorite
+          description: Whether this Experiment is marked as a favorite. Defaults to
+            false on create; omit on update to preserve the existing value.
+          default: false
+        show_evaluations_over_time:
+          type: boolean
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time. Defaults to false on create; omit on update to preserve
+            the existing value.
+          default: false
+        baseline_evaluation_name:
+          title: Baseline Evaluation Name
+          description: Name of this Experiment's baseline Evaluation. The Evaluation
+            must already be a live member of the Experiment. Set null to clear the
+            selected baseline.
+          nullable: true
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ExperimentUpdateRequest
+      description: Request body for updating an Experiment.
     FactCheckingRailConfig:
       properties:
         parameters:

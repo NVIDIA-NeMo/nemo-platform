@@ -167,8 +167,18 @@ def direct_span_to_domain(
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
-        input="" if span.input is None else json_dumps_preserve(span.input),
-        output="" if span.output is None else json_dumps_preserve(span.output),
+        input=""
+        if span.input is None
+        else span.input
+        if isinstance(span.input, str)
+        else json_dumps_preserve(span.input),
+        output=(
+            ""
+            if span.output is None
+            else span.output
+            if isinstance(span.output, str)
+            else json_dumps_preserve(span.output)
+        ),
         event_ts=ingested_at,
     )
     return intake_span, semantic_attributes

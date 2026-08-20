@@ -155,12 +155,9 @@ def download_ref(ref: str, dest_dir: Path, *, store: StateStore | None = None) -
     try:
         _aws(
             store,
-            "s3api",
-            "get-object",
-            "--bucket",
-            store.bucket,
-            "--key",
-            f"{ref}.tar.zst",
+            "s3",
+            "cp",
+            f"s3://{store.bucket}/{ref}.tar.zst",
             str(partial),
         )
         os.replace(partial, dest)
@@ -179,16 +176,11 @@ def upload_ref(
     """Upload one immutable state bundle to CSS S3."""
     store = store or state_store()
     args = [
-        "s3api",
-        "put-object",
-        "--bucket",
-        store.bucket,
-        "--key",
-        f"{ref}.tar.zst",
-        "--body",
+        "s3",
+        "cp",
         str(bundle),
-        "--if-none-match",
-        "*",
+        f"s3://{store.bucket}/{ref}.tar.zst",
+        "--no-overwrite",
     ]
     if metadata:
         args += ["--metadata", json.dumps(dict(metadata), separators=(",", ":"))]
@@ -199,3 +191,10 @@ def upload_ref(
         if any(marker in stderr for marker in ("PreconditionFailed", "ConditionalRequestConflict", "412", "409")):
             raise StateRefConflict(ref) from exc
         raise
+    expected_sha256 = (metadata or {}).get("sha256")
+    if expected_sha256 is not None:
+        head = json.loads(
+            _aws(store, "s3api", "head-object", "--bucket", store.bucket, "--key", f"{ref}.tar.zst", "--output", "json")
+        )
+        if head.get("Metadata", {}).get("sha256") != expected_sha256:
+            raise StateRefConflict(ref)

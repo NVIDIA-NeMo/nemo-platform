@@ -863,10 +863,31 @@ def test_load_dotenv_missing_file_is_noop(tmp_path, monkeypatch):
     assert os.environ.get("NOPE_SENTINEL") is None  # and sets nothing
 
 
+def test_aws_cli_version(monkeypatch):
+    result = subprocess.CompletedProcess([], 0, stdout="aws-cli/2.36.24 Python/3.13.11", stderr="")
+    monkeypatch.setattr(cli.subprocess, "run", lambda *args, **kwargs: result)
+    assert cli._aws_cli_version("/usr/bin/aws") == (2, 36, 24)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError(), subprocess.TimeoutExpired("/usr/bin/aws", 5), subprocess.CompletedProcess([], 1)],
+)
+def test_aws_cli_version_probe_failure(monkeypatch, failure):
+    def fail(*args, **kwargs):
+        if isinstance(failure, BaseException):
+            raise failure
+        return failure
+
+    monkeypatch.setattr(cli.subprocess, "run", fail)
+    assert cli._aws_cli_version("/usr/bin/aws") is None
+
+
 def test_doctor_ready(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
     monkeypatch.setattr("evaluation.adapters.IntakeAdapter.check", lambda self: [])
     monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/aws")
+    monkeypatch.setattr(cli, "_aws_cli_version", lambda _executable: (2, 33, 0))
     monkeypatch.setenv(cli.release.ACCESS_KEY_ENV, "team-test")
     monkeypatch.setenv(cli.release.SECRET_KEY_ENV, "secret")
     monkeypatch.setattr(sys, "argv", ["evaluation", "doctor", "nvq"])
@@ -889,7 +910,21 @@ def test_doctor_flags_missing_aws(monkeypatch, capsys):
     cli.main()
     out = capsys.readouterr().out
     assert "✗" in out
-    assert "AWS CLI (needed for pinned/--state analyze; install with `brew install awscli`)" in out
+    assert "AWS CLI 2.33.0+ (needed for pinned/--state analyze; install with `brew install awscli`)" in out
+
+
+@pytest.mark.parametrize(
+    ("version", "message"),
+    [(None, "could not determine AWS CLI version"), ((2, 32, 34), "AWS CLI 2.33.0+")],
+)
+def test_doctor_flags_unsupported_aws(monkeypatch, capsys, version, message):
+    monkeypatch.setattr("evaluation.adapters.IntakeAdapter.check", lambda self: [])
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/aws")
+    monkeypatch.setattr(cli, "_aws_cli_version", lambda _executable: version)
+    monkeypatch.setenv(cli.release.ACCESS_KEY_ENV, "team-test")
+    monkeypatch.setenv(cli.release.SECRET_KEY_ENV, "secret")
+    cli._doctor(cli.load_registry(cli.REGISTRY_PATH), "nvq")
+    assert message in capsys.readouterr().out
 
 
 def test_doctor_lists_unmet(monkeypatch, capsys):

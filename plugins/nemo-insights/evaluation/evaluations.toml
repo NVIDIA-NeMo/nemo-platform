@@ -14,6 +14,13 @@ agent = "content-dedup"
 workspace = "nvq"
 state = "state-v7"
 
+[kernel-factory]
+type = "intake"
+agent = "solswarm-campaign"
+workspace = "kf-prod-evals"
+experiment = "prod-latest-completed"
+state = "state-v11"
+
 [glamr]
 type = "intake"
 agent = "glamr"                                 # the main GLAMR agent (ux-agent); the only agent_name-tagged one

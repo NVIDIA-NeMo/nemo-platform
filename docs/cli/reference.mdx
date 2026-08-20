@@ -6046,8 +6046,10 @@ nemo experiments create [OPTIONS] [NAME]
 * `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
 * `--description`: Human-readable purpose of the experiment.
 * `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--is-favorite`: Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to preserve the existing value.
 * `--metadata`: Free-form producer metadata for the experiment. (JSON string)
 * `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--show-evaluations-over-time`: Whether Studio should display this Experiment's Evaluation results over time. Defaults to false on create; omit on update to preserve the existing value.
 * `--summary`: Human- or agent-authored summary of the experiment's findings.
 * `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
 
@@ -6110,10 +6112,13 @@ nemo experiments list [OPTIONS]
 JSON-only fields:
   metadata: dict[str, str]
 
-Filter experiments by name, insight_id, is_deleted, or a metadata key/value (filter[metadata.\<key>]=\<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.
+Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time, baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.\<key>]=\<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.
+* `--filter.baseline-evaluation-name`
 * `--filter.insight-id`
 * `--filter.is-deleted`
+* `--filter.is-favorite`
 * `--filter.name`
+* `--filter.show-evaluations-over-time`
 
 **Help:**
 
@@ -6181,11 +6186,14 @@ nemo experiments update [OPTIONS] PATH_NAME
 
 * `--workspace`
 * `--body-name`: Workspace-unique experiment name.
+* `--baseline-evaluation-name`: Name of this Experiment's baseline Evaluation. The Evaluation must already be a live member of the Experiment. Set null to clear the selected baseline.
 * `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
 * `--description`: Human-readable purpose of the experiment.
 * `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--is-favorite`: Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to preserve the existing value.
 * `--metadata`: Free-form producer metadata for the experiment. (JSON string)
 * `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--show-evaluations-over-time`: Whether Studio should display this Experiment's Evaluation results over time. Defaults to false on create; omit on update to preserve the existing value.
 * `--summary`: Human- or agent-authored summary of the experiment's findings.
 
 **Help:**
@@ -6811,7 +6819,7 @@ nemo intake ingest spans create [OPTIONS]
 **Options:**
 
 * `--workspace`
-* `--source`: (required)
+* `--source`: Stable name for the source trace store, such as `langsmith` or `mlflow`.
 * `--spans`: JSON string
 
 **Help:**
