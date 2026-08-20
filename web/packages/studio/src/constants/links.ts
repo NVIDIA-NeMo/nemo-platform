@@ -46,6 +46,7 @@ export const LINK_EVAL_DOCS_METRICS = `${DOCS_BASE_URL}evaluate-models/metrics`;
 export const LINK_EVAL_DOCS_APPROACHES = `${DOCS_BASE_URL}evaluate-models/dataset-driven-vs-task-driven-evaluation`;
 export const LINK_EVAL_DOCS_BENCHMARKS = `${DOCS_BASE_URL}evaluate-models`;
 export const LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY = `${DOCS_BASE_URL}evaluate-models`;
+export const LINK_NEMO_EVALUATOR_DOCS = 'https://docs.nvidia.com/nemo/evaluator/nightly';
 
 // Jobs documentation links
 export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;
