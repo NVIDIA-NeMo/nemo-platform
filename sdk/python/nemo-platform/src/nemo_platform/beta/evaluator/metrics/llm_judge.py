@@ -25,7 +25,13 @@ from nemo_platform.beta.evaluator.metrics.template_rendering import (
     sample_template_payload,
 )
 from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, SecretResolver
-from nemo_platform.beta.evaluator.structured_output import InferenceStructuredOutput, detect_structured_output_mode
+from nemo_platform.beta.evaluator.structured_output import (
+    InferenceStructuredOutput,
+    StructuredOutputMode,
+    detect_structured_output_mode,
+    looks_like_unsupported_structured_output_error,
+    next_structured_output_mode,
+)
 from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.llm_judge_defaults import (
@@ -82,6 +88,7 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
     _parsers: dict[str, ScoreParser] = PrivateAttr(default_factory=dict)
     _score_dumps: dict[str, dict[str, Any]] = PrivateAttr(default_factory=dict)
     _prompt_template_is_default: bool = PrivateAttr(default=False)
+    _rejected_structured_output_modes: set[StructuredOutputMode] = PrivateAttr(default_factory=set)
     job_type: Literal[SupportedJobTypes.ONLINE, SupportedJobTypes.OFFLINE] = SupportedJobTypes.ONLINE
 
     @property
@@ -222,12 +229,7 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         if model.format != ModelFormat.NVIDIA_NIM or not self.structured_output:
             return
 
-        structured_hook: InferenceStructuredOutput | None = None
-        for hook in self._preprocess_hooks:
-            if isinstance(hook, InferenceStructuredOutput):
-                structured_hook = hook
-                break
-
+        structured_hook = self._structured_output_hook()
         if structured_hook is None:
             return
 
@@ -298,6 +300,9 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
             self._score_dumps[score.name] = score.model_dump(mode="json", exclude={"parser"})
 
     def _render_request(self, item: dict, sample: TemplateSample) -> dict:
+        return self._apply_preprocess_hooks(self._render_base_request(item, sample))
+
+    def _render_base_request(self, item: dict, sample: TemplateSample) -> dict:
         sample_payload = sample_template_payload(sample)
         overlapping_keys = set(item.keys()) & set(sample_payload.keys())
         if overlapping_keys:
@@ -326,7 +331,38 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
             request["max_completion_tokens"] = request["max_tokens"]
             del request["max_tokens"]
 
-        return self._apply_preprocess_hooks(request)
+        return request
+
+    def _structured_output_hook(self) -> InferenceStructuredOutput | None:
+        for hook in self._preprocess_hooks:
+            if isinstance(hook, InferenceStructuredOutput):
+                return hook
+        return None
+
+    def _downgrade_structured_output(self, error: Exception, rendered_mode: StructuredOutputMode | None) -> bool:
+        """Latch the next structured-output mode when the backend rejects *rendered_mode*."""
+        message = str(error)
+        if not looks_like_unsupported_structured_output_error(message):
+            return False
+
+        hook = self._structured_output_hook()
+        if hook is None:
+            return False
+
+        if (
+            rendered_mode is not None
+            and rendered_mode != StructuredOutputMode.UNSUPPORTED
+            and rendered_mode not in self._rejected_structured_output_modes
+        ):
+            next_mode = next_structured_output_mode(rendered_mode, message, self._rejected_structured_output_modes)
+            self._rejected_structured_output_modes.add(rendered_mode)
+            _logger.warning(
+                "Judge model rejected structured output mode %s; using %s for all future requests.",
+                rendered_mode.value,
+                next_mode.value,
+            )
+            hook.set_mode(next_mode)
+        return True
 
     def _retry_with_max_completion_tokens(self, request: dict) -> dict:
         if not self._use_max_completion_tokens:
@@ -338,21 +374,46 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         del request["max_tokens"]
         return request
 
+    def _retry_request(
+        self,
+        error: Exception,
+        request: dict,
+        base_request: dict,
+        rendered_mode: StructuredOutputMode | None,
+    ) -> dict | None:
+        """Request to retry the rejected call with, or None when no retry can help."""
+        if "max_tokens" in request and "'max_tokens' is not supported with this model" in error.args[0]:
+            return self._retry_with_max_completion_tokens(request)
+        if self._downgrade_structured_output(error, rendered_mode):
+            retried = self._apply_preprocess_hooks(deepcopy(base_request))
+            if retried != request:
+                return retried
+        return None
+
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output for one item/sample pair."""
         item = input.row.data
         sample = input.candidate
-        request = self._render_request(item, sample)
+        base_request = self._render_base_request(item, sample)
+        request = self._apply_preprocess_hooks(deepcopy(base_request))
+        hook = self._structured_output_hook()
+        rendered_mode = hook.mode if hook else None
 
         try:
             response = await self.inference_fn(self._require_model(), request, 3, client=self.client)
         except inference.ClientInferenceError as error:
-            if "max_tokens" in request and "'max_tokens' is not supported with this model" in error.args[0]:
-                request = self._retry_with_max_completion_tokens(request)
-                response = await self.inference_fn(self._require_model(), request, 3, client=self.client)
-            else:
+            retry_request = self._retry_request(error, request, base_request, rendered_mode)
+            if retry_request is None:
                 return self._handle_invalid_output(
                     error,
+                    self._nan_result(),
+                    "Inference failed with LLM judge, marking as NaN",
+                )
+            try:
+                response = await self.inference_fn(self._require_model(), retry_request, 3, client=self.client)
+            except inference.ClientInferenceError as retry_error:
+                return self._handle_invalid_output(
+                    retry_error,
                     self._nan_result(),
                     "Inference failed with LLM judge, marking as NaN",
                 )

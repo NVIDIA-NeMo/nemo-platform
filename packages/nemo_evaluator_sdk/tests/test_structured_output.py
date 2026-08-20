@@ -9,8 +9,9 @@ from nemo_evaluator_sdk.structured_output import (
     Model,
     ModelFormat,
     StructuredOutputMode,
-    _looks_like_unsupported_guided_json_error,
     detect_structured_output_mode,
+    looks_like_unsupported_structured_output_error,
+    next_structured_output_mode,
 )
 from pydantic import ValidationError
 
@@ -218,7 +219,62 @@ async def test_detect_structured_output_mode_unsupported_signature_then_unsuppor
         ("unexpected keyword argument 'guided_json'", True),
         ("unexpected keyword argument 'nvext'", True),
         ("extra inputs are not permitted", False),
+        ("unknown field `guided_json`, expected one of `greed_sampling`, `use_raw_prompt`", True),
+        ("unknown field `temperature`", False),
+        ("unknown field `top_k`, expected one of `guided_json`, `nvext`, `use_raw_prompt`", False),
+        ("unknown field `response_format`", True),
+        ("response_format is not supported", True),
+        ("Error code: 400 - response_format is not supported by this model", True),
+        ("create() got an unexpected keyword argument 'response_format'", True),
+        ("create() got an unexpected keyword argument 'extra_body'", True),
+        ("guided_json is not supported", True),
+        ("create() got an unexpected keyword argument 'temperature'", False),
+        ("model nvidia/does-not-exist is not supported", False),
     ],
 )
-def test_looks_like_unsupported_guided_json_error(message: str, expected: bool):
-    assert _looks_like_unsupported_guided_json_error(message) is expected
+def test_looks_like_unsupported_structured_output_error(message: str, expected: bool):
+    assert looks_like_unsupported_structured_output_error(message) is expected
+
+
+@pytest.mark.parametrize(
+    ("current", "message", "rejected_modes", "expected"),
+    [
+        (
+            StructuredOutputMode.NVEXT_GUIDED_JSON,
+            "unknown field `nvext`",
+            (),
+            StructuredOutputMode.ROOT_GUIDED_JSON,
+        ),
+        (
+            StructuredOutputMode.NVEXT_GUIDED_JSON,
+            "unknown field `nvext`",
+            (StructuredOutputMode.ROOT_GUIDED_JSON,),
+            StructuredOutputMode.UNSUPPORTED,
+        ),
+        (
+            StructuredOutputMode.NVEXT_GUIDED_JSON,
+            "unknown field `guided_json`",
+            (),
+            StructuredOutputMode.UNSUPPORTED,
+        ),
+        (
+            StructuredOutputMode.ROOT_GUIDED_JSON,
+            "unknown field `guided_json`",
+            (),
+            StructuredOutputMode.UNSUPPORTED,
+        ),
+        (
+            StructuredOutputMode.OPENAI_RESPONSE_FORMAT,
+            "unknown field `response_format`",
+            (),
+            StructuredOutputMode.UNSUPPORTED,
+        ),
+    ],
+)
+def test_next_structured_output_mode(
+    current: StructuredOutputMode,
+    message: str,
+    rejected_modes: tuple[StructuredOutputMode, ...],
+    expected: StructuredOutputMode,
+):
+    assert next_structured_output_mode(current, message, rejected_modes) is expected
