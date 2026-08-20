@@ -117,10 +117,9 @@ class FabricAgentRuntime:
     """AgentTaskRunner that generates trials by running tasks through NeMo Fabric.
 
     The harness is selected entirely by ``config["harness"]["adapter_id"]``. Across harnesses the
-    config shape differs mainly in that ``adapter_id``, ``runtime.transport``, and any harness-specific
-    ``harness.settings`` — e.g. Codex runs as a subprocess (``transport="cli"``) while the Hermes SDK
-    harness runs in-library (``transport="library"``). See
-    ``examples/fabric_harness_runtimes.py`` for full Codex-CLI and Hermes-SDK config examples.
+    config shape differs mainly in that ``adapter_id``, optional input/output schemas, and any
+    harness-specific ``harness.settings``. Fabric owns each adapter's execution mechanism. See
+    ``examples/fabric_harness_runtimes.py`` for full Codex and Hermes config examples.
     """
 
     def __init__(
@@ -271,7 +270,10 @@ class FabricAgentRuntime:
         probe_config = agent_config.model_copy(deep=True)
         probe_config.add_skill_path(_SKILL_PROBE_PATH)
         plan = client.plan(probe_config, base_dir=self._base_dir)
-        return resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness)
+        return resolve_skill_mode(
+            capability_plan=plan.capability_plan,
+            adapter_id=agent_config.harness.adapter_id,
+        )
 
     async def _run_task(
         self,

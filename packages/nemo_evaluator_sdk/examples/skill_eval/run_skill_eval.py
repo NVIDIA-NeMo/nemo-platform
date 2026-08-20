@@ -247,7 +247,7 @@ async def _main() -> int:
             "settings": {"max_iterations": 50},
         },
         "models": {"default": {"provider": "nvidia", "model": MODEL}},
-        "runtime": {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"},
+        "runtime": {"input_schema": "chat", "output_schema": "message"},
     }
 
     baseline_runtime = FabricAgentRuntime(config=fabric_config)

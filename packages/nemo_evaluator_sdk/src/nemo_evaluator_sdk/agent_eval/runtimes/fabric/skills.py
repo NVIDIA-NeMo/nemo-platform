@@ -73,9 +73,9 @@ _MAX_NAME_LEN = 64
 # runtime plans a probe skill path and reads these to decide the injection mode (see resolve_skill_mode).
 _SKILLS_ROUTE_KIND = "skills"
 _SKILLS_TARGET_NATIVE = "harness_native"
-# Fabric harness name of the Codex CLI adapter, which self-discovers ``.agents/skills/`` rather than
+# Fabric adapter id of Codex, which self-discovers ``.agents/skills/`` rather than
 # accepting the native ``skills`` config.
-_CODEX_HARNESS = "codex"
+_CODEX_ADAPTER_ID = "nvidia.fabric.codex"
 
 
 class SkillInjectionError(ValueError):
@@ -165,7 +165,7 @@ def native_skills_route(capability_plan: Mapping[str, object]) -> bool:
     )
 
 
-def resolve_skill_mode(*, capability_plan: Mapping[str, object], harness: str) -> SkillMode | None:
+def resolve_skill_mode(*, capability_plan: Mapping[str, object], adapter_id: str) -> SkillMode | None:
     """Resolve how a skill would reach the selected harness, or ``None`` if it can't.
 
     Driven by Fabric's own capability routing (queried at runtime via ``Fabric.plan``) rather than a
@@ -178,7 +178,7 @@ def resolve_skill_mode(*, capability_plan: Mapping[str, object], harness: str) -
     """
     if native_skills_route(capability_plan):
         return SKILL_MODE_NATIVE
-    if harness.strip().lower() == _CODEX_HARNESS:
+    if adapter_id.strip().lower() == _CODEX_ADAPTER_ID:
         return SKILL_MODE_CODEX_SKILLS_DIR
     return None
 
