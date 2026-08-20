@@ -7,7 +7,7 @@
 
 agent: smoke-agent
 agent_source: ./agent
-agent_spec: ./AGENT-SPEC.md
+ethos: ./ETHOS.md
 task_template: ./dataset/task-template
 
 datasets:

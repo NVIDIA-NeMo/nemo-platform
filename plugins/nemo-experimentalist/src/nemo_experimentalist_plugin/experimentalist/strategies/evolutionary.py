@@ -286,7 +286,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         self._check_proposer_builder_pairing(config)
         agents_dir, analysis_dir, _ = self._init_structure()
         train_eval_dataset = ctx.datasets["train"]
-        agent_spec_path = ctx.agent_spec
+        ethos_path = ctx.ethos
 
         # ---- Resume or fresh start ---------------------------------------
         # Round analysis files are this strategy's own private state, so detecting the
@@ -408,7 +408,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 survivors=[c.slim() for c in survivors],
                 round_num=round_num,
                 config=config,
-                agent_spec_path=agent_spec_path,
+                ethos_path=ethos_path,
             )
             proposals = await self._propose_improvements(
                 analysis=analysis,
@@ -839,7 +839,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         round_num: int,
         config: EvolutionaryOptimizerConfig,
         load_trace: TraceLoader | None = None,
-        agent_spec_path: Path | None = None,
+        ethos_path: Path | None = None,
     ) -> str:
         """Run TraceRootCauseAnalyzer per survivor, merge analyses, persist to disk.
         ``None`` those traces are skipped (local ``file://`` traces still load).
@@ -873,7 +873,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     evaluation=evaluations[s.label],
                     peer_evaluations={k: v for k, v in evaluations.items() if k != s.label},
                     round_num=round_num,
-                    agent_spec=agent_spec_path,
+                    ethos=ethos_path,
                 )
                 for s in survivors
             ]

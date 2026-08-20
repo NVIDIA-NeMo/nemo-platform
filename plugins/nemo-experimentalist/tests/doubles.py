@@ -138,9 +138,9 @@ class FakeBackend(ExperimentalistBackend):
         self.published.append(candidate.label)
         return f"https://example.invalid/pr/{candidate.label}"
 
-    async def get_agent_spec(self, *, workspace: str, spec: str, dest: Path) -> Path:
+    async def get_ethos(self, *, workspace: str, ethos: str, dest: Path) -> Path:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(f"# spec from {spec}\n")
+        dest.write_text(f"# Ethos from {ethos}\n")
         return dest
 
 

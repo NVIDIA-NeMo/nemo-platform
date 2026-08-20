@@ -1005,22 +1005,22 @@ def test_doctor_validates_implicit_shared_insight_agent(
     assert "someone-else" in result.output
 
 
-def test_doctor_validates_effective_agent_spec_readability(
+def test_doctor_validates_effective_ethos_readability(
     app,
     profile_tree: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     write_task_toml(profile_tree)
-    spec = profile_tree / "AGENT-SPEC.md"
-    spec.write_bytes(b"\xff")
+    ethos = profile_tree / "ETHOS.md"
+    ethos.write_bytes(b"\xff")
     with (profile_tree / "optimizer.yaml").open("a", encoding="utf-8") as profile_file:
-        profile_file.write("agent_spec: ./AGENT-SPEC.md\n")
+        profile_file.write("ethos: ./ETHOS.md\n")
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["doctor"])
 
     assert result.exit_code == 1
-    assert "Could not read agent_spec" in result.output
+    assert "Could not read ethos" in result.output
     assert "Traceback" not in result.output
 
 

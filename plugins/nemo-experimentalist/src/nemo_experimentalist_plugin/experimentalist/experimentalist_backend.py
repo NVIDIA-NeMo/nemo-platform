@@ -41,7 +41,7 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
     _redact_url,
     clone_agent_repo,
     looks_like_git,
-    split_agent_spec,
+    split_agent_source_uri,
     split_git_ref,
 )
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror
@@ -252,7 +252,7 @@ class ExperimentalistBackend(ABC):
         try:
             return await asyncio.to_thread(clone_agent_repo, agent, dest, clone_depth=clone_depth)
         except subprocess.CalledProcessError:
-            remote, _ = split_git_ref(split_agent_spec(agent)[0])
+            remote, _ = split_git_ref(split_agent_source_uri(agent)[0])
             raise ValueError(f"failed to fetch --agent {_redact_url(remote)!r}") from None
 
     @abstractmethod
@@ -279,8 +279,8 @@ class ExperimentalistBackend(ABC):
     # -- Agent reads ---------------------------------------------------------
 
     @abstractmethod
-    async def get_agent_spec(self, *, workspace: str, spec: str, dest: Path) -> Path:
-        """Materialize the agent-spec URI *spec* into *dest*; return *dest*."""
+    async def get_ethos(self, *, workspace: str, ethos: str, dest: Path) -> Path:
+        """Materialize the Ethos URI into *dest* and return *dest*."""
         ...
 
 
@@ -576,10 +576,10 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
 
     # -- Agent reads ---------------------------------------------------------
 
-    async def get_agent_spec(self, *, workspace: str, spec: str, dest: Path) -> Path:
-        src = Path(spec)
+    async def get_ethos(self, *, workspace: str, ethos: str, dest: Path) -> Path:
+        src = Path(ethos)
         if not src.is_file():
-            raise FileNotFoundError(f"Agent spec not found: {src}")
+            raise FileNotFoundError(f"Ethos not found: {src}")
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dest)
         return dest

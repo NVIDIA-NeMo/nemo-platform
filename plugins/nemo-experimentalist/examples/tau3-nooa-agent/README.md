@@ -7,7 +7,7 @@ Agent under test for the tau3-bench suites. Uses [NOOA](https://github.com/NVIDI
 with a CodeAct strategy and reaches domain tools over MCP from the task's
 `tau3-runtime` sidecar.
 
-`AGENT-SPEC.md` is deliberately domain-generic — the domain policy arrives at runtime
+`ETHOS.md` is deliberately domain-generic — the domain policy arrives at runtime
 in the task instruction. It is also what the Experimentalist mutates during
 optimization.
 

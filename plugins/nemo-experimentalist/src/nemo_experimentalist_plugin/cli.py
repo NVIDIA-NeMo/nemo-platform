@@ -101,10 +101,10 @@ class ExperimentalistCLI(NemoCLI):
                     "draft PR/MR for the winner against that ref."
                 ),
             ),
-            agent_spec: str | None = typer.Option(
+            ethos: str | None = typer.Option(
                 None,
-                "--agent-spec",
-                help="URI of a markdown file describing the agent under test (its spec).",
+                "--ethos",
+                help="URI of a markdown file describing the agent under test (its Ethos).",
             ),
             insight: str | None = typer.Option(
                 None,
@@ -246,7 +246,7 @@ class ExperimentalistCLI(NemoCLI):
                     plan = build_effective_experiment_plan(
                         profile=profile,
                         agent=agent,
-                        agent_spec=agent_spec,
+                        ethos=ethos,
                         insight=effective_insight.ref,
                         insight_id=effective_insight.selector,
                         no_insight=no_insight,
@@ -297,7 +297,7 @@ class ExperimentalistCLI(NemoCLI):
                 try:
                     return await run_experimentalist(
                         agent=inputs.agent,
-                        agent_spec=inputs.agent_spec,
+                        ethos=inputs.ethos,
                         insight=inputs.insight,
                         train_dataset=inputs.train_dataset,
                         validation_dataset=inputs.validation_dataset,
@@ -425,7 +425,7 @@ class ExperimentalistCLI(NemoCLI):
                             status="fail",
                             severity="required",
                             message=str(exc),
-                            hint="fix optimizer.yaml or its referenced agent_spec/experiment_config",
+                            hint="fix optimizer.yaml or its referenced ethos/experiment_config",
                         )
                     )
             insight_ref = effective_insight.ref if effective_insight is not None else None

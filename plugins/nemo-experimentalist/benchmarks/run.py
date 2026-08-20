@@ -470,7 +470,7 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
     experimentalist_dir = run_dir / "optimizer"
     experimentalist_summary = await run_experimentalist(
         agent=str(baseline_dir),
-        agent_spec=str(baseline_dir / "AGENT-SPEC.md"),
+        ethos=str(baseline_dir / "ETHOS.md"),
         insight=None,
         train_dataset=DatasetRef(
             uri=str(dataset_path),

@@ -556,20 +556,20 @@ class ArchitectureSkill(Skill):
 
     ---
 
-    ## AGENT-SPEC.md — read first if it exists
+    ## ETHOS.md — read first if it exists
 
-    An `AGENT-SPEC.md` (or `AGENT_SPEC.md`) in the workspace is a durable contract written by the
+    An `ETHOS.md` in the workspace is a durable contract written by the
     agent's author. When present, read it before any source file. It is authoritative on the scope of the agent.
 
     It helps discern what is agent-pertinent and what is not.
-    If AGENT-SPEC.md is absent, infer all of the above from source code.
+    If ETHOS.md is absent, infer all of the above from source code.
 
     ---
 
     ## Writing architecture.md
 
     1. Check for documentation (specs, readmes) and read it first if present. Understand the scope of the agent.
-    2. Read the agent's source `.py` files, starting from the entrypoint, following imports. Use the spec's framework and harness to anchor what you're looking for.
+    2. Read the agent's source `.py` files, starting from the entrypoint, following imports. Use the Ethos's framework and harness to anchor what you're looking for.
     3. Apply the Scope rules above: include only agent components, tools, skills, and prompts. Do not include anything that's infrastructure around it, evaluation code, storage code, etc.
        Only include default paths. If a user has to change configs to use this path, it should not be included.
     4. Collect key imports and write the diagram note.
@@ -1085,11 +1085,11 @@ class CodeEditBuilder(Agent, roles.Builder):
         - workdir (Path): the agent directory to document. Its architecture.md is at {workdir}/architecture.md
         - source_path (str | None): directory containing the agent source code, relative to the
           agent directory (e.g. "app/"). Read .py files from here when following imports.
-          When absent, infer the source root from AGENT-SPEC.md or the directory structure.
+          When absent, infer the source root from ETHOS.md or the directory structure.
         - entrypoint (str | None): the file that the evaluation harness invokes to run the agent,
           relative to the agent directory (e.g. "harbor/runner.py"). Start reading here to
           determine the call chain and identify the default execution path before reading
-          source_path. When absent, infer from AGENT-SPEC.md or the directory structure.
+          source_path. When absent, infer from ETHOS.md or the directory structure.
 
         Load the agent-architecture skill and use it to document the agent.
 
@@ -1120,7 +1120,7 @@ class CodeEditBuilder(Agent, roles.Builder):
            flag value is default, which if/else branch runs in production. The entrypoint itself
            is infrastructure and must NOT appear in the diagram. Use it only to determine scope.
            Then read source files under {source_path}, following only imports reachable from the
-           default path. If entrypoint is None, infer it from AGENT-SPEC.md or the directory.
+           default path. If entrypoint is None, infer it from ETHOS.md or the directory.
            Apply the scope rules from the architecture skill:
            include only agent components (agents, stochastic methods, deterministic methods, tools),
            exclude the entrypoint/harness itself, evaluation code, test data, and infrastructure.
