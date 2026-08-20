@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage, swallowConflict } from '@nemo/common/src/api/common/utils';
+import { toError } from '@nemo/common/src/utils/logger';
 import {
   getFilesListFilesetsQueryKey,
   getModelsListModelsQueryKey,
@@ -20,7 +22,6 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { getErrorMessage, swallowConflict } from '@studio/api/common/utils';
 import {
   CUSTOMIZATION_TEMPLATES,
   type CustomizationTemplate,
@@ -28,7 +29,6 @@ import {
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewCustomizationJobRoute, getSecretsRoute } from '@studio/routes/utils';
 import { fetchAndConvertDataset } from '@studio/util/huggingFaceDataset';
-import { toError } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { KeyRound } from 'lucide-react';
 import { type FC, useState } from 'react';

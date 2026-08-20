@@ -5,6 +5,7 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { CJobCancellableStatuses, CJobLaunchableStatuses } from '@nemo/common/src/constants/query';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { toError } from '@nemo/common/src/utils/logger';
 import {
   useCustomizationCancelAutomodelJob,
   useCustomizationCancelUnslothJob,
@@ -16,7 +17,6 @@ import { getCustomizationJobStatusQueryKey } from '@studio/hooks/useCustomizatio
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewCustomizationJobRoute, getNewEvaluationMetricRoute } from '@studio/routes/utils';
 import { CustomizationBackend, type CustomizationJob } from '@studio/util/customizationBackend';
-import { toError } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ban, Copy } from 'lucide-react';
 import { FC } from 'react';
