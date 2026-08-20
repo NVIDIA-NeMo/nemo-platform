@@ -4436,8 +4436,11 @@ components:
           - openai
           - llama_stack
           title: Format
-          description: API format of the model.
-          default: nim
+          description: Deprecated and ignored. Previously selected the structured
+            output encoding; that is now detected per endpoint, because support is
+            a property of the endpoint rather than of the label attached to the model.
+          default: openai
+          deprecated: true
       additionalProperties: false
       type: object
       required:

@@ -357,7 +357,6 @@ def build_platform_model_target(
     model-entity path always routes to the base VirtualModel and ignores adapter
     names in the request body.
     """
-    from nemo_evaluator_sdk.enums import ModelFormat
     from nemo_evaluator_sdk.values.models import Model
 
     resolved_provider = provider_name or find_ready_provider_for_model_entity(
@@ -379,13 +378,11 @@ def build_platform_model_target(
                 provider_name=resolved_provider,
             ),
             name=served_model_name(workspace=workspace, entity_or_adapter=adapter_name, finetuning="lora"),
-            format=ModelFormat.NVIDIA_NIM,
         )
 
     return Model(
         url=model_entity_gateway_url(base_url=base_url, workspace=workspace, model_entity=model_entity),
         name=served_model_name(workspace=workspace, entity_or_adapter=model_entity, finetuning="base"),
-        format=ModelFormat.NVIDIA_NIM,
     )
 
 
