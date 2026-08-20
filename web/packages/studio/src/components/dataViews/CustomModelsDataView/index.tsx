@@ -28,7 +28,7 @@ import type {
   ModelEntitySortField,
   ModelsListModelsParams,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, type DropdownEntry, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { FINETUNING_TYPE_FILTER_OPTIONS } from '@studio/components/dataViews/CustomModelsDataView/constants';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
@@ -333,7 +333,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
     rowActionsColumn({
       size: ROW_ACTIONS_COLUMN_SIZE,
       enableResizing: false,
-      rowActions: (row: ModelTableRow) => {
+      rowActions: (row: ModelTableRow): DropdownEntry[] => {
         const isAdapter = Boolean(row._parentModel);
         const parentModel = row._parentModel;
 

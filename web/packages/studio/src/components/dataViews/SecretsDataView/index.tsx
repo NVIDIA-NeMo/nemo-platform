@@ -23,7 +23,7 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useSecretsDeleteSecret, useSecretsListSecrets } from '@nemo/sdk/generated/platform/api';
 import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
-import { Button, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_SECRETS } from '@studio/constants/links';
 import { EditSecretModal } from '@studio/routes/SecretsListRoute/EditSecretModal';
@@ -150,9 +150,9 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (secret: SecretWithId) => [
+          rowActions: (secret: SecretWithId): DropdownEntry[] => [
             {
-              slotLeft: <Pencil />,
+              slotStart: <Pencil />,
               children: 'Edit',
               onSelect: () => {
                 setModalSecret(secret);
@@ -160,7 +160,7 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
               },
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => {

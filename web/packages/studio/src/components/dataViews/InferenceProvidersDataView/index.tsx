@@ -34,7 +34,14 @@ import {
   ModelProviderFilter,
   ModelProviderSort,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import {
+  Button,
+  type DropdownEntry,
+  Flex,
+  Stack,
+  StatusMessage,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { LINK_DOCS_INFERENCE_PROVIDERS } from '@studio/constants/links';
 import { EditInferenceProviderModal } from '@studio/routes/InferenceProvidersListRoute/EditInferenceProviderModal';
 import { InferenceProviderDetailsSidePanel } from '@studio/routes/InferenceProvidersListRoute/InferenceProviderDetailsSidePanel';
@@ -194,7 +201,7 @@ export const InferenceProvidersDataView: FC<InferenceProvidersDataViewProps> = (
               DropdownContent: { className: 'min-w-[156px]' },
             },
           },
-          rowActions: (provider: ProviderWithId) => [
+          rowActions: (provider: ProviderWithId): DropdownEntry[] => [
             {
               children: 'Edit',
               onSelect: () => {
