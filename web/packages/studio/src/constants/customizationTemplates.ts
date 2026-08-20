@@ -185,8 +185,7 @@ export const CUSTOMIZATION_TEMPLATES: CustomizationTemplate[] = [
     trainingLabel: 'LoRA',
     publisher: 'NVIDIA',
     stats: { totalParams: '120B', activeParams: '12B', gpus: 8 },
-    description:
-      'A step up in scale, on the same single-node GPU footprint as Lightning.',
+    description: 'A step up in scale, on the same single-node GPU footprint as Lightning.',
     models: [
       {
         hfRepoId: 'nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16',

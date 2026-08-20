@@ -25,7 +25,6 @@ import { getEvaluationResultsRoute, getIntakeTracesRoute } from '@studio/routes/
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
-
 export const CustomizationJobListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
@@ -35,7 +34,6 @@ export const CustomizationJobListRoute: FC = () => {
     'model-details'
   );
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-
 
   useBreadcrumbs({
     items: [{ slotLabel: 'Custom Models' }],

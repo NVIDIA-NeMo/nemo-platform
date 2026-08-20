@@ -190,7 +190,6 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
 });
 
 describe('template dataset converters', () => {
-
   describe('BIRD-SQL converter', () => {
     const birdDataset = CUSTOMIZATION_TEMPLATES.find(
       (t) => t.id === 'lora-nemotron-3-super-text2sql'

@@ -219,8 +219,8 @@ export const CustomizationTemplates: FC = () => {
         <Text kind="body/regular/sm" className="text-subtle">
           Each recipe fine-tunes a Nemotron mixture-of-experts model to read a database schema and
           turn a plain-English question into a working SQL query, training on BIRD-SQL. The
-          expert-parallel and LoRA settings come from the NVIDIA Nemotron cookbook, so you only
-          pick a size and start.
+          expert-parallel and LoRA settings come from the NVIDIA Nemotron cookbook, so you only pick
+          a size and start.
         </Text>
       </Stack>
       <Grid cols={{ base: 1, md: 3 }} gap="density-md">
