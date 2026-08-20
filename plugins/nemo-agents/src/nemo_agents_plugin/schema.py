@@ -26,6 +26,7 @@ from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
     Agent,
     AgentDeployment,
+    AgentSession,
     DeploymentMode,
     DeploymentStatus,
 )
@@ -64,6 +65,16 @@ class CreateDeploymentRequest(BaseModel):
     )
 
 
+class CreateSessionRequest(BaseModel):
+    """Request body for ``POST /v2/workspaces/{workspace}/sessions``."""
+
+    deployment_id: str = Field(min_length=1, description="ID of the AgentDeployment to create a session for.")
+    name: str | None = Field(
+        default=None,
+        description="Optional session name. Auto-generated from deployment name + random suffix if omitted.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Filters — extend NemoFilter so extra fields are rejected (extra="forbid")
 # ---------------------------------------------------------------------------
@@ -91,9 +102,19 @@ class DeploymentFilter(NemoFilter):
     )
 
 
+class SessionFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/sessions``."""
+
+    deployment_id: str | None = Field(
+        default=None,
+        description="Filter to sessions for this deployment ID.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # List response type aliases
 # ---------------------------------------------------------------------------
 
 AgentPage = NemoListResponse[Agent]
 DeploymentPage = NemoListResponse[AgentDeployment]
+SessionPage = NemoListResponse[AgentSession]

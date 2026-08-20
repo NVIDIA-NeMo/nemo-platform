@@ -29,6 +29,11 @@ Usage (once the SDK hub is wired up)::
 
     # Invocation (routes through the agents gateway)
     result = nemo.agents.invoke(agent="calculator", input="What is 2+2?")
+    result = nemo.agents.invoke(
+        deployment="calculator-a1b2",
+        session_id="session-entity-id",
+        input="Continue",
+    )
 """
 
 from __future__ import annotations
@@ -37,6 +42,7 @@ import re
 from typing import Any, List
 
 import httpx
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 _DEFAULT_WORKSPACE = "default"
@@ -145,6 +151,7 @@ class AgentsResource:
         input: str,
         agent: str | None = None,
         deployment: str | None = None,
+        session_id: str | None = None,
         workspace: str | None = None,
         timeout: int = 300,
     ) -> dict[str, Any]:
@@ -154,6 +161,8 @@ class AgentsResource:
             input: The user message / query string.
             agent: Agent name (gateway resolves the active deployment).
             deployment: Deployment name (direct targeting).
+            session_id: Optional persisted Platform session entity ID. Sent in
+                the ``X-Nemo-Session-Id`` request header.
             workspace: Workspace.
             timeout: Request timeout in seconds.
 
@@ -167,12 +176,15 @@ class AgentsResource:
             path = f"/v2/workspaces/{resolved_workspace}/deployments/{deployment}/-/v1/chat/completions"
         else:
             raise ValueError("Provide either agent= or deployment=.")
+        if session_id == "":
+            raise ValueError("session_id must not be empty.")
 
         payload = {
             "messages": [{"role": "user", "content": input}],
             "stream": False,
         }
-        return self._post(path, payload, timeout=timeout)
+        headers = {SESSION_ID_HEADER: session_id} if session_id is not None else None
+        return self._post(path, payload, timeout=timeout, headers=headers)
 
     def evaluate(
         self,
@@ -220,9 +232,15 @@ class AgentsResource:
             resp.raise_for_status()
             return resp.json()
 
-    def _post(self, path: str, payload: dict[str, Any], timeout: int = _DEFAULT_TIMEOUT) -> dict[str, Any]:
+    def _post(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        timeout: int = _DEFAULT_TIMEOUT,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         with httpx.Client(timeout=timeout) as client:
-            resp = client.post(self._agents_url(path), json=payload)
+            resp = client.post(self._agents_url(path), json=payload, headers=headers)
             resp.raise_for_status()
             return resp.json()
 

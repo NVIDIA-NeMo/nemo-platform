@@ -50,6 +50,16 @@ class _FakeFabric:
         return self.runtime
 
 
+class _SequenceFabric:
+    def __init__(self, runtimes: list[_FakeRuntime]) -> None:
+        self.runtimes = iter(runtimes)
+        self.start_calls: list[dict[str, Any]] = []
+
+    async def start_runtime(self, config: Any, *, base_dir: Path, streaming: bool = False) -> _FakeRuntime:
+        self.start_calls.append({"base_dir": base_dir, "config": config, "streaming": streaming})
+        return next(self.runtimes)
+
+
 def _agent_config() -> AgentConfig:
     return AgentConfig.model_validate(
         {
@@ -121,7 +131,7 @@ async def test_open_session_stops_runtime_when_registration_fails(
     fabric = _FakeFabric(runtime)
     registry = FabricSessionRegistry()
 
-    async def fail_registration(runtime: Any) -> None:
+    async def fail_registration(runtime: Any, *, session_id: str | None = None) -> None:
         raise RuntimeError("registration failed")
 
     monkeypatch.setattr(registry, "register", fail_registration)
@@ -158,6 +168,97 @@ async def test_resolve_session_opens_session_when_id_is_absent(
     session = await manager.resolve_session(None)
 
     assert session.runtime is runtime
+    assert len(fabric.start_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_session_lazily_opens_and_reuses_runtime_with_platform_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
+    runtime = _FakeRuntime()
+    fabric = _FakeFabric(runtime)
+    registry = FabricSessionRegistry()
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=cast(Any, fabric),
+    )
+
+    first = await manager.resolve_session("platform-session-1")
+    second = await manager.resolve_session("platform-session-1")
+
+    assert first.session_id == "platform-session-1"
+    assert first.runtime is runtime
+    assert second is first
+    assert await registry.get("platform-session-1") is first
+    assert len(fabric.start_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_different_platform_sessions_get_separate_runtimes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
+    first_runtime = _FakeRuntime()
+    second_runtime = _FakeRuntime()
+    fabric = _SequenceFabric([first_runtime, second_runtime])
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=FabricSessionRegistry(),
+        fabric=cast(Any, fabric),
+    )
+
+    first = await manager.resolve_session("platform-session-1")
+    second = await manager.resolve_session("platform-session-2")
+
+    assert first.session_id == "platform-session-1"
+    assert second.session_id == "platform-session-2"
+    assert first.runtime is first_runtime
+    assert second.runtime is second_runtime
+    assert len(fabric.start_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_first_turns_start_one_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
+    runtime = _FakeRuntime()
+    startup_started = asyncio.Event()
+    release_startup = asyncio.Event()
+
+    class _BlockingFabric(_FakeFabric):
+        async def start_runtime(self, config: Any, *, base_dir: Path, streaming: bool = False) -> _FakeRuntime:
+            self.start_calls.append({"base_dir": base_dir, "config": config, "streaming": streaming})
+            startup_started.set()
+            await release_startup.wait()
+            return self.runtime
+
+    fabric = _BlockingFabric(runtime)
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=FabricSessionRegistry(),
+        fabric=cast(Any, fabric),
+    )
+
+    first_resolution = asyncio.create_task(manager.resolve_session("platform-session-1"))
+    await startup_started.wait()
+    second_resolution = asyncio.create_task(manager.resolve_session("platform-session-1"))
+    await asyncio.sleep(0)
+
+    assert len(fabric.start_calls) == 1
+    release_startup.set()
+    first, second = await asyncio.gather(first_resolution, second_resolution)
+
+    assert first is second
+    assert first.runtime is runtime
     assert len(fabric.start_calls) == 1
 
 
@@ -261,6 +362,28 @@ async def test_resolved_session_cannot_invoke_after_close_starts(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_close_missing_session_tombstones_platform_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
+    fabric = _FakeFabric(_FakeRuntime())
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=FabricSessionRegistry(),
+        fabric=cast(Any, fabric),
+    )
+
+    with pytest.raises(FabricSessionNotFoundError, match="session-1"):
+        await manager.close_session("session-1")
+    with pytest.raises(FabricSessionNotFoundError, match="session-1"):
+        await manager.resolve_session("session-1")
+
+    assert fabric.start_calls == []
+
+
+@pytest.mark.asyncio
 async def test_expire_idle_sessions_stops_expired_runtime(
     tmp_path: Path,
 ) -> None:
@@ -279,6 +402,34 @@ async def test_expire_idle_sessions_stops_expired_runtime(
     assert expired_count == 1
     assert runtime.stop_calls == 1
     assert await registry.count() == 0
+
+
+@pytest.mark.asyncio
+async def test_idle_expiration_allows_runtime_to_be_recreated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
+    first_runtime = _FakeRuntime()
+    second_runtime = _FakeRuntime()
+    fabric = _SequenceFabric([first_runtime, second_runtime])
+    registry = FabricSessionRegistry()
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=cast(Any, fabric),
+    )
+    first_session = await manager.resolve_session("session-1")
+    first_session.last_accessed_at = float("-inf")
+
+    assert await manager.expire_idle_sessions(idle_timeout_seconds=30.0) == 1
+    second_session = await manager.resolve_session("session-1")
+
+    assert first_runtime.stop_calls == 1
+    assert second_session is not first_session
+    assert second_session.runtime is second_runtime
+    assert len(fabric.start_calls) == 2
 
 
 @pytest.mark.asyncio

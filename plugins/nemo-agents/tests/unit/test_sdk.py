@@ -12,6 +12,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 from nemo_agents_plugin.sdk import AgentsResource
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 
 
 def _install_mock_transport(handler) -> AbstractContextManager[Any]:
@@ -79,3 +80,51 @@ def test_deployments_create_uses_client_workspace_by_default() -> None:
     assert result == {"name": "calc-dep"}
     assert captured["path"] == "/apis/agents/v2/workspaces/team-a/deployments"
     assert captured["body"] == {"agent": "calc", "deployment_mode": "k8s", "image": "repo/calc:1.0"}
+
+
+def test_invoke_sends_session_id_as_header() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["path"] = req.url.path
+        captured["body"] = json.loads(req.read())
+        captured["session_id"] = req.headers.get(SESSION_ID_HEADER)
+        return httpx.Response(200, json={"id": "completion-id"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler):
+        result = client.invoke(input="Continue", deployment="calc-dep", session_id="session-entity-id")
+
+    assert result == {"id": "completion-id"}
+    assert captured["path"] == "/apis/agents/v2/workspaces/team-a/deployments/calc-dep/-/v1/chat/completions"
+    assert captured["session_id"] == "session-entity-id"
+    assert captured["body"] == {
+        "messages": [{"role": "user", "content": "Continue"}],
+        "stream": False,
+    }
+
+
+def test_invoke_without_session_id_omits_header() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["session_id"] = req.headers.get(SESSION_ID_HEADER)
+        return httpx.Response(200, json={"id": "completion-id"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler):
+        client.invoke(input="Hello", agent="calc")
+
+    assert captured["session_id"] is None
+
+
+def test_invoke_rejects_empty_session_id() -> None:
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("should not invoke with an empty session ID")
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler), pytest.raises(ValueError, match="session_id must not be empty"):
+        client.invoke(input="Hello", agent="calc", session_id="")

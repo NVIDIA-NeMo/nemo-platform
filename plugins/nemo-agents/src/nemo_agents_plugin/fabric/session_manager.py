@@ -9,6 +9,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from nemo_agents_plugin.agent_config import AgentConfig
@@ -26,9 +27,7 @@ from nemo_agents_plugin.fabric.session_registry import (
     FabricSessionRegistry,
 )
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
-
-# CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
-from nemo_fabric import Fabric, FabricConfig, FabricError  # ty: ignore[unresolved-import]
+from nemo_fabric import Fabric, FabricConfig, FabricError
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +42,14 @@ class FabricSessionStartError(RuntimeError):
 
 class FabricSessionStopError(RuntimeError):
     """Raised when a Fabric runtime cannot be stopped for a Platform session."""
+
+
+@dataclass(slots=True)
+class _SessionCreationGate:
+    """Per-session runtime-start lock and its current holder/waiter count."""
+
+    lock: asyncio.Lock
+    users: int = 0
 
 
 class FabricSessionManager:
@@ -64,11 +71,13 @@ class FabricSessionManager:
         self._base_dir = base_dir
         self._session_registry = session_registry
         self._fabric = fabric
+        self._session_creation_gates: dict[str, _SessionCreationGate] = {}
+        self._closed_session_ids: set[str] = set()
         self._invocation_semaphore = (
             asyncio.Semaphore(max_concurrent_invocations) if max_concurrent_invocations > 0 else None
         )
 
-    async def open_session(self) -> FabricRuntimeSession:
+    async def open_session(self, *, session_id: str | None = None) -> FabricRuntimeSession:
         """Materialize a Fabric config, start its runtime, and register the session."""
         try:
             fabric_config = translate_agent_config(self._agent_config)
@@ -87,7 +96,7 @@ class FabricSessionManager:
             raise FabricSessionStartError(f"Fabric runtime startup failed: {error}") from error
 
         try:
-            return await self._session_registry.register(runtime)
+            return await self._session_registry.register(runtime, session_id=session_id)
         except BaseException:
             # A started runtime must not leak if registration fails or is cancelled.
             try:
@@ -97,10 +106,31 @@ class FabricSessionManager:
             raise
 
     async def resolve_session(self, session_id: str | None) -> FabricRuntimeSession:
-        """Open a new session or resolve an existing session by its opaque ID."""
+        """Resolve a session, lazily starting a runtime under a supplied Platform ID."""
         if session_id is None:
             return await self.open_session()
-        return await self._session_registry.get(session_id)
+        if session_id in self._closed_session_ids:
+            raise FabricSessionNotFoundError(f"Fabric session '{session_id}' was not found.")
+
+        try:
+            return await self._session_registry.get(session_id)
+        except FabricSessionNotFoundError:
+            pass
+
+        # Serialize startup per Platform session ID. Without this lock, concurrent first
+        # turns could each start a runtime before either one registers the shared ID.
+        creation_gate = self._claim_session_creation_gate(session_id)
+        try:
+            async with creation_gate.lock:
+                if session_id in self._closed_session_ids:
+                    raise FabricSessionNotFoundError(f"Fabric session '{session_id}' was not found.")
+                # Another request may have created the runtime while this request waited.
+                try:
+                    return await self._session_registry.get(session_id)
+                except FabricSessionNotFoundError:
+                    return await self.open_session(session_id=session_id)
+        finally:
+            self._release_session_creation_gate(session_id, creation_gate)
 
     async def invoke_session(
         self,
@@ -140,11 +170,19 @@ class FabricSessionManager:
 
     async def close_session(self, session_id: str) -> None:
         """Remove a session and stop its runtime after any active turn finishes."""
-        session = await self._session_registry.remove(session_id)
-        if session is None:
-            raise FabricSessionNotFoundError(f"Fabric session '{session_id}' was not found.")
+        creation_gate = self._claim_session_creation_gate(session_id)
+        try:
+            async with creation_gate.lock:
+                # Explicit cleanup is terminal for this Platform session in the current
+                # deployment process. Idle expiration intentionally does not tombstone IDs.
+                self._closed_session_ids.add(session_id)
+                session = await self._session_registry.remove(session_id)
+                if session is None:
+                    raise FabricSessionNotFoundError(f"Fabric session '{session_id}' was not found.")
 
-        await self._stop_session(session)
+                await self._stop_session(session)
+        finally:
+            self._release_session_creation_gate(session_id, creation_gate)
 
     async def expire_idle_sessions(self, *, idle_timeout_seconds: float) -> int:
         """Stop and remove sessions that have exceeded the idle timeout."""
@@ -178,6 +216,21 @@ class FabricSessionManager:
                     exc_info=(type(result), result, result.__traceback__),
                 )
         return len(sessions)
+
+    def _claim_session_creation_gate(self, session_id: str) -> _SessionCreationGate:
+        """Claim the shared startup gate for one session ID."""
+        gate = self._session_creation_gates.get(session_id)
+        if gate is None:
+            gate = _SessionCreationGate(lock=asyncio.Lock())
+            self._session_creation_gates[session_id] = gate
+        gate.users += 1
+        return gate
+
+    def _release_session_creation_gate(self, session_id: str, gate: _SessionCreationGate) -> None:
+        """Release a startup-gate claim and discard it after its final waiter."""
+        gate.users -= 1
+        if gate.users == 0 and self._session_creation_gates.get(session_id) is gate:
+            self._session_creation_gates.pop(session_id)
 
     async def _stop_session(self, session: FabricRuntimeSession) -> None:
         """Stop one session after any active invocation releases its lock."""
