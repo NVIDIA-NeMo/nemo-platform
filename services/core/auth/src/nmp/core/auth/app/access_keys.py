@@ -112,8 +112,11 @@ class AccessKeyRegistry:
         record = await self._get_owned(jti, principal)
         if record.status == "REVOKED":
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be {completed_action}")
+        effective_status = self._reversible_status(record)
+        if effective_status == "EXPIRED":
+            return False, effective_status
         if record.status == target_status:
-            return False, self._reversible_status(record)
+            return False, effective_status
         updated = record.model_copy(update={"status": target_status})
         try:
             await self._entity_client.update(updated)
@@ -123,8 +126,9 @@ class AccessKeyRegistry:
             current = await self._get_owned(jti, principal)
             if current.status == "REVOKED":
                 raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be {completed_action}")
-            if current.status == target_status:
-                return False, self._reversible_status(current)
+            current_status = self._reversible_status(current)
+            if current_status == "EXPIRED" or current.status == target_status:
+                return False, current_status
             raise
         return True, self._reversible_status(updated)
 
@@ -172,12 +176,12 @@ class AccessKeyRegistry:
     def _status(record: AccessKeyEntity, *, leeway_seconds: int = 0) -> AccessKeyStatus:
         if record.status == "REVOKED":
             return "REVOKED"
-        if record.status == "SUSPENDED":
-            return "SUSPENDED"
         if record.expires_at is not None and datetime.now(tz=UTC) >= record.expires_at + timedelta(
             seconds=leeway_seconds
         ):
             return "EXPIRED"
+        if record.status == "SUSPENDED":
+            return "SUSPENDED"
         return "ACTIVE"
 
     @staticmethod

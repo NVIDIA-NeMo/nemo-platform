@@ -6,7 +6,7 @@
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 import yaml
@@ -30,7 +30,9 @@ def static_authz_data():
         return yaml.safe_load(f)
 
 
-def test_access_key_lifecycle_routes_are_available_to_authenticated_owners(static_authz_data) -> None:
+def test_access_key_lifecycle_routes_are_available_to_authenticated_owners(
+    static_authz_data: dict[str, Any],
+) -> None:
     endpoints = static_authz_data["authz"]["endpoints"]
 
     for action in ["suspend", "unsuspend"]:

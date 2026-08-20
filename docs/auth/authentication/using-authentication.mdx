@@ -146,9 +146,11 @@ nemo auth access-keys revoke ak_0123456789abcdef0123456789abcdef
 
 The list includes each key's `ACTIVE`, `EXPIRED`, `SUSPENDED`, or `REVOKED` status
 plus its description, issuer, audiences, creation time, and expiration time. Suspension
-and revocation take effect on subsequent authenticated platform requests. A suspended
-key can be restored with `unsuspend`; a revoked key cannot be restored. Rotation is not
-implemented.
+and revocation take effect on subsequent authenticated platform requests. Use suspension
+to temporarily block a key, such as while investigating suspected misuse, without
+permanently revoking it. An unexpired suspended key can be restored with `unsuspend`. If
+the key expires while suspended, `unsuspend` is a no-op and reports `EXPIRED`. A revoked
+key cannot be restored. Rotation is not implemented.
 
 ### Token Inspection
 

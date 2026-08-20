@@ -31,10 +31,10 @@ class InMemoryAccessKeyRegistry:
     def _status(self, jti, key):
         if jti in self.revoked:
             return "REVOKED"
-        if jti in self.suspended:
-            return "SUSPENDED"
         if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC) - timedelta(seconds=30):
             return "EXPIRED"
+        if jti in self.suspended:
+            return "SUSPENDED"
         return key.status
 
     async def list_for_principal(self, principal, *, page, page_size):
@@ -72,6 +72,8 @@ class InMemoryAccessKeyRegistry:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         if jti in self.revoked:
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be suspended")
+        if self._status(jti, key) == "EXPIRED":
+            return False, "EXPIRED"
         changed = jti not in self.suspended
         self.suspended.add(jti)
         return changed, self._status(jti, key)
@@ -82,6 +84,8 @@ class InMemoryAccessKeyRegistry:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         if jti in self.revoked:
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be unsuspended")
+        if self._status(jti, key) == "EXPIRED":
+            return False, "EXPIRED"
         changed = jti in self.suspended
         self.suspended.discard(jti)
         return changed, self._status(jti, key)
@@ -593,7 +597,7 @@ def test_unsuspend_reports_expired_status_for_key_that_expired_while_suspended(c
     unsuspended = client.post(f"/v2/access-keys/{jti}/unsuspend")
 
     assert unsuspended.status_code == 200
-    assert unsuspended.json() == {"jti": jti, "status": "EXPIRED", "changed": True}
+    assert unsuspended.json() == {"jti": jti, "status": "EXPIRED", "changed": False}
     assert client.get("/v2/access-keys").json()["data"][0]["status"] == "EXPIRED"
 
 

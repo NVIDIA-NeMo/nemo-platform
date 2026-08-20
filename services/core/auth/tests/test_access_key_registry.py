@@ -304,23 +304,25 @@ async def test_registry_reports_suspended_key_in_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_registry_suspension_precedes_expiration_until_key_is_unsuspended() -> None:
+async def test_registry_expiration_prevents_suspension_state_changes() -> None:
     suspended_expired = _expired_record().model_copy(update={"status": "SUSPENDED"})
     entity_client = AsyncMock()
     entity_client.list.return_value = SimpleNamespace(
         data=[suspended_expired], pagination=SimpleNamespace(total_pages=1)
     )
-    entity_client.get.return_value = suspended_expired
+    entity_client.get.side_effect = [suspended_expired, _expired_record()]
     registry = AccessKeyRegistry(entity_client)
 
     listed = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
-    assert listed.data[0].status == "SUSPENDED"
+    assert listed.data[0].status == "EXPIRED"
 
-    changed, effective_status = await registry.unsuspend("ak_expired", "alice@example.com")
-    assert changed
-    assert effective_status == "EXPIRED"
-    restored = entity_client.update.await_args.args[0]
-    assert AccessKeyRegistry._status(restored) == "EXPIRED"
+    unsuspend_changed, unsuspend_status = await registry.unsuspend("ak_expired", "alice@example.com")
+    suspend_changed, suspend_status = await registry.suspend("ak_expired", "alice@example.com")
+    assert not unsuspend_changed
+    assert unsuspend_status == "EXPIRED"
+    assert not suspend_changed
+    assert suspend_status == "EXPIRED"
+    entity_client.update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -420,6 +422,22 @@ async def test_registry_concurrent_suspension_transition_reports_target_state(
     assert not changed
     assert effective_status == current.status
     assert entity_client.get.await_count == 2
+    entity_client.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_registry_concurrent_suspension_transition_reports_expiration() -> None:
+    entity_client = AsyncMock()
+    expired = _expired_record().model_copy(update={"name": "ak_example"})
+    entity_client.get.side_effect = [_record(), expired]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    changed, effective_status = await registry.suspend("ak_example", "alice@example.com")
+
+    assert not changed
+    assert effective_status == "EXPIRED"
+    entity_client.get.assert_awaited()
     entity_client.update.assert_awaited_once()
 
 
