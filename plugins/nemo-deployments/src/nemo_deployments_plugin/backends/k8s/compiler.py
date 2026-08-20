@@ -19,7 +19,11 @@ from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.auth_proxy import build_auth_proxy_container
 from nemo_deployments_plugin.backends.k8s.client import k8s_client_module
 from nemo_deployments_plugin.backends.k8s.status import resource_labels_match
-from nemo_deployments_plugin.backends.labels import k8s_deployment_configmap_name, k8s_volume_resource_name
+from nemo_deployments_plugin.backends.labels import (
+    k8s_deployment_configmap_name,
+    k8s_deployment_secret_name,
+    k8s_volume_resource_name,
+)
 from nemo_deployments_plugin.entities import (
     Affinity,
     ConfigFile,
@@ -55,8 +59,23 @@ def merged_volume_mounts(config: DeploymentConfig, container: Container) -> list
 
 
 def build_env_vars(container: Container) -> list[Any]:
+    """Build plaintext ``V1EnvVar`` entries for a container.
+
+    Env vars carrying a ``secret_ref`` are intentionally skipped here — their
+    values live in the per-deployment managed ``Secret`` and are injected via
+    ``envFrom`` (see :func:`build_secret_env_from`), so the plaintext never
+    appears in the pod manifest.
+    """
     k8s = k8s_client_module()
     return [k8s.client.V1EnvVar(name=item.name, value=item.value) for item in container.env if item.value is not None]
+
+
+def build_secret_env_from(secret_name: str | None) -> list[Any]:
+    """Build the ``envFrom`` projection for a deployment's managed Secret."""
+    if secret_name is None:
+        return []
+    k8s = k8s_client_module()
+    return [k8s.client.V1EnvFromSource(secret_ref=k8s.client.V1SecretEnvSource(name=secret_name))]
 
 
 def build_resource_requirements(container: Container) -> Any | None:
@@ -98,12 +117,18 @@ def build_volume_mounts(mounts: list[VolumeMount]) -> list[Any]:
     ]
 
 
-def build_container_spec(container: Container, *, volume_mounts: list[VolumeMount] | None = None) -> Any:
+def build_container_spec(
+    container: Container,
+    *,
+    volume_mounts: list[VolumeMount] | None = None,
+    secret_name: str | None = None,
+) -> Any:
     k8s = k8s_client_module()
     kwargs: dict[str, Any] = {
         "name": container.name,
         "image": container.image,
         "env": build_env_vars(container) or None,
+        "env_from": build_secret_env_from(secret_name) or None,
         "resources": build_resource_requirements(container),
     }
     if container.command:
@@ -123,6 +148,8 @@ class CompiledWorkload:
     configmap_body: Any | None
     configmap_name: str | None
     service_containers: tuple[Container, ...]
+    secret_body: Any | None = None
+    secret_name: str | None = None
 
 
 def _reraise_api_unless(exc: ApiException, *allowed_statuses: int) -> None:
@@ -256,19 +283,21 @@ def build_container(
     *,
     config: DeploymentConfig,
     include_probes: bool,
+    secret_name: str | None = None,
 ) -> Any:
     """Build a V1Container from a plugin Container."""
     k8s = k8s_client_module()
     mounts = merged_volume_mounts(config, container)
     if config.config_files:
         mounts = [*mounts, *_config_file_mounts(config.config_files)]
-    base = build_container_spec(container, volume_mounts=mounts or None)
+    base = build_container_spec(container, volume_mounts=mounts or None, secret_name=secret_name)
     kwargs: dict[str, Any] = {
         "name": base.name,
         "image": base.image,
         "command": base.command,
         "args": base.args,
         "env": base.env,
+        "env_from": base.env_from,
         "resources": base.resources,
         "volume_mounts": build_volume_mounts(mounts) if mounts else base.volume_mounts,
         "ports": _build_container_ports(container.ports) or None,
@@ -335,6 +364,34 @@ def build_configmap_body(
     )
 
 
+def build_secret_body(
+    *,
+    workspace: str,
+    deployment_name: str,
+    labels: dict[str, str],
+    secret_env: dict[str, str],
+) -> Any | None:
+    """Build the per-deployment managed ``V1Secret`` for resolved secret env vars.
+
+    Returns ``None`` when the deployment references no secrets. The Secret holds
+    every resolved secret env var (keyed by env var name) and is mounted into
+    containers via ``envFrom`` so the plaintext never lands in the pod manifest.
+    """
+    if not secret_env:
+        return None
+    k8s = k8s_client_module()
+    return k8s.client.V1Secret(
+        api_version="v1",
+        kind="Secret",
+        type="Opaque",
+        metadata=k8s.client.V1ObjectMeta(
+            name=k8s_deployment_secret_name(workspace, deployment_name),
+            labels=labels,
+        ),
+        string_data=dict(secret_env),
+    )
+
+
 def _build_config_file_volume(configmap_name: str, config_files: list[ConfigFile]) -> Any:
     k8s = k8s_client_module()
     items = [
@@ -369,8 +426,14 @@ def compile_workload(
     k8s_config: K8sDeploymentConfig | None,
     pod_restart_policy: RestartPolicy,
     executor_image_pull_secrets: list[ImagePullSecret] | None = None,
+    secret_env: dict[str, str] | None = None,
 ) -> CompiledWorkload:
-    """Compile pod spec kwargs and optional ConfigMap for a Job or Deployment."""
+    """Compile pod spec kwargs and optional ConfigMap/Secret for a Job or Deployment.
+
+    ``secret_env`` maps env var names to resolved plaintext secret values. When
+    non-empty, a single per-deployment ``Secret`` is compiled and mounted into
+    every container via ``envFrom``.
+    """
     validate_workload_config(config)
     pvc_mounts = _collect_pvc_mounts(config)
     volumes = build_pod_volumes(workspace=workspace, mounts=pvc_mounts)
@@ -384,23 +447,34 @@ def compile_workload(
     if configmap_name is not None:
         volumes = [*volumes, _build_config_file_volume(configmap_name, config.config_files)]
 
+    secret_body = build_secret_body(
+        workspace=workspace,
+        deployment_name=deployment_name,
+        labels=labels,
+        secret_env=secret_env or {},
+    )
+    secret_name = secret_body.metadata.name if secret_body is not None else None
+
     ordered_init = list(_ordered_init_containers(config))
-    # Auth-proxy sidecar (native sidecar with restartPolicy=Always) is appended so
-    # it starts before the main workload and keeps running. No-op when the config
-    # does not request it or platform auth is disabled.
-    auth_proxy = build_auth_proxy_container(config)
-    if auth_proxy is not None:
-        ordered_init.append(auth_proxy)
     init_containers = [
         build_container(
             container,
             config=config,
             include_probes=container.restart_policy == NATIVE_SIDECAR_RESTART_POLICY,
+            secret_name=secret_name,
         )
         for container in ordered_init
     ]
+    # Auth-proxy sidecar (native sidecar with restartPolicy=Always) is appended so
+    # it starts before the main workload and keeps running. No-op when the config
+    # does not request it or platform auth is disabled. It is a platform-managed
+    # container and deliberately does NOT receive the workload's secret envFrom.
+    auth_proxy = build_auth_proxy_container(config)
+    if auth_proxy is not None:
+        init_containers.append(build_container(auth_proxy, config=config, include_probes=True))
     main_containers = [
-        build_container(container, config=config, include_probes=True) for container in config.containers
+        build_container(container, config=config, include_probes=True, secret_name=secret_name)
+        for container in config.containers
     ]
 
     pod_spec_kwargs: dict[str, Any] = {
@@ -434,6 +508,8 @@ def compile_workload(
         configmap_body=configmap_body,
         configmap_name=configmap_name,
         service_containers=tuple(config.containers),
+        secret_body=secret_body,
+        secret_name=secret_name,
     )
 
 
@@ -497,5 +573,69 @@ def delete_configmap(
         return
     try:
         core_v1.delete_namespaced_config_map(name=name, namespace=namespace, _request_timeout=timeout)
+    except ApiException as exc:
+        _reraise_api_unless(exc, 404)
+
+
+def create_secret(
+    core_v1: Any,
+    *,
+    namespace: str,
+    body: Any,
+    expected_labels: dict[str, str],
+    timeout: float | None,
+) -> None:
+    try:
+        core_v1.create_namespaced_secret(namespace=namespace, body=body, _request_timeout=timeout)
+    except ApiException as exc:
+        _reraise_api_unless(exc, 409)
+        existing = core_v1.read_namespaced_secret(
+            name=body.metadata.name,
+            namespace=namespace,
+            _request_timeout=timeout,
+        )
+        if not resource_labels_match(existing, expected_labels):
+            raise
+
+
+def delete_secret_best_effort(
+    core_v1: Any,
+    *,
+    namespace: str,
+    name: str | None,
+    expected_labels: dict[str, str],
+    timeout: float | None,
+) -> None:
+    if name is None:
+        return
+    try:
+        delete_secret(
+            core_v1,
+            namespace=namespace,
+            name=name,
+            expected_labels=expected_labels,
+            timeout=timeout,
+        )
+    except ApiException:
+        logger.debug("Best-effort Secret cleanup failed for %s", name, exc_info=True)
+
+
+def delete_secret(
+    core_v1: Any,
+    *,
+    namespace: str,
+    name: str,
+    expected_labels: dict[str, str],
+    timeout: float | None,
+) -> None:
+    try:
+        secret = core_v1.read_namespaced_secret(name=name, namespace=namespace, _request_timeout=timeout)
+    except ApiException as exc:
+        _reraise_api_unless(exc, 404)
+        return
+    if not resource_labels_match(secret, expected_labels):
+        return
+    try:
+        core_v1.delete_namespaced_secret(name=name, namespace=namespace, _request_timeout=timeout)
     except ApiException as exc:
         _reraise_api_unless(exc, 404)

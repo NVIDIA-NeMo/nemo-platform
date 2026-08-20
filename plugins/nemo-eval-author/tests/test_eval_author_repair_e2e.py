@@ -220,8 +220,7 @@ def _write_harbor_trace_agent(
     agent_dir.mkdir()
     serialized_trace = json.dumps(trace_payload, separators=(",", ":")) if trace_payload is not None else None
     trace_command = (
-        "mkdir -p /logs/artifacts/traces && "
-        f"printf '%s\\n' {shlex.quote(serialized_trace)} > /logs/artifacts/traces/trace.jsonl"
+        f"mkdir -p /app/traces && printf '%s\\n' {shlex.quote(serialized_trace)} > /app/traces/trace.jsonl"
         if serialized_trace is not None
         else "true"
     )
@@ -377,7 +376,8 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
     runner_conventions = (
         "This is a Harbor dataset. Preserve the existing reward metric and add a new numeric root-cause metric. "
         "Verifier files live under each task's tests directory. After the agent runs, OTLP JSONL trace files are "
-        "available under /logs/artifacts/traces. Every metric must be written as a numeric entry in "
+        "available in the directory named by the TRACE_DIR environment variable. Every metric must be written as a "
+        "numeric entry in "
         "/logs/verifier/reward.json, where higher is better and values are bounded to [0.0, 1.0]. Make the minimal "
         "verifier-only edit. Missing tool evidence is the expected failing case: it must score 0.0 while still "
         "writing reward.json and exiting successfully. Do not use an unguarded grep pipeline whose no-match status "

@@ -15,6 +15,7 @@ export interface StatTileProps {
   hint?: string;
   hintStatus?: StatTileStatus;
   className?: string;
+  bordered?: boolean;
 }
 
 const MUTED_CLASS_NAME = 'text-placeholder';
@@ -34,14 +35,17 @@ export const StatTile: FC<StatTileProps> = ({
   hint,
   hintStatus,
   className,
-}) => (
-  <Panel className={cn('max-w-sm', className)}>
+  bordered = true,
+}) => {
+  const content = (
     <Stack gap="density-sm">
       <Text kind="body/regular/sm" className={MUTED_CLASS_NAME}>
         {label}
       </Text>
       <Flex align="baseline" gap="density-sm" wrap="wrap">
-        <Text kind="label/bold/2xl">{value}</Text>
+        <Text kind="label/bold/2xl" className="tabular-nums">
+          {value}
+        </Text>
         {trailingLabel ? (
           <Text
             kind="body/regular/sm"
@@ -57,5 +61,15 @@ export const StatTile: FC<StatTileProps> = ({
         </Text>
       ) : null}
     </Stack>
-  </Panel>
-);
+  );
+
+  if (!bordered) {
+    return content;
+  }
+
+  return (
+    <Panel className={cn('max-w-sm', className)} elevation="high" data-testid="stat-tile-surface">
+      {content}
+    </Panel>
+  );
+};

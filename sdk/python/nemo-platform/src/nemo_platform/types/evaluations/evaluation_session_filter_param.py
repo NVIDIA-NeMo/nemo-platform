@@ -29,4 +29,7 @@ class EvaluationSessionFilterParam(TypedDict, total=False):
     """Filter by root-span status (success, error, cancelled, unknown)."""
 
     test_case_id: str
-    """Filter by producer-supplied test case id."""
+    """Deprecated alias for test_case_name. Use test_case_name instead."""
+
+    test_case_name: str
+    """Filter by test case name."""

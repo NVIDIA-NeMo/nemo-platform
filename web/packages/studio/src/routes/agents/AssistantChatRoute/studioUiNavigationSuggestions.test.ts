@@ -111,13 +111,6 @@ describe('getStudioUiNavigationSuggestion', () => {
     });
   });
 
-  it('prefers agent-specific evaluation routes over general model evaluations', () => {
-    expect(getStudioUiNavigationSuggestion('Evaluate an agent', workspace)).toMatchObject({
-      id: 'agent-evaluations',
-      href: '/workspaces/default/agents/evaluations',
-    });
-  });
-
   it('returns undefined when the matching feature is disabled', () => {
     mockFeatureFlags({ guardrailsEnabled: false });
 

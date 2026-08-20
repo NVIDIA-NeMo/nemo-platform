@@ -32,7 +32,7 @@ const EvaluationSessionCompare: FC<{
   onSelectCompare: (sessionId: string) => void;
   onClearCompare: () => void;
 }> = ({ workspace, experimentName, sessionId, compareWith, onSelectCompare, onClearCompare }) => {
-  const { testCaseId, runs, isRunsLoading } = useSessionCompareRuns(
+  const { testCaseName, runs, isRunsLoading } = useSessionCompareRuns(
     workspace,
     experimentName,
     sessionId
@@ -44,7 +44,7 @@ const EvaluationSessionCompare: FC<{
     <TestCaseCompare
       workspace={workspace}
       experimentName={experimentName}
-      testCaseId={testCaseId}
+      testCaseName={testCaseName}
       primarySessionId={sessionId}
       primaryRun={primaryRun}
       compareSessionId={compareWith}

@@ -27,6 +27,7 @@ interface LogViewerProps {
   isLoading?: boolean;
   downloadFilename?: string;
   rows?: number;
+  fillHeight?: boolean;
   emptyMessage?: string;
   /** Where the copy confirmation goes. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
   onNotify?: NotifyFn;
@@ -37,10 +38,11 @@ export const LogViewer: FC<LogViewerProps> = ({
   isLoading = false,
   downloadFilename,
   rows = DEFAULT_ROW_COUNT,
+  fillHeight = false,
   emptyMessage = 'No logs available yet',
   onNotify,
 }) => {
-  const [showAllLogs, setShowAllLogs] = useState(false);
+  const [showAllLogs, setShowAllLogs] = useState(fillHeight);
   const [wrapLines, setWrapLines] = useState(false);
   const tailLogs = logs?.slice(-rows) || [];
   const displayedLogs = showAllLogs ? logs : tailLogs;
@@ -68,11 +70,19 @@ export const LogViewer: FC<LogViewerProps> = ({
   };
 
   if (isLoading) {
-    return <Spinner size="medium" aria-label="Loading..." />;
+    return (
+      <Flex align="center" justify="center" className="h-full min-h-32 w-full">
+        <Spinner size="medium" aria-label="Loading..." />
+      </Flex>
+    );
   }
 
   if (!logs || logs.length === 0) {
-    return <Block className="text-subtle">{emptyMessage}</Block>;
+    return (
+      <Flex align="center" justify="center" className="h-full min-h-32 w-full">
+        <Block className="text-subtle">{emptyMessage}</Block>
+      </Flex>
+    );
   }
 
   return (
@@ -90,7 +100,7 @@ export const LogViewer: FC<LogViewerProps> = ({
         value={logText}
         kind="block"
         collapsible={false}
-        rows={rows}
+        rows={fillHeight ? undefined : rows}
         onCopySuccess={() => notify('Copied to clipboard!', 'success', { durationMs: 3000 })}
         className="min-h-auto h-full"
         attributes={{
@@ -98,6 +108,7 @@ export const LogViewer: FC<LogViewerProps> = ({
             ref: codeScrollRef,
             className: classNames(
               'min-w-0 max-w-full',
+              { 'h-full !overflow-y-auto': fillHeight },
               // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
               { '!overflow-y-hidden': !showAllLogs && !wrapLines },
               {

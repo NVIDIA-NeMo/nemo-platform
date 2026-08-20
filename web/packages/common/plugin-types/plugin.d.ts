@@ -4035,7 +4035,7 @@ type NotifyFn = (message: string, type?: NotifyType, options?: MessageFnOptions)
 //#endregion
 //#region src/components/ConfirmationModal/index.d.ts
 type SubmitButtonColor = NonNullable<ComponentProps<typeof LoadingButton>['color']>;
-interface ConfirmationModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
+interface ConfirmationModalProps extends Pick<FormModalProps, 'open' | 'onClose' | 'cancelButtonText'> {
   /** Return true when the action succeeded (shows success toast); false shows error toast. */
   onConfirm: () => boolean | Promise<boolean>;
   title: string;
@@ -5639,11 +5639,11 @@ export declare const FileUpload: FC<FileUploadProps>;
  */
 export declare const InputErrorText: FC<PropsWithChildren<ComponentProps<typeof Text>>>;
 //#endregion
-//#region src/components/QuickActionsMenu/QuickActionsMenuRoot/index.d.ts
-interface QuickActionItem {
+//#region src/components/ActionsMenu/index.d.ts
+interface ActionMenuItem {
   label: string;
   onSelect: () => void;
-  icon?: React$1.ReactElement<{
+  icon?: ReactElement<{
     size?: number;
     fill?: string;
     className?: string;
@@ -5652,6 +5652,9 @@ interface QuickActionItem {
   danger?: boolean;
   divider?: Omit<DropdownDividerItemEntry, 'kind'>;
 }
+//#endregion
+//#region src/components/QuickActionsMenu/QuickActionsMenuRoot/index.d.ts
+type QuickActionItem = ActionMenuItem;
 interface QuickActionsMenuProps {
   actions: QuickActionItem[];
 }
@@ -9334,6 +9337,7 @@ interface LogViewerProps {
   isLoading?: boolean;
   downloadFilename?: string;
   rows?: number;
+  fillHeight?: boolean;
   emptyMessage?: string;
   /** Where the copy confirmation goes. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
   onNotify?: NotifyFn;

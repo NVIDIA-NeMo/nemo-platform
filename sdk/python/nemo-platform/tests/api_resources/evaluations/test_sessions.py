@@ -51,6 +51,7 @@ class TestSessions:
             filter={
                 "status": "status",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             mode="summary",
             page=1,
@@ -126,6 +127,7 @@ class TestAsyncSessions:
             filter={
                 "status": "status",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             mode="summary",
             page=1,

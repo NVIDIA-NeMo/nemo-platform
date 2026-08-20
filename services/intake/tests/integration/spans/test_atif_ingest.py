@@ -334,15 +334,11 @@ def test_atif_ingest_rejects_unknown_schema_version(client: TestClient):
 
 
 def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(client: TestClient):
-    evaluation_run_id = "evalrun-01JZ8Q7K6V7R3X9N2M4P5A6B7C"
     evaluation_context = {
-        "evaluation_id": "eval-sample-agent-baseline",
-        "evaluation_sha": "abc132901",
-        "evaluation_run_id": evaluation_run_id,
-        "test_case_id": "sample-test-case-a",
-        "metadata": {"trial": "sample-test-case-a__trial-a"},
+        "evaluation_name": "eval-sample-agent-baseline",
+        "test_case_name": "sample-test-case-a",
     }
-    _create_experiment(client, evaluation_context["evaluation_id"])
+    _create_experiment(client, evaluation_context["evaluation_name"])
     base_time = _BASE_TIME
     user_step_time = base_time
     agent_step_2_time = base_time + timedelta(seconds=5, milliseconds=636)
@@ -529,11 +525,12 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert "cached_tokens" not in trajectory
     assert "total_tokens" not in trajectory
     assert "cost_total_usd" not in trajectory
-    # The retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted but ignored, so only
-    # evaluation_id and test_case_id survive onto the root trajectory span.
+    # Deprecated identifiers remain present alongside the canonical names in responses.
     assert trajectory["evaluation_context"] == {
-        "evaluation_id": evaluation_context["evaluation_id"],
-        "test_case_id": evaluation_context["test_case_id"],
+        "evaluation_name": evaluation_context["evaluation_name"],
+        "test_case_name": evaluation_context["test_case_name"],
+        "evaluation_id": evaluation_context["evaluation_name"],
+        "test_case_id": evaluation_context["test_case_name"],
     }
     assert "attributes_string" not in trajectory
     trajectory_raw = json.loads(trajectory["raw_attributes"])
@@ -552,7 +549,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     evaluation_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
         params={
-            "filter[evaluation_id]": evaluation_context["evaluation_id"],
+            "filter[evaluation_name]": evaluation_context["evaluation_name"],
             "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
         },
@@ -562,14 +559,14 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert len(evaluation_spans) == 1
     assert evaluation_spans[0]["name"] == "sample-agent"
 
-    for field, value in {
-        "evaluation_id": evaluation_context["evaluation_id"],
-        "test_case_id": evaluation_context["test_case_id"],
-    }.items():
+    for filter_field, context_field, value in (
+        ("evaluation_name", "evaluation_name", evaluation_context["evaluation_name"]),
+        ("test_case_name", "test_case_name", evaluation_context["test_case_name"]),
+    ):
         filtered = client.get(
             "/apis/intake/v2/workspaces/default/spans",
             params={
-                f"filter[{field}]": value,
+                f"filter[{filter_field}]": value,
                 "filter[started_at][gte]": _HISTORICAL_GTE,
                 "page_size": 10,
             },
@@ -578,7 +575,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         filtered_spans = filtered.json()["data"]
         assert len(filtered_spans) == 1
         assert filtered_spans[0]["name"] == "sample-agent"
-        assert filtered_spans[0]["evaluation_context"][field] == value
+        assert filtered_spans[0]["evaluation_context"][context_field] == value
 
     evaluator_span = spans_by_name["harbor.verifier"]
     assert evaluator_span["kind"] == "EVALUATOR"
@@ -660,8 +657,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "session_id": "441e9149-e4e6-41c0-82b0-a36802f83d3a",
         "evaluation_context": {
             **evaluation_context,
-            "test_case_id": "sample-test-case-b",
-            "metadata": {"trial": "sample-test-case-b__trial-b"},
+            "test_case_name": "sample-test-case-b",
         },
         "extra": {
             "task_name": "sample-dataset/sample-test-case-b",
@@ -684,7 +680,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     evaluation_roots_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
         params={
-            "filter[evaluation_id]": evaluation_context["evaluation_id"],
+            "filter[evaluation_name]": evaluation_context["evaluation_name"],
             "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 20,
             "sort": "started_at",
@@ -694,15 +690,15 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     evaluation_roots = evaluation_roots_response.json()["data"]
     assert len(evaluation_roots) == 2
     assert {span["name"] for span in evaluation_roots} == {"sample-agent"}
-    assert {span["evaluation_context"]["evaluation_id"] for span in evaluation_roots} == {
-        evaluation_context["evaluation_id"]
+    assert {span["evaluation_context"]["evaluation_name"] for span in evaluation_roots} == {
+        evaluation_context["evaluation_name"]
     }
     assert {span["session_id"] for span in evaluation_roots} == {
         "d074dfb7-3691-443c-b137-720d75e40afa",
         "441e9149-e4e6-41c0-82b0-a36802f83d3a",
     }
 
-    # Re-ingesting into the same session keeps span ids stable; evaluation_run_id is ignored on ingest.
+    # Re-ingesting into the same session keeps span ids stable.
     same_session_body = {
         "schema_version": "ATIF-v1.7",
         "session_id": body["session_id"],

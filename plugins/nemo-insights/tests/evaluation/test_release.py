@@ -187,12 +187,9 @@ def test_download_ref_aws_args_and_return_path(tmp_path, monkeypatch):
     partial = Path(calls[0][-1])
     assert calls == [
         (
-            "s3api",
-            "get-object",
-            "--bucket",
-            STORE.bucket,
-            "--key",
-            "state-v4.tar.zst",
+            "s3",
+            "cp",
+            f"s3://{STORE.bucket}/state-v4.tar.zst",
             str(partial),
         )
     ]
@@ -243,24 +240,32 @@ def test_upload_ref_uses_key_and_metadata(tmp_path, monkeypatch):
     bundle = tmp_path / "state-v11.tar.zst"
     bundle.write_bytes(b"fixture")
     calls = []
-    monkeypatch.setattr(release, "_aws", lambda store, *args: calls.append(args) or "")
-    release.upload_ref("state-v11", bundle, metadata={"reason": "new data"}, store=STORE)
+    monkeypatch.setattr(
+        release,
+        "_aws",
+        lambda store, *args: calls.append(args) or '{"Metadata":{"sha256":"abc"}}',
+    )
+    release.upload_ref("state-v11", bundle, metadata={"reason": "new data", "sha256": "abc"}, store=STORE)
     assert calls == [
         (
-            "s3api",
-            "put-object",
-            "--bucket",
-            STORE.bucket,
-            "--key",
-            "state-v11.tar.zst",
-            "--body",
+            "s3",
+            "cp",
             str(bundle),
-            "--if-none-match",
-            "*",
+            f"s3://{STORE.bucket}/state-v11.tar.zst",
+            "--no-overwrite",
             "--metadata",
-            '{"reason":"new data"}',
-        )
+            '{"reason":"new data","sha256":"abc"}',
+        ),
+        ("s3api", "head-object", "--bucket", STORE.bucket, "--key", "state-v11.tar.zst", "--output", "json"),
     ]
+
+
+def test_upload_ref_detects_no_overwrite_conflict(tmp_path, monkeypatch):
+    bundle = tmp_path / "state-v11.tar.zst"
+    bundle.write_bytes(b"fixture")
+    monkeypatch.setattr(release, "_aws", lambda *args: '{"Metadata":{"sha256":"different"}}')
+    with pytest.raises(release.StateRefConflict):
+        release.upload_ref("state-v11", bundle, metadata={"sha256": "expected"}, store=STORE)
 
 
 @pytest.mark.parametrize("stderr", ["PreconditionFailed", "ConditionalRequestConflict", "HTTP 412", "HTTP 409"])

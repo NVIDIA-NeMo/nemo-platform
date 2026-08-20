@@ -57,6 +57,33 @@ class ExperimentRequest(BaseModel):
             "update; on create, defaults to cost vs. latency."
         ),
     )
+    is_favorite: bool = Field(
+        default=False,
+        description=(
+            "Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to "
+            "preserve the existing value."
+        ),
+    )
+    show_evaluations_over_time: bool = Field(
+        default=False,
+        description=(
+            "Whether Studio should display this Experiment's Evaluation results over time. Defaults to false "
+            "on create; omit on update to preserve the existing value."
+        ),
+    )
+
+
+class ExperimentUpdateRequest(ExperimentRequest):
+    """Request body for updating an Experiment."""
+
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description=(
+            "Name of this Experiment's baseline Evaluation. The Evaluation must already be a live member "
+            "of the Experiment. Set null to clear the selected baseline."
+        ),
+        json_schema_extra={"nullable": True},
+    )
 
 
 class EvaluationRequest(BaseModel):
@@ -158,6 +185,15 @@ class ExperimentResponse(BaseModel):
     metadata: dict[str, str] | None = None
     default_sort: str
     pareto: ParetoConfig = Field(default_factory=ParetoConfig)
+    is_favorite: bool = Field(default=False, description="Whether this Experiment is marked as a favorite.")
+    show_evaluations_over_time: bool = Field(
+        default=False,
+        description="Whether Studio should display this Experiment's Evaluation results over time.",
+    )
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description="Name of this Experiment's selected baseline Evaluation, if any.",
+    )
     created_at: datetime | None = None
     updated_at: datetime | None = None
     evaluation_count: int = Field(
@@ -177,6 +213,9 @@ class ExperimentResponse(BaseModel):
             metadata=entity.metadata,
             default_sort=entity.default_sort,
             pareto=entity.pareto,
+            is_favorite=entity.is_favorite,
+            show_evaluations_over_time=entity.show_evaluations_over_time,
+            baseline_evaluation_name=entity.baseline_evaluation_name,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -246,8 +285,8 @@ class EvaluationResponse(BaseModel):
     test_case_count: int = Field(
         default=0,
         description=(
-            "Number of distinct test cases in the evaluation, i.e. distinct test_case_id values "
-            "(sessions with no test_case_id each count as their own). A test case run k times counts once; "
+            "Number of distinct test cases in the evaluation, i.e. distinct test_case_name values "
+            "(sessions with no test_case_name each count as their own). A test case run k times counts once; "
             "the rollup metrics are averaged per test case before pooling across test cases."
         ),
     )
@@ -314,6 +353,15 @@ class ExperimentFilter(Filter):
     insight_id: str | None = Field(
         default=None,
         description="Filter experiments by the id of the insight that seeded them.",
+    )
+    is_favorite: bool | None = Field(default=None, description="Filter experiments by favorite status.")
+    show_evaluations_over_time: bool | None = Field(
+        default=None,
+        description="Filter experiments by whether Studio should display Evaluation results over time.",
+    )
+    baseline_evaluation_name: str | None = Field(
+        default=None,
+        description="Filter experiments by the name of their selected baseline Evaluation.",
     )
     is_deleted: bool | None = Field(
         default=None,
@@ -410,7 +458,12 @@ class EvaluationFilter(Filter):
 class EvaluationSessionFilter(Filter):
     """Filter for listing EvaluationSessions."""
 
-    test_case_id: str | None = Field(default=None, description="Filter by producer-supplied test case id.")
+    test_case_name: str | None = Field(default=None, description="Filter by test case name.")
+    test_case_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for test_case_name. Use test_case_name instead.",
+    )
     status: str | None = Field(
         default=None, description="Filter by root-span status (success, error, cancelled, unknown)."
     )
@@ -426,9 +479,14 @@ class EvaluationSessionResponse(BaseModel):
     workspace: str
     evaluation_name: str
     session_id: str
+    test_case_name: str | None = Field(
+        default=None,
+        description="Test case name; null when the producer did not set one.",
+    )
     test_case_id: str | None = Field(
         default=None,
-        description="Producer-supplied test case identifier; null when the producer did not set one.",
+        deprecated=True,
+        description="Deprecated alias for test_case_name. Use test_case_name instead.",
     )
     trace_id: str
     root_span_id: str
@@ -477,7 +535,8 @@ class EvaluationSessionResponse(BaseModel):
             workspace=row.workspace,
             evaluation_name=row.evaluation_name,
             session_id=row.session_id,
-            test_case_id=row.test_case_id,
+            test_case_name=row.test_case_name,
+            test_case_id=row.test_case_name,
             trace_id=row.trace_id,
             root_span_id=row.root_span_id,
             started_at=row.started_at,

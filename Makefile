@@ -26,6 +26,7 @@ PYTHON_VERSION ?= 3.12
 UV_VERSION := 0.9.14
 NODE_VERSION := 22.23.2
 PNPM_VERSION := 10.34.5
+GO_VERSION := 1.26.7
 BOOTSTRAP_CREATE_VENV ?= 1
 BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
 BOOTSTRAP_ACTIVATION_REMINDER = if [ "$(TOOLCHAIN)" = "flox" ] && [ "$${FLOX_ENV_PROJECT:-}" != "$(CURDIR)" ]; then echo ""; echo "Next steps:"; echo "  flox -q activate"; echo "  nemo --help"; elif [ "$(TOOLCHAIN)" = "system" ] && [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
@@ -41,7 +42,7 @@ help:
 
 .PHONY: toolchain-versions
 toolchain-versions: ## Print the system toolchain versions accepted by bootstrap
-	@printf 'Python %s\nuv >=%s\nNode.js %s\npnpm %s\n' "$(PYTHON_VERSION)" "$(UV_VERSION)" "$(NODE_VERSION)" "$(PNPM_VERSION)"
+	@printf 'Python %s\nuv >=%s\nNode.js %s\npnpm %s\nGo %s\n' "$(PYTHON_VERSION)" "$(UV_VERSION)" "$(NODE_VERSION)" "$(PNPM_VERSION)" "$(GO_VERSION)"
 
 DOCKER_BAKE_FILE ?= docker-bake.hcl
 DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
@@ -344,13 +345,13 @@ check-licenses: ## Check that license files are up to date
 	diff third_party/licenses.jsonl "$${LICENSE_DIR}/$${LICENSE_NAME}" && \
 	$(UV) run --frozen nemo-platform-sdk-tools license find-missing
 
-CMD_COPYRIGHT_HEADER_FIXER := $(UV) run script/copyright_fixer.py .
+CMD_COPYRIGHT_HEADER_FIXER := $(UV) run python tools/lint/copyright_fixer.py
 .PHONY: update-copyright-headers
-update-copyright-headers:
+update-copyright-headers: ## Updates copyright headers across all files
 	$(CMD_COPYRIGHT_HEADER_FIXER)
 
 .PHONY: check-copyright-headers
-check-copyright-headers:
+check-copyright-headers: ## Checks to see if all copyright headers are appropriate
 	$(CMD_COPYRIGHT_HEADER_FIXER) --check
 
 .PHONY: lint
@@ -591,12 +592,12 @@ check-policy: ## Verify WASM bundle is up-to-date with policies
 .PHONY: build-jobs-launcher
 build-jobs-launcher:
 	@echo "Building jobs launcher binary..."
-	cd services/core/jobs/jobs-launcher/ && ./build-manual.sh
+	cd services/core/jobs/jobs-launcher/ && $(FLOX_EXEC) ./build-manual.sh
 
 .PHONY: test-jobs-launcher
 test-jobs-launcher:
 	@echo "Testing jobs launcher binary..."
-	cd services/core/jobs/jobs-launcher/ && go test ./... -v
+	cd services/core/jobs/jobs-launcher/ && $(FLOX_EXEC) go test ./... -v
 
 .PHONY: test-e2e-docker
 test-e2e-docker: ## Run e2e tests using docker

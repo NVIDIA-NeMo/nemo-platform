@@ -1,18 +1,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ComparisonLegendItem } from '@nemo/common/src/components/ComparisonLineChart/ComparisonLegend';
+import {
+  formatNumericValue,
+  formatXValueDefault,
+  inferXAxisType,
+  seriesColor,
+} from '@nemo/common/src/components/charts/format';
+import type { ChartLegendItem } from '@nemo/common/src/components/charts/types';
 import type {
   ComparisonLineChartProps,
   ComparisonSeries,
 } from '@nemo/common/src/components/ComparisonLineChart/types';
 import {
   buildChartRows,
-  formatNumericValue,
-  formatXValueDefault,
-  inferXAxisType,
   resolveAnnotation,
-  seriesColor,
 } from '@nemo/common/src/components/ComparisonLineChart/utils';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -97,7 +99,7 @@ export const useComparisonChartModel = ({
     [series, formatYValue]
   );
 
-  const legendItems = useMemo<ComparisonLegendItem[]>(
+  const legendItems = useMemo<ChartLegendItem[]>(
     () =>
       colored.map((entry) => ({
         id: entry.id,

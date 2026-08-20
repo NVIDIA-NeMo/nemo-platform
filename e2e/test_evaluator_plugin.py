@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import tarfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -24,9 +25,11 @@ import httpx
 import pytest
 from nemo_evaluator.api.schemas import MetricInline, MetricRef
 from nemo_evaluator.filesets import FilesetRef
+from nemo_evaluator.jobs.agent_spec import GymRunnerTarget
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec
 from nemo_evaluator.sdk.job_resources import EvaluatorJobResource
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk import (
     ExactMatchMetric,
@@ -36,6 +39,7 @@ from nemo_evaluator_sdk import (
     RunConfig,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymRewardMetric, discover_gym_tasks
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
@@ -45,6 +49,7 @@ from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
+from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
 
 pytestmark = [
@@ -80,6 +85,8 @@ def _chat_completion(content: str) -> dict[str, object]:
     return {
         "id": "chatcmpl-evaluator-e2e",
         "object": "chat.completion",
+        "created": 0,
+        "model": "mock-model",
         "choices": [
             {
                 "index": 0,
@@ -307,6 +314,13 @@ def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:
             time.sleep(min(EVALUATOR_POLL_INTERVAL_SECONDS, remaining))
 
 
+def _require_job_name(payload: object) -> str:
+    job_name = payload.get("name") if isinstance(payload, Mapping) else None
+    if not isinstance(job_name, str):
+        raise TypeError(f"Unexpected job response: {payload!r}")
+    return job_name
+
+
 def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJobResource:
     payload = _post_evaluator_payload(
         sdk,
@@ -314,10 +328,7 @@ def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJ
         "evaluate/jobs",
         {"spec": spec.model_dump(mode="json")},
     )
-    job_name = payload.get("name") if isinstance(payload, Mapping) else None
-    if not isinstance(job_name, str):
-        raise TypeError(f"Unexpected evaluator job response: {payload!r}")
-    return sdk.evaluator.get_job_resource(job_name)
+    return sdk.evaluator.get_job_resource(_require_job_name(payload))
 
 
 def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
@@ -730,3 +741,135 @@ def test_invalid_template_reaches_terminal_error(evaluator_sdk: NeMoPlatform) ->
 def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> None:
     dataset = FilesetRef(root=f"{evaluator_sdk.workspace}/missing-fileset#dataset.json")
     _assert_runtime_input_failure(evaluator_sdk, _exact_match_metric(), dataset)
+
+
+# --- Gym agent-evaluate job ------------------------------------------------------------------
+#
+# GymAgentTaskRunner runs inside the Gym task job, not this test process, so this is the only place
+# exercising the real `gym env start`/`gym eval run` subprocess path (the SDK's unit tests use
+# synthetic data). A dedicated Kind CI job runs the platform with the
+# nmp-gym-tasks image. See docker/Dockerfile.nmp-gym-tasks.
+#
+# Checked-in copy of mcqa's example.jsonl: discover_gym_tasks runs client-side here, where
+# nemo-gym isn't installed (the dedicated task image has it).
+GYM_MCQA_FIXTURE = (
+    Path(__file__).resolve().parents[1] / "packages/nemo_evaluator_sdk/tests/agent_eval/fixtures/gym_mcqa_example.jsonl"
+)
+
+
+def _gym_task_payloads(limit: int) -> list[dict[str, object]]:
+    tasks = discover_gym_tasks(GYM_MCQA_FIXTURE)[:limit]
+    bundled_reward = bundle_metric(GymRewardMetric(), CloudpickleMetricBundlePackager()).model_dump(mode="json")
+    return [
+        {
+            "id": task.id,
+            "intent": task.intent,
+            "inputs": task.inputs or {},
+            "reference": task.reference or {},
+            "metrics": [bundled_reward],
+            "metadata": [{"key": key, "value": value} for key, value in (task.metadata or {}).items()],
+        }
+        for task in tasks
+    ]
+
+
+@pytest.mark.gym_e2e
+def test_gym_agent_evaluate_job_completes(
+    sdk: NeMoPlatform,
+    evaluator_sdk: NeMoPlatform,
+    evaluator_workspace: str,
+    tmp_path: Path,
+) -> None:
+    """Submits mcqa as a real agent-evaluate job and verifies it completes with real rewards."""
+    model_name = short_unique_name("gym-mcqa")
+    _create_ready_mock_model(
+        sdk,
+        workspace=evaluator_workspace,
+        name=model_name,
+        mock_response_body=_chat_completion(r"\boxed{B}"),
+    )
+
+    task_dicts = _gym_task_payloads(2)  # keep the run cheap; this is a wiring test
+
+    target = GymRunnerTarget(
+        agent="simple_agent",
+        agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+        resources_server="mcqa",
+        num_repeats=1,
+        concurrency=2,
+        hydra_params={
+            "policy_base_url": _internal_model_route(evaluator_workspace, model_name),
+            "policy_api_key": "not-used-mock-provider",
+            "policy_model_name": model_name,
+        },
+    )
+
+    payload = _post_evaluator_payload(
+        evaluator_sdk,
+        evaluator_workspace,
+        "agent-evaluate/jobs",
+        {"spec": {"tasks": task_dicts, "target": target.model_dump(mode="json")}},
+    )
+    job_name = _require_job_name(payload)
+    try:
+        job = wait_for_platform_job(evaluator_sdk, job_name, evaluator_workspace, timeout=480)
+        assert job.status.lower() == "completed", f"job {job_name!r} ended {job.status!r}"
+
+        # Download the results archive to a tmp path.
+        archive_path = tmp_path / "agent-eval-results.tar.gz"
+        evaluator_sdk.jobs.results.download(
+            "agent-eval-results", job=job_name, workspace=evaluator_workspace
+        ).write_to_file(archive_path)
+
+        # Extract the trials.jsonl file from the archive.
+        extract_dir = tmp_path / "agent-eval-results"
+        with tarfile.open(archive_path) as archive:
+            archive.extractall(extract_dir)  # noqa: S202 - trusted first-party job artifact, not user input
+        trials_files = list(extract_dir.rglob("trials.jsonl"))
+        assert trials_files, f"trials.jsonl missing under {extract_dir}"
+
+        trial_lines = [line for line in trials_files[0].read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert trial_lines, "Gym job produced no trials"
+
+        trials = [json.loads(line) for line in trial_lines]
+        assert len(trials) == 2
+        assert [trial.get("status") for trial in trials] == ["completed", "completed"]
+        rewards = [float(trial["metadata"]["reward"]) for trial in trials]
+        assert sorted(rewards) == [0.0, 1.0]
+    finally:
+        _cleanup_evaluator_job(evaluator_sdk, job_name)
+
+
+@pytest.mark.gym_e2e
+def test_gym_agent_evaluate_job_invalid_config_fails(
+    evaluator_sdk: NeMoPlatform,
+    evaluator_workspace: str,
+) -> None:
+    """Rejects an invalid Gym selection before starting its environment servers."""
+    target = GymRunnerTarget(
+        agent="simple_agent",
+        agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+        resources_server="missing-e2e-resources-server",
+        num_repeats=1,
+        concurrency=1,
+        hydra_params={
+            "policy_base_url": "http://unused.invalid/v1",
+            "policy_api_key": "not-used",
+            "policy_model_name": "not-used",
+        },
+    )
+    payload = _post_evaluator_payload(
+        evaluator_sdk,
+        evaluator_workspace,
+        "agent-evaluate/jobs",
+        {"spec": {"tasks": _gym_task_payloads(1), "target": target.model_dump(mode="json")}},
+    )
+    job_name = _require_job_name(payload)
+    try:
+        job = wait_for_platform_job(evaluator_sdk, job_name, evaluator_workspace, timeout=240)
+        assert job.status.lower() == "error", f"job {job_name!r} ended {job.status!r}"
+
+        job_status = evaluator_sdk.jobs.get_status(workspace=evaluator_workspace, name=job_name)
+        assert job_status.steps[0].status == "error"
+    finally:
+        _cleanup_evaluator_job(evaluator_sdk, job_name)

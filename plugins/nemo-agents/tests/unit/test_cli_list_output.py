@@ -51,7 +51,7 @@ def _deployments_response() -> dict[str, Any]:
                 "endpoint": "http://localhost:8001",
                 "config": {"workflow": {"_type": "react_agent"}},
                 "port": 8001,
-                "pid": 12345,
+                "pid": 67890,
                 "created_at": "2026-05-12T20:01:00.123456",
             }
         ],
@@ -95,7 +95,7 @@ class TestDeploymentsListOutput:
         assert "http://loc" in result.output
         assert '"data"' not in result.output
         assert "react_agent" not in result.output
-        assert "12345" not in result.output
+        assert "67890" not in result.output
 
     @pytest.mark.parametrize("flag", ["--format", "-o", "--output-format", "-f"])
     def test_deployments_list_supports_json_output(self, app, flag: str) -> None:

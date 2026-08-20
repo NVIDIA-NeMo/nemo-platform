@@ -20,6 +20,7 @@ from nmp.intake.spans.domain import (
     SpanStatus,
 )
 from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
+from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import text_for_mode
@@ -51,8 +52,18 @@ class SpanFilter(BaseModel):
     session_id: str | None = Field(default=None, description="Filter by span session id.")
     trace_id: str | None = Field(default=None, description="Filter by canonical trace id.")
     project: str | None = Field(default=None, description="Filter by project name.")
-    evaluation_id: str | None = Field(default=None, description="Filter by evaluation id.")
-    test_case_id: str | None = Field(default=None, description="Filter by dataset test case id.")
+    evaluation_name: str | None = Field(default=None, description="Filter by Evaluation name.")
+    test_case_name: str | None = Field(default=None, description="Filter by test case name.")
+    evaluation_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for evaluation_name. Use evaluation_name instead.",
+    )
+    test_case_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for test_case_name. Use test_case_name instead.",
+    )
     source: str | None = Field(
         default=None, description="Filter by ingest source (e.g. 'otel', 'atif', 'chat_completions')."
     )
@@ -71,31 +82,19 @@ class SpanFilter(BaseModel):
     started_at: DatetimeFilter | None = Field(default=None, description="Filter by span start timestamp.")
 
 
-class SpanEvaluationContext(BaseModel):
+class SpanEvaluationContext(EvaluationContext):
     # Read model for span evaluation context, aligned with the ingest EvaluationContext.
     model_config = ConfigDict(extra="forbid")
-
-    evaluation_id: str | None = None
-    test_case_id: str | None = None
 
     @classmethod
     def from_semantic_attributes(cls, attributes: SpanSemanticAttributes) -> Self | None:
         context = cls(
-            evaluation_id=attributes.evaluation_id,
-            test_case_id=attributes.test_case_id,
+            evaluation_name=attributes.evaluation_name,
+            test_case_name=attributes.test_case_name,
         )
-        if not context.has_scalar_values():
+        if not context.has_values():
             return None
         return context
-
-    def has_scalar_values(self) -> bool:
-        return any(
-            value is not None
-            for value in (
-                self.evaluation_id,
-                self.test_case_id,
-            )
-        )
 
 
 class Span(BaseModel):

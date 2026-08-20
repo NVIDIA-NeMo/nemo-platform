@@ -12,7 +12,7 @@ from nmp.common.config import create_service_config_class, get_platform_config, 
 from pydantic import Field
 
 
-class UnslothConfig(create_service_config_class("unsloth")):  # type: ignore[misc]
+class UnslothConfig(create_service_config_class("unsloth")):  # ty: ignore[unsupported-base]
     """Environment variables use the ``NMP_UNSLOTH_`` prefix."""
 
     image_registry: str | None = Field(

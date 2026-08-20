@@ -19,8 +19,7 @@ from typing import Self
 
 import yaml
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.progress import JobsServiceProgressReporter
-from nmp.rl.app.constants import DEFAULT_TRAINING_RESULT_FILE_NAME, SERVICE_NAME
+from nmp.rl.app.constants import DEFAULT_TRAINING_RESULT_FILE_NAME
 from nmp.rl.app.jobs.training.schemas import (
     GPUInfo,
     TrainingMetrics,
@@ -28,6 +27,7 @@ from nmp.rl.app.jobs.training.schemas import (
     TrainingStepConfig,
 )
 from nmp.rl.app.jobs.training.schemas import TrainingBackend as TrainingBackendEnum
+from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 from .distributed import DistributedContext
 from .errors.converter import create_error_details
@@ -72,7 +72,7 @@ class TrainingRunner:
         self._job_ctx = NMPJobContext.from_env()
 
         self._config = self._load_config(self._job_ctx.config_path)
-        self._progress = JobsServiceProgressReporter(self._job_ctx, SERVICE_NAME)
+        self._progress = JobsServiceProgressReporter(self._job_ctx)
         self._dist_ctx = DistributedContext.from_env(self._get_barrier_dir())
         self._backend = backend or self._load_backend(self._config.backend)
         # workspace_path and output_path are absolute paths from the config

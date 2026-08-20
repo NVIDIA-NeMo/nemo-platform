@@ -9,18 +9,16 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  formatTimeInSeconds,
-  getDifferenceInMilliseconds,
-  utcToLocalDate,
-} from '@nemo/common/src/utils/date';
+import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { logger } from '@nemo/common/src/utils/logger';
 import {
   getEvaluatorGetEvaluateJobQueryKey,
   useEvaluatorCancelEvaluateJob,
 } from '@nemo/sdk/generated/evaluator/api';
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
 import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundations-react-core';
+import { evalDurationMs } from '@studio/api/evaluation/utils';
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getFilesetRoute } from '@studio/routes/utils';
@@ -64,19 +62,20 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
     }
   };
 
-  const differenceInMilliseconds = getDifferenceInMilliseconds(
-    evaluationJob?.created_at,
-    evaluationJob?.updated_at
-  );
-  const elapsedSeconds = differenceInMilliseconds
-    ? Math.floor(differenceInMilliseconds / 1000)
-    : undefined;
   const isTerminalStatus =
     evaluationJob?.status && PlatformJobTerminalStatuses.includes(evaluationJob.status);
   const canCancelJob = evaluationJob?.status && !isTerminalStatus;
   const liveSeconds = useLiveSeconds({
     startDate: !isTerminalStatus ? utcToLocalDate(evaluationJob?.created_at) : undefined,
   });
+
+  // A finished job has no end time of its own — `updated_at` is stamped at create and on rerun,
+  // never on a status change — so the run's length comes from the evaluation it published under.
+  const publishedEvaluation = evaluationJob?.spec.publication?.intake?.evaluation_id;
+  const { data: evaluation } = useGetEvaluation(workspace, publishedEvaluation ?? '', {
+    query: { enabled: !!workspace && !!publishedEvaluation && !!isTerminalStatus },
+  });
+  const durationMs = evalDurationMs(evaluation?.metadata);
 
   if (error || !evaluationJob) {
     return (
@@ -165,9 +164,9 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
               status ? (
                 <Flex align="center" gap="2">
                   <StatusBadge status={status} />
-                  {formatTimeInSeconds(
-                    PlatformJobTerminalStatuses.includes(status) ? elapsedSeconds : liveSeconds
-                  )}
+                  {PlatformJobTerminalStatuses.includes(status)
+                    ? durationMs !== undefined && formatDurationMs(durationMs)
+                    : formatTimeInSeconds(liveSeconds)}
                 </Flex>
               ) : (
                 <Text kind="body/semibold/sm">Detail not available</Text>

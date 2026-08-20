@@ -133,7 +133,7 @@ class EvaluationReadService:
         workspace: str,
         evaluation_name: str,
         status: str | None,
-        test_case_id: str | None,
+        test_case_name: str | None,
         page: int,
         page_size: int,
         mode: IntakeResponseMode,
@@ -153,7 +153,7 @@ class EvaluationReadService:
                 workspace=workspace,
                 evaluation_name=evaluation_name,
                 status=status_filter,
-                test_case_id=test_case_id,
+                test_case_name=test_case_name,
                 page=page,
                 page_size=page_size,
                 mode=mode,
@@ -190,7 +190,7 @@ class EvaluationReadService:
             return (
                 await self._rollups.get_rollups(
                     workspace=workspace,
-                    evaluation_ids=evaluation_names,
+                    evaluation_names=evaluation_names,
                 ),
                 True,
             )

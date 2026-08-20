@@ -34,6 +34,7 @@ class _JobCollection(NamedTuple):
 #   OptimizeJob        /jobs/optimize        -> agents.optimize
 #   OptimizeSkillsJob  /jobs/optimize-skills -> agents.optimize-skills
 #   AnalyzeBatchJob    /jobs/analyze         -> agents.analyze
+#   AgentInvocationJob /jobs/invoke          -> agents.invoke
 # Distinct service_name per job type so each list endpoint filters to rows of its own type only
 # (add_job_routes filters source=service_name); sharing the default would let /jobs/<x> pull in
 # sibling-type rows and 500 on the wrong schema.
@@ -41,11 +42,18 @@ def _job_collections() -> list[_JobCollection]:
     from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
     from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
     from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
+    from nemo_agents_plugin.jobs.invoke import AgentInvocationJob
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
     from nemo_optimization.jobs.optimize import OptimizeJob
 
     return [
         _JobCollection(EvaluateAgentJob, "evaluate", None, "Submit and track agent evaluation jobs"),
+        _JobCollection(
+            AgentInvocationJob,
+            "invoke",
+            "nemo-agents-plugin-invoke",
+            "Submit and track agent invocation jobs.",
+        ),
         _JobCollection(
             EvaluateSuiteJob,
             "suite",

@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
+import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
 import {
+  Flex,
   PageHeader,
   Stack,
   TabsContent,
   TabsList,
   TabsRoot,
   TabsTrigger,
+  Text,
 } from '@nvidia/foundations-react-core';
-import { CustomizationDetailsPanel } from '@studio/components/CustomizationDetailsPanel';
 import { CustomizationFilesetDetailsPanel } from '@studio/components/CustomizationFilesetDetailsPanel';
+import { CustomizationOverview } from '@studio/components/CustomizationOverview';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ModelChat } from '@studio/components/ModelChat';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -21,17 +26,25 @@ import { useModelChatAvailability } from '@studio/hooks/useModelChatAvailability
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { DetailActions } from '@studio/routes/CustomizationJobDetailsRoute/DetailActions';
+import { LogsTab } from '@studio/routes/CustomizationJobDetailsRoute/LogsTab';
 import { getCustomizationJobListRoute } from '@studio/routes/utils';
-import { getDatasetUri } from '@studio/util/customizations';
+import {
+  getBaseModel,
+  getDatasetUri,
+  getFinetuningType,
+  getFormattedTrainingType,
+} from '@studio/util/customizations';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { MessagesSquare } from 'lucide-react';
-import { FC } from 'react';
+import { Dot } from 'lucide-react';
+import { type FC, Fragment } from 'react';
 
 export const CustomizationJobDetailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { customizationJobName } = useRequiredPathParams([ROUTE_PARAMS.customizationJobName]);
 
-  const { job, backend } = useCustomizationJob(workspace, customizationJobName);
+  const { job, backend } = useCustomizationJob(workspace, customizationJobName, {
+    refetchInterval: (query) => getJobRefetchInterval(query.state.data?.status),
+  });
 
   useBreadcrumbs({
     items: [
@@ -57,11 +70,37 @@ export const CustomizationJobDetailsRoute: FC = () => {
   const { modelChatStatus, isLoading: isChatStatusLoading } =
     useModelChatAvailability(outputModelEntity);
 
+  const metadata = [
+    getFormattedTrainingType(getFinetuningType(job)),
+    getBaseModel(job),
+    job?.created_at ? `created ${formatAbsoluteTimestamp(job.created_at)}` : '',
+  ].filter(Boolean);
+
   return (
     <AccessibleTitle title={`Customization details for ${customizationJobName}`}>
-      <Stack className="w-full p-density-2xl min-h-full" gap="density-xl">
+      <Stack className="h-full min-h-0 w-full p-density-2xl" gap="density-xl">
         <PageHeader
-          slotHeading="Customization Job"
+          className="shrink-0 p-0"
+          slotHeading={
+            <Stack gap="1">
+              <Flex align="baseline" gap="3">
+                <Text kind="title/md">{job?.name ?? customizationJobName}</Text>
+                {status && <StatusBadge status={status} />}
+              </Flex>
+              {metadata.length > 0 && (
+                <Flex align="center" gap="1">
+                  {metadata.map((segment, index) => (
+                    <Fragment key={segment}>
+                      {index > 0 && <Dot className="size-2" aria-hidden />}
+                      <Text kind="body/regular/sm" className="text-secondary">
+                        {segment}
+                      </Text>
+                    </Fragment>
+                  ))}
+                </Flex>
+              )}
+            </Stack>
+          }
           slotActions={
             <DetailActions
               model={output_model}
@@ -72,20 +111,21 @@ export const CustomizationJobDetailsRoute: FC = () => {
             />
           }
         />
-        <TabsRoot className="flex-1" defaultValue="overview">
-          <TabsList>
+        <TabsRoot className="flex min-h-0 flex-1 flex-col" defaultValue="overview">
+          <TabsList className="shrink-0">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
             {output_model && status === 'completed' && (
-              <TabsTrigger value="chat">
-                <MessagesSquare />
-                Chat with your Model
-              </TabsTrigger>
+              <TabsTrigger value="chat">Chat with your Model</TabsTrigger>
             )}
           </TabsList>
 
-          <TabsContent value="overview" className="p-0">
+          <TabsContent
+            value="overview"
+            className="min-h-0 flex-1 overflow-y-auto p-0 pr-density-md"
+          >
             <Stack className="w-full" gap="density-xl">
-              <CustomizationDetailsPanel
+              <CustomizationOverview
                 customizationJobName={customizationJobName}
                 workspace={workspace}
               />
@@ -93,17 +133,26 @@ export const CustomizationJobDetailsRoute: FC = () => {
             </Stack>
           </TabsContent>
 
+          <TabsContent value="logs" className="flex min-h-0 flex-1 p-0">
+            <LogsTab
+              customizationJobName={customizationJobName}
+              workspace={workspace}
+              jobStatus={status}
+            />
+          </TabsContent>
+
           {showChat && output_model && (
-            <TabsContent value="chat" className="flex flex-1 justify-center p-0">
+            <TabsContent value="chat" className="flex min-h-0 flex-1 items-center p-0">
               {isChatStatusLoading ? (
                 <Loading />
               ) : (
-                <ModelChat
-                  model={output_model}
-                  workspace={workspace}
-                  className="max-w-[768px]"
-                  modelChatStatus={modelChatStatus}
-                />
+                <Stack className="h-full w-full max-w-[768px]">
+                  <ModelChat
+                    model={output_model}
+                    workspace={workspace}
+                    modelChatStatus={modelChatStatus}
+                  />
+                </Stack>
               )}
             </TabsContent>
           )}

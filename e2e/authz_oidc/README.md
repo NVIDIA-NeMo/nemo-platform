@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Authz E2E verification harness (real OIDC, signed JWTs)
 
 Black-box verification that plugin HTTP authorization restricts access as

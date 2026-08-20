@@ -18,6 +18,7 @@
 -e ./packages/nemo_evaluator_sdk ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   nemo-evaluator-plugin
+    #   nemo-experimentalist-plugin
     #   nemo-optimization-plugin
 -e ./packages/nemo_platform ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
@@ -1778,7 +1779,9 @@ nltk==3.10.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     --hash=sha256:2c7ccacb765c5e26b0cb60fb1b57080af522c6924d12a714a243305ba3637412 \
     --hash=sha256:fcfd80fb77931868cea8357573c79838b8abc609942ef9914d1c9f6070d4645c
     # via rouge-score
-nooa @ git+https://github.com/NVIDIA-NeMo/labs-OO-Agents.git@6e0274dd03f883254a084cfb9f871ea580e03434 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nooa==0.0.9 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:60b64663f34a47aec206137035d62e816c1147484bb74a8a4700a47d1a10b60c \
+    --hash=sha256:c7a90ffb5b54094180efcb845e74a00c4182766745245f4258e613f9c12cb522
     # via
     #   nemo-eval-author-plugin
     #   nemo-experimentalist-plugin
@@ -1946,6 +1949,7 @@ opentelemetry-api==1.43.0 ; (platform_machine == 'arm64' and sys_platform == 'da
     #   opentelemetry-processor-baggage
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+    #   wandb
 opentelemetry-distro==0.64b0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:8a19716899854245b4028650ec1cca12d89f9be41571bbffe9e539cd55d2fd96 \
     --hash=sha256:ce97b6cedfcf03dc54035c422485412eda63250e094f4bd63ef57d017d823f3c
@@ -2681,6 +2685,7 @@ pyyaml==6.0.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-anonymizer-plugin
     #   nemo-auditor-plugin
     #   nemo-deployments-plugin
+    #   nemo-eval-author-plugin
     #   nemo-experimentalist-plugin
     #   nemo-insights-plugin
     #   nemo-optimization-plugin

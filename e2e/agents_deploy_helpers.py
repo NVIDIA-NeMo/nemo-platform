@@ -74,7 +74,7 @@ def _mock_backed_nat_agent_config(model_name: str) -> dict[str, Any]:
     }
 
 
-def _mock_backed_fabric_agent_config(agent_name: str, model_name: str) -> dict[str, Any]:
+def mock_backed_fabric_agent_config(agent_name: str, model_name: str) -> dict[str, Any]:
     """A deterministic DeepAgents-backed Fabric agent pointed at the mock model."""
     return {
         "config_format": NEMO_AGENTS_SPEC_CONFIG_FORMAT,
@@ -103,7 +103,7 @@ def _mock_backed_agent_config(config_format: str, *, agent_name: str, model_name
     if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
         return _mock_backed_nat_agent_config(model_name)
     if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-        return _mock_backed_fabric_agent_config(agent_name, model_name)
+        return mock_backed_fabric_agent_config(agent_name, model_name)
     raise ValueError(f"Unsupported agent config format: {config_format!r}")
 
 

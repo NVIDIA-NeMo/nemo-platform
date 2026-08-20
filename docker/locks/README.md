@@ -51,3 +51,44 @@ uv sync --project docker/locks/mamba-wheel-build-py311 --locked --no-install-pro
 uv sync --project docker/locks/mamba-wheel-build-py312 --locked --no-install-project --dry-run --python-platform x86_64-unknown-linux-gnu
 uv sync --project docker/locks/mamba-wheel-build-py312 --locked --no-install-project --dry-run --python-platform aarch64-unknown-linux-gnu
 ```
+
+## Gym task image lockfile
+
+`docker/Dockerfile.nmp-gym-tasks` uses `nmp-gym-tasks` for the isolated Gym
+environment. The lock is separate from the workspace because Gym and Ray are
+image-specific dependencies that are intentionally excluded from the shared CPU
+task environment.
+
+After changing `docker/locks/nmp-gym-tasks/pyproject.toml`, regenerate
+its lock with Python 3.13.14 or newer:
+
+```bash
+uv lock --project docker/locks/nmp-gym-tasks --python 3.13.14
+```
+
+Verify both image architectures:
+
+```bash
+uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.14 --python-platform x86_64-unknown-linux-gnu
+uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.14 --python-platform aarch64-unknown-linux-gnu
+```
+
+### Upgrading Gym task dependencies
+
+Dependency upgrades are deliberate maintenance changes; the image build never
+relocks dynamically:
+
+1. Update the direct pins in `docker/locks/nmp-gym-tasks/pyproject.toml`.
+2. Regenerate `uv.lock` with the command above.
+3. Review the lock diff, especially the resolved `ray` version and packages
+   containing native code.
+4. Run both architecture checks above.
+5. Build `nmp-gym-tasks-smoke-test`, which verifies the Gym CLI and imports the
+   installed `nemo_gym`, `ray`, and `tiktoken` packages:
+
+   ```bash
+   docker buildx bake nmp-gym-tasks-smoke-test
+   ```
+
+6. Run the Evaluator agent-evaluation compiler tests, which verify that Gym
+   targets route to this image.

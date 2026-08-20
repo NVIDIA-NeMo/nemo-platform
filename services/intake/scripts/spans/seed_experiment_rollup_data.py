@@ -175,8 +175,8 @@ def _atif_body(
         "schema_version": "ATIF-v1.7",
         "session_id": session_id,
         "evaluation_context": {
-            "evaluation_id": evaluation_id,
-            "test_case_id": test_case_id,
+            "evaluation_name": evaluation_id,
+            "test_case_name": test_case_id,
         },
         "extra": {
             "task_id": test_case_id,

@@ -9,8 +9,9 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
+import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { evaluatorCancelAgentEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
@@ -35,6 +36,7 @@ import {
   joinBundleByTask,
   parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
+import { evalDurationMs } from '@studio/api/evaluation/utils';
 import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
 import { EvalAggregateScoresTable } from '@studio/components/evaluation/EvalAggregateScoresTable';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
@@ -42,14 +44,14 @@ import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
-  getAgentEvaluationsListRoute,
+  getAgentEvaluationsTabRoute,
   getAgentsListRoute,
   getFilesetRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleX, ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 
 const TERMINAL_STATUSES = new Set([
@@ -71,14 +73,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  useBreadcrumbs({
-    items: [
-      { slotLabel: 'Agents', href: getAgentsListRoute(workspace) },
-      { slotLabel: 'Evaluations', href: getAgentEvaluationsListRoute(workspace) },
-      { slotLabel: jobName },
-    ],
-  });
-
   // Job + status — refetched while the job is non-terminal so the badge stays
   // live without forcing a page reload.
   const { data: job, isLoading: isLoadingJob } = useQuery({
@@ -88,6 +82,22 @@ export const AgentEvaluationDetailRoute: FC = () => {
     refetchInterval: (query) => (isTerminal(query.state.data?.status) ? false : 5_000),
   });
 
+  // The "Evaluations" crumb links the agent's eval tab, but the agent name only arrives with
+  // the loaded job — so set breadcrumbs from an effect keyed on it (the useBreadcrumbs `items`
+  // param runs once on mount and would keep the crumb non-clickable after the job resolves).
+  const agentName = job ? agentNameForJob(job) : null;
+  const { setBreadcrumbs } = useBreadcrumbs();
+  useEffect(() => {
+    setBreadcrumbs([
+      { slotLabel: 'Agents', href: getAgentsListRoute(workspace) },
+      agentName
+        ? { slotLabel: 'Evaluations', href: getAgentEvaluationsTabRoute(workspace, agentName) }
+        : { slotLabel: 'Evaluations' },
+      { slotLabel: jobName },
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [setBreadcrumbs, workspace, agentName, jobName]);
+
   const isJobTerminal = isTerminal(job?.status);
   const canCancelJob = !!job?.status && !isJobTerminal;
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -95,6 +105,15 @@ export const AgentEvaluationDetailRoute: FC = () => {
   const liveSeconds = useLiveSeconds({
     startDate: !isJobTerminal ? utcToLocalDate(job?.created_at) : undefined,
   });
+
+  // How long the run took, once it finished. The job row itself cannot answer this — it is written
+  // at create and on rerun, never on a status change — so the duration comes from the evaluation the
+  // run published under. Fetched by name, so it lands as soon as the publish does.
+  const publishedEvaluation = job?.spec.publication?.intake?.evaluation_id;
+  const { data: evaluation } = useGetEvaluation(workspace, publishedEvaluation ?? '', {
+    query: { enabled: !!workspace && !!publishedEvaluation && isJobTerminal },
+  });
+  const durationMs = evalDurationMs(evaluation?.metadata);
 
   const handleCancelJob = async () => {
     if (!jobName) return;
@@ -210,6 +229,9 @@ export const AgentEvaluationDetailRoute: FC = () => {
                     {!isJobTerminal && liveSeconds !== undefined && (
                       <Text kind="body/regular/sm">{formatTimeInSeconds(liveSeconds)}</Text>
                     )}
+                    {isJobTerminal && durationMs !== undefined && (
+                      <Text kind="body/regular/sm">{formatDurationMs(durationMs)}</Text>
+                    )}
                   </Flex>
                 }
                 loading={isLoadingJob}
@@ -236,11 +258,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
               <KVPair
                 label="Created"
                 value={job.created_at ? <RelativeTime datetime={job.created_at} /> : ''}
-                loading={isLoadingJob}
-              />
-              <KVPair
-                label="Updated"
-                value={job.updated_at ? <RelativeTime datetime={job.updated_at} /> : ''}
                 loading={isLoadingJob}
               />
               {artifactsFileset && (

@@ -81,7 +81,7 @@ class SessionsResource(SyncAPIResource):
         List Evaluation Sessions
 
         Args:
-          filter: Filter sessions by test_case_id and status.
+          filter: Filter sessions by test_case_name and status.
 
           mode: Response mode. summary omits root-span input and output; preview includes both
               truncated to 300 characters; detailed returns full root-span payloads.
@@ -92,7 +92,7 @@ class SessionsResource(SyncAPIResource):
 
           sort: Comma-separated list of fields to sort by, applied in order (the first field
               dominates); prefix a field with '-' for descending — e.g.
-              '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,
+              '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at, ended_at,
               latency_ms, status, cost_total_usd, tokens. When omitted, sessions are ordered
               by started_at ascending.
 
@@ -176,7 +176,7 @@ class AsyncSessionsResource(AsyncAPIResource):
         List Evaluation Sessions
 
         Args:
-          filter: Filter sessions by test_case_id and status.
+          filter: Filter sessions by test_case_name and status.
 
           mode: Response mode. summary omits root-span input and output; preview includes both
               truncated to 300 characters; detailed returns full root-span payloads.
@@ -187,7 +187,7 @@ class AsyncSessionsResource(AsyncAPIResource):
 
           sort: Comma-separated list of fields to sort by, applied in order (the first field
               dominates); prefix a field with '-' for descending — e.g.
-              '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,
+              '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at, ended_at,
               latency_ms, status, cost_total_usd, tokens. When omitted, sessions are ordered
               by started_at ascending.
 

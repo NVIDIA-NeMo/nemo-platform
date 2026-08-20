@@ -186,7 +186,7 @@ async def publish_to_intake(
             body = mapping.trial_to_atif_ingest(
                 trial,
                 run_id=result.run_id,
-                experiment_id=experiment_id,
+                evaluation_name=experiment_id,
                 agent_name=agent_name,
                 started_at=started_at,
                 agent_version=agent_version,

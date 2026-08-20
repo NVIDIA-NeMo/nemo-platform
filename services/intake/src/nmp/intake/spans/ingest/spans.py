@@ -134,9 +134,9 @@ async def ingest_spans(
     spans = [item for item, _ in converted]
     await service.ingest_batch(TraceBatch(spans=spans))
     if denormalizer is not None:
-        evaluation_names = {semantic.evaluation_id for _, semantic in converted if semantic.evaluation_id}
+        evaluation_names = {semantic.evaluation_name for _, semantic in converted if semantic.evaluation_name}
         for evaluation_name in evaluation_names:
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_name)
+            denormalizer.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)
     return Response(status_code=status.HTTP_201_CREATED)
 
 
@@ -167,8 +167,18 @@ def direct_span_to_domain(
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
-        input="" if span.input is None else json_dumps_preserve(span.input),
-        output="" if span.output is None else json_dumps_preserve(span.output),
+        input=""
+        if span.input is None
+        else span.input
+        if isinstance(span.input, str)
+        else json_dumps_preserve(span.input),
+        output=(
+            ""
+            if span.output is None
+            else span.output
+            if isinstance(span.output, str)
+            else json_dumps_preserve(span.output)
+        ),
         event_ts=ingested_at,
     )
     return intake_span, semantic_attributes

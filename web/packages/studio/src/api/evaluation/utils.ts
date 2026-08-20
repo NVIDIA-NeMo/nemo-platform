@@ -74,6 +74,20 @@ export const EVAL_JOB_KIND_LABEL: Record<EvalJobKind, string> = {
   dataset: 'Dataset-Driven',
 };
 
+/** Metadata key the evaluator stamps the run's wall-clock seconds under, at publish time. */
+export const EVAL_DURATION_METADATA_KEY = 'eval_duration_sec';
+
+/** How long the published run took, in milliseconds, or undefined when it was never recorded.
+ *  Metadata values are strings server-side, so a non-numeric one reads the same as an absent one. */
+export const evalDurationMs = (metadata?: Record<string, string> | null): number | undefined => {
+  const raw = metadata?.[EVAL_DURATION_METADATA_KEY];
+  // Metadata is free-form and hand-editable, so treat anything that is not a non-negative number as
+  // absent. `Number('')` is 0, which would otherwise render as a confident "0ms".
+  if (raw == null || raw.trim() === '') return undefined;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : undefined;
+};
+
 export const publishedEvaluationName = (job: PlatformJobResponse): string | null => {
   const intake = asRecord(asRecord(specOf(job).publication)?.intake);
   return asNonEmptyString(intake?.evaluation_id) ?? null;

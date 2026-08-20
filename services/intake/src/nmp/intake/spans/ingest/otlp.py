@@ -118,7 +118,7 @@ async def ingest_otlp_traces(
     # nemo.evaluation.name attribute), so refresh the denormalized name facets for every one it touched.
     if denormalizer is not None:
         for evaluation_name in evaluation_names:
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_name)
+            denormalizer.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)
     return IngestResponse(errors=errors)
 
 

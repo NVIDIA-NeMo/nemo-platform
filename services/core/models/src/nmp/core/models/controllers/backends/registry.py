@@ -31,8 +31,8 @@ _LAZY_BACKEND_NAMES = frozenset({"deployments_plugin"})
 
 _DEPLOYMENTS_PLUGIN_IMPORT_ERROR = (
     "The deployments_plugin models backend requires the nemo-deployments-plugin "
-    "package. Install it (or include the deployments plugin in your platform "
-    "profile) before setting models.controller.backends.deployments_plugin.enabled."
+    'package. Install the complete platform distribution with `pip install "nemo-platform[all]"` '
+    "before setting models.controller.backends.deployments_plugin.enabled."
 )
 
 

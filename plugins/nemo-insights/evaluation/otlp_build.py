@@ -96,8 +96,8 @@ def sim_to_spans(
     withholds them so the eval is unaided).
 
     ``evaluation_name`` is stamped on every span as ``nemo.evaluation.name`` (with
-    the sim's task id as ``nemo.test_case.id``) so a run's spans are queryable
-    back via the spans filter ``{"evaluation_id": evaluation_name}`` — the per-run
+    the sim's task name as ``nemo.test_case.name``) so a run's spans are queryable
+    back via the spans filter ``{"evaluation_name": evaluation_name}`` — the per-run
     scope that lets many runs share one workspace.
 
     ``base_ns`` seeds the per-span monotonic clock; it must be near ingest time
@@ -114,7 +114,7 @@ def sim_to_spans(
             "gen_ai.conversation.id": session_id,
             "session.id": session_id,
             "nemo.evaluation.name": evaluation_name,
-            "nemo.test_case.id": test_case_id,
+            "nemo.test_case.name": test_case_id,
         }
 
     def _add(*, name: str, kind: str, parent: str | None, attributes: dict[str, Any]) -> dict[str, Any]:

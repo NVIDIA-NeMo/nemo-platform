@@ -128,8 +128,8 @@ const EVALUATION_CONTEXT_DESCRIPTORS: readonly {
   readonly key: keyof EvaluationContext | string;
   readonly label: string;
 }[] = [
-  { key: 'evaluation_id', label: 'Evaluation ID' },
-  { key: 'test_case_id', label: 'Test Case ID' },
+  { key: 'evaluation_name', label: 'Evaluation Name' },
+  { key: 'test_case_name', label: 'Test Case Name' },
 ];
 
 const collectDescriptorEntries = (

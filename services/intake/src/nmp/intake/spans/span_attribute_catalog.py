@@ -36,8 +36,8 @@ class SpanAttributeField(StrEnum):
     AGENT_VERSION = "agent_version"
     TOOL_NAME = "tool_name"
     PROJECT = "project"
-    EVALUATION_NAME = "evaluation_id"
-    TEST_CASE_ID = "test_case_id"
+    EVALUATION_NAME = "evaluation_name"
+    TEST_CASE_NAME = "test_case_name"
     ERROR_TYPE = "error_type"
     ERROR_MESSAGE = "error_message"
     INPUT_TOKENS = "input_tokens"
@@ -60,6 +60,7 @@ class AttributeSpec:
     bag: AttributeBag
     bag_key: str
     source_keys: tuple[str, ...]
+    bag_aliases: tuple[str, ...] = ()
     scale: int | None = None
 
 
@@ -156,12 +157,14 @@ ATTRIBUTE_SPECS = (
         # their evaluation association.
         bag_key="nemo.evaluation.name",
         source_keys=("nemo.evaluation.name", "nemo.experiment.id"),
+        bag_aliases=("nemo.experiment.id",),
     ),
     AttributeSpec(
-        field=SpanAttributeField.TEST_CASE_ID,
+        field=SpanAttributeField.TEST_CASE_NAME,
         bag=AttributeBag.STRING,
-        bag_key="nemo.test_case.id",
-        source_keys=("nemo.test_case.id",),
+        bag_key="nemo.test_case.name",
+        source_keys=("nemo.test_case.name", "nemo.test_case.id"),
+        bag_aliases=("nemo.test_case.id",),
     ),
     AttributeSpec(
         field=SpanAttributeField.ERROR_TYPE,
@@ -265,7 +268,7 @@ ATTRIBUTE_SPECS = (
 
 SPECS_BY_FIELD = {spec.field: spec for spec in ATTRIBUTE_SPECS}
 SPECS_BY_FIELD_VALUE = {spec.field.value: spec for spec in ATTRIBUTE_SPECS}
-SPECS_BY_BAG_KEY = {spec.bag_key: spec for spec in ATTRIBUTE_SPECS}
+SPECS_BY_BAG_KEY = {key: spec for spec in ATTRIBUTE_SPECS for key in (spec.bag_key, *spec.bag_aliases)}
 KNOWN_BAG_KEYS = frozenset(SPECS_BY_BAG_KEY)
 QUERYABLE_FIELDS = frozenset(SPECS_BY_FIELD_VALUE)
 
@@ -313,6 +316,12 @@ def spec_for_field(field: SpanAttributeField | str) -> AttributeSpec:
         return SPECS_BY_FIELD[SpanAttributeField(field)]
     except ValueError as exc:
         raise ValueError(f"Unsupported span attribute field: {field}") from exc
+
+
+def bag_keys(spec: AttributeSpec) -> tuple[str, ...]:
+    """Return the canonical storage key followed by historical storage aliases."""
+
+    return (spec.bag_key, *spec.bag_aliases)
 
 
 def to_bag(typed_value: Any, spec: AttributeSpec) -> str | int | float | bool | None:
@@ -365,18 +374,23 @@ def where_clause(
         raise ValueError(f"Span attribute filter {field!r} only supports equality comparisons")
 
     param_root = param_prefix or field
-    key_param = f"{param_root}_key"
     value_param = f"{param_root}_value"
     parsed_value = _parse_filter_value(value) if spec.bag == AttributeBag.NUMBER else value
     bag_value = to_bag(parsed_value, spec)
     if bag_value is None:
         raise ValueError(f"Span attribute filter {field!r} does not support null values")
 
-    sql = (
-        f"has(mapKeys({spec.bag.value}), %({key_param})s) "
-        f"AND {spec.bag.value}[%({key_param})s] {sql_operator} %({value_param})s"
-    )
-    return sql, {key_param: spec.bag_key, value_param: bag_value}
+    conditions: list[str] = []
+    params = {value_param: bag_value}
+    for index, key in enumerate(bag_keys(spec)):
+        key_param = f"{param_root}_key" if index == 0 else f"{param_root}_key_alias_{index}"
+        params[key_param] = key
+        conditions.append(
+            f"has(mapKeys({spec.bag.value}), %({key_param})s) "
+            f"AND {spec.bag.value}[%({key_param})s] {sql_operator} %({value_param})s"
+        )
+    sql = conditions[0] if len(conditions) == 1 else "(" + ") OR (".join(conditions) + ")"
+    return sql, params
 
 
 def to_semantic_value(value: Any, spec: AttributeSpec) -> str | int | float | bool | Decimal | None:

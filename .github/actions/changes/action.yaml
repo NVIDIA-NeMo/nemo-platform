@@ -145,6 +145,7 @@ runs:
           k8s-smoke:
             - 'e2e/k8s/scripts/**'
             - 'e2e/k8s/values/**'
+            - 'e2e/test_evaluator_plugin.py'
             - 'e2e/test_jobs.py'
             - '.github/actions/free-disk-space/action.yaml'
           guardrails-benchmark:

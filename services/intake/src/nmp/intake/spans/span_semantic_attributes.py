@@ -30,8 +30,8 @@ class SpanSemanticAttributes(BaseModel):
     agent_version: str | None = None
     tool_name: str | None = None
     project: str | None = None
-    evaluation_id: str | None = None
-    test_case_id: str | None = None
+    evaluation_name: str | None = None
+    test_case_name: str | None = None
     error_type: str | None = None
     error_message: str | None = None
     input_tokens: int | None = Field(default=None, ge=0)

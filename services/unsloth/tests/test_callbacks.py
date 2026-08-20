@@ -15,7 +15,7 @@ class TestTrainingProgressCallback:
             "train_loss": [],
             "val_loss": [],
         }
-        callback = TrainingProgressCallback(mock_reporter)
+        callback = TrainingProgressCallback(mock_reporter, min_report_interval_seconds=0)
         return callback, mock_reporter
 
     def _last_report_kwargs(self, mock_reporter: MagicMock) -> dict:
@@ -24,9 +24,9 @@ class TestTrainingProgressCallback:
     def test_train_step_accumulates_metrics(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
-        callback.report_train_step(step=2, epoch=1, loss=2.89)
-        callback.report_train_step(step=3, epoch=1, loss=2.56)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 2.89})
+        callback.report_train_step(step=3, epoch=1, metrics={"loss": 2.56})
 
         kwargs = self._last_report_kwargs(reporter)
         assert kwargs["metrics"]["train_loss"] == [
@@ -38,7 +38,7 @@ class TestTrainingProgressCallback:
     def test_train_step_uses_train_loss_flat_field(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
 
         kwargs = self._last_report_kwargs(reporter)
         assert kwargs["train_loss"] == 3.21
@@ -48,11 +48,11 @@ class TestTrainingProgressCallback:
     def test_train_step_passes_optional_fields(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21, lr=0.0002, grad_norm=1.5)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21, "lr": 0.0002, "grad_norm": 1.5})
 
         kwargs = self._last_report_kwargs(reporter)
-        assert kwargs["lr"] == 0.0002
-        assert kwargs["grad_norm"] == 1.5
+        assert kwargs["train_lr"] == 0.0002
+        assert kwargs["train_grad_norm"] == 1.5
 
     def test_report_training_start_delegates(self):
         callback, reporter = self._make_callback()
@@ -60,9 +60,10 @@ class TestTrainingProgressCallback:
         callback.report_training_start(max_steps=500, num_epochs=2)
 
         reporter.configure_progress_tracking.assert_called_once_with(500, 2)
+        # No `step`: it fires before the first one, and a literal 0 would write
+        # 0% over whatever progress the task had stored.
         reporter.report_running.assert_called_once_with(
             phase="training",
-            step=0,
             max_steps=500,
             num_epochs=2,
             backend="unsloth",

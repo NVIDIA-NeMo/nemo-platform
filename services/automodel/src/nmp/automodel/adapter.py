@@ -16,6 +16,7 @@ from nmp.automodel.api.v2.jobs.schemas import (
     ParallelismParams,
     SFTTraining,
 )
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from pydantic import BaseModel
 
 
@@ -64,6 +65,10 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "epochs": schedule.get("epochs", 1),
         "max_steps": schedule.get("max_steps"),
         "val_check_interval": schedule.get("val_check_interval"),
+        # Absent from a spec compiled before this knob existed, and `or` rather
+        # than a `.get` default because model_dump renders an unset nested model
+        # as None on some paths; either way the field's own default applies.
+        "progress_reporting": schedule.get("progress_reporting") or ProgressReportingConfig(),
         "batch_size": batch.get("global_batch_size", 8),
         "micro_batch_size": batch.get("micro_batch_size", 1),
         "sequence_packing": batch.get("sequence_packing", False),
