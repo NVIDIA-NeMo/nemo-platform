@@ -122,6 +122,13 @@ See the upstream
 and
 [OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
 
+## NetworkPolicies
+
+The chart can render NetworkPolicy resources for the Platform API, core
+controller, and managed job pods. A top-level switch enables all default
+policies, and each subpolicy can be disabled independently for cluster-specific
+exceptions.
+
 {{ define "nemo.valueDescriptionColumnRenderMd" -}}
 {{- if .Description -}}
 {{- .Description | replace "\n" " " | replace "|" "\\|" -}}
