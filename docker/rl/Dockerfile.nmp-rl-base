@@ -32,9 +32,10 @@ ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
 # CVE bumps: uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on
-# 0.11.x); Python 3.13.14 clears 5 CVEs. Both are scanned at their installed path - see README.md.
+# 0.11.x); Python 3.13.15 clears scanner-visible Python 3.13.14 CVEs. Both are scanned at their
+# installed path - see README.md.
 ARG UV_VERSION=0.11.33
-ARG PYTHON_VERSION=3.13.14
+ARG PYTHON_VERSION=3.13.15
 ARG CMAKE_VERSION=4.0.3
 
 # ---- RL source (+ its submodules, incl. Gym) via BuildKit's git ADD ----
