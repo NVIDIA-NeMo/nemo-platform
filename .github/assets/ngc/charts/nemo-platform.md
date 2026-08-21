@@ -25,6 +25,10 @@ Kubernetes 1.33+.
 GPU workloads need NVIDIA GPU nodes and the GPU Operator or device plugin.
 See the [support matrix](https://docs.nvidia.com/nemo-platform/documentation/reference/support-matrix).
 
+### Resources
+
+[Documentation](https://docs.nvidia.com/nemo-platform)
+
 ### License
 
 This chart is licensed under the [Apache License 2.0](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE).
