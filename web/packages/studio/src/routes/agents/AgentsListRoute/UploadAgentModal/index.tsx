@@ -23,6 +23,7 @@ import {
   uploadAgentFormSchema,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
 import type {
+  PickedFile,
   UploadAgentEntry,
   UploadAgentFormData,
   UploadAgentModalProps,
@@ -32,13 +33,23 @@ import {
   collectAgentEntries,
   findNonUtf8Path,
   parseAgentConfig,
+  pickedFromDataTransfer,
+  pickedFromFileList,
   tooManyPickedFiles,
   totalEntryBytes,
   validateAgentEntries,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { type ChangeEventHandler, type FC, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  type ChangeEventHandler,
+  type DragEventHandler,
+  type FC,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
@@ -109,26 +120,9 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     onClose();
   };
 
-  const onDirectoryPicked: ChangeEventHandler<HTMLInputElement> = async (event) => {
-    // Read the count off the FileList before materialising it: an accidental pick can
-    // carry hundreds of thousands of files, and Array.from on that is itself the stall.
-    const fileList = event.target.files;
-    const pickedCount = fileList?.length ?? 0;
-    if (pickedCount === 0) return;
-
-    const oversized = tooManyPickedFiles(pickedCount);
-    if (oversized) {
-      event.target.value = '';
-      setEntries([]);
-      setDirectoryName('');
-      setSelectionError(oversized);
-      return;
-    }
-
-    const picked = Array.from(fileList ?? []);
-    event.target.value = '';
-    setDirectoryName(picked[0]?.webkitRelativePath.split('/')[0] ?? '');
-
+  // Both entry points land here so a drop is validated exactly like a pick.
+  const acceptPicked = async (picked: PickedFile[]) => {
+    setDirectoryName(picked[0]?.relativePath.split('/')[0] ?? '');
     const collected = collectAgentEntries(picked);
 
     const problem = validateAgentEntries(collected);
@@ -161,6 +155,48 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
 
     setEntries(collected);
     setSelectionError(undefined);
+  };
+
+  const rejectOversized = (count: number): boolean => {
+    const oversized = tooManyPickedFiles(count);
+    if (!oversized) return false;
+    setEntries([]);
+    setDirectoryName('');
+    setSelectionError(oversized);
+    return true;
+  };
+
+  const onDirectoryPicked: ChangeEventHandler<HTMLInputElement> = async (event) => {
+    const fileList = event.target.files;
+    const pickedCount = fileList?.length ?? 0;
+    if (pickedCount === 0) return;
+
+    if (rejectOversized(pickedCount)) {
+      event.target.value = '';
+      return;
+    }
+
+    const picked = pickedFromFileList(Array.from(fileList ?? []));
+    event.target.value = '';
+    await acceptPicked(picked);
+  };
+
+  const onDirectoryDropped: DragEventHandler<HTMLLabelElement> = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isPending) return;
+
+    const items = Array.from(event.dataTransfer.items);
+    if (items.length === 0) return;
+
+    const picked = await pickedFromDataTransfer(items);
+    if (picked.length === 0) {
+      setSelectionError('That drop contained no readable files.');
+      return;
+    }
+    if (rejectOversized(picked.length)) return;
+
+    await acceptPicked(picked);
   };
 
   const onSubmit: SubmitHandler<UploadAgentFormData> = async (formData) => {
@@ -197,6 +233,8 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
         <UploadRoot multiple disabled={isPending}>
           <UploadTrigger
             className="w-full"
+            data-testid="agent-directory-dropzone"
+            onDrop={onDirectoryDropped}
             slotAnchor={directoryName ? 'Choose a different directory' : 'Choose a directory'}
             slotHeaderText=" containing agent.yaml."
           >

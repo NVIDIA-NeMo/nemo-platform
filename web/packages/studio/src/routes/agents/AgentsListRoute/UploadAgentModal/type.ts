@@ -7,6 +7,12 @@ import type { z } from 'zod';
 
 export type UploadAgentFormData = z.infer<typeof uploadAgentFormSchema>;
 
+/** A file plus the path it was picked or dropped under, still including the root directory. */
+export interface PickedFile {
+  file: File;
+  relativePath: string;
+}
+
 /** A picked file paired with its path inside the agent spec fileset. */
 export interface UploadAgentEntry {
   path: string;

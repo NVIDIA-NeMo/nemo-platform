@@ -5,7 +5,10 @@ import {
   MAX_AGENT_SPEC_FILES,
   MAX_PICKED_FILES,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
-import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+import type {
+  PickedFile,
+  UploadAgentEntry,
+} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
 import {
   AgentConfigParseError,
   agentNameFromConfig,
@@ -14,15 +17,15 @@ import {
   findNonUtf8Path,
   isIgnoredPath,
   parseAgentConfig,
+  pickedFromDataTransfer,
   tooManyPickedFiles,
   validateAgentEntries,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
 
-const makeFile = (relativePath: string, contents = 'x'): File => {
-  const file = new File([contents], relativePath.split('/').pop() ?? relativePath);
-  Object.defineProperty(file, 'webkitRelativePath', { value: relativePath });
-  return file;
-};
+const makeFile = (relativePath: string, contents = 'x'): PickedFile => ({
+  file: new File([contents], relativePath.split('/').pop() ?? relativePath),
+  relativePath,
+});
 
 const entry = (path: string, size = 1): UploadAgentEntry => ({
   path,
@@ -52,7 +55,9 @@ describe('collectAgentEntries', () => {
   });
 
   it('falls back to the file name when the picker reports no relative path', () => {
-    const entries = collectAgentEntries([new File(['x'], 'agent.yaml')]);
+    const entries = collectAgentEntries([
+      { file: new File(['x'], 'agent.yaml'), relativePath: 'agent.yaml' },
+    ]);
 
     expect(entries.map((item) => item.path)).toEqual(['agent.yaml']);
   });
@@ -195,5 +200,87 @@ describe('tooManyPickedFiles', () => {
   it('allows a pick within the inspectable ceiling', () => {
     expect(tooManyPickedFiles(MAX_PICKED_FILES)).toBeUndefined();
     expect(tooManyPickedFiles(12)).toBeUndefined();
+  });
+});
+
+describe('pickedFromDataTransfer', () => {
+  interface FakeTree {
+    [name: string]: FakeTree | string;
+  }
+
+  const makeEntry = (name: string, fullPath: string, node: FakeTree | string): FileSystemEntry => {
+    if (typeof node === 'string') {
+      return {
+        name,
+        fullPath,
+        isFile: true,
+        isDirectory: false,
+        file: (resolve: (file: File) => void) => resolve(new File([node], name)),
+      } as unknown as FileSystemEntry;
+    }
+
+    const children = Object.entries(node).map(([child, value]) =>
+      makeEntry(child, `${fullPath}/${child}`, value)
+    );
+    let drained = false;
+    return {
+      name,
+      fullPath,
+      isFile: false,
+      isDirectory: true,
+      createReader: () => ({
+        readEntries: (resolve: (entries: FileSystemEntry[]) => void) => {
+          resolve(drained ? [] : children);
+          drained = true;
+        },
+      }),
+    } as unknown as FileSystemEntry;
+  };
+
+  const drop = (tree: FakeTree, root = 'calc-agent'): DataTransferItem[] => [
+    {
+      kind: 'file',
+      webkitGetAsEntry: () => makeEntry(root, `/${root}`, tree),
+    } as unknown as DataTransferItem,
+  ];
+
+  it('walks a dropped directory into files with their paths', async () => {
+    const picked = await pickedFromDataTransfer(
+      drop({ 'agent.yaml': 'name: calc', mcps: { 'calculator.py': 'print(1)' } })
+    );
+
+    expect(picked.map((item) => item.relativePath).sort()).toEqual([
+      'calc-agent/agent.yaml',
+      'calc-agent/mcps/calculator.py',
+    ]);
+  });
+
+  it('feeds collectAgentEntries the same shape a picked directory does', async () => {
+    const picked = await pickedFromDataTransfer(
+      drop({ 'agent.yaml': 'name: calc', mcps: { 'calculator.py': 'print(1)' } })
+    );
+
+    expect(collectAgentEntries(picked).map((entry) => entry.path)).toEqual([
+      'agent.yaml',
+      'mcps/calculator.py',
+    ]);
+  });
+
+  it('does not descend into ignored directories', async () => {
+    const picked = await pickedFromDataTransfer(
+      drop({
+        'agent.yaml': 'name: calc',
+        __pycache__: { 'calculator.cpython-312.pyc': 'binary-ish' },
+        node_modules: { 'left-pad': { 'index.js': 'x' } },
+      })
+    );
+
+    expect(picked.map((item) => item.relativePath)).toEqual(['calc-agent/agent.yaml']);
+  });
+
+  it('ignores non-file drag items', async () => {
+    const items = [{ kind: 'string', webkitGetAsEntry: () => null } as unknown as DataTransferItem];
+
+    await expect(pickedFromDataTransfer(items)).resolves.toEqual([]);
   });
 });

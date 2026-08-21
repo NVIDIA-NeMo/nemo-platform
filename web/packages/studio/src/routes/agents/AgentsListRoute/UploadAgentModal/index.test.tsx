@@ -184,3 +184,56 @@ describe('UploadAgentModal oversized pick', () => {
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
   });
 });
+
+describe('UploadAgentModal folder drop', () => {
+  const dirEntry = (name: string, fullPath: string, children: FileSystemEntry[]) =>
+    ({
+      name,
+      fullPath,
+      isFile: false,
+      isDirectory: true,
+      createReader: () => {
+        let drained = false;
+        return {
+          readEntries: (resolve: (entries: FileSystemEntry[]) => void) => {
+            resolve(drained ? [] : children);
+            drained = true;
+          },
+        };
+      },
+    }) as unknown as FileSystemEntry;
+
+  const fileEntry = (name: string, fullPath: string, contents: string) =>
+    ({
+      name,
+      fullPath,
+      isFile: true,
+      isDirectory: false,
+      file: (resolve: (file: File) => void) => resolve(new File([contents], name)),
+    }) as unknown as FileSystemEntry;
+
+  it('accepts a dropped folder, walking it into nested paths', async () => {
+    const user = userEvent.setup();
+    const { uploaded, created } = mockPlatform();
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    const root = dirEntry('calc-agent', '/calc-agent', [
+      fileEntry('agent.yaml', '/calc-agent/agent.yaml', FABRIC_YAML),
+      dirEntry('mcps', '/calc-agent/mcps', [
+        fileEntry('calculator.py', '/calc-agent/mcps/calculator.py', 'print(1)\n'),
+      ]),
+    ]);
+
+    fireEvent.drop(within(dialog).getByTestId('agent-directory-dropzone'), {
+      dataTransfer: { items: [{ kind: 'file', webkitGetAsEntry: () => root }], files: [] },
+    });
+
+    await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
+    await submit(dialog, user);
+
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect([...uploaded].sort()).toEqual(['agent.yaml', 'mcps/calculator.py']);
+  });
+});
