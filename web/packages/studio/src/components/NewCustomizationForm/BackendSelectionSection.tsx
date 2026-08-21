@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
-import { RadioGroupRoot, Stack, Text } from '@nvidia/foundations-react-core';
+import { RadioGroupRoot, Text } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { useFormContext } from 'react-hook-form';
@@ -24,7 +24,7 @@ const BACKENDS = [
     value: 'rl' as const,
     title: 'RL',
     description:
-      'Reinforcement learning via Direct Preference Optimization on chosen/rejected pairs. Full-weight only.',
+      'Reinforcement learning via DPO on preference pairs or GRPO with a reward environment.',
   },
 ];
 
@@ -44,7 +44,7 @@ export const BackendSelectionSection = () => {
         className="w-full"
         disabled={disabled}
       >
-        <Stack gap="density-md">
+        <div className="grid grid-cols-2 gap-4">
           {BACKENDS.map((b) => (
             <RadioCard
               key={b.value}
@@ -58,7 +58,7 @@ export const BackendSelectionSection = () => {
               labelSide="left"
             />
           ))}
-        </Stack>
+        </div>
       </RadioGroupRoot>
     </FormSection>
   );

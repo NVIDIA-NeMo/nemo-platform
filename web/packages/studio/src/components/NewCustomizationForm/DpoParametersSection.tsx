@@ -25,11 +25,11 @@ export const DpoParametersSection = () => {
         <ControlledSliderWithTextInput
           useControllerProps={{ name: 'rl.training.ref_policy_kl_penalty', control }}
           formFieldProps={{
-            slotLabel: 'KL Penalty',
+            slotLabel: 'KL Penalty (β)',
             slotInfo:
-              'Beta in the DPO paper. Higher values keep the tuned model closer to the reference policy.',
+              'KL divergence coefficient from the DPO paper. Higher values keep the fine-tuned model closer to the reference policy.',
           }}
-          defaultValue={0.05}
+          defaultValue={0.1}
           min={0}
           max={1}
           step={0.01}
@@ -39,7 +39,7 @@ export const DpoParametersSection = () => {
           useControllerProps={{ name: 'rl.training.preference_loss_weight', control }}
           formFieldProps={{
             slotLabel: 'Preference Loss Weight',
-            slotInfo: 'Weight applied to the preference (DPO) loss term.',
+            slotInfo: 'Scaling factor for the DPO preference (chosen vs rejected) loss term.',
           }}
           defaultValue={1}
           min={0}
@@ -50,9 +50,9 @@ export const DpoParametersSection = () => {
         <ControlledSliderWithTextInput
           useControllerProps={{ name: 'rl.training.sft_loss_weight', control }}
           formFieldProps={{
-            slotLabel: 'SFT Loss Weight',
+            slotLabel: 'SFT Regularization Loss Weight',
             slotInfo:
-              'Weight for the SFT regularization loss on the chosen response. 0 disables it.',
+              'Weight for the SFT (imitation) regularization loss on the chosen response. Set to 0 to disable.',
           }}
           defaultValue={0}
           min={0}
@@ -77,12 +77,15 @@ export const DpoParametersSection = () => {
                   disabled={disabled}
                 />
                 <ControlledSwitch
-                  useControllerProps={{ name: 'rl.training.preference_average_log_probs', control }}
+                  useControllerProps={{
+                    name: 'rl.training.preference_average_log_probs',
+                    control,
+                  }}
                   formFieldProps={{
                     slotLabel: 'Average Log-Probs (Preference)',
                     labelPosition: 'left',
                     slotInfo:
-                      'Average log-probabilities across tokens for the preference loss instead of summing.',
+                      'Average log-probabilities across tokens when computing the preference loss instead of summing.',
                   }}
                   disabled={disabled}
                 />
@@ -92,7 +95,7 @@ export const DpoParametersSection = () => {
                     slotLabel: 'Average Log-Probs (SFT)',
                     labelPosition: 'left',
                     slotInfo:
-                      'Average log-probabilities across tokens for the SFT regularization loss.',
+                      'Average log-probabilities across tokens when computing the SFT regularization loss.',
                   }}
                   disabled={disabled}
                 />
