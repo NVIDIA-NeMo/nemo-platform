@@ -1028,15 +1028,15 @@ core:
     # -- Liveness probe configuration for the controller service.
     # @default -- This object has the following default values for the liveness probe configuration.
     livenessProbe:
-      # -- The HTTP GET request to use for the readiness probe.
+      # -- The HTTP GET request to use for the liveness probe.
       httpGet:
         path: /health/live
         port: http
-      # -- The frequency in seconds to perform the readiness probe.
+      # -- The frequency in seconds to perform the liveness probe.
       periodSeconds: 10
-      # -- The timeout in seconds for the readiness probe.
+      # -- The timeout in seconds for the liveness probe.
       timeoutSeconds: 5
-      # -- The failure threshold for the readiness probe.
+      # -- The failure threshold for the liveness probe.
       failureThreshold: 3
 
     # -- Readiness probe configuration for the controller service.
