@@ -27,7 +27,7 @@ import {
 import { Button, type DropdownEntry, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Rocket, Trash2 } from 'lucide-react';
+import { Rocket } from 'lucide-react';
 import { ComponentProps, FC, useCallback } from 'react';
 
 export interface DeploymentsDataViewProps {
@@ -119,7 +119,6 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
           enableResizing: false,
           rowActions: (deployment: ModelDeployment): DropdownEntry[] => [
             {
-              slotStart: <Trash2 />,
               children: 'Delete',
               disabled:
                 deployment.status === ModelDeploymentStatus.DELETED ||

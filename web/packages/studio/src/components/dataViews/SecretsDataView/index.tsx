@@ -28,7 +28,7 @@ import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_SECRETS } from '@studio/constants/links';
 import { EditSecretModal } from '@studio/routes/SecretsListRoute/EditSecretModal';
 import { keepPreviousData } from '@tanstack/react-query';
-import { LockKeyhole, Pencil, Trash } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 
 export interface SecretsDataViewProps {
@@ -152,7 +152,6 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
           enableResizing: false,
           rowActions: (secret: SecretWithId): DropdownEntry[] => [
             {
-              slotStart: <Pencil />,
               children: 'Edit',
               onSelect: () => {
                 setModalSecret(secret);
@@ -160,7 +159,6 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
               },
             },
             {
-              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => {
