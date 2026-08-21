@@ -38,6 +38,8 @@ pipeline smoke test, not an evaluation.
   ```
 - **Docker**, running. Harbor needs it for the task containers, and Intake needs it for ClickHouse.
 - **The platform**, running at least `auth,entities,intake`.
+  The example builds its client from a base URL alone, which is direct mode: it sends no auth
+  headers. That suits a local platform; against an auth-enabled deployment the calls would 401.
 - **A logged-in `codex`** for the default agent — `codex login`, or `OPENAI_API_KEY`. Both artifacts
   pick up the `auth.json` that `codex login` writes and say so; `--agent oracle` needs neither.
 - **A built Studio bundle**, only if you want the Studio links at the end to open anything. In a
@@ -177,8 +179,9 @@ both images. That is the quickest way to check the plumbing without spending tok
    creates pass `exist_ok=True`, so re-running is safe.
 4. **`publish_to_intake(result, ...)`** — per trial, posts the ATIF trajectory, resolves its root
    span, and writes one evaluator-result row per metric output. Publishing is not atomic: every
-   trial that can land does, and failures are raised together carrying a partial report — so a
-   publish failure never costs you the run. It is idempotent — the session id and row ids derive
+   trial that can land does, and failures are raised together carrying a partial report rather
+   than aborting on the first one. The script holds its result in memory only, so a publish that
+   fails outright still means re-running the tasks. It is idempotent — the session id and row ids derive
    from the run and trial rather than the clock, so re-publishing replaces rows instead of
    duplicating them.
 5. **Read back** — the same rows queried through the Intake API, which is what makes this a round
