@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 
+from harbor.models.trial.result import AgentInfo as HostAgentInfo
+
 _SOURCE_ROOT = Path(__file__).resolve().parent / "src"
 
 
@@ -59,6 +61,7 @@ else:
 
 MODEL_NAME = "openai/azure/anthropic/claude-opus-4-8"
 API_BASE = "https://inference-api.nvidia.com/v1"
+MAX_TURNS = 60
 
 
 class WrappedAgent(CandidateTerminus2):
@@ -70,6 +73,7 @@ class WrappedAgent(CandidateTerminus2):
         model_name: str | None = None,
         api_base: str | None = None,
         stream: bool = True,
+        max_turns: int = MAX_TURNS,
         llm_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
@@ -81,9 +85,16 @@ class WrappedAgent(CandidateTerminus2):
             model_name=model_name or MODEL_NAME,
             api_base=api_base or API_BASE,
             stream=stream,
+            max_turns=max_turns,
             llm_kwargs=resolved_llm_kwargs,
             **kwargs,
         )
+
+    @override
+    def to_agent_info(self) -> HostAgentInfo:
+        """Normalize candidate metadata to the Harbor model used by the runner."""
+        candidate_info = super().to_agent_info()
+        return HostAgentInfo.model_validate(candidate_info.model_dump())
 
     async def _publish_atif_artifact(self, environment: BaseEnvironment) -> None:
         trajectory = self.logs_dir / "trajectory.json"

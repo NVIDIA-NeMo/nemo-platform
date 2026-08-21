@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import harbor
 import pytest
+from harbor.models.trial.result import AgentInfo
 
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "terminus-bench-agent"
 _WRAPPER = _EXAMPLE_DIR / "harbor_wrapper.py"
@@ -57,8 +58,23 @@ def test_wrapper_loads_candidate_source_and_pins_opus_streaming(
         "model_name": "openai/azure/anthropic/claude-opus-4-8",
         "api_base": "https://inference-api.nvidia.com/v1",
         "stream": True,
+        "max_turns": 60,
         "llm_kwargs": {"api_key": "test-inference-key"},
     }
+
+
+def test_wrapper_normalizes_candidate_agent_info_for_host_harbor(tmp_path: Path) -> None:
+    wrapper = _load_staged_wrapper(tmp_path)
+    agent = object.__new__(wrapper.WrappedAgent)
+    agent._parsed_model_name = "azure/anthropic/claude-opus-4-8"
+    agent._parsed_model_provider = "openai"
+
+    agent_info = agent.to_agent_info()
+
+    assert type(agent_info) is AgentInfo
+    assert agent_info.model_info is not None
+    assert agent_info.model_info.name == "azure/anthropic/claude-opus-4-8"
+    assert agent_info.model_info.provider == "openai"
 
 
 class _ExecResult:
