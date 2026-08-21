@@ -121,6 +121,16 @@ class OpenShellExecutorConfig(BaseModel):
             "config already declares PATH."
         ),
     )
+    serve_virtual_env: str = Field(
+        default="/workspace/.venv",
+        description=(
+            "VIRTUAL_ENV injected into the sandbox environment. PATH alone only fixes the "
+            "processes the supervisor execs directly; a child that re-launches an interpreter "
+            "from sys.base_prefix (Fabric spawns its adapter host this way) escapes the venv "
+            "and loses site-packages. Ignored when the deployment config already declares "
+            "VIRTUAL_ENV; empty string disables the injection."
+        ),
+    )
     landlock_compatibility: Literal["best_effort", "hard_requirement"] = Field(
         default="best_effort",
         description=(
