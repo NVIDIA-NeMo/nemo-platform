@@ -42,9 +42,11 @@ RUN ln -sfn /opt/nemo_rl_venv /opt/venv
 RUN UV_CACHE_DIR=/root/.cache/uv \
     uv-glue pip freeze --python /opt/nemo_rl_venv/bin/python --exclude-editable > /tmp/base-python-freeze.txt
 
-# Editable platform glue WITH dependency resolution. The from-source base ships clean package
-# metadata, so uv can resolve the glue's real deps (typer, sniffio, ngcsdk, opentelemetry-*,
-# sqlalchemy, kubernetes, fastapi, ...) instead of us pinning them by hand.
+# Editable platform glue WITH dependency resolution. The [integrations] extra is
+# training-runtime only; nmp-api installs nmp-rl without extras. The from-source
+# base ships clean package metadata, so uv can resolve the glue's real deps
+# (typer, sniffio, ngcsdk, opentelemetry-*, sqlalchemy, kubernetes, fastapi, ...)
+# instead of us pinning them by hand.
 # To stop uv moving the pinned RL / vLLM / mcore / Gym stack while it does that, freeze the base venv
 # first and pass it as --overrides (base versions win over whatever the glue requests). Packages the
 # base doesn't have are still installed fresh. `| grep '==' ` drops git/URL installs (TE, flash-attn,
@@ -64,7 +66,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         -e /app/packages/nemo_platform_plugin \
         -e /app/packages/nmp_common \
         -e /app/packages/nmp_customization_common \
-        -e /app/services/rl
+        -e "/app/services/rl[integrations]"
 
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
