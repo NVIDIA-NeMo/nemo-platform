@@ -22,7 +22,32 @@ const getExpectedStudioBaseUrl = (): string => {
 
 describe('Assistant API helpers', () => {
   afterEach(() => {
+    localStorage.clear();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('adds the active OIDC bearer token to Assistant requests', async () => {
+    const authority = 'https://auth.example.test';
+    const clientId = 'studio-client';
+    vi.stubEnv('VITE_AUTH_AUTHORITY', authority);
+    vi.stubEnv('VITE_AUTH_CLIENT_ID', clientId);
+    localStorage.setItem(
+      `oidc.user:${authority}:${clientId}`,
+      JSON.stringify({
+        access_token: 'assistant-token',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        profile: { sub: 'user-1' },
+        token_type: 'Bearer',
+      })
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listAssistantSkills();
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(new Headers(requestInit?.headers).get('Authorization')).toBe('Bearer assistant-token');
   });
 
   it('scopes session creation and history requests to the active workspace', async () => {

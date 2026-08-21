@@ -26,6 +26,7 @@ import type {
   AssistantSkill,
   AssistantStreamHandlers,
 } from '@studio/routes/agents/AssistantChatRoute/types';
+import { User } from 'oidc-client-ts';
 
 const ASSISTANT_API_BASE_PATH = '/apis/studio/v2/assistant';
 
@@ -41,6 +42,33 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const assistantApiUrl = (path: string): string =>
   `${PLATFORM_BASE_URL}${ASSISTANT_API_BASE_PATH}${path}`;
+
+const getAssistantAccessToken = (): string | undefined => {
+  const authority = import.meta.env.VITE_AUTH_AUTHORITY;
+  const clientId = import.meta.env.VITE_AUTH_CLIENT_ID;
+  if (!authority || !clientId || typeof localStorage === 'undefined') return undefined;
+
+  const oidcStorageKey = `oidc.user:${authority}:${clientId}`;
+  const oidcStorage = localStorage.getItem(oidcStorageKey);
+  if (!oidcStorage) return undefined;
+
+  try {
+    const user = User.fromStorageString(oidcStorage);
+    return user?.access_token && !user.expired ? user.access_token : undefined;
+  } catch {
+    localStorage.removeItem(oidcStorageKey);
+    return undefined;
+  }
+};
+
+const assistantFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const accessToken = getAssistantAccessToken();
+  if (!accessToken) return fetch(input, init);
+
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${accessToken}`);
+  return fetch(input, { ...init, headers });
+};
 
 const getStudioBaseUrl = (): string | undefined => {
   if (typeof window === 'undefined') return undefined;
@@ -79,7 +107,7 @@ const getResponseErrorMessage = async (response: Response, fallback: string): Pr
 
 export const createAssistantSession = async (workspace = 'default'): Promise<string> => {
   const params = new URLSearchParams({ workspace });
-  const response = await fetch(assistantApiUrl(`/sessions?${params.toString()}`), {
+  const response = await assistantFetch(assistantApiUrl(`/sessions?${params.toString()}`), {
     method: 'POST',
   });
 
@@ -265,7 +293,7 @@ export const listAssistantHistorySessions = async (
   workspace = 'default'
 ): Promise<AssistantHistorySession[]> => {
   const params = new URLSearchParams({ workspace });
-  const response = await fetch(assistantApiUrl(`/history/sessions?${params.toString()}`));
+  const response = await assistantFetch(assistantApiUrl(`/history/sessions?${params.toString()}`));
 
   if (!response.ok) {
     throw new Error(
@@ -282,7 +310,7 @@ export const listAssistantHistorySessions = async (
 };
 
 export const listAssistantSkills = async (): Promise<AssistantSkill[]> => {
-  const response = await fetch(assistantApiUrl('/skills'));
+  const response = await assistantFetch(assistantApiUrl('/skills'));
 
   if (!response.ok) {
     throw new Error(
@@ -303,7 +331,7 @@ export const getAssistantSessionHistory = async (
   workspace = 'default'
 ): Promise<AssistantSessionHistory> => {
   const params = new URLSearchParams({ workspace });
-  const response = await fetch(
+  const response = await assistantFetch(
     assistantApiUrl(`/history/sessions/${encodeURIComponent(sessionId)}?${params.toString()}`)
   );
 
@@ -344,7 +372,7 @@ export const deleteAssistantSessionHistory = async (
   workspace = 'default'
 ): Promise<void> => {
   const params = new URLSearchParams({ workspace });
-  const response = await fetch(
+  const response = await assistantFetch(
     assistantApiUrl(`/history/sessions/${encodeURIComponent(sessionId)}?${params.toString()}`),
     { method: 'DELETE' }
   );
@@ -459,17 +487,20 @@ export const resolveAssistantPermission = async ({
   requestId: string;
   decision: AssistantPermissionDecision;
 }): Promise<void> => {
-  const response = await fetch(assistantApiUrl(`/sessions/${sessionId}/permissions/${requestId}`), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      approved: decision.approved,
-      reason: decision.reason,
-      updated_input: decision.updatedInput,
-    }),
-  });
+  const response = await assistantFetch(
+    assistantApiUrl(`/sessions/${sessionId}/permissions/${requestId}`),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        approved: decision.approved,
+        reason: decision.reason,
+        updated_input: decision.updatedInput,
+      }),
+    }
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -487,16 +518,19 @@ export const resolveAssistantInput = async ({
   requestId: string;
   sessionId: string;
 }): Promise<void> => {
-  const response = await fetch(assistantApiUrl(`/sessions/${sessionId}/inputs/${requestId}`), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      skipped: decision.skipped,
-      value: decision.value,
-    }),
-  });
+  const response = await assistantFetch(
+    assistantApiUrl(`/sessions/${sessionId}/inputs/${requestId}`),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        skipped: decision.skipped,
+        value: decision.value,
+      }),
+    }
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -522,7 +556,7 @@ export const streamAssistantMessage = async ({
   signal: AbortSignal;
   handlers: AssistantStreamHandlers;
 }): Promise<void> => {
-  const response = await fetch(assistantApiUrl(`/sessions/${sessionId}/messages`), {
+  const response = await assistantFetch(assistantApiUrl(`/sessions/${sessionId}/messages`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
