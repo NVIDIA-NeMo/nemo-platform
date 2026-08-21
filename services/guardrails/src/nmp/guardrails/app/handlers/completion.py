@@ -115,7 +115,7 @@ class CompletionRequestHandler:
         try:
             config_ids, config = self.get_guardrails_config()
         except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
         prompt, messages = self._get_prompt_or_messages(self.body)
 
         if config_ids:
