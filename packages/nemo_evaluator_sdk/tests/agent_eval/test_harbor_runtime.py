@@ -1726,3 +1726,50 @@ def test_a_real_harbor_error_payload_reaches_the_summary_rollup(tmp_path: Path) 
     summary = AgentEvalSummary.from_scores([], trials=[trial])
     assert summary.error_trial_ids == {"AgentTimeoutError": [trial_name]}
     assert summary.error_count == 1
+
+
+def _atif_trajectory_payload() -> dict[str, object]:
+    """A minimal ATIF trajectory shaped like the one Harbor's ATIF-capable agents write."""
+    return {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "s1",
+        "agent": {"name": "codex", "version": "1.0"},
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "solve it", "timestamp": "2026-01-01T00:00:00+00:00"},
+            {"step_id": 2, "source": "agent", "message": "thinking", "timestamp": "2026-01-01T00:00:01+00:00"},
+            {"step_id": 3, "source": "agent", "message": "204", "timestamp": "2026-01-01T00:00:02+00:00"},
+        ],
+    }
+
+
+def _trial_with_trajectory(tmp_path: Path, payload: object) -> AgentEvalTrial:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _trial_from_harbor_result
+
+    job_dir = tmp_path / "job"
+    _write_trial(job_dir, "t__1", "t", reward=1.0)
+    trial_dir = job_dir / "t__1"
+    if payload is None:
+        (trial_dir / "agent" / "trajectory.json").unlink()
+    else:
+        (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(payload))
+    data = json.loads((trial_dir / "result.json").read_text())
+    return _trial_from_harbor_result(trial_dir, data, reward_key="reward")
+
+
+def test_atif_trajectory_is_labelled_atif(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, _atif_trajectory_payload())
+
+    # Harbor names the file trajectory.json, so only its contents identify it as ATIF.
+    assert trial.evidence.descriptors["trace"].format == "atif"
+
+
+def test_absent_trajectory_leaves_no_trace_evidence(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, None)
+
+    assert trial.evidence.descriptors.get("trace") is None
+
+
+def test_non_atif_trajectory_is_kept_as_json_evidence(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, {"not": "atif"})
+
+    assert trial.evidence.descriptors["trace"].format == "json"
