@@ -7,6 +7,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getWorkspaceCustomizationJobListRoute } from '@studio/routes/utils';
 import {
   isAutomodelSpec,
+  isRlSpec,
   isUnslothSpec,
   type CustomizationJob,
 } from '@studio/util/customizationBackend';
@@ -19,7 +20,7 @@ const isCloneFromJobState = (value: unknown): value is { cloneFromJob: Customiza
   const candidate = (value as Record<string, unknown>).cloneFromJob;
   if (typeof candidate !== 'object' || candidate === null) return false;
   const spec = (candidate as Record<string, unknown>).spec;
-  return isAutomodelSpec(spec) || isUnslothSpec(spec);
+  return isAutomodelSpec(spec) || isUnslothSpec(spec) || isRlSpec(spec);
 };
 
 export const NewCustomizationRoute = () => {
