@@ -62,7 +62,7 @@ import { useNavigate } from 'react-router';
 import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
-  { value: MODE_DEFAULT, children: 'Use Example' },
+  { value: MODE_DEFAULT, children: 'Create experiment' },
   { value: MODE_EXPERIMENT, children: 'Use existing evaluation' },
 ];
 
@@ -84,7 +84,7 @@ const submitEvaluationBaseSchema = z.object({
   judgeModel: z.string(),
   mode: z.enum([MODE_DEFAULT, MODE_EXPERIMENT]),
   exampleKey: z.string(),
-  /** Name of the experiment to create in "Use Example" mode. */
+  /** Name of the experiment to create in "Create experiment" mode. */
   newName: z.string(),
   /** Fileset created alongside it, holding eval-config.json and any data artifacts. */
   filesetName: z.string(),
@@ -200,7 +200,7 @@ const discardSeeded = async (
   );
 };
 
-/** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
+/** Resolves the persisted yardstick spec for this submission. In "Create experiment" mode
  *  it builds the spec from the sample template (fanning the metric onto every task with
  *  the picked judge baked in) and seeds it into a new fileset; in "Use existing evaluation"
  *  mode it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
@@ -472,7 +472,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       const seeded: SeededEntities = isNew ? { filesetName } : {};
 
       try {
-        // "Use Example" creates a fresh ExperimentGroup to hold this run; "Use existing
+        // "Create experiment" creates a fresh ExperimentGroup to hold this run; "Use existing
         // evaluation" reuses the picked evaluation's group(s) and records the lineage.
         let experimentIds: string[];
         let nameStem: string;
