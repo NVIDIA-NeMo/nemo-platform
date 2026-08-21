@@ -54,14 +54,14 @@ describe('intakeTelemetry span hierarchy helpers', () => {
     expect(formatCost(0.0032)).toBe('$0.0032');
   });
 
-  it('sorts spans by started_at and falls back to span_id', () => {
-    const a = makeSpan({ span_id: 'span-b', started_at: '2026-05-20T00:00:00Z' });
-    const b = makeSpan({ span_id: 'span-a', started_at: '2026-05-20T00:00:00Z' });
+  it('sorts spans by started_at while preserving server order for ties', () => {
+    const first = makeSpan({ span_id: 'span-z', started_at: '2026-05-20T00:00:00Z' });
+    const second = makeSpan({ span_id: 'span-a', started_at: '2026-05-20T00:00:00Z' });
     const c = makeSpan({ span_id: 'span-c', started_at: '2026-05-20T00:00:01Z' });
 
-    expect([c, a, b].sort(compareSpansByStartedAt).map((span) => span.span_id)).toEqual([
+    expect([c, first, second].sort(compareSpansByStartedAt).map((span) => span.span_id)).toEqual([
+      'span-z',
       'span-a',
-      'span-b',
       'span-c',
     ]);
   });
@@ -154,6 +154,27 @@ const flattenTree = (nodes: SpanTreeNode[]): [string, number][] =>
   ]);
 
 describe('buildSpanTree', () => {
+  it('preserves server order when sibling timestamps match', () => {
+    const tree = buildSpanTree([
+      makeSpan({ span_id: 'root', started_at: '2026-05-20T00:00:00Z' }),
+      makeSpan({
+        span_id: 'server-first-sorts-later',
+        parent_span_id: 'root',
+        started_at: '2026-05-20T00:00:01Z',
+      }),
+      makeSpan({
+        span_id: 'server-second-sorts-first',
+        parent_span_id: 'root',
+        started_at: '2026-05-20T00:00:01Z',
+      }),
+    ]);
+
+    expect(tree[0].children.map((node) => node.span.span_id)).toEqual([
+      'server-first-sorts-later',
+      'server-second-sorts-first',
+    ]);
+  });
+
   it('nests spans by parent_span_id, ordered by start time', () => {
     const tree = buildSpanTree([
       makeSpan({ span_id: 'child-2', parent_span_id: 'root', started_at: '2026-05-20T00:00:03Z' }),

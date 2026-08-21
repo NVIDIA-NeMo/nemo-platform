@@ -358,6 +358,7 @@ def _step_to_span(
         kind=_step_kind(step),
         name=(default_agent_name if isinstance(step, AtifStepAgent) else f"{step.source}-{step.step_id}"),
         status=SpanStatus.SUCCESS,
+        step_id=step.step_id,
         start_time=step_started_at,
         end_time=_clamped_end(step_started_at, step_ended_at),
         attributes_string=attribute_bags.string,

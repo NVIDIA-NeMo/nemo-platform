@@ -56,8 +56,8 @@ def _repository(client: _Client) -> ClickHouseSpanRepository:
 
 
 def test_order_by_whitelists_supported_span_sort_keys():
-    assert _order_by("started_at") == "start_time ASC, id ASC"
-    assert _order_by("-started_at") == "start_time DESC, id ASC"
+    assert _order_by("started_at") == "start_time ASC, step_id ASC NULLS LAST, id ASC"
+    assert _order_by("-started_at") == "start_time DESC, step_id DESC NULLS LAST, id ASC"
 
 
 def test_order_by_rejects_unsupported_span_sort_keys():
@@ -350,6 +350,7 @@ def _span_row(*, internal_id: int, external_span_id: str, started_at: datetime) 
         "kind": "LLM",
         "name": "span-a",
         "status": "success",
+        "step_id": None,
         "start_time": started_at,
         "end_time": zero_time,
         "attributes_string": {},

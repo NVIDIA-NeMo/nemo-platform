@@ -38,6 +38,7 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
         ("ch_evaluator_results_0001",),
         ("ch_evaluator_results_0002",),
         ("ch_spans_0002",),
+        ("ch_spans_0003_atif_step_id",),
         ("ch_trace_index_0003",),
         ("ch_trace_index_0004_nemo_keys",),
         ("ch_trace_index_0005_evaluation_id",),

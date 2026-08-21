@@ -52,6 +52,7 @@ class IntakeSpan(BaseModel):
     kind: SpanKind = SpanKind.UNKNOWN
     name: str = ""
     status: SpanStatus = SpanStatus.UNKNOWN
+    step_id: int | None = Field(default=None, ge=1, le=(1 << 64) - 1)
     end_time: datetime | None = None
     attributes_string: dict[str, str] = Field(default_factory=dict)
     attributes_number: dict[str, float] = Field(default_factory=dict)

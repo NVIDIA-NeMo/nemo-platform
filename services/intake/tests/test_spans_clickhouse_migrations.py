@@ -35,6 +35,16 @@ def test_spans_schema_keeps_cityhash_identity_expression():
     ]
 
 
+def test_atif_step_id_migration_adds_and_backfills_sequence_column():
+    source = Path(clickhouse_migrations.__file__).read_text(encoding="utf-8")
+
+    assert "step_id Nullable(UInt64)" in source
+    assert "ADD COLUMN IF NOT EXISTS step_id Nullable(UInt64)" in source
+    assert "JSONExtractUInt(attributes_string['atif.raw'], 'step_id')" in source
+    assert "JSONExtractString(attributes_string['atif.raw'], 'source') IN ('system', 'user', 'agent')" in source
+    assert clickhouse_migrations.CURRENT_SCHEMA_VERSION == "ch_spans_0003_atif_step_id"
+
+
 def test_trace_index_schema_is_root_span_projection():
     source = Path(clickhouse_migrations.__file__).read_text(encoding="utf-8")
     function_match = re.search(
