@@ -47,7 +47,7 @@ from nemo_platform_plugin.jobs.exceptions import (
     PlatformJobDependencyUnavailableError,
 )
 from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionProfile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,8 @@ PACKAGE_RESULT_NAME = "package_result"
 IMAGE_REPOSITORY_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$"
 IMAGE_TAG_PATTERN = r"^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$"
 VERSION_PATTERN = r"^[0-9]+(\.[0-9]+){0,2}$"
+#: The repository grammar with an optional ``:tag``, so the trailing ``$`` is dropped first.
+IMAGE_REFERENCE_PATTERN = IMAGE_REPOSITORY_PATTERN[:-1] + r"(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$"
 
 #: Docker tags are daemon-global but the auth boundary is the workspace, so every
 #: image is nested under ``{TAG_NAMESPACE}/{workspace}/``.
@@ -128,6 +130,28 @@ class PackageAgentInput(BaseModel):
     agent_version: str | None = Field(default=None, description="OCI image version label override.")
     agent_author: str | None = Field(default=None, description="OCI image authors label override.")
     skip_validation: bool = Field(default=False, description="Bypass Fabric package validation before building.")
+    registry: str | None = Field(
+        default=None,
+        pattern=IMAGE_REPOSITORY_PATTERN,
+        description=(
+            "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The platform host "
+            "must already be authenticated to it; credentials are never accepted over this API."
+        ),
+    )
+    push_tag: str | None = Field(
+        default=None,
+        pattern=IMAGE_REFERENCE_PATTERN,
+        description=(
+            "Fully-qualified remote tag. Defaults to '<registry>/<image>', where <image> is the "
+            "namespaced local reference 'nemo-agents/{workspace}/{tag}'. Requires 'registry'."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _push_tag_needs_a_registry(self) -> PackageAgentInput:
+        if self.push_tag and not self.registry:
+            raise ValueError("'push_tag' requires 'registry'.")
+        return self
 
 
 class PackageAgentSpec(PackageAgentInput):
@@ -291,8 +315,9 @@ class PackageAgentJob(NemoJob):
         ctx: JobContext | None = None,
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
-        """Stage the agent's spec fileset into a temp build context and build the image."""
+        """Stage the agent's spec fileset into a temp build context, build, and optionally push."""
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        from nemo_agents_plugin.container.publisher import docker_push
 
         cfg = PackageAgentSpec.model_validate(config)
         with tempfile.TemporaryDirectory(prefix="nemo-agent-package-") as tmp:
@@ -320,7 +345,16 @@ class PackageAgentJob(NemoJob):
                 on_progress=logger.info,
             )
 
-        payload = {"image": image, "agent": cfg.agent}
+        published = ""
+        if cfg.registry:
+            published = docker_push(
+                local_tag=image,
+                registry=cfg.registry,
+                push_tag=cfg.push_tag,
+                on_progress=logger.info,
+            )
+
+        payload = {"image": image, "agent": cfg.agent, "published": published}
         ref = self._save_package_result(ctx, payload)
         if ref is None:
             return payload

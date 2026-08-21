@@ -214,7 +214,7 @@ class TestRun:
                 ).model_dump(mode="json"),
             )
 
-        assert result == {"image": "my-agent-abc123:26.08.21", "agent": "my-agent"}
+        assert result == {"image": "my-agent-abc123:26.08.21", "agent": "my-agent", "published": ""}
         assert captured["workspace"] == "default"
         assert captured["rendered"] == FABRIC_CONFIG
         assert captured["staged_skill"], "agent.yaml must be written after staging clears the tree"
@@ -260,7 +260,11 @@ class TestRun:
 
         name, path = ctx.results.save.call_args.args
         assert name == PACKAGE_RESULT_NAME
-        assert json.loads(Path(path).read_text()) == {"image": "my-agent:1.0", "agent": "my-agent"}
+        assert json.loads(Path(path).read_text()) == {
+            "image": "my-agent:1.0",
+            "agent": "my-agent",
+            "published": "",
+        }
         assert result["status"] == "completed"
         assert result["image"] == "my-agent:1.0"
         assert result[PACKAGE_RESULT_NAME] == {"name": PACKAGE_RESULT_NAME}
@@ -477,3 +481,84 @@ class TestTagNamespace:
                     job_name=None,
                     async_sdk=MagicMock(),
                 )
+
+
+class TestPublish:
+    @staticmethod
+    def _run(spec: PackageAgentSpec, push: Any) -> dict:
+        async def _stage(**kwargs: Any) -> None:
+            return None
+
+        with (
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", lambda p, **k: "my-agent:1.0"),
+            patch("nemo_agents_plugin.container.publisher.docker_push", push),
+        ):
+            return PackageAgentJob().run(spec.model_dump(mode="json"))
+
+    def test_no_registry_skips_the_push(self) -> None:
+        push = MagicMock()
+        result = self._run(PackageAgentSpec(agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG), push)
+
+        push.assert_not_called()
+        assert result["published"] == ""
+        assert result["image"] == "my-agent:1.0"
+
+    def test_registry_pushes_the_built_tag(self) -> None:
+        push = MagicMock(return_value="nvcr.io/my-org/my-agent:1.0")
+        result = self._run(
+            PackageAgentSpec(
+                agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG, registry="nvcr.io/my-org"
+            ),
+            push,
+        )
+
+        assert push.call_args.kwargs["local_tag"] == "my-agent:1.0"
+        assert push.call_args.kwargs["registry"] == "nvcr.io/my-org"
+        assert result["published"] == "nvcr.io/my-org/my-agent:1.0"
+
+    def test_explicit_push_tag_is_forwarded(self) -> None:
+        push = MagicMock(return_value="nvcr.io/my-org/renamed:2.0")
+        self._run(
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="nvcr.io/my-org/renamed:2.0",
+            ),
+            push,
+        )
+
+        assert push.call_args.kwargs["push_tag"] == "nvcr.io/my-org/renamed:2.0"
+
+    def test_push_failure_propagates(self) -> None:
+        from nemo_agents_plugin.container.errors import ImagePublishError
+
+        push = MagicMock(side_effect=ImagePublishError("Docker push failed: denied"))
+        with pytest.raises(ImagePublishError, match="denied"):
+            self._run(
+                PackageAgentSpec(
+                    agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG, registry="nvcr.io/my-org"
+                ),
+                push,
+            )
+
+
+class TestPublishInputValidation:
+    def test_push_tag_without_registry_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="requires 'registry'"):
+            PackageAgentInput(agent="my-agent", push_tag="nvcr.io/my-org/x:1.0")
+
+    @pytest.mark.parametrize("field", ["registry", "push_tag"])
+    def test_control_characters_are_rejected(self, field: str) -> None:
+        payload: dict[str, Any] = {"registry": "nvcr.io/my-org", field: "nvcr.io/my-org\nRUN echo pwned"}
+        with pytest.raises(ValidationError):
+            PackageAgentInput(agent="my-agent", **payload)
+
+    def test_realistic_references_are_accepted(self) -> None:
+        spec = PackageAgentInput(
+            agent="my-agent", registry="localhost:5000/team", push_tag="localhost:5000/team/my-agent:1.0"
+        )
+
+        assert spec.registry == "localhost:5000/team"

@@ -6301,6 +6301,20 @@ components:
           title: Skip Validation
           description: Bypass Fabric package validation before building.
           default: false
+        registry:
+          title: Registry
+          description: Push the built image to this registry (e.g. 'nvcr.io/my-org').
+            The platform host must already be authenticated to it; credentials are
+            never accepted over this API.
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
+        push_tag:
+          title: Push Tag
+          description: Fully-qualified remote tag. Defaults to '<registry>/<image>',
+            where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.
+            Requires 'registry'.
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
       additionalProperties: false
       type: object
       required:
@@ -6502,6 +6516,20 @@ components:
           title: Skip Validation
           description: Bypass Fabric package validation before building.
           default: false
+        registry:
+          title: Registry
+          description: Push the built image to this registry (e.g. 'nvcr.io/my-org').
+            The platform host must already be authenticated to it; credentials are
+            never accepted over this API.
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
+        push_tag:
+          title: Push Tag
+          description: Fully-qualified remote tag. Defaults to '<registry>/<image>',
+            where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.
+            Requires 'registry'.
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
         workspace:
           type: string
           title: Workspace
