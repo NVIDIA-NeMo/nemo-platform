@@ -322,6 +322,13 @@ def compile_grpo_config(
         "max_rollout_turns": grpo_hp.max_rollout_turns,
         "max_num_epochs": epochs,
         "max_num_steps": max_steps,
+        # Not NeMo-RL fields. They ride along as extras -- GRPOConfig allows them -- because
+        # this dict is the only channel from the compiled job config to the driver, which is
+        # where our own logger is built. Read back with getattr, never attribute access: a
+        # config compiled elsewhere simply omits them. Mirrors dpo_config.
+        "steps_per_epoch": steps_per_epoch,
+        "progress_time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
+        "progress_min_report_interval_seconds": customizer_config.schedule.progress_reporting.min_report_interval_seconds,
         "normalize_rewards": grpo_hp.normalize_rewards,
         "use_leave_one_out_baseline": True,
         "val_period": val_period,

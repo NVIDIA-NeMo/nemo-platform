@@ -13,7 +13,11 @@ import sys
 from pathlib import Path
 
 from nmp.rl.tasks.environment.convert import ConvertEnvironmentSpec, convert_prime_environment
-from nmp.rl.tasks.environment.validate import load_manifest, validate_package_layout
+from nmp.rl.tasks.environment.validate import (
+    EnvironmentPackageValidationError,
+    load_manifest,
+    validate_package_layout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +115,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.validate_only is not None:
         root = args.validate_only.resolve()
-        manifest = load_manifest(root)
-        validate_package_layout(root, manifest)
+        try:
+            manifest = load_manifest(root)
+            validate_package_layout(root, manifest)
+        except EnvironmentPackageValidationError as exc:
+            logger.error("%s", exc)
+            return 1
         print(json.dumps({"valid": True, "format": manifest.format, "name": manifest.metadata.name}))
         return 0
 
@@ -120,7 +128,12 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         parser.error(f"the following arguments are required for conversion: {', '.join(missing)}")
 
-    vf_env_args = json.loads(args.vf_env_args)
+    try:
+        vf_env_args = json.loads(args.vf_env_args)
+    except json.JSONDecodeError as exc:
+        parser.error(f"--vf-env-args must be valid JSON: {exc}")
+    if not isinstance(vf_env_args, dict):
+        parser.error(f"--vf-env-args must be a JSON object, got {type(vf_env_args).__name__}")
     spec = ConvertEnvironmentSpec(
         hub_id=args.hub_id,
         hub_version=args.hub_version,
@@ -155,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         slug = args.hub_id.split("/")[-1].replace("_", "-")
         env_name = args.environment_name or f"{slug}-env"
-        ds_name = args.dataset_name or f"{slug}-dataset"
+        ds_name = args.dataset_name or f"{env_name}-dataset"
         try:
             refs = upload_converted_packages(
                 environment_root=result.environment_root,

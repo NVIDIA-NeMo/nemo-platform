@@ -275,13 +275,19 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
     # Filename order is lexicographic, which puts 0.9.0 after 0.10.0 — pick by parsed
     # version so host-side dataset generation uses the same build the cluster installs.
     whl = max(candidates, key=_wheel_version)
+    # Resolve dependencies from the vendored closure rather than skipping them: the hub
+    # package's own imports run during dataset generation, and --no-deps leaves them missing
+    # unless the caller's environment happens to already carry them. --no-index keeps the
+    # install offline and pinned to exactly what the cluster will get. --force-reinstall is
+    # deliberately absent -- with --find-links it would reinstall the whole dependency tree,
+    # and the wheel is already selected by exact parsed version.
     cmd = [
         sys.executable,
         "-m",
         "pip",
         "install",
-        "--no-deps",
-        "--force-reinstall",
+        "--no-index",
+        f"--find-links={wheels_dir}",
         str(whl),
     ]
     logger.warning(
