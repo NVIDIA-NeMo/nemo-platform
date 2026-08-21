@@ -9,11 +9,11 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { ScoreGauge } from '@nemo/common/src/components/ScoreGauge';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
@@ -31,9 +31,7 @@ import {
 import { Banner, Button, Stack } from '@nvidia/foundations-react-core';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { isCancellableJob } from '@studio/components/dataViews/SafeSynthesizerJobsDataView/utils';
-import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { FilesetFilePreviewLink } from '@studio/components/SafeSynthesizerFilesetPreview/FilesetFilePreviewLink';
-import { LINK_DOCS_SAFE_SYNTHESIZER } from '@studio/constants/links';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
@@ -42,7 +40,7 @@ import {
   getSafeSynthesizerJobRoute,
 } from '@studio/routes/utils';
 import { keepPreviousData, useQueries, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Trash } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
@@ -368,28 +366,16 @@ export const SafeSynthesizerJobsDataView: FC = () => {
           DataViewTableContent: {
             renderEmptyState: () =>
               hasActiveFilters ? (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No jobs match your search criteria"
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  }
+                <EntityEmptyState
+                  entity="safeSynthesizerJobs"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
               ) : (
-                <TableEmptyState
-                  header="Generate Safe Synthetic Data"
-                  emptyMessage="Create a private version of a sensitive tabular dataset."
-                  icon={<ShieldCheck className="size-12" />}
-                  actions={
-                    <>
-                      <DocumentationButton href={LINK_DOCS_SAFE_SYNTHESIZER} />
-                      <Button asChild color="brand">
-                        <Link to={getNewSafeSynthesizerRoute(workspace)}>Synthesize Data</Link>
-                      </Button>
-                    </>
-                  }
+                <EntityEmptyState
+                  entity="safeSynthesizerJobs"
+                  variant="first-use"
+                  onCreate={() => navigate(getNewSafeSynthesizerRoute(workspace))}
                 />
               ),
           },

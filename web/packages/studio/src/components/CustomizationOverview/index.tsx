@@ -13,6 +13,7 @@ import { useCustomizationFilesAsRows } from '@studio/hooks/useCustomizationFiles
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { useCustomizationJobStatus } from '@studio/hooks/useCustomizationJobStatus';
 import { hasMetrics } from '@studio/types/customization';
+import { isRlJob } from '@studio/util/customizationBackend';
 import {
   getCustomizationTrainingSteps,
   getDatasetUri,
@@ -67,7 +68,11 @@ export const CustomizationOverview: FC<Props> = ({ customizationJobName, workspa
     fileset: getDatasetUri(customization) || undefined,
   });
 
-  const epochs = customization?.spec?.schedule?.epochs;
+  const epochs = customization
+    ? isRlJob(customization)
+      ? customization.spec?.training?.epochs
+      : customization.spec?.schedule?.epochs
+    : undefined;
   const batchSize = getTrainingBatchSize(customization);
   const maxXAxisValue = getCustomizationTrainingSteps({
     epochs: epochs ?? 0,

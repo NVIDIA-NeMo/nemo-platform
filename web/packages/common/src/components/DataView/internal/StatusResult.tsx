@@ -76,7 +76,7 @@ export function StatusResult({
           kind="secondary"
           size="small"
         >
-          Clear filters
+          Clear Filters
         </Button>
       ) : undefined;
     return renderEmptyState ? (

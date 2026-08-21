@@ -79,13 +79,13 @@ _SURFACE_TASK = AgentEvalTask(id="surface-1", intent="Answer.", inputs={"instruc
 _HERMES_CONFIG = {
     "metadata": {"name": "fabric-surface-hermes"},
     "harness": {"adapter_id": _HERMES_ADAPTER_ID, "resolution": "preinstalled"},
-    "runtime": {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"},
+    "runtime": {"input_schema": "chat", "output_schema": "message"},
     "environment": {"provider": "local"},
 }
 _CODEX_CONFIG = {
     "metadata": {"name": "fabric-surface"},
     "harness": {"adapter_id": _CODEX_ADAPTER_ID, "resolution": "preinstalled"},
-    "runtime": {"mode": "oneshot", "transport": "cli", "input_schema": "text", "output_schema": "message"},
+    "runtime": {"input_schema": "text", "output_schema": "message"},
     "environment": {"provider": "local"},
 }
 
@@ -203,7 +203,10 @@ def test_hermes_routes_skills_natively_per_the_real_planner() -> None:
     plan = Fabric().plan(probe)
 
     assert plan.adapter.adapter_id == _HERMES_ADAPTER_ID
-    assert resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness) == SKILL_MODE_NATIVE
+    assert (
+        resolve_skill_mode(capability_plan=plan.capability_plan, adapter_id=plan.adapter.adapter_id)
+        == SKILL_MODE_NATIVE
+    )
 
 
 @requires_harness_adapters
@@ -225,4 +228,7 @@ def test_codex_also_routes_skills_natively_so_the_workspace_branch_is_a_fallback
     plan = Fabric().plan(probe)
 
     assert "skills" in plan.capability_plan.get("routes", [])[0].get("kind", "")
-    assert resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness) == SKILL_MODE_NATIVE
+    assert (
+        resolve_skill_mode(capability_plan=plan.capability_plan, adapter_id=plan.adapter.adapter_id)
+        == SKILL_MODE_NATIVE
+    )

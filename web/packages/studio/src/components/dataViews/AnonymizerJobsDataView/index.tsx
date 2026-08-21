@@ -7,9 +7,9 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
@@ -30,9 +30,9 @@ import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getAnonymizerJobRoute, getNewAnonymizerRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { Trash, VenetianMask } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 
 type AnonymizerJobWithId = AnonymizerJob & { id: string };
 
@@ -220,25 +220,16 @@ export const AnonymizerJobsDataView: FC = () => {
           DataViewTableContent: {
             renderEmptyState: () =>
               hasActiveFilters ? (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No jobs match your search criteria"
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  }
+                <EntityEmptyState
+                  entity="anonymizerJobs"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
               ) : (
-                <TableEmptyState
-                  icon={<VenetianMask className="h-[64px] w-[64px]" />}
-                  header="Anonymizer Jobs"
-                  emptyMessage="Detect and protect PII in your datasets through context-aware replacement and rewriting."
-                  actions={
-                    <Button asChild color="brand">
-                      <Link to={getNewAnonymizerRoute(workspace)}>Anonymize Data</Link>
-                    </Button>
-                  }
+                <EntityEmptyState
+                  entity="anonymizerJobs"
+                  variant="first-use"
+                  onCreate={() => navigate(getNewAnonymizerRoute(workspace))}
                 />
               ),
           },

@@ -4,9 +4,9 @@
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import * as DataView from '@nemo/common/src/components/DataView/internal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useListSpans } from '@nemo/sdk/generated/platform/api';
@@ -16,7 +16,7 @@ import {
   type SpanFilter,
   type SpanSortField,
 } from '@nemo/sdk/generated/platform/schema';
-import { Anchor, Button, Text } from '@nvidia/foundations-react-core';
+import { Anchor, Text } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import {
   isDefaultStartedAtFilter,
@@ -39,7 +39,7 @@ import {
   type SpanTableRow,
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
-import { type ComponentProps, type FC, type ReactNode, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 const SPAN_STATUS_FILTER_OPTIONS = [
@@ -112,10 +112,6 @@ export interface IntakeSpansTableProps {
   defaultPageSize?: number;
   showTraceColumn?: boolean;
   showHierarchy?: boolean;
-  emptyHeader?: string;
-  emptyMessage?: string;
-  emptyStateActions?: ReactNode;
-  noResultsActions?: ReactNode;
   /** Override span row click. `null` disables interaction entirely (no cursor-pointer). */
   onRowClick?: ((span: SpanTableRow) => void) | null;
 }
@@ -145,10 +141,6 @@ const SeededIntakeSpansTable: FC<
   defaultPageSize,
   showTraceColumn = true,
   showHierarchy = false,
-  emptyHeader = 'No Spans',
-  emptyMessage = 'Spans will appear here after trace data is ingested.',
-  emptyStateActions,
-  noResultsActions,
   onRowClick,
   defaultStartedAtFilter,
 }) => {
@@ -382,23 +374,13 @@ const SeededIntakeSpansTable: FC<
         DataViewTableContent: {
           renderEmptyState: () =>
             hasActiveFilters ? (
-              <TableEmptyState
-                header="No Results Found"
-                emptyMessage="No spans match your filters."
-                actions={
-                  noResultsActions ?? (
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  )
-                }
+              <EntityEmptyState
+                entity="telemetrySpans"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
               />
             ) : (
-              <TableEmptyState
-                header={emptyHeader}
-                emptyMessage={emptyMessage}
-                actions={emptyStateActions}
-              />
+              <EntityEmptyState entity="telemetrySpans" variant="first-use" />
             ),
         },
       }}

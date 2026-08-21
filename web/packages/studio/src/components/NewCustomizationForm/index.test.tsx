@@ -14,10 +14,12 @@ import userEvent from '@testing-library/user-event';
 
 const mutateAutomodel = vi.fn();
 const mutateUnsloth = vi.fn();
+const mutateRl = vi.fn();
 
 vi.mock('@nemo/sdk/generated/customizer/api', () => ({
   useCustomizationCreateAutomodelJob: () => ({ mutateAsync: mutateAutomodel, isPending: false }),
   useCustomizationCreateUnslothJob: () => ({ mutateAsync: mutateUnsloth, isPending: false }),
+  useCustomizationCreateRlJob: () => ({ mutateAsync: mutateRl, isPending: false }),
 }));
 
 vi.mock('@studio/hooks/useCustomizationDatasetValidation', async (importOriginal) => {

@@ -8,6 +8,7 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import {
   isAutomodelJob,
+  isRlJob,
   isUnslothJob,
   type CustomizationJob,
 } from '@studio/util/customizationBackend';
@@ -21,13 +22,35 @@ import { ComponentProps, FC, ReactNode } from 'react';
 /** Hyperparameter rows specific to each backend. */
 const HyperparameterRows: FC<{ job: CustomizationJob }> = ({ job }) => {
   const rows: ReactNode[] = [];
-  const { schedule, optimizer, training } = job.spec;
+  const { training } = job.spec;
 
-  rows.push(<KVPair key="epochs" label="Epochs" value={schedule?.epochs} />);
-  rows.push(<KVPair key="max-steps" label="Max Steps" value={schedule?.max_steps} />);
-  rows.push(<KVPair key="seed" label="Seed" value={schedule?.seed} />);
-  rows.push(<KVPair key="lr" label="Learning Rate" value={optimizer?.learning_rate} />);
-  rows.push(<KVPair key="wd" label="Weight Decay" value={optimizer?.weight_decay} />);
+  const rl = isRlJob(job) ? job.spec.training : undefined;
+  const schedule = isRlJob(job) ? undefined : job.spec.schedule;
+  const optimizer = isRlJob(job) ? undefined : job.spec.optimizer;
+
+  rows.push(<KVPair key="epochs" label="Epochs" value={rl ? rl.epochs : schedule?.epochs} />);
+  rows.push(
+    <KVPair key="max-steps" label="Max Steps" value={rl ? rl.max_steps : schedule?.max_steps} />
+  );
+  rows.push(<KVPair key="seed" label="Seed" value={rl ? rl.seed : schedule?.seed} />);
+  rows.push(
+    <KVPair
+      key="lr"
+      label="Learning Rate"
+      value={rl ? rl.learning_rate : optimizer?.learning_rate}
+    />
+  );
+  rows.push(
+    <KVPair key="wd" label="Weight Decay" value={rl ? rl.weight_decay : optimizer?.weight_decay} />
+  );
+
+  if (rl) {
+    rows.push(<KVPair key="gbs" label="Global Batch Size" value={rl.batch_size} />);
+    rows.push(<KVPair key="mbs" label="Micro Batch Size" value={rl.micro_batch_size} />);
+    rows.push(<KVPair key="warmup" label="Warmup Steps" value={rl.warmup_steps} />);
+    rows.push(<KVPair key="max-seq" label="Max Sequence Length" value={rl.max_seq_length} />);
+    rows.push(<KVPair key="kl" label="KL Penalty" value={rl.ref_policy_kl_penalty} />);
+  }
 
   if (isAutomodelJob(job)) {
     const { batch } = job.spec;
@@ -55,7 +78,8 @@ const HyperparameterRows: FC<{ job: CustomizationJob }> = ({ job }) => {
     rows.push(<KVPair key="precision" label="Precision" value={job.spec.hardware?.precision} />);
   }
 
-  const lora = training?.lora;
+  // DPO is full-weight only, so RlDPOTraining carries no `lora` to narrow to.
+  const lora = training && 'lora' in training ? training.lora : undefined;
   if (lora) {
     rows.push(<KVPair key="lora-rank" label="LoRA / Rank" value={lora.rank} />);
     rows.push(<KVPair key="lora-alpha" label="LoRA / Alpha" value={lora.alpha} />);
@@ -91,17 +115,23 @@ export const CustomizationConfigSidePanel: FC<Props> = ({
     content = <Loading />;
   } else if (job) {
     const { training } = job.spec;
+    // RL discriminates on `type`; the other backends use `training_type`.
+    const trainingType =
+      training && 'training_type' in training
+        ? training.training_type
+        : isRlJob(job)
+          ? job.spec.training.type
+          : undefined;
+    const finetuningType =
+      training && 'finetuning_type' in training ? training.finetuning_type : undefined;
     content = (
       <Stack className="w-full overflow-y-auto" gap="density-xl">
         <KVPair label="Name" value={job.spec.output?.name} />
         <Stack gap="density-sm">
           <Text kind="body/semibold/md">Configuration Snapshot</Text>
           <KVPair label="Base Model" value={getBaseModel(job)} />
-          <KVPair label="Training Type" value={getFormattedTrainingType(training?.training_type)} />
-          <KVPair
-            label="Finetuning Type"
-            value={getFormattedTrainingType(training?.finetuning_type)}
-          />
+          <KVPair label="Training Type" value={getFormattedTrainingType(trainingType)} />
+          <KVPair label="Finetuning Type" value={getFormattedTrainingType(finetuningType)} />
           <KVPair
             label="Training Options"
             value={

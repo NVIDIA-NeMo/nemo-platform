@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Button, Stack, Text } from '@nvidia/foundations-react-core';
 import type { RunSummary } from '@studio/routes/agents/AgentMonitorRoute/telemetry';
@@ -184,10 +184,7 @@ export const InferenceLogsTable: FC<Props> = ({ runs, isFetching, error, onRetry
               />
             ),
             renderEmptyState: () => (
-              <TableEmptyState
-                header="No Runs Yet"
-                emptyMessage="Invoke an agent to populate the nemo-agent-telemetry fileset."
-              />
+              <EntityEmptyState entity="agentMonitorRuns" variant="first-use" />
             ),
           },
         }}

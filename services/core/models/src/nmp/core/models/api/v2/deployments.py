@@ -98,7 +98,7 @@ async def create_deployment(
     Create a new ModelDeployment (version 1).
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
 
     logger.debug(f"Creating deployment: {workspace}/{deployment_input.name}")
 
@@ -123,7 +123,7 @@ async def create_deployment(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during deployment creation: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except Exception:
@@ -290,7 +290,7 @@ async def update_deployment(
     Update a ModelDeployment (creates a new immutable version).
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     deployment_name = name
     logger.debug(f"Updating deployment: {workspace}/{deployment_name}")
 
@@ -310,7 +310,7 @@ async def update_deployment(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during deployment update: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except Exception:
@@ -336,7 +336,7 @@ async def update_deployment_status(
     If version is not specified, updates the latest version.
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     deployment_name = name
     logger.debug(
         f"Updating deployment status: {workspace}/{deployment_name}"
@@ -370,7 +370,7 @@ async def update_deployment_status(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during deployment status update: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except DeploymentStatusConflictError as e:
@@ -419,7 +419,7 @@ async def delete_all_deployment_versions(
     - 404 Not Found: Deployment doesn't exist
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     deployment_name = name
     logger.debug(f"Deleting all versions of deployment: {workspace}/{deployment_name}")
 
@@ -488,7 +488,7 @@ async def delete_deployment_version(
     - 404 Not Found: Deployment version doesn't exist
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     deployment_name = deployment
     logger.debug(f"Deleting deployment version: {workspace}/{deployment_name} version {name}")
 
