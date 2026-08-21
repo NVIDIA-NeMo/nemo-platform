@@ -24,15 +24,15 @@ from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 _BASE = "http://localhost:8080/apis/evaluator/v2/workspaces/default"
 
 
-def _agent_payload(name: str) -> dict[str, Any]:
+def _agent_payload(name: str, *, target_kind: str = "fabric", target_name: str = "openai/gpt-5.4") -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return AgentEvalResult(
         id=f"agent_eval_result-{name}",
         name=name,
         workspace="default",
         job_id=name,
-        target_kind="codex",
-        target_name="gpt-5.5",
+        target_kind=target_kind,
+        target_name=target_name,
         target_url=None,
         scores=AggregatedMetricResult(scores=[]),
         bundle_ref="fileset://default/agent-eval-results#b",
@@ -102,8 +102,22 @@ def test_sync_retrieve_agent_eval_targets_item_url_and_parses_dto() -> None:
 
     assert isinstance(result, AgentEvalResult)
     assert result.job_id == "job-1"
-    assert result.target_kind == "codex"
+    assert result.target_kind == "fabric"
     assert http_client.get.call_args[0][0] == f"{_BASE}/agent-eval-results/job-1"
+
+
+def test_sync_retrieve_agent_eval_parses_a_retired_runner_kind() -> None:
+    # The wire DTO must keep reading rows written by a runner that has since been removed; nothing
+    # in the response schema constrains `target_kind` to the runners that currently exist.
+    http_client = MagicMock()
+    http_client.get.return_value = _response(_agent_payload("job-legacy", target_kind="codex", target_name="gpt-5.5"))
+    resource = EvaluatorAgentEvalResultsResource(_platform(http_client))
+
+    result = resource.retrieve("job-legacy")
+
+    assert isinstance(result, AgentEvalResult)
+    assert result.target_kind == "codex"
+    assert result.target_name == "gpt-5.5"
 
 
 def test_sync_list_eval_results_parses_dtos_and_targets_collection() -> None:

@@ -91,7 +91,7 @@ def build_agent_eval_spec(metric_bundle: Any) -> Any:
     from nemo_evaluator.jobs.agent_spec import (
         AgentEvalInputSpec,
         AgentEvalTaskInput,
-        CodexRunnerTarget,
+        FabricRunnerTarget,
     )
 
     return AgentEvalInputSpec(
@@ -103,7 +103,12 @@ def build_agent_eval_spec(metric_bundle: Any) -> Any:
                 metrics=[metric_bundle],
             )
         ],
-        target=CodexRunnerTarget(),
+        target=FabricRunnerTarget(
+            config={
+                "metadata": {"name": "geography-smoke"},
+                "harness": {"adapter_id": "nvidia.fabric.codex"},
+            }
+        ),
         max_concurrent_tasks=2,
         labels={"benchmark": "geography-smoke"},
     )

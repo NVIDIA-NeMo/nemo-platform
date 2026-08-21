@@ -13,7 +13,7 @@ So this walks the doc top to bottom, in order, doing what it says and asserting 
 claims. It deliberately mirrors the doc's own code rather than being written as an idiomatic test —
 when it fails, the fix is usually the doc.
 
-Pure CRUD (no codex/IGW), so it only needs the host subprocess backend. Shares the evaluator-plugin
+Pure CRUD (no online target or IGW), so it only needs the host subprocess backend. Shares the evaluator-plugin
 integration opt-in (``RUN_AGENT_EVAL_INTEGRATION``) and the session-scoped ``subprocess_platform``.
 """
 

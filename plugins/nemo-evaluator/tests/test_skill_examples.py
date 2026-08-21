@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 import yaml
 from nemo_evaluator.api.schemas import TasksetRef
-from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, CodexRunnerTarget, FabricRunnerTarget
+from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, FabricRunnerTarget
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric, unbundle_metric
 from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
@@ -161,13 +161,14 @@ def test_skill_python_examples_import_and_build_agent_spec() -> None:
 
     assert not isinstance(spec.tasks, TasksetRef)
     assert len(spec.tasks) == 1
-    assert isinstance(spec.target, CodexRunnerTarget)
+    assert isinstance(spec.target, FabricRunnerTarget)
+    assert spec.target.config["harness"]["adapter_id"] == "nvidia.fabric.codex"
     assert spec.target.model is None
 
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/agent-evaluation.md").read_text(
         encoding="utf-8"
     )
-    assert 'CodexRunnerTarget(model="<codex-model>")' not in reference
+    assert "CodexRunnerTarget" not in reference
     assert 'labels={"benchmark": "geography-smoke"}' in reference
 
 

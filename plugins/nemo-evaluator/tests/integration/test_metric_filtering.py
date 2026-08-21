@@ -5,7 +5,7 @@
 
 Verifies the route's custom-field filter actually works end-to-end: ``metric_type`` is a ``data.*``
 entity field, so without the ``DataFilter`` translation the entity store 500s. Pure CRUD (create +
-list) — no codex/IGW — so it only needs the host subprocess backend. Shares the evaluator-plugin
+list) — no online target or IGW — so it only needs the host subprocess backend. Shares the evaluator-plugin
 integration opt-in (``RUN_AGENT_EVAL_INTEGRATION``) and the session-scoped ``subprocess_platform``.
 """
 

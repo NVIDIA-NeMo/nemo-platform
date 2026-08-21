@@ -151,9 +151,9 @@ Use `AgentEvaluator().run(...)` for standalone task-driven SDK evaluation. Its
 **Platform job evaluation**
 
 Use the plugin `agent-evaluate submit` job for platform task evaluation. Its
-target is a `ModelTarget`, `AgentTarget`, `CodexRunnerTarget`,
-`FabricRunnerTarget`, or `HarborRunnerTarget`; alternatively provide
-precomputed `trials`. Provide exactly one of `target` or `trials`.
+target is a `ModelTarget`, `AgentTarget`, `FabricRunnerTarget`, or
+`HarborRunnerTarget`; alternatively provide precomputed `trials`. Provide
+exactly one of `target` or `trials`.
 
 Submission accepts inline tasks or a stored `TasksetRef`. Stored tasksets are
 resolved in the target workspace.
