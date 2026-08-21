@@ -1,26 +1,50 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# NeMo Eval Author Plugin
+# NeMo Eval Author
 
-Owns the `nemo agents eval-author` command group, registered under `nemo.cli.agents` and
-mounted by the agents plugin. `discover` is implemented; `audit`, `propose`, `run`, and
-`doctor` are placeholders.
+Two skills that an agent reads to work on the evaluation suites in a user's own
+repository. There is no CLI, no service, and no importable code, so this directory
+builds no package at all. A customer points their agent at `skills/` and nothing
+gets installed.
 
-Use `discover` only with a trusted repository, because importing an agent runs
-module top-level code.
+| Skill | Role |
+| --- | --- |
+| [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
+| [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
 
-The Eval Author agent moved into the Experimentalist plugin, at
-[`nemo_experimentalist_plugin.eval_author`](../nemo-experimentalist/src/nemo_experimentalist_plugin/eval_author/README.md).
-Experimentalist insight mode is its only caller, so the agent sits beside the evaluator,
-staging, and trace helpers it depends on.
+## Where findings go
 
-## Direction of travel
+`eval-author-discover` leaves a report at `.eval-author/discovery.md`, carrying the
+JSON as front matter so a later model reads the verdict without Harbor. It is
+visible and worth committing: a teammate who reads it skips the discovery pass.
 
-The dependency is one arrow. `discovery/run.py` borrows `make_client` from Experimentalist,
-and Experimentalist imports nothing from here, so there is no package cycle for `uv` to
-resolve. Install both plugins with:
+The scripts write no files. They report to stdout and the skill tells the agent
+where to save, because that is a judgement about someone's repository.
 
-```bash
-uv sync --group experimentalist
-```
+## Why skills instead of an agent
+
+Harbor tasks live in the customer's repository, so an agent that proposes changes
+has to write to that repository. Customers were unwilling to grant that, sandboxed
+or not. A skill inverts the arrangement: the customer's own agent does the work,
+and this directory only supplies the instructions and the deterministic scripts.
+
+The Eval Author agent that Experimentalist insight mode still uses lives in
+[the Experimentalist plugin](../nemo-experimentalist/src/nemo_experimentalist_plugin/eval_author/README.md).
+
+## Dependencies
+
+The scripts under `skills/*/scripts/` import nothing beyond the standard library and
+Harbor itself, so they run on whatever Python the customer already has. Where a real
+answer needs a provider, the skill defers to the provider's own validators rather
+than guessing from file layout, which is why `eval-author-discover` probes for an
+installed Harbor and asks Harbor to judge each config.
+
+`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
+the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that
+make Harbor judge a fixture suite skip when Harbor is absent, which is why this
+directory declares no dependencies and appears in no dependency group.
+
+Adding a runtime dependency to a bundled script is a breaking change for anyone who
+copied the skill, so the contract test walks each script's imports and fails on
+anything outside the standard library, a sibling module, or Harbor.
