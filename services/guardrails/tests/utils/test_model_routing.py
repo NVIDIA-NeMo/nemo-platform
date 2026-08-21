@@ -52,30 +52,21 @@ class TestBuildOpenAIGatewayUrl:
     def test_url_construction(self, mock_get_sdk):
         """Test URL construction for Model Entity reference."""
         mock_sdk = MagicMock()
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        )
+        mock_sdk.base_url = "http://localhost:8000"
         mock_get_sdk.return_value = mock_sdk
 
         url = build_openai_gateway_url("default/my-model")
         assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        mock_sdk.models.get_openai_route_base_url.assert_called_with(workspace="default")
 
         # Test non-default workspace
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/custom-workspace/openai/-/v1"
-        )
         url = build_openai_gateway_url("custom-workspace/my-model")
         assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/custom-workspace/openai/-/v1"
-        mock_sdk.models.get_openai_route_base_url.assert_called_with(workspace="custom-workspace")
 
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_v1_suffix_preserved(self, mock_get_sdk):
-        """Test /v1 suffix is preserved from SDK URL."""
+        """Test /v1 suffix is preserved from typed client URL."""
         mock_sdk = MagicMock()
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        )
+        mock_sdk.base_url = "http://localhost:8000"
         mock_get_sdk.return_value = mock_sdk
 
         url = build_openai_gateway_url("default/model")
@@ -83,17 +74,14 @@ class TestBuildOpenAIGatewayUrl:
         assert url.endswith("/v1")
 
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
-    def test_url_without_v1_unchanged(self, mock_get_sdk):
-        """Test URL without /v1 suffix is returned unchanged."""
+    def test_typed_client_adds_v1(self, mock_get_sdk):
+        """Test the typed Models client helper adds the OpenAI /v1 suffix."""
         mock_sdk = MagicMock()
-        # Simulate SDK returning URL without /v1 (future-proofing)
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-"
-        )
+        mock_sdk.base_url = "http://localhost:8000"
         mock_get_sdk.return_value = mock_sdk
 
         url = build_openai_gateway_url("default/model")
-        assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-"
+        assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
 
     def test_invalid_reference_raises(self):
         """Test invalid reference raises ValueError."""
@@ -108,9 +96,7 @@ class TestResolveModelEntityReferences:
     def test_resolve_single_model(self, mock_get_sdk):
         """Test resolving a single model with Model Entity reference."""
         mock_sdk = MagicMock()
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        )
+        mock_sdk.base_url = "http://localhost:8000"
         mock_get_sdk.return_value = mock_sdk
 
         rails_config = RailsConfig(
@@ -129,9 +115,7 @@ class TestResolveModelEntityReferences:
     def test_resolve_all_models(self, mock_get_sdk):
         """Test that ALL models in config get resolved (multiple models use case)."""
         mock_sdk = MagicMock()
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        )
+        mock_sdk.base_url = "http://localhost:8000"
         mock_get_sdk.return_value = mock_sdk
 
         rails_config = RailsConfig(
@@ -187,9 +171,7 @@ class TestResolveModelEntityReferences:
     def test_mixed_config(self, mock_get_sdk):
         """Test config with one Model Entity ref, one explicit URLs."""
         mock_sdk = MagicMock()
-        mock_sdk.models.get_openai_route_base_url.return_value = (
-            "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        )
+        mock_sdk.base_url = "http://localhost:8000"
         mock_get_sdk.return_value = mock_sdk
 
         rails_config = RailsConfig(

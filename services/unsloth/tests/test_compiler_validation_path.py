@@ -5,10 +5,11 @@
 
 from __future__ import annotations
 
-import types
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.unsloth.app.constants import DEFAULT_DATASET_PATH, DEFAULT_VALIDATION_DATASET_PATH
 from nmp.unsloth.app.jobs.compiler import platform_job_config_compiler
 from nmp.unsloth.schemas import (
@@ -20,6 +21,18 @@ from nmp.unsloth.schemas import (
     TrainingSpec,
     UnslothJobOutput,
 )
+
+
+def _model_entity() -> ModelEntity:
+    return ModelEntity(
+        id="model-qwen3",
+        workspace="default",
+        name="qwen3-1.7b",
+        fileset="default/qwen3-1.7b",
+        trust_remote_code=False,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
 
 
 def _spec(*, validation_path: str | None) -> UnslothJobOutput:
@@ -46,14 +59,7 @@ async def test_training_step_gets_local_validation_path_for_same_fileset() -> No
     from nmp.unsloth.app.jobs import compiler as compiler_mod
 
     original_fetch = compiler_mod.fetch_model_entity
-    compiler_mod.fetch_model_entity = AsyncMock(
-        return_value=types.SimpleNamespace(
-            workspace="default",
-            name="qwen3-1.7b",
-            fileset="default/qwen3-1.7b",
-            trust_remote_code=False,
-        ),
-    )
+    compiler_mod.fetch_model_entity = AsyncMock(return_value=_model_entity())
     try:
         job = await platform_job_config_compiler(
             workspace="default",
@@ -75,14 +81,7 @@ async def test_training_step_gets_separate_validation_path_for_different_fileset
     from nmp.unsloth.app.jobs import compiler as compiler_mod
 
     original_fetch = compiler_mod.fetch_model_entity
-    compiler_mod.fetch_model_entity = AsyncMock(
-        return_value=types.SimpleNamespace(
-            workspace="default",
-            name="qwen3-1.7b",
-            fileset="default/qwen3-1.7b",
-            trust_remote_code=False,
-        ),
-    )
+    compiler_mod.fetch_model_entity = AsyncMock(return_value=_model_entity())
     try:
         job = await platform_job_config_compiler(
             workspace="default",
@@ -104,14 +103,7 @@ async def test_upload_step_stamps_output_metadata() -> None:
     from nmp.unsloth.app.jobs import compiler as compiler_mod
 
     original_fetch = compiler_mod.fetch_model_entity
-    compiler_mod.fetch_model_entity = AsyncMock(
-        return_value=types.SimpleNamespace(
-            workspace="default",
-            name="qwen3-1.7b",
-            fileset="default/qwen3-1.7b",
-            trust_remote_code=False,
-        ),
-    )
+    compiler_mod.fetch_model_entity = AsyncMock(return_value=_model_entity())
     try:
         job = await platform_job_config_compiler(
             workspace="default",

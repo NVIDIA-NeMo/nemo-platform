@@ -6,8 +6,10 @@
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
-from nemo_platform import ConflictError
+from nemo_platform_plugin.client.errors import ConflictError
+from nemo_platform_plugin.models.types import CreateModelProviderRequest
 from nmp.platform_seed.config import PlatformSeedConfig
 from nmp.platform_seed.tasks.seed import run_platform_seed
 
@@ -166,13 +168,19 @@ async def test_run_platform_seed_auth_called(config_enabled, entity_client, sdk)
 async def test_run_platform_seed_model_provider_called(config_enabled, entity_client, sdk):
     """Model provider seed is called when model_provider_enabled is True."""
     config_enabled.model_provider_enabled = True
+    models = MagicMock()
+    models.create_provider = AsyncMock()
 
-    result = await run_platform_seed(entity_client, sdk, config_enabled)
-    sdk.inference.providers.create.assert_awaited_once_with(
-        name="nvidia-build",
+    with patch("nmp.platform_seed.tasks.seed.run.client_from_platform", return_value=models):
+        result = await run_platform_seed(entity_client, sdk, config_enabled)
+
+    models.create_provider.assert_awaited_once_with(
         workspace="system",
-        host_url="https://integrate.api.nvidia.com",
-        api_key_secret_name="ngc-api-key",
+        body=CreateModelProviderRequest(
+            name="nvidia-build",
+            host_url="https://integrate.api.nvidia.com",
+            api_key_secret_name="ngc-api-key",
+        ),
     )
     assert result.models_ok is True
     assert result.errors == []
@@ -182,10 +190,12 @@ async def test_run_platform_seed_model_provider_called(config_enabled, entity_cl
 async def test_run_platform_seed_model_provider_conflict(config_enabled, entity_client, sdk):
     """ConflictError when creating provider is handled gracefully (not a failure)."""
     config_enabled.model_provider_enabled = True
+    models = MagicMock()
+    response = httpx.Response(409, request=httpx.Request("POST", "http://models/providers"))
+    models.create_provider = AsyncMock(side_effect=ConflictError(response))
 
-    sdk.inference.providers.create.side_effect = ConflictError(
-        message="already exists", response=MagicMock(), body=None
-    )
-    result = await run_platform_seed(entity_client, sdk, config_enabled)
+    with patch("nmp.platform_seed.tasks.seed.run.client_from_platform", return_value=models):
+        result = await run_platform_seed(entity_client, sdk, config_enabled)
+
     assert result.models_ok is True
     assert result.errors == []
