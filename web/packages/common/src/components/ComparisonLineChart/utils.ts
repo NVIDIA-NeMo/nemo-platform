@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { COMPARISON_SERIES_COLORS } from '@nemo/common/src/components/ComparisonLineChart/consts';
+import { toPlotValue } from '@nemo/common/src/components/charts/format';
+import type { ChartXValue } from '@nemo/common/src/components/charts/types';
 import type {
   ComparisonAnnotation,
   ComparisonSeries,
-  ComparisonXAxisType,
-  ComparisonXValue,
 } from '@nemo/common/src/components/ComparisonLineChart/types';
 
 /** A recharts row: the shared x value plus one entry per series, keyed by series id. */
@@ -15,27 +14,13 @@ export interface ComparisonChartRow {
   [seriesId: string]: string | number | null;
 }
 
-export const seriesColor = (series: ComparisonSeries, index: number): string =>
-  series.color ?? COMPARISON_SERIES_COLORS[index % COMPARISON_SERIES_COLORS.length];
-
-export const inferXAxisType = (xAxis: ComparisonXValue[]): ComparisonXAxisType => {
-  const first = xAxis.find((value) => value !== undefined && value !== null);
-  if (first instanceof Date) return 'time';
-  if (typeof first === 'number') return 'number';
-  return 'category';
-};
-
-/** Dates become timestamps so recharts can place them on a numeric axis. */
-export const toPlotValue = (value: ComparisonXValue): string | number =>
-  value instanceof Date ? value.getTime() : value;
-
 /**
  * Pivots the parallel `series[].data` arrays into the row-per-x-value shape recharts expects.
  * Series are keyed by id, so ids must not collide with the reserved `x` key.
  */
 export const buildChartRows = (
   series: ComparisonSeries[],
-  xAxis: ComparisonXValue[]
+  xAxis: ChartXValue[]
 ): ComparisonChartRow[] => {
   const ids = new Set<string>();
   for (const { id } of series) {
@@ -67,7 +52,7 @@ export interface ResolvedAnnotation {
 }
 
 /** How far along the x axis a point sits, 0 at the left edge and 1 at the right. */
-const axisFraction = (xAxis: ComparisonXValue[], index: number, plotX: string | number): number => {
+const axisFraction = (xAxis: ChartXValue[], index: number, plotX: string | number): number => {
   const plotted = xAxis.map(toPlotValue);
   const numeric = plotted.filter((value): value is number => typeof value === 'number');
   if (typeof plotX === 'number' && numeric.length === plotted.length && numeric.length > 1) {
@@ -96,7 +81,7 @@ const ratioLabel = (fromY: number, toY: number): string => {
 export const resolveAnnotation = (
   annotation: ComparisonAnnotation,
   series: ComparisonSeries[],
-  xAxis: ComparisonXValue[]
+  xAxis: ChartXValue[]
 ): ResolvedAnnotation | null => {
   const plotX = toPlotValue(annotation.x);
   const index = xAxis.findIndex((value) => toPlotValue(value) === plotX);
@@ -127,28 +112,10 @@ export const resolveAnnotation = (
 };
 
 /** True when at least one series has a finite value to draw; an all-null chart reads as empty. */
-export const hasPlottableData = (series: ComparisonSeries[], xAxis: ComparisonXValue[]): boolean =>
+export const hasPlottableData = (series: ComparisonSeries[], xAxis: ChartXValue[]): boolean =>
   xAxis.length > 0 &&
   series.some((s) =>
     s.data
       .slice(0, xAxis.length)
       .some((value) => typeof value === 'number' && Number.isFinite(value))
   );
-
-/** Compacts large magnitudes (16000 -> "16K") while keeping small values precise. */
-export const formatNumericValue = (value: number): string =>
-  Math.abs(value) >= 1000
-    ? value.toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 })
-    : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-
-export const formatXValueDefault = (value: ComparisonXValue): string => {
-  if (value instanceof Date) {
-    return value.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  }
-  return typeof value === 'number' ? formatNumericValue(value) : String(value);
-};

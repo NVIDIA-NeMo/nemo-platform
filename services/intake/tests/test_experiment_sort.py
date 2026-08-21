@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from nmp.intake.api.v2.experiments.endpoints import _parse_sort_keys, _sort_evaluations, _validate_sort_field
+from nmp.intake.api.v2.experiments.endpoints import (
+    _parse_session_sort_keys,
+    _parse_sort_keys,
+    _sort_evaluations,
+    _validate_sort_field,
+)
 from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate
 
 
@@ -138,6 +143,11 @@ def test_parse_sort_keys_rejects_empty() -> None:
         with pytest.raises(HTTPException) as exc:
             _parse_sort_keys(value)
         assert exc.value.status_code == 400
+
+
+def test_parse_session_sort_uses_test_case_name_and_accepts_deprecated_alias() -> None:
+    assert _parse_session_sort_keys("-test_case_name") == [("test_case_name", True)]
+    assert _parse_session_sort_keys("-test_case_id") == [("test_case_name", True)]
 
 
 def test_multi_field_sort_ranks_by_first_key_then_tiebreak() -> None:

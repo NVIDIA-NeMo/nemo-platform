@@ -112,7 +112,7 @@ async def create_metric(
         return await service.create_metric(name, metric, workspace=workspace, project=project)
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during metric creation: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except ValueError as e:
         if "already exists" in str(e).lower():
             logger.warning(f"Metric already exists: {safe_workspace}/{safe_name}")

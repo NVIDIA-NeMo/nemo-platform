@@ -24,9 +24,9 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     "openinference.span.kind": "AGENT",
                     "gen_ai.conversation.id": "trace-session",
                     "project": "project-a",
-                    # Emit the legacy evaluation key on purpose: ingest normalizes it to the canonical
-                    # nemo.evaluation.name, so this asserts the dual-read path end to end (a pre-rename
-                    # producer still associates its traces to the evaluation).
+                    # Emit the legacy evaluation and test-case keys on purpose: ingest normalizes them
+                    # to the canonical name keys, so this asserts the dual-read path end to end (a
+                    # pre-rename producer still associates its traces to the evaluation and test case).
                     "nemo.experiment.id": "experiment-a",
                     "nemo.test_case.id": "case-a",
                     "deployment.environment.name": "prod",
@@ -70,7 +70,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
         "/apis/intake/v2/workspaces/default/traces",
         params={
             "filter[session_id]": "trace-session",
-            "filter[evaluation_id]": "experiment-a",
+            "filter[evaluation_name]": "experiment-a",
             "page_size": 20,
         },
     )
@@ -95,14 +95,21 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert Decimal(str(trace["cost_output_usd"])) == Decimal("0.0037")
     assert trace["span_count"] == 2
     assert trace["error_count"] == 0
-    assert trace["evaluation_context"]["evaluation_id"] == "experiment-a"
-    assert trace["evaluation_context"]["test_case_id"] == "case-a"
+    assert trace["evaluation_context"] == {
+        "evaluation_name": "experiment-a",
+        "test_case_name": "case-a",
+        "evaluation_id": "experiment-a",
+        "test_case_id": "case-a",
+    }
     assert "evaluation_id" not in trace
     assert "experiment_id" not in trace
     assert "test_case_id" not in trace
     assert "source_format" not in trace
     assert "project" not in trace
-    assert "models" not in trace
+    # models and providers were withheld when this API was designed (#9); ASTD-391's
+    # details card needs them, so they are now part of the rollup response.
+    assert trace["models"] == ["gpt-4o-mini"]
+    assert trace["providers"] == ["openai"]
 
     get_response = client.get(f"/apis/intake/v2/workspaces/default/traces/{trace['id']}")
     assert get_response.status_code == 200, get_response.text
@@ -118,14 +125,16 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     summary_trace = summary_response.json()["data"][0]
     assert summary_trace["id"] == trace["id"]
     assert summary_trace["status"] == "success"
-    assert summary_trace["evaluation_context"]["evaluation_id"] == "experiment-a"
-    assert summary_trace["evaluation_context"]["test_case_id"] == "case-a"
+    assert summary_trace["evaluation_context"] == trace["evaluation_context"]
     assert "evaluation_id" not in summary_trace
     assert "experiment_id" not in summary_trace
     assert "test_case_id" not in summary_trace
     assert "input_tokens" not in summary_trace
     assert "cost_usd" not in summary_trace
     assert "span_count" not in summary_trace
+    # summary skips the span aggregate join, so these have no value to report
+    assert "models" not in summary_trace
+    assert "providers" not in summary_trace
     assert "input" not in summary_trace
     assert "output" not in summary_trace
 

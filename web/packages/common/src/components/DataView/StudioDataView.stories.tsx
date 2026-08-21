@@ -9,6 +9,7 @@ import {
   Anchor,
   Badge,
   Button,
+  type DropdownEntry,
   Flex,
   Stack,
   Text,
@@ -373,25 +374,25 @@ export const WithSelectionAndActions: StoryObj = {
         rowActionsColumn({
           size: 58,
           enableResizing: false,
-          rowActions: (job) => [
+          rowActions: (job): DropdownEntry[] => [
             {
-              slotLeft: <Eye />,
+              slotStart: <Eye />,
               children: 'View details',
               onSelect: () => alert(`View: ${job.name}`),
             },
             {
-              slotLeft: <ChartBar />,
+              slotStart: <ChartBar />,
               children: 'Evaluate',
               onSelect: () => alert(`Evaluate: ${job.name}`),
             },
             {
-              slotLeft: <MessagesSquare />,
+              slotStart: <MessagesSquare />,
               children: 'Chat',
               disabled: job.status !== 'completed',
               onSelect: () => alert(`Chat: ${job.name}`),
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => alert(`Delete: ${job.name}`),
@@ -469,15 +470,19 @@ export const LongTextWrapping: StoryObj = {
         rowActionsColumn({
           size: 58,
           enableResizing: false,
-          rowActions: (dataset) => [
-            { slotLeft: <Eye />, children: 'View', onSelect: () => alert(`View: ${dataset.name}`) },
+          rowActions: (dataset): DropdownEntry[] => [
             {
-              slotLeft: <Pencil />,
+              slotStart: <Eye />,
+              children: 'View',
+              onSelect: () => alert(`View: ${dataset.name}`),
+            },
+            {
+              slotStart: <Pencil />,
               children: 'Edit',
               onSelect: () => alert(`Edit: ${dataset.name}`),
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => alert(`Delete: ${dataset.name}`),
@@ -821,10 +826,10 @@ export const InteractiveElementExclusion: StoryObj = {
         rowActionsColumn({
           size: 58,
           enableResizing: false,
-          rowActions: (job) => [
-            { slotLeft: <Eye />, children: 'View', onSelect: () => alert(`Menu: ${job.name}`) },
+          rowActions: (job): DropdownEntry[] => [
+            { slotStart: <Eye />, children: 'View', onSelect: () => alert(`Menu: ${job.name}`) },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => alert(`Delete: ${job.name}`),

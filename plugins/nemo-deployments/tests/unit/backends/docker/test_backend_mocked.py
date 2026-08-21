@@ -976,15 +976,145 @@ async def test_read_status_failed_and_releases_gpu_when_missing_one_shot(
 
 
 @pytest.mark.asyncio
+async def test_read_status_observes_exited_never_container_without_removing(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "exited"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "job",
+        RESTART_POLICY_LABEL: "Never",
+        CONFIG_NAME_LABEL: "cfg1",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+    container.ports = {}
+    container.attrs = container_attrs(exit_code=0)
+    mock_docker_client.containers.get.return_value = container
+
+    update = await docker_backend.read_status(workspace="default", name="job")
+
+    assert update.status == "SUCCEEDED"
+    assert update.exit_code == 0
+    container.remove.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_read_status_retries_exited_on_failure_container_under_backoff_limit(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "exited"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "job",
+        RESTART_POLICY_LABEL: "OnFailure",
+        CONFIG_NAME_LABEL: "cfg1",
+        BACKOFF_LIMIT_LABEL: "3",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+    container.ports = {}
+    container.attrs = container_attrs(exit_code=1, restart_count=2)
+    mock_docker_client.containers.get.return_value = container
+    gpu_pool = MagicMock()
+    docker_backend._gpu_pool = gpu_pool
+
+    update = await docker_backend.read_status(workspace="default", name="job")
+
+    assert update.status == "STARTING"
+    assert update.exit_code == 1
+    assert "retry 2/3" in update.status_message
+    gpu_pool.release_gpu.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_read_status_fails_exited_on_failure_container_after_backoff_limit(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "exited"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "job",
+        RESTART_POLICY_LABEL: "OnFailure",
+        CONFIG_NAME_LABEL: "cfg1",
+        BACKOFF_LIMIT_LABEL: "3",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+    container.ports = {}
+    container.attrs = container_attrs(exit_code=1, restart_count=3)
+    mock_docker_client.containers.get.return_value = container
+    gpu_pool = MagicMock()
+    docker_backend._gpu_pool = gpu_pool
+
+    update = await docker_backend.read_status(workspace="default", name="job")
+
+    assert update.status == "FAILED"
+    assert update.exit_code == 1
+    gpu_pool.release_gpu.assert_called_once_with(deployment_key("default", "job"))
+
+
+@pytest.mark.asyncio
+async def test_read_status_treats_zero_on_failure_backoff_as_unlimited(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "exited"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "job",
+        RESTART_POLICY_LABEL: "OnFailure",
+        CONFIG_NAME_LABEL: "cfg1",
+        BACKOFF_LIMIT_LABEL: "0",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+    container.ports = {}
+    container.attrs = container_attrs(exit_code=1, restart_count=7)
+    mock_docker_client.containers.get.return_value = container
+    gpu_pool = MagicMock()
+    docker_backend._gpu_pool = gpu_pool
+
+    update = await docker_backend.read_status(workspace="default", name="job")
+
+    assert update.status == "STARTING"
+    assert update.exit_code == 1
+    assert "retry 7/unlimited" in update.status_message
+    gpu_pool.release_gpu.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("restart_policy", "expected_status", "should_release_gpu"),
+    [
+        ("Always", "LOST", False),
+        ("Never", "FAILED", True),
+    ],
+)
 async def test_read_status_treats_foreign_container_as_missing(
     mock_sdk: MagicMock,
     mock_entities: AsyncMock,
     mock_docker_client: MagicMock,
+    restart_policy: RestartPolicy,
+    expected_status: str,
+    should_release_gpu: bool,
 ) -> None:
+    gpu_pool = MagicMock()
     with (
         patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
-        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=gpu_pool),
         patch("docker.from_env", return_value=mock_docker_client),
     ):
         backend = DockerDeploymentBackend(
@@ -1007,14 +1137,18 @@ async def test_read_status_treats_foreign_container_as_missing(
     async def get_side_effect(entity_type, name, workspace=None):
         if entity_type is Deployment:
             return deployment_entity
-        return sample_config(restart_policy="Always")
+        return sample_config(restart_policy=restart_policy)
 
     mock_entities.get.side_effect = get_side_effect
 
     update = await backend.read_status(workspace="default", name="srv")
 
-    assert update.status == "LOST"
+    assert update.status == expected_status
     foreign.reload.assert_not_called()
+    if should_release_gpu:
+        gpu_pool.release_gpu.assert_called_once_with(deployment_key("default", "srv"))
+    else:
+        gpu_pool.release_gpu.assert_not_called()
 
 
 @pytest.mark.asyncio

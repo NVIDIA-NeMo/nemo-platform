@@ -6,7 +6,7 @@
 Parallels :mod:`nemo_evaluator.jobs.compiler` (row/model eval), emitting a single
 ``cpu-tasks`` step that runs ``python -m nemo_evaluator.tasks.agent_evaluate`` in
 the platform task environment. Metric/endpoint secrets are surfaced as
-``from_secret`` environment variables; an agent *runner* target (e.g. Codex)
+``from_secret`` environment variables; an agent *runner* target (e.g. Fabric)
 carries no endpoint secret of its own.
 """
 
@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, ModelTarget
+from nemo_evaluator.config import config
+from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, GymRunnerTarget, ModelTarget
 from nemo_evaluator.jobs.secret_env import build_task_environment
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -26,11 +27,10 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 
 AGENT_EVAL_STEP_NAME = "agent-evaluate"
 
-#: Container wiring for the agent-evaluate step: the shared cpu-tasks image, run via ``python -m``.
-#: Constants (not inline literals) so the step definition and its tests share one source of truth.
-#: (Making these spec-configurable is a possible future enhancement — see PR #496 discussion — but
-#: they're fixed for the MVP.)
+#: Container wiring for agent-evaluate steps, run via ``python -m``. Gym targets use a dedicated image
+#: because NeMo Gym requires Ray. This keeps Gym and Ray out of the shared CPU task image.
 AGENT_EVAL_IMAGE = "nmp-cpu-tasks"
+GYM_AGENT_EVAL_IMAGE = "nmp-gym-tasks"
 AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
 AGENT_EVAL_COMMAND = ["nemo_evaluator.tasks.agent_evaluate"]
 
@@ -57,13 +57,19 @@ def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
 
 
 def _agent_eval_step(spec: AgentEvalSpec, profile: str | None) -> PlatformJobStep:
+    is_gym_target = isinstance(spec.target, GymRunnerTarget)
+    image = (
+        config.gym_tasks_image
+        if is_gym_target and config.gym_tasks_image is not None
+        else get_qualified_image(GYM_AGENT_EVAL_IMAGE if is_gym_target else AGENT_EVAL_IMAGE)
+    )
     return PlatformJobStep(
         name=AGENT_EVAL_STEP_NAME,
         executor=CPUExecutionProviderSpec(
             profile=profile or "default",
             provider="cpu",
             container=ContainerSpec(
-                image=get_qualified_image(AGENT_EVAL_IMAGE),
+                image=image,
                 entrypoint=AGENT_EVAL_ENTRYPOINT,
                 command=AGENT_EVAL_COMMAND,
             ),

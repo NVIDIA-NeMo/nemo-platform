@@ -41,6 +41,7 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentFilter,
     ExperimentRequest,
     ExperimentResponse,
+    ExperimentUpdateRequest,
 )
 
 # The API/Studio expose this as an "Evaluation", but it is still stored as the Experiment entity
@@ -81,6 +82,7 @@ _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"
 # expression in the ClickHouse repository.
 _SESSION_SORT_FIELDS = frozenset(
     {
+        "test_case_name",
         "test_case_id",
         "started_at",
         "ended_at",
@@ -125,6 +127,8 @@ async def create_experiment(
         metadata=body.metadata,
         default_sort=body.default_sort,
         pareto=body.pareto,
+        is_favorite=body.is_favorite,
+        show_evaluations_over_time=body.show_evaluations_over_time,
     )
     try:
         created = await entity_client.create(entity)
@@ -143,7 +147,8 @@ async def create_experiment(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
         filter_description=(
-            "Filter experiments by name, insight_id, is_deleted, or a metadata key/value "
+            "Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time, "
+            "baseline_evaluation_name, is_deleted, or a metadata key/value "
             "(filter[metadata.<key>]=<value>). "
             "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones."
         ),
@@ -160,6 +165,8 @@ async def list_experiments(
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
+    _apply_default_false_boolean_filter(parsed, "is_favorite")
+    _apply_default_false_boolean_filter(parsed, "show_evaluations_over_time")
     result = await entity_client.list(
         ExperimentGroup,
         workspace=workspace,
@@ -213,6 +220,7 @@ async def get_experiment(
     response_model=ExperimentResponse,
     tags=[EXPERIMENTS_TAG],
     responses={
+        400: {"description": "The baseline Evaluation does not exist or is not a live member"},
         404: {"description": "Experiment not found"},
         409: {"description": "Attempt to rename the experiment"},
     },
@@ -220,7 +228,7 @@ async def get_experiment(
 async def update_experiment(
     workspace: str,
     name: str,
-    body: ExperimentRequest,
+    body: ExperimentUpdateRequest,
     entity_client: EntityClientDep,
 ) -> ExperimentResponse:
     existing = await _get_or_404(
@@ -241,11 +249,26 @@ async def update_experiment(
     existing.insight_id = body.insight_id
     existing.summary = body.summary
     existing.metadata = body.metadata
-    existing.default_sort = body.default_sort
+    if "default_sort" in body.model_fields_set:
+        existing.default_sort = body.default_sort
     # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
     # clients) must not silently reset customized axes to the cost/latency default.
     if body.pareto is not None:
         existing.pareto = body.pareto
+    # Preserve values written by newer clients when an older client sends a full update without
+    # fields it does not know about.
+    if "is_favorite" in body.model_fields_set:
+        existing.is_favorite = body.is_favorite
+    if "show_evaluations_over_time" in body.model_fields_set:
+        existing.show_evaluations_over_time = body.show_evaluations_over_time
+    if "baseline_evaluation_name" in body.model_fields_set:
+        await _validate_baseline_evaluation(
+            entity_client,
+            workspace=workspace,
+            group_id=existing.id,
+            evaluation_name=body.baseline_evaluation_name,
+        )
+        existing.baseline_evaluation_name = body.baseline_evaluation_name
     updated = await entity_client.update(existing)
     response = ExperimentResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(
@@ -444,7 +467,7 @@ async def list_evaluations(
             exc.limit,
         )
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=(
                 f"This query selects {exc.selected} evaluations, exceeding the maximum of "
                 f"{exc.limit} that can be sorted in one request. Narrow the result with a "
@@ -512,7 +535,7 @@ _IMMUTABLE_EVALUATION_FIELDS = ("name", "dataset_name", "dataset_version")
     tags=[EVALUATIONS_TAG],
     responses={
         404: {"description": "Evaluation not found"},
-        409: {"description": "Attempt to change an immutable field"},
+        409: {"description": "Attempt to change an immutable field, or remove a baseline membership"},
     },
 )
 async def update_evaluation(
@@ -545,6 +568,12 @@ async def update_evaluation(
             ),
         )
 
+    await _validate_baseline_memberships_preserved(
+        entity_client,
+        evaluation=existing,
+        desired_group_ids=body.experiment_ids,
+    )
+
     existing.experiment_ids = body.experiment_ids
     existing.source_link = body.source_link
     existing.metadata = body.metadata
@@ -563,6 +592,7 @@ async def update_evaluation(
     responses={
         400: {"description": "A referenced ExperimentGroup does not exist, or experiment_ids is empty"},
         404: {"description": "Evaluation not found"},
+        409: {"description": "Attempt to remove a baseline Evaluation from its Experiment"},
     },
 )
 async def patch_evaluation(
@@ -583,6 +613,7 @@ async def patch_evaluation(
     _reject_if_deleted(existing, workspace=workspace, name=name, label="Evaluation")
 
     fields_set = body.model_fields_set
+    desired_group_ids = existing.experiment_ids
     if "experiment_ids" in fields_set:
         if not body.experiment_ids:
             raise HTTPException(
@@ -593,7 +624,13 @@ async def patch_evaluation(
         if new_group_ids:
             await _validate_groups_exist(entity_client, group_ids=new_group_ids)
         # Membership is a set — store deduped so a duplicated id can't inflate a group's count.
-        existing.experiment_ids = list(dict.fromkeys(body.experiment_ids))
+        desired_group_ids = list(dict.fromkeys(body.experiment_ids))
+    await _validate_baseline_memberships_preserved(
+        entity_client,
+        evaluation=existing,
+        desired_group_ids=desired_group_ids,
+    )
+    existing.experiment_ids = desired_group_ids
     if "parent_evaluation_id" in fields_set:
         await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
         existing.parent_experiment_id = body.parent_evaluation_id
@@ -617,7 +654,10 @@ async def patch_evaluation(
     "/v2/workspaces/{workspace}/evaluations/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     tags=[EVALUATIONS_TAG],
-    responses={404: {"description": "Evaluation not found"}},
+    responses={
+        404: {"description": "Evaluation not found"},
+        409: {"description": "Evaluation is selected as an Experiment's baseline"},
+    },
 )
 async def delete_evaluation(
     workspace: str,
@@ -632,6 +672,11 @@ async def delete_evaluation(
         label="Evaluation",
     )
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
+    await _validate_baseline_memberships_preserved(
+        entity_client,
+        evaluation=entity,
+        desired_group_ids=[],
+    )
     await _soft_delete(entity_client, entity)
 
 
@@ -702,7 +747,7 @@ async def unpin_evaluation(
     },
     openapi_extra=generate_openapi_extra_params(
         filter_schema=EvaluationSessionFilter,
-        filter_description="Filter sessions by test_case_id and status.",
+        filter_description="Filter sessions by test_case_name and status.",
     ),
 )
 async def list_evaluation_sessions(
@@ -725,21 +770,21 @@ async def list_evaluation_sessions(
         description=(
             "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
             "prefix a field with '-' for descending — e.g. '-cost_total_usd,latency_ms'. Fields: "
-            "test_case_id, started_at, ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, "
+            "test_case_name, started_at, ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, "
             "sessions are ordered by started_at ascending."
         ),
     ),
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
     sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
-    test_case_id: str | None = parsed.extract("test_case_id")
+    test_case_name = _session_test_case_name(parsed)
     status_raw: str | None = parsed.extract("status")
     try:
         result = await read_service.list_sessions(
             workspace=workspace,
             evaluation_name=name,
             status=status_raw,
-            test_case_id=test_case_id,
+            test_case_name=test_case_name,
             page=page,
             page_size=page_size,
             mode=mode,
@@ -754,12 +799,12 @@ async def list_evaluation_sessions(
         ) from exc
     except MetricSortTooLargeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=(
                 f"This query selects {exc.total} sessions, exceeding the maximum of "
                 f"{exc.limit} that can be sorted by cost or tokens in one request. "
                 "Narrow the result with a filter (e.g. filter[status]=success) or sort by a "
-                "different field (started_at, latency_ms, status, test_case_id)."
+                "different field (started_at, latency_ms, status, test_case_name)."
             ),
         ) from exc
     except EvaluationTelemetryUnavailableError as exc:
@@ -952,6 +997,57 @@ async def _validate_parent_evaluation_exists(entity_client: EntityClient, *, par
         ) from e
 
 
+async def _validate_baseline_evaluation(
+    entity_client: EntityClient,
+    *,
+    workspace: str,
+    group_id: str,
+    evaluation_name: str | None,
+) -> None:
+    """Require a selected baseline to be a live Evaluation belonging to the Experiment."""
+    if evaluation_name is None:
+        return
+    try:
+        evaluation = await entity_client.get(Evaluation, name=evaluation_name, workspace=workspace)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"baseline_evaluation_name '{evaluation_name}' does not reference an existing Evaluation.",
+        ) from e
+    if evaluation.is_deleted or group_id not in evaluation.experiment_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Evaluation '{evaluation_name}' must be a live member of the Experiment before it can be "
+                "selected as its baseline."
+            ),
+        )
+
+
+async def _validate_baseline_memberships_preserved(
+    entity_client: EntityClient,
+    *,
+    evaluation: Evaluation,
+    desired_group_ids: list[str],
+) -> None:
+    """Reject removing an Evaluation from any live Experiment that selects it as baseline."""
+    removed_group_ids = set(evaluation.experiment_ids).difference(desired_group_ids)
+    for group_id in removed_group_ids:
+        try:
+            group = await entity_client.get_by_id(ExperimentGroup, entity_id=group_id)
+        except EntityNotFoundError:
+            continue
+        if not group.is_deleted and group.baseline_evaluation_name == evaluation.name:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Evaluation '{evaluation.name}' is the baseline for Experiment '{group.name}'. "
+                    "Clear that Experiment's baseline_evaluation_name before removing the membership or "
+                    "deleting the Evaluation."
+                ),
+            )
+
+
 async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) -> None:
     """Reject the request with 400 if the referenced ExperimentGroup doesn't exist or is deleted."""
     try:
@@ -1099,6 +1195,34 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
         parsed.and_with(null_clause)
 
 
+def _apply_default_false_boolean_filter(parsed: ParsedFilter, field: str) -> None:
+    """Filter a schema-on-read boolean while treating legacy rows with no stored value as false."""
+    raw_value = parsed.remove(field)
+    if isinstance(raw_value, bool):
+        wanted: bool | None = raw_value
+    elif isinstance(raw_value, str):
+        wanted = raw_value.strip().lower() in ("true", "1", "yes")
+    else:
+        wanted = None
+    if wanted is None:
+        return
+
+    entity_field = f"data.{field}"
+    true_clause = ComparisonOperation(operator=FilterOperator.EQ, field=entity_field, value=True)
+    if wanted:
+        parsed.and_with(true_clause)
+    else:
+        parsed.and_with(
+            LogicalOperation(
+                operator=FilterOperator.OR,
+                operations=[
+                    ComparisonOperation(operator=FilterOperator.EQ, field=entity_field, value=False),
+                    ComparisonOperation(operator=FilterOperator.EQ, field=entity_field, value=None),
+                ],
+            ),
+        )
+
+
 # Metric heads whose dotted sub-paths address a ClickHouse rollup (not an entity column). Declared as
 # self-mapping namespaces on EvaluationFilter so paths survive filter validation untranslated.
 _METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "tokens", "evaluators"})
@@ -1177,6 +1301,8 @@ def _parse_session_sort_keys(sort: str) -> list[tuple[str, bool]]:
         sort_field = field_token[1:] if descending else field_token
         if sort_field not in _SESSION_SORT_FIELDS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {sort_field}")
+        if sort_field == "test_case_id":
+            sort_field = "test_case_name"
         sort_keys.append((sort_field, descending))
     if not sort_keys:
         raise HTTPException(
@@ -1184,6 +1310,17 @@ def _parse_session_sort_keys(sort: str) -> list[tuple[str, bool]]:
             detail="The 'sort' parameter must contain at least one field.",
         )
     return sort_keys
+
+
+def _session_test_case_name(parsed: ParsedFilter) -> str | None:
+    test_case_name: str | None = parsed.extract("test_case_name")
+    deprecated_test_case_id: str | None = parsed.extract("test_case_id")
+    if test_case_name is not None and deprecated_test_case_id is not None and test_case_name != deprecated_test_case_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Conflicting evaluation session filters for test_case_name",
+        )
+    return test_case_name if test_case_name is not None else deprecated_test_case_id
 
 
 def _is_metric_field(field: str) -> bool:
@@ -1385,7 +1522,7 @@ def _enqueue_stale_denormalization(
             or entity.agent_versions != rollup.agent_versions
             or entity.model_names != rollup.model_names
         ):
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=entity.name)
+            denormalizer.mark_dirty(workspace=workspace, evaluation_name=entity.name)
 
 
 async def _evaluation_response_with_rollup(

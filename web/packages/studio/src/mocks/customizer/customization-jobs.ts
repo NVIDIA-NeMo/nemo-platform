@@ -16,8 +16,8 @@ const completedStatusDetails = {
   percentage_done: 100,
   train_loss: 0.9,
   val_loss: 0.9,
-  lr: 0.000005,
-  grad_norm: 1.2345,
+  train_lr: 0.000005,
+  train_grad_norm: 1.2345,
   checkpoint_path: 'default/output-fileset/checkpoints/step-10',
   metrics: {
     train_loss: [
@@ -205,3 +205,46 @@ export const customizationJob3: UnslothJob = {
 };
 
 export const customizationJobs = [customizationJob1, customizationJob2, customizationJob3];
+
+export const customizationJobSteps = [
+  {
+    id: 'step-download',
+    name: 'model-and-dataset-download',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:41:02.100000',
+    updated_at: '2025-06-25T21:41:12.100000',
+  },
+  {
+    id: 'step-training',
+    name: 'training',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:41:12.100000',
+    updated_at: '2025-06-25T21:42:02.100000',
+  },
+  {
+    id: 'step-upload',
+    name: 'model-upload',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:42:02.100000',
+    updated_at: '2025-06-25T21:42:10.100000',
+  },
+  {
+    id: 'step-entity',
+    name: 'model-entity-creation',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:42:10.100000',
+    updated_at: '2025-06-25T21:42:14.242833',
+  },
+];

@@ -66,7 +66,9 @@ class TestChatCompletions:
             cost_usd=0,
             evaluation_context={
                 "evaluation_id": "evaluation_id",
+                "evaluation_name": "evaluation_name",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             provider="provider",
             session_id="session_id",
@@ -161,7 +163,9 @@ class TestAsyncChatCompletions:
             cost_usd=0,
             evaluation_context={
                 "evaluation_id": "evaluation_id",
+                "evaluation_name": "evaluation_name",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             provider="provider",
             session_id="session_id",

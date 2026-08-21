@@ -7,11 +7,13 @@ import { CJobCancellableStatuses, CJobLaunchableStatuses } from '@nemo/common/sr
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   useCustomizationCancelAutomodelJob,
+  useCustomizationCancelRlJob,
   useCustomizationCancelUnslothJob,
 } from '@nemo/sdk/generated/customizer/api';
 import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/api';
 import { PlatformJobStatus, type PlatformJobResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex } from '@nvidia/foundations-react-core';
+import { getCustomizationJobStatusQueryKey } from '@studio/hooks/useCustomizationJobStatus';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewCustomizationJobRoute, getNewEvaluationMetricRoute } from '@studio/routes/utils';
 import { CustomizationBackend, type CustomizationJob } from '@studio/util/customizationBackend';
@@ -50,21 +52,33 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
           return { ...oldData, status: PlatformJobStatus.cancelled };
         }
       );
+      // Per-step state and the derived duration are a separate query; without this they keep
+      // showing the pre-cancel pipeline, and its polling has already stopped by now.
+      if (backend) {
+        void queryClient.invalidateQueries({
+          queryKey: getCustomizationJobStatusQueryKey(backend, workspace, name),
+        });
+      }
     },
   };
   const automodelCancel = useCustomizationCancelAutomodelJob({ mutation: cancelMutation });
   const unslothCancel = useCustomizationCancelUnslothJob({ mutation: cancelMutation });
-  const isPending = automodelCancel.isPending || unslothCancel.isPending;
+  const rlCancel = useCustomizationCancelRlJob({ mutation: cancelMutation });
+  const isPending = automodelCancel.isPending || unslothCancel.isPending || rlCancel.isPending;
+
+  type CancelJob = (vars: { workspace: string; name: string }) => Promise<unknown>;
+  const cancelByBackend: Record<CustomizationBackend, CancelJob> = {
+    [CustomizationBackend.automodel]: automodelCancel.mutateAsync,
+    [CustomizationBackend.unsloth]: unslothCancel.mutateAsync,
+    [CustomizationBackend.rl]: rlCancel.mutateAsync,
+  };
 
   const cancelJob = async () => {
     if (!backend) {
       toast.error('Unable to determine the training backend for this job.');
       return;
     }
-    const cancel =
-      backend === CustomizationBackend.automodel
-        ? automodelCancel.mutateAsync
-        : unslothCancel.mutateAsync;
+    const cancel = cancelByBackend[backend];
     try {
       await cancel({ workspace, name });
     } catch (e) {

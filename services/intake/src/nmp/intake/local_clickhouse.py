@@ -542,8 +542,14 @@ def _ensure_data_directory_identity(data_dir: Path, *, manage_permissions: bool)
     tmp_dir = data_dir / "tmp"
     tmp_dir.mkdir(exist_ok=True)
     if manage_permissions:
-        data_dir.chmod(0o755)
-        tmp_dir.chmod(0o755)
+        for path in (data_dir, tmp_dir):
+            try:
+                path.chmod(0o755)
+            except PermissionError:
+                # A rootless Docker bind mount can leave this path owned by a
+                # container-mapped UID after a previous run. The container-side
+                # reconciliation repairs that ownership before ClickHouse starts.
+                logger.debug("Could not update permissions for existing ClickHouse data path %s", path)
 
     # Keep the identity inside the bind mount intentionally: it belongs to this
     # data incarnation and must disappear with the ClickHouse data during a wipe.
@@ -583,23 +589,38 @@ def _ensure_data_directory_identity(data_dir: Path, *, manage_permissions: bool)
     )
 
 
-def _ensure_clickhouse_tmp_dir(container: Container) -> None:
+def _ensure_clickhouse_data_directory_access(container: Container) -> None:
     result = container.exec_run(
         [
             "sh",
             "-c",
-            "mkdir -p /var/lib/clickhouse/tmp && chown clickhouse:clickhouse /var/lib/clickhouse/tmp",
-        ]
+            "mkdir -p /var/lib/clickhouse/tmp && chown -R clickhouse:clickhouse /var/lib/clickhouse",
+        ],
+        user="root",
     )
     if result.exit_code != 0:
         output = result.output.decode(errors="replace") if isinstance(result.output, bytes) else str(result.output)
         raise LocalClickHouseProvisioningError(
-            f"Could not prepare ClickHouse temporary storage in {container.name}: {output.strip()}"
+            f"Could not prepare ClickHouse data storage in {container.name}: {output.strip()}"
+        )
+
+    result = container.exec_run(
+        [
+            "sh",
+            "-c",
+            'probe=$(mktemp /var/lib/clickhouse/tmp/.nmp-write-probe.XXXXXX) && rm -f "$probe"',
+        ],
+        user="clickhouse",
+    )
+    if result.exit_code != 0:
+        output = result.output.decode(errors="replace") if isinstance(result.output, bytes) else str(result.output)
+        raise LocalClickHouseProvisioningError(
+            f"ClickHouse data storage in {container.name} is not writable by the clickhouse user: {output.strip()}"
         )
 
 
 def _prepare_and_wait_until_ready(container: Container, settings: ClickHouseSettings) -> str:
-    _ensure_clickhouse_tmp_dir(container)
+    _ensure_clickhouse_data_directory_access(container)
     url = _container_http_url(container)
     _wait_until_ready(replace(settings, url=url))
     logger.info("Local ClickHouse is ready at %s", url, extra={"container": container.name})

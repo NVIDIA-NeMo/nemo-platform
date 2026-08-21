@@ -63,6 +63,30 @@ def test_crud_binding_deployment_read_covers_logs() -> None:
         assert binding.callers == ["principal"]
 
 
+def test_session_lifecycle_bindings() -> None:
+    expected_bindings = [
+        (f"{_BASE}/sessions", "post", "agents.sessions.create", ["agents:write", "platform:write"]),
+        (f"{_BASE}/sessions", "get", "agents.sessions.list", ["agents:read", "platform:read"]),
+        (f"{_BASE}/sessions/{{name}}", "get", "agents.sessions.read", ["agents:read", "platform:read"]),
+        (f"{_BASE}/sessions/{{name}}", "delete", "agents.sessions.delete", ["agents:write", "platform:write"]),
+        (
+            f"{_BASE}/sessions/{{name}}/close",
+            "post",
+            "agents.sessions.close",
+            ["agents:write", "platform:write"],
+        ),
+    ]
+    contrib = _contribution()
+
+    for path, method, permission, scopes in expected_bindings:
+        binding = contrib.endpoints[path][method]
+        assert binding.permissions == [permission], (path, method)
+        assert binding.scopes == scopes, (path, method)
+        assert binding.callers == ["principal"], (path, method)
+        assert not binding.deny, (path, method)
+        assert permission in contrib.permissions
+
+
 def test_gateway_proxy_binding() -> None:
     contrib = _contribution()
     methods = contrib.endpoints[_GATEWAY_AGENT]

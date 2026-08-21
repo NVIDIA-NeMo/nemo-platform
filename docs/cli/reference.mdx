@@ -6046,8 +6046,10 @@ nemo experiments create [OPTIONS] [NAME]
 * `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
 * `--description`: Human-readable purpose of the experiment.
 * `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--is-favorite`: Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to preserve the existing value.
 * `--metadata`: Free-form producer metadata for the experiment. (JSON string)
 * `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--show-evaluations-over-time`: Whether Studio should display this Experiment's Evaluation results over time. Defaults to false on create; omit on update to preserve the existing value.
 * `--summary`: Human- or agent-authored summary of the experiment's findings.
 * `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
 
@@ -6110,10 +6112,13 @@ nemo experiments list [OPTIONS]
 JSON-only fields:
   metadata: dict[str, str]
 
-Filter experiments by name, insight_id, is_deleted, or a metadata key/value (filter[metadata.\<key>]=\<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.
+Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time, baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.\<key>]=\<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.
+* `--filter.baseline-evaluation-name`
 * `--filter.insight-id`
 * `--filter.is-deleted`
+* `--filter.is-favorite`
 * `--filter.name`
+* `--filter.show-evaluations-over-time`
 
 **Help:**
 
@@ -6181,11 +6186,14 @@ nemo experiments update [OPTIONS] PATH_NAME
 
 * `--workspace`
 * `--body-name`: Workspace-unique experiment name.
+* `--baseline-evaluation-name`: Name of this Experiment's baseline Evaluation. The Evaluation must already be a live member of the Experiment. Set null to clear the selected baseline.
 * `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
 * `--description`: Human-readable purpose of the experiment.
 * `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--is-favorite`: Whether this Experiment is marked as a favorite. Defaults to false on create; omit on update to preserve the existing value.
 * `--metadata`: Free-form producer metadata for the experiment. (JSON string)
 * `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--show-evaluations-over-time`: Whether Studio should display this Experiment's Evaluation results over time. Defaults to false on create; omit on update to preserve the existing value.
 * `--summary`: Human- or agent-authored summary of the experiment's findings.
 
 **Help:**
@@ -6591,7 +6599,7 @@ nemo intake ingest atif create [OPTIONS]
 * `--agent`: JSON string
 * `--schema-version <CHOICE>`: (required) [possible values: ATIF-v1.0, ATIF-v1.1, ATIF-v1.2, ATIF-v1.3, ATIF-v1.4, ATIF-v1.5, ATIF-v1.6, ATIF-v1.7]
 * `--continued-trajectory-ref`
-* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--evaluation-context`: Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)
 * `--extra`: JSON string
 * `--final-metrics`: JSON string
 * `--notes`
@@ -6661,7 +6669,7 @@ nemo intake ingest chat-completions create [OPTIONS]
 * `--cost-input-usd <FLOAT>`: Estimated input-token cost of this model call in USD.
 * `--cost-output-usd <FLOAT>`: Estimated output-token cost of this model call in USD.
 * `--cost-usd <FLOAT>`: Total estimated cost of this model call in USD. This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
-* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--evaluation-context`: Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)
 * `--provider`
 * `--session-id`: Groups related chat-completions calls without forcing them into the same trace.
 * `--trace-id`: Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.
@@ -6811,7 +6819,7 @@ nemo intake ingest spans create [OPTIONS]
 **Options:**
 
 * `--workspace`
-* `--source`: (required)
+* `--source`: Stable name for the source trace store, such as `langsmith` or `mlflow`.
 * `--spans`: JSON string
 
 **Help:**
@@ -6917,10 +6925,11 @@ nemo intake spans list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation_name, test_case_name, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
 * `--filter.agent-id`
 * `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
@@ -6930,6 +6939,7 @@ Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, te
 * `--filter.source`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 * `--filter.tool-name`
 * `--filter.trace-id`
 
@@ -7064,6 +7074,7 @@ Filter spans by the same fields as the span list endpoint, then group matching s
 * `--filter.agent-id`
 * `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
@@ -7073,6 +7084,7 @@ Filter spans by the same fields as the span list endpoint, then group matching s
 * `--filter.source`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 * `--filter.tool-name`
 * `--filter.trace-id`
 
@@ -7103,8 +7115,49 @@ nemo intake traces [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
+* `get-metrics`: Get Trace Metrics
 * `list`: List Traces
 * `get`: Get Trace
+
+##### nemo intake traces get-metrics
+
+Get Trace Metrics
+
+**Usage:**
+
+```shell
+nemo intake traces get-metrics [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--bucket <CHOICE>`: Time bucket granularity. [possible values: total, hour, day, week, month]
+* `--timezone`: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  started_at: \{gte: str, lte: str}
+
+Filter the traces the metrics are computed over. Accepts the same fields as the traces list, so agent_name scopes the rollup to one agent. Without a started_at lower bound the rollup covers the last 7 days.
+* `--filter.id`
+* `--filter.agent-name`
+* `--filter.evaluation-id`
+* `--filter.evaluation-name`
+* `--filter.session-id`
+* `--filter.status`
+* `--filter.test-case-id`
+* `--filter.test-case-name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
 ##### nemo intake traces list
 
@@ -7131,12 +7184,15 @@ nemo intake traces list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.
+Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, test_case_name, and agent_name.
 * `--filter.id`
+* `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.session-id`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 
 **Help:**
 

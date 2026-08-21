@@ -574,7 +574,6 @@ def run_evaluation(
  model_kwargs = {
  "url": model_spec["url"],
  "name": model_spec["model_id"],
- "format": "openai",
  }
  if secret_key_name:
  model_kwargs["api_key_secret"] = secret_key_name

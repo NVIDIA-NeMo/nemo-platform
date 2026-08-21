@@ -42,15 +42,13 @@ async def main() -> int:
     # requirements.env); it resolves via the default LocalSecretResolver (from the host env) and injects
     # the value into the container. No raw credential on the API surface.
     runtime = FabricContainerRuntime(
-        # Typed hermes-SDK agent config: in-library transport, model-only (no codex/node). The harness is
-        # chosen by harness.adapter_id, never inferred from the model.
+        # Typed Hermes agent config: model-only (no codex/node). The harness is chosen by
+        # harness.adapter_id, never inferred from the model; Fabric owns its execution mechanism.
         FabricConfig(
             metadata=MetadataConfig(name="hermes-eval"),
             harness=HarnessConfig(adapter_id="nvidia.fabric.hermes", resolution="preinstalled"),
             models={"default": {"provider": "nvidia", "model": model}},
-            runtime=RuntimeConfig.from_mapping(
-                {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"}
-            ),
+            runtime=RuntimeConfig(input_schema="chat", output_schema="message"),
         ),
         provider=DockerSandboxProvider(),
         secrets={"NVIDIA_API_KEY": SecretRef(root="NVIDIA_API_KEY")},

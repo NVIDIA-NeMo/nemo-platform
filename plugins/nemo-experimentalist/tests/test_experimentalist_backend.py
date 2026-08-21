@@ -435,8 +435,8 @@ async def test_upload_trace_atif_posts_to_the_atif_ingest_endpoint(tmp_path):
     post = client.posts[0]
     assert post["url"] == "/apis/intake/v2/workspaces/ws-1/ingest/atif"
     assert post["body"]["evaluation_context"] == {
-        "evaluation_id": "exp-1",
-        "test_case_id": "case-a",
+        "evaluation_name": "exp-1",
+        "test_case_name": "case-a",
     }
     assert post["body"]["agent"]["model_name"] == "gpt-5-mini"
 

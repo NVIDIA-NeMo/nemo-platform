@@ -1,13 +1,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { SpanKind, SpanStatus, type Span } from '@nemo/sdk/generated/platform/schema';
+import {
+  SpanKind,
+  SpanStatus,
+  type Span,
+  type SpanEvaluationContext,
+} from '@nemo/sdk/generated/platform/schema';
 import {
   buildSpanHierarchyRows,
   buildSpanTree,
   compareSpansByStartedAt,
   formatCost,
+  getEvaluationContextSummary,
   getSpansDurationMs,
+  hasEvaluationContext,
   type SpanTreeNode,
 } from '@studio/util/intakeTelemetry';
 
@@ -19,6 +26,27 @@ const makeSpan = (span: Partial<Span> & Pick<Span, 'span_id' | 'started_at'>): S
   status: SpanStatus.success,
   ingested_at: '2026-05-20T00:00:00Z',
   ...span,
+});
+
+describe('evaluation context helpers', () => {
+  it('prefers canonical names', () => {
+    const context: SpanEvaluationContext = {
+      evaluation_name: 'new-evaluation',
+      test_case_name: 'new-test-case',
+      evaluation_id: 'deprecated-evaluation',
+      test_case_id: 'deprecated-test-case',
+    };
+
+    expect(getEvaluationContextSummary(context)).toBe('new-evaluation');
+    expect(hasEvaluationContext(context)).toBe(true);
+  });
+
+  it('continues to display deprecated fields during the compatibility window', () => {
+    const context: SpanEvaluationContext = { evaluation_id: 'legacy-evaluation' };
+
+    expect(getEvaluationContextSummary(context)).toBe('legacy-evaluation');
+    expect(hasEvaluationContext(context)).toBe(true);
+  });
 });
 
 describe('intakeTelemetry span hierarchy helpers', () => {

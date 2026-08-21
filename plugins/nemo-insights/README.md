@@ -147,11 +147,10 @@ export NEMO_INSIGHTS_ANALYST='{"run_at_hour": 17, "run_on_weekday": "friday", "j
 
 ### Analyst self-observability
 
-`NEMO_INSIGHTS_ANALYST_OBSERVABILITY` is read directly from the environment
-rather than through `NemoConfig`, and is off unless set to one of `1`, `true`,
-`yes`, or `on` (case-insensitive). When enabled, the analyst exports its own
-traces to Intake's workspace-scoped OTLP endpoint. The endpoint must be HTTPS
-unless it is loopback.
+Whenever a platform base URL is available, the Analyst exports its own traces
+to Intake's workspace-scoped OTLP endpoint. No opt-in flag or environment
+variable is required. Set `NEMO_INSIGHTS_ANALYST_OBSERVABILITY=false` to opt
+out. The endpoint must be HTTPS unless it is loopback.
 
 ## Development
 
@@ -160,9 +159,9 @@ uv run pytest plugins/nemo-insights/tests
 uv run ruff check plugins/nemo-insights
 ```
 
-## Testbed
+## Evaluation
 
-The analyst-only testbed is in [`testbed/`](testbed/). It can replay pinned
+The analyst-only evaluation is in [`evaluation/`](evaluation/). It can replay pinned
 Intake traces or run Tau2 benchmarks before invoking `nemo agents analyst run`.
 
 ## What consumes an Insight

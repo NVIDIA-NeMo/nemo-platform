@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from types import ModuleType
 
+from pytest import MonkeyPatch
+
 
 def _load_copyright_fixer() -> ModuleType:
-    path = Path(__file__).resolve().parents[1] / "script" / "copyright_fixer.py"
+    path = Path(__file__).resolve().parents[1] / "tools" / "lint" / "copyright_fixer.py"
     spec = importlib.util.spec_from_file_location("copyright_fixer", path)
     assert spec is not None
     assert spec.loader is not None
@@ -17,6 +20,14 @@ def _load_copyright_fixer() -> ModuleType:
 
 
 copyright_fixer = _load_copyright_fixer()
+
+
+def _git_init(repo: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _git_add(repo: Path, paths: list[str]) -> None:
+    subprocess.run(["git", "add", *paths], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def test_supported_file_includes_missing_osrb_file_types(tmp_path: Path) -> None:
@@ -117,18 +128,37 @@ def test_inline_helm_template_header_is_not_accepted() -> None:
 
 
 def test_include_can_target_files_under_copyrightignore_excluded_directories(tmp_path: Path) -> None:
-    repo = copyright_fixer.Repo.init(tmp_path)
-    ignored_file = tmp_path / "e2e" / "conftest.py"
+    _git_init(tmp_path)
+    ignored_file = tmp_path / "generated" / "conftest.py"
     ignored_file.parent.mkdir()
     ignored_file.write_text('print("ok")\n', encoding="utf-8")
-    (tmp_path / ".copyrightignore").write_text("e2e/\n", encoding="utf-8")
-    repo.index.add([".copyrightignore", "e2e/conftest.py"])
+    (tmp_path / ".copyrightignore").write_text("generated/\n", encoding="utf-8")
+    _git_add(tmp_path, [".copyrightignore", "generated/conftest.py"])
 
     default_files = copyright_fixer._collect_files_from_dir(str(tmp_path))
-    included_files = copyright_fixer._collect_files_from_dir(str(tmp_path), include=["e2e/conftest.py"])
+    included_files = copyright_fixer._collect_files_from_dir(str(tmp_path), include=["generated/conftest.py"])
 
     assert str(ignored_file) not in default_files
     assert str(ignored_file) in included_files
+
+
+def test_resolve_targets_scans_current_repo_root(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    _git_init(tmp_path)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    root_file = tmp_path / "root.md"
+    nested_file = nested / "child.md"
+    root_file.write_text("# Root\n", encoding="utf-8")
+    nested_file.write_text("# Child\n", encoding="utf-8")
+    _git_add(tmp_path, ["root.md", "nested/child.md"])
+
+    monkeypatch.chdir(nested)
+
+    files, root = copyright_fixer._resolve_targets()
+
+    assert root == str(tmp_path.resolve())
+    assert str(root_file) in files
+    assert str(nested_file) in files
 
 
 def test_proprietary_license_detection_ignores_fixer_source_literals() -> None:

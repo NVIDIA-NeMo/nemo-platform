@@ -12,6 +12,7 @@ import {
   buildServedModelNames,
   builderModelFromSelection,
   defaultModelAlias,
+  findWorkspaceModel,
   firstAvailableModel,
   modelIdForModel,
   providerForSelection,
@@ -73,18 +74,23 @@ describe('model resolution', () => {
     expect(firstAvailableModel([])).toBeNull();
   });
 
-  it('resolveTemplateModel prefers a model matching the name across workspaces', () => {
-    expect(resolveTemplateModel(groups, 'nvidia-llama-3-3-nemotron-super-49b-v1-5')).toEqual({
+  it('findWorkspaceModel matches a bare name across workspaces', () => {
+    expect(findWorkspaceModel(groups, 'nvidia-llama-3-3-nemotron-super-49b-v1-5')).toEqual({
       model: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5',
       provider: 'steramae/build',
     });
   });
 
-  it('resolveTemplateModel matches a full URN too', () => {
-    expect(resolveTemplateModel(groups, 'steramae/nemotron-oss')).toEqual({
+  it('findWorkspaceModel matches a full URN too', () => {
+    expect(findWorkspaceModel(groups, 'steramae/nemotron-oss')).toEqual({
       model: 'steramae/nemotron-oss',
       provider: 'steramae/build',
     });
+  });
+
+  it('findWorkspaceModel returns null rather than substituting', () => {
+    expect(findWorkspaceModel(groups, 'not-in-workspace')).toBeNull();
+    expect(findWorkspaceModel([], 'anything')).toBeNull();
   });
 
   it('resolveTemplateModel falls back to the first model when the preferred is absent', () => {

@@ -5,7 +5,7 @@
 
 Shares the evaluator-plugin integration harness (conftest's session-scoped ``subprocess_platform``)
 and the ``RUN_AGENT_EVAL_INTEGRATION`` opt-in. Submits an *offline* metric eval — inline dataset, no
-model target / IGW / codex — so the only requirement is the host subprocess backend. Asserts the run
+model target / IGW / agent runner — so the only requirement is the host subprocess backend. Asserts the run
 persisted a queryable ``EvaluateResult`` retrievable via ``client.evaluator.eval_results``, covering
 the row-eval half of result persistence (the agent-eval half lives in ``test_agent_evaluate_job.py``).
 """
@@ -60,7 +60,7 @@ def _offline_exact_match_spec() -> dict:
 def test_submit_offline_row_eval_persists_result(subprocess_platform: str) -> None:
     # dim: submit x subprocess backend, row (EvaluateJob) path. The jobs service compiles + runs
     # EvaluateJob.run() as a host subprocess; run() writes an EvaluateResult through the async task
-    # SDK + entity store. Offline (no target/IGW/codex): the dataset already carries the outputs.
+    # SDK + entity store. Offline (no target or IGW): the dataset already carries the outputs.
     client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 

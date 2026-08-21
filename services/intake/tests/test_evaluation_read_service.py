@@ -30,9 +30,9 @@ class _RollupRepository(EvaluationRollupRepository):
         self,
         *,
         workspace: str,
-        evaluation_ids: list[str],
+        evaluation_names: list[str],
     ) -> dict[str, EvaluationRollup]:
-        self.calls.append((workspace, evaluation_ids))
+        self.calls.append((workspace, evaluation_names))
         if isinstance(self._rollups, Exception):
             raise self._rollups
         return self._rollups
@@ -48,7 +48,7 @@ class _SessionRepository(EvaluationSessionRepository):
         workspace: str,
         evaluation_name: str,
         status: SpanStatus | None = None,
-        test_case_id: str | None = None,
+        test_case_name: str | None = None,
         page: int,
         page_size: int,
         mode: IntakeResponseMode,
@@ -86,7 +86,7 @@ async def test_list_evaluations_batches_rollup_enrichment() -> None:
         data=[first, second],
         pagination=SimpleNamespace(total_results=2),
     )
-    first_rollup = EvaluationRollup(evaluation_id=first.name, run_count=4)
+    first_rollup = EvaluationRollup(evaluation_name=first.name, run_count=4)
     rollups = _RollupRepository({first.name: first_rollup})
     service = EvaluationReadService(
         entity_client=client,
@@ -195,7 +195,7 @@ async def test_session_failures_are_translated_after_entity_validation() -> None
             workspace="default",
             evaluation_name="eval-1",
             status=None,
-            test_case_id=None,
+            test_case_name=None,
             page=1,
             page_size=100,
             mode="detailed",

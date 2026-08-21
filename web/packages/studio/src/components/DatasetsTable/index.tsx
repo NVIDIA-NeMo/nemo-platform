@@ -3,26 +3,25 @@
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
+import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { Button } from '@nvidia/foundations-react-core';
 import { DatasetCreateModal } from '@studio/components/DatasetCreateModal';
 import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/constants';
 import { makeDatasetsTableColumns } from '@studio/components/DatasetsTable/columns';
 import { type DatasetsTableProps } from '@studio/components/DatasetsTable/types';
 import { useDatasetsTable } from '@studio/components/DatasetsTable/useDatasetsTable';
-import { DocumentationButton } from '@studio/components/DocumentationButton';
+import { FilesetCreateModal } from '@studio/components/FilesetCreateModal';
 import { Loading } from '@studio/components/Layouts/Loading';
-import { NewDatasetButton } from '@studio/components/NewDatasetButton';
-import { NewModelFilesetButton } from '@studio/components/NewModelFilesetButton';
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
-import { LINK_DOCS_DATASETS } from '@studio/constants/links';
 import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetBulkDeleteModal';
 import { getNewFilesetRoute } from '@studio/routes/utils';
-import { X, Database, Trash } from 'lucide-react';
+import { useBoolean } from '@studio/util/hooks/useBoolean';
+import { Trash } from 'lucide-react';
 import { type FC } from 'react';
-import { Link } from 'react-router';
+import { useNavigate } from 'react-router';
 
 export type { DatasetsTableProps } from '@studio/components/DatasetsTable/types';
 
@@ -45,7 +44,6 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
   const {
     workspace,
     dataViewState,
-    hasSearchOrFilters,
     modalDataset,
     setModalDataset,
     modalOpen,
@@ -71,6 +69,16 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
     getDatasetRoute,
     purposeFilter,
   });
+
+  const navigate = useNavigate();
+  const [createModalOpen, openCreateModal, closeCreateModal] = useBoolean(false);
+  const handleCreateFileset = () => {
+    if (FILESET_DETAILS_ENABLED) {
+      openCreateModal();
+    } else {
+      navigate(getNewFilesetRoute(workspace));
+    }
+  };
 
   // Column definitions
   const makeColumns = makeDatasetsTableColumns({
@@ -139,37 +147,18 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
             requestStatus: isFetching ? 'loading' : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: () =>
-              hasSearchOrFilters ? (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No filesets match your filters"
-                  actions={
-                    <Button kind="tertiary" onClick={resetFilters}>
-                      <X /> Clear Filters
-                    </Button>
-                  }
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? (
+                <EntityEmptyState
+                  entity="filesets"
+                  variant="no-results"
+                  onClearFilters={resetFilters}
                 />
               ) : (
-                <TableEmptyState
-                  header="Manage Filesets"
-                  emptyMessage="Create a fileset to upload training data, models, or other files. Choose a purpose — Generic, Dataset, or Model — to control which metadata is available."
-                  icon={<Database className="size-12 text-fg-subdued" aria-hidden />}
-                  actions={
-                    <>
-                      <DocumentationButton href={LINK_DOCS_DATASETS} />
-                      {FILESET_DETAILS_ENABLED ? (
-                        <>
-                          <NewDatasetButton />
-                          <NewModelFilesetButton />
-                        </>
-                      ) : (
-                        <Button asChild color="brand">
-                          <Link to={getNewFilesetRoute(workspace)}>Create Fileset</Link>
-                        </Button>
-                      )}
-                    </>
-                  }
+                <EntityEmptyState
+                  entity="filesets"
+                  variant="first-use"
+                  onCreate={handleCreateFileset}
                 />
               ),
           },
@@ -193,6 +182,15 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
           mode={DatasetCreateModalMode.Edit}
           onClose={handleModalClose}
           open={modalOpen === 'edit'}
+        />
+      )}
+
+      {createModalOpen && (
+        <FilesetCreateModal
+          open={createModalOpen}
+          onClose={closeCreateModal}
+          workspace={workspace}
+          purpose={FilesetPurpose.dataset}
         />
       )}
     </>

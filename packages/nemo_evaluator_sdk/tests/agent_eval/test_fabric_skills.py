@@ -79,22 +79,22 @@ def test_native_skills_route(capability_plan: dict[str, object], expected: bool)
 
 
 @pytest.mark.parametrize(
-    ("capability_plan", "harness", "expected"),
+    ("capability_plan", "adapter_id", "expected"),
     [
-        # Native routing wins regardless of harness name (e.g. Hermes, or an end-user adapter).
-        (_plan(native=True), "hermes", SKILL_MODE_NATIVE),
-        (_plan(native=True), "acme-custom", SKILL_MODE_NATIVE),
-        # Not native, but a codex harness -> self-discovered .agents/skills dir.
-        (_plan(native=False), "codex", SKILL_MODE_CODEX_SKILLS_DIR),
-        (_plan(native=None), "codex", SKILL_MODE_CODEX_SKILLS_DIR),
-        (_plan(native=False), "CODEX", SKILL_MODE_CODEX_SKILLS_DIR),  # case-insensitive
+        # Native routing wins regardless of adapter id (e.g. Hermes, or an end-user adapter).
+        (_plan(native=True), "nvidia.fabric.hermes", SKILL_MODE_NATIVE),
+        (_plan(native=True), "acme.custom", SKILL_MODE_NATIVE),
+        # Not native, but the Codex adapter -> self-discovered .agents/skills dir.
+        (_plan(native=False), "nvidia.fabric.codex", SKILL_MODE_CODEX_SKILLS_DIR),
+        (_plan(native=None), "nvidia.fabric.codex", SKILL_MODE_CODEX_SKILLS_DIR),
+        (_plan(native=False), "NVIDIA.FABRIC.CODEX", SKILL_MODE_CODEX_SKILLS_DIR),  # case-insensitive
         # Neither native nor codex -> unsupported (runtime fails fast).
-        (_plan(native=False), "hermes", None),
-        (_plan(native=None), "some-other", None),
+        (_plan(native=False), "nvidia.fabric.hermes", None),
+        (_plan(native=None), "acme.other", None),
     ],
 )
-def test_resolve_skill_mode(capability_plan: dict[str, object], harness: str, expected: str | None) -> None:
-    assert resolve_skill_mode(capability_plan=capability_plan, harness=harness) == expected
+def test_resolve_skill_mode(capability_plan: dict[str, object], adapter_id: str, expected: str | None) -> None:
+    assert resolve_skill_mode(capability_plan=capability_plan, adapter_id=adapter_id) == expected
 
 
 def test_install_native_stages_named_dir_and_overlay(tmp_path: Path) -> None:

@@ -20,6 +20,10 @@ used by the Inference Gateway.
 
 Streaming and SSE are supported: the response is streamed back to the client
 chunk by chunk.  ``text/event-stream`` responses bypass buffering.
+
+Failures under the OpenAI-compatible ``/-/v1/*`` surface are rendered with an
+OpenAI ``error`` envelope beside FastAPI's ``detail`` (see ``openai_errors``);
+every other proxied path keeps ``detail`` alone.
 """
 
 from __future__ import annotations
@@ -31,12 +35,20 @@ from typing import AsyncIterator
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.api.v2.openai_errors import (
+    UpstreamAgentError,
+    augment_upstream_error_body,
+    is_openai_compatible_uri,
+    openai_error_response,
+)
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
+from nemo_agents_plugin.deployment_routing import get_deployment_endpoint, is_deployment_routable
+from nemo_agents_plugin.entities import Agent, AgentDeployment, AgentSession, SessionStatus
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
@@ -52,8 +64,7 @@ router = APIRouter()
 _PROXY_READ_METHODS = ["GET", "HEAD", "OPTIONS"]
 _PROXY_WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
-# Headers we strip before forwarding to the agent process (hop-by-hop + platform-internal)
-_HOP_BY_HOP = {
+_HOP_BY_HOP_HEADERS = {
     "host",
     "connection",
     "keep-alive",
@@ -63,18 +74,26 @@ _HOP_BY_HOP = {
     "trailers",
     "transfer-encoding",
     "upgrade",
-    # platform-internal headers should not leak to the agent process
+}
+
+# Platform-internal headers should not leak to the agent process
+_PLATFORM_INTERNAL_HEADERS = {
     "x-nmp-principal-id",
     "x-nmp-principal-on-behalf-of",
 }
 
+# Headers we strip before forwarding to the agent process (hop-by-hop + platform-internal + session ID)
+_REQUEST_HEADERS_TO_STRIP = _HOP_BY_HOP_HEADERS | _PLATFORM_INTERNAL_HEADERS | {SESSION_ID_HEADER.lower()}
+
+# Headers we strip before forwarding to the client (hop-by-hop + platform-internal)
+_RESPONSE_HEADERS_TO_STRIP = _HOP_BY_HOP_HEADERS | _PLATFORM_INTERNAL_HEADERS
 
 # ---------------------------------------------------------------------------
 # Endpoint resolution — subprocess vs. container mode
 # ---------------------------------------------------------------------------
 #
-# STOP-GAP: these two helpers are the *only* place the gateway learns where an
-# agent lives. For subprocess deployments that is the loopback
+# STOP-GAP: the shared deployment_routing helpers are the *only* place the agents
+# plugin learns where a deployment lives. For subprocess deployments that is the loopback
 # ``AgentDeployment.endpoint`` the agents plugin bakes in at spawn. For container
 # deployments (docker/k8s) the real address (k8s Service DNS, docker host:port)
 # is known only to the deployments plugin and projected onto ``endpoints`` by the
@@ -83,8 +102,7 @@ _HOP_BY_HOP = {
 #
 # POSSIBLE FUTURE DIRECTION: one option being considered is folding agent routing
 # into the Inference Gateway (so IGW also serves as the agents gateway). If that
-# direction is taken, this bespoke proxy — including ``_get_deployment_endpoint`` /
-# ``_is_deployment_routable`` and the container branch below — would likely retire.
+# direction is taken, this bespoke proxy and its deployment-routing helpers would likely retire.
 # That re-architecture is not committed to here; this stop-gap stands on its own.
 
 # Container modes (docker/k8s) resolve their address from the projected ``endpoints``
@@ -93,45 +111,53 @@ _HOP_BY_HOP = {
 # deployment reads as "running" — the same value subprocess uses.
 
 
-def _get_deployment_endpoint(dep: AgentDeployment) -> str | None:
-    """Return the address to proxy to for *dep*, or ``None`` if none is available yet.
-
-    - **subprocess** → the loopback ``endpoint`` the agents plugin allocates at spawn.
-    - **docker/k8s** → the first http(s) URL from ``endpoints``, which the agents
-      controller projects from the deployments-plugin ``Deployment``.
-    """
-    if is_container_deployment_mode(dep.deployment_mode):
-        for ep in dep.endpoints:
-            if ep.protocol in ("http", "https") and ep.url:
-                return ep.url
-        return None
-    return dep.endpoint or None
-
-
-def _is_deployment_routable(dep: AgentDeployment) -> bool:
-    """Return ``True`` if *dep* is currently up and has a resolvable endpoint.
-
-    A deployment is routable when its status is ``running`` (for container modes,
-    the controller projects the deployments-plugin READY status onto ``running``)
-    and an endpoint can be resolved for its mode.
-    """
-    return dep.status == "running" and _get_deployment_endpoint(dep) is not None
-
-
 async def _serve_agent_proxy(
     workspace: str,
     name: str,
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
-) -> StreamingResponse:
-    """Find the first ``running`` deployment for the named agent and forward the request to it.
+) -> Response:
+    """Resolve the target deployment for the named agent and forward the request to it.
 
-    Returns ``503`` if no running deployment is found. Shared by the read/write route handlers,
+    A persisted session makes its bound deployment authoritative. Without a session, this keeps
+    the existing first-routable-deployment behavior. Shared by the read/write route handlers,
     which differ only in their authorization scope (``agents:read`` vs ``agents:write``).
     """
-    endpoint = await _resolve_agent_endpoint(name, workspace, entity_client)
-    return await _proxy(request, endpoint, trailing_uri, model_name=name)
+    try:
+        return await _resolve_and_proxy_agent(workspace, name, trailing_uri, request, entity_client)
+    except HTTPException as exc:
+        if not is_openai_compatible_uri(trailing_uri):
+            raise
+        return openai_error_response(exc)
+
+
+async def _resolve_and_proxy_agent(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient,
+) -> StreamingResponse:
+    """Pick the deployment for *name* — session-bound if one was supplied — and forward."""
+    session = await _resolve_request_session(request, workspace, entity_client)
+    if session is None:
+        deployment = await _resolve_agent_deployment(name, workspace, entity_client)
+    else:
+        deployment = await _resolve_session_deployment(session, workspace, entity_client)
+        if deployment.agent != name:
+            raise _session_deployment_mismatch(
+                session,
+                detail=(f"its deployment belongs to agent '{deployment.agent}', not requested agent '{name}'"),
+            )
+
+    return await _proxy_deployment(
+        request,
+        deployment,
+        trailing_uri,
+        model_name=name,
+        session_id=session.id if session is not None else None,
+    )
 
 
 @router.api_route(
@@ -151,7 +177,7 @@ async def proxy_by_agent_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Read-scoped (GET/HEAD/OPTIONS) proxy to the active deployment for *agent name*."""
     return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -173,7 +199,7 @@ async def proxy_by_agent_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy to the active deployment for *agent name*."""
     return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -184,12 +210,28 @@ async def _serve_deployment_proxy(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
-) -> StreamingResponse:
+) -> Response:
     """Proxy a request directly to the named deployment.
 
     Returns ``404`` if the deployment doesn't exist, ``503`` if it isn't currently running.
     Shared by the read/write route handlers, which differ only in authorization scope.
     """
+    try:
+        return await _resolve_and_proxy_deployment(workspace, name, trailing_uri, request, entity_client)
+    except HTTPException as exc:
+        if not is_openai_compatible_uri(trailing_uri):
+            raise
+        return openai_error_response(exc)
+
+
+async def _resolve_and_proxy_deployment(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient,
+) -> StreamingResponse:
+    """Look the deployment up, check it against any supplied session, and forward."""
     try:
         dep = await entity_client.get(AgentDeployment, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
@@ -199,21 +241,55 @@ async def _serve_deployment_proxy(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if not _is_deployment_routable(dep):
-        raise HTTPException(
-            status_code=503,
-            detail=f"Deployment '{name}' is not routable (mode='{dep.deployment_mode}', status='{dep.status}').",
+    session = await _resolve_request_session(request, workspace, entity_client)
+    if session is not None and session.deployment_id != dep.id:
+        raise _session_deployment_mismatch(
+            session,
+            detail=f"it does not belong to requested deployment '{name}'",
         )
 
-    endpoint = _get_deployment_endpoint(dep)
-    # _is_deployment_routable guarantees a non-None endpoint, but narrow for the type checker.
+    return await _proxy_deployment(
+        request,
+        dep,
+        trailing_uri,
+        model_name=name,
+        session_id=session.id if session is not None else None,
+    )
+
+
+async def _proxy_deployment(
+    request: Request,
+    deployment: AgentDeployment,
+    trailing_uri: str,
+    *,
+    model_name: str,
+    session_id: str | None = None,
+) -> StreamingResponse:
+    """Validate and proxy to an already-resolved deployment entity."""
+    if not is_deployment_routable(deployment):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Deployment '{deployment.name}' is not routable "
+                f"(mode='{deployment.deployment_mode}', status='{deployment.status}')."
+            ),
+        )
+
+    endpoint = get_deployment_endpoint(deployment)
+    # is_deployment_routable guarantees a non-None endpoint, but narrow for the type checker.
     if endpoint is None:  # pragma: no cover - defensive
         raise HTTPException(
             status_code=503,
-            detail=f"Deployment '{name}' has no routable endpoint (status='{dep.status}').",
+            detail=f"Deployment '{deployment.name}' has no routable endpoint (status='{deployment.status}').",
         )
 
-    return await _proxy(request, endpoint, trailing_uri, model_name=name)
+    return await _proxy(
+        request,
+        endpoint,
+        trailing_uri,
+        model_name=model_name,
+        session_id=session_id,
+    )
 
 
 @router.api_route(
@@ -233,7 +309,7 @@ async def proxy_by_deployment_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Read-scoped (GET/HEAD/OPTIONS) proxy directly to the named deployment."""
     return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -255,13 +331,17 @@ async def proxy_by_deployment_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy directly to the named deployment."""
     return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
 
 
-async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: NemoEntitiesClient) -> str:
-    """Find the endpoint of the first running deployment for the given agent."""
+async def _resolve_agent_deployment(
+    name: str,
+    workspace: str,
+    entity_client: NemoEntitiesClient,
+) -> AgentDeployment:
+    """Find the first routable deployment entity for the given agent."""
     try:
         await entity_client.get(Agent, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
@@ -274,30 +354,114 @@ async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: Nemo
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    running = [d for d in result.data if d.agent == name and _is_deployment_routable(d)]
+    running = [d for d in result.data if d.agent == name and is_deployment_routable(d)]
     if not running:
         raise HTTPException(
             status_code=503,
             detail=f"No running deployment found for agent '{name}' in workspace '{workspace}'.",
         )
     # first-match, no load-balancing across running deployments (out of scope).
-    endpoint = _get_deployment_endpoint(running[0])
-    # _is_deployment_routable guarantees a non-None endpoint, but narrow for the type checker.
-    if endpoint is None:  # pragma: no cover - defensive
-        raise HTTPException(
-            status_code=503,
-            detail=f"No routable endpoint for agent '{name}' in workspace '{workspace}'.",
+    return running[0]
+
+
+async def _resolve_request_session(
+    request: Request,
+    workspace: str,
+    entity_client: NemoEntitiesClient,
+) -> AgentSession | None:
+    """Resolve and validate the persisted session supplied on a gateway request."""
+    session_id = request.headers.get(SESSION_ID_HEADER)
+    if session_id is None:
+        return None
+    if not session_id:
+        raise HTTPException(status_code=400, detail=f"Header '{SESSION_ID_HEADER}' must not be empty.")
+
+    try:
+        session = await entity_client.find_one(
+            AgentSession,
+            workspace=workspace,
+            filter_obj={"id": session_id},
         )
-    return endpoint
+    except NemoEntityNotFoundError as exc:
+        raise _session_not_found(workspace, session_id) from exc
+    except Exception as exc:
+        logger.exception("Failed to look up session ID '%s'", session_id)
+        raise HTTPException(status_code=500, detail="Failed to look up session.") from exc
+
+    if session.id != session_id or session.workspace != workspace:
+        raise _session_not_found(workspace, session_id)
+    if session.status is not SessionStatus.ACTIVE:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session ID '{session_id}' is closed and cannot be invoked.",
+        )
+    return session
+
+
+async def _resolve_session_deployment(
+    session: AgentSession,
+    workspace: str,
+    entity_client: NemoEntitiesClient,
+) -> AgentDeployment:
+    """Resolve the exact deployment bound to a validated session."""
+    try:
+        deployment = await entity_client.find_one(
+            AgentDeployment,
+            workspace=workspace,
+            filter_obj={"id": session.deployment_id},
+        )
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Deployment ID '{session.deployment_id}' for session ID "
+                f"'{session.id}' was not found in workspace '{workspace}'."
+            ),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to look up deployment ID '%s'", session.deployment_id)
+        raise HTTPException(status_code=500, detail="Failed to look up deployment.") from exc
+
+    if deployment.id != session.deployment_id or deployment.workspace != workspace:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Deployment ID '{session.deployment_id}' for session ID "
+                f"'{session.id}' was not found in workspace '{workspace}'."
+            ),
+        )
+    return deployment
+
+
+def _session_not_found(workspace: str, session_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail=f"Session ID '{session_id}' not found in workspace '{workspace}'.",
+    )
+
+
+def _session_deployment_mismatch(session: AgentSession, *, detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=f"Session ID '{session.id}' is bound to deployment ID '{session.deployment_id}'; {detail}.",
+    )
 
 
 async def _proxy(
-    request: Request, endpoint: str, trailing_uri: str, *, model_name: str | None = None
+    request: Request,
+    endpoint: str,
+    trailing_uri: str,
+    *,
+    model_name: str | None = None,
+    session_id: str | None = None,
 ) -> StreamingResponse:
     """Forward *request* to ``{endpoint}/{trailing_uri}`` and stream the response.
 
     Error handling policy:
-    - **4xx** from the agent: transparent pass-through (client error, agent's response).
+    - **4xx** from the agent: status and body passed through (client error, agent's
+      response). On the OpenAI-compatible surface a body that no OpenAI client could
+      read gains an ``error`` envelope beside its existing keys; one that already
+      carries ``error.message`` is forwarded untouched.
     - **5xx** from the agent: translated to **502 Bad Gateway** (upstream fault).
     - **Connection failure** (httpx.RequestError): 502 Bad Gateway.
 
@@ -324,7 +488,9 @@ async def _proxy(
         target_url = f"{target_url}?{request.url.query}"
 
     # Build forwarded headers — strip hop-by-hop and platform-internal headers
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in _REQUEST_HEADERS_TO_STRIP}
+    if session_id is not None:
+        headers[SESSION_ID_HEADER] = session_id
 
     body = await request.body()
 
@@ -352,17 +518,22 @@ async def _proxy(
             ) as response:
                 status_code_holder[0] = response.status_code
                 for k, v in response.headers.items():
-                    if k.lower() not in _HOP_BY_HOP:
+                    if k.lower() not in _RESPONSE_HEADERS_TO_STRIP:
                         response_headers[k] = v
                 # Translate agent 5xx responses into 502 Bad Gateway.
                 # aread() consumes the full body before raising so the connection
                 # is cleanly closed rather than reset mid-stream.
                 if response.status_code >= 500:
+                    raise UpstreamAgentError(response.status_code, await response.aread())
+                if response.status_code >= 400 and is_openai_compatible_uri(trailing_uri):
                     error_body = await response.aread()
-                    raise HTTPException(
-                        status_code=502,
-                        detail=(f"Agent returned {response.status_code}: {error_body.decode(errors='replace')[:500]}"),
-                    )
+                    reshaped = augment_upstream_error_body(error_body, response.status_code)
+                    if reshaped is None:
+                        yield error_body
+                    else:
+                        response_headers["content-type"] = "application/json"
+                        yield reshaped
+                    return
                 async for chunk in response.aiter_bytes():
                     yield chunk
 

@@ -5,7 +5,6 @@
 
 import logging
 
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     DistributedGPUExecutionProviderSpec,
@@ -15,6 +14,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesSpec,
     StepLifecycle,
 )
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.automodel.api.v2.jobs.schemas import (
     AnyTraining,
     CustomizationJobOutput,
@@ -152,6 +152,7 @@ def compile_training_step(
             epochs=training.epochs,
             max_steps=training.max_steps,
             val_check_interval=training.val_check_interval,
+            progress_reporting=training.progress_reporting,
         ),
         batch=TrainingStepConfig.BatchConfig(
             global_batch_size=training.batch_size,

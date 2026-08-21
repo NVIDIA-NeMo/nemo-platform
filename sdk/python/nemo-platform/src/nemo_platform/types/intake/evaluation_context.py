@@ -23,14 +23,18 @@ __all__ = ["EvaluationContext"]
 
 
 class EvaluationContext(BaseModel):
-    """Evaluation context accepted by ingest endpoints (the canonical shape).
-
-    ``extra="ignore"`` so a producer still sending retired keys (evaluation_sha, evaluation_run_id,
-    metadata) keeps ingesting without error rather than being rejected.
+    """
+    Identifies the Evaluation and optional test case associated with ingested telemetry.
     """
 
     evaluation_id: Optional[str] = None
+    """Deprecated alias for evaluation_name. Use evaluation_name instead."""
+
+    evaluation_name: Optional[str] = None
     """Name of an existing Evaluation."""
 
     test_case_id: Optional[str] = None
-    """Optional producer-supplied test case id."""
+    """Deprecated alias for test_case_name. Use test_case_name instead."""
+
+    test_case_name: Optional[str] = None
+    """Optional producer-supplied test case name."""

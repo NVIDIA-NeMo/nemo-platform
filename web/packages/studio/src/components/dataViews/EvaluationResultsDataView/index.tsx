@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
@@ -15,14 +17,10 @@ import {
   type EvaluateJobsListFilter,
   EvaluateJobsSortField,
 } from '@nemo/sdk/generated/evaluator/schema';
-import { Button, Flex, StatusMessage } from '@nvidia/foundations-react-core';
-import { DocumentationButton } from '@studio/components/DocumentationButton';
-import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ListChecks } from 'lucide-react';
 import { ComponentProps } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -110,12 +108,7 @@ export const EvaluationResultsDataView = () => {
   const isInitialEmpty = jobs.length === 0 && !isFetching && !error && !hasActiveFilters;
 
   if (error) {
-    return (
-      <TableEmptyState
-        header="Failed to fetch evaluations"
-        emptyMessage="An error occurred while loading evaluation jobs."
-      />
-    );
+    return <ErrorPanel errorMessage={getErrorMessage(error)} />;
   }
 
   return (
@@ -139,33 +132,12 @@ export const EvaluationResultsDataView = () => {
         DataViewTableContent: {
           renderEmptyState: () =>
             isInitialEmpty ? (
-              <Flex
-                justify="center"
-                align="center"
-                className="h-full min-h-[min(480px,60vh)] w-full py-density-3xl"
-              >
-                <StatusMessage
-                  className="max-w-lg"
-                  size="medium"
-                  slotHeading="Manage Evaluations"
-                  slotSubheading="Refine and optimize your large language models (LLMs) for enhanced performance and real-world applicability."
-                  slotMedia={<ListChecks className="size-12" />}
-                  slotFooter={
-                    <Flex gap="density-md" justify="center">
-                      <DocumentationButton href={LINK_DOCS_STUDIO_EVALUATION} />
-                    </Flex>
-                  }
-                />
-              </Flex>
+              <EntityEmptyState entity="evaluationResults" variant="first-use" />
             ) : (
-              <TableEmptyState
-                header="No Results Found"
-                emptyMessage="No evaluation jobs match your search or filters."
-                actions={
-                  <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                    Clear Filters
-                  </Button>
-                }
+              <EntityEmptyState
+                entity="evaluationResults"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
               />
             ),
         },

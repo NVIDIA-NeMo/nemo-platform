@@ -60,7 +60,9 @@ class TestAtif:
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
                 "evaluation_id": "evaluation_id",
+                "evaluation_name": "evaluation_name",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             extra={"foo": "bar"},
             final_metrics={
@@ -113,7 +115,9 @@ class TestAtif:
                     "continued_trajectory_ref": "continued_trajectory_ref",
                     "evaluation_context": {
                         "evaluation_id": "evaluation_id",
+                        "evaluation_name": "evaluation_name",
                         "test_case_id": "test_case_id",
+                        "test_case_name": "test_case_name",
                     },
                     "extra": {"foo": "bar"},
                     "final_metrics": {
@@ -247,7 +251,9 @@ class TestAsyncAtif:
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
                 "evaluation_id": "evaluation_id",
+                "evaluation_name": "evaluation_name",
                 "test_case_id": "test_case_id",
+                "test_case_name": "test_case_name",
             },
             extra={"foo": "bar"},
             final_metrics={
@@ -300,7 +306,9 @@ class TestAsyncAtif:
                     "continued_trajectory_ref": "continued_trajectory_ref",
                     "evaluation_context": {
                         "evaluation_id": "evaluation_id",
+                        "evaluation_name": "evaluation_name",
                         "test_case_id": "test_case_id",
+                        "test_case_name": "test_case_name",
                     },
                     "extra": {"foo": "bar"},
                     "final_metrics": {

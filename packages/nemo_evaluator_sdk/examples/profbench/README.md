@@ -9,32 +9,15 @@ Complete the following before running any command below:
 
 - **Python & uv**: Python 3.12+ with [`uv`](https://docs.astral.sh/uv/) and the repo synced (`uv sync`).
 - **Inference access**: API access for the configured chat-completions model. The default `live-judge` and `live-candidate` paths call this model, so set the relevant key (for example `OPENAI_API_KEY` or `NVIDIA_API_KEY`) in your environment.
-- **Codex agent (only for `--agent codex`)**: install the `nemo-evaluator-sdk[agent-runtimes]` extra. Then either:
-  - `--runtime local`: the Codex CLI (`codex`) on `PATH` and authenticated (`codex login`).
-  - `--runtime docker`: a running Docker daemon. Codex uses the SDK Docker sandbox when `OPENAI_API_KEY` is an OpenAI Platform key (`sk-…`); otherwise it runs the Codex CLI in a container with your local `~/.codex/auth.json` mounted read-only.
+- **Docker sandbox candidate (only for the SDK-level runtime below)**: install the `nemo-evaluator-sdk[agent-runtimes]` extra and have a running Docker daemon.
+- **Coding-agent candidate (only for `--agent fabric-codex`)**: the Fabric harness adapters (`uv sync --frozen --package nemo-evaluator-sdk --extra fabric`, or `script/dev-install-fabric.sh`) and the Codex CLI (`codex`) on `PATH` and authenticated (`codex login`). No `nemo-relay` gateway is needed — this arm does not capture trajectories.
 
 Run the example from the repository root:
 
-- Local
-
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
+uv run --frozen --package nemo-evaluator-sdk python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
   --output-dir env/profbench-results \
-  --limit=1 \
-  --agent codex \
-  --runtime local \
-  --agent-model gpt-5.5
-```
-
-- Docker
-
-```bash
-python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
-  --output-dir env/profbench-results \
-  --limit=1 \
-  --agent codex \
-  --runtime docker \
-  --agent-model gpt-5.5
+  --limit=1
 ```
 
 Each invocation creates one run directory under `--output-dir`, then writes each enabled runner mode under that run:
@@ -63,31 +46,31 @@ env/profbench-results/
 
 Live paths are enabled by default and require API access through the configured model settings. Pass `--no-run-live-judge` or `--no-run-live-candidate` to skip either live path.
 
-## Code Sandbox Invocation
+## Coding-agent candidate
 
-The CLI runner above uses the configured chat-completions model directly for `live-candidate`. To run ProfBench with a Codex-style candidate agent, pass `--agent codex`. Docker is the default Codex runtime preference: it uses SDK Docker when `OPENAI_API_KEY` is an OpenAI Platform secret key, and otherwise starts a lightweight Docker container that runs Codex CLI with your local Codex auth mounted read-only.
+`live-candidate` calls the configured chat-completions model directly by default. Pass `--agent fabric-codex` to generate the candidate answers with the Codex CLI instead, driven through [NeMo Fabric](https://github.com/nvidia/nemo-fabric):
 
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
+uv run --frozen --package nemo-evaluator-sdk --extra fabric python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
   --output-dir env/profbench-results \
   --limit=1 \
-  --agent codex \
+  --agent fabric-codex \
   --agent-model gpt-5.4
 ```
 
-List locally visible Codex model slugs before choosing `--agent-model`:
+Notes on this arm:
 
-```bash
-python -m packages.nemo_evaluator_sdk.examples.profbench.runner --agent codex --list-agent-models
-```
+- Fabric selects the harness by `harness.adapter_id` (`nvidia.fabric.codex` here), never from the model. `--agent-model` supplies the config's default model; the Codex adapter refuses to start without one, so the example ships `openai/gpt-5.4` as its default.
+- The sandbox is `read-only`: ProfBench grades a block of answer text, so the agent has no reason to write files.
+- The agent arm prefixes each task's instruction with an answer-only preamble, because Fabric sends `inputs["instruction"]` verbatim and a coding agent otherwise returns tool logs and markdown fences that a rubric judge reads as a worse answer. The baseline and live-judge arms score recorded responses and are left unframed, so the comparison stays honest.
+- Trajectory capture is off, so the `nemo-relay` gateway is not required. The rubric judge scores the answer, not the agent's steps.
+- Runs are labelled `score_source=fabric_codex_candidate_and_live_judge`, against `fresh_candidate_and_live_judge` for the model arm.
 
-Runtime and credential behavior:
+Credentials: the Codex CLI uses your own Codex login (or `OPENAI_API_KEY`). The live rubric judge is unaffected — it still goes through the regular SDK model path and needs `NVIDIA_API_KEY` unless you override the judge model and secret settings.
 
-- `--agent codex --runtime docker` prefers `DockerSandboxAgentRuntime` when `OPENAI_API_KEY` looks like an OpenAI Platform secret key (`sk-...`). Model calls are made by the OpenAI Agents SDK from the host process; the Docker container is the execution workspace and `~/.codex/auth.json` is not mounted.
-- `--agent codex --runtime docker` falls back to Dockerized Codex CLI when `OPENAI_API_KEY` is missing or is a Codex OAuth token. It mounts `~/.codex/auth.json` read-only into a `node:22-alpine` container and runs `npx -y @openai/codex@0.137.0 exec ...`; Codex OAuth tokens are not converted into API keys. Because Docker is the isolation boundary, this path runs Codex with its nested shell-command sandbox disabled to avoid `bwrap` user-namespace failures inside the container.
-- `--agent codex --runtime local` always uses host `codex exec` from `PATH`, so it relies on your local Codex login/auth. It passes `--ignore-user-config` so benchmark runs do not inherit `$CODEX_HOME/config.toml` MCP servers, plugins, approval settings, or other user-specific tool configuration. No Docker containers are expected in this mode.
-- The live ProfBench judge still uses the regular NeMo Evaluator SDK model settings, so the default judge path still needs `NVIDIA_API_KEY` unless you override the judge model and secret settings.
-- If `--agent-model` is omitted, SDK Docker uses the documented default Codex sandbox model; Dockerized/local CLI uses the default model in your Codex config.
+## Docker sandbox candidate (SDK level)
+
+`DockerSandboxAgentRuntime` generates candidate answers by running an OpenAI Agents SDK `SandboxAgent` in a Docker container per task. It has no ProfBench CLI flag — drive it directly:
 
 Install the optional runtime extra for SDK Docker mode:
 
@@ -173,7 +156,6 @@ Credential flow:
 - `DockerSandboxAgentRuntime` uses the OpenAI Agents SDK `SandboxAgent`; model calls are made from the host process and use `OPENAI_API_KEY`.
 - The Docker container is an execution sandbox for task workspace/files. It does not receive your API keys unless you explicitly mount or write them into the task workspace later.
 - `ProfBenchModelJudge` uses the regular NeMo Evaluator SDK model path. In the example above, `SecretRef(root="NVIDIA_API_KEY")` resolves the judge key from the local `NVIDIA_API_KEY` environment variable.
-- For the normal ProfBench CLI, the evaluated and judge models default to NVIDIA NIM. Configure them with `NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL_URL`, `NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL`, `NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL_URL`, and `NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL`. The API-key environment variable name defaults to `NVIDIA_API_KEY` and can be changed with `NMP_EVALUATOR_DEFAULT_API_KEY_SECRET`.
 
 ## Domain Model
 

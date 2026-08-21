@@ -20,6 +20,7 @@ from typing import Literal, Self
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
 from nmp.customization_common.schemas.values import OutputNameType
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from nmp.rl.app.jobs.training.schemas import OptimizerType
 from pydantic import ConfigDict, Field, model_validator
 
@@ -97,6 +98,7 @@ class _TrainingBase(RlSchema):
         "final checkpoint carries validation metrics and best-checkpoint selection works; "
         "set False only to skip the extra eval.",
     )
+    progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
 
     # --- Checkpointing ---
     keep_top_k: int = Field(

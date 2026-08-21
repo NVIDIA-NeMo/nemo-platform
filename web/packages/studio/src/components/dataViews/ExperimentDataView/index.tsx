@@ -12,6 +12,7 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -21,11 +22,11 @@ import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type { EvaluationFilter, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { EVAL_DURATION_METADATA_KEY, evalDurationMs } from '@studio/api/evaluation/utils';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { ExperimentParetoChart } from '@studio/components/charts/ExperimentParetoChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView/AddToGroupModal';
 import '@studio/components/dataViews/ExperimentDataView/ExperimentDataView.css';
-import { Empty } from '@studio/components/dataViews/ExperimentDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentDataView/MeanValueTooltipCell';
 import {
   type EvaluationRow,
@@ -233,13 +234,17 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
 
   // One column per metadata key: keys are lowercased so case variants (e.g. "status"
   // and "Status") collapse into one column rather than producing duplicate headers.
+  // The run duration is excluded because the Duration column below already renders it, formatted;
+  // publish duration is deliberately left in, which is what surfaces publish latency at all.
   const metadataKeys = useMemo(
     () =>
       [
         ...new Set(
           orderedData.flatMap((e) => Object.keys(e.metadata ?? {}).map((k) => k.toLowerCase()))
         ),
-      ].sort(),
+      ]
+        .filter((key) => key !== EVAL_DURATION_METADATA_KEY)
+        .sort(),
     [orderedData]
   );
 
@@ -496,6 +501,15 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
         enableSorting: true,
         cell: ({ row }) => <Text>{String(row.original.test_case_count ?? 0)}</Text>,
       }),
+      // Written as metadata at publish time, so it is a string and only present for runs that
+      // published successfully. Not sortable: the API sorts metadata lexically, which would order
+      // "9" after "10", and the list pages at 100 so a client-side sort would lie across pages.
+      accessor((original) => evalDurationMs(original.metadata), {
+        id: 'eval_duration',
+        header: 'Duration',
+        enableSorting: false,
+        cell: ({ getValue }) => <Text>{formatDurationMs(getValue<number | undefined>())}</Text>,
+      }),
       accessor('created_at', {
         header: 'Created',
         size: 200,
@@ -625,8 +639,14 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
           DataViewTableContent: {
             enableColumnReordering: true,
             renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
-              hasFiltersApplied || hasSearchApplied ? null : (
-                <Empty experimentName={experimentName} />
+              hasFiltersApplied || hasSearchApplied ? (
+                <EntityEmptyState
+                  entity="evaluationResults"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
+                />
+              ) : (
+                <EntityEmptyState entity="evaluationResults" variant="first-use" />
               ),
           },
         }}

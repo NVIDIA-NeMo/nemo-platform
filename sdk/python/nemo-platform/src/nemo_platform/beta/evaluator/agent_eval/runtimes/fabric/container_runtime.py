@@ -285,7 +285,7 @@ class FabricContainerRuntime:
         probe_config = FabricConfig.from_mapping(self._config)
         probe_config.add_skill_path(_SKILL_PROBE_PATH)
         plan = Fabric().plan(probe_config)
-        return resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness)
+        return resolve_skill_mode(capability_plan=plan.capability_plan, adapter_id=self._adapter_id())
 
     def _adapter_id(self) -> str:
         """The harness adapter id declared by the config mapping (for provenance + error messages)."""
@@ -348,7 +348,7 @@ class FabricContainerRuntime:
         config = dict(self._config)
 
         # Each section is spread over the caller's, so sibling keys survive — pinning
-        # ``runtime.artifacts`` must not drop a configured ``runtime.transport``.
+        # ``runtime.artifacts`` must not drop configured input/output schemas or timeouts.
         config["runtime"] = {**_section(config, "runtime"), "artifacts": _ARTIFACTS_DIR}
         # ``provider: local`` is required by the native planner in the container (it does not inject the
         # Python default), and the workspace pins the harness cwd to the retrievable /out subtree.

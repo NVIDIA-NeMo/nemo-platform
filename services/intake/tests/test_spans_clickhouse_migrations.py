@@ -61,17 +61,24 @@ def test_trace_index_schema_is_root_span_projection():
     assert "TO {table}" in ddl
     assert "INSERT INTO {table}" in source
     assert "WHERE external_parent_span_id = ''" in ddl
-    # evaluation_id is resolved via a coalesce expression (canonical key + legacy aliases), not a single
-    # bag-key lookup, so the backfill keeps spans stored under an older key associated.
-    assert "{evaluation_id_expr} AS evaluation_id" in ddl
-    assert "coalesce(" in ddl
-    assert "attributes_string['{test_case_key}'] AS test_case_id" in ddl
+    # Both identifiers resolve via canonical keys plus historical aliases, so the backfill keeps older
+    # spans associated.
+    assert "{evaluation_name_expr} AS evaluation_name" in ddl
+    assert "{test_case_name_expr} AS test_case_name" in ddl
+    assert "_coalesced_string_attribute(SpanAttributeField.EVALUATION_NAME)" in ddl
+    assert "_coalesced_string_attribute(SpanAttributeField.TEST_CASE_NAME)" in ddl
     assert "root_status LowCardinality(String)" in ddl
     assert "root_input String" in ddl
     assert "PRIMARY KEY (workspace, root_started_at)" in ddl
     assert "ORDER BY (workspace, root_started_at, trace_id, root_span_id)" in ddl
-    assert "INDEX idx_evaluation_id evaluation_id" in ddl
+    assert "INDEX idx_evaluation_name evaluation_name" in ddl
+    assert "INDEX idx_test_case_name test_case_name" in ddl
     assert "index_granularity = 256" in ddl
+    # Agent identity is denormalized so agent-scoped listing and metric rollups filter on a
+    # column instead of probing the spans attribute map.
+    assert "attributes_string['{agent_name_key}'] AS agent_name" in ddl
+    assert "attributes_string['{agent_version_key}'] AS agent_version" in ddl
+    assert "INDEX idx_agent_name agent_name" in ddl
 
 
 def test_trace_index_mv_keys_match_attribute_catalog():
@@ -79,4 +86,9 @@ def test_trace_index_mv_keys_match_attribute_catalog():
     assert evaluation_spec.bag_key == "nemo.evaluation.name"
     # The legacy key is still accepted on ingest so pre-rename producers keep associating.
     assert "nemo.experiment.id" in evaluation_spec.source_keys
-    assert spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key == "nemo.test_case.id"
+    test_case_spec = spec_for_field(SpanAttributeField.TEST_CASE_NAME)
+    assert test_case_spec.bag_key == "nemo.test_case.name"
+    assert test_case_spec.bag_aliases == ("nemo.test_case.id",)
+    # The MV bakes these keys in at creation time, so a catalog rename needs a new migration.
+    assert spec_for_field(SpanAttributeField.AGENT_NAME).bag_key == "gen_ai.agent.name"
+    assert spec_for_field(SpanAttributeField.AGENT_VERSION).bag_key == "agent.version"

@@ -59,15 +59,14 @@ def _fabric_config(harness: str, *, provider: str, model: str, api_key_env: str)
         "metadata": {"name": "lab-fabric-eval"},
         "models": {"default": {"provider": provider, "model": model, "api_key_env": api_key_env}},
     }
-    # Adapter ids are the base harness name; transport is set separately in `runtime` (newer nemo-fabric
-    # dropped the `.cli`/`.sdk` suffix from adapter ids).
+    # Adapter ids select the harness implementation directly; Fabric owns its execution mechanism.
     if harness == "deepagents":
         # LangChain Deep Agents — provider-agnostic; for provider=nvidia it targets NVIDIA's
         # OpenAI-compatible endpoint. The recommended harness for NVIDIA-hosted models.
         return {
             **common,
             "harness": {"adapter_id": "nvidia.fabric.langchain.deepagents"},
-            "runtime": {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"},
+            "runtime": {"input_schema": "chat", "output_schema": "message"},
         }
     if harness == "codex-cli":
         # codex runs as the SDK adapter here; CLI-only settings (e.g. skip_git_repo_check) are rejected.
@@ -85,12 +84,11 @@ def _fabric_config(harness: str, *, provider: str, model: str, api_key_env: str)
                     "config_overrides": {"web_search": "disabled", "sandbox_workspace_write.network_access": False},
                 },
             },
-            "runtime": {"mode": "oneshot", "transport": "cli"},
         }
     return {  # hermes-sdk
         **common,
         "harness": {"adapter_id": "nvidia.fabric.hermes", "resolution": "preinstalled"},
-        "runtime": {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"},
+        "runtime": {"input_schema": "chat", "output_schema": "message"},
     }
 
 

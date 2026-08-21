@@ -17,6 +17,14 @@ ANALYST_OBSERVABILITY_SERVICE_NAMESPACE = "nemo-insights"
 OTLP_TRACES_PATH = "/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
 
 
+@dataclass(frozen=True)
+class AnalystEvaluationContext:
+    """Evaluation identity attached to every span in one Analyst run."""
+
+    evaluation_name: str
+    test_case_name: str
+
+
 @dataclass
 class AnalystObservability:
     """Configured Nooa instrumentation for one analyst run."""
@@ -47,12 +55,12 @@ def setup_analyst_observability(
     base_url: str,
     workspace: str,
     target_agent: str,
+    evaluation_context: AnalystEvaluationContext | None = None,
 ) -> AnalystObservability:
     """Configure native Nooa OTel instrumentation for Intake export.
 
-    This path is intended for insights dogfooding and is opt-in at the CLI
-    layer, so it always sends the analyst's own spans to the platform Intake
-    endpoint derived from the active ``--base-url`` and ``--workspace``.
+    By default, the analyst sends its own spans to the platform Intake endpoint
+    derived from the active ``--base-url`` and ``--workspace``.
     """
     endpoint = build_intake_otlp_traces_endpoint(base_url=base_url, workspace=workspace)
     session_id = f"{ANALYST_OBSERVABILITY_AGENT_NAME}-{uuid4()}"
@@ -60,6 +68,7 @@ def setup_analyst_observability(
         workspace=workspace,
         target_agent=target_agent,
         session_id=session_id,
+        evaluation_context=evaluation_context,
     )
 
     otlp_headers = _otlp_auth_headers(base_url)
@@ -92,8 +101,14 @@ def _otlp_auth_headers(base_url: str) -> dict[str, str] | None:
     return {str(k): str(v) for k, v in headers.items()}
 
 
-def _resource_attributes(*, workspace: str, target_agent: str, session_id: str) -> dict[str, str]:
-    return {
+def _resource_attributes(
+    *,
+    workspace: str,
+    target_agent: str,
+    session_id: str,
+    evaluation_context: AnalystEvaluationContext | None,
+) -> dict[str, str]:
+    attributes = {
         "service.name": ANALYST_OBSERVABILITY_AGENT_NAME,
         "service.namespace": ANALYST_OBSERVABILITY_SERVICE_NAMESPACE,
         "gen_ai.agent.name": ANALYST_OBSERVABILITY_AGENT_NAME,
@@ -104,3 +119,7 @@ def _resource_attributes(*, workspace: str, target_agent: str, session_id: str) 
         "nemo.insights.workspace": workspace,
         "nemo.insights.target_agent": target_agent,
     }
+    if evaluation_context is not None:
+        attributes["nemo.evaluation.name"] = evaluation_context.evaluation_name
+        attributes["nemo.test_case.name"] = evaluation_context.test_case_name
+    return attributes

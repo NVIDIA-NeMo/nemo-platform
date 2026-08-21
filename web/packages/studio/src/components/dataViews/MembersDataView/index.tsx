@@ -3,19 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
-import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useEntitiesListWorkspaceMembers } from '@nemo/sdk/generated/platform/api';
 import type { WorkspaceMember } from '@nemo/sdk/generated/platform/schema';
-import { Button, Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Text } from '@nvidia/foundations-react-core';
 import { Loading } from '@studio/components/Layouts/Loading';
-import { Pencil, Trash, UsersRound } from 'lucide-react';
+import { Pencil, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo } from 'react';
 
 export interface MembersDataViewProps {
@@ -115,14 +116,14 @@ export const MembersDataView: FC<MembersDataViewProps> = ({
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (member: WorkspaceMemberWithId) => [
+          rowActions: (member: WorkspaceMemberWithId): DropdownEntry[] => [
             {
-              slotLeft: <Pencil />,
+              slotStart: <Pencil />,
               children: 'Edit Role',
               onSelect: () => onEditMember(member),
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Remove',
               danger: true,
               onSelect: () => onRemoveMember(member),
@@ -149,20 +150,11 @@ export const MembersDataView: FC<MembersDataViewProps> = ({
         },
         DataViewTableContent: {
           renderEmptyState: () => (
-            <TableEmptyState
-              icon={<UsersRound className="size-16" />}
-              header="No members yet"
-              emptyMessage="Besides implicit workspace owners, no principals have been granted Viewer, Editor, or Admin access yet."
-              actions={
-                <Button color="brand" onClick={onAddMember}>
-                  Add Member
-                </Button>
-              }
-            />
+            <EntityEmptyState entity="members" variant="first-use" onCreate={onAddMember} />
           ),
           renderErrorState: () => (
-            <ErrorMessage
-              message={error instanceof Error ? error.message : 'Failed to load members.'}
+            <ErrorPanel
+              errorMessage={getErrorMessage(error ?? new Error('Failed to load members.'))}
             />
           ),
         },

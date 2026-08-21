@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -37,6 +36,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesSpec,
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.customization_common.integrations import (
     collect_integration_secret_envs,
@@ -221,6 +221,7 @@ def _build_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: boo
             val_check_interval=t.val_check_interval,
             val_at_end=t.val_at_end,
             keep_top_k=t.keep_top_k,
+            progress_reporting=t.progress_reporting,
         ),
         batch=TrainingStepConfig.BatchConfig(global_batch_size=t.batch_size, micro_batch_size=t.micro_batch_size),
         optimizer=TrainingStepConfig.OptimizerConfig(

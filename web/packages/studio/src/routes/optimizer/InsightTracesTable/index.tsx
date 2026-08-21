@@ -4,8 +4,8 @@
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
-import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter } from '@nemo/sdk/generated/platform/schema';
@@ -91,15 +91,10 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
             requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: () => (
-              <TableEmptyState
-                header="No traces"
-                emptyMessage="This insight has no linked traces."
-              />
-            ),
+            renderEmptyState: () => <EntityEmptyState entity="insightTraces" variant="first-use" />,
             renderErrorState: () => (
-              <ErrorMessage
-                message={getErrorMessage(error ?? new Error('Failed to load traces'))}
+              <ErrorPanel
+                errorMessage={getErrorMessage(error ?? new Error('Failed to load traces'))}
               />
             ),
           },

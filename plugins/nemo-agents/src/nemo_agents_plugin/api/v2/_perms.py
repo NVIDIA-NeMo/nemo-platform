@@ -29,5 +29,13 @@ class DeploymentPerms(PermissionSet, namespace="agents.deployments"):
     DELETE = perm("Delete an agent deployment")
 
 
+class SessionPerms(PermissionSet, namespace="agents.sessions"):
+    CREATE = perm("Create agent sessions")
+    LIST = perm("List agent sessions")
+    READ = perm("Read an agent session")
+    CLOSE = perm("Close an agent session")
+    DELETE = perm("Delete an agent session")
+
+
 class GatewayPerms(PermissionSet, namespace="agents.gateway"):
     INVOKE = perm("Invoke a deployed agent through the gateway proxy")

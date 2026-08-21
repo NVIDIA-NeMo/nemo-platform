@@ -19,6 +19,7 @@ environments = [
     { dir = "tools/actionlint" },
     { dir = "tools/python" },
     { dir = "tools/nodejs" },
+    { dir = "tools/go" },
     { dir = "tools/osv-scanner" },
     { dir = "tools/open-policy-agent" },
 ]

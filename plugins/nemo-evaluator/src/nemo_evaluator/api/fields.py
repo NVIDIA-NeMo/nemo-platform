@@ -28,7 +28,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 )
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, FILESET_REF_PATTERN, parse_entity_ref
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, RootModel, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue, RootModel, field_validator
 
 
 class CloudpickleMetricPayload(BaseModel):
@@ -217,13 +217,13 @@ class TasksetRef(RootModel[str]):
 
 
 class TaskInputs(BaseModel):
-    """A task's recognized input fields.
+    """Inputs supplied to a task.
 
-    ``extra="forbid"``: only the field below is accepted. ``instruction`` is the agent's prompt; the
-    runtime falls back to the task ``intent`` when it is unset.
+    ``instruction`` is the agent's prompt; the runtime falls back to the task ``intent`` when it is unset.
+    Additional task- or runtime-specific inputs, such as `gym_row` for Gym tasks, are also accepted fields.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     instruction: str | None = Field(
         default=None, description="The agent's instruction (its prompt). Falls back to the task `intent` when unset."
@@ -236,7 +236,7 @@ class MetadataItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: str = Field(description="Annotation key.")
-    value: str = Field(description="Annotation value.")
+    value: JsonValue = Field(description="JSON-serializable annotation value.")
 
 
 def _reject_duplicate_metadata_keys(items: list[MetadataItem]) -> list[MetadataItem]:

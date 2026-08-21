@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.automodel.adapter import automodel_spec_to_compiler_output
 from nmp.automodel.api.v2.jobs.schemas import CustomizationJobOutput, LoRAParams, OutputResponse, SFTTraining
 from nmp.automodel.app.jobs.compiler import _build_file_download_config
@@ -39,13 +39,7 @@ def _make_mock_model_entity(
 
 @pytest.fixture
 def mock_sdk():
-    sdk = Mock(spec=AsyncNeMoPlatform)
-    sdk.models = Mock()
-    sdk.models.retrieve = AsyncMock(
-        side_effect=lambda name, workspace, verbose=True: _make_mock_model_entity(workspace=workspace, name=name),
-    )
-    sdk.files = Mock()
-    return sdk
+    return Mock(spec=AsyncNeMoPlatform)
 
 
 def _make_job_output() -> CustomizationJobOutput:
@@ -100,6 +94,89 @@ def test_compile_training_step_carries_pass2_fields() -> None:
     assert cfg["batch"]["sequence_packing_max_samples"] == 256
     assert cfg["training"]["lora"]["exclude_modules"] == ["*.out_proj"]
     assert cfg["training"]["lora"]["use_triton"] is False
+
+
+def test_the_reporting_budget_reaches_the_training_step_config() -> None:
+    """One more hop in a chain that is long enough to break quietly.
+
+    plugin ScheduleSpec -> adapter -> CustomizationJobOutput.training ->
+    TrainingStepConfig.ScheduleConfig -> the recipe config -> the callback. Every
+    link defaults, so a broken one reports at 200 rather than failing, which is
+    exactly the kind of regression nothing else here would notice.
+    """
+    from nmp.automodel.app.jobs.training.compiler import compile_training_step
+    from nmp.customization_common.training.reporting import ProgressReportingConfig
+
+    job_output = CustomizationJobOutput(
+        model="default/test-target",
+        dataset="default/my-dataset",
+        training=SFTTraining(progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss"])),
+        output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
+    )
+    step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
+    cfg = step.config if hasattr(step, "config") else step["config"]
+
+    assert cfg["schedule"]["progress_reporting"]["time_series_metrics"] == ["*_loss"]
+
+
+def test_a_spec_still_carrying_log_every_n_steps_compiles() -> None:
+    """The removed field was inert, and removing it has to stay invisible.
+
+    It described itself as controlling how often training metrics are logged and
+    controlled nothing: nothing read it, it never reached the recipe config, and
+    it was in neither the submitter-facing plugin schema nor any generated spec.
+    What makes deleting it safe rather than breaking is that this model ignores
+    extras -- so a stored spec that still carries the key parses as it always
+    did. Pinned because a later `extra="forbid"` here would turn that silent
+    tolerance into a hard failure for exactly those specs.
+    """
+    from nmp.automodel.app.jobs.training.compiler import compile_training_step
+
+    training = SFTTraining.model_validate({"learning_rate": 1e-4, "log_every_n_steps": 10})
+    assert not hasattr(training, "log_every_n_steps")
+
+    job_output = CustomizationJobOutput(
+        model="default/test-target",
+        dataset="default/my-dataset",
+        training=training,
+        output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
+    )
+    step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
+    cfg = step.config if hasattr(step, "config") else step["config"]
+
+    assert cfg["optimizer"]["learning_rate"] == 1e-4, "the spec compiles, key and all"
+    assert "log_every_n_steps" not in cfg["schedule"]
+
+
+def test_the_reporting_budget_survives_the_plugin_adapter() -> None:
+    """The adapter flattens the plugin's schedule block and is easy to drop a field from."""
+    from nmp.automodel.adapter import automodel_spec_to_compiler_output
+
+    spec = {
+        "model": "default/test-target",
+        "dataset": {"training": "default/my-dataset"},
+        "training": {"training_type": "sft", "finetuning_type": "lora"},
+        "schedule": {"epochs": 1, "progress_reporting": {"time_series_metrics": ["*_loss"]}},
+        "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+    }
+    reporting = automodel_spec_to_compiler_output(spec).training.progress_reporting
+
+    assert reporting.time_series_metrics == ["*_loss"]
+
+
+def test_a_plugin_spec_without_a_schedule_block_still_compiles() -> None:
+    """`schedule` is optional in the plugin shape, so the adapter must not index it."""
+    from nmp.automodel.adapter import automodel_spec_to_compiler_output
+
+    spec = {
+        "model": "default/test-target",
+        "dataset": {"training": "default/my-dataset"},
+        "training": {"training_type": "sft", "finetuning_type": "lora"},
+        "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+    }
+    reporting = automodel_spec_to_compiler_output(spec).training.progress_reporting
+
+    assert reporting.time_series_metrics is None
 
 
 @pytest.mark.asyncio

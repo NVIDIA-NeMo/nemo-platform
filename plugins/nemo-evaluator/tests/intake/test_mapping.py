@@ -79,8 +79,8 @@ def test_session_id_is_stable_per_trial() -> None:
 
 
 def test_evaluation_context_is_lean() -> None:
-    context = run_task_to_evaluation_context(_trial(task_id="task-42"), experiment_id="bench-x-variant")
-    assert context == {"evaluation_id": "bench-x-variant", "test_case_id": "task-42"}
+    context = run_task_to_evaluation_context(_trial(task_id="task-42"), evaluation_name="bench-x-variant")
+    assert context == {"evaluation_name": "bench-x-variant", "test_case_name": "task-42"}
 
 
 # --- trial_to_atif_ingest ---------------------------------------------------
@@ -90,7 +90,7 @@ def test_trial_to_atif_ingest_shape() -> None:
     body = trial_to_atif_ingest(
         _trial(trial_id="t-1", task_id="task-1", output_text="final answer"),
         run_id="run-1",
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         agent_name="my-agent",
         started_at=STARTED_AT,
         model_name="gpt-4o",
@@ -99,19 +99,21 @@ def test_trial_to_atif_ingest_shape() -> None:
     assert body["session_id"] == "run-1:t-1"
     assert body["agent"] == {"name": "my-agent", "version": DEFAULT_AGENT_VERSION, "model_name": "gpt-4o"}
     assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "final answer", "timestamp": STARTED_AT}]
-    assert body["evaluation_context"] == {"evaluation_id": "exp-1", "test_case_id": "task-1"}
+    assert body["evaluation_context"] == {"evaluation_name": "exp-1", "test_case_name": "task-1"}
     assert "final_metrics" not in body
 
 
 def test_trial_to_atif_ingest_defaults_version_and_omits_model_name() -> None:
-    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
+    body = trial_to_atif_ingest(
+        _trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
+    )
     assert body["agent"] == {"name": "a", "version": "unknown"}
     assert "model_name" not in body["agent"]
 
 
 def test_trial_to_atif_ingest_handles_missing_output() -> None:
     body = trial_to_atif_ingest(
-        _trial(output_text=None), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT
+        _trial(output_text=None), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
     )
     assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "", "timestamp": STARTED_AT}]
 
@@ -120,7 +122,7 @@ def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
     body = trial_to_atif_ingest(
         _trial(),
         run_id="run-1",
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         agent_name="a",
         started_at=STARTED_AT,
         final_metrics={"total_prompt_tokens": 10},
@@ -133,7 +135,7 @@ def test_trial_to_atif_ingest_adds_invocation_window_when_ended_at_given() -> No
     # root-span latency is the trial's runtime instead of 0.
     ended = STARTED_AT + timedelta(seconds=12.5)
     body = trial_to_atif_ingest(
-        _trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT, ended_at=ended
+        _trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT, ended_at=ended
     )
     (step,) = body["steps"]
     assert step["extra"] == {
@@ -142,7 +144,9 @@ def test_trial_to_atif_ingest_adds_invocation_window_when_ended_at_given() -> No
 
 
 def test_trial_to_atif_ingest_omits_invocation_window_without_ended_at() -> None:
-    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
+    body = trial_to_atif_ingest(
+        _trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
+    )
     assert "extra" not in body["steps"][0]
 
 

@@ -13,10 +13,10 @@
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useModelsListDeployments } from '@nemo/sdk/generated/platform/api';
 import {
@@ -24,15 +24,15 @@ import {
   ModelDeploymentFilter,
   ModelDeploymentStatus,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
+import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Rocket, Trash2 } from 'lucide-react';
-import { ComponentProps, FC, useCallback } from 'react';
+import { Trash2 } from 'lucide-react';
+import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface DeploymentsDataViewProps {
   workspace: string;
-  emptyStateActions?: React.ReactNode;
+  /** Opens the create-deployment flow from the first-use empty state. */
+  readonly onCreate?: () => void;
   /** Opens the URL-driven deployment details panel (row click). */
   onDeploymentRowClick: (deployment: ModelDeployment) => void;
   /** Opens the shared delete confirmation flow (row action menu). */
@@ -44,7 +44,7 @@ export interface DeploymentsDataViewProps {
 
 export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
   workspace,
-  emptyStateActions,
+  onCreate,
   onDeploymentRowClick,
   onRequestDeleteDeployment,
   attributes,
@@ -52,10 +52,6 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
   });
-
-  const resetFilters = useCallback(() => {
-    dataViewState.resetFilters();
-  }, [dataViewState]);
 
   const sortState = dataViewState.sorting.state[0];
   const sortParam = sortState ? `${sortState.desc ? '-' : ''}${sortState.id}` : '-created_at';
@@ -117,9 +113,9 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
         rowActionsColumn({
           size: 58,
           enableResizing: false,
-          rowActions: (deployment: ModelDeployment) => [
+          rowActions: (deployment: ModelDeployment): DropdownEntry[] => [
             {
-              slotLeft: <Trash2 />,
+              slotStart: <Trash2 />,
               children: 'Delete',
               disabled:
                 deployment.status === ModelDeploymentStatus.DELETED ||
@@ -132,8 +128,6 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
       ],
       [onRequestDeleteDeployment]
     );
-
-  const hasSearchOrFilters = !!dataViewState.debouncedSearchBar;
 
   return (
     <Stack gap="density-2xl" {...attributes?.Stack}>
@@ -152,33 +146,16 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
             requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: () => {
-              if (data?.data.length === 0 && !isFetching && !hasSearchOrFilters) {
-                return (
-                  <TableEmptyState
-                    icon={<Rocket className="h-[64px] w-[64px]" />}
-                    header="Manage Deployments"
-                    emptyMessage={
-                      CUSTOMIZER_ENABLED
-                        ? 'Deploy an open source model from the base models or create a fine-tuned model.'
-                        : 'Deploy an open source model from the base models.'
-                    }
-                    actions={<Flex gap="2">{emptyStateActions}</Flex>}
-                  />
-                );
-              }
-              return (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No deployments match your search"
-                  actions={
-                    <Button kind="tertiary" onClick={resetFilters}>
-                      Clear Search
-                    </Button>
-                  }
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? (
+                <EntityEmptyState
+                  entity="deployments"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
-              );
-            },
+              ) : (
+                <EntityEmptyState entity="deployments" variant="first-use" onCreate={onCreate} />
+              ),
             renderErrorState: () => (
               <ErrorPanel
                 errorMessage={getErrorMessage(error ?? new Error('Failed to fetch deployments'))}

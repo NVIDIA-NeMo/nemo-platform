@@ -76,7 +76,7 @@ async def ingest_otlp_traces(
     max_bytes = _otlp_max_body_bytes(request)
     if content_length is not None and content_length > max_bytes:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"OTLP body of {content_length} bytes exceeds limit of {max_bytes} bytes",
         )
 
@@ -118,7 +118,7 @@ async def ingest_otlp_traces(
     # nemo.evaluation.name attribute), so refresh the denormalized name facets for every one it touched.
     if denormalizer is not None:
         for evaluation_name in evaluation_names:
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_name)
+            denormalizer.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)
     return IngestResponse(errors=errors)
 
 
@@ -140,7 +140,7 @@ async def _read_limited_body(request: Request, *, max_bytes: int) -> bytes:
         size += len(chunk)
         if size > max_bytes:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail=f"OTLP body exceeds limit of {max_bytes} bytes",
             )
         chunks.append(chunk)

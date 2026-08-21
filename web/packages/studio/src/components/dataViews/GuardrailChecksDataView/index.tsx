@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { useDeferredUnmount } from '@nemo/common/src/hooks/useDeferredUnmount';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { Button, Text } from '@nvidia/foundations-react-core';
+import { Text } from '@nvidia/foundations-react-core';
 import type { GuardrailCheckEntity, Verdict } from '@studio/api/guardrail-checks/types';
 import {
   getCheckInputText,
@@ -18,7 +18,6 @@ import {
   RESULT_FILTER_OPTIONS,
 } from '@studio/components/dataViews/GuardrailChecksDataView/checkStatus';
 import { ResultIndicator } from '@studio/components/dataViews/GuardrailChecksDataView/ResultIndicator';
-import { ListChecks } from 'lucide-react';
 import { type ComponentProps, type FC, type ReactNode, useCallback, useMemo } from 'react';
 
 /** Everything a detail view needs about the selected row. */
@@ -200,21 +199,13 @@ export const GuardrailChecksDataView: FC<GuardrailChecksDataViewProps> = ({
           DataViewTableContent: {
             renderEmptyState: () =>
               hasSearchOrFilters ? (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No tests match your search or filters"
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  }
+                <EntityEmptyState
+                  entity="guardrailChecks"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
               ) : (
-                <TableEmptyState
-                  icon={<ListChecks className="size-16" />}
-                  header="No tests yet"
-                  emptyMessage="Add a test case on the Tests tab, then run it to see its result here."
-                />
+                <EntityEmptyState entity="guardrailChecks" variant="first-use" />
               ),
           },
         }}

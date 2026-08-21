@@ -29,6 +29,7 @@ import {
   buildDataDesignerConfig,
   validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
+import { MissingTemplateModelBanner } from '@studio/routes/DataDesignerJobBuildRoute/MissingTemplateModelBanner';
 import {
   buildModelsFromConfig,
   buildServedModelNames,
@@ -37,6 +38,7 @@ import {
 import { SchemaList } from '@studio/routes/DataDesignerJobBuildRoute/SchemaList';
 import {
   type JobBuilderSeed,
+  unresolvedTemplateModelIssues,
   useJobBuilder,
 } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import {
@@ -116,7 +118,16 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const validateAndCollectErrors = useCallback(() => {
     const { columns, models, name, rows } = builder.getBuilderValues();
     const numRecords = Number(rows);
-    const errors = [...validateColumns(columns), ...validateModels(models)];
+    const errors = [
+      ...validateColumns(columns),
+      ...validateModels(models),
+      // The template's model survives in the form, so validateModels sees a filled-in field;
+      // without this the job would submit and fail server-side on the unknown model.
+      ...unresolvedTemplateModelIssues(builder.templateModelIssues, models).map(
+        (issue) =>
+          `${issue.alias}: ${issue.requested} isn't available in this workspace. Select a model that is.`
+      ),
+    ];
     if (!name.trim()) {
       errors.push('Fileset name is required.');
     }
@@ -200,6 +211,8 @@ export const DataDesignerJobBuildRoute: FC = () => {
             onSubmit={handleSubmit}
             isSubmitting={createJob.isPending}
           />
+
+          <MissingTemplateModelBanner issues={builder.templateModelIssues} />
 
           <BuilderDetailsPanel
             validationErrors={validationErrors}

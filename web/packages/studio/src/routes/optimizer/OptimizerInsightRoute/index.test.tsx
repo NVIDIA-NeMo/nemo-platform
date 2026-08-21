@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import {
   getListEvaluationsQueryKey,
   getListExperimentsQueryKey,
@@ -118,7 +119,9 @@ describe('OptimizerInsightRoute experiments', () => {
     const { unmount } = renderInsight();
 
     expect(await screen.findByText('Failed to load experiments')).toBeInTheDocument();
-    expect(screen.queryByText('No experiments for this insight.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(ENTITY_EMPTY_STATES.insightExperiments.subheading)
+    ).not.toBeInTheDocument();
     unmount();
 
     server.use(
@@ -126,7 +129,9 @@ describe('OptimizerInsightRoute experiments', () => {
     );
     renderInsight();
 
-    expect(await screen.findByText('No experiments for this insight.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(ENTITY_EMPTY_STATES.insightExperiments.subheading)
+    ).toBeInTheDocument();
     expect(screen.queryByText('Failed to load experiments')).not.toBeInTheDocument();
   });
 

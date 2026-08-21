@@ -17,7 +17,6 @@ from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
 from nemo_evaluator.jobs import result_persistence
 from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
-    CodexRunnerTarget,
     FabricRunnerTarget,
     GymRunnerTarget,
     HarborRunnerTarget,
@@ -92,9 +91,11 @@ def _agent() -> Agent:
     [
         (ModelTarget(model=_model()), ("model", "my-model", "https://model.test/v1/chat/completions")),
         (AgentTarget(agent=_agent()), ("agent", "my-agent", "http://agent.test")),
-        (CodexRunnerTarget(model="gpt-5.5"), ("codex", "gpt-5.5", None)),
         (
-            FabricRunnerTarget(config={"metadata": {"name": "a"}}, model="openai/gpt-5.4"),
+            FabricRunnerTarget(
+                config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
+                model="openai/gpt-5.4",
+            ),
             ("fabric", "openai/gpt-5.4", None),
         ),
         (
@@ -187,7 +188,10 @@ def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocke
 
     persist_agent_eval_result(
         _agent_result(),
-        target=CodexRunnerTarget(model="gpt-5.5"),
+        target=FabricRunnerTarget(
+            config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
+            model="openai/gpt-5.4",
+        ),
         ctx=_ctx(tmp_path, "job-1"),
         bundle_ref="fileset://dev/agent-eval-results#b",
         async_sdk=_ASYNC_SDK,
@@ -199,8 +203,8 @@ def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocke
     assert entity.name == "job-1"
     assert entity.job_id == "job-1"
     assert entity.workspace == "dev"
-    assert entity.target_kind == "codex"
-    assert entity.target_name == "gpt-5.5"
+    assert entity.target_kind == "fabric"
+    assert entity.target_name == "openai/gpt-5.4"
     assert entity.target_url is None
     assert entity.bundle_ref == "fileset://dev/agent-eval-results#b"
 

@@ -76,8 +76,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --baseline-freeze /tmp/base-python-freeze.txt \
         --label platform-glue
 
-# Codec cleanup for release image scans.
-RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/rl/codec-file-removals.txt
+# Late file cleanup for bundled or non-package-managed files.
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.sh,target=/tmp/remove-listed-files.sh,readonly \
+    --mount=type=bind,source=docker/customizer/removals/files/nmp-rl-training.txt,target=/tmp/file-removals.txt,readonly \
+    bash /tmp/remove-listed-files.sh /tmp/file-removals.txt
 
 # Runtime uv cache: the base's /opt/uv_cache ships READ-ONLY on purpose - the prefetched venvs
 # symlink their package files into it, so a writable cache would let code running in this container
@@ -85,7 +87,13 @@ RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/rl/codec-file-re
 # Point runtime uv writes at the per-user cache instead, which is already owned by USER_UID above.
 # The prefetched venvs are unaffected: their symlinks are absolute /opt/uv_cache paths resolved at
 # build time, so changing UV_CACHE_DIR only redirects FUTURE uv operations.
+# HOME must follow the runtime user. The base sets HOME=/home/nmp-build for its build user
+# (uid 2000) and that value survives into the published image, but this stage runs as
+# ${USER_UID}, which cannot write there. Anything resolving `~` at import time then dies:
+# swanlab, which nemo_rl.utils.logger imports unconditionally, calls os.mkdir("~/.swanlab")
+# from its module body, so the GRPO driver fails before reading a config.
 ENV PATH="/opt/nemo_rl_venv/bin:${PATH}" \
+    HOME=/home/${USERNAME} \
     UV_CACHE_DIR=/home/${USERNAME}/.cache/uv
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.rl.tasks.training", "--help"]

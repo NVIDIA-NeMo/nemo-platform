@@ -46,10 +46,9 @@ from nemo_agents_plugin.fabric.streaming import (
     iter_openai_chat_completion_sse,
     openai_chat_completion_error_sse,
 )
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 
 logger = logging.getLogger(__name__)
-
-SESSION_ID_HEADER = "X-Nemo-Session-Id"
 
 
 @dataclass(frozen=True, slots=True)

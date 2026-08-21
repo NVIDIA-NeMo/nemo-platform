@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { FilesetFileExplorer } from '@studio/components/filesets/FilesetFileExplorer';
 import { GITKEEP_FILENAME } from '@studio/components/FilesTable/utils';
@@ -110,7 +111,7 @@ describe('FilesetFileExplorer', () => {
       ],
     });
 
-    expect(await screen.findByText('No Files')).toBeInTheDocument();
+    expect(await screen.findByText(ENTITY_EMPTY_STATES.filesetFiles.heading)).toBeInTheDocument();
   });
 
   describe('read-only gating by storage.type', () => {
@@ -169,29 +170,26 @@ describe('FilesetFileExplorer', () => {
       }
     );
 
-    it('shows empty-state action buttons for local fileset', async () => {
+    it('shows the toolbar and empty-state upload actions for local fileset', async () => {
       stubRetrieve('local');
       renderComponent({ filesList: [] });
-      await screen.findByText('No Files');
-      // Toolbar + empty-state both expose these buttons; wait for at least
-      // one of each since they only mount after the fileset query resolves.
+      await screen.findByText(ENTITY_EMPTY_STATES.filesetFiles.heading);
+      expect(await screen.findByTestId('dataset-details-new-directory-button')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Upload File' })).toBeInTheDocument();
       expect(
-        (await screen.findAllByRole('button', { name: 'New Directory' })).length
-      ).toBeGreaterThan(0);
-      expect(
-        (await screen.findAllByRole('button', { name: 'Upload File' })).length
-      ).toBeGreaterThan(0);
+        screen.getByRole('button', { name: ENTITY_EMPTY_STATES.filesetFiles.createAction?.label })
+      ).toBeInTheDocument();
     });
 
-    it('hides empty-state action buttons and shows read-only copy for external fileset', async () => {
+    it('hides create actions for external fileset', async () => {
       stubRetrieve('huggingface');
       renderComponent({ filesList: [] });
-      await screen.findByText('No Files');
-      await waitFor(() => {
-        expect(screen.getByText('This fileset is read-only.')).toBeInTheDocument();
-      });
-      expect(screen.queryByRole('button', { name: 'New Directory' })).not.toBeInTheDocument();
+      await screen.findByText(ENTITY_EMPTY_STATES.filesetFiles.heading);
+      expect(screen.queryByTestId('dataset-details-new-directory-button')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Upload File' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: ENTITY_EMPTY_STATES.filesetFiles.createAction?.label })
+      ).not.toBeInTheDocument();
     });
   });
 

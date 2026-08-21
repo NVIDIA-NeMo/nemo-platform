@@ -2,22 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Meta, StoryObj } from '@storybook/react';
-import { useRangeBand } from '@studio/components/charts/RangeBand';
-import {
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  type TooltipProps,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { RangeBand } from '@studio/components/charts/RangeBand';
+import type { RangeBandSeries } from '@studio/components/charts/RangeBand/types';
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
-const makeSeries = (steps: number[], start: number, end: number, noiseScale = 0, seed = 1) => {
+const makeMean = (steps: number[], start: number, end: number, noiseScale = 0, seed = 1) => {
   let rng = seed;
   const next = () => {
     rng = (rng * 1664525 + 1013904223) & 0xffffffff;
@@ -27,125 +17,117 @@ const makeSeries = (steps: number[], start: number, end: number, noiseScale = 0,
     const t = step / (steps[steps.length - 1] ?? 1);
     const base = start + (end - start) * sigmoid((t - 0.5) * 8);
     const noise = noiseScale > 0 ? (next() - 0.5) * 2 * noiseScale : 0;
-    return { step, mean: Math.max(0, base + noise) };
+    return Math.max(0, base + noise);
   });
 };
 
 const STEPS = Array.from({ length: 51 }, (_, i) => i * 10);
-const series = makeSeries(STEPS, 0.15, 0.65, 0.01, 7);
 
-const chartData = series.map(({ step, mean }) => {
-  const t = step / 500;
-  const halfBand = 0.22 * (1 - t) ** 2 + 0.02;
-  return { step, mean, lower: Math.max(0, mean - halfBand), upper: mean + halfBand };
-});
+/** The spread narrows as training converges, which is what makes the band worth drawing. */
+const bandAround = (mean: number[], width: number, floor = 0.02) => {
+  const half = STEPS.map((step) => width * (1 - step / 500) ** 2 + floor);
+  return {
+    lower: mean.map((value, index) => Math.max(0, value - half[index])),
+    upper: mean.map((value, index) => value + half[index]),
+  };
+};
 
-interface DemoDataPoint {
-  step: number;
-  mean?: number;
-  lower?: number;
-  upper?: number;
-}
+const candidateMean = makeMean(STEPS, 0.15, 0.65, 0.01, 7);
+const candidate: RangeBandSeries = {
+  id: 'candidate',
+  label: 'Candidate',
+  data: candidateMean,
+  ...bandAround(candidateMean, 0.08),
+};
 
-function DemoTooltip({ active, payload, label }: TooltipProps<number, string>) {
-  if (!active || !payload?.length) return null;
-  const pt = payload[0]?.payload as DemoDataPoint | undefined;
-  return (
-    <div className="bg-component-tooltip border border-component-tooltip shadow-sm rounded-lg p-3 text-sm min-w-36">
-      <p className="font-semibold mb-1">Step {label}</p>
-      {pt?.mean !== undefined && (
-        <p className="text-[var(--text-color-accent-green)]">Mean: {pt.mean.toFixed(4)}</p>
-      )}
-      {pt?.lower !== undefined && pt?.upper !== undefined && (
-        <p className="text-[var(--text-color-accent-green)] opacity-70">
-          Range: {pt.lower.toFixed(3)} – {pt.upper.toFixed(3)}
-        </p>
-      )}
-    </div>
-  );
-}
+const baselineMean = makeMean(STEPS, 0.12, 0.48, 0.008, 23);
+const baseline: RangeBandSeries = {
+  id: 'baseline',
+  label: 'Baseline',
+  data: baselineMean,
+  dashed: true,
+  ...bandAround(baselineMean, 0.05),
+};
 
-interface DemoProps {
-  showLine?: boolean;
-  fill?: string;
-  fillOpacity?: number;
-  height?: number;
-}
+const LAST_STEP = STEPS.length - 1;
 
-function RangeBandDemo({
-  showLine = true,
-  fill = 'var(--text-color-accent-green)',
-  fillOpacity = 0.5,
-  height = 300,
-}: DemoProps) {
-  const band = useRangeBand({
-    lowerKey: 'lower',
-    upperKey: 'upper',
-    fill,
-    fillOpacity,
-    name: 'Range band (p25–p75)',
-  });
+/**
+ * A right-skewed spread: the long upper tail pins the p50 to the band's floor early, then the tail
+ * collapses and the floor falls away, leaving the same line near the ceiling.
+ */
+const latencyP50 = STEPS.map((step) => 140 - 40 * (step / 500) + 9 * Math.sin(step / 55));
+const latency: RangeBandSeries = {
+  id: 'latency',
+  label: 'p50 (p10–p90 band)',
+  data: latencyP50,
+  lower: latencyP50.map((value, index) => value - 18 - 55 * (index / LAST_STEP)),
+  upper: latencyP50.map((value, index) => value + 12 + 145 * (1 - index / LAST_STEP)),
+};
 
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-        <XAxis
-          dataKey="step"
-          type="number"
-          domain={['dataMin', 'dataMax']}
-          tick={{ fontSize: 11 }}
-          tickLine={false}
-        />
-        <YAxis tick={{ fontSize: 11 }} tickLine={false} tickCount={6} />
-        <Tooltip
-          content={<DemoTooltip />}
-          cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1 }}
-        />
-        <Legend iconType="square" wrapperStyle={{ paddingTop: 12 }} />
-
-        {band}
-
-        {showLine && (
-          <Line
-            type="monotone"
-            dataKey="mean"
-            stroke="var(--text-color-accent-green)"
-            strokeWidth={2}
-            dot={false}
-            name="Mean"
-            legendType="square"
-            isAnimationActive={false}
-          />
-        )}
-      </ComposedChart>
-    </ResponsiveContainer>
-  );
-}
-
-const meta: Meta<typeof RangeBandDemo> = {
+const meta: Meta<typeof RangeBand> = {
   title: 'Charts/RangeBand',
-  component: RangeBandDemo,
+  component: RangeBand,
   parameters: {
     layout: 'padded',
     backgrounds: { default: 'dark' },
   },
+  args: {
+    series: [candidate],
+    xAxis: STEPS,
+    xAxisLabel: 'Step',
+    yAxisLabel: 'Accuracy',
+    title: 'Training accuracy',
+  },
 };
 
 export default meta;
-type Story = StoryObj<typeof RangeBandDemo>;
+type Story = StoryObj<typeof RangeBand>;
 
-export const WithLine: Story = {
+export const Default: Story = {
   name: 'Band + mean line',
-  args: { showLine: true, fill: 'var(--text-color-accent-green)', fillOpacity: 0.5, height: 300 },
 };
 
 export const BandOnly: Story = {
   name: 'Band only (no line)',
-  args: { showLine: false, fill: 'var(--text-color-accent-green)', fillOpacity: 0.5, height: 300 },
+  args: {
+    series: [
+      { id: candidate.id, label: 'p25–p75', lower: candidate.lower, upper: candidate.upper },
+    ],
+  },
 };
 
-export const CustomColor: Story = {
-  name: 'Custom color (blue)',
-  args: { showLine: true, fill: 'var(--text-color-accent-blue)', fillOpacity: 0.45, height: 300 },
+export const OffCenterLine: Story = {
+  name: 'Line off-center in the band',
+  args: {
+    series: [latency],
+    title: 'Request latency',
+    yAxisLabel: 'ms',
+    bandOpacity: 0.35,
+  },
+};
+
+export const MultipleSeries: Story = {
+  name: 'Two series',
+  args: { series: [baseline, candidate] },
+};
+
+export const LegendBottom: Story = {
+  name: 'Legend below the plot',
+  args: { series: [baseline, candidate], legendPosition: 'bottom', title: undefined },
+};
+
+export const FaintBands: Story = {
+  name: 'Faint bands',
+  args: { series: [baseline, candidate], bandOpacity: 0.15 },
+};
+
+export const Loading: Story = {
+  args: { loading: true },
+};
+
+export const Empty: Story = {
+  args: {
+    series: [{ id: 'candidate', label: 'Candidate', lower: [], upper: [] }],
+    emptyMessage: 'No runs yet',
+  },
 };

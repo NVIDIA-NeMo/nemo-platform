@@ -5,7 +5,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from doubles import FakeBackend, fake_client
@@ -94,7 +94,7 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
         lambda: SimpleNamespace(build_evaluator=lambda *args, **kwargs: object()),
     )
     monkeypatch.setattr(runner_module, "DatasetFactory", RecordingDatasetFactory)
-    monkeypatch.setattr("nemo_eval_author_plugin.eval_author.agent.EvalAuthor", MutatingEvalAuthor)
+    monkeypatch.setattr("nemo_experimentalist_plugin.eval_author.agent.EvalAuthor", MutatingEvalAuthor)
 
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
@@ -174,7 +174,7 @@ async def test_authored_metrics_and_suite_reach_the_run(
         runner_module, "EvaluatorFactory", lambda: SimpleNamespace(build_evaluator=lambda *a, **k: object())
     )
     monkeypatch.setattr(runner_module, "DatasetFactory", Factory)
-    monkeypatch.setattr("nemo_eval_author_plugin.eval_author.agent.EvalAuthor", Author)
+    monkeypatch.setattr("nemo_experimentalist_plugin.eval_author.agent.EvalAuthor", Author)
     monkeypatch.setattr(
         runner_module,
         "distribute_insight_suite_tasks",
@@ -207,6 +207,4 @@ async def test_authored_metrics_and_suite_reach_the_run(
         "the strategy must receive the settled contract through the context"
     )
     assert [t.name for t in runner._config.regression_metrics] == ["reward"], "configured targets demote to guardrails"
-    assert cast(Any, distributed["suite"]).id == "insight-suite", (
-        "the authored suite must reach the splits the loop evaluates"
-    )
+    assert distributed["suite"].id == "insight-suite", "the authored suite must reach the splits the loop evaluates"

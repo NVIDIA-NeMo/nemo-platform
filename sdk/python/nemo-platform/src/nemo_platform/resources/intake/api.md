@@ -113,6 +113,18 @@ Methods:
 
 - <code title="post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions">client.intake.ingest.chat_completions.<a href="./src/nemo_platform/resources/intake/ingest/chat_completions.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/ingest/chat_completion_create_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/ingest/chat_completions_ingest_response.py">ChatCompletionsIngestResponse</a></code>
 
+### Spans
+
+Types:
+
+```python
+from nemo_platform.types.intake.ingest import DirectSpanInput, DirectSpansIngestParam, JsonValue
+```
+
+Methods:
+
+- <code title="post /apis/intake/v2/workspaces/{workspace}/ingest/spans">client.intake.ingest.spans.<a href="./src/nemo_platform/resources/intake/ingest/spans.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/ingest/span_create_params.py">params</a>) -> None</code>
+
 ### Otlp
 
 #### V1
@@ -196,10 +208,22 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.intake import Trace, TraceFilter, TraceSortField, TracesPage
+from nemo_platform.types.intake import (
+    CostRollupResponse,
+    LatencyRollupResponse,
+    TokenRollupResponse,
+    Trace,
+    TraceFilter,
+    TraceMetricBucketParam,
+    TraceMetricPointResponse,
+    TraceMetrics,
+    TraceSortField,
+    TracesPage,
+)
 ```
 
 Methods:
 
 - <code title="get /apis/intake/v2/workspaces/{workspace}/traces/{id}">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">retrieve</a>(id, \*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_retrieve_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace.py">Trace</a></code>
 - <code title="get /apis/intake/v2/workspaces/{workspace}/traces">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace.py">SyncDefaultPagination[Trace]</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/traces/metrics">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">get_metrics</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_get_metrics_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace_metrics.py">TraceMetrics</a></code>

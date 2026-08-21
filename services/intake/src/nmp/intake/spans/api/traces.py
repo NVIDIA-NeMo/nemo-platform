@@ -26,13 +26,19 @@ router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Traces"
 TRACE_INDEX_FILTER_FIELDS = frozenset(
     {
+        "evaluation_name",
+        "test_case_name",
         "evaluation_id",
         "test_case_id",
+        "agent_name",
     }
 )
 TRACE_INDEX_FILTER_ALIASES = {
-    "evaluation_id": "evaluation_id",
-    "test_case_id": "test_case_id",
+    "evaluation_name": "evaluation_name",
+    "evaluation_id": "evaluation_name",
+    "test_case_name": "test_case_name",
+    "test_case_id": "test_case_name",
+    "agent_name": "agent_name",
 }
 
 
@@ -45,7 +51,7 @@ TRACE_INDEX_FILTER_ALIASES = {
         filter_schema=TraceFilter,
         filter_description=(
             "Filter root-span-backed traces by id, session_id, root status, root span started_at, "
-            "evaluation_id, and test_case_id."
+            "evaluation_name, test_case_name, and agent_name."
         ),
     ),
 )

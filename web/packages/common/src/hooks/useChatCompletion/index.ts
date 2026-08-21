@@ -4,7 +4,7 @@
 import { getGatewayProxyGetQueryKey } from '@nemo/sdk/generated/platform/api';
 import { useMutation, UseMutationOptions } from '@tanstack/react-query';
 import OpenAI from 'openai';
-import { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
+import type { ChatCompletion, ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 import { useAuth } from 'react-oidc-context';
 
 import { ChatMissingModelError, CHAT_CORS_HEADERS } from '../../constants/chat';
@@ -40,7 +40,9 @@ const getClient = (baseURL: string): OpenAI => {
   return clientCache.get(baseURL)!;
 };
 
-const createChatCompletion = (props: UseChatCompletionParams) => {
+export const createChatCompletion = async (
+  props: UseChatCompletionParams
+): Promise<ChatCompletionRequestReturn> => {
   const {
     model,
     workspace,
@@ -69,7 +71,7 @@ const createChatCompletion = (props: UseChatCompletionParams) => {
 
   const client = getClient(resolvedBaseURL);
 
-  return client.chat.completions.create(
+  const request = client.chat.completions.create(
     {
       model,
       max_tokens,
@@ -86,6 +88,16 @@ const createChatCompletion = (props: UseChatCompletionParams) => {
       signal,
     }
   );
+
+  if (stream) {
+    const response = await request.asResponse();
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (contentType.includes('json')) {
+      return (await response.json()) as ChatCompletion;
+    }
+  }
+
+  return request;
 };
 
 /**

@@ -4,7 +4,6 @@
 import { featureFlags } from '@studio/constants/featureFlags';
 import type { FeatureFlags } from '@studio/constants/featureFlags/featureFlags';
 import {
-  getAgentEvaluationsListRoute,
   getAgentMonitorRoute,
   getAgentsListRoute,
   getDataDesignerJobListRoute,
@@ -57,19 +56,6 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bsynthesi[sz]e (data|dataset|datasets)\b/i,
       /\bgenerate (safety[-\s]?focused|safe|synthetic) (data|dataset|datasets)\b/i,
       /\bsafety data\b/i,
-    ],
-  },
-  {
-    id: 'agent-evaluations',
-    title: 'Open Agent Evaluations',
-    description: 'Studio has a UI for submitting and reviewing agent evaluation jobs.',
-    getHref: getAgentEvaluationsListRoute,
-    requiredFeatureFlags: ['agentsEnabled'],
-    patterns: [
-      /\bagent (eval|evaluation|evaluations)\b/i,
-      /\bevaluat(e|ing|ion)s? (an? )?agent\b/i,
-      /\brun (an? )?(eval|evaluation) (for|on) (an? )?agent\b/i,
-      /\b(agent|agents).*\b(eval|evaluation|evaluations) jobs?\b/i,
     ],
   },
   {

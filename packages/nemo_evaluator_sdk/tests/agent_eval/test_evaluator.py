@@ -296,6 +296,11 @@ def test_run_rejects_trials_and_target_together() -> None:
         )
 
 
+def test_run_rejects_neither_trials_nor_target() -> None:
+    with pytest.raises(ValueError, match="provide exactly one"):
+        AgentEvaluator().run_sync(tasks=[_task()])
+
+
 @pytest.mark.asyncio
 async def test_run_writes_nothing_until_persist_is_called(tmp_path: Path) -> None:
     # The point of the change: computing an evaluation and storing one are separate decisions, so a
@@ -921,3 +926,116 @@ def test_metric_row_error_is_none_for_a_trial_that_did_not_fail() -> None:
     row = _metric_row(AgentEvalTask(id="task-1", intent="Fix it.", inputs={}), _candidate_trial())
 
     assert row["trial"]["error"] is None
+
+
+class _PreflightCountingMetric(_ConstantMetric):
+    """Metric that records how many times its preflight ran."""
+
+    preflight_calls: int = 0
+
+    async def preflight(self) -> None:
+        self.preflight_calls += 1
+
+
+@pytest.mark.asyncio
+async def test_run_preflights_metrics_before_scoring_imported_trials() -> None:
+    """Agent-eval scores metrics directly, so it must run their preflight itself.
+
+    An LLM judge detects its endpoint's structured-output encoding in preflight. Without this the
+    judge scores using the provisional encoding new_hooks guessed, silently losing enforcement on
+    an endpoint that does not honour it.
+    """
+    metric = _PreflightCountingMetric()
+
+    await AgentEvaluator().run(
+        tasks=[_task(metric)],
+        trials=[_candidate_trial()],
+        config=AgentEvalRunConfig(parallelism=1),
+    )
+
+    assert metric.preflight_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_run_preflights_each_metric_once_across_tasks() -> None:
+    """The same metric object is scored once per trial; preflight must not repeat per scoring."""
+    metric = _PreflightCountingMetric()
+
+    await AgentEvaluator().run(
+        tasks=[_task(metric, task_id="task-1"), _task(metric, task_id="task-2")],
+        trials=[
+            _candidate_trial(),
+            AgentEvalTrial(
+                id="trial-2",
+                task_id="task-2",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="Candidate answer"),
+                metadata={"model_id": "candidate"},
+            ),
+        ],
+        config=AgentEvalRunConfig(parallelism=1),
+    )
+
+    assert metric.preflight_calls == 1
+
+
+class _ProbingMetric(_ConstantMetric):
+    """Metric whose preflight probes a remote endpoint, as an LLM judge's does."""
+
+    preflight_calls: int = 0
+
+    async def preflight(self) -> None:
+        self.preflight_calls += 1
+        raise RuntimeError("endpoint probe failed")
+
+
+def _failed_trial(task_id: str = "task-1", trial_id: str = "trial-1") -> AgentEvalTrial:
+    return AgentEvalTrial(
+        id=trial_id,
+        task_id=task_id,
+        status=AgentEvalTrialStatus.FAILED,
+        output=AgentOutput(output_text=""),
+    )
+
+
+@pytest.mark.asyncio
+async def test_failed_trials_are_scored_without_preflighting_their_metric() -> None:
+    """A run whose trials all failed must not probe the judge endpoint.
+
+    Failed trials short-circuit to a failed score without invoking the metric, so preflighting is
+    both a wasted remote call and a new way for the run to abort: preflight resolves the judge
+    model, and that raises for an unresolved reference. Importing a batch of failed trials must
+    still yield failed scores rather than an exception.
+    """
+    metric = _ProbingMetric()
+
+    result = await AgentEvaluator().run(
+        tasks=[_task(metric)],
+        trials=[_failed_trial()],
+        config=AgentEvalRunConfig(parallelism=1),
+    )
+
+    assert metric.preflight_calls == 0
+    assert [score.status for score in result.scores] == [AgentEvalScoreStatus.FAILED]
+
+
+@pytest.mark.asyncio
+async def test_metric_is_preflighted_when_any_trial_is_scoreable() -> None:
+    """One completed trial is enough to need the endpoint resolved."""
+    metric = _PreflightCountingMetric()
+
+    await AgentEvaluator().run(
+        tasks=[_task(metric, task_id="task-1"), _task(metric, task_id="task-2")],
+        trials=[
+            _failed_trial(task_id="task-1", trial_id="trial-1"),
+            AgentEvalTrial(
+                id="trial-2",
+                task_id="task-2",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="Candidate answer"),
+            ),
+        ],
+        config=AgentEvalRunConfig(parallelism=1),
+    )
+
+    assert metric.preflight_calls == 1

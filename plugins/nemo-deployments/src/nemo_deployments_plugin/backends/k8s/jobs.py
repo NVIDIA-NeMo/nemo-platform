@@ -18,8 +18,11 @@ from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
     compile_workload,
     create_configmap,
+    create_secret,
     delete_configmap,
     delete_configmap_best_effort,
+    delete_secret,
+    delete_secret_best_effort,
     validate_config_for_job,
 )
 from nemo_deployments_plugin.backends.k8s.status import (
@@ -38,6 +41,7 @@ from nemo_deployments_plugin.backends.labels import (
     deployment_identity_labels,
     k8s_deployment_configmap_name,
     k8s_deployment_resource_name,
+    k8s_deployment_secret_name,
     managed_by_label_selector,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
@@ -117,6 +121,7 @@ def build_job_body(
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
     executor_image_pull_secrets: list | None = None,
+    secret_env: dict[str, str] | None = None,
 ) -> BuiltJob:
     """Build a ``batch/v1.Job`` for create."""
     k8s = k8s_client_module()
@@ -128,6 +133,7 @@ def build_job_body(
         k8s_config=k8s_config,
         pod_restart_policy=config.restart_policy,
         executor_image_pull_secrets=executor_image_pull_secrets,
+        secret_env=secret_env,
     )
     job = k8s.client.V1Job(
         api_version="batch/v1",
@@ -189,6 +195,7 @@ async def create_job(
     backend_config: dict[str, Any],
     config: DeploymentConfig,
     executor_image_pull_secrets: list | None = None,
+    secret_env: dict[str, str] | None = None,
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     try:
@@ -211,6 +218,7 @@ async def create_job(
             deployment_name=name,
             k8s_config=k8s_config,
             executor_image_pull_secrets=executor_image_pull_secrets,
+            secret_env=secret_env,
         )
         body = built.job
         compiled = built.compiled
@@ -218,16 +226,47 @@ async def create_job(
         batch_v1 = clients.batch_v1
         core_v1 = clients.core_v1
 
-        def _create() -> Any:
-            configmap_written = compiled.configmap_body is not None
+        def _cleanup_config_resources(*, configmap_written: bool, secret_written: bool) -> None:
             if configmap_written:
-                create_configmap(
+                delete_configmap_best_effort(
                     core_v1,
                     namespace=namespace,
-                    body=compiled.configmap_body,
+                    name=compiled.configmap_name,
                     expected_labels=identity_labels,
                     timeout=timeout,
                 )
+            if secret_written:
+                delete_secret_best_effort(
+                    core_v1,
+                    namespace=namespace,
+                    name=compiled.secret_name,
+                    expected_labels=identity_labels,
+                    timeout=timeout,
+                )
+
+        def _create() -> Any:
+            secret_written = compiled.secret_body is not None
+            if secret_written:
+                create_secret(
+                    core_v1,
+                    namespace=namespace,
+                    body=compiled.secret_body,
+                    expected_labels=identity_labels,
+                    timeout=timeout,
+                )
+            configmap_written = compiled.configmap_body is not None
+            if configmap_written:
+                try:
+                    create_configmap(
+                        core_v1,
+                        namespace=namespace,
+                        body=compiled.configmap_body,
+                        expected_labels=identity_labels,
+                        timeout=timeout,
+                    )
+                except Exception:
+                    _cleanup_config_resources(configmap_written=False, secret_written=secret_written)
+                    raise
             try:
                 return batch_v1.create_namespaced_job(
                     namespace=namespace,
@@ -242,23 +281,12 @@ async def create_job(
                         _request_timeout=timeout,
                     )
                     if not resource_labels_match(job, identity_labels):
-                        if configmap_written:
-                            delete_configmap_best_effort(
-                                core_v1,
-                                namespace=namespace,
-                                name=compiled.configmap_name,
-                                expected_labels=identity_labels,
-                                timeout=timeout,
-                            )
+                        _cleanup_config_resources(
+                            configmap_written=configmap_written,
+                            secret_written=secret_written,
+                        )
                     return job
-                if configmap_written:
-                    delete_configmap_best_effort(
-                        core_v1,
-                        namespace=namespace,
-                        name=compiled.configmap_name,
-                        expected_labels=identity_labels,
-                        timeout=timeout,
-                    )
+                _cleanup_config_resources(configmap_written=configmap_written, secret_written=secret_written)
                 raise
 
         job = await asyncio.to_thread(_create)
@@ -345,6 +373,24 @@ async def delete_job(
         batch_v1 = clients.batch_v1
         core_v1 = clients.core_v1
         configmap_name = k8s_deployment_configmap_name(workspace, name)
+        secret_name = k8s_deployment_secret_name(workspace, name)
+
+        def _delete_config_resources() -> None:
+            """Delete the ConfigMap and managed Secret for this job."""
+            delete_configmap(
+                core_v1,
+                namespace=namespace,
+                name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
+            delete_secret(
+                core_v1,
+                namespace=namespace,
+                name=secret_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
 
         def _delete() -> str | None:
             try:
@@ -355,13 +401,7 @@ async def delete_job(
                 )
             except ApiException as exc:
                 if exc.status == 404:
-                    delete_configmap(
-                        core_v1,
-                        namespace=namespace,
-                        name=configmap_name,
-                        expected_labels=expected_labels,
-                        timeout=timeout,
-                    )
+                    _delete_config_resources()
                     return None
                 raise
             if not resource_labels_match(job, expected_labels):
@@ -372,13 +412,7 @@ async def delete_job(
                 propagation_policy="Background",
                 _request_timeout=timeout,
             )
-            delete_configmap(
-                core_v1,
-                namespace=namespace,
-                name=configmap_name,
-                expected_labels=expected_labels,
-                timeout=timeout,
-            )
+            _delete_config_resources()
             return "deleted"
 
         result = await asyncio.to_thread(_delete)
@@ -387,6 +421,13 @@ async def delete_job(
                 core_v1,
                 namespace=namespace,
                 name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
+            delete_secret_best_effort(
+                core_v1,
+                namespace=namespace,
+                name=secret_name,
                 expected_labels=expected_labels,
                 timeout=timeout,
             )

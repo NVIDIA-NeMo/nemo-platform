@@ -161,5 +161,13 @@ docs/helm/index.mdx
 .act-variables
 .act-secrets
 
+# iron-swarm CLI run artifacts (builds, policies, run-logs) written into the working dir
+.iron-swarm/
+iron-swarm.yaml
+# Playwright MCP session output
+.playwright-mcp/
+# superpowers skill scratch (local plans/state)
+.superpowers/
+docs/superpowers/
 # Per-worker fatal-signal tracebacks (PYTEST_CRASH_DUMP_DIR)
 crash-dumps/

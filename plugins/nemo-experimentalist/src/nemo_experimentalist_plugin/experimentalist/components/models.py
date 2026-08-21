@@ -10,10 +10,11 @@ analyzer, proposer, coder, and evaluator.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections import Counter
+from collections.abc import Callable, Iterable, Sequence
 from typing import Literal, TypeVar
 
-from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, TrialResult
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
@@ -334,3 +335,36 @@ def pareto_objectives(metrics: dict[str, float], objective_function: list[Metric
 def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
     """Return whether an evaluator result contains every required metric target."""
     return all(target.name in metrics for target in targets)
+
+
+def missing_objective_reason(
+    trials: Sequence[TrialResult],
+    metrics: dict[str, float | int],
+    targets: list[MetricTarget],
+) -> str | None:
+    """Explain why *metrics* omits a required target, or None when none is omitted.
+
+    An aggregate cannot say whether a target is absent because nothing ran or
+    because nothing scored, and every later check reads the two the same way. The
+    trials still carry that difference, so it is read off them here rather than
+    inferred later from the aggregate alone.
+
+    Names only targets and trial statuses: evaluator-specific detail belongs to
+    whichever caller knows which harness ran.
+    """
+    absent = ", ".join(repr(target.name) for target in targets if target.name not in metrics)
+    if not absent:
+        return None
+    if not trials:
+        return f"the evaluator produced no trials, so {absent} was never measured"
+
+    completed = sum(1 for trial in trials if trial.status == "completed")
+    if not completed:
+        return f"0/{len(trials)} trials completed ({_error_types(trials)}), so {absent} was never measured"
+    return f"{completed}/{len(trials)} trials completed, but none reported {absent}"
+
+
+def _error_types(trials: Sequence[TrialResult]) -> str:
+    """Error types across *trials*, most frequent first."""
+    counts = Counter(str((trial.error or {}).get("type") or "unknown") for trial in trials)
+    return ", ".join(name if n == 1 else f"{name} ×{n}" for name, n in counts.most_common())

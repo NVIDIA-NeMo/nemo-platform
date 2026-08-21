@@ -4,7 +4,7 @@
 """SDK-backed agent-evaluation job for the evaluator plugin.
 
 Runs :class:`AgentEvaluator` over a set of tasks against a Model/Agent endpoint
-or an agent runner (e.g. Codex CLI), producing an ``AgentEvalResult`` (trials +
+or an agent runner (e.g. a Fabric harness), producing an ``AgentEvalResult`` (trials +
 per-trial scores + summary). The row-based counterpart is
 :class:`~nemo_evaluator.jobs.evaluate.EvaluateJob`.
 
@@ -31,7 +31,6 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalSpec,
     AgentEvalTaskSpec,
     AgentTarget,
-    CodexRunnerTarget,
     FabricRunnerTarget,
     GymRunnerTarget,
     HarborRunnerTarget,
@@ -45,7 +44,6 @@ from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
-from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
@@ -129,8 +127,8 @@ def _to_runtime_task(task: AgentEvalTaskSpec) -> AgentEvalTask:
     return AgentEvalTask(
         id=task.id,
         intent=task.intent,
-        # The runtime task carries plain dicts; the typed DTOs collapse to them — recognized input
-        # keys only, and the key/value metadata pairs folded into a mapping.
+        # The runtime task carries plain dicts; the typed DTOs collapse to them, with arbitrary
+        # task-specific inputs preserved and key/value metadata pairs folded into a mapping.
         inputs=task.inputs.model_dump(exclude_none=True),
         reference=task.reference,
         metrics=[_runtime_metric(metric) for metric in task.metrics],
@@ -336,13 +334,6 @@ class AgentEvalJob(NemoJob):
             return target.model, target.prompt_template, target.params or RunConfigOnlineModel()
         if isinstance(target, AgentTarget):
             return target.agent, None, target.params or RunConfigOnline()
-        if isinstance(target, CodexRunnerTarget):
-            runtime = CodexCliAgentRuntime(
-                model=target.model,
-                timeout_s=target.timeout_s,
-                work_root=ctx.storage.persistent / "codex",
-            )
-            return runtime, None, None
         if isinstance(target, FabricRunnerTarget):
             fabric_runtime = FabricAgentRuntime(
                 config=target.config,

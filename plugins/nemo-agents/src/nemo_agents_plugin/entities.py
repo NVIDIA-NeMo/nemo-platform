@@ -10,6 +10,8 @@ filter models live in :mod:`nemo_agents_plugin.schema`.
 
 from __future__ import annotations
 
+from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -18,6 +20,14 @@ from nemo_platform_plugin.refs import FilesetRef
 from pydantic import BaseModel, Field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
+
+
+class SessionStatus(StrEnum):
+    """Lifecycle status of an agent session."""
+
+    ACTIVE = "active"
+    CLOSED = "closed"
+
 
 # Runtime backend for an AgentDeployment. ``subprocess`` (the default) runs the
 # agent as a local ``nat serve`` process reachable on a loopback ``endpoint``.
@@ -213,3 +223,30 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
     port: int = Field(default=0, description="Port the agent process is listening on.")
     pid: int = Field(default=0, description="OS process ID of the agent subprocess.")
     error: str = Field(default="", description="Error message if status is 'failed'.")
+
+
+class AgentSession(NemoEntity, entity_type="agent_session"):
+    """A durable logical conversation associated with an AgentDeployment.
+
+    The session entity owns Platform-level conversation identity only. Live
+    harness state remains process-local to the deployment's serving runtime.
+    """
+
+    deployment_id: str = Field(
+        min_length=1,
+        description="Immutable ID of the AgentDeployment this session belongs to.",
+    )
+    status: SessionStatus = Field(
+        default=SessionStatus.ACTIVE,
+        description="Lifecycle status: active | closed.",
+    )
+    last_active_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp of the last activity in the session.",
+        json_schema_extra={"nullable": True},
+    )
+    expires_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when the session expires, if expiration is configured.",
+        json_schema_extra={"nullable": True},
+    )

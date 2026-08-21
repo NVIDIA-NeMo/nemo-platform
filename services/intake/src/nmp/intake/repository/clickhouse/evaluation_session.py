@@ -46,7 +46,7 @@ _SORT_EXPR_PAGE: dict[str, str] = {
     "ended_at": "end_time",
     "latency_ms": "latency_ms",
     "status": "root_span_status",
-    "test_case_id": "test_case_id",
+    "test_case_name": "test_case_name",
     "cost_total_usd": "pm.cost_total_usd",
     "tokens": "pm.total_tokens",
 }
@@ -92,7 +92,7 @@ class ClickHouseEvaluationSessionRepository(EvaluationSessionRepository):
         workspace: str,
         evaluation_name: str,
         status: SpanStatus | None = None,
-        test_case_id: str | None = None,
+        test_case_name: str | None = None,
         page: int,
         page_size: int,
         mode: IntakeResponseMode,
@@ -102,7 +102,7 @@ class ClickHouseEvaluationSessionRepository(EvaluationSessionRepository):
         spans_table = self._executor.table(ClickHouseTable.SPANS)
         evaluator_results_table = self._executor.table(ClickHouseTable.EVALUATOR_RESULTS)
 
-        scoped_filter_sql, scoped_filter_parameters = _scoped_filter(test_case_id=test_case_id, status=status)
+        scoped_filter_sql, scoped_filter_parameters = _scoped_filter(test_case_name=test_case_name, status=status)
 
         base_parameters: dict[str, Any] = {
             "workspace": workspace,
@@ -190,12 +190,12 @@ class ClickHouseEvaluationSessionRepository(EvaluationSessionRepository):
         return EvaluationSessionPage(rows=rows, total=total)
 
 
-def _scoped_filter(*, test_case_id: str | None, status: SpanStatus | None) -> tuple[str, dict[str, Any]]:
+def _scoped_filter(*, test_case_name: str | None, status: SpanStatus | None) -> tuple[str, dict[str, Any]]:
     clauses: list[str] = []
     parameters: dict[str, Any] = {}
-    if test_case_id is not None:
-        parameters["test_case_id"] = test_case_id
-        clauses.append("test_case_id = %(test_case_id)s")
+    if test_case_name is not None:
+        parameters["test_case_name"] = test_case_name
+        clauses.append("test_case_name = %(test_case_name)s")
     if status is not None:
         parameters["status"] = status.value
         clauses.append("root_status = %(status)s")
@@ -210,9 +210,9 @@ def _scoped_sessions_sql(
 ) -> str:
     select_columns = [
         "workspace",
-        "evaluation_id",
+        "evaluation_name",
         "session_id",
-        "test_case_id",
+        "test_case_name",
         "trace_id",
         "root_span_id",
         "root_started_at AS start_time",
@@ -233,10 +233,10 @@ def _scoped_sessions_sql(
         FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
-            AND evaluation_id = %(evaluation_name)s
+            AND evaluation_name = %(evaluation_name)s
             {scoped_filter_sql}
         ORDER BY root_started_at ASC, root_span_id ASC
-        LIMIT 1 BY workspace, session_id, evaluation_id
+        LIMIT 1 BY workspace, session_id, evaluation_name
     """
 
 
@@ -381,9 +381,9 @@ def _hydrate_by_refs_sql(
     """Hydrate payloads, span metrics, and evaluator scores for one selected page."""
     select_columns = [
         "workspace",
-        "evaluation_id",
+        "evaluation_name",
         "session_id",
-        "test_case_id",
+        "test_case_name",
         "trace_id",
         "root_span_id",
         "root_started_at AS start_time",
@@ -412,7 +412,7 @@ def _hydrate_by_refs_sql(
             FROM {trace_index_table} FINAL
             WHERE workspace = %(workspace)s
                 AND is_deleted = 0
-                AND evaluation_id = %(evaluation_name)s
+                AND evaluation_name = %(evaluation_name)s
                 -- The flat predicates engage the bloom indexes; the tuple preserves
                 -- exact trace_index identity. The time range engages the primary key.
                 AND session_id IN %(page_session_ids)s
@@ -424,7 +424,7 @@ def _hydrate_by_refs_sql(
                     trace_id,
                     root_span_id
                 ) IN %(page_storage_keys)s
-            LIMIT 1 BY workspace, session_id, evaluation_id
+            LIMIT 1 BY workspace, session_id, evaluation_name
         ),
         current_page_spans AS (
             {page_spans}
@@ -466,9 +466,9 @@ def _hydrate_by_refs_sql(
         )
         SELECT
             sessions.workspace AS workspace,
-            sessions.evaluation_id AS evaluation_id,
+            sessions.evaluation_name,
             sessions.session_id AS session_id,
-            sessions.test_case_id AS test_case_id,
+            sessions.test_case_name,
             sessions.trace_id AS trace_id,
             sessions.root_span_id AS root_span_id,
             sessions.start_time AS start_time,
@@ -520,9 +520,9 @@ def _guarded_sum_sql(parameter_name: str, *, scale: int = 1) -> str:
 def _row(record: dict[str, Any]) -> EvaluationSessionRow:
     return EvaluationSessionRow(
         workspace=record["workspace"],
-        evaluation_name=record["evaluation_id"],
+        evaluation_name=record["evaluation_name"],
         session_id=record["session_id"],
-        test_case_id=str_or_none(record["test_case_id"]),
+        test_case_name=str_or_none(record["test_case_name"]),
         trace_id=record["trace_id"],
         root_span_id=record["root_span_id"],
         started_at=record["start_time"],

@@ -3,6 +3,7 @@
 
 vi.hoisted(() => {
   vi.stubEnv('VITE_FF_INTAKE_ENABLED', 'true');
+  vi.stubEnv('VITE_FF_AGENT_OVERVIEW_ENABLED', 'true');
 });
 
 import { ROUTES } from '@studio/constants/routes';
@@ -29,20 +30,25 @@ describe('AgentDetailRoute', () => {
     renderDetail();
 
     expect(await screen.findByTestId('nv-page-header-heading')).toHaveTextContent(agentName);
-    expect(screen.getByRole('tab', { name: 'Deployments' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Deployments' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Evaluations' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Logs' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Details' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Configuration' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open traces' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run evaluation' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('lands on the overview tab with trace statistics and the details panel', async () => {
+    renderDetail();
+
+    expect(await screen.findByText('Trace statistics')).toBeInTheDocument();
+    expect(screen.getByText('Agent ID')).toBeInTheDocument();
+    expect(screen.getByText('Created')).toBeInTheDocument();
   });
 
   it('navigates to intake traces when Open traces is clicked', async () => {
@@ -72,7 +78,7 @@ describe('AgentDetailRoute', () => {
 
     expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
     // Structured panels
-    expect(await screen.findByText('Overview')).toBeInTheDocument();
+    expect(await screen.findByText('Summary')).toBeInTheDocument();
     expect(screen.getByText('Workflow')).toBeInTheDocument();
     expect(screen.getByText('Models')).toBeInTheDocument();
     expect(screen.getByText('Tools')).toBeInTheDocument();

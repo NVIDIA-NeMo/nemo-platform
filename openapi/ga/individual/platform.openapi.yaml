@@ -3854,7 +3854,8 @@ paths:
         '404':
           description: Evaluation not found
         '409':
-          description: Attempt to change an immutable field
+          description: Attempt to change an immutable field, or remove a baseline
+            membership
         '422':
           description: Validation Error
           content:
@@ -3904,6 +3905,8 @@ paths:
             is empty
         '404':
           description: Evaluation not found
+        '409':
+          description: Attempt to remove a baseline Evaluation from its Experiment
         '422':
           description: Validation Error
           content:
@@ -3933,6 +3936,8 @@ paths:
           description: Successful Response
         '404':
           description: Evaluation not found
+        '409':
+          description: Evaluation is selected as an Experiment's baseline
         '422':
           description: Validation Error
           content:
@@ -4078,16 +4083,16 @@ paths:
         schema:
           description: "Comma-separated list of fields to sort by, applied in order\
             \ (the first field dominates); prefix a field with '-' for descending\
-            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at,\
             \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
             \ sessions are ordered by started_at ascending."
           title: Sort
           type: string
         description: "Comma-separated list of fields to sort by, applied in order\
           \ (the first field dominates); prefix a field with '-' for descending \u2014\
-          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
-          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
-          \ ordered by started_at ascending."
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_name, started_at,\
+          \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, sessions\
+          \ are ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
@@ -4095,7 +4100,7 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/EvaluationSessionFilter'
-        description: Filter sessions by test_case_id and status.
+        description: Filter sessions by test_case_name and status.
       responses:
         '200':
           description: Successful Response
@@ -4333,9 +4338,10 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, insight_id, is_deleted, or a metadata
-          key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return
-          only soft-deleted experiments; omit to see only live ones.
+        description: Filter experiments by name, insight_id, is_favorite, show_evaluations_over_time,
+          baseline_evaluation_name, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>).
+          Pass is_deleted=true to return only soft-deleted experiments; omit to see
+          only live ones.
       responses:
         '200':
           description: Successful Response
@@ -4406,7 +4412,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentRequest'
+              $ref: '#/components/schemas/ExperimentUpdateRequest'
       responses:
         '200':
           description: Successful Response
@@ -4414,6 +4420,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExperimentResponse'
+        '400':
+          description: The baseline Evaluation does not exist or is not a live member
         '404':
           description: Experiment not found
         '409':
@@ -4680,9 +4688,9 @@ paths:
         schema:
           $ref: '#/components/schemas/SpanFilter'
         description: Filter spans by session_id, trace_id, parent_span_id, project,
-          evaluation_id, test_case_id, source, kind, status, model, tool_name, provider,
-          agent_id, agent_name, and started_at. Every field takes one exact value,
-          except started_at, which takes gte and lte.
+          evaluation_name, test_case_name, source, kind, status, model, tool_name,
+          provider, agent_id, agent_name, and started_at. Every field takes one exact
+          value, except started_at, which takes gte and lte.
       responses:
         '200':
           description: Successful Response
@@ -4922,7 +4930,7 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_id, and test_case_id.
+          root span started_at, evaluation_name, test_case_name, and agent_name.
       responses:
         '200':
           description: Successful Response
@@ -4930,6 +4938,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TracesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces/metrics:
+    get:
+      tags:
+      - Traces
+      summary: Get Trace Metrics
+      operationId: get_trace_metrics_apis_intake_v2_workspaces__workspace__traces_metrics_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: bucket
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TraceMetricBucketParam'
+          description: Time bucket granularity. total collapses the filtered range
+            into a single row.
+          default: day
+        description: Time bucket granularity. total collapses the filtered range into
+          a single row.
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          type: string
+          description: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+          default: UTC
+          title: Timezone
+        description: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TraceFilter'
+        description: Filter the traces the metrics are computed over. Accepts the
+          same fields as the traces list, so agent_name scopes the rollup to one agent.
+          Without a started_at lower bound the rollup covers the last 7 days.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceMetrics'
+        '400':
+          description: Unsupported query parameter or unknown timezone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
+        '503':
+          description: ClickHouse spans storage unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
         '422':
           description: Validation Error
           content:
@@ -9835,6 +9921,22 @@ components:
       type: object
       title: ContextBloatDetectionConfig
       description: Configuration for context bloat / context manipulation detection.
+    CostRollupResponse:
+      properties:
+        sum:
+          title: Sum
+          type: number
+        mean:
+          title: Mean
+          type: number
+        p90:
+          title: P90
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: CostRollupResponse
     CreateAdapterRequest:
       properties:
         name:
@@ -11047,24 +11149,28 @@ components:
       description: Schema for updating an entity.
     EvaluationContext:
       properties:
+        evaluation_name:
+          title: Evaluation Name
+          description: Name of an existing Evaluation.
+          type: string
+        test_case_name:
+          title: Test Case Name
+          description: Optional producer-supplied test case name.
+          type: string
         evaluation_id:
           title: Evaluation Id
-          description: Name of an existing Evaluation.
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
+          deprecated: true
           type: string
         test_case_id:
           title: Test Case Id
-          description: Optional producer-supplied test case id.
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
       type: object
       title: EvaluationContext
-      description: 'Evaluation context accepted by ingest endpoints (the canonical
-        shape).
-
-
-        ``extra="ignore"`` so a producer still sending retired keys (evaluation_sha,
-        evaluation_run_id,
-
-        metadata) keeps ingesting without error rather than being rejected.'
+      description: Identifies the Evaluation and optional test case associated with
+        ingested telemetry.
     EvaluationFilter:
       additionalProperties: false
       description: Filter for listing Evaluations.
@@ -11381,7 +11487,7 @@ components:
           type: integer
           title: Test Case Count
           description: Number of distinct test cases in the evaluation, i.e. distinct
-            test_case_id values (sessions with no test_case_id each count as their
+            test_case_name values (sessions with no test_case_name each count as their
             own). A test case run k times counts once; the rollup metrics are averaged
             per test case before pooling across test cases.
           default: 0
@@ -11440,8 +11546,13 @@ components:
       additionalProperties: false
       description: Filter for listing EvaluationSessions.
       properties:
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         test_case_id:
-          description: Filter by producer-supplied test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
         status:
@@ -11461,10 +11572,14 @@ components:
         session_id:
           type: string
           title: Session Id
+        test_case_name:
+          title: Test Case Name
+          description: Test case name; null when the producer did not set one.
+          type: string
         test_case_id:
           title: Test Case Id
-          description: Producer-supplied test case identifier; null when the producer
-            did not set one.
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
         trace_id:
           type: string
@@ -11804,6 +11919,19 @@ components:
           description: Filter experiments by the id of the insight that seeded them.
           title: Insight Id
           type: string
+        is_favorite:
+          description: Filter experiments by favorite status.
+          title: Is Favorite
+          type: boolean
+        show_evaluations_over_time:
+          description: Filter experiments by whether Studio should display Evaluation
+            results over time.
+          title: Show Evaluations Over Time
+          type: boolean
+        baseline_evaluation_name:
+          description: Filter experiments by the name of their selected baseline Evaluation.
+          title: Baseline Evaluation Name
+          type: string
         is_deleted:
           description: When true, returns only soft-deleted experiments. Omit (or
             false) to see only live experiments.
@@ -11858,6 +11986,19 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        is_favorite:
+          type: boolean
+          title: Is Favorite
+          description: Whether this Experiment is marked as a favorite. Defaults to
+            false on create; omit on update to preserve the existing value.
+          default: false
+        show_evaluations_over_time:
+          type: boolean
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time. Defaults to false on create; omit on update to preserve
+            the existing value.
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -11894,6 +12035,22 @@ components:
           title: Default Sort
         pareto:
           $ref: '#/components/schemas/ParetoConfig'
+        is_favorite:
+          type: boolean
+          title: Is Favorite
+          description: Whether this Experiment is marked as a favorite.
+          default: false
+        show_evaluations_over_time:
+          type: boolean
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time.
+          default: false
+        baseline_evaluation_name:
+          title: Baseline Evaluation Name
+          description: Name of this Experiment's selected baseline Evaluation, if
+            any.
+          type: string
         created_at:
           title: Created At
           type: string
@@ -11939,6 +12096,73 @@ components:
       required:
       - data
       title: ExperimentResponsesPage
+    ExperimentUpdateRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Workspace-unique experiment name.
+        description:
+          title: Description
+          description: Human-readable purpose of the experiment.
+          type: string
+        insight_id:
+          title: Insight Id
+          description: Reference to an external insight that seeded this experiment,
+            if any.
+          type: string
+        summary:
+          title: Summary
+          description: Human- or agent-authored summary of the experiment's findings.
+          type: string
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata for the experiment.
+          additionalProperties:
+            type: string
+          type: object
+        default_sort:
+          type: string
+          title: Default Sort
+          description: 'Default sort for this experiment''s evaluations list, as a
+            `sort`-param string: a comma-separated, ordered list of fields where the
+            first is the primary sort and the rest break ties (leading ''-'' on a
+            field = descending), e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults
+            to ''-created_at''. Accepts any field the evaluations list `sort` param
+            does; clients apply it as the list `sort` param.'
+          default: -created_at
+        pareto:
+          allOf:
+          - $ref: '#/components/schemas/ParetoConfig'
+          description: Default X/Y metrics for the experiment's Pareto view. Omit
+            to preserve the existing value on update; on create, defaults to cost
+            vs. latency.
+        is_favorite:
+          type: boolean
+          title: Is Favorite
+          description: Whether this Experiment is marked as a favorite. Defaults to
+            false on create; omit on update to preserve the existing value.
+          default: false
+        show_evaluations_over_time:
+          type: boolean
+          title: Show Evaluations Over Time
+          description: Whether Studio should display this Experiment's Evaluation
+            results over time. Defaults to false on create; omit on update to preserve
+            the existing value.
+          default: false
+        baseline_evaluation_name:
+          title: Baseline Evaluation Name
+          description: Name of this Experiment's baseline Evaluation. The Evaluation
+            must already be a live member of the Experiment. Set null to clear the
+            selected baseline.
+          nullable: true
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ExperimentUpdateRequest
+      description: Request body for updating an Experiment.
     FactCheckingRailConfig:
       properties:
         parameters:
@@ -14046,6 +14270,25 @@ components:
         labels
 
         must include a `name` to identify what the score measures.'
+    LatencyRollupResponse:
+      properties:
+        mean:
+          title: Mean
+          type: number
+        p50:
+          title: P50
+          type: number
+        p90:
+          title: P90
+          type: number
+        p95:
+          title: P95
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: LatencyRollupResponse
     LinearLayerSpec:
       properties:
         name:
@@ -18248,11 +18491,23 @@ components:
       title: Span
     SpanEvaluationContext:
       properties:
+        evaluation_name:
+          title: Evaluation Name
+          description: Name of an existing Evaluation.
+          type: string
+        test_case_name:
+          title: Test Case Name
+          description: Optional producer-supplied test case name.
+          type: string
         evaluation_id:
           title: Evaluation Id
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
+          deprecated: true
           type: string
         test_case_id:
           title: Test Case Id
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
       additionalProperties: false
       type: object
@@ -18271,12 +18526,22 @@ components:
           description: Filter by project name.
           title: Project
           type: string
+        evaluation_name:
+          description: Filter by Evaluation name.
+          title: Evaluation Name
+          type: string
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         evaluation_id:
-          description: Filter by evaluation id.
+          deprecated: true
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
           title: Evaluation Id
           type: string
         test_case_id:
-          description: Filter by dataset test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
         source:
@@ -18663,6 +18928,23 @@ components:
       - task
       title: TaskPrompt
       description: Configuration for prompts that will be used for a specific task.
+    TokenRollupResponse:
+      properties:
+        sum:
+          title: Sum
+          type: integer
+          minimum: 0.0
+        mean:
+          title: Mean
+          type: number
+        p90:
+          title: P90
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: TokenRollupResponse
     ToolCallConfig:
       properties:
         tool_call_parser:
@@ -18784,6 +19066,12 @@ components:
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        agent_name:
+          title: Agent Name
+          type: string
+        agent_version:
+          title: Agent Version
+          type: string
         started_at:
           type: string
           format: date-time
@@ -18822,6 +19110,20 @@ components:
         cost_output_usd:
           title: Cost Output Usd
           type: number
+        models:
+          title: Models
+          description: Distinct models used across the trace's spans. Omitted in summary
+            mode.
+          items:
+            type: string
+          type: array
+        providers:
+          title: Providers
+          description: Distinct inference providers used across the trace's spans.
+            Omitted in summary mode.
+          items:
+            type: string
+          type: array
         span_count:
           title: Span Count
           type: integer
@@ -18856,16 +19158,98 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by root span start timestamp.
+        evaluation_name:
+          description: Filter by Evaluation name.
+          title: Evaluation Name
+          type: string
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         evaluation_id:
-          description: Filter by root-span evaluation id.
+          deprecated: true
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
           title: Evaluation Id
           type: string
         test_case_id:
-          description: Filter by root-span evaluation test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
+          type: string
+        agent_name:
+          description: Filter by root-span agent name.
+          title: Agent Name
           type: string
       title: TraceFilter
       type: object
+    TraceMetricBucketParam:
+      type: string
+      enum:
+      - total
+      - hour
+      - day
+      - week
+      - month
+      title: TraceMetricBucketParam
+    TraceMetricPointResponse:
+      properties:
+        bucket_start:
+          title: Bucket Start
+          description: Start of the bucket in the requested timezone. Omitted when
+            bucket=total.
+          type: string
+          format: date-time
+        run_count:
+          type: integer
+          minimum: 0.0
+          title: Run Count
+          description: Agent runs started in this bucket.
+        failed_run_count:
+          type: integer
+          minimum: 0.0
+          title: Failed Run Count
+          description: Runs whose root span ended in error.
+        input_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        output_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        cached_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        total_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        cost_usd:
+          $ref: '#/components/schemas/CostRollupResponse'
+        latency_ms:
+          $ref: '#/components/schemas/LatencyRollupResponse'
+      type: object
+      required:
+      - run_count
+      - failed_run_count
+      - input_tokens
+      - output_tokens
+      - cached_tokens
+      - total_tokens
+      - cost_usd
+      - latency_ms
+      title: TraceMetricPointResponse
+    TraceMetrics:
+      properties:
+        bucket:
+          $ref: '#/components/schemas/TraceMetricBucketParam'
+        timezone:
+          type: string
+          title: Timezone
+        data:
+          items:
+            $ref: '#/components/schemas/TraceMetricPointResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - bucket
+      - timezone
+      - data
+      title: TraceMetrics
     TraceSortField:
       type: string
       enum:

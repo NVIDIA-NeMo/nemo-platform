@@ -104,7 +104,7 @@ async def create_provider(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during model provider creation: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except ModelProviderValidationError as e:
@@ -157,7 +157,7 @@ async def upsert_provider(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during model provider upsert: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except ModelProviderValidationError as e:
@@ -210,7 +210,7 @@ async def update_provider_status(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during model provider status update: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except HTTPException:

@@ -96,8 +96,58 @@ class TraceListFilter(BaseModel):
     status: SpanStatus | None = None
     started_at_gte: datetime | None = None
     started_at_lte: datetime | None = None
-    evaluation_id: str | None = None
-    test_case_id: str | None = None
+    evaluation_name: str | None = None
+    test_case_name: str | None = None
+    agent_name: str | None = None
+
+
+TraceMetricBucket = Literal["total", "hour", "day", "week", "month"]
+
+
+class TokenRollup(BaseModel):
+    """Distribution of a per-run token count across the runs in one bucket."""
+
+    sum: int | None = Field(default=None, ge=0)
+    mean: float | None = None
+    p90: float | None = None
+    p99: float | None = None
+
+
+class CostRollup(BaseModel):
+    """Distribution of per-run cost across the runs in one bucket."""
+
+    sum: float | None = None
+    mean: float | None = None
+    p90: float | None = None
+    p99: float | None = None
+
+
+class LatencyRollup(BaseModel):
+    """Distribution of end-to-end run duration across the runs in one bucket."""
+
+    mean: float | None = None
+    p50: float | None = None
+    p90: float | None = None
+    p95: float | None = None
+    p99: float | None = None
+
+
+class TraceMetricPoint(BaseModel):
+    """One time bucket of agent-scoped trace metrics.
+
+    ``bucket_start`` is None only for the ``total`` bucket, which collapses the
+    whole filtered range into a single row.
+    """
+
+    bucket_start: datetime | None = None
+    run_count: int = Field(ge=0)
+    failed_run_count: int = Field(ge=0)
+    input_tokens: TokenRollup
+    output_tokens: TokenRollup
+    cached_tokens: TokenRollup
+    total_tokens: TokenRollup
+    cost_usd: CostRollup
+    latency_ms: LatencyRollup
 
 
 IntakeResponseMode = Literal["summary", "preview", "detailed"]
@@ -115,8 +165,10 @@ class IntakeTrace(BaseModel):
     input: str | None = None
     output: str | None = None
     project: str | None = None
-    evaluation_id: str | None = None
-    test_case_id: str | None = None
+    evaluation_name: str | None = None
+    test_case_name: str | None = None
+    agent_name: str | None = None
+    agent_version: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None

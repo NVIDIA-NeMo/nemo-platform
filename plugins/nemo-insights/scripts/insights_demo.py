@@ -58,7 +58,7 @@ class DemoError(RuntimeError):
 @dataclass(frozen=True)
 class SessionSpec:
     session_id: str
-    test_case_id: str
+    test_case_name: str
     started_at: datetime
     latency_ms: int
     cost_usd: float
@@ -118,7 +118,7 @@ def _evaluation(
         sessions=tuple(
             SessionSpec(
                 session_id=f"insights-demo-{name}-{index + 1:02d}",
-                test_case_id=f"case-{index + 1:02d}",
+                test_case_name=f"case-{index + 1:02d}",
                 started_at=_BASE_TIME + timedelta(minutes=7 * (start_index + index)),
                 latency_ms=latency_ms + index * 125,
                 cost_usd=round(cost_usd + index * 0.002, 3),
@@ -378,8 +378,8 @@ class DemoAPI:
                 "schema_version": "ATIF-v1.7",
                 "session_id": session.session_id,
                 "evaluation_context": {
-                    "evaluation_id": evaluation.name,
-                    "test_case_id": session.test_case_id,
+                    "evaluation_name": evaluation.name,
+                    "test_case_name": session.test_case_name,
                 },
                 "extra": {
                     "verifier": {
@@ -403,7 +403,7 @@ class DemoAPI:
                         "step_id": 1,
                         "timestamp": _iso(session.started_at),
                         "source": "user",
-                        "message": f"Investigate support request {session.test_case_id}.",
+                        "message": f"Investigate support request {session.test_case_name}.",
                     },
                     {
                         "step_id": 2,

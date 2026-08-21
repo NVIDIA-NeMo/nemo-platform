@@ -157,7 +157,7 @@ def test_otlp_ingest_openinference_session_id(client: TestClient, make_otlp_requ
     assert "error_message" not in span
 
 
-def test_otlp_reingest_same_batch_collapses_after_merge(
+def test_otlp_reingest_same_batch_deduplicates_before_and_after_merge(
     client: TestClient,
     make_otlp_request,
     clickhouse_client: ClickHouseSpanClient,
@@ -172,6 +172,7 @@ def test_otlp_reingest_same_batch_collapses_after_merge(
                     "openinference.span.kind": "LLM",
                     "gen_ai.conversation.id": "conv-idempotent",
                     "gen_ai.response.model": "model-idempotent",
+                    "gen_ai.usage.input_tokens": 123,
                 },
             }
         ]
@@ -185,6 +186,16 @@ def test_otlp_reingest_same_batch_collapses_after_merge(
         )
         assert ingest_response.status_code == 200, ingest_response.text
         assert ingest_response.json() == {"errors": []}
+
+    traces_response = client.get(
+        "/apis/intake/v2/workspaces/default/traces",
+        params={"filter[session_id]": "conv-idempotent"},
+    )
+    assert traces_response.status_code == 200, traces_response.text
+    trace_payload = traces_response.json()
+    assert trace_payload["pagination"]["total_results"] == 1
+    assert trace_payload["data"][0]["span_count"] == 1
+    assert trace_payload["data"][0]["input_tokens"] == 123
 
     run_async(
         clickhouse_client.command(

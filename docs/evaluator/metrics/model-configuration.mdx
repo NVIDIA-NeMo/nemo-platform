@@ -36,7 +36,6 @@ from nemo_evaluator_sdk import Model
 model = Model(
     url="https://integrate.api.nvidia.com/v1",
     name="meta/llama-3.1-70b-instruct",
-    format="nim",
     api_key_secret="nvidia-api-key",
 )
 ```
@@ -45,7 +44,7 @@ model = Model(
 |-------|----------|-------------|
 | `url` | Yes | Base URL of the inference endpoint. |
 | `name` | Yes | Model name to send in inference requests. |
-| `format` | No | API format: `"nim"`, `"openai"`, or `"llama_stack"`. Defaults to `"nim"`. |
+| `format` | No | **Deprecated and ignored.** Structured output support is detected from the endpoint during preflight rather than inferred from this label. |
 | `api_key_secret` | No | Model API key reference. See [Model API Authentication](#model-api-authentication). |
 
 <a id="model-api-authentication"></a>
@@ -80,7 +79,6 @@ from nemo_evaluator_sdk import (
 model = Model(
     url="https://integrate.api.nvidia.com/v1",
     name="meta/llama-3.1-70b-instruct",
-    format="nim",
     api_key_secret="nvidia-api-key",
 )
 
@@ -112,7 +110,6 @@ from nemo_evaluator_sdk import Model, RangeScore, LLMJudgeMetric
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1",
     name="meta/llama-3.1-70b-instruct",
-    format="nim",
     api_key_secret="nvidia-api-key",
 )
 metric = LLMJudgeMetric(

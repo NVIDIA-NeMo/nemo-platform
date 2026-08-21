@@ -1,11 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  ChartTooltipRow,
+  ChartTooltipSurface,
+} from '@nemo/common/src/components/charts/ChartTooltip';
+import type { ColoredSeries } from '@nemo/common/src/components/ComparisonLineChart/useComparisonChartModel';
 import type { FC } from 'react';
 import type { TooltipProps } from 'recharts';
 
 interface Props extends TooltipProps<number, string> {
+  /** Visible series, so a dashed one gets the same hollow swatch the legend gives it. */
+  series: ColoredSeries[];
   /** Formats the hovered x value; receives the raw plot value (timestamp for time axes). */
   formatLabel: (value: string | number) => string;
   /** Formats a series value, resolved per series id by the chart. */
@@ -16,30 +22,23 @@ export const ComparisonTooltip: FC<Props> = ({
   active,
   payload,
   label,
+  series,
   formatLabel,
   formatValue,
 }) => {
   if (!active || !payload?.length) return null;
 
   return (
-    <Stack
-      gap="1"
-      className="bg-component-tooltip border border-component-tooltip shadow-sm rounded-lg p-3"
-    >
-      <Text kind="label/semibold/md">{formatLabel(label as string | number)}</Text>
+    <ChartTooltipSurface label={formatLabel(label as string | number)}>
       {payload.map((entry) => (
-        <Flex key={String(entry.dataKey)} align="center" gap="2">
-          <svg width="12" height="12" aria-hidden focusable="false">
-            <rect width="12" height="12" rx="2" fill={entry.color} />
-          </svg>
-          <Text kind="body/regular/sm" className="text-placeholder">
-            {entry.name}
-          </Text>
-          <Text kind="body/semibold/sm">
-            {formatValue(String(entry.dataKey), entry.value ?? null)}
-          </Text>
-        </Flex>
+        <ChartTooltipRow
+          key={String(entry.dataKey)}
+          color={entry.color}
+          dashed={series.find((s) => s.id === String(entry.dataKey))?.dashed}
+          label={entry.name}
+          value={formatValue(String(entry.dataKey), entry.value ?? null)}
+        />
       ))}
-    </Stack>
+    </ChartTooltipSurface>
   );
 };

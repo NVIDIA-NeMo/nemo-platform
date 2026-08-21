@@ -31,6 +31,86 @@ from nemo_platform.cli.core.types import (
 app = create_typer_app(name="traces", help="Manage traces")
 
 
+@app.command("get-metrics")
+@collect_warnings
+@handle_errors
+def get_metrics_traces(
+    ctx: typer.Context,
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    bucket: Annotated[
+        Literal["total", "hour", "day", "week", "month"] | None,
+        typer.Option("--bucket", help="Time bucket granularity."),
+    ] = None,
+    filter: Annotated[
+        str | None,
+        typer.Option(
+            "--filter",
+            metavar="FILTER_JSON",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter the traces the metrics are computed over. Accepts the same fields as the traces list, so agent_name scopes the rollup to one agent. Without a started_at lower bound the rollup covers the last 7 days.",
+            rich_help_panel="Filter Options",
+        ),
+    ] = None,
+    filter_id: Annotated[str | None, typer.Option("--filter.id", rich_help_panel="Filter Options")] = None,
+    filter_agent_name: Annotated[
+        str | None, typer.Option("--filter.agent-name", rich_help_panel="Filter Options")
+    ] = None,
+    filter_evaluation_id: Annotated[
+        str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_evaluation_name: Annotated[
+        str | None, typer.Option("--filter.evaluation-name", rich_help_panel="Filter Options")
+    ] = None,
+    filter_session_id: Annotated[
+        str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_status: Annotated[str | None, typer.Option("--filter.status", rich_help_panel="Filter Options")] = None,
+    filter_test_case_id: Annotated[
+        str | None, typer.Option("--filter.test-case-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_test_case_name: Annotated[
+        str | None, typer.Option("--filter.test-case-name", rich_help_panel="Filter Options")
+    ] = None,
+    timezone: Annotated[
+        str | None,
+        typer.Option("--timezone", help="IANA timezone the buckets are aligned to, e.g. America/Los_Angeles."),
+    ] = None,
+    output_format: EntityOutputFormatOption = None,
+) -> None:
+    """Get Trace Metrics"""
+    state: CLIContext = ctx.obj
+    output_format = state.get_output_format(output_format)
+
+    kwargs = build_kwargs(
+        workspace=workspace,
+        bucket=bucket,
+        filter=merge_filter_dict(
+            filter,
+            id=filter_id,
+            agent_name=filter_agent_name,
+            evaluation_id=filter_evaluation_id,
+            evaluation_name=filter_evaluation_name,
+            session_id=filter_session_id,
+            status=filter_status,
+            test_case_id=filter_test_case_id,
+            test_case_name=filter_test_case_name,
+        ),
+        timezone=timezone,
+    )
+    if handle_code_generation(["intake", "traces"], "get_metrics", kwargs, output_format, state):
+        return
+
+    client = state.get_client()
+    result = client.intake.traces.get_metrics(**kwargs)
+
+    format_output(
+        result,
+        is_list=False,
+        output_format=output_format,
+        no_truncate=state.get_no_truncate(),
+        timestamp_format=state.get_timestamp_format(),
+    )
+
+
 @app.command("list")
 @collect_warnings
 @handle_errors
@@ -42,13 +122,19 @@ def list_traces(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, test_case_name, and agent_name.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
     filter_id: Annotated[str | None, typer.Option("--filter.id", rich_help_panel="Filter Options")] = None,
+    filter_agent_name: Annotated[
+        str | None, typer.Option("--filter.agent-name", rich_help_panel="Filter Options")
+    ] = None,
     filter_evaluation_id: Annotated[
         str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_evaluation_name: Annotated[
+        str | None, typer.Option("--filter.evaluation-name", rich_help_panel="Filter Options")
     ] = None,
     filter_session_id: Annotated[
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
@@ -56,6 +142,9 @@ def list_traces(
     filter_status: Annotated[str | None, typer.Option("--filter.status", rich_help_panel="Filter Options")] = None,
     filter_test_case_id: Annotated[
         str | None, typer.Option("--filter.test-case-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_test_case_name: Annotated[
+        str | None, typer.Option("--filter.test-case-name", rich_help_panel="Filter Options")
     ] = None,
     mode: Annotated[
         Literal["summary", "preview", "detailed"] | None,
@@ -93,10 +182,13 @@ def list_traces(
         filter=merge_filter_dict(
             filter,
             id=filter_id,
+            agent_name=filter_agent_name,
             evaluation_id=filter_evaluation_id,
+            evaluation_name=filter_evaluation_name,
             session_id=filter_session_id,
             status=filter_status,
             test_case_id=filter_test_case_id,
+            test_case_name=filter_test_case_name,
         ),
         mode=mode,
         page=page,

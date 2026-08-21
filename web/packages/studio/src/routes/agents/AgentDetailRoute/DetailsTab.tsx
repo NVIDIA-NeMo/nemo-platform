@@ -39,7 +39,7 @@ export const DetailsTab: FC<DetailsTabProps> = ({ workspace, agentName, agent })
 
   return (
     <Stack gap="4" className="mx-auto w-full max-w-3xl pb-6">
-      <DetailPanel title="Overview">
+      <DetailPanel title="Summary">
         <Stack gap="2">
           <KVPair label="Name" value={agent?.name ?? agentName} />
           <KVPair label="Workspace" value={agent?.workspace ?? workspace} />

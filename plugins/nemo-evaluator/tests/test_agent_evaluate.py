@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from nemo_evaluator.api.schemas import MetricInline, TasksetRef
+from nemo_evaluator.api.schemas import MetadataItem, MetricInline, TaskInputs, TasksetRef
 from nemo_evaluator.jobs.agent_evaluate import (
     AGENT_BUNDLE_DIR,
     DEFAULT_RESULT_NAME,
@@ -26,7 +26,6 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskInput,
     AgentEvalTaskSpec,
     AgentTarget,
-    CodexRunnerTarget,
     FabricRunnerTarget,
     GymRunnerTarget,
     HarborRunnerTarget,
@@ -39,7 +38,6 @@ from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBu
 from nemo_evaluator.tasks.agent_evaluate import main as agent_eval_task_main
 from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
-from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner
@@ -93,6 +91,13 @@ def _task_spec() -> AgentEvalTaskSpec:
         intent="Answer the question.",
         inputs={"instruction": "What is 2+2?"},
         metrics=[_inline_metric()],
+    )
+
+
+def _runner_target(model: str | None = None) -> FabricRunnerTarget:
+    """A minimal agent-runner target, for tests about runners in general rather than a specific one."""
+    return FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}, model=model
     )
 
 
@@ -155,7 +160,7 @@ async def test_reference_round_trips_from_input_spec_to_runtime_task() -> None:
     # metrics can grade against held-out ground truth (never seeded into the agent workspace).
     reference = {"test_calculator.py": "def test_add(): assert add(2, 3) == 5"}
     input_spec = AgentEvalInputSpec(
-        target=CodexRunnerTarget(),
+        target=_runner_target(),
         tasks=[
             AgentEvalTaskInput(
                 id="fix-bug",
@@ -173,12 +178,41 @@ async def test_reference_round_trips_from_input_spec_to_runtime_task() -> None:
     assert _to_runtime_task(spec.tasks[0]).reference == reference
 
 
+async def test_arbitrary_inputs_round_trip_from_input_spec_to_runtime_task() -> None:
+    gym_row = {"input": [{"role": "user", "content": "Choose A"}], "temperature": 0.2}
+    gym_row_extras = {"expected": "A", "scores": [1.0, None], "verified": True}
+    input_spec = AgentEvalInputSpec(
+        tasks=[
+            AgentEvalTaskInput(
+                id="gym-task",
+                intent="Run a Gym task.",
+                inputs=TaskInputs.model_validate({"gym_row": gym_row}),
+                metrics=[_inline_metric()],
+                metadata=[MetadataItem(key="gym_row_extras", value=gym_row_extras)],
+            )
+        ],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
+    )
+
+    spec = await AgentEvalJob.to_spec(input_spec, workspace="dev", entity_client=None, async_sdk=None, is_local=True)
+
+    assert isinstance(spec, AgentEvalSpec)
+    assert spec.tasks[0].inputs.model_dump(exclude_none=True)["gym_row"] == gym_row
+    runtime_task = _to_runtime_task(spec.tasks[0])
+    assert runtime_task.inputs["gym_row"] == gym_row
+    assert runtime_task.metadata["gym_row_extras"] == gym_row_extras
+
+
 def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, mocker: MockerFixture) -> None:
     fake = _FakeEvaluator()
     mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=fake)
     ctx = _job_context(tmp_path)
 
-    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"))
     result = AgentEvalJob().run(spec.model_dump(), ctx=ctx)
 
     # The job reconstructed runtime tasks (bundled metric round-tripped) before handing off.
@@ -206,7 +240,7 @@ def test_agent_eval_job_survives_result_persistence_failure(tmp_path: Path, mock
     )
     ctx = _job_context(tmp_path)
 
-    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"))
     result = AgentEvalJob().run(spec.model_dump(), ctx=ctx)
 
     # Persistence was attempted and raised, yet the job still completed with its artifacts intact.
@@ -229,15 +263,6 @@ def _agent() -> Agent:
         body={"question": "{{item.prompt}}"},
         response_path="$.answer",
     )
-
-
-def test_resolve_target_builds_codex_runtime_from_runner_target(tmp_path: Path) -> None:
-    ctx = _job_context(tmp_path)
-    target, prompt_template, params = AgentEvalJob._resolve_target(CodexRunnerTarget(model="gpt-5.5"), ctx)
-    # A runner shapes its own request, so it contributes no prompt template or inference params.
-    assert isinstance(target, CodexCliAgentRuntime)
-    assert prompt_template is None
-    assert params is None
 
 
 def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path) -> None:
@@ -331,8 +356,8 @@ def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) ->
 
 
 def test_runner_target_is_accepted(tmp_path: Path) -> None:
-    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
-    assert isinstance(spec.target, CodexRunnerTarget)
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"))
+    assert isinstance(spec.target, FabricRunnerTarget)
 
 
 def test_harbor_runner_target_is_accepted() -> None:
@@ -407,9 +432,9 @@ def test_build_evaluator_sends_no_identity_to_third_party_target(
 
 
 def test_build_evaluator_runner_target_forwards_no_headers() -> None:
-    # A runner (Codex CLI) has no platform HTTP endpoint, so there's no identity to forward.
+    # A runner has no platform HTTP endpoint of its own, so there's no identity to forward.
     sdk = _sdk_with_identity(NeMoPlatform)
-    assert AgentEvalJob._build_evaluator(sdk, CodexRunnerTarget(model="gpt-5.5")).default_headers is None
+    assert AgentEvalJob._build_evaluator(sdk, _runner_target("openai/gpt-5.4")).default_headers is None
 
 
 def test_build_evaluator_without_platform_forwards_no_headers() -> None:
@@ -420,13 +445,13 @@ def test_build_evaluator_without_platform_forwards_no_headers() -> None:
 def test_input_spec_accepts_stored_metric_reference() -> None:
     spec = AgentEvalInputSpec(
         tasks=[AgentEvalTaskInput(id="task-1", intent="Answer.", inputs={}, metrics=[MetricRef("stored-metric")])],
-        target=CodexRunnerTarget(model="gpt-5.5"),
+        target=_runner_target("openai/gpt-5.4"),
     )
     assert isinstance(spec.tasks[0].metrics[0], MetricRef)
 
 
 def test_input_spec_accepts_a_taskset_reference() -> None:
-    spec = AgentEvalInputSpec(tasks=TasksetRef("default/geo-suite"), target=CodexRunnerTarget(model="gpt-5.5"))
+    spec = AgentEvalInputSpec(tasks=TasksetRef("default/geo-suite"), target=_runner_target("openai/gpt-5.4"))
     assert isinstance(spec.tasks, TasksetRef)
     assert spec.tasks.root == "default/geo-suite"
     # A JSON string round-trips back to the TasksetRef arm of the union, not a list.
@@ -435,7 +460,7 @@ def test_input_spec_accepts_a_taskset_reference() -> None:
 
 def test_input_spec_rejects_empty_inline_task_list() -> None:
     with pytest.raises(ValueError, match="at least one task"):
-        AgentEvalInputSpec(tasks=[], target=CodexRunnerTarget(model="gpt-5.5"))
+        AgentEvalInputSpec(tasks=[], target=_runner_target("openai/gpt-5.4"))
 
 
 async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None:
@@ -449,7 +474,7 @@ async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None
                 metrics=[_inline_metric()],
             )
         ],
-        target=CodexRunnerTarget(model="gpt-5.5"),
+        target=_runner_target("openai/gpt-5.4"),
     )
 
     spec = await AgentEvalJob.to_spec(input_spec, workspace="dev", entity_client=None, async_sdk=None, is_local=True)
@@ -466,7 +491,7 @@ async def test_to_spec_requires_platform_to_resolve_a_metric_reference() -> None
     # fail loudly rather than silently drop the metric.
     input_spec = AgentEvalInputSpec(
         tasks=[AgentEvalTaskInput(id="task-1", intent="Answer.", inputs={}, metrics=[MetricRef("stored-metric")])],
-        target=CodexRunnerTarget(model="gpt-5.5"),
+        target=_runner_target("openai/gpt-5.4"),
     )
     with pytest.raises(ValueError, match="platform connection"):
         await AgentEvalJob.to_spec(input_spec, workspace="dev", entity_client=None, async_sdk=None, is_local=True)
@@ -475,9 +500,11 @@ async def test_to_spec_requires_platform_to_resolve_a_metric_reference() -> None
 # --- compile: the submit/service-side path ----------------------------------
 
 
-def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
+def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec, *, expected_image: str | None = None) -> None:
     step = job_spec.steps[0]
     container = cast(Any, step.executor).container
+    if expected_image is not None:
+        assert container.image == expected_image
     assert container.entrypoint == ["python", "-m"]
     assert container.command == ["nemo_evaluator.tasks.agent_evaluate"]
 
@@ -536,13 +563,23 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
 
 
 @pytest.mark.parametrize(
-    ("target", "expected_kind", "expected_endpoint_name"),
+    ("target", "expected_kind", "expected_endpoint_name", "expected_image_name"),
     [
-        (CodexRunnerTarget(model="gpt-5.5"), "codex", None),
         (
             FabricRunnerTarget(config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}),
             "fabric",
             None,
+            "nmp-cpu-tasks",
+        ),
+        (
+            GymRunnerTarget(
+                agent="simple_agent",
+                agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+                resources_server="mcqa",
+            ),
+            "gym",
+            None,
+            "nmp-gym-tasks",
         ),
         (
             ModelTarget(
@@ -551,15 +588,23 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
             ),
             "model",
             "test-model",
+            "nmp-cpu-tasks",
         ),
-        (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent"),
+        (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent", "nmp-cpu-tasks"),
     ],
 )
 async def test_compile_produces_cpu_task_step_carrying_each_target(
+    mocker: MockerFixture,
     target: Target,
     expected_kind: str,
     expected_endpoint_name: str | None,
+    expected_image_name: str,
 ) -> None:
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        side_effect=lambda name: f"registry.example/{name}:test",
+    )
     spec = AgentEvalSpec(tasks=[_task_spec()], target=target)
 
     compiled = await AgentEvalJob.compile(
@@ -570,13 +615,35 @@ async def test_compile_produces_cpu_task_step_carrying_each_target(
     assert len(job_spec.steps) == 1
     step = job_spec.steps[0]
     assert step.name == "agent-evaluate"
-    _assert_agent_eval_step_entrypoint(job_spec)
+    _assert_agent_eval_step_entrypoint(job_spec, expected_image=f"registry.example/{expected_image_name}:test")
     config = cast(dict[str, Any], step.config)
     assert len(config["tasks"]) == 1
     assert config["target"]["kind"] == expected_kind
     if expected_endpoint_name is not None:
         endpoint = config["target"].get("model") or config["target"].get("agent")
         assert endpoint["name"] == expected_endpoint_name
+
+
+async def test_compile_gym_target_honors_configured_image_override(mocker: MockerFixture) -> None:
+    image = "ghcr.io/nvidia-nemo/nemo-platform/nmp-gym-tasks:internal-test"
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", image)
+    qualify = mocker.patch("nemo_evaluator.jobs.agent_compiler.get_qualified_image")
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default", spec=spec, entity_client=object(), job_name=None, async_sdk=None
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    _assert_agent_eval_step_entrypoint(job_spec, expected_image=image)
+    qualify.assert_not_called()
 
 
 async def test_compile_rejects_harbor_target_for_docker_profile(mocker: MockerFixture) -> None:
@@ -693,7 +760,7 @@ async def test_compile_non_harbor_target_does_not_resolve_execution_profiles(moc
         "nemo_evaluator.jobs.agent_evaluate.client_from_platform",
         side_effect=AssertionError("non-Harbor compilation must not query execution profiles"),
     )
-    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"))
 
     compiled = await AgentEvalJob.compile(
         workspace="default",
@@ -703,7 +770,7 @@ async def test_compile_non_harbor_target_does_not_resolve_execution_profiles(moc
         async_sdk=None,
     )
 
-    assert cast(dict[str, Any], PlatformJobSpec.model_validate(compiled).steps[0].config)["target"]["kind"] == "codex"
+    assert cast(dict[str, Any], PlatformJobSpec.model_validate(compiled).steps[0].config)["target"]["kind"] == "fabric"
 
 
 async def test_compile_injects_target_api_key_secret() -> None:
@@ -757,7 +824,7 @@ async def test_compile_rejects_reserved_secret_env_name() -> None:
             model=Model(url="http://model.test/v1/chat/completions", name="test-model"), params=RunConfigOnlineModel()
         ),
         AgentTarget(agent=_agent(), params=RunConfigOnline()),
-        CodexRunnerTarget(model="gpt-5.5"),
+        _runner_target("openai/gpt-5.4"),
         HarborRunnerTarget(agent_name="oracle"),
         GymRunnerTarget(
             agent="simple_agent",
@@ -786,8 +853,8 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
     assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
     assert [task.id for task in fake.received_tasks] == ["task-1"]
     assert fake.received_trials is None  # online generation, not precomputed
-    if isinstance(target, CodexRunnerTarget):
-        assert isinstance(fake.received_target, CodexCliAgentRuntime)
+    if isinstance(target, FabricRunnerTarget):
+        assert isinstance(fake.received_target, FabricAgentRuntime)
     elif isinstance(target, HarborRunnerTarget):
         assert isinstance(fake.received_target, HarborAgentTaskRunner)
     elif isinstance(target, GymRunnerTarget):
@@ -826,7 +893,7 @@ def test_spec_requires_exactly_one_of_target_or_trials() -> None:
     with pytest.raises(ValueError, match="exactly one"):
         AgentEvalSpec(tasks=[_task_spec()])  # neither target nor trials
     with pytest.raises(ValueError, match="exactly one"):
-        AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"), trials=[trial])  # both
+        AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"), trials=[trial])  # both
 
 
 # --- container task entrypoint ----------------------------------------------
