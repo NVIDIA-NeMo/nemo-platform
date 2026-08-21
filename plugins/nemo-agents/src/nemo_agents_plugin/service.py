@@ -102,6 +102,7 @@ class AgentsService(NemoService):
             agents,
             deployment_logs,
             deployments,
+            environments,
             gateway,
             sessions,
         )
@@ -111,6 +112,12 @@ class AgentsService(NemoService):
             RouterSpec(agents.router, tag="Agents", description="Agent CRUD", prefix=_prefix),
             RouterSpec(deployments.router, tag="Agent Deployments", description="Deployment lifecycle", prefix=_prefix),
             RouterSpec(sessions.router, tag="Agent Sessions", description="Session lifecycle", prefix=_prefix),
+            RouterSpec(
+                environments.router,
+                tag="Agent Environments",
+                description="AgentEnvironment, EnvironmentSpec, and ComputeSpec CRUD",
+                prefix=_prefix,
+            ),
             RouterSpec(
                 deployment_logs.router,
                 tag="Agent Deployments",
