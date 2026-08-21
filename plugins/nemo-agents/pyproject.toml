@@ -63,6 +63,7 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
 "agents.optimize" = "nemo_optimization.jobs.optimize:OptimizeJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
+"agents.package-agent" = "nemo_agents_plugin.jobs.package_agent:PackageAgentJob"
 
 [project.entry-points."nemo.controllers"]
 "agents-deployment" = "nemo_agents_plugin.runner.controller:AgentDeploymentController"

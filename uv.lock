@@ -6813,7 +6813,7 @@ dependencies = [
 
 [package.dev-dependencies]
 core-services = [
-    { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agents-plugin", extra = ["container"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-automodel-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6914,7 +6914,7 @@ dev = [
     { name = "typer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 enabled-plugins = [
-    { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agents-plugin", extra = ["container"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-automodel-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6937,7 +6937,7 @@ experimentalist = [
     { name = "nemo-experimentalist-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 functional-services = [
-    { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agents-plugin", extra = ["container"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-automodel-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7035,7 +7035,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 core-services = [
-    { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
+    { name = "nemo-agents-plugin", extras = ["container"], editable = "plugins/nemo-agents" },
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
     { name = "nemo-auditor-plugin", editable = "plugins/nemo-auditor" },
     { name = "nemo-automodel-plugin", editable = "plugins/nemo-automodel" },
@@ -7139,7 +7139,7 @@ dev = [
     { name = "typer", specifier = ">=0.9.0" },
 ]
 enabled-plugins = [
-    { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
+    { name = "nemo-agents-plugin", extras = ["container"], editable = "plugins/nemo-agents" },
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
     { name = "nemo-auditor-plugin", editable = "plugins/nemo-auditor" },
     { name = "nemo-automodel-plugin", editable = "plugins/nemo-automodel" },
@@ -7162,7 +7162,7 @@ experimentalist = [
     { name = "nemo-experimentalist-plugin", marker = "python_full_version < '3.14'", editable = "plugins/nemo-experimentalist" },
 ]
 functional-services = [
-    { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
+    { name = "nemo-agents-plugin", extras = ["container"], editable = "plugins/nemo-agents" },
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
     { name = "nemo-auditor-plugin", editable = "plugins/nemo-auditor" },
     { name = "nemo-automodel-plugin", editable = "plugins/nemo-automodel" },
