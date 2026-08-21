@@ -11,6 +11,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+NEMO_STEP_ID_ATTRIBUTE = "nemo.step_id"
+
 
 class SpanKind(StrEnum):
     LLM = "LLM"
