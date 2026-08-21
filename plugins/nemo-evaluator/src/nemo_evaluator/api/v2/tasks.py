@@ -108,10 +108,10 @@ async def create_task(
         return created
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during task creation: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except MetricRefNotFoundError as e:
         logger.warning(f"Task has an invalid metric reference: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except ValueError as e:
         if "already exists" in str(e).lower():
             logger.warning(f"Task already exists: {safe_workspace}/{safe_name}")
@@ -165,10 +165,10 @@ async def replace_task(
         replaced, published = await service.replace_task(name, task, workspace=workspace, project=project)
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during task replace: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except MetricRefNotFoundError as e:
         logger.warning(f"Task has an invalid metric reference: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except RevisionConflictError as e:
         logger.warning(f"Task revision allocation contended: {e}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -261,7 +261,7 @@ async def get_task_revision(
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Task or revision not found"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Tag is reserved"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Tag is reserved"},
     },
 )
 @scope.write
@@ -283,7 +283,7 @@ async def tag_task_revision(
     try:
         tagged = await service.tag_revision(workspace, name, tag, revision)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except RevisionNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     if tagged is None:
