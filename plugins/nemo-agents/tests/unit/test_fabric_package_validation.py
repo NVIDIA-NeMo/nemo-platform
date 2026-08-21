@@ -236,7 +236,7 @@ class TestFabricBuilderValidationHook:
             build_env={
                 "agent_framework": "nemo_platform_agent",
                 "contract_version": "1.0.0",
-                "nemo_relay_cli_version": "0.6.0",
+                "nemo_relay_cli_version": template.PINNED_NEMO_RELAY_CLI_VERSION,
                 "base_image_url": "registry.example/base",
                 "base_image_tag": "release",
                 "python_version": "3.13",

@@ -308,6 +308,13 @@ constraint-dependencies = [
   "mistune>=3.3.2",
   "mcp>=1.28.1",
   "msgpack>=1.2.1",
+  "nemo-fabric-adapter-contract>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-claude>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-codex>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-common>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-deepagents>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0",
+  "nemo-fabric-runtime>=0.2.0,<0.3.0",
   "nbconvert>=7.17.1",
   "nltk>=3.10.0",
   "pillow>=12.3.0",
@@ -396,21 +403,6 @@ nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
 nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
-
-# Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
-# FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every
-# package — git subdirectory sources do not inherit Fabric's own path mappings,
-# and the metapackage pins runtime/adapters to ==0.2.0.
-# Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
-# wheel still resolve (uv.sources do not apply outside this workspace).
-# Remove these entries once PyPI has 0.2.0.
-nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0" }
-nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "python" }
-nemo-fabric-adapters-common = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/common" }
-nemo-fabric-adapters-claude = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/claude" }
-nemo-fabric-adapters-codex = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/codex" }
-nemo-fabric-adapters-deepagents = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/deepagents" }
-nemo-fabric-adapters-hermes = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/hermes" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
