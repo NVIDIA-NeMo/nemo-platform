@@ -18,7 +18,7 @@ Inference, evaluation, guardrails, jobs, observability, and CPU/GPU orchestratio
 Shared agent platform; pre-production evaluation and red-teaming; GPU-backed customization and synthetic-data jobs.
 
 ### System Requirements
-Kubernetes, Helm 3, kubectl, ReadWriteMany storage, NGC API key, and an image pull secret.
+Kubernetes, Helm, kubectl, ReadWriteMany storage, NGC API key, and an image pull secret.
 GPU workloads need NVIDIA GPU nodes and the GPU Operator or device plugin.
 See the [support matrix](https://docs.nvidia.com/nemo-platform/documentation/reference/support-matrix).
 
