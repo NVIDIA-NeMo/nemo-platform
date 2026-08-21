@@ -89,7 +89,7 @@ async def create_prompt(
         return await service.create_prompt(request, workspace)
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during prompt creation: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except ValueError as e:
         if "already exists" in str(e).lower():
             logger.warning(f"Prompt already exists: {safe_workspace}/{safe_request_name}")
@@ -157,7 +157,7 @@ async def update_prompt(
         return prompt
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during prompt update: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except HTTPException:
         raise
     except Exception:

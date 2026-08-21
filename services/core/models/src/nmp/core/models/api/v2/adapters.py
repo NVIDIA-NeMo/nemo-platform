@@ -58,7 +58,7 @@ async def create_adapter(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during adapter creation: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except PermissionError as e:
@@ -198,7 +198,7 @@ async def update_adapter(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during adapter update: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except PermissionError as e:
