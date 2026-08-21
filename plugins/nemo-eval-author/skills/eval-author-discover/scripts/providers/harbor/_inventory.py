@@ -6,10 +6,8 @@
 Standard library only, and safe to import when Harbor is absent, so an inventory
 survives to orient in a repository the ladder cannot judge.
 
-A standard-library port of the repository scan in
-``nemo_eval_author_plugin/discovery/scan.py``, with the platform reads removed:
-no client, no workspace, no Intake trace probe, and the agent doctrine comes from
-a local ``ETHOS.md`` rather than a downloaded ``AGENT-SPEC.md``.
+Everything is read from the local checkout: no client, no workspace, no trace
+probe, and the agent doctrine comes from a local ``ETHOS.md``.
 
 Everything here observes rather than proves. Finding a config file says nothing
 about whether Harbor accepts it, which is why the ladder in ``_ladder.py`` runs

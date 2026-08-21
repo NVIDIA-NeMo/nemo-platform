@@ -3,9 +3,8 @@
 
 """Make Harbor judge a repository-owned config.
 
-A port of ``nemo_eval_author_plugin/discovery/validate.py``. Every rung asks
-Harbor's own validators for a verdict, so each recorded fact is proved rather
-than observed. Nothing here reimplements a Harbor rule.
+Every rung asks Harbor's own validators for a verdict, so each recorded fact is
+proved rather than observed. Nothing here reimplements a Harbor rule.
 
 This module imports Harbor at module scope. Import it only after ``_probe`` reports
 Harbor available, so that a repository without Harbor still gets an inventory

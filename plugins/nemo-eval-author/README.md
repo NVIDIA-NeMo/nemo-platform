@@ -4,13 +4,14 @@
 # NeMo Eval Author
 
 Two skills that an agent reads to work on the evaluation suites in a user's own
-repository. There is no CLI and no service. A customer points their agent at
-`skills/` and nothing gets installed.
+repository. There is no CLI, no service, and no importable code, so this directory
+builds no package at all. A customer points their agent at `skills/` and nothing
+gets installed.
 
 | Skill | Role |
 | --- | --- |
-| [`eval-author`](src/nemo_eval_author_plugin/skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
-| [`eval-author-discover`](src/nemo_eval_author_plugin/skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
+| [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
+| [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
 
 ## Where findings go
 
@@ -26,7 +27,7 @@ where to save, because that is a judgement about someone's repository.
 Harbor tasks live in the customer's repository, so an agent that proposes changes
 has to write to that repository. Customers were unwilling to grant that, sandboxed
 or not. A skill inverts the arrangement: the customer's own agent does the work,
-and this package only supplies the instructions and the deterministic scripts.
+and this directory only supplies the instructions and the deterministic scripts.
 
 The Eval Author agent that Experimentalist insight mode still uses lives in
 [the Experimentalist plugin](../nemo-experimentalist/src/nemo_experimentalist_plugin/eval_author/README.md).
@@ -39,7 +40,11 @@ the skill defers to the provider's own validators rather than guessing from file
 layout, which is why `eval-author-discover` probes for an installed Harbor and asks
 Harbor to judge each config.
 
-The two declared dependencies serve `tests/test_skill_contract.py`, which reads the
-skills with `pyyaml` and checks them against the platform's check helpers. Adding a
-runtime dependency to a bundled script is a breaking change for anyone who copied
-the skill, so the contract test guards against it.
+`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
+the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that
+make Harbor judge a fixture suite skip when Harbor is absent, which is why this
+directory declares no dependencies and appears in no dependency group.
+
+Adding a runtime dependency to a bundled script is a breaking change for anyone who
+copied the skill, so the contract test walks each script's imports and fails on
+anything outside the standard library, a sibling module, or Harbor.

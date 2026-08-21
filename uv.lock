@@ -4350,17 +4350,7 @@ dev = [
 [[package]]
 name = "nemo-eval-author-plugin"
 version = "0.1.0"
-source = { editable = "plugins/nemo-eval-author" }
-dependencies = [
-    { name = "nemo-insights-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nemo-insights-plugin", editable = "plugins/nemo-insights" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-]
+source = { virtual = "plugins/nemo-eval-author" }
 
 [[package]]
 name = "nemo-evaluator-plugin"
@@ -6839,7 +6829,6 @@ enabled-plugins = [
     { name = "nemo-unsloth-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 experimentalist = [
-    { name = "nemo-eval-author-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-experimentalist-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 functional-services = [
@@ -7060,10 +7049,7 @@ enabled-plugins = [
     { name = "nemo-switchyard", editable = "plugins/nemo-switchyard" },
     { name = "nemo-unsloth-plugin", editable = "plugins/nemo-unsloth" },
 ]
-experimentalist = [
-    { name = "nemo-eval-author-plugin", marker = "python_full_version < '3.14'", editable = "plugins/nemo-eval-author" },
-    { name = "nemo-experimentalist-plugin", marker = "python_full_version < '3.14'", editable = "plugins/nemo-experimentalist" },
-]
+experimentalist = [{ name = "nemo-experimentalist-plugin", marker = "python_full_version < '3.14'", editable = "plugins/nemo-experimentalist" }]
 functional-services = [
     { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },

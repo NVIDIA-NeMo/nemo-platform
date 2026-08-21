@@ -21,8 +21,6 @@ These tests are that enforcement:
 - No bundled directory is named after a provider package. ``scripts/harbor/``
   would be importable as ``harbor``, which makes ``find_spec`` succeed on a
   machine with no Harbor and the probe claim an install that is not there.
-- The check contract matches ``nemo_insights_plugin.contracts.checks``, so a
-  report from the skill reads the same as one from the platform command.
 - Discovery reports a valid suite runnable and names the rung a broken one fails.
 - The bundled scripts write no files. ``SKILL.md`` tells the agent where to save
   the report, because where a file belongs in someone's repository is a judgement
@@ -31,21 +29,25 @@ These tests are that enforcement:
 These tests compare the skill against this repository, never against Harbor's
 rules. The skill reimplements no Harbor rule: it asks Harbor for every verdict,
 so a Harbor change that tightens a rule flows through without a test change here.
+
+Nothing here imports the platform, for the same reason the bundled scripts do not:
+these skills are copied into someone else's repository and have to stand alone. The
+tests that make Harbor judge a fixture suite skip when Harbor is absent, so the whole
+file runs against nothing but pytest and PyYAML.
 """
 
 import ast
-import importlib.util
 import json
 import re
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
 import yaml
-from nemo_insights_plugin.contracts import checks as platform_checks
 
-_SKILLS_DIR = Path(__file__).resolve().parents[1] / "src" / "nemo_eval_author_plugin" / "skills"
+_SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
 _FLOW_DIR = _SKILLS_DIR / "eval-author-discover"
 _SKILL_DIRS = (_CORE_DIR, _FLOW_DIR)
@@ -70,6 +72,12 @@ _MAX_BODY_LINES = 500
 # Matches the core skill name but not a longer name that starts with it, so a
 # reference to eval-author-discover cannot pass for a reference to eval-author.
 _CORE_REFERENCE = re.compile(rf"\b{re.escape(_CORE_DIR.name)}\b(?!-)")
+
+# Only the tests that make Harbor judge a fixture suite need Harbor. Skipping rather
+# than failing is what lets this file run wherever the skills themselves run.
+_needs_harbor = pytest.mark.skipif(
+    find_spec("harbor") is None, reason="Harbor is not installed, so it can judge nothing"
+)
 
 # Harbor brings these in, so a bundled script may name them. Nothing else outside
 # the standard library may appear.
@@ -304,26 +312,7 @@ def test_discover_defers_the_ladder_import_to_call_time() -> None:
     assert not named, f"discover.py imports {named} at module scope; move it inside a function, after the probe"
 
 
-def test_check_contract_matches_the_platform() -> None:
-    """Drift guard. Both sides must render the same statuses and severities."""
-    spec = importlib.util.spec_from_file_location("_skill_checks", _SCRIPTS_DIR / "_checks.py")
-    assert spec is not None and spec.loader is not None
-    skill_checks = importlib.util.module_from_spec(spec)
-    # ``dataclass`` resolves its module through ``sys.modules``, so register the
-    # module before executing it.
-    sys.modules[spec.name] = skill_checks
-    try:
-        spec.loader.exec_module(skill_checks)
-    finally:
-        sys.modules.pop(spec.name, None)
-
-    assert {skill_checks.PASS, skill_checks.WARN, skill_checks.FAIL} == set(platform_checks.CheckStatus.__args__)
-    assert {skill_checks.REQUIRED, skill_checks.ADVISORY} == set(platform_checks.CheckSeverity.__args__)
-    platform_fields = set(platform_checks.CheckResult.model_fields)
-    skill_fields = set(skill_checks.CheckResult.__dataclass_fields__)
-    assert platform_fields <= skill_fields, f"the skill dropped platform check fields {platform_fields - skill_fields}"
-
-
+@_needs_harbor
 def test_discover_proves_a_valid_suite_runnable(suite: Path) -> None:
     code, report = _run_discover(suite)
 
@@ -345,6 +334,7 @@ def test_discover_proves_a_valid_suite_runnable(suite: Path) -> None:
     assert report["run_command"] == f"cd {suite} && harbor job start -c harbor-job.yaml"
 
 
+@_needs_harbor
 def test_discover_names_the_rung_a_broken_config_fails(suite: Path) -> None:
     """A dataset path that does not exist must fail resolution, not schema."""
     (suite / "harbor-job.yaml").write_text(
@@ -362,6 +352,7 @@ def test_discover_names_the_rung_a_broken_config_fails(suite: Path) -> None:
     assert "no-such-dataset" in resolution["message"]
 
 
+@_needs_harbor
 def test_discover_names_an_unknown_agent(suite: Path) -> None:
     (suite / "harbor-job.yaml").write_text(
         "job_name: fixture\ndatasets:\n  - path: ./dataset\nagents:\n  - name: no-such-agent\n",
@@ -376,6 +367,7 @@ def test_discover_names_an_unknown_agent(suite: Path) -> None:
     assert "no-such-agent" in agent["message"]
 
 
+@_needs_harbor
 def test_discover_reports_required_host_variables(suite: Path) -> None:
     task_toml = suite / "dataset" / "task-one" / "task.toml"
     task_toml.write_text(
@@ -391,6 +383,7 @@ def test_discover_reports_required_host_variables(suite: Path) -> None:
     assert [item["name"] for item in report["configs"][0]["required_env_vars"]] == ["ACME_API_KEY"]
 
 
+@_needs_harbor
 def test_discover_reports_a_task_harbor_silently_dropped(suite: Path) -> None:
     """Harbor skips an unparseable task without raising, which coverage must catch."""
     broken = suite / "dataset" / "task-two"

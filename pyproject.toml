@@ -71,14 +71,10 @@ version = "0.0.0"
 [dependency-groups]
 # Insights analyst plugin convenience group.
 insights = ["nemo-insights-plugin"]
-# Experimentalist and Eval Author support Python 3.12 and 3.13. Eval Author ships skills
-# rather than code, and imports nothing from Experimentalist. It is grouped here so that
-# installing Experimentalist also makes the Eval Author tests visible to root test
-# discovery (see tests/discovery_exclusions.py).
-experimentalist = [
-  "nemo-experimentalist-plugin ; python_full_version < '3.14'",
-  "nemo-eval-author-plugin ; python_full_version < '3.14'",
-]
+# Experimentalist supports Python 3.12 and 3.13. Eval Author is absent on purpose: it
+# ships isolated skills rather than code, builds no package, and its tests need nothing
+# beyond pytest and PyYAML.
+experimentalist = ["nemo-experimentalist-plugin ; python_full_version < '3.14'"]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -393,7 +389,6 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
-nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 
 # Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
@@ -616,8 +611,6 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # Source path for the Insights analyst plugin.
   "plugins/nemo-insights/src",
-  # Source path for the Eval Author plugin.
-  "plugins/nemo-eval-author/src",
   # Source path for Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
@@ -687,12 +680,9 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
+# return, so the rule is off for the Experimentalist agent classes only.
 [[tool.ty.overrides]]
-include = [
-  "plugins/nemo-experimentalist/src/**",
-  "plugins/nemo-eval-author/src/**",
-]
+include = ["plugins/nemo-experimentalist/src/**"]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"

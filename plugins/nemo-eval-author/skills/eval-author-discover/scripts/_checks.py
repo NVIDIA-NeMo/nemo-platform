@@ -3,10 +3,9 @@
 
 """Readiness result construction and presentation.
 
-A standard-library port of ``nemo_insights_plugin.contracts.checks``, which the
-platform-side discovery command uses. The field names, statuses, severities, and
-rendered symbols match, so a report produced by the skill reads the same as one
-produced by the CLI. Keep them aligned when either side changes.
+One check is one named verdict, and a report is a list of them. Statuses and
+severities are plain strings rather than enums, so the JSON a report emits needs no
+conversion step and stays readable to whatever reads it next.
 
 Uses ``dataclass`` rather than ``pydantic.BaseModel`` so this module carries no
 dependency of its own.
