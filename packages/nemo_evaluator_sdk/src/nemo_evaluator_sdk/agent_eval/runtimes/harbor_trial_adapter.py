@@ -145,12 +145,16 @@ def _agent_trajectory(trial_dir: Path, selected_trace: EvidenceDescriptor | None
 
 
 def _final_agent_message(trajectory: Trajectory | None) -> str | None:
-    """The agent's last message, which is its user-visible answer for the trial."""
+    """The agent's last message, which is its user-visible answer for the trial.
+
+    Only the *last* agent step can be the answer. An earlier one is intermediate reasoning, so an
+    agent that ends on an empty message has produced no answer rather than the previous one.
+    """
     if trajectory is None:
         return None
     for step in reversed(trajectory.steps):
-        if step.source == "agent" and isinstance(step.message, str) and step.message:
-            return step.message
+        if step.source == "agent":
+            return step.message or None
     return None
 
 
