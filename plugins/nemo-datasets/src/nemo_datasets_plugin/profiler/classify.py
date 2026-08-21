@@ -299,14 +299,20 @@ def _detect_verifiability(features: list[FeatureSchema], probes: dict[str, Colum
     best_coverage = 0.0
     for feature in searched:
         probe = probes.get(feature.name)
-        if probe is None or not probe.texts:
+        if probe is None or not probe.rows or not probe.texts:
             continue
-        coverage = probe.extractable_answer / probe.texts
+        # Over every row the column was asked about, never over the rows that happened to hold text.
+        # `texts` is each column's own denominator, so it scores a column present in one row out of a
+        # thousand at 1.0 -- enough to outrank the real answer column at 0.8 and then be reported as
+        # a coverage of 1.0, which the contract says a consumer may read literally. `rows` is the
+        # denominator the ground_truth branch above already divides by, and the one this field is
+        # documented as: the fraction of sampled rows carrying a usable verification target.
+        coverage = probe.extractable_answer / probe.rows
         if coverage > best_coverage:
             best_name, best_coverage = feature.name, coverage
 
     if best_name is not None and best_coverage >= _MIN_VERIFIABILITY_COVERAGE:
-        sampled = probes[best_name].texts
+        sampled = probes[best_name].rows
         detail = (
             f"'{best_name}' ends with an extractable answer (#### or \\boxed) in "
             f"{_pct(best_coverage)} of {sampled} sampled rows"
