@@ -22,6 +22,7 @@ from urllib.parse import quote, urlencode, urlparse
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError, EntityStoreError
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.common.service.dependencies import get_entity_client
@@ -54,6 +55,7 @@ from nmp.studio.assistant_mcp_tools import (
     permission_prompt_tool,
 )
 from nmp.studio.assistant_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
+from nmp.studio.authz import scope
 from nmp.studio.entities import AssistantConversation, AssistantMessage, LegacyAssistantConversation
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
@@ -747,6 +749,8 @@ def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
 
 
 @router.post("/sessions", response_model=NewSessionResponse)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def create_session(
     request: Request,
     workspace: str = "default",
@@ -767,6 +771,8 @@ async def create_session(
 
 
 @router.get("/history/sessions", response_model=list[HistorySessionResponse])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def list_history_sessions(
     request: Request,
     workspace: str = "default",
@@ -888,6 +894,8 @@ def _history_user_interaction_texts(
 
 
 @router.get("/history/sessions/{session_id}", response_model=SessionHistoryResponse)
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def get_session_history(
     session_id: str,
     request: Request,
@@ -974,6 +982,8 @@ async def get_session_history(
 
 
 @router.delete("/history/sessions/{session_id}", status_code=204)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def delete_session_history(
     session_id: str,
     request: Request,
@@ -1007,6 +1017,8 @@ async def delete_session_history(
 
 
 @router.get("/skills", response_model=list[ClaudeSkillResponse])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 def list_claude_skills() -> list[ClaudeSkillResponse]:
     """List NeMo skills that the repo's Claude Code installer exposes."""
     try:
@@ -1867,6 +1879,8 @@ async def _stream_assistant(
 
 
 @router.post("/sessions/{session_id}/messages")
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def send_message(
     session_id: str,
     body: MessageRequest,
@@ -1914,6 +1928,8 @@ async def send_message(
 
 
 @router.post("/sessions/{session_id}/permissions/{request_id}")
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def resolve_permission(session_id: str, request_id: str, body: PermissionDecision) -> dict[str, bool]:
     """Resolve a pending Claude tool permission request."""
     sid = _validate_session_id(session_id)
@@ -1928,6 +1944,8 @@ async def resolve_permission(session_id: str, request_id: str, body: PermissionD
 
 
 @router.post("/sessions/{session_id}/inputs/{request_id}")
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def resolve_agent_input(session_id: str, request_id: str, body: AgentInputDecision) -> dict[str, bool]:
     """Resolve a pending Claude UI input request."""
     sid = _validate_session_id(session_id)
@@ -1942,6 +1960,8 @@ async def resolve_agent_input(session_id: str, request_id: str, body: AgentInput
 
 
 @router.post("/mcp/{session_id}", name=MCP_ROUTE_NAME, include_in_schema=False)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def mcp_endpoint(session_id: str, request: Request) -> Response:
     """Minimal MCP endpoint used by Claude's permission-prompt tool."""
     sid = _validate_session_id(session_id)
@@ -2096,6 +2116,8 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
 
 
 @router.api_route("/mcp/{session_id}", methods=["GET", "DELETE"], include_in_schema=False)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
 async def mcp_unsupported_method(session_id: str) -> Response:
     """Decline optional MCP SSE/session methods without falling through to Studio HTML."""
     _validate_session_id(session_id)
