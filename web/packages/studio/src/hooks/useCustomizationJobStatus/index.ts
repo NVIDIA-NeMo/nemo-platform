@@ -4,8 +4,10 @@
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import {
   customizationGetAutomodelJobStatus,
+  customizationGetRlJobStatus,
   customizationGetUnslothJobStatus,
   getCustomizationGetAutomodelJobStatusQueryKey,
+  getCustomizationGetRlJobStatusQueryKey,
   getCustomizationGetUnslothJobStatusQueryKey,
 } from '@nemo/sdk/generated/customizer/api';
 import type {
@@ -33,6 +35,10 @@ const STATUS_ENDPOINTS: Record<CustomizationBackend, StatusEndpoint> = {
   unsloth: {
     fetchStatus: customizationGetUnslothJobStatus,
     getQueryKey: getCustomizationGetUnslothJobStatusQueryKey,
+  },
+  rl: {
+    fetchStatus: customizationGetRlJobStatus,
+    getQueryKey: getCustomizationGetRlJobStatusQueryKey,
   },
 };
 

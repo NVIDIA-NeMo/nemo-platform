@@ -17,6 +17,7 @@ from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.observability import (
     ANALYST_OBSERVABILITY_ENV,
+    AnalystEvaluationContext,
     setup_analyst_observability,
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
@@ -51,6 +52,8 @@ async def run_analyst(
     verbose: bool = False,
     since: datetime | None = None,
     evaluation_id: str | None = None,
+    analyst_evaluation: AnalystEvaluationContext | None = None,
+    enable_observability: bool = True,
     model_refs: ConfiguredModelRefs | None = None,
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
@@ -72,6 +75,10 @@ async def run_analyst(
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
+        analyst_evaluation: Optional Evaluation and test-case
+            identity attached to the Analyst's own OTLP trace.
+        enable_observability: Whether this run may export the Analyst's own
+            OTLP trace. The environment variable can still disable export.
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
     """
@@ -94,11 +101,12 @@ async def run_analyst(
             since=since,
             evaluation_id=evaluation_id,
         )
-        if base_url and _analyst_observability_enabled():
+        if base_url and enable_observability and _analyst_observability_enabled():
             observability = setup_analyst_observability(
                 base_url=base_url,
                 workspace=workspace,
                 target_agent=agent,
+                evaluation_context=analyst_evaluation,
             )
         with activate_model_clients(model_clients):
             analyst = build_analyst_agent(
@@ -121,9 +129,9 @@ async def run_analyst(
 
 
 def _analyst_observability_enabled() -> bool:
-    """True when dogfooding analyst self-observability is explicitly enabled."""
-    value = os.environ.get(ANALYST_OBSERVABILITY_ENV, "")
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    """Return false only when self-observability is explicitly disabled."""
+    value = os.environ.get(ANALYST_OBSERVABILITY_ENV)
+    return value is None or value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 async def _run_agent(

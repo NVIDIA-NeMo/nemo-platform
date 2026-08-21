@@ -925,6 +925,47 @@ def revoke_access_key(
         typer.echo(f"Scoped Access Key {jti} was already revoked.")
 
 
+@access_keys_app.command("suspend")
+@handle_errors
+def suspend_access_key(
+    ctx: typer.Context,
+    jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to suspend.")],
+) -> None:
+    """Temporarily suspend a Scoped Access Key owned by the current user.
+
+    Unlike revocation, suspension is reversible until the key expires.
+    """
+    try:
+        result = _access_key_issuer(ctx).suspend(jti)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+    if result.changed:
+        typer.echo(f"Suspended Scoped Access Key {jti}.")
+    else:
+        typer.echo(f"Scoped Access Key {jti} was already {result.status.lower()}.")
+
+
+@access_keys_app.command("unsuspend")
+@handle_errors
+def unsuspend_access_key(
+    ctx: typer.Context,
+    jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to unsuspend.")],
+) -> None:
+    """Restore a suspended Scoped Access Key owned by the current user."""
+    try:
+        result = _access_key_issuer(ctx).unsuspend(jti)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+    if result.changed:
+        typer.echo(f"Unsuspended Scoped Access Key {jti}.")
+    else:
+        typer.echo(f"Scoped Access Key {jti} was already {result.status.lower()}.")
+
+
 @app.command("status")
 @handle_errors
 def status(ctx: typer.Context) -> None:

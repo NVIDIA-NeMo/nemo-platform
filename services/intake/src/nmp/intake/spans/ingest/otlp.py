@@ -76,7 +76,7 @@ async def ingest_otlp_traces(
     max_bytes = _otlp_max_body_bytes(request)
     if content_length is not None and content_length > max_bytes:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"OTLP body of {content_length} bytes exceeds limit of {max_bytes} bytes",
         )
 
@@ -140,7 +140,7 @@ async def _read_limited_body(request: Request, *, max_bytes: int) -> bytes:
         size += len(chunk)
         if size > max_bytes:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail=f"OTLP body exceeds limit of {max_bytes} bytes",
             )
         chunks.append(chunk)

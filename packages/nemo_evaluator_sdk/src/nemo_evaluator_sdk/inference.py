@@ -238,11 +238,17 @@ class TransformReasoningOutput(PostprocessResponse):
 
 def new_hooks(
     params: InferenceHookParams | None,
-    model_format: ModelFormat | None = ModelFormat.NVIDIA_NIM,
+    model_format: ModelFormat | None = None,
     logger: logging.Logger | None = None,
 ) -> tuple[list[PreprocessRequest], list[PostprocessResponse]]:
-    """Build the standard online generation hooks used by SDK and service flows."""
+    """Build the standard online generation hooks used by SDK and service flows.
+
+    ``model_format`` is deprecated and ignored. The structured output mode set here is only a
+    starting point; preflight detection replaces it with whatever the endpoint actually honours.
+    """
     from nemo_evaluator_sdk.structured_output import InferenceStructuredOutput, default_structured_output_mode
+
+    _ = model_format  # Deprecated: retained so existing callers keep working.
 
     log_hook = LogHook(logger)
     preprocess_hooks: list[PreprocessRequest] = []
@@ -258,8 +264,11 @@ def new_hooks(
     if params and params.structured_output:
         preprocess_hooks.append(
             InferenceStructuredOutput(
-                default_structured_output_mode(model_format or "nim"),
+                default_structured_output_mode(),
                 params.structured_output,
+                # Provisional: the endpoint has not been probed yet. Marking it unresolved makes a
+                # generation path that never probes warn instead of silently emitting this guess.
+                resolved=False,
             )
         )
 
@@ -306,7 +315,8 @@ async def make_inference_request(
     """
     Helper to run inference on a model with a given prompt.
 
-    Only OpenAI format is supported (nim and openai formats).
+    Requests use the OpenAI-compatible wire format. ``Model.format`` is deprecated and has no
+    effect here; structured output support is probed from the endpoint.
 
     Args:
         model: The Model to run inference on.

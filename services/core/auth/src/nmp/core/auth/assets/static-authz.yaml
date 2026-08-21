@@ -160,6 +160,9 @@ authz:
           description: "List intake spans"
         read:
           description: "Read intake spans"
+      trace-metrics:
+        read:
+          description: "Read time-bucketed intake trace metrics"
       traces:
         read:
           description: "Read intake traces"
@@ -315,6 +318,7 @@ authz:
       - intake.sessions.read
       - intake.spans.list
       - intake.spans.read
+      - intake.trace-metrics.read
       - intake.traces.read
       - jobs.list
       - jobs.read
@@ -454,6 +458,14 @@ authz:
         scopes: []
     /apis/auth/v2/access-keys/{jti}:
       delete:
+        permissions: []
+        scopes: []
+    /apis/auth/v2/access-keys/{jti}/suspend:
+      post:
+        permissions: []
+        scopes: []
+    /apis/auth/v2/access-keys/{jti}/unsuspend:
+      post:
         permissions: []
         scopes: []
     /apis/auth/v2/iam/opa-bundle.tar.gz:
@@ -1125,6 +1137,13 @@ authz:
       get:
         permissions:
         - intake.evaluator-results.list
+        scopes:
+        - intake:read
+        - platform:read
+    /apis/intake/v2/workspaces/{workspace}/traces/metrics:
+      get:
+        permissions:
+        - intake.trace-metrics.read
         scopes:
         - intake:read
         - platform:read

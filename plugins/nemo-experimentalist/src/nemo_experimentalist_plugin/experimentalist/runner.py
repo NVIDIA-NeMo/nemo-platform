@@ -238,7 +238,7 @@ class ExperimentRunner:
             assert self._backend.client is not None
             # Lazy: a run without an Insight never authors an eval suite, so it must not
             # fail to import when the Eval Author package is absent.
-            from nemo_eval_author_plugin.eval_author.agent import EvalAuthor  # noqa: PLC0415
+            from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor  # noqa: PLC0415
 
             authored = await EvalAuthor(
                 experiment_dir=self._root, config=self._config.eval_author, reporter=self._reporter

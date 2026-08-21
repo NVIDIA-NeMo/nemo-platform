@@ -876,7 +876,7 @@ async def virtual_model_proxy(
             modified_model_ref = parse_model_entity_ref(json_body["model"])
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                http_status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Could not resolve model entity from body['model'] after request middleware: {exc}",
             ) from exc
 

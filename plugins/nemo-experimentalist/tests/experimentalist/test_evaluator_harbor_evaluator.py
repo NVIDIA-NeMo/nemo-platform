@@ -256,7 +256,7 @@ async def test_eval_author_default_tracks_the_experimentalist_default() -> None:
     and both types map to `HarborDataset` — but it silently stops being inert the day
     the two types get different Dataset classes.
     """
-    from nemo_eval_author_plugin.eval_author.run import run_eval_author
+    from nemo_experimentalist_plugin.eval_author.run import run_eval_author
 
     assert (
         inspect.signature(run_eval_author).parameters["evaluator_type"].default

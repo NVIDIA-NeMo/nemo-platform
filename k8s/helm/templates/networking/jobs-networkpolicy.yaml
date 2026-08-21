@@ -1,0 +1,60 @@
+{{/*
+SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{- if and .Values.networkPolicies.enabled .Values.networkPolicies.jobs.enabled }}
+{{- $jobs := .Values.networkPolicies.jobs -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-jobs-egress" (include "nemo-platform.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    app.kubernetes.io/component: nmp-core-jobs
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    {{- toYaml $jobs.podSelector | nindent 4 }}
+  policyTypes:
+    - Egress
+  {{- if or $jobs.dns.enabled $jobs.platformApi.enabled (and $jobs.externalEgress.enabled $jobs.externalEgress.ipBlocks) $jobs.extraEgress }}
+  egress:
+    {{- if $jobs.dns.enabled }}
+    - to:
+        - namespaceSelector:
+            {{- toYaml $jobs.dns.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml $jobs.dns.podSelector | nindent 12 }}
+      ports:
+        {{- toYaml $jobs.dns.ports | nindent 8 }}
+    {{- end }}
+    {{- if $jobs.platformApi.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: nmp-api
+              {{- include "nemo-platform.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ default .Values.api.service.port $jobs.platformApi.port }}
+    {{- end }}
+    {{- if and $jobs.externalEgress.enabled $jobs.externalEgress.ipBlocks }}
+    - to:
+        {{- range $block := $jobs.externalEgress.ipBlocks }}
+        - ipBlock:
+            cidr: {{ $block.cidr | quote }}
+            {{- with $block.except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+        {{- end }}
+      {{- with $jobs.externalEgress.ports }}
+      ports:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- with $jobs.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

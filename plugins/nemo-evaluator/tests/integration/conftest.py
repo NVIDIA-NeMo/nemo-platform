@@ -200,11 +200,10 @@ DATA_DIR_ENVVAR = "NMP_DATA_DIR"
 def subprocess_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Session-scoped platform with the subprocess jobs backend + IGW mock-provider mode.
 
-    Subprocess backend: the compiled task runs as a host process, so a Codex *runner* target finds
-    the host's codex CLI + ChatGPT login. IGW mock mode (``NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX``)
-    lets Model/Agent-target tests register a mock provider returning a canned response — no real model
-    or key. Codex-dependent tests gate themselves with ``@requires_codex``; this fixture does not, so
-    Model/Agent tests (which need only the running IGW) can use it without codex installed.
+    Subprocess backend: the compiled task runs as a host process, so a runner target sees the host's
+    agent toolchain. IGW mock mode (``NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX``) lets
+    Model/Agent-target tests register a mock provider returning a canned response — no real model or
+    key.
     """
     work_root = tmp_path_factory.mktemp("platform")
     config_path = _materialize_subprocess_config(work_root, base_url=AGENT_PLATFORM_BASE_URL)
@@ -288,10 +287,10 @@ def _materialize_docker_config(work_root: Path, *, base_url: str) -> Path:
 def docker_platform(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Session-scoped platform with the docker jobs backend (for the docker-backend submit test).
 
-    Gates on a reachable Docker daemon only — codex runs *inside* the task container, not on the
-    host, so host codex is irrelevant here. The agent-eval step runs in the ``cpu-tasks`` image;
-    runner targets aren't expected to succeed there yet (the image carries no codex CLI/auth — see
-    AALGO-301), which is why the test using this fixture is marked xfail.
+    Gates on a reachable Docker daemon only — a runner executes *inside* the task container, not on
+    the host, so the host toolchain is irrelevant here. The agent-eval step runs in the ``cpu-tasks``
+    image; runner targets aren't expected to succeed there yet (the image carries no agent harness —
+    see AALGO-301), which is why the test using this fixture is marked xfail.
     """
     if not _docker_available():
         pytest.skip("docker daemon not available")

@@ -104,7 +104,6 @@ from nemo_evaluator_sdk import (
 target = Model(
     url="https://provider.example/v1/chat/completions",
     name="<model-id>",
-    format="openai",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 

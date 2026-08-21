@@ -1109,3 +1109,27 @@ def test_atif_v17_observation_on_nested_system_step() -> None:
     observation = _step_observation(system_step)
     assert observation is not None
     assert observation.results[0].content == "is_likely_phishing: true"
+
+
+def test_atif_mapping_stamps_agent_name_on_every_span() -> None:
+    trajectory = AtifTrajectory(
+        schema_version="ATIF-v1.7",
+        session_id="trace-session-id",
+        agent=AtifAgent(
+            name="sample-agent",
+            version="1.0.0",
+            model_name="provider/sample-model",
+        ),
+        steps=[AtifStepUser(step_id=1, source="user", message="solve")],
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    # Not just the root, so agent-scoped span queries work too.
+    assert spans
+    for span in spans:
+        assert span.attributes_string["gen_ai.agent.name"] == "sample-agent"

@@ -4,10 +4,10 @@
 """Platform-owned agent.yaml config models for NeMo Agents.
 
 These models back Agent.config when config_format is nemo-agents-spec-v1.
-RFC122 proposes first-class environment_spec, sandbox_spec, and harness_spec
-fields on Agent; until those shapes are finalized, this config keeps those
-inputs together in the versioned Agent.config payload and can be migrated once
-the RFC122 contract lands.
+First-class environment_spec, sandbox_spec, and harness_spec fields on Agent
+are planned; until those shapes are finalized, this config keeps those inputs
+together in the versioned Agent.config payload and can be migrated once that
+contract lands.
 """
 
 from __future__ import annotations
@@ -50,6 +50,14 @@ class EnvironmentConfig(BaseModel):
     workspace: str = "./workspace"
     artifacts: str = "./artifacts"
     settings: dict[str, Any] = Field(default_factory=dict)
+    # Fabric environment mirror fields. Additive with backward-compatible
+    # defaults; populated when an AgentEnvironmentSpec is merged at deploy time and
+    # forwarded into FabricConfig.environment by the translator.
+    env: dict[str, str] = Field(default_factory=dict)
+    control_location: str | None = None
+    ownership: str | None = None
+    connection: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TelemetryConfig(BaseModel):

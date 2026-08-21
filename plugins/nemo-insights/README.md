@@ -147,11 +147,10 @@ export NEMO_INSIGHTS_ANALYST='{"run_at_hour": 17, "run_on_weekday": "friday", "j
 
 ### Analyst self-observability
 
-`NEMO_INSIGHTS_ANALYST_OBSERVABILITY` is read directly from the environment
-rather than through `NemoConfig`, and is off unless set to one of `1`, `true`,
-`yes`, or `on` (case-insensitive). When enabled, the analyst exports its own
-traces to Intake's workspace-scoped OTLP endpoint. The endpoint must be HTTPS
-unless it is loopback.
+Whenever a platform base URL is available, the Analyst exports its own traces
+to Intake's workspace-scoped OTLP endpoint. No opt-in flag or environment
+variable is required. Set `NEMO_INSIGHTS_ANALYST_OBSERVABILITY=false` to opt
+out. The endpoint must be HTTPS unless it is loopback.
 
 ## Development
 

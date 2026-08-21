@@ -52,10 +52,12 @@ import yaml
 from evaluation import artifact, publish, reingest, release
 from evaluation.adapters import build_adapter
 from evaluation.export import EPOCH
+from evaluation.ingest import create_experiment, ensure_experiment_group, mint_agent_id
 from evaluation.registry import Subject, load_registry
 from evaluation.runstore import load_run, save_run
 from evaluation.summary import render_summary_md
 from evaluation.timeparse import parse_since
+from nemo_insights_plugin.analyst.observability import AnalystEvaluationContext
 
 HERE = Path(__file__).parent
 REGISTRY_PATH = HERE / "evaluations.toml"
@@ -66,6 +68,7 @@ ANALYST_LOCKFILE = HERE.parents[2] / "uv.lock"
 ANALYST_LOCK_ROOT = "nemo-insights-plugin"
 ENV_PATH = HERE / ".env"
 LOCAL_URL = artifact.LOCAL_URL  # the local NeMo Platform (the default restore/analyze target)
+ANALYST_EXPERIMENT_NAME = "nemo-analyst"
 _REMOTE_AUTH_KEYS = ("auth", "intake_path_prefix", "auth_user_env", "auth_password_env")
 INSIGHTS_SPDX_HEADER = (
     "# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
@@ -586,6 +589,57 @@ def _analysis_workspace(subject: Subject, record: dict | None) -> str | None:
     if record is None:
         return None
     return str(record.get("realistic_workspace") or "") or None
+
+
+def _register_analysis_evaluation(
+    *,
+    subject: Subject,
+    subject_name: str,
+    record: dict[str, object] | None,
+    state_label: str,
+) -> AnalystEvaluationContext | None:
+    """Create the Experiment/Evaluation that owns one Analyst OTLP trace."""
+    if subject.config.get("auth") == "basic":
+        # Custom Intake routing/auth remains owned by the existing subject client.
+        return None
+    workspace = _analysis_workspace(subject, record)
+    if workspace is None:
+        raise RuntimeError("cannot register Analyst evaluation without an analysis workspace")
+    if subject.type == "benchmark":
+        if record is None or not record.get("base_url"):
+            raise RuntimeError("cannot register benchmark Analyst evaluation without a recorded base URL")
+        base_url = str(record["base_url"])
+        target_agent = str(record.get("agent") or subject_name)
+    else:
+        base_url = str(subject.config.get("base_url") or "")
+        target_agent = str(subject.config.get("agent") or subject_name)
+    if not base_url:
+        raise RuntimeError("cannot register Analyst evaluation without a platform base URL")
+    evaluation_name = mint_agent_id(ANALYST_EXPERIMENT_NAME)
+    experiment_id = ensure_experiment_group(
+        base_url,
+        workspace,
+        ANALYST_EXPERIMENT_NAME,
+    )
+    create_experiment(
+        base_url,
+        workspace,
+        name=evaluation_name,
+        experiment_group_id=experiment_id,
+        dataset_name=f"nemo-analyst:{target_agent}",
+        dataset_version=state_label,
+        metadata={
+            "subject": subject_name,
+            "target_agent": target_agent,
+            "test_case_name": subject_name,
+            "state": state_label,
+        },
+    )
+    print(
+        f"Analyst telemetry: Experiment '{ANALYST_EXPERIMENT_NAME}', Evaluation '{evaluation_name}', "
+        f"test case '{subject_name}' in workspace '{workspace}'"
+    )
+    return AnalystEvaluationContext(evaluation_name=evaluation_name, test_case_name=subject_name)
 
 
 def _warn_insights_workspace_mismatch(subject_name: str, workspace: str | None) -> None:
@@ -1175,8 +1229,23 @@ def main() -> None:
         # remap (state mode) / record load (live) so it compares against the
         # workspace this analysis actually reads.
         _warn_insights_workspace_mismatch(args.name, _analysis_workspace(subject, record))
-    adapter = build_adapter(subject)
-    report = asyncio.run(adapter.analyze(record=record, since=since, verbose=args.verbose, out_path=out))
+    try:
+        analyst_evaluation = _register_analysis_evaluation(
+            subject=subject,
+            subject_name=args.name,
+            record=record,
+            state_label=label,
+        )
+    except RuntimeError as exc:
+        sys.exit(f"could not register Analyst evaluation: {exc}")
+    adapter = build_adapter(subject, analyst_evaluation=analyst_evaluation)
+    analysis = adapter.analyze(
+        record=record,
+        since=since,
+        verbose=args.verbose,
+        out_path=out,
+    )
+    report = asyncio.run(analysis)
     print(report)
     print(f"\n✓ Insights written to {out}")
     if not args.no_baseline_update:

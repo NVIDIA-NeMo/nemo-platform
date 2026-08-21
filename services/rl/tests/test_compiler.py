@@ -12,18 +12,20 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.entities.utils import get_random_id
+from nmp.customization_common.schemas.values import OutputNameType
 from nmp.rl.app.jobs.compiler import (
+    _build_download_config,
     _build_training_step,
     _build_training_step_config,
     platform_job_config_compiler,
 )
 from nmp.rl.app.jobs.training.schemas import OptimizerType, TrainingType
 from nmp.rl.entities.values import FinetuningType
-from nmp.rl.schemas import DPOTraining, OutputResponse, ParallelismParams, RlJobOutput
+from nmp.rl.schemas import DPOTraining, GRPOTraining, OutputResponse, ParallelismParams, RlJobOutput
 
 
 def _make_model_entity(fileset: str | None = "default/base-model") -> ModelEntity:
@@ -40,25 +42,36 @@ def _make_model_entity(fileset: str | None = "default/base-model") -> ModelEntit
 
 
 def _make_job_output(
-    training: DPOTraining | None = None,
+    training: DPOTraining | GRPOTraining | None = None,
     integrations: IntegrationsSpec | None = None,
+    *,
+    environment: str | None = None,
 ) -> RlJobOutput:
+    training = training or DPOTraining(type="dpo")
     return RlJobOutput(
         model="default/base-model",
         dataset="default/prefs",
-        training=training or DPOTraining(),
+        environment=environment,
+        training=training,
         integrations=integrations,
-        output=OutputResponse(name="my-dpo", type="model", fileset="my-dpo-fs"),
+        output=OutputResponse(name="my-dpo", type=OutputNameType.MODEL, fileset="my-dpo-fs"),
     )
 
 
-# Job specs/steps/executors/containers are all TypedDicts (plain dicts).
-def _container(step: dict[str, Any]) -> dict[str, Any]:
+# Job specs/steps/executors/containers are all TypedDicts (plain dicts at runtime), so
+# these take Any rather than a specific TypedDict: the compiler returns them typed as
+# PlatformJobStepSpecParam, which is not assignable to dict[str, Any].
+def _container(step: Any) -> dict[str, Any]:
     return step["executor"]["container"]
 
 
-def _provider(step: dict[str, Any]) -> str:
+def _provider(step: Any) -> str:
     return step["executor"]["provider"]
+
+
+def _steps(spec: Any) -> list[Any]:
+    """spec["steps"] is typed as an Iterable, so index through a concrete list."""
+    return list(spec["steps"])
 
 
 @pytest.fixture
@@ -73,6 +86,7 @@ def mock_sdk() -> Mock:
 
 def test_training_step_config_maps_exposed_knobs() -> None:
     t = DPOTraining(
+        type="dpo",
         optimizer_type=OptimizerType.ADAM_WITH_FLAT_LR,
         adam_eps=3e-7,
         activation_checkpointing=True,
@@ -107,7 +121,9 @@ def test_the_reporting_budget_reaches_the_training_step_config() -> None:
     """
     from nmp.customization_common.training.reporting import ProgressReportingConfig
 
-    t = DPOTraining(progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss", "*_accuracy"]))
+    t = DPOTraining(
+        type="dpo", progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss", "*_accuracy"])
+    )
     sc = _build_training_step_config(_make_job_output(t), trust_remote_code=False)
 
     assert sc.schedule.progress_reporting.time_series_metrics == ["*_loss", "*_accuracy"]
@@ -168,7 +184,7 @@ def test_training_step_config_defaults_match_prior_hardcodes() -> None:
 
 
 def test_single_node_uses_gpu_executor() -> None:
-    job = _make_job_output(DPOTraining(parallelism=ParallelismParams(num_nodes=1, num_gpus_per_node=1)))
+    job = _make_job_output(DPOTraining(type="dpo", parallelism=ParallelismParams(num_nodes=1, num_gpus_per_node=1)))
     step = _build_training_step(job, [], trust_remote_code=False, profile=None)
     assert step["name"] == "dpo-training"
     assert _provider(step) == "gpu"
@@ -177,14 +193,14 @@ def test_single_node_uses_gpu_executor() -> None:
 
 def test_multi_node_requires_shared_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.multinode_shared_storage_path", None, raising=False)
-    job = _make_job_output(DPOTraining(parallelism=ParallelismParams(num_nodes=2, num_gpus_per_node=2)))
+    job = _make_job_output(DPOTraining(type="dpo", parallelism=ParallelismParams(num_nodes=2, num_gpus_per_node=2)))
     with pytest.raises(PlatformJobCompilationError, match="shared filesystem"):
         _build_training_step(job, [], trust_remote_code=False, profile=None)
 
 
 def test_multi_node_uses_distributed_executor_with_shared_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.multinode_shared_storage_path", "/shared", raising=False)
-    job = _make_job_output(DPOTraining(parallelism=ParallelismParams(num_nodes=2, num_gpus_per_node=2)))
+    job = _make_job_output(DPOTraining(type="dpo", parallelism=ParallelismParams(num_nodes=2, num_gpus_per_node=2)))
     step = _build_training_step(job, [], trust_remote_code=False, profile=None)
     assert _provider(step) == "gpu_distributed"
 
@@ -214,7 +230,7 @@ async def test_compiler_emits_four_steps(monkeypatch: pytest.MonkeyPatch, mock_s
     )
     spec = await platform_job_config_compiler("default", _make_job_output(), mock_sdk)
 
-    steps = spec["steps"]
+    steps = _steps(spec)
     names = [s["name"] for s in steps]
     assert names == ["model-and-dataset-download", "dpo-training", "model-upload", "model-entity-creation"]
 
@@ -249,3 +265,110 @@ async def test_compiler_rejects_model_without_fileset(monkeypatch: pytest.Monkey
     )
     with pytest.raises(PlatformJobCompilationError, match="has no fileset"):
         await platform_job_config_compiler("default", _make_job_output(), mock_sdk)
+
+
+def test_grpo_download_includes_environment() -> None:
+    job = _make_job_output(GRPOTraining(type="grpo"), environment="default/my-env")
+    cfg = _build_download_config(job, _make_model_entity(), workspace="default")
+    dests = [item.dest for item in cfg.download]
+    assert "/var/run/scratch/job/environment" in dests
+    assert len(cfg.download) == 3
+
+
+def test_grpo_training_step_config_sandboxed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+    sc = _build_training_step_config(
+        _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
+        trust_remote_code=False,
+    )
+    assert sc.training.training_type is TrainingType.GRPO
+    assert sc.gym is not None
+    assert sc.gym.sandboxed is True
+    assert sc.gym.sandbox_environment_path == "/job/environment"
+    assert sc.training.grpo is not None
+    assert sc.training.grpo.num_generations_per_prompt == 8
+    assert sc.training.finetuning_type is FinetuningType.ALL_WEIGHTS
+    assert sc.training.lora is None
+
+
+def test_grpo_lora_training_step_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+    from nmp.rl.schemas import LoRAParams
+
+    job = RlJobOutput(
+        model="default/base-model",
+        dataset="default/prefs",
+        environment="default/env",
+        training=GRPOTraining(
+            type="grpo",
+            finetuning_type="lora",
+            lora=LoRAParams(rank=32, alpha=64, use_triton=True),
+            parallelism=ParallelismParams(num_nodes=1, num_gpus_per_node=1),
+        ),
+        output=OutputResponse(name="my-lora", type=OutputNameType.ADAPTER, fileset="my-lora-fs"),
+    )
+    sc = _build_training_step_config(job, trust_remote_code=False)
+    assert sc.training.finetuning_type is FinetuningType.LORA
+    assert sc.training.lora is not None
+    assert sc.training.lora.rank == 32
+    assert sc.training.lora.alpha == 64
+
+
+def test_grpo_lora_model_entity_peft(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nmp.rl.app.jobs.compiler import _build_model_entity_config
+    from nmp.rl.schemas import LoRAParams
+
+    job = RlJobOutput(
+        model="default/base-model",
+        dataset="default/prefs",
+        environment="default/env",
+        training=GRPOTraining(type="grpo", finetuning_type="lora", lora=LoRAParams(rank=8, alpha=16)),
+        output=OutputResponse(name="my-lora", type=OutputNameType.ADAPTER, fileset="my-lora-fs"),
+    )
+    cfg = _build_model_entity_config("default", job, trust_remote_code=False)
+    assert cfg.peft is not None
+    assert cfg.peft.rank == 8
+    assert cfg.peft.alpha == 16
+    assert cfg.peft.type is FinetuningType.LORA
+
+
+def test_grpo_compile_fails_closed_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    with pytest.raises(PlatformJobCompilationError, match="sandbox_cluster_capable"):
+        _build_training_step_config(
+            _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
+            trust_remote_code=False,
+        )
+
+
+def test_dpo_compiles_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sandbox capability gates GRPO only; DPO must compile on a cluster without OpenSandbox.
+
+    DPO runs no Gym environment, so the fail-closed check above must not reach it. If the
+    gate ever moves somewhere shared, every DPO job on a sandbox-less cluster stops
+    compiling -- and DPO is the path that has no need of a sandbox at all.
+    """
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", None, raising=False)
+
+    sc = _build_training_step_config(_make_job_output(), trust_remote_code=False)
+
+    assert sc.training.training_type is TrainingType.DPO
+    assert sc.gym is None
+
+
+def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+    job = _make_job_output(GRPOTraining(type="grpo"), environment="default/env")
+    step = _build_training_step(job, [], trust_remote_code=False, profile=None)
+    assert step["name"] == "grpo-training"
+    env_names = {(env["name"] if isinstance(env, dict) else env.name) for env in step["environment"]}
+    assert "NMP_VLLM_SERVICE_HOST" in env_names
+    assert "NMP_BROKER_SERVICE_PORT" in env_names

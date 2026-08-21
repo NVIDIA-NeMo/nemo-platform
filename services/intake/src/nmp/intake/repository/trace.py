@@ -7,7 +7,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from nmp.common.api.common import PaginatedResult
-from nmp.intake.spans.domain import IntakeTrace, TraceListFilter, TraceMode
+from nmp.intake.spans.domain import (
+    IntakeTrace,
+    TraceListFilter,
+    TraceMetricBucket,
+    TraceMetricPoint,
+    TraceMode,
+)
 
 
 class TraceRepository(ABC):
@@ -27,6 +33,16 @@ class TraceRepository(ABC):
 
     @abstractmethod
     async def get_trace(self, *, workspace: str, trace_id: str, mode: TraceMode) -> IntakeTrace | None:
+        pass
+
+    @abstractmethod
+    async def trace_metrics(
+        self,
+        *,
+        filters: TraceListFilter,
+        bucket: TraceMetricBucket,
+        timezone_name: str,
+    ) -> list[TraceMetricPoint]:
         pass
 
     @abstractmethod

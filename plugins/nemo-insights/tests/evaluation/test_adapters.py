@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from evaluation.adapters import BenchmarkAdapter, IntakeAdapter, build_adapter
 from evaluation.registry import Subject
+from nemo_insights_plugin.analyst.observability import AnalystEvaluationContext
 
 _CFG = {
     "domain": "airline",
@@ -111,6 +112,7 @@ async def test_intake_analyze_basic_auth_injects_built_client(monkeypatch: pytes
 
     assert report == "REPORT"
     assert calls["client"] is sentinel
+    assert calls["enable_observability"] is False
     assert built == {
         "base_url": "https://agenthub.aire.nvidia.com",
         "username": "intake",
@@ -146,6 +148,7 @@ async def test_intake_analyze_calls_run_analyst(monkeypatch, tmp_path: Path):
     assert calls["base_url"] == "u"
     assert calls["ethos"] is None
     assert calls["client"] is built_client
+    assert calls["enable_observability"] is True
 
 
 async def test_intake_analyze_missing_keys_exits(tmp_path: Path):
@@ -354,7 +357,18 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     async def fake_run_analyst(
-        *, agent, ethos, workspace, base_url, client, insights_output, local_only, verbose, since, evaluation_id
+        *,
+        agent,
+        ethos,
+        workspace,
+        base_url,
+        client,
+        insights_output,
+        local_only,
+        verbose,
+        since,
+        evaluation_id,
+        analyst_evaluation,
     ):
         seen.update(
             agent=agent,
@@ -363,6 +377,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
             base_url=base_url,
             evaluation_id=evaluation_id,
             local_only=local_only,
+            analyst_evaluation=analyst_evaluation,
         )
         return "REPORT-OK"
 
@@ -378,8 +393,19 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
         "base_url": "http://localhost:8080",
         "domain": "airline",
     }
-    out = await BenchmarkAdapter(Subject("tau2-airline", "benchmark", cfg)).analyze(
-        record=record, since=None, verbose=True, out_path=tmp_path / "o.json"
+    analyst_evaluation = AnalystEvaluationContext(
+        evaluation_name="nemo-analyst-run",
+        test_case_name="tau2-airline",
+    )
+    adapter = BenchmarkAdapter(
+        Subject("tau2-airline", "benchmark", cfg),
+        analyst_evaluation=analyst_evaluation,
+    )
+    out = await adapter.analyze(
+        record=record,
+        since=None,
+        verbose=True,
+        out_path=tmp_path / "o.json",
     )
     assert out == "REPORT-OK"
     assert ran_tau2["v"] is False  # analyze never runs tau2
@@ -389,6 +415,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     assert seen["evaluation_id"] == "tau2-airline-20260626-000000-abcd"  # run-scoped
     assert seen["base_url"] == "http://localhost:8080"
     assert seen["local_only"] is True  # benchmark runs capture to file and never write to the platform
+    assert seen["analyst_evaluation"] == analyst_evaluation
 
 
 async def test_benchmark_analyze_without_record_raises(tmp_path):

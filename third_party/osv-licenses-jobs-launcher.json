@@ -28,7 +28,7 @@
         {
           "package": {
             "name": "github.com/go-logr/logr",
-            "version": "1.4.3",
+            "version": "1.4.4",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -58,7 +58,7 @@
         {
           "package": {
             "name": "github.com/grpc-ecosystem/grpc-gateway/v2",
-            "version": "2.29.0",
+            "version": "2.30.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -78,7 +78,7 @@
         {
           "package": {
             "name": "github.com/spf13/cobra",
-            "version": "1.10.1",
+            "version": "1.10.2",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -88,7 +88,7 @@
         {
           "package": {
             "name": "github.com/spf13/pflag",
-            "version": "1.0.9",
+            "version": "1.0.10",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -108,7 +108,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/contrib/bridges/otelslog",
-            "version": "0.19.0",
+            "version": "0.20.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -119,7 +119,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel",
-            "version": "1.44.0",
+            "version": "1.45.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -130,7 +130,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp",
-            "version": "0.20.0",
+            "version": "0.21.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -141,7 +141,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/exporters/stdout/stdoutlog",
-            "version": "0.20.0",
+            "version": "0.21.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -152,7 +152,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/log",
-            "version": "0.20.0",
+            "version": "0.21.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -163,7 +163,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/metric",
-            "version": "1.44.0",
+            "version": "1.45.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -174,7 +174,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/sdk",
-            "version": "1.44.0",
+            "version": "1.45.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -185,7 +185,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/sdk/log",
-            "version": "0.20.0",
+            "version": "0.21.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -196,7 +196,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/otel/trace",
-            "version": "1.44.0",
+            "version": "1.45.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -207,7 +207,7 @@
         {
           "package": {
             "name": "go.opentelemetry.io/proto/otlp",
-            "version": "1.10.0",
+            "version": "1.11.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -217,7 +217,7 @@
         {
           "package": {
             "name": "golang.org/x/net",
-            "version": "0.56.0",
+            "version": "0.58.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -227,7 +227,7 @@
         {
           "package": {
             "name": "golang.org/x/sys",
-            "version": "0.46.0",
+            "version": "0.47.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -237,7 +237,7 @@
         {
           "package": {
             "name": "golang.org/x/text",
-            "version": "0.39.0",
+            "version": "0.41.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -247,7 +247,7 @@
         {
           "package": {
             "name": "google.golang.org/genproto/googleapis/api",
-            "version": "0.0.0-20260526163538-3dc84a4a5aaa",
+            "version": "0.0.0-20260819154853-08b0e4226688",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -257,7 +257,7 @@
         {
           "package": {
             "name": "google.golang.org/genproto/googleapis/rpc",
-            "version": "0.0.0-20260526163538-3dc84a4a5aaa",
+            "version": "0.0.0-20260819154853-08b0e4226688",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -267,7 +267,7 @@
         {
           "package": {
             "name": "google.golang.org/grpc",
-            "version": "1.83.0",
+            "version": "1.83.1",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -277,7 +277,7 @@
         {
           "package": {
             "name": "google.golang.org/protobuf",
-            "version": "1.36.11",
+            "version": "1.36.12",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -287,7 +287,7 @@
         {
           "package": {
             "name": "stdlib",
-            "version": "1.25.12",
+            "version": "1.26.7",
             "ecosystem": "Go"
           },
           "licenses": [

@@ -73,11 +73,26 @@ def test_create_then_get(client: TestClient) -> None:
     assert body["spec"]["metrics"] == ["default/stored-metric"]  # MetricRef serializes to a bare string
 
 
-def test_create_rejects_unrecognized_input_key(client: TestClient) -> None:
-    # inputs is a strict TaskInputs (extra="forbid") — an unknown key is a 422, not silently stored.
+def test_create_preserves_arbitrary_input_fields(client: TestClient) -> None:
     body = _body()
-    body["spec"]["inputs"]["expected"] = "4"
-    assert client.post(f"{_BASE}/task-1", json=body).status_code == 422
+    gym_row = {"input": [{"role": "user", "content": "What is 2+2?"}], "temperature": 0.2}
+    body["spec"]["inputs"]["gym_row"] = gym_row
+
+    response = client.post(f"{_BASE}/task-1", json=body)
+
+    assert response.status_code == 201
+    assert response.json()["spec"]["inputs"]["gym_row"] == gym_row
+
+
+def test_create_preserves_structured_metadata_value(client: TestClient) -> None:
+    body = _body()
+    extras = {"expected": "B", "scores": [1.0, None], "verified": True}
+    body["metadata"] = [{"key": "gym_row_extras", "value": extras}]
+
+    response = client.post(f"{_BASE}/task-1", json=body)
+
+    assert response.status_code == 201
+    assert response.json()["metadata"] == [{"key": "gym_row_extras", "value": extras}]
 
 
 def test_create_rejects_duplicate_metadata_keys(client: TestClient) -> None:

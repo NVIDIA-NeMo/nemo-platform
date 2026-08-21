@@ -383,10 +383,11 @@ installation differs:
 | Config-only | No `--pyproject` | Install the release-matched `nemo-platform[nemo-agents-plugin]` runtime |
 | Project | `--pyproject` provided | Install the release-matched runtime and the project together |
 
-The image includes the supported harness adapters and dependencies, pinned NeMo
-Relay CLI `0.6.0`, a non-root `agent` user, and the packaged agent server on
-port `8000`. The Hermes adapter is installed, but the Hermes harness runtime
-remains excluded until its Python dependency constraint is resolved.
+The image includes the supported harness adapters and dependencies, matching
+NeMo Relay CLI and Python binding version `0.7.3`, a non-root `agent` user, and
+the packaged agent server on port `8000`. The Hermes adapter is installed, but
+the Hermes harness runtime remains excluded until its Python dependency
+constraint is resolved.
 
 #### Deploy the packaged calculator image
 

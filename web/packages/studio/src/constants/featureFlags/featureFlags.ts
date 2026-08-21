@@ -72,7 +72,7 @@ export const flagDefinitions = {
   guardrailsEnabled: previewFlag('VITE_FF_GUARDRAILS_ENABLED'),
   inferenceProviderEnabled: previewFlag('VITE_FF_INFERENCE_PROVIDER_ENABLED'),
   intakeEnabled: previewFlag('VITE_FF_INTAKE_ENABLED', true),
-  jobsEnabled: previewFlag('VITE_FF_JOBS_ENABLED'),
+  jobsEnabled: previewFlag('VITE_FF_JOBS_ENABLED', true),
   membersEnabled: previewFlag('VITE_FF_MEMBERS_ENABLED'),
   modelCompareEnabled: previewFlag('VITE_FF_MODEL_COMPARE_ENABLED'),
   monitorEnabled: previewFlag('VITE_FF_MONITOR_ENABLED'),

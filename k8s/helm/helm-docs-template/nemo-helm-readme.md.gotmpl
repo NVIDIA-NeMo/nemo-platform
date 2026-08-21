@@ -1,9 +1,6 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 # {{ template "chart.description" . }}
 
 {{ template "chart.typeBadge" . }}
@@ -121,6 +118,13 @@ See the upstream
 [ClickHouse sizing guide](https://clickhouse.com/docs/guides/oss/best-practices/sizing-and-hardware-recommendations)
 and
 [OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
+
+## NetworkPolicies
+
+The chart can render NetworkPolicy resources for the Platform API, core
+controller, and managed job pods. A top-level switch enables all default
+policies, and each subpolicy can be disabled independently for cluster-specific
+exceptions.
 
 {{ define "nemo.valueDescriptionColumnRenderMd" -}}
 {{- if .Description -}}

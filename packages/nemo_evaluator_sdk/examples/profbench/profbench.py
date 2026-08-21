@@ -20,7 +20,10 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
-from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample
+from nemo_evaluator_sdk.execution.metric_execution import (
+    generate_online_sample,
+    resolve_target_structured_output_mode,
+)
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
@@ -246,7 +249,14 @@ class ProfBenchModelJudge:
         self.default_headers = default_headers
 
     async def judge(self, request: ProfBenchJudgeRequest) -> ProfBenchJudgeDecision:
-        preprocess_hooks, postprocess_hooks = inference.new_hooks(self.params, model_format=self.model.format)
+        preprocess_hooks, postprocess_hooks = inference.new_hooks(self.params)
+        # Hooks are rebuilt per judge call, so this relies on detection being cached per endpoint.
+        await resolve_target_structured_output_mode(
+            preprocess_hooks=preprocess_hooks,
+            model=self.model,
+            inference_fn=self.inference_fn,
+            params=self.params,
+        )
         sample = await generate_online_sample(
             target=self.model,
             row={"prompt": _render_judge_prompt(request)},

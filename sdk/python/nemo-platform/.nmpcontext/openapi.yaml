@@ -283,9 +283,9 @@ paths:
         schema:
           type: string
           pattern: ^ak_[0-9a-f]{32}$
-          description: Stable JWT ID of the Scoped Access Key to revoke.
+          description: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
           title: Jti
-        description: Stable JWT ID of the Scoped Access Key to revoke.
+        description: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
       responses:
         '200':
           description: Successful Response
@@ -301,6 +301,100 @@ paths:
                 $ref: '#/components/schemas/AccessKeyErrorResponse'
         '409':
           description: Concurrent access-key update conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/auth/v2/access-keys/{jti}/suspend:
+    post:
+      tags:
+      - Scoped Access Keys
+      summary: Suspend Access Key
+      operationId: suspend_access_key_apis_auth_v2_access_keys__jti__suspend_post
+      parameters:
+      - name: jti
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^ak_[0-9a-f]{32}$
+          description: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+          title: Jti
+        description: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyStatusChangeResponse'
+        '404':
+          description: Scoped Access Keys are not enabled or the key was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '409':
+          description: Invalid or concurrent access-key state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/auth/v2/access-keys/{jti}/unsuspend:
+    post:
+      tags:
+      - Scoped Access Keys
+      summary: Unsuspend Access Key
+      operationId: unsuspend_access_key_apis_auth_v2_access_keys__jti__unsuspend_post
+      parameters:
+      - name: jti
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^ak_[0-9a-f]{32}$
+          description: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+          title: Jti
+        description: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyStatusChangeResponse'
+        '404':
+          description: Scoped Access Keys are not enabled or the key was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '409':
+          description: Invalid or concurrent access-key state transition
           content:
             application/json:
               schema:
@@ -4933,7 +5027,7 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_name, and test_case_name.
+          root span started_at, evaluation_name, test_case_name, and agent_name.
       responses:
         '200':
           description: Successful Response
@@ -4941,6 +5035,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TracesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces/metrics:
+    get:
+      tags:
+      - Traces
+      summary: Get Trace Metrics
+      operationId: get_trace_metrics_apis_intake_v2_workspaces__workspace__traces_metrics_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: bucket
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TraceMetricBucketParam'
+          description: Time bucket granularity. total collapses the filtered range
+            into a single row.
+          default: day
+        description: Time bucket granularity. total collapses the filtered range into
+          a single row.
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          type: string
+          description: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+          default: UTC
+          title: Timezone
+        description: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TraceFilter'
+        description: Filter the traces the metrics are computed over. Accepts the
+          same fields as the traces list, so agent_name scopes the rollup to one agent.
+          Without a started_at lower bound the rollup covers the last 7 days.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceMetrics'
+        '400':
+          description: Unsupported query parameter or unknown timezone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
+        '503':
+          description: ClickHouse spans storage unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
         '422':
           description: Validation Error
           content:
@@ -8073,6 +8245,7 @@ components:
           - ACTIVE
           - EXPIRED
           - REVOKED
+          - SUSPENDED
           title: Status
         issuer:
           type: string
@@ -8173,6 +8346,7 @@ components:
           - ACTIVE
           - EXPIRED
           - REVOKED
+          - SUSPENDED
           title: Status
         issuer:
           type: string
@@ -8230,6 +8404,31 @@ components:
       - revoked
       title: AccessKeyRevokeResponse
       description: Response returned after a Scoped Access Key revoke request.
+    AccessKeyStatusChangeResponse:
+      properties:
+        jti:
+          type: string
+          title: Jti
+          description: Stable JWT ID for this Scoped Access Key.
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - EXPIRED
+          - SUSPENDED
+          title: Status
+          description: Resulting effective status of the key, including expiration.
+        changed:
+          type: boolean
+          title: Changed
+          description: True when this request changed the key's persistent status.
+      type: object
+      required:
+      - jti
+      - status
+      - changed
+      title: AccessKeyStatusChangeResponse
+      description: Response returned after a reversible Scoped Access Key status change.
     ActionRails:
       properties:
         instant_actions:
@@ -9846,6 +10045,22 @@ components:
       type: object
       title: ContextBloatDetectionConfig
       description: Configuration for context bloat / context manipulation detection.
+    CostRollupResponse:
+      properties:
+        sum:
+          title: Sum
+          type: number
+        mean:
+          title: Mean
+          type: number
+        p90:
+          title: P90
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: CostRollupResponse
     CreateAdapterRequest:
       properties:
         name:
@@ -11056,6 +11271,36 @@ components:
       - data
       title: EntityUpdate
       description: Schema for updating an entity.
+    EnvironmentMetadataContent:
+      properties:
+        format:
+          type: string
+          title: Format
+          description: Environment package format (native-v1, wheels-v1, adapter-wheels-v1).
+        name:
+          type: string
+          title: Name
+        adapter_agent:
+          title: Adapter Agent
+          type: string
+        hub_id:
+          title: Hub Id
+          type: string
+        vf_env_id:
+          title: Vf Env Id
+          type: string
+        config_paths:
+          items:
+            type: string
+          type: array
+          title: Config Paths
+      additionalProperties: false
+      type: object
+      required:
+      - format
+      - name
+      title: EnvironmentMetadataContent
+      description: Content for environment-type filesets (GRPO Gym packages).
     EvaluationContext:
       properties:
         evaluation_name:
@@ -12257,6 +12502,8 @@ components:
           $ref: '#/components/schemas/DatasetMetadataContent'
         model:
           $ref: '#/components/schemas/ModelMetadataContent'
+        environment:
+          $ref: '#/components/schemas/EnvironmentMetadataContent'
       type: object
       title: FilesetMetadata
       description: "Tagged metadata container - the key indicates the type.\n\nExample:\n\
@@ -12343,6 +12590,7 @@ components:
       type: string
       enum:
       - dataset
+      - environment
       - generic
       - model
       title: FilesetPurpose
@@ -14179,6 +14427,25 @@ components:
         labels
 
         must include a `name` to identify what the score measures.'
+    LatencyRollupResponse:
+      properties:
+        mean:
+          title: Mean
+          type: number
+        p50:
+          title: P50
+          type: number
+        p90:
+          title: P90
+          type: number
+        p95:
+          title: P95
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: LatencyRollupResponse
     LinearLayerSpec:
       properties:
         name:
@@ -18818,6 +19085,23 @@ components:
       - task
       title: TaskPrompt
       description: Configuration for prompts that will be used for a specific task.
+    TokenRollupResponse:
+      properties:
+        sum:
+          title: Sum
+          type: integer
+          minimum: 0.0
+        mean:
+          title: Mean
+          type: number
+        p90:
+          title: P90
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: TokenRollupResponse
     ToolCallConfig:
       properties:
         tool_call_parser:
@@ -18939,6 +19223,12 @@ components:
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        agent_name:
+          title: Agent Name
+          type: string
+        agent_version:
+          title: Agent Version
+          type: string
         started_at:
           type: string
           format: date-time
@@ -18977,6 +19267,20 @@ components:
         cost_output_usd:
           title: Cost Output Usd
           type: number
+        models:
+          title: Models
+          description: Distinct models used across the trace's spans. Omitted in summary
+            mode.
+          items:
+            type: string
+          type: array
+        providers:
+          title: Providers
+          description: Distinct inference providers used across the trace's spans.
+            Omitted in summary mode.
+          items:
+            type: string
+          type: array
         span_count:
           title: Span Count
           type: integer
@@ -19029,8 +19333,80 @@ components:
           description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
+        agent_name:
+          description: Filter by root-span agent name.
+          title: Agent Name
+          type: string
       title: TraceFilter
       type: object
+    TraceMetricBucketParam:
+      type: string
+      enum:
+      - total
+      - hour
+      - day
+      - week
+      - month
+      title: TraceMetricBucketParam
+    TraceMetricPointResponse:
+      properties:
+        bucket_start:
+          title: Bucket Start
+          description: Start of the bucket in the requested timezone. Omitted when
+            bucket=total.
+          type: string
+          format: date-time
+        run_count:
+          type: integer
+          minimum: 0.0
+          title: Run Count
+          description: Agent runs started in this bucket.
+        failed_run_count:
+          type: integer
+          minimum: 0.0
+          title: Failed Run Count
+          description: Runs whose root span ended in error.
+        input_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        output_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        cached_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        total_tokens:
+          $ref: '#/components/schemas/TokenRollupResponse'
+        cost_usd:
+          $ref: '#/components/schemas/CostRollupResponse'
+        latency_ms:
+          $ref: '#/components/schemas/LatencyRollupResponse'
+      type: object
+      required:
+      - run_count
+      - failed_run_count
+      - input_tokens
+      - output_tokens
+      - cached_tokens
+      - total_tokens
+      - cost_usd
+      - latency_ms
+      title: TraceMetricPointResponse
+    TraceMetrics:
+      properties:
+        bucket:
+          $ref: '#/components/schemas/TraceMetricBucketParam'
+        timezone:
+          type: string
+          title: Timezone
+        data:
+          items:
+            $ref: '#/components/schemas/TraceMetricPointResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - bucket
+      - timezone
+      - data
+      title: TraceMetrics
     TraceSortField:
       type: string
       enum:

@@ -281,6 +281,8 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 * `create`: Create a Scoped Access Key for the currently...
 * `list`: List Scoped Access Keys owned by the currently...
 * `revoke`: Revoke a Scoped Access Key owned by the currently...
+* `suspend`: Temporarily suspend a Scoped Access Key owned by the...
+* `unsuspend`: Restore a suspended Scoped Access Key owned by the...
 
 ##### nemo auth access-keys create
 
@@ -334,6 +336,44 @@ nemo auth access-keys revoke [OPTIONS] JTI
 **Arguments:**
 
 * `<JTI>`: Stable ID of the Scoped Access Key to revoke.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys suspend
+
+Temporarily suspend a Scoped Access Key owned by the current user.
+
+Unlike revocation, suspension is reversible until the key expires.
+
+**Usage:**
+
+```shell
+nemo auth access-keys suspend [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to suspend.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys unsuspend
+
+Restore a suspended Scoped Access Key owned by the current user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys unsuspend [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to unsuspend.
 
 **Help:**
 
@@ -1354,7 +1394,7 @@ nemo files filesets create [OPTIONS] [NAME]
 
 Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
 * `--project`: The name of the project associated with this fileset.
-* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, environment, generic, model]
 * `--storage`: The storage configuration for the fileset. If not provided, uses default storage. (JSON string)
 * `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
 
@@ -1504,7 +1544,7 @@ nemo files filesets update [OPTIONS] NAME
 
 Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
 * `--project`: The name of the project associated with this fileset.
-* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, environment, generic, model]
 
 **Help:**
 
@@ -7115,8 +7155,49 @@ nemo intake traces [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
+* `get-metrics`: Get Trace Metrics
 * `list`: List Traces
 * `get`: Get Trace
+
+##### nemo intake traces get-metrics
+
+Get Trace Metrics
+
+**Usage:**
+
+```shell
+nemo intake traces get-metrics [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--bucket <CHOICE>`: Time bucket granularity. [possible values: total, hour, day, week, month]
+* `--timezone`: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  started_at: \{gte: str, lte: str}
+
+Filter the traces the metrics are computed over. Accepts the same fields as the traces list, so agent_name scopes the rollup to one agent. Without a started_at lower bound the rollup covers the last 7 days.
+* `--filter.id`
+* `--filter.agent-name`
+* `--filter.evaluation-id`
+* `--filter.evaluation-name`
+* `--filter.session-id`
+* `--filter.status`
+* `--filter.test-case-id`
+* `--filter.test-case-name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
 ##### nemo intake traces list
 
@@ -7143,8 +7224,9 @@ nemo intake traces list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, and test_case_name.
+Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, test_case_name, and agent_name.
 * `--filter.id`
+* `--filter.agent-name`
 * `--filter.evaluation-id`
 * `--filter.evaluation-name`
 * `--filter.session-id`

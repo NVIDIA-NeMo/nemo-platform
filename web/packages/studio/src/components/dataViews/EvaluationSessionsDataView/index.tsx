@@ -6,9 +6,9 @@ import {
   EditColumnsMenu,
 } from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
@@ -24,7 +24,6 @@ import type {
   ListEvaluationSessionsParams,
 } from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
-import { Empty } from '@studio/components/dataViews/EvaluationSessionsDataView/Empty';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
@@ -332,35 +331,16 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         },
         DataViewSearchBar: { placeholder: 'Search case...' },
         DataViewTableContent: {
-          renderEmptyState: () => {
-            const hasActiveFilters =
-              !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
-            if (hasActiveFilters) {
-              return (
-                <TableEmptyState
-                  header="No matching test cases"
-                  emptyMessage={
-                    <>
-                      Change your filters and try again, or{' '}
-                      <button
-                        className="text-content-link hover:underline"
-                        onClick={dataViewState.resetFilters}
-                      >
-                        clear filters
-                      </button>
-                      .
-                    </>
-                  }
-                />
-              );
-            }
-            return (
-              <Empty
-                experimentName={experimentName}
-                datasetName={experiment?.dataset_name ?? '<dataset>'}
+          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+            hasFiltersApplied || hasSearchApplied ? (
+              <EntityEmptyState
+                entity="evaluationSessions"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
               />
-            );
-          },
+            ) : (
+              <EntityEmptyState entity="evaluationSessions" variant="first-use" />
+            ),
         },
       }}
     />

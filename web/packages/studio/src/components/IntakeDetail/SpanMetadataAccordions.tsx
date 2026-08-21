@@ -17,10 +17,13 @@ import {
   buildSpanLlmEntries,
   buildSpanSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/spanKeyValues';
-import { SpanPayloadBlock } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadBlock';
+import type { SpanPayloadFormatState } from '@studio/components/IntakeDetail/IntakeComponents/spanPayloadFormat';
+import { SpanPayloadFormatToggle } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadFormatToggle';
+import { SpanPayloadView } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadView';
+import { useSpanPayloadFormat } from '@studio/components/IntakeDetail/IntakeComponents/useSpanPayloadFormat';
 import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/registry';
 import type { SpanSectionId } from '@studio/components/IntakeDetail/SpanTemplates/types';
-import { type FC, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Entry ids that belong to the kind "Model & parameters" section, not Usage.
 const LLM_PARAMETER_KEYS: ReadonlySet<string> = new Set(['model', 'provider', 'prompt_id']);
@@ -39,6 +42,10 @@ interface SpanSectionContext {
   usageEntries: readonly KeyValueEntry[];
   /** Bumped to focus the Annotations note field. */
   focusNoteNonce?: number;
+  /** Shared raw/md/json state for the Input section's toggle and body. */
+  inputFormat: SpanPayloadFormatState;
+  /** Shared raw/md/json state for the Output section's toggle and body. */
+  outputFormat: SpanPayloadFormatState;
 }
 
 // ── Generic section bodies (render the same way for every kind) ──────────────
@@ -56,22 +63,32 @@ const UsageSection: FC<SpanSectionContext> = ({ usageEntries }) => (
   </Stack>
 );
 
-const InputSection: FC<SpanSectionContext> = ({ span }) => (
+const InputSection: FC<SpanSectionContext> = ({ span, inputFormat }) => (
   <Stack className="min-w-0">
-    <SpanPayloadBlock
+    <SpanPayloadView
       value={span.input}
+      format={inputFormat.format}
       emptyMessage="No input payload was captured for this span."
     />
   </Stack>
 );
 
-const OutputSection: FC<SpanSectionContext> = ({ span }) => (
+const InputFormatSlot: FC<SpanSectionContext> = ({ inputFormat }) => (
+  <SpanPayloadFormatToggle state={inputFormat} payloadLabel="input" />
+);
+
+const OutputSection: FC<SpanSectionContext> = ({ span, outputFormat }) => (
   <Stack className="min-w-0">
-    <SpanPayloadBlock
+    <SpanPayloadView
       value={span.output}
+      format={outputFormat.format}
       emptyMessage="No output payload was captured for this span."
     />
   </Stack>
+);
+
+const OutputFormatSlot: FC<SpanSectionContext> = ({ outputFormat }) => (
+  <SpanPayloadFormatToggle state={outputFormat} payloadLabel="output" />
 );
 
 const MetadataSection: FC<SpanSectionContext> = ({ summaryEntries }) => (
@@ -94,11 +111,17 @@ const AnnotationsSection: FC<SpanSectionContext> = ({ span, workspace, focusNote
 /** The shared (non-kind) sections: a stable id → accordion value/label/body catalog. */
 const SECTIONS: Record<
   GenericSectionId,
-  { value: string; label: string; Body: FC<SpanSectionContext> }
+  {
+    value: string;
+    label: string;
+    Body: FC<SpanSectionContext>;
+    /** Trailing trigger content, e.g. the payload format toggle. */
+    End?: FC<SpanSectionContext>;
+  }
 > = {
   llm: { value: 'span-llm', label: 'Usage', Body: UsageSection },
-  input: { value: 'span-input', label: 'Input', Body: InputSection },
-  output: { value: 'span-output', label: 'Output', Body: OutputSection },
+  input: { value: 'span-input', label: 'Input', Body: InputSection, End: InputFormatSlot },
+  output: { value: 'span-output', label: 'Output', Body: OutputSection, End: OutputFormatSlot },
   metadata: { value: 'span-summary', label: 'Attributes', Body: MetadataSection },
   annotations: { value: 'span-annotations', label: 'Annotations', Body: AnnotationsSection },
 };
@@ -201,18 +224,43 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     [sectionDefaultOpenValues, customValues]
   );
 
+  // Controlled so the toolbar's expand/collapse can drive every section at once
+  // while individual rows stay independently toggleable. Re-seeds when the span
+  // changes (a new span may expose a different set of sections).
+  const [openSections, setOpenSections] = useState<string[]>(defaultOpenValues);
+  useEffect(() => setOpenSections(defaultOpenValues), [span.span_id, defaultOpenValues]);
+
+  const openSection = useCallback((value: string) => {
+    setOpenSections((open) => (open.includes(value) ? open : [...open, value]));
+  }, []);
+
+  // Payload format lives here, not in the section bodies: the toggle renders on
+  // the section trigger and the payload in its content slot. Picking a format on
+  // a collapsed section also opens it, so the choice is visible immediately.
+  const openInput = useCallback(() => openSection(SECTIONS.input.value), [openSection]);
+  const openOutput = useCallback(() => openSection(SECTIONS.output.value), [openSection]);
+  const inputFormat = useSpanPayloadFormat(span.input, openInput);
+  const outputFormat = useSpanPayloadFormat(span.output, openOutput);
+
   const context: SpanSectionContext = {
     span,
     workspace,
     summaryEntries,
     usageEntries,
     focusNoteNonce,
+    inputFormat,
+    outputFormat,
   };
   const genericItems: IntakeAccordionItem[] = accordionSectionIds.map((id) => {
-    const { value, label, Body } = SECTIONS[id];
+    const { value, label, Body, End } = SECTIONS[id];
     const slotLabel =
       id === 'annotations' ? annotationsSectionLabel(label, annotationCount) : sectionLabel(label);
-    return { value, slotLabel, slotContent: <Body {...context} /> };
+    return {
+      value,
+      slotLabel,
+      slotEnd: End ? <End {...context} /> : undefined,
+      slotContent: <Body {...context} />,
+    };
   });
   // Annotations leads, then the kind's custom sections, then the remaining
   // generic sections (e.g. Metadata).
@@ -222,12 +270,6 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     ...customItems,
     ...genericItems.slice(leadingAnnotations),
   ];
-
-  // Controlled so the toolbar's expand/collapse can drive every section at once
-  // while individual rows stay independently toggleable. Re-seeds when the span
-  // changes (a new span may expose a different set of sections).
-  const [openSections, setOpenSections] = useState<string[]>(defaultOpenValues);
-  useEffect(() => setOpenSections(defaultOpenValues), [span.span_id, defaultOpenValues]);
 
   // Bumping a token broadcasts "open/close everything"; guard on the previous
   // value so re-renders that don't change the token leave selections alone.
@@ -253,11 +295,9 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     if (focusNoteNonce === undefined || focusNoteNonce === prevFocusNote.current) return;
     prevFocusNote.current = focusNoteNonce;
     if (allValues.includes(annotationsValue)) {
-      setOpenSections((open) =>
-        open.includes(annotationsValue) ? open : [...open, annotationsValue]
-      );
+      openSection(annotationsValue);
     }
-  }, [focusNoteNonce, allValues, annotationsValue]);
+  }, [focusNoteNonce, allValues, annotationsValue, openSection]);
 
   return (
     <Stack gap="density-lg" className="min-w-0">

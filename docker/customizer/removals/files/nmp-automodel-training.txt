@@ -12,3 +12,7 @@
 /usr/local/lib/python*/dist-packages/nvidia/dali/.libs/libopus-*.so*
 /usr/local/lib/python*/dist-packages/nvidia/dali/.libs/libsndfile-*.so*
 /usr/local/lib/python*/dist-packages/nvidia/dali/.libs/libswscale-*.so*
+# The soundfile shim goes with its payload above. transformers gates `import soundfile` on
+# find_spec("soundfile"), so leaving the module behind makes that probe report an audio
+# backend that can no longer dlopen its library.
+/opt/venv/lib/python3.*/site-packages/soundfile.py

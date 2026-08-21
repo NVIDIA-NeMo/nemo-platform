@@ -4,6 +4,7 @@
 """Unit tests for nemo_evaluator_sdk.execution.metric_execution."""
 
 import asyncio
+import json
 import logging
 import math
 from contextlib import asynccontextmanager
@@ -23,7 +24,7 @@ from nemo_evaluator_sdk.execution.metric_execution import (
     _default_online_request_template,
     _format_exception_summary,
     _is_completions_endpoint,
-    _maybe_set_nim_default_max_tokens,
+    _maybe_set_default_max_tokens,
     _merge_online_hooks,
     _resolve_online_prompt_template,
     _score_pipeline_samples,
@@ -37,6 +38,7 @@ from nemo_evaluator_sdk.execution.pipeline import PipelineRuntime
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.execution.scoring import empty_evaluation_result, finalize_evaluation_result
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
+from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.hooks import HooksBase
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric as RuntimeLLMJudgeMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
@@ -134,6 +136,15 @@ def _make_model(
     format: Literal[ModelFormat.NVIDIA_NIM, ModelFormat.OPEN_AI, ModelFormat.LLAMA_STACK] = ModelFormat.OPEN_AI,
 ) -> Model:
     return Model(url=url, name="test-model", format=format)
+
+
+def _is_structured_output_probe(request: dict) -> bool:
+    """Identify a preflight structured-output probe by its marker schema.
+
+    Detect on the probe's own schema marker rather than on message shape, since the probe is sent
+    under whichever placement is being tried (response_format or either guided_json position).
+    """
+    return "__nmp_probe_score" in json.dumps(request)
 
 
 def _make_agent() -> Agent:
@@ -596,7 +607,7 @@ class TestResolveOnlinePromptTemplate:
         assert getattr(warning_records[0], "prompt_template", None) == result
 
 
-class TestMaybeSetNimDefaultMaxTokens:
+class TestMaybeSetDefaultMaxTokens:
     @pytest.mark.parametrize(
         ("request_payload", "params", "expected_request"),
         [
@@ -611,13 +622,118 @@ class TestMaybeSetNimDefaultMaxTokens:
         params: RunConfigOnlineModel | None,
         expected_request: dict[str, object],
     ):
-        _maybe_set_nim_default_max_tokens(
-            request=request_payload,
-            model=_make_model(format=ModelFormat.NVIDIA_NIM),
-            params=params,
-        )
+        _maybe_set_default_max_tokens(request=request_payload, params=params)
 
         assert request_payload == expected_request
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("format", [ModelFormat.NVIDIA_NIM, ModelFormat.OPEN_AI, ModelFormat.LLAMA_STACK])
+    async def test_applies_default_through_call_path_for_every_model_format(
+        self, format: ModelFormat, mocker: MockerFixture
+    ):
+        """The cap used to be NIM-only, so flipping the default format would have silently removed it."""
+        inference_fn = mocker.AsyncMock(return_value={})
+        mocker.patch(
+            "nemo_evaluator_sdk.execution.metric_execution._process_online_response",
+            return_value=({}, None),
+        )
+
+        await generate_online_sample(
+            target=_make_model(format=format),
+            row={"prompt": "hello"},
+            index=0,
+            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+            inference_fn=inference_fn,
+        )
+
+        assert inference_fn.await_args.args[1]["max_tokens"] == 4096
+
+
+class TestTargetStructuredOutputPreflight:
+    """Target generation must probe the endpoint, not assume an encoding."""
+
+    @pytest.mark.asyncio
+    async def test_target_generation_falls_back_to_nvext_when_endpoint_only_honours_it(self, mocker: MockerFixture):
+        """A target that only accepts nvext.guided_json must still get an enforced encoding.
+
+        Before target-side preflight existed this path used the model's `format` label; with the
+        label deprecated and ignored, an unprobed target would be sent response_format instead.
+        """
+        captured: list[dict] = []
+
+        async def fake_inference(model, request, max_retries, **kwargs):
+            captured.append(request)
+            if "response_format" in request or "guided_json" in request.get("extra_body", {}):
+                # Endpoint ignores both of these and answers in prose.
+                return {"choices": [{"message": {"content": "sure thing"}}]}
+            return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
+
+        mocker.patch.object(inference, "make_inference_request", side_effect=fake_inference)
+        metric = ExactMatchMetric(reference="{{item.expected}}")
+
+        await evaluate_metric(
+            metric,
+            rows=[{"prompt": "hi", "expected": "sure thing"}],
+            target=_make_model(),
+            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+            params=RunConfigOnlineModel(
+                parallelism=1,
+                structured_output={"schema": {"type": "object", "properties": {"a": {"type": "string"}}}},
+            ),
+        )
+
+        probes = [r for r in captured if _is_structured_output_probe(r)]
+        generation = [r for r in captured if not _is_structured_output_probe(r)]
+        assert len(probes) == 3, "expected all three placements to be probed"
+        assert generation, "expected a generation request"
+        assert generation[0]["extra_body"]["nvext"]["guided_json"] is not None
+
+
+class TestBenchmarkPathStructuredOutput:
+    """The multi-metric LocalBackend path bypasses evaluate_metric and must still probe."""
+
+    @pytest.mark.asyncio
+    async def test_multi_metric_benchmark_path_resolves_the_target_encoding(self, mocker: MockerFixture):
+        """Evaluator.run() with several metrics goes through evaluate_benchmark, not evaluate_metric.
+
+        Without its own session and probe this path sent whichever encoding new_hooks guessed.
+        """
+        from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
+
+        captured: list[dict] = []
+
+        async def fake_inference(model, request, max_retries, **kwargs):
+            captured.append(request)
+            if _is_structured_output_probe(request):
+                if "response_format" in request or "guided_json" in request.get("extra_body", {}):
+                    return {"choices": [{"message": {"content": "prose, not json"}}]}
+                return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
+            return {"choices": [{"message": {"content": "sure thing"}}]}
+
+        # Patch ONLY the benchmark module's binding. The probe must travel the same seam that
+        # generation does, so patching one place has to be enough; if the probe used a different
+        # binding it would escape this patch and attempt a real request.
+        mocker.patch(
+            "nemo_evaluator_sdk.execution.benchmark_execution.make_inference_request",
+            side_effect=fake_inference,
+        )
+
+        await LocalBackend().evaluate_dataset(
+            metrics=[ExactMatchMetric(reference="{{item.expected}}"), ExactMatchMetric(reference="{{item.expected}}")],
+            dataset=[{"prompt": "hi", "expected": "sure thing"}],
+            target=_make_model(),
+            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+            params=RunConfigOnlineModel(
+                parallelism=1,
+                structured_output={"schema": {"type": "object", "properties": {"a": {"type": "string"}}}},
+            ),
+        )
+
+        probes = [r for r in captured if _is_structured_output_probe(r)]
+        generation = [r for r in captured if not _is_structured_output_probe(r)]
+        assert probes, "the benchmark path must probe the target endpoint"
+        assert generation, "expected a generation request"
+        assert generation[0]["extra_body"]["nvext"]["guided_json"] is not None
 
 
 class TestGenerateOnlineSample:
@@ -1773,6 +1889,7 @@ class TestEvaluateMetricOnline:
 
         assert captured["request"] == {
             "messages": [{"role": "user", "content": "What is 2 + 2?"}],
+            "max_tokens": 4096,
         }
 
     @pytest.mark.asyncio
@@ -1806,6 +1923,7 @@ class TestEvaluateMetricOnline:
 
         assert captured["request"] == {
             "prompt": "What is the capital of France?",
+            "max_tokens": 4096,
         }
 
     @pytest.mark.asyncio
@@ -1899,6 +2017,9 @@ class TestEvaluateMetricOnline:
             **kwargs,
         ) -> dict:
             captured_judge_requests.append(request)
+            if _is_structured_output_probe(request):
+                # Behave like an endpoint that honours response_format, so preflight resolves to it.
+                return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
             return {"choices": [{"message": {"role": "assistant", "content": '{"helpfulness": 4}'}}]}
 
         metric.set_inference_fn(fake_judge_inference)
@@ -1917,11 +2038,15 @@ class TestEvaluateMetricOnline:
         )
 
         assert captured_generation_requests == [
-            {"messages": [{"role": "user", "content": "What is the capital of France?"}]}
+            {"messages": [{"role": "user", "content": "What is the capital of France?"}], "max_tokens": 4096}
         ]
         assert "response_format" not in captured_generation_requests[0]
-        assert captured_judge_requests[0]["response_format"]["type"] == "json_schema"
-        assert "Assistant response: Paris" in captured_judge_requests[0]["messages"][-1]["content"]
+        # Preflight probes the endpoint before scoring, so the judge sees a probe request first.
+        probe_requests = [r for r in captured_judge_requests if _is_structured_output_probe(r)]
+        scoring_requests = [r for r in captured_judge_requests if not _is_structured_output_probe(r)]
+        assert len(probe_requests) == 1
+        assert scoring_requests[0]["response_format"]["type"] == "json_schema"
+        assert "Assistant response: Paris" in scoring_requests[0]["messages"][-1]["content"]
         assert result.row_scores[0].sample["output_text"] == "Paris"
         assert result.row_scores[0].metrics["llm-judge"][0].value == 4.0
 
@@ -2007,10 +2132,11 @@ class TestEvaluateMetricOnline:
         detect_mode.assert_awaited_once()
         assert detect_mode.await_args is not None
         detect_kwargs = detect_mode.await_args.kwargs
-        assert detect_kwargs["format"] == ModelFormat.NVIDIA_NIM
+        # Detection is endpoint-driven; the deprecated model format is deliberately not passed.
+        assert "format" not in detect_kwargs
         assert detect_kwargs["api_key"] == "secret-value"
         assert captured_generation_requests == [
-            {"messages": [{"role": "user", "content": "What is the capital of France?"}]}
+            {"messages": [{"role": "user", "content": "What is the capital of France?"}], "max_tokens": 4096}
         ]
         assert captured_judge_requests[0]["api_key"] == "secret-value"
         assert captured_judge_requests[0]["request"]["extra_body"]["guided_json"]["type"] == "object"

@@ -94,7 +94,7 @@ def _agent_entity(name: str, workspace: str = "default") -> AgentEvalResultEntit
         name=name,
         workspace=workspace,
         job_id=name,
-        target_kind="codex",
+        target_kind="fabric",
         target_name="gpt-5.5",
         target_url=None,
         scores=AggregatedMetricResult(scores=[]),

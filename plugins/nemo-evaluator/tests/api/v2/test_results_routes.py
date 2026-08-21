@@ -96,7 +96,7 @@ def _agent_entity(name: str) -> AgentEvalResultEntity:
         name=name,
         workspace="default",
         job_id=name,
-        target_kind="codex",
+        target_kind="fabric",
         target_name="gpt-5.5",
         target_url=None,
         scores=AggregatedMetricResult(scores=[]),
@@ -232,5 +232,5 @@ def test_collections_do_not_collide(client: TestClient, fake: _FakeEntityClient)
     fake.seed(_agent_entity("shared"))
     fake.seed(_eval_entity("shared"))
 
-    assert client.get(f"{_AGENT}/shared").json()["target_kind"] == "codex"
+    assert client.get(f"{_AGENT}/shared").json()["target_kind"] == "fabric"
     assert client.get(f"{_EVAL}/shared").json()["dataset_ref"] == "default/ds"

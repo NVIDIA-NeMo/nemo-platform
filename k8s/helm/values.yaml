@@ -120,6 +120,101 @@ multinodeNetworking:
     # -- Number of RDMA devices (mlnxnics) to request per GPU
     rdmaDevicesPerGPU: 8
 
+# -- NetworkPolicy configuration. Enable the top-level switch to render all default policies, then disable individual policies only for cluster-specific exceptions. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup/helm/network-policy-smoke-test.
+# @default -- This object has the following default values. The top-level switch is disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+networkPolicies:
+  # -- Create NetworkPolicy resources for enabled subpolicies.
+  enabled: false
+  # -- NetworkPolicy configuration for the Platform API pods.
+  # @default -- This object has the following default values for API pod ingress isolation.
+  api:
+    # -- Create NetworkPolicy resources that isolate Platform API pod ingress.
+    enabled: true
+    # -- Optional NetworkPolicy port for the Platform API. Empty uses api.service.port.
+    port: ""
+    # -- Allow pods from the same Helm release namespace that carry the chart selector labels to reach the Platform API pods.
+    sameReleasePods:
+      # -- Enable ingress from same-release pods.
+      enabled: true
+    # -- Allow managed job pods to reach the Platform API pods.
+    managedJobs:
+      # -- Enable ingress from managed job pods.
+      enabled: true
+      # -- Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller.
+      podSelector:
+        matchLabels:
+          app: nemo-job
+          nmp.nvidia.com/managed_by: jobs-controller
+    # -- Extra NetworkPolicy ingress rules appended to the API policy, for cluster-specific ingress controllers, gateways, monitoring, or debugging pods.
+    extraIngress: []
+
+  # -- NetworkPolicy configuration for the core controller pods.
+  # @default -- This object has the following default values for core controller pod ingress isolation.
+  controller:
+    # -- Create NetworkPolicy resources that isolate core controller pod ingress.
+    enabled: true
+    # -- Optional NetworkPolicy port for the core controller. Empty uses core.controller.service.port.
+    port: ""
+    # -- Allow pods from the same Helm release namespace that carry the chart selector labels to reach the core controller pods.
+    sameReleasePods:
+      # -- Enable ingress from same-release pods.
+      enabled: true
+    # -- Extra NetworkPolicy ingress rules appended to the core controller policy, for cluster-specific monitoring or debugging pods.
+    extraIngress: []
+
+  # -- NetworkPolicy configuration for pods created by the jobs controller.
+  # @default -- This object has the following default values for managed job pod egress isolation.
+  jobs:
+    # -- Create NetworkPolicy resources that isolate managed job pod egress.
+    enabled: true
+    # -- Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller.
+    podSelector:
+      matchLabels:
+        app: nemo-job
+        nmp.nvidia.com/managed_by: jobs-controller
+    # -- Allow managed job pods to reach the in-namespace Platform API pods.
+    platformApi:
+      # -- Enable the default egress exception to the platform API pods. Disable only when managed job pods should not call the in-namespace API, or when API access is supplied through cluster-specific extraEgress rules.
+      enabled: true
+      # -- Optional NetworkPolicy port for the platform API. Empty uses api.service.port.
+      port: ""
+    # -- Allow DNS lookup from managed job pods.
+    dns:
+      # -- Enable egress to DNS pods.
+      enabled: true
+      # -- Namespace selector for DNS pods.
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      # -- Pod selector for DNS pods.
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      # -- DNS ports to allow.
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # -- Allow egress to external CIDR blocks. The default excludes common private, loopback, and link-local ranges so enabling the policy does not allow direct access to typical in-cluster service and pod networks.
+    externalEgress:
+      # -- Enable egress to external CIDR blocks.
+      enabled: true
+      # -- External destination CIDR blocks for managed job pods.
+      ipBlocks:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 127.0.0.0/8
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+      # -- Optional list of ports for external egress. Empty allows all ports to the configured ipBlocks.
+      ports: []
+    # -- Extra NetworkPolicy egress rules appended to the managed job policy, for cluster-specific dependencies or additional allowed CIDRs.
+    extraEgress: []
+
 # -- NCCL chart test (`helm test`): multi-node allreduce check. Templates use helm.sh/hook: test — they are not created on install/upgrade, only when you run helm test.
 # Requires nodes labeled with gpuNodeLabelKey/gpuNodeLabelValue (default NFD / GPU operator style).
 # See https://helm.sh/docs/topics/chart_tests/
@@ -504,6 +599,18 @@ basePlatformConfig: |
   # -- unsloth is the configuration specific to Unsloth customization jobs
   unsloth:
     default_training_execution_profile: default
+
+  # -- rl is the configuration specific to NeMo-RL customization jobs (DPO / GRPO)
+  rl:
+    # -- job_storage_pvc_claim is the claim sandboxed GRPO re-mounts into the Gym host so
+    # the sandbox can read the downloaded environment and dataset. Must match the claim the
+    # Jobs controller mounts for job storage.
+    job_storage_pvc_claim: {{ (include "nmp-core.persistentVolumeClaim" . ) }}
+    # -- sandbox_cluster_capable declares that OpenSandbox is installed on this cluster.
+    # The chart does not install OpenSandbox, so this defaults to false: GRPO defaults to
+    # sandboxed Gym rollouts, and failing those at compile time is the safe outcome on a
+    # cluster that cannot sandbox. Set it to true once OpenSandbox is deployed.
+    sandbox_cluster_capable: false
 
   # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
   safe_synthesizer:
@@ -933,15 +1040,15 @@ core:
     # -- Liveness probe configuration for the controller service.
     # @default -- This object has the following default values for the liveness probe configuration.
     livenessProbe:
-      # -- The HTTP GET request to use for the readiness probe.
+      # -- The HTTP GET request to use for the liveness probe.
       httpGet:
         path: /health/live
         port: http
-      # -- The frequency in seconds to perform the readiness probe.
+      # -- The frequency in seconds to perform the liveness probe.
       periodSeconds: 10
-      # -- The timeout in seconds for the readiness probe.
+      # -- The timeout in seconds for the liveness probe.
       timeoutSeconds: 5
-      # -- The failure threshold for the readiness probe.
+      # -- The failure threshold for the liveness probe.
       failureThreshold: 3
 
     # -- Readiness probe configuration for the controller service.

@@ -19,4 +19,4 @@ from typing_extensions import Literal, TypeAlias
 
 __all__ = ["FilesetPurpose"]
 
-FilesetPurpose: TypeAlias = Literal["dataset", "generic", "model"]
+FilesetPurpose: TypeAlias = Literal["dataset", "environment", "generic", "model"]

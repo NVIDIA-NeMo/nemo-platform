@@ -144,16 +144,16 @@ export const DeploymentsListRoute: FC = () => {
           className="p-0"
           slotHeading="Deployments"
           slotDescription="Manage NIM deployments and their configurations."
-          slotActions={createDeploymentButton}
-        />
-        <DeploymentsDataView
-          workspace={workspace}
-          emptyStateActions={
+          slotActions={
             <Flex gap="2">
               {docsButton}
               {createDeploymentButton}
             </Flex>
           }
+        />
+        <DeploymentsDataView
+          workspace={workspace}
+          onCreate={() => setIsCreateDeploymentOpen(true)}
           onDeploymentRowClick={(row) =>
             navigate(
               getWorkspaceDeploymentDetailsRoute(

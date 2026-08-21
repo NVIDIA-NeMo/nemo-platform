@@ -34,7 +34,7 @@ class _JobCollection(NamedTuple):
 #   OptimizeJob        /jobs/optimize        -> agents.optimize
 #   OptimizeSkillsJob  /jobs/optimize-skills -> agents.optimize-skills
 #   AnalyzeBatchJob    /jobs/analyze         -> agents.analyze
-#   AgentInvocationJob /jobs/invoke          -> agents.invoke
+#   ExecuteAgentJob /jobs/execute          -> agents.execute
 # Distinct service_name per job type so each list endpoint filters to rows of its own type only
 # (add_job_routes filters source=service_name); sharing the default would let /jobs/<x> pull in
 # sibling-type rows and 500 on the wrong schema.
@@ -42,17 +42,17 @@ def _job_collections() -> list[_JobCollection]:
     from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
     from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
     from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
-    from nemo_agents_plugin.jobs.invoke import AgentInvocationJob
+    from nemo_agents_plugin.jobs.execute import ExecuteAgentJob
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
     from nemo_optimization.jobs.optimize import OptimizeJob
 
     return [
         _JobCollection(EvaluateAgentJob, "evaluate", None, "Submit and track agent evaluation jobs"),
         _JobCollection(
-            AgentInvocationJob,
-            "invoke",
-            "nemo-agents-plugin-invoke",
-            "Submit and track agent invocation jobs.",
+            ExecuteAgentJob,
+            "execute",
+            "nemo-agents-plugin-execute",
+            "Submit and track agent execution jobs.",
         ),
         _JobCollection(
             EvaluateSuiteJob,
@@ -102,13 +102,22 @@ class AgentsService(NemoService):
             agents,
             deployment_logs,
             deployments,
+            environments,
             gateway,
+            sessions,
         )
 
         _prefix = "/v2/workspaces/{workspace}"
         specs: list[RouterSpec] = [
             RouterSpec(agents.router, tag="Agents", description="Agent CRUD", prefix=_prefix),
             RouterSpec(deployments.router, tag="Agent Deployments", description="Deployment lifecycle", prefix=_prefix),
+            RouterSpec(sessions.router, tag="Agent Sessions", description="Session lifecycle", prefix=_prefix),
+            RouterSpec(
+                environments.router,
+                tag="Agent Environments",
+                description="AgentEnvironment, EnvironmentSpec, and ComputeSpec CRUD",
+                prefix=_prefix,
+            ),
             RouterSpec(
                 deployment_logs.router,
                 tag="Agent Deployments",

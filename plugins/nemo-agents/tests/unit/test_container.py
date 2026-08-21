@@ -394,7 +394,7 @@ class TestFabricDockerfileTemplate:
         params = FabricRenderParams(contract_version="1.2.3", **overrides)
         return _jinja_env().from_string(FABRIC_DOCKERFILE_TEMPLATE).render(**asdict(params))
 
-    def test_installs_pinned_relay_cli_globally(self) -> None:
+    def test_installs_matching_relay_cli_and_python_binding(self) -> None:
         from nemo_agents_plugin.container.template import (
             PINNED_NEMO_RELAY_CLI_VERSION,
             PINNED_NEMO_RELAY_INSTALLER_COMMIT,
@@ -407,6 +407,7 @@ class TestFabricDockerfileTemplate:
         assert f'echo "{PINNED_NEMO_RELAY_INSTALLER_SHA256}  /tmp/install-nemo-relay.sh"' in result
         assert result.index("sha256sum -c -") < result.index("NEMO_RELAY_VERSION=")
         assert f"NEMO_RELAY_VERSION={PINNED_NEMO_RELAY_CLI_VERSION}" in result
+        assert f'"nemo-relay=={PINNED_NEMO_RELAY_CLI_VERSION}"' in result
         assert "--install-dir /usr/local/bin" in result
         assert "nemo-relay --version" in result
         assert "ARG NEMO_RELAY" not in result
@@ -475,7 +476,11 @@ class TestRenderFabricDockerfile:
         assert f'com.nemo.agent.contract-version="{get_contract_version()}"' in result
 
     def test_project_mode_preserves_relative_config_path(self, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
+        from nemo_agents_plugin.container.template import (
+            PINNED_NEMO_RELAY_CLI_VERSION,
+            get_contract_version,
+            render_fabric_dockerfile,
+        )
 
         configs = tmp_path / "configs"
         configs.mkdir()
@@ -486,10 +491,10 @@ class TestRenderFabricDockerfile:
 
         result = render_fabric_dockerfile(agent_config, pyproject)
 
-        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}" .' in result
+        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in result
+        assert f'"nemo-relay=={PINNED_NEMO_RELAY_CLI_VERSION}" .' in result
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
         assert "--prerelease" not in install_line
-        assert '" .' in install_line
         assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
 
     def test_unresolved_contract_version_is_rejected(
@@ -1789,8 +1794,9 @@ class TestPackageCommand:
         assert output.exists()
         rendered = output.read_text()
         assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in rendered
-        install_line = next(line for line in rendered.splitlines() if "uv pip install" in line)
-        assert '" .' in install_line
+        from nemo_agents_plugin.container.template import PINNED_NEMO_RELAY_CLI_VERSION
+
+        assert f'"nemo-relay=={PINNED_NEMO_RELAY_CLI_VERSION}" .' in rendered
         assert not (configs / "Dockerfile").exists()
 
     def test_no_build_project_mode_writes_dockerfile_next_to_pyproject(
