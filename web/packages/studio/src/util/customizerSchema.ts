@@ -16,7 +16,7 @@
  * customizer backend's supported objectives (SFT, DPO, distillation). Owned
  * here so schema detection has no dependency on form-layer constants.
  */
-export type TrainingType = 'sft' | 'dpo' | 'distillation';
+export type TrainingType = 'sft' | 'dpo' | 'distillation' | 'grpo';
 
 export type CustomizerSchemaVariant =
   /** SFT chat format: {"messages": [{"role": "...", ...}]} */
@@ -30,7 +30,9 @@ export type CustomizerSchemaVariant =
   /** DPO Tulu3: {"chosen": [msgs], "rejected": [msgs]} */
   | 'dpo-tulu3'
   /** DPO BinaryPreference: {"prompt": "...", "chosen": "...", "rejected": "..."} */
-  | 'dpo-binary-preference';
+  | 'dpo-binary-preference'
+  /** GRPO NeMo Gym verifiers format (pi-to-gym-conversion output): {"task_idx": ..., "vf_env_id": "...", "responses_create_params": {...}, "agent_ref": {...}} */
+  | 'grpo-gym';
 
 /**
  * Single source of truth for the user-facing label of each detected schema.
@@ -45,6 +47,7 @@ export const CUSTOMIZER_SCHEMA_LABELS: Record<CustomizerSchemaVariant, string> =
   'dpo-helpsteer3': 'HelpSteer3',
   'dpo-tulu3': 'Tulu3',
   'dpo-binary-preference': 'Binary Preference',
+  'grpo-gym': 'GRPO Gym (responses_create_params + agent_ref)',
 };
 
 export interface CustomizerSchemaDetection {
@@ -69,6 +72,16 @@ const detectSft = (row: Record<string, unknown>): CustomizerSchemaDetection | nu
   if (isMessageList(row.messages)) return detection('sft-chat');
   // Prompt-completion: literal "prompt" + "completion".
   if ('prompt' in row && 'completion' in row) return detection('sft-prompt-completion');
+  return null;
+};
+
+const detectGrpo = (row: Record<string, unknown>): CustomizerSchemaDetection | null => {
+  // NeMo Gym verifiers format — produced by pi-to-gym-conversion; validated by GRPO_SCHEMA backend
+  // Agent-agnostic: NeMo-RL routes on agent_ref.name and applies sampling from
+  // responses_create_params, and reads nothing else. Requiring vf_env_id here would
+  // reject every dataset targeting a Gym agent other than verifiers_agent (see
+  // GRPO_SCHEMA in services/rl/.../datasets/validation.py).
+  if ('responses_create_params' in row && 'agent_ref' in row) return detection('grpo-gym');
   return null;
 };
 
@@ -103,6 +116,7 @@ export const detectCustomizerSchema = (
 ): CustomizerSchemaDetection | null => {
   if (!row) return null;
   if (trainingType === 'dpo') return detectDpo(row);
+  if (trainingType === 'grpo') return detectGrpo(row);
   return detectSft(row);
 };
 
@@ -113,6 +127,9 @@ export const detectCustomizerSchema = (
 export const expectedSchemaCopy = (trainingType: TrainingType): string => {
   if (trainingType === 'dpo') {
     return 'Must contain chosen and rejected columns (or context + completions, or overall_preference).';
+  }
+  if (trainingType === 'grpo') {
+    return 'Must contain responses_create_params and agent_ref (NeMo Gym format). Agent-specific fields such as vf_env_id are optional. Use pi-to-gym-conversion to prepare a verifiers dataset.';
   }
   return 'Must contain messages (chat) or prompt and completion.';
 };
@@ -251,6 +268,32 @@ export const validateRowCompleteness = (
       const contextError = validateChatMessages(row.context);
       if (contextError) return `context: ${contextError}`;
       if (!isNonEmptyArray(row.completions)) return 'completions must be a non-empty array';
+      return null;
+    }
+
+    case 'grpo-gym': {
+      // Only the two fields NeMo-RL reads unconditionally are required. Agent-specific
+      // keys (vf_env_id for verifiers_agent, expected_answer for the math resources
+      // servers) pass through untouched — see GymDatasetRow on the backend.
+      if (
+        !row.responses_create_params ||
+        typeof row.responses_create_params !== 'object' ||
+        Array.isArray(row.responses_create_params)
+      ) {
+        return 'responses_create_params must be an object';
+      }
+      if (!row.agent_ref || typeof row.agent_ref !== 'object' || Array.isArray(row.agent_ref)) {
+        return 'agent_ref must be an object';
+      }
+      const agentRef = row.agent_ref as Record<string, unknown>;
+      if (!isNonEmptyString(agentRef.name)) return 'agent_ref.name is missing or empty';
+      // Optional, but wrong-typed values still fail at rollout, so check when present.
+      if (row.task_idx !== undefined && typeof row.task_idx !== 'number') {
+        return 'task_idx must be a number when present';
+      }
+      if (row.vf_env_id !== undefined && !isNonEmptyString(row.vf_env_id)) {
+        return 'vf_env_id must be a non-empty string when present';
+      }
       return null;
     }
 

@@ -117,7 +117,10 @@ const RlParallelism = ({ disabled }: { disabled: boolean }) => {
       <Text kind="label/bold/md">Parallelism</Text>
       <ControlledSliderWithTextInput
         useControllerProps={{ name: 'rl.training.parallelism.tensor_parallel_size', control }}
-        formFieldProps={{ slotLabel: 'Tensor (TP)' }}
+        formFieldProps={{
+          slotLabel: 'Tensor (TP)',
+          slotInfo: 'Splits each layer across GPUs. NeMo RL key: tensor_parallel_size.',
+        }}
         defaultValue={1}
         min={1}
         max={8}
@@ -126,7 +129,10 @@ const RlParallelism = ({ disabled }: { disabled: boolean }) => {
       />
       <ControlledSliderWithTextInput
         useControllerProps={{ name: 'rl.training.parallelism.pipeline_parallel_size', control }}
-        formFieldProps={{ slotLabel: 'Pipeline (PP)' }}
+        formFieldProps={{
+          slotLabel: 'Pipeline (PP)',
+          slotInfo: 'Splits layers into stages across GPUs. NeMo RL key: pipeline_parallel_size.',
+        }}
         defaultValue={1}
         min={1}
         max={8}
@@ -137,7 +143,21 @@ const RlParallelism = ({ disabled }: { disabled: boolean }) => {
         useControllerProps={{ name: 'rl.training.parallelism.context_parallel_size', control }}
         formFieldProps={{
           slotLabel: 'Context (CP)',
-          slotInfo: 'Splits the sequence dimension across GPUs, for long-sequence runs.',
+          slotInfo:
+            'Splits the sequence dimension across GPUs — how long-sequence GRPO becomes feasible at all. NeMo RL key: context_parallel_size.',
+        }}
+        defaultValue={1}
+        min={1}
+        max={8}
+        step={1}
+        disabled={disabled}
+      />
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.expert_parallel_size', control }}
+        formFieldProps={{
+          slotLabel: 'Expert (EP)',
+          slotInfo:
+            'Expert parallel size for MoE models. GRPO only — a value above 1 selects the DTensor v2 backend. NeMo RL key: expert_parallel_size.',
         }}
         defaultValue={1}
         min={1}
@@ -147,7 +167,12 @@ const RlParallelism = ({ disabled }: { disabled: boolean }) => {
       />
       <ControlledSwitch
         useControllerProps={{ name: 'rl.training.parallelism.sequence_parallel', control }}
-        formFieldProps={{ slotLabel: 'Sequence Parallel', labelPosition: 'left' }}
+        formFieldProps={{
+          slotLabel: 'Sequence Parallel',
+          labelPosition: 'left',
+          slotInfo:
+            'Shards layer-norm and dropout activations along the sequence axis. NeMo RL key: sequence_parallel.',
+        }}
         disabled={disabled}
       />
     </Stack>
