@@ -198,6 +198,42 @@ def test_atif_ingest_accepts_supported_schema_versions_without_rewriting(
     assert spans[0]["source"] == "atif"
 
 
+def test_atif_ingest_orders_equal_timestamps_by_step_id(client: TestClient):
+    timestamp = _BASE_TIME + timedelta(minutes=5)
+    session_id = "atif-equal-timestamp-step-order"
+    body = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": session_id,
+        "agent": {"name": "test-agent", "version": "1.0"},
+        "steps": [
+            {
+                "step_id": 1,
+                "timestamp": _atif_timestamp(timestamp),
+                "source": "system",
+                "message": "rules",
+            },
+            {
+                "step_id": 2,
+                "timestamp": _atif_timestamp(timestamp),
+                "source": "user",
+                "message": "task",
+            },
+        ],
+    }
+
+    ingest_response = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+    assert ingest_response.status_code == 201, ingest_response.text
+
+    spans_response = client.get(
+        "/apis/intake/v2/workspaces/default/spans",
+        params={"filter[session_id]": session_id, "page_size": 10, "sort": "started_at"},
+    )
+    assert spans_response.status_code == 200, spans_response.text
+    step_names = [span["name"] for span in spans_response.json()["data"] if span["name"] in {"system-1", "user-2"}]
+
+    assert step_names == ["system-1", "user-2"]
+
+
 def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(client: TestClient):
     session_id = "atif-v1-7-embedded-subagent"
     root_started_at = _BASE_TIME + timedelta(minutes=10)

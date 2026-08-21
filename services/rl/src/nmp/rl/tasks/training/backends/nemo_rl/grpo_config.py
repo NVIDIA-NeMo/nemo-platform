@@ -339,6 +339,13 @@ def compile_grpo_config(
         "max_val_samples": val_samples if val_samples else None,
         "val_batch_size": val_samples if val_samples else num_prompts,
         "seed": customizer_config.seed,
+        # These three are the only transforms NeMo-RL applies between the rollout's
+        # reward and the one the loss sees. With all three off, grpo.py's `reward`
+        # metric and the NeMo-Gym aggregator's `total_reward/mean` are the same
+        # number, which is why nemo_rl_logger's GRPO series set keeps only the
+        # former. Exposing any of these as a knob should add `*total_reward/mean`
+        # back alongside it -- that is when raw-verifier and post-transform reward
+        # stop coinciding and two curves start saying different things.
         "use_dynamic_sampling": False,
         "batch_multiplier": 1,
         "reward_shaping": {"enabled": False},

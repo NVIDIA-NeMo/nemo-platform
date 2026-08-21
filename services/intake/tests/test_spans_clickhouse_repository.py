@@ -56,8 +56,13 @@ def _repository(client: _Client) -> ClickHouseSpanRepository:
 
 
 def test_order_by_whitelists_supported_span_sort_keys():
-    assert _order_by("started_at") == "start_time ASC, id ASC"
-    assert _order_by("-started_at") == "start_time DESC, id ASC"
+    assert (
+        _order_by("started_at") == "start_time ASC, nullIf(attributes_number['nemo.step_id'], 0) ASC NULLS LAST, id ASC"
+    )
+    assert (
+        _order_by("-started_at")
+        == "start_time DESC, nullIf(attributes_number['nemo.step_id'], 0) DESC NULLS LAST, id ASC"
+    )
 
 
 def test_order_by_rejects_unsupported_span_sort_keys():
