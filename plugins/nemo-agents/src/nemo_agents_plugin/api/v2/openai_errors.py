@@ -83,7 +83,7 @@ def unwrap_upstream_error(body: bytes) -> tuple[str, str | None]:
         elif isinstance(error, str):
             message = error or None
         if message is None:
-            message = _first_str(parsed, "detail", "message")
+            message = _first_str(parsed, "detail", "message") or _validation_message(parsed.get("detail"))
         if code is None:
             code = _first_str(parsed, "code")
     elif isinstance(parsed, str):
@@ -92,6 +92,42 @@ def unwrap_upstream_error(body: bytes) -> tuple[str, str | None]:
     if message is None:
         message = text
     return _truncate(message), code or _embedded_code(message)
+
+
+def augment_upstream_error_body(body: bytes, status_code: int) -> bytes | None:
+    """Give an upstream error body an OpenAI ``error`` envelope it is missing.
+
+    Returns ``None`` when the body already carries a usable ``error.message`` and so must
+    be forwarded byte for byte — an agent may itself be an OpenAI-compatible server, and
+    reshaping its envelope would discard the ``type``/``code`` it chose.
+
+    A JSON object keeps every key it arrived with and gains ``error`` beside them, so
+    readers of the upstream shape are unaffected. Any other body is replaced by the
+    envelope alone, with its text carried in ``error.message`` rather than dropped.
+    """
+    try:
+        parsed: Any = json.loads(body.decode(errors="replace"))
+    except ValueError:
+        parsed = None
+
+    if isinstance(parsed, dict) and _has_usable_error(parsed):
+        return None
+
+    message, code = unwrap_upstream_error(body)
+    envelope = openai_error_body(message, error_type=_error_type(status_code), code=code)
+    if isinstance(parsed, dict):
+        return json.dumps({**parsed, **envelope}).encode()
+    return json.dumps(envelope).encode()
+
+
+def _has_usable_error(parsed: dict[str, Any]) -> bool:
+    """Whether an OpenAI client could read a message out of this body.
+
+    Mirrors what the SDKs actually do — the Node client reads ``body.error?.message``
+    and reports "no body" for anything else, so ``error`` alone is not enough.
+    """
+    error = parsed.get("error")
+    return isinstance(error, dict) and bool(_first_str(error, "message"))
 
 
 class UpstreamAgentError(HTTPException):
@@ -131,6 +167,26 @@ def _error_type(status_code: int) -> str:
 
 def _detail_message(detail: Any) -> str:
     return detail if isinstance(detail, str) else json.dumps(detail, default=str)
+
+
+def _validation_message(detail: Any) -> str | None:
+    """Render FastAPI's ``{"detail": [{"loc": [...], "msg": ...}]}`` as one line.
+
+    Agent servers are FastAPI, so a malformed request comes back as a list of
+    validation errors — the most common 4xx on this surface, and unreadable to a
+    user as raw JSON.
+    """
+    if not isinstance(detail, list):
+        return None
+
+    parts: list[str] = []
+    for item in detail:
+        if not isinstance(item, dict) or (msg := _first_str(item, "msg", "message")) is None:
+            continue
+        loc = item.get("loc")
+        where = ".".join(str(x) for x in loc) if isinstance(loc, list) and loc else None
+        parts.append(f"{where}: {msg}" if where else msg)
+    return "; ".join(parts) or None
 
 
 def _first_str(mapping: dict[str, Any], *keys: str) -> str | None:

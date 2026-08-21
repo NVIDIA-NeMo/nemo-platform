@@ -41,6 +41,7 @@ from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.api.v2.openai_errors import (
     UpstreamAgentError,
+    augment_upstream_error_body,
     is_openai_compatible_uri,
     openai_error_response,
 )
@@ -457,7 +458,10 @@ async def _proxy(
     """Forward *request* to ``{endpoint}/{trailing_uri}`` and stream the response.
 
     Error handling policy:
-    - **4xx** from the agent: transparent pass-through (client error, agent's response).
+    - **4xx** from the agent: status and body passed through (client error, agent's
+      response). On the OpenAI-compatible surface a body that no OpenAI client could
+      read gains an ``error`` envelope beside its existing keys; one that already
+      carries ``error.message`` is forwarded untouched.
     - **5xx** from the agent: translated to **502 Bad Gateway** (upstream fault).
     - **Connection failure** (httpx.RequestError): 502 Bad Gateway.
 
@@ -521,6 +525,15 @@ async def _proxy(
                 # is cleanly closed rather than reset mid-stream.
                 if response.status_code >= 500:
                     raise UpstreamAgentError(response.status_code, await response.aread())
+                if response.status_code >= 400 and is_openai_compatible_uri(trailing_uri):
+                    error_body = await response.aread()
+                    reshaped = augment_upstream_error_body(error_body, response.status_code)
+                    if reshaped is None:
+                        yield error_body
+                    else:
+                        response_headers["content-type"] = "application/json"
+                        yield reshaped
+                    return
                 async for chunk in response.aiter_bytes():
                     yield chunk
 

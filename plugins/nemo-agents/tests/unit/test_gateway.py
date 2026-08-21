@@ -1032,14 +1032,103 @@ class TestOpenAICompatibleErrors:
         assert resp.status_code == 200
         assert resp.content == upstream_body
 
-    def test_4xx_from_agent_is_still_transparent(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        """4xx bodies are the agent's own response and must pass through unshaped."""
+    def test_upstream_4xx_keeps_its_status_and_gains_an_envelope(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """A 4xx body no OpenAI client could read is augmented, not passed through blind."""
         mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
         httpx_mock = _make_httpx_mock(422, b'{"detail": "invalid input"}')
 
         with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
             resp = client.post(
                 "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["detail"] == "invalid input"
+        assert body["error"] == {
+            "message": "invalid input",
+            "type": "invalid_request_error",
+            "code": None,
+            "param": None,
+        }
+
+    def test_unknown_session_404_reaches_the_client(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """The agent server 404s an unknown session (fabric/server.py); the reason must survive."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        detail = "Fabric session 'abc' was not found."
+        httpx_mock = _make_httpx_mock(404, json.dumps({"detail": detail}).encode())
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 404
+        assert resp.json()["error"]["message"] == detail
+        assert resp.json()["error"]["type"] == "not_found_error"
+
+    def test_upstream_validation_error_list_is_enveloped(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """FastAPI puts a list on ``detail`` for a 422; the list is kept and a message derived."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        upstream = json.dumps({"detail": [{"loc": ["body"], "msg": "field required"}]}).encode()
+        httpx_mock = _make_httpx_mock(422, upstream)
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        body = resp.json()
+        assert body["detail"] == [{"loc": ["body"], "msg": "field required"}]
+        assert body["error"]["message"] == "body: field required"
+
+    def test_openai_shaped_4xx_is_forwarded_untouched(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """An agent that already speaks OpenAI keeps the type and code it chose."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        upstream = json.dumps(
+            {"error": {"message": "bad key", "type": "authentication_error", "code": "invalid_api_key"}}
+        ).encode()
+        httpx_mock = _make_httpx_mock(401, upstream)
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 401
+        assert resp.content == upstream
+
+    def test_non_json_4xx_is_enveloped(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(400, b"Bad Request", content_type="text/plain")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 400
+        assert resp.headers["content-type"].startswith("application/json")
+        assert resp.json()["error"]["message"] == "Bad Request"
+
+    def test_non_openai_path_4xx_is_passed_through_verbatim(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(422, b'{"detail": "invalid input"}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/health",
                 json={},
             )
 
@@ -1068,9 +1157,23 @@ class TestUnwrapUpstreamError:
     def test_unrecognized_json_falls_back_to_raw_text(self) -> None:
         assert openai_errors.unwrap_upstream_error(b'{"nope": 1}') == ('{"nope": 1}', None)
 
-    def test_list_detail_falls_back_to_raw_text(self) -> None:
-        """FastAPI validation errors put a list on ``detail``; the raw body is more useful."""
-        body = b'{"detail": [{"loc": ["body"], "msg": "field required"}]}'
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            (b'{"detail": [{"loc": ["body"], "msg": "field required"}]}', "body: field required"),
+            (
+                b'{"detail": [{"loc": ["body", "messages", 0], "msg": "bad"}, {"loc": ["query"], "msg": "nope"}]}',
+                "body.messages.0: bad; query: nope",
+            ),
+            (b'{"detail": [{"msg": "no location"}]}', "no location"),
+        ],
+    )
+    def test_validation_error_list_is_rendered_readably(self, body: bytes, expected: str) -> None:
+        """FastAPI validation errors are the most common 4xx here; raw JSON is unreadable."""
+        assert openai_errors.unwrap_upstream_error(body)[0] == expected
+
+    def test_unrenderable_detail_list_falls_back_to_raw_text(self) -> None:
+        body = b'{"detail": [1, 2]}'
         message, code = openai_errors.unwrap_upstream_error(body)
         assert message == body.decode()
         assert code is None
@@ -1079,6 +1182,39 @@ class TestUnwrapUpstreamError:
         message, code = openai_errors.unwrap_upstream_error(b"\xff\xfe not utf-8")
         assert "not utf-8" in message
         assert code is None
+
+
+class TestAugmentUpstreamErrorBody:
+    def test_existing_keys_are_preserved(self) -> None:
+        out = openai_errors.augment_upstream_error_body(b'{"detail": "boom", "trace": "t"}', 404)
+        assert out is not None
+        assert json.loads(out)["detail"] == "boom"
+        assert json.loads(out)["trace"] == "t"
+
+    def test_usable_openai_body_is_left_alone(self) -> None:
+        body = b'{"error": {"message": "boom", "type": "x", "code": "y"}}'
+        assert openai_errors.augment_upstream_error_body(body, 400) is None
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b'{"error": {"code": "y"}}',
+            b'{"error": {"message": ""}}',
+            b'{"error": "boom"}',
+        ],
+    )
+    def test_unusable_error_key_is_replaced(self, body: bytes) -> None:
+        """``error`` alone is not enough — the SDK reads ``error.message`` or reports no body."""
+        out = openai_errors.augment_upstream_error_body(body, 400)
+        assert out is not None
+        assert json.loads(out)["error"]["message"]
+
+    def test_non_json_body_text_is_carried_in_the_message(self) -> None:
+        out = openai_errors.augment_upstream_error_body(b"Bad Request", 400)
+        assert out is not None
+        assert json.loads(out) == {
+            "error": {"message": "Bad Request", "type": "invalid_request_error", "code": None, "param": None}
+        }
 
 
 class TestIsOpenAICompatibleURI:
