@@ -64,6 +64,8 @@ export const isIgnoredPath = (path: string): boolean => {
   return IGNORED_EXTENSIONS.some((extension) => filename.endsWith(extension));
 };
 
+const pathCollator = new Intl.Collator();
+
 /** The fileset holds the directory's contents, so the picked root is stripped from each path. */
 export const collectAgentEntries = (files: File[]): UploadAgentEntry[] => {
   const entries: UploadAgentEntry[] = [];
@@ -75,7 +77,7 @@ export const collectAgentEntries = (files: File[]): UploadAgentEntry[] => {
     entries.push({ path, file });
   }
 
-  return entries.sort((left, right) => left.path.localeCompare(right.path));
+  return entries.sort((left, right) => pathCollator.compare(left.path, right.path));
 };
 
 export const totalEntryBytes = (entries: UploadAgentEntry[]): number =>
@@ -104,16 +106,19 @@ export const validateAgentEntries = (entries: UploadAgentEntry[]): string | unde
 export const findNonUtf8Path = async (entries: UploadAgentEntry[]): Promise<string | undefined> => {
   const decoder = new TextDecoder('utf-8', { fatal: true });
 
-  for (const entry of entries) {
-    if (entry.path.split('/').pop() === AGENT_SPEC_FILENAME) continue;
-    try {
-      decoder.decode(await entry.file.arrayBuffer());
-    } catch {
-      return entry.path;
-    }
-  }
+  const offenders = await Promise.all(
+    entries.map(async (entry) => {
+      if (entry.path.split('/').pop() === AGENT_SPEC_FILENAME) return undefined;
+      try {
+        decoder.decode(await entry.file.arrayBuffer());
+        return undefined;
+      } catch {
+        return entry.path;
+      }
+    })
+  );
 
-  return undefined;
+  return offenders.find((path) => path !== undefined);
 };
 
 export class AgentConfigParseError extends Error {}

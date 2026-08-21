@@ -36,7 +36,7 @@ import type {
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { type ChangeEventHandler, type FC, useCallback, useRef, useState } from 'react';
+import { type ChangeEventHandler, type FC, useCallback, useMemo, useRef, useState } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
@@ -82,6 +82,15 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     disabled: isPending,
     mode: 'onChange',
   });
+
+  // useWatch re-renders this modal on every keystroke; the summary depends only on entries.
+  const entriesSummary = useMemo(
+    () =>
+      entries.length === 0
+        ? undefined
+        : `${directoryName} — ${entries.length} files, ${Math.max(1, Math.round(totalEntryBytes(entries) / 1000))} KB`,
+    [directoryName, entries]
+  );
 
   const watchedName = useWatch({ control, name: 'name' });
   // Derived, not stored: an armed replace targets one fileset, so editing the name
@@ -197,11 +206,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
             />
           </UploadTrigger>
         </UploadRoot>
-        {entries.length > 0 ? (
-          <Text kind="body/regular/sm">
-            {`${directoryName} — ${entries.length} files, ${Math.max(1, Math.round(totalEntryBytes(entries) / 1000))} KB`}
-          </Text>
-        ) : null}
+        {entriesSummary ? <Text kind="body/regular/sm">{entriesSummary}</Text> : null}
         <ControlledTextInput
           useControllerProps={{ control, name: 'name' }}
           label="Name"
