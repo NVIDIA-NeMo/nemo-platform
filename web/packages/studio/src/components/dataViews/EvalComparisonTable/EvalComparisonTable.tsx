@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Text } from '@nvidia/foundations-react-core';
 import { ComparisonColumnHeader } from '@studio/components/dataViews/EvalComparisonTable/ComparisonColumnHeader';
@@ -128,12 +128,7 @@ export const EvalComparisonTable: FC<EvalComparisonTableProps> = ({
       attributes={{
         DataViewRoot: { data: rows, totalCount: rows.length },
         DataViewTableContent: {
-          renderEmptyState: () => (
-            <TableEmptyState
-              header="No Evaluations"
-              emptyMessage="Select evaluations to compare."
-            />
-          ),
+          renderEmptyState: () => <EntityEmptyState entity="evalComparison" variant="first-use" />,
         },
       }}
     />

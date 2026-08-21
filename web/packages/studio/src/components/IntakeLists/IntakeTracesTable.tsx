@@ -3,13 +3,12 @@
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
-import { Button } from '@nvidia/foundations-react-core';
 import {
   isDefaultStartedAtFilter,
   makeDefaultStartedAtFilter,
@@ -22,14 +21,12 @@ import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath
 import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
-import { type FC, type ReactNode, useState } from 'react';
+import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 export interface IntakeTracesTableProps {
   workspace?: string;
   slotEndPortalTargetId?: string;
-  emptyStateActions?: ReactNode;
-  noResultsActions?: ReactNode;
 }
 
 export const IntakeTracesTable: FC<IntakeTracesTableProps> = (props) => {
@@ -45,13 +42,7 @@ export const IntakeTracesTable: FC<IntakeTracesTableProps> = (props) => {
 
 const SeededIntakeTracesTable: FC<
   IntakeTracesTableProps & { defaultStartedAtFilter: StartedAtFilterEntry }
-> = ({
-  workspace: workspaceProp,
-  slotEndPortalTargetId,
-  emptyStateActions,
-  noResultsActions,
-  defaultStartedAtFilter,
-}) => {
+> = ({ workspace: workspaceProp, slotEndPortalTargetId, defaultStartedAtFilter }) => {
   const navigate = useNavigate();
   const routeWorkspace = useWorkspaceFromPathIfExists();
   const workspace = workspaceProp ?? routeWorkspace;
@@ -134,23 +125,13 @@ const SeededIntakeTracesTable: FC<
         DataViewTableContent: {
           renderEmptyState: () =>
             hasActiveFilters ? (
-              <TableEmptyState
-                header="No Results Found"
-                emptyMessage="No traces match your search or filters."
-                actions={
-                  noResultsActions ?? (
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  )
-                }
+              <EntityEmptyState
+                entity="telemetryTraces"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
               />
             ) : (
-              <TableEmptyState
-                header="No Traces"
-                emptyMessage="Trace summaries will appear here after spans are ingested."
-                actions={emptyStateActions}
-              />
+              <EntityEmptyState entity="telemetryTraces" variant="first-use" />
             ),
         },
       }}

@@ -7,9 +7,9 @@ import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import {
   type DropdownEntry,
@@ -26,7 +26,6 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { insightStatusColor } from '@studio/routes/optimizer/insightStatus';
 import { getOptimizerInsightRoute, getOptimizerRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Lightbulb } from 'lucide-react';
 import { type ComponentProps, type FC } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -161,13 +160,16 @@ export const OptimizerRoute: FC = () => {
               requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
             },
             DataViewTableContent: {
-              renderEmptyState: () => (
-                <TableEmptyState
-                  icon={<Lightbulb className="h-[64px] w-[64px]" />}
-                  header="No insights yet"
-                  emptyMessage="Run an optimizer analysis on an agent to surface insights here."
-                />
-              ),
+              renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+                hasFiltersApplied || hasSearchApplied ? (
+                  <EntityEmptyState
+                    entity="optimizerInsights"
+                    variant="no-results"
+                    onClearFilters={dataViewState.resetFilters}
+                  />
+                ) : (
+                  <EntityEmptyState entity="optimizerInsights" variant="first-use" />
+                ),
               renderErrorState: () => (
                 <ErrorPanel
                   errorMessage={getErrorMessage(error ?? new Error('Failed to fetch insights'))}

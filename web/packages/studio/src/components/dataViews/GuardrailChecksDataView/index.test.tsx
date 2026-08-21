@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { DEFAULT_PAGE_SIZE } from '@nemo/common/src/constants/pagination';
 import {
   GUARDRAIL_CHECKS_ENTITY_TYPE,
@@ -220,7 +221,9 @@ describe('GuardrailChecksDataView', () => {
     renderComponent([]);
 
     expect(
-      await screen.findByText('No tests yet', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+      await screen.findByText(ENTITY_EMPTY_STATES.guardrailChecks.heading, undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      })
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Clear Filters/i })).not.toBeInTheDocument();
   });
@@ -233,9 +236,9 @@ describe('GuardrailChecksDataView', () => {
     await user.type(screen.getByPlaceholderText('Search tests...'), 'no-such-test');
 
     expect(
-      await screen.findByText('No Results Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+      await screen.findByText('No results found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Clear Filters/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear Filters' })).toBeInTheDocument();
   });
 
   describe('detail selection', () => {

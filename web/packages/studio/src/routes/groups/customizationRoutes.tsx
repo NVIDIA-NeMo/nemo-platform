@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -38,22 +38,22 @@ export const customizationRoutes: RouteObject[] = gateCustomizationRoutes([
   {
     path: ROUTES.workspace.newCustomizationJob,
     element: <NewCustomizationRoute />,
-    errorElement: <ErrorPanel title="Customizer" />,
+    errorElement: <RouteErrorPanel title="Customizer" />,
   },
   {
     path: ROUTES.workspace.promptTuningForm,
     element: <PromptTuningFormRoute />,
-    errorElement: <ErrorPanel title="Customizer" />,
+    errorElement: <RouteErrorPanel title="Customizer" />,
   },
   {
     path: ROUTES.workspace.customizationJobList,
     element: <CustomizationJobListRoute />,
-    errorElement: <ErrorPanel title="Customizer" />,
+    errorElement: <RouteErrorPanel title="Customizer" />,
   },
   {
     path: ROUTES.workspace.customizationJobDetails,
     element: <CustomizationJobDetailsRoute />,
-    errorElement: <ErrorPanel title="Customizer" />,
+    errorElement: <RouteErrorPanel title="Customizer" />,
   },
 ]);
 

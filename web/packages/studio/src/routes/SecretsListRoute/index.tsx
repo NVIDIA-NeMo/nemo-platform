@@ -40,11 +40,7 @@ export const SecretsListRoute: FC = () => {
         />
         <SecretsDataView
           workspace={workspace}
-          emptyStateActions={
-            <Button color="brand" onClick={() => setIsCreateModalOpen(true)}>
-              Create Secret
-            </Button>
-          }
+          onCreate={() => setIsCreateModalOpen(true)}
           attributes={{
             Stack: {
               className: 'flex-1 min-h-0',
