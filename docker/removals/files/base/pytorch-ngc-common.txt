@@ -17,6 +17,8 @@
 /usr/local/lib/python3.12/dist-packages/grpc
 /usr/local/lib/python3.12/dist-packages/grpcio
 /usr/local/lib/python3.12/dist-packages/grpcio-*.dist-info
+/usr/local/lib/python3.12/dist-packages/flash_attn
+/usr/local/lib/python3.12/dist-packages/flash_attn-*.dist-info
 /usr/local/lib/python3.12/dist-packages/wandb
 /usr/local/lib/python3.12/dist-packages/wandb-*.dist-info
 /usr/local/lib/python3.12/dist-packages/mlflow

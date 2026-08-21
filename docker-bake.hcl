@@ -36,11 +36,11 @@ variable "NMP_COLLECT_SOURCES" {
 }
 
 variable "NMP_PYTHON_IMAGE" {
-  default = "python:3.13.14-slim-trixie"
+  default = "python:3.13.15-slim-trixie"
 }
 
 variable "DISTROLESS_BASE_3_13" {
-  default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
+  default = "nvcr.io/nvidia/distroless/python:3.13-v4.1.1"
 }
 
 variable "NMP_API_RUNTIME_BASE" {

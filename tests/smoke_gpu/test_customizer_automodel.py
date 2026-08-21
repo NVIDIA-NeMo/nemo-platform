@@ -35,6 +35,8 @@ DALI_FILE_REMOVALS = {
 MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "bitsandbytes": "0.49.2",
     "mamba-ssm": "2.3.0",
+    "mlflow": "3.15.1",
+    "sqlparse": "0.6.0",
     "wandb": "0.28.2",
 }
 

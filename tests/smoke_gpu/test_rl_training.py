@@ -43,6 +43,8 @@ SOUNDFILE_FILE_REMOVALS = {
     "/opt/uv_cache/archive-v0/*/soundfile.py",
 }
 BASE_VENV_MINIMUM_PYTHON_PACKAGE_VERSIONS = {
+    "mlflow": "3.15.1",
+    "sqlparse": "0.6.0",
     "wandb": "0.28.2",
 }
 
