@@ -172,10 +172,28 @@ def test_api_services_must_be_a_list() -> None:
     assert "api.services must be a list when set" in stderr
 
 
+def test_falsy_api_services_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set",
+        "api.services=false",
+    )
+
+    assert "api.services must be a list when set" in stderr
+
+
 def test_controllers_must_be_a_list() -> None:
     stderr = _helm_template_failure(
         "--set-string",
         "core.controller.controllers=models",
+    )
+
+    assert "core.controller.controllers must be a list when set" in stderr
+
+
+def test_falsy_controllers_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set",
+        "core.controller.controllers=false",
     )
 
     assert "core.controller.controllers must be a list when set" in stderr

@@ -80,11 +80,11 @@ core.controller.controllers takes precedence over core.controller.controllerGrou
 */}}
 {{- define "nmp-core.controllerSelectionArgs" -}}
 {{- if not (include "nmp-core.hasControllerSelectionExtraArgs" .) -}}
-{{- $controllers := .Values.core.controller.controllers | default list -}}
-{{- if $controllers -}}
-{{- if not (kindIs "slice" $controllers) -}}
+{{- if and (hasKey .Values.core.controller "controllers") (not (kindIs "slice" .Values.core.controller.controllers)) -}}
 {{- fail "core.controller.controllers must be a list when set" -}}
 {{- end -}}
+{{- $controllers := .Values.core.controller.controllers | default list -}}
+{{- if $controllers -}}
 {{- $controllerList := join "," $controllers -}}
 {{- if not ($controllerList | trim) -}}
 {{- fail "core.controller.controllers must not be empty when set" -}}

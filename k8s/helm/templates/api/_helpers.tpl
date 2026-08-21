@@ -56,11 +56,11 @@ set without also clearing the default service group value.
 */}}
 {{- define "nmp-api.serviceSelectionArgs" -}}
 {{- if not (include "nmp-api.hasServiceSelectionExtraArgs" .) -}}
-{{- $services := .Values.api.services | default list -}}
-{{- if $services -}}
-{{- if not (kindIs "slice" $services) -}}
+{{- if and (hasKey .Values.api "services") (not (kindIs "slice" .Values.api.services)) -}}
 {{- fail "api.services must be a list when set" -}}
 {{- end -}}
+{{- $services := .Values.api.services | default list -}}
+{{- if $services -}}
 {{- $serviceList := join "," $services -}}
 {{- if not ($serviceList | trim) -}}
 {{- fail "api.services must not be empty when set" -}}
