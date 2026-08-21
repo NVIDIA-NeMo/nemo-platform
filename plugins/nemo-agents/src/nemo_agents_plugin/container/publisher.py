@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from nemo_agents_plugin.container.builder import ProgressCallback, _progress
+from nemo_agents_plugin.container.builder import ProgressCallback, emit_progress
 from nemo_agents_plugin.container.errors import ContainerToolingUnavailableError, ImagePublishError
 
 logger = logging.getLogger(__name__)
@@ -49,17 +49,17 @@ def docker_push(
         # Strip any leading/trailing slashes from the registry.
         push_tag = f"{registry.rstrip('/')}/{local_tag}"
 
-    _progress(on_progress, f"Tagging {local_tag} -> {push_tag}")
+    emit_progress(on_progress, f"Tagging {local_tag} -> {push_tag}")
     try:
         docker.tag(local_tag, push_tag)
     except Exception as exc:
         raise ImagePublishError(f"Docker tag failed: {exc}") from exc
 
-    _progress(on_progress, f"Pushing {push_tag} ...")
+    emit_progress(on_progress, f"Pushing {push_tag} ...")
     try:
         docker.push(push_tag)
     except Exception as exc:
         raise ImagePublishError(f"Docker push failed: {exc}") from exc
 
-    _progress(on_progress, f"Successfully pushed {push_tag}")
+    emit_progress(on_progress, f"Successfully pushed {push_tag}")
     return push_tag

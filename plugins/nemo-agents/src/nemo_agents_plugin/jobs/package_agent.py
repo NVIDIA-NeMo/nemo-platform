@@ -82,7 +82,7 @@ _HOST_BUILD_REQUIREMENT = (
 
 
 class PackageAgentInput(BaseModel):
-    """Submitter-facing shape: an agent name plus the packaging knobs."""
+    """What a caller POSTs: an agent name plus the packaging knobs."""
 
     model_config = ConfigDict(extra="forbid")
 

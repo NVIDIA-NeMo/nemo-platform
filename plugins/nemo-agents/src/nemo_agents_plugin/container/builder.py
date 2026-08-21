@@ -37,7 +37,7 @@ ProgressCallback = Callable[[str], None]
 """Sink for human-facing build progress. The CLI passes ``typer.echo``."""
 
 
-def _progress(on_progress: ProgressCallback | None, message: str) -> None:
+def emit_progress(on_progress: ProgressCallback | None, message: str) -> None:
     if on_progress is not None:
         on_progress(message)
     else:
@@ -89,7 +89,7 @@ def docker_build(
     os.environ.setdefault("DOCKER_BUILDKIT", "1")
 
     file_arg = str(dockerfile) if dockerfile else None
-    _progress(on_progress, f"Building image '{tag}' from context {context_dir} ...")
+    emit_progress(on_progress, f"Building image '{tag}' from context {context_dir} ...")
     try:
         docker.build(
             str(context_dir),
@@ -102,7 +102,7 @@ def docker_build(
     except Exception as exc:
         raise ImageBuildError(f"Docker build failed: {exc}") from exc
 
-    _progress(on_progress, f"Successfully built {tag}")
+    emit_progress(on_progress, f"Successfully built {tag}")
     return tag
 
 
@@ -146,7 +146,7 @@ def build_nat_agent_image(
         # of overall validity so the operator can see them even when the
         # config is otherwise fine.  Hard errors still abort the build.
         for warn in result.warnings:
-            _progress(on_progress, f"warning: {warn}")
+            emit_progress(on_progress, f"warning: {warn}")
         if not result.valid:
             raise AgentConfigValidationError(result.errors)
 
