@@ -69,15 +69,28 @@
       align-items: center;
     }
 
-    /* Pinned cells hold a single control (select checkbox, row-actions menu).
-       Both th and td need flex centering: `justify-items`/`text-align` below
-       are inert on a block-level td, which left-aligns the row checkbox while
-       the flex header centers the select-all checkbox. */
+    /* Pinned cells switch to flex layout, so `justify-items`/`text-align` below
+       are inert on them (those work on block-level boxes, not flex items).
+       Derive justify-content from the cell's configured alignment
+       (columnDef.meta.alignment, surfaced by KUI as nv-table--align-*) so a
+       custom pinned column keeps its own alignment instead of always
+       centering. Prebuilt controls (select checkbox, row-actions menu) set
+       alignment: 'center', so they fall through to the default below. */
     & th[data-pinned],
     & td[data-pinned] {
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+
+    & th[data-pinned].nv-table--align-left,
+    & td[data-pinned].nv-table--align-left {
+      justify-content: flex-start;
+    }
+
+    & th[data-pinned].nv-table--align-right,
+    & td[data-pinned].nv-table--align-right {
+      justify-content: flex-end;
     }
 
     /* Pinned columns: stay at configured size, don't grow */
