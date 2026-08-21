@@ -12,6 +12,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_insights_plugin._perms import AnalysisConfigPerms, AnalysisRunStatusPerms, InsightPerms
+from nemo_insights_plugin.analysis_runs import router as analysis_runs_router
 from nemo_insights_plugin.authz import scope
 from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import (
@@ -100,6 +101,12 @@ class InsightsService(NemoService):
                 ),
                 tag="Insights Analysis Jobs",
                 description="Submit and track one-shot insights analyst jobs.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                analysis_runs_router,
+                tag="Insights Analysis Runs",
+                description="Submit Insights analysis runs backed by generic execute-agent jobs.",
                 prefix="/v2/workspaces/{workspace}",
             ),
         ]

@@ -13,7 +13,7 @@ from nemo_insights_plugin.analyst.agent import (
     Analyst,
     build_analyst_agent,
 )
-from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
+from nemo_insights_plugin.analyst.analyst_backend import AnalystBackend, make_analyst_backend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.observability import (
     ANALYST_OBSERVABILITY_ENV,
@@ -43,6 +43,7 @@ class ClientConstructionError(Exception):
 async def run_analyst(
     *,
     agent: str,
+    agent_spec: str | None = None,
     ethos: str | None,
     workspace: str,
     base_url: str | None,
@@ -63,6 +64,7 @@ async def run_analyst(
 
     Args:
         agent: Agent under test.
+        agent_spec: Optional agent spec Markdown for the agent under test.
         ethos: Optional Ethos Markdown for the agent under test.
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
@@ -82,6 +84,47 @@ async def run_analyst(
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
     """
+    try:
+        result, backend = await run_analyst_change_set(
+            agent=agent,
+            agent_spec=agent_spec,
+            workspace=workspace,
+            base_url=base_url,
+            client=client,
+            insights_output=insights_output,
+            local_only=local_only,
+            verbose=verbose,
+            since=since,
+            evaluation_id=evaluation_id,
+            analyst_evaluation=analyst_evaluation,
+            enable_observability=enable_observability,
+            model_refs=model_refs,
+            close_client=False,
+        )
+        return await backend.persist_result(workspace=workspace, agent=agent, result=result)
+    finally:
+        await client.close()
+
+
+async def run_analyst_change_set(
+    *,
+    agent: str,
+    agent_spec: str | None,
+    ethos: str | None = None,
+    workspace: str,
+    base_url: str | None,
+    client: AsyncNeMoPlatform,
+    insights_output: str | Path | None = None,
+    local_only: bool = False,
+    verbose: bool = False,
+    since: datetime | None = None,
+    evaluation_id: str | None = None,
+    analyst_evaluation: AnalystEvaluationContext | None = None,
+    enable_observability: bool = True,
+    model_refs: ConfiguredModelRefs | None = None,
+    close_client: bool = True,
+) -> tuple[AnalystResult, AnalystBackend]:
+    """Build and run the analyst agent without persisting its change-set."""
     observability = None
     model_clients: ConfiguredModelClients | None = None
     insights_output_path = str(insights_output) if insights_output else None
@@ -115,7 +158,7 @@ async def run_analyst(
                 ethos=ethos,
             )
             result = await _run_agent(analyst, verbose=verbose)
-        return await backend.persist_result(workspace=workspace, agent=agent, result=result)
+        return result, backend
     finally:
         try:
             if observability is not None:
@@ -125,7 +168,8 @@ async def run_analyst(
                 if model_clients is not None:
                     await model_clients.aclose()
             finally:
-                await client.close()
+                if close_client:
+                    await client.close()
 
 
 def _analyst_observability_enabled() -> bool:
