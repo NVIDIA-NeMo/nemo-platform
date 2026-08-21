@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
-import type {
-  AutomodelJobInput,
-  AutomodelJobsJobRequest,
-  RlJobInput,
-  RlJobsJobRequest,
-  UnslothJobInput,
-  UnslothJobsJobRequest,
+import {
+  type AutomodelJobInput,
+  type AutomodelJobsJobRequest,
+  OptimizerType,
+  type RlJobInput,
+  type RlJobsJobRequest,
+  type UnslothJobInput,
+  type UnslothJobsJobRequest,
 } from '@nemo/sdk/generated/customizer/schema';
 import { CustomizationCreateAutomodelJobBody } from '@nemo/sdk/generated/customizer/zod/automodel-jobs';
 import { CustomizationCreateRlJobBody } from '@nemo/sdk/generated/customizer/zod/rl-jobs';
@@ -66,6 +67,9 @@ const RL_DPO_DEFAULTS: RlJobInput = {
   training: {
     type: 'dpo',
     epochs: 1,
+    // Schema default is null; the service resolves that to AdamW + cosine annealing.
+    // Seeded so the optimizer select renders with a selection rather than blank.
+    optimizer_type: OptimizerType.adamw_with_cosine_annealing,
     learning_rate: 1e-4,
     batch_size: 32,
     micro_batch_size: 1,
