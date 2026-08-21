@@ -58,7 +58,7 @@ RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages
 # openssl is the only dpkg package here with an out-of-SLA CVE. Upgraded explicitly rather than via
 # a blanket `apt-get upgrade`, which would also pull newer CUDA packages from the NVIDIA repos.
 RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target=/tmp/remove-listed-apt-packages.sh,readonly \
-    --mount=type=bind,source=docker/customizer/removals/apt/nmp-rl-base.txt,target=/tmp/apt-package-removals.txt,readonly \
+    --mount=type=bind,source=docker/removals/apt/nmp-rl-base.txt,target=/tmp/apt-package-removals.txt,readonly \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim ccache gnupg \
