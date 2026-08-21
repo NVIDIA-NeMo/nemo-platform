@@ -9,9 +9,18 @@ At create time the deployment route:
 1. resolves the environment - dereferencing any ``"workspace/name"`` refs for
    the environment and its two specs into concrete inline specs;
 2. merges the resolved EnvironmentSpec into the Platform-owned agent config
-   (``nemo-agents-spec-v1``) so the Fabric translator sees a single config; and
-3. snapshots the resolved ComputeSpec onto the deployment for the container
-   backend.
+   (``nemo-agents-spec-v1``) so the Fabric translator sees a single config, and
+   collects the spec's secret-env references (top-level + per-MCP) for the
+   container backend to inject as secret-backed env vars; and
+3. snapshots the resolved ComputeSpec and the collected secrets onto the
+   deployment for the container backend.
+
+Secret references are never written into the config as plaintext. Both the
+spec's top-level ``secrets`` and each declared MCP server's ``secrets`` are
+returned as an ENV_VAR_NAME -> ref map; the substrate injects the resolved value
+into the process env under that name, and MCP servers read their credentials
+from the process env by name (env-var-name indirection) rather than the config
+embedding a raw reference string.
 
 Merge precedence is **EnvironmentSpec wins over the Agent config**: the Agent
 config supplies defaults, and the EnvironmentSpec overrides them where it sets a
@@ -54,6 +63,23 @@ class ResolvedEnvironment:
 
     environment_spec: EnvironmentSpecInline | None = None
     compute_spec: ComputeSpecInline | None = None
+
+
+@dataclass(frozen=True)
+class MergedEnvironment:
+    """Result of merging an EnvironmentSpec into an agent config.
+
+    ``config`` is the merged ``nemo-agents-spec-v1`` config. ``secrets`` maps
+    ENV_VAR_NAME -> Secrets-service ref, collected from both the EnvironmentSpec's
+    top-level ``secrets`` and every declared MCP server's ``secrets``. The caller
+    snapshots ``secrets`` onto the deployment so the substrate injects the
+    resolved value into the process env (never plaintext); MCP servers read their
+    credentials from that process env by name (env-var-name indirection), rather
+    than the config embedding a raw secret reference as a literal value.
+    """
+
+    config: dict[str, Any]
+    secrets: dict[str, str]
 
 
 async def resolve_environment(
@@ -139,27 +165,28 @@ async def _resolve_compute_spec(
 def merge_environment_spec_into_agent_config(
     config: dict[str, Any],
     env_spec: EnvironmentSpecInline | None,
-) -> dict[str, Any]:
+) -> MergedEnvironment:
     """Merge a resolved EnvironmentSpec into a ``nemo-agents-spec-v1`` config.
 
-    Returns a deep-copied config with the spec merged in. Merge precedence is
-    Agent-config-wins: the Agent's explicitly-set values are preserved and the
-    EnvironmentSpec only fills gaps or contributes additive keys.
+    Returns a :class:`MergedEnvironment` holding a deep-copied merged config and
+    the collected secret-env references (top-level + per-MCP). Merge precedence is
+    EnvironmentSpec-wins: the Agent config supplies defaults and the spec overrides
+    them where it sets a value; fields the spec leaves unset keep the Agent default.
 
     Only ``nemo-agents-spec-v1`` (Fabric) configs are merged; other formats are
     returned unchanged (they have no environment concept to fulfill).
     """
     if env_spec is None:
-        return config
+        return MergedEnvironment(config=config, secrets={})
     if config.get("config_format") != NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-        return config
+        return MergedEnvironment(config=config, secrets=dict(env_spec.secrets))
 
     merged = copy.deepcopy(config)
     _merge_environment_block(merged, env_spec)
     _merge_process_env(merged, env_spec)
     _merge_model_provider_override(merged, env_spec)
-    _merge_mcp(merged, env_spec)
-    return merged
+    secrets = _collect_secrets(merged, env_spec)
+    return MergedEnvironment(config=merged, secrets=secrets)
 
 
 def _merge_environment_block(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
@@ -168,8 +195,11 @@ def _merge_environment_block(config: dict[str, Any], env_spec: EnvironmentSpecIn
     if not isinstance(environment, dict):
         return
 
-    # Scalar mirror fields: the EnvironmentSpec overrides the Agent's value when
-    # it sets one; an unset spec field leaves the Agent default in place. The
+    # Scalar mirror fields: the EnvironmentSpec overrides the Agent's value only
+    # when it EXPLICITLY set the field. ``model_fields_set`` distinguishes an
+    # explicit value from a schema default - important for ``provider``, whose
+    # default is "local" (not None); without this guard a spec that never set
+    # ``provider`` would clobber an Agent's "docker"/"k8s" with "local". The
     # spec's ``workspace_path``/``artifacts_path`` map onto the config's
     # ``workspace``/``artifacts`` (the harness paths); the entity/tenant
     # ``workspace`` is unrelated and never merged here.
@@ -181,6 +211,8 @@ def _merge_environment_block(config: dict[str, Any], env_spec: EnvironmentSpecIn
         "ownership": "ownership",
     }
     for spec_attr, config_key in scalar_fields.items():
+        if spec_attr not in env_spec.model_fields_set:
+            continue
         value = getattr(env_spec, spec_attr)
         if value is not None:
             environment[config_key] = value
@@ -222,35 +254,52 @@ def _merge_model_provider_override(config: dict[str, Any], env_spec: Environment
         model["api_key_env"] = override.api_key
 
 
-def _merge_mcp(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
-    """Fulfill Agent-declared MCP servers by name (EnvironmentSpec fulfillment wins).
+def _collect_secrets(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> dict[str, str]:
+    """Collect secret-env references and fulfill Agent-declared MCP servers.
 
-    McpFulfillment is a request/fulfill contract: the Agent DECLARES an MCP
-    server by name and the EnvironmentSpec PROVIDES its url/env/secrets. A
-    fulfillment whose name the Agent did not declare is ignored - an environment
-    must not add MCP servers the Agent never requested. For a declared server the
-    fulfillment overrides the Agent's url and env on collision.
+    Returns ENV_VAR_NAME -> Secrets-service ref for both the spec's top-level
+    ``secrets`` and every declared MCP server's ``secrets``. Secret refs are never
+    written into the config as plaintext: the caller injects the resolved value
+    into the process env under ENV_VAR_NAME, and MCP servers read that value by
+    name (env-var-name indirection). Non-secret MCP ``env`` is still merged into
+    the server config; the fulfillment overrides the Agent's url/env on collision.
+
+    Raises :class:`EnvironmentResolutionError` when the same env var name maps to
+    two different secret references (an ambiguous, unresolvable collision).
     """
-    if not env_spec.mcp:
-        return
-    mcp = config.setdefault("mcp", {})
-    if not isinstance(mcp, dict):
-        return
-    servers = mcp.setdefault("servers", {})
-    if not isinstance(servers, dict):
-        return
+    secrets: dict[str, str] = {}
 
-    for name, fulfillment in env_spec.mcp.items():
-        server = servers.get(name)
-        # Only fulfill servers the Agent declared; skip undeclared names.
-        if not isinstance(server, dict):
-            continue
-        # url: the fulfillment's endpoint overrides the Agent's.
-        server["url"] = fulfillment.url
-        # env + secrets merge into the server env; fulfillment values win on collision.
-        merged_env = {**fulfillment.env, **fulfillment.secrets}
-        if merged_env:
-            existing_env = server.get("env")
-            existing_env = existing_env if isinstance(existing_env, dict) else {}
-            server["env"] = {**existing_env, **merged_env}
-        servers[name] = server
+    def _record(env_name: str, ref: str) -> None:
+        existing = secrets.get(env_name)
+        if existing is not None and existing != ref:
+            raise EnvironmentResolutionError(
+                f"Secret env var {env_name!r} is bound to conflicting references "
+                f"{existing!r} and {ref!r} in the environment spec."
+            )
+        secrets[env_name] = ref
+
+    for env_name, ref in env_spec.secrets.items():
+        _record(env_name, ref)
+
+    if env_spec.mcp:
+        mcp = config.setdefault("mcp", {})
+        servers = mcp.setdefault("servers", {}) if isinstance(mcp, dict) else None
+        if isinstance(servers, dict):
+            for name, fulfillment in env_spec.mcp.items():
+                server = servers.get(name)
+                # Only fulfill servers the Agent declared; skip undeclared names.
+                if not isinstance(server, dict):
+                    continue
+                # url: the fulfillment's endpoint overrides the Agent's.
+                server["url"] = fulfillment.url
+                # Non-secret env merges into the server config (fulfillment wins).
+                if fulfillment.env:
+                    existing_env = server.get("env")
+                    existing_env = existing_env if isinstance(existing_env, dict) else {}
+                    server["env"] = {**existing_env, **fulfillment.env}
+                # Secret refs are collected for injection into the process env,
+                # NOT stored in the server config as a literal reference string.
+                for env_name, ref in fulfillment.secrets.items():
+                    _record(env_name, ref)
+
+    return secrets

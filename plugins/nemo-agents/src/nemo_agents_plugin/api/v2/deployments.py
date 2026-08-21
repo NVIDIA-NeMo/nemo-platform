@@ -29,10 +29,12 @@ from nemo_agents_plugin.entities import (
     Agent,
     AgentDeployment,
     AgentEnvironmentInline,
+    EnvironmentSpecInline,
     is_container_deployment_mode,
 )
 from nemo_agents_plugin.environment_resolution import (
     EnvironmentResolutionError,
+    MergedEnvironment,
     ResolvedEnvironment,
     merge_environment_spec_into_agent_config,
     resolve_environment,
@@ -98,19 +100,17 @@ async def create_deployment(
     resolved_environment = await _resolve_deployment_environment(
         body.environment, workspace=workspace, entity_client=entity_client
     )
-    resolved_config = merge_environment_spec_into_agent_config(resolved_config, resolved_environment.environment_spec)
-    env_spec = resolved_environment.environment_spec
-    resolved_secrets = dict(env_spec.secrets) if env_spec is not None else {}
+    merged = _merge_environment(resolved_config, resolved_environment.environment_spec)
 
     # 5. Create the entity with status "pending"
     deployment = AgentDeployment(
         name=deployment_name,
         workspace=workspace,
         agent=body.agent,
-        config=resolved_config,
+        config=merged.config,
         environment=body.environment,
         compute=resolved_environment.compute_spec,
-        secrets=resolved_secrets,
+        secrets=merged.secrets,
         status="pending",
         deployment_mode=body.deployment_mode,
         image=body.image,
@@ -153,6 +153,14 @@ async def _resolve_deployment_environment(
     except EnvironmentResolutionError as exc:
         # 422: the request is syntactically valid but references an environment
         # (or one of its specs) that cannot be resolved (e.g. a missing entity).
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _merge_environment(config: dict[str, Any], env_spec: EnvironmentSpecInline | None) -> MergedEnvironment:
+    try:
+        return merge_environment_spec_into_agent_config(config, env_spec)
+    except EnvironmentResolutionError as exc:
+        # 422: e.g. a secret env var bound to conflicting references.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

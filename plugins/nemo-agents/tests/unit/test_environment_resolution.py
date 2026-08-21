@@ -114,21 +114,26 @@ async def test_resolve_missing_spec_ref_raises() -> None:
 
 def test_merge_none_spec_returns_config_unchanged() -> None:
     config = _agent_config()
-    assert merge_environment_spec_into_agent_config(config, None) is config
+    result = merge_environment_spec_into_agent_config(config, None)
+    assert result.config is config
+    assert result.secrets == {}
 
 
 def test_merge_ignores_non_fabric_config() -> None:
     config = {"config_format": "nat-workflow-v1", "functions": {}}
-    spec = EnvironmentSpecInline(env={"FOO": "bar"})
-    assert merge_environment_spec_into_agent_config(config, spec) is config
+    spec = EnvironmentSpecInline(env={"FOO": "bar"}, secrets={"TOK": "default/tok"})
+    result = merge_environment_spec_into_agent_config(config, spec)
+    # Non-fabric config is left unchanged, but top-level secrets are still collected.
+    assert result.config is config
+    assert result.secrets == {"TOK": "default/tok"}
 
 
 def test_merge_env_spec_wins_on_collision() -> None:
     config = _agent_config(environment={"provider": "local", "env": {"SHARED": "agent"}})
     spec = EnvironmentSpecInline(env={"SHARED": "spec", "ONLY_SPEC": "spec"})
-    merged = merge_environment_spec_into_agent_config(config, spec)
+    result = merge_environment_spec_into_agent_config(config, spec)
     # EnvironmentSpec overrides the Agent's value on collision; unique keys merge.
-    assert merged["environment"]["env"] == {"SHARED": "spec", "ONLY_SPEC": "spec"}
+    assert result.config["environment"]["env"] == {"SHARED": "spec", "ONLY_SPEC": "spec"}
     # Original is not mutated (deep copy).
     assert config["environment"]["env"] == {"SHARED": "agent"}
 
@@ -143,8 +148,7 @@ def test_merge_environment_mirror_fields_override_agent() -> None:
         ownership="fabric_owned",
         connection={"url": "http://x"},
     )
-    merged = merge_environment_spec_into_agent_config(config, spec)
-    env = merged["environment"]
+    env = merge_environment_spec_into_agent_config(config, spec).config["environment"]
     # EnvironmentSpec overrides the Agent's explicitly-set provider.
     assert env["provider"] == "k8s"
     # workspace_path/artifacts_path map onto workspace/artifacts.
@@ -159,10 +163,25 @@ def test_merge_environment_mirror_fields_override_agent() -> None:
 def test_merge_environment_mirror_field_unset_spec_keeps_agent_default() -> None:
     # A spec that leaves a scalar unset must not clobber the Agent's value.
     config = _agent_config(environment={"workspace": "/agent-ws"})
-    spec = EnvironmentSpecInline(provider="k8s")  # workspace_path unset
-    merged = merge_environment_spec_into_agent_config(config, spec)
-    assert merged["environment"]["workspace"] == "/agent-ws"
-    assert merged["environment"]["provider"] == "k8s"
+    spec = EnvironmentSpecInline(workspace_path="/ws")  # provider left unset
+    env = merge_environment_spec_into_agent_config(config, spec).config["environment"]
+    assert env["workspace"] == "/ws"
+
+
+def test_merge_omitted_provider_does_not_clobber_agent() -> None:
+    # Regression: provider defaults to "local" (non-None). A spec that never set
+    # provider must not overwrite the Agent's explicit "docker".
+    config = _agent_config(environment={"provider": "docker"})
+    spec = EnvironmentSpecInline(env={"FOO": "bar"})  # provider not set
+    env = merge_environment_spec_into_agent_config(config, spec).config["environment"]
+    assert env["provider"] == "docker"
+
+
+def test_merge_explicit_provider_overrides_agent() -> None:
+    config = _agent_config(environment={"provider": "docker"})
+    spec = EnvironmentSpecInline(provider="k8s")  # explicitly set
+    env = merge_environment_spec_into_agent_config(config, spec).config["environment"]
+    assert env["provider"] == "k8s"
 
 
 def test_merge_model_provider_override_overrides_agent() -> None:
@@ -174,34 +193,73 @@ def test_merge_model_provider_override_overrides_agent() -> None:
             api_key="MY_SECRET",
         )
     )
-    merged = merge_environment_spec_into_agent_config(config, spec)
-    model = merged["models"]["default"]
+    model = merge_environment_spec_into_agent_config(config, spec).config["models"]["default"]
     assert model["base_url"] == "https://api.example.com"
     # EnvironmentSpec's provider overrides the Agent's.
     assert model["provider"] == "anthropic"
     assert model["api_key_env"] == "MY_SECRET"
 
 
-def test_merge_mcp_fulfills_by_name_env_spec_url_wins() -> None:
+def test_merge_top_level_secrets_collected_not_in_config() -> None:
+    config = _agent_config()
+    spec = EnvironmentSpecInline(secrets={"APP_TOKEN": "default/app-token"})
+    result = merge_environment_spec_into_agent_config(config, spec)
+    assert result.secrets == {"APP_TOKEN": "default/app-token"}
+    # Secret refs never land in the config as plaintext env values.
+    assert "APP_TOKEN" not in result.config.get("environment", {}).get("env", {})
+
+
+def test_merge_mcp_fulfills_declared_server_env_wins_and_secrets_collected() -> None:
     config = _agent_config(mcp={"servers": {"search": {"transport": "streamable-http", "url": "http://agent-url"}}})
     spec = EnvironmentSpecInline(
         mcp={
-            "search": McpFulfillment(url="http://env-url", env={"E": "1"}, secrets={"TOKEN": "secret-ref"}),
+            "search": McpFulfillment(
+                url="http://env-url",
+                env={"E": "1"},
+                secrets={"SEARCH_TOKEN": "default/search-token"},
+            ),
             # Fulfillment for a server the Agent did not declare — must be ignored.
             "undeclared": McpFulfillment(url="http://new-url"),
         }
     )
-    merged = merge_environment_spec_into_agent_config(config, spec)
-    servers = merged["mcp"]["servers"]
-    # Fulfillment url overrides the Agent's; env + secrets merged in.
+    result = merge_environment_spec_into_agent_config(config, spec)
+    servers = result.config["mcp"]["servers"]
+    # Fulfillment url overrides the Agent's; non-secret env merges in.
     assert servers["search"]["url"] == "http://env-url"
-    assert servers["search"]["env"] == {"E": "1", "TOKEN": "secret-ref"}
+    assert servers["search"]["env"] == {"E": "1"}
+    # The secret ref is collected for process-env injection, NOT written into the
+    # server config as a literal reference string (env-var-name indirection).
+    assert "SEARCH_TOKEN" not in servers["search"]["env"]
+    assert result.secrets == {"SEARCH_TOKEN": "default/search-token"}
     # An environment cannot add MCP servers the Agent never declared.
     assert "undeclared" not in servers
+
+
+def test_merge_conflicting_secret_reference_raises() -> None:
+    # The same env var name bound to two different secret refs is ambiguous.
+    config = _agent_config(mcp={"servers": {"search": {"transport": "streamable-http", "url": "http://a"}}})
+    spec = EnvironmentSpecInline(
+        secrets={"TOKEN": "default/one"},
+        mcp={"search": McpFulfillment(url="http://a", secrets={"TOKEN": "default/two"})},
+    )
+    with pytest.raises(EnvironmentResolutionError, match="conflicting references"):
+        merge_environment_spec_into_agent_config(config, spec)
+
+
+def test_merge_same_secret_reference_twice_is_ok() -> None:
+    # Identical ref for the same name is not a conflict.
+    config = _agent_config(mcp={"servers": {"search": {"transport": "streamable-http", "url": "http://a"}}})
+    spec = EnvironmentSpecInline(
+        secrets={"TOKEN": "default/same"},
+        mcp={"search": McpFulfillment(url="http://a", secrets={"TOKEN": "default/same"})},
+    )
+    result = merge_environment_spec_into_agent_config(config, spec)
+    assert result.secrets == {"TOKEN": "default/same"}
 
 
 def test_merge_no_environment_reference_is_identical_to_today() -> None:
     # Baseline agent config with no environment merged behaves unchanged.
     config = _agent_config()
-    merged = merge_environment_spec_into_agent_config(config, None)
-    assert merged == config
+    result = merge_environment_spec_into_agent_config(config, None)
+    assert result.config == config
+    assert result.secrets == {}
