@@ -357,14 +357,17 @@ class StringAccumulator(ColumnAccumulator):
         self._quality = _TextQualityCounters()
         self._seen = 0
         self._sampled = 0
-        # With the row count known -- parquet footers give it before a row is read -- the cycle is
-        # fixed now and the blocks spread evenly over the whole column. Without it there is no length
-        # to spread over yet, so the cycle starts at one block and doubles each time the sample
-        # fills: every row eligible at first, thinning as the column turns out to be long. Each
-        # sampled row then stands for `cycle / block` rows, which is what keeps the estimate
-        # unbiased rather than weighted toward the head where sampling was densest.
+        # The cycle starts at one block either way -- every value eligible, each standing only for
+        # itself -- and widens as the column's own length becomes apparent. With the row count known
+        # a measured density is what widens it, which the first batch already settles; without one it
+        # doubles each time the sample fills. Starting narrow rather than at a guessed width is what
+        # keeps the head at the lowest weight there is, so a target that later proves wrong cannot
+        # leave the first block over-counted. Each sampled row stands for `cycle / block` rows, which
+        # is what keeps the estimate unbiased rather than weighted toward the head where sampling was
+        # densest.
         self._block = _QUALITY_SAMPLE_BLOCK
-        self._cycle = _quality_cycle(expected_rows) if expected_rows is not None else self._block
+        self._expected_rows = expected_rows
+        self._cycle = self._block
         self._adaptive = expected_rows is None
 
     def _observe(self, present: list[Any]) -> None:
@@ -378,7 +381,41 @@ class StringAccumulator(ColumnAccumulator):
                         self._cycle *= 2
                         self._sampled = 0
                 self._seen += 1
+                # Every block, not merely every batch: `measure_columns` hands the whole partition
+                # over as one, and a width settled only between batches would never move at all.
+                if not self._seen % self._block:
+                    self._retarget_cycle(widen_only=True)
         self._vocabulary.update(present)
+        self._retarget_cycle()
+
+    def _retarget_cycle(self, *, widen_only: bool = False) -> None:
+        """Widen the sampling cycle toward the values this column actually holds.
+
+        The cycle strides over *present strings* (``_seen``), while a caller-supplied
+        ``expected_rows`` counts the partition's *rows*. On a mostly-null column those are different
+        units, and a cycle sized in the wrong one never completes a single revolution: only the first
+        block is ever eligible and the sample collapses onto the head of the column -- the precise
+        bias blocks were introduced to remove. A column of 2,000 values in a 200,000-row partition
+        measured its first 512 and reported a repetition score of 0.000 against a truth of 0.500.
+
+        Scaling the target by the density observed so far puts both back in the same units. Density
+        is read off the inherited row counter, which the base ``update`` advances for the whole batch
+        before this runs, so it is settled within the first batch and only sharpens after. A dense
+        column reaches the same width it would have been given up front and costs the same sample; a
+        sparse one is measured across the values it has rather than across rows it does not.
+
+        ``widen_only`` is for the calls made *during* a batch. The row counter is already at the end
+        of that batch while ``_seen`` is still walking through it, so a density read mid-way reads
+        low -- on a column with no nulls at all it reads half. Left to narrow on that, the cycle
+        would collapse and re-widen once per batch and sample about twice what was asked for.
+        Widening only means a mid-batch reading can rescue a stalled stride but never undo the
+        settled one; the call at the end of the batch, where both counters describe the same rows,
+        is the authoritative one.
+        """
+        if self._adaptive or self._expected_rows is None or not self.rows:
+            return
+        target = _quality_cycle(self._expected_rows * self._seen // self.rows)
+        self._cycle = max(self._cycle, target) if widen_only else target
 
     def _blocks(self) -> dict[str, Any]:
         text = quality = None
@@ -549,6 +586,11 @@ class DeferredAccumulator(ColumnAccumulator):
         # column was strings -- so this sees exactly what the chosen accumulator would have seen.
         strings = [value for value in present if isinstance(value, str)]
         if strings:
+            # Driving `_observe` directly skips the base `update` that would normally advance the
+            # string accumulator's row counter, and its quality stride reads that counter to keep
+            # itself in row units rather than present-value ones. Handing the count over is what
+            # makes the sample land in the same places here as it does on the declared path.
+            self._string.rows = self.rows
             self._string._observe(strings)
         numbers = [value for value in present if isinstance(value, (int, float)) and not isinstance(value, bool)]
         if numbers:

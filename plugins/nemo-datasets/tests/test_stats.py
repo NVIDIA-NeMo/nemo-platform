@@ -318,6 +318,48 @@ def test_quality_is_measured_across_the_column_not_its_head(monkeypatch):
     assert quality.repetition_score > 0.4
 
 
+def test_a_sparse_column_is_sampled_across_itself_not_across_the_partition(monkeypatch):
+    """The cycle strides over present strings; `expected_rows` counts the partition's rows.
+
+    On a mostly-null column those are different units, and a cycle sized in the wrong one never
+    completes a revolution: only the first block is ever eligible and the sample collapses onto the
+    head. A column of 2,000 values in a 200,000-row partition measured its first 512 and called a
+    half-degenerate column perfectly clean.
+    """
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 100)
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_BLOCK", 8)
+    partition_rows, every = 4_000, 20
+    present = ["clean text"] * 100 + ["aaaaaaaaaaaa"] * 100  # 200 values, corruption in the tail
+    values = [present[i // every] if i % every == 0 else None for i in range(partition_rows)]
+
+    acc = stats_module.StringAccumulator(partition_rows)
+    acc.update(values)
+
+    assert acc._seen == len(present)
+    # Retargeted from the partition's 4,000 rows down to the 200 values the column actually holds,
+    # which is what keeps the stride wrapping instead of stalling inside its first block.
+    assert acc._cycle < stats_module._quality_cycle(partition_rows)
+    assert acc.finalize()[0].quality.repetition_score == pytest.approx(0.5, abs=0.05)
+
+
+def test_a_sparse_column_measures_the_same_declared_or_inferred(monkeypatch):
+    """The deferred accumulator drives the string one directly, bypassing the row counter the
+    retarget reads. It hands the count over, so both paths place the sample in the same rows."""
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 100)
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_BLOCK", 8)
+    partition_rows, every = 4_000, 20
+    present = ["clean text"] * 100 + ["aaaaaaaaaaaa"] * 100
+    values = [present[i // every] if i % every == 0 else None for i in range(partition_rows)]
+
+    declared = stats_module.StringAccumulator(partition_rows)
+    declared.update(values)
+    inferred = stats_module.DeferredAccumulator("t", partition_rows)
+    inferred.update(values)
+
+    assert inferred.feature().dtype == "string"
+    assert inferred.finalize()[0].quality == declared.finalize()[0].quality
+
+
 def test_a_column_under_the_bound_is_measured_exactly(monkeypatch):
     monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 100)
     values = ["ordinary sentence"] * 9 + ["aaaaaaaaaaaa"]
