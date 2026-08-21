@@ -13,10 +13,16 @@ At create time the deployment route:
 3. snapshots the resolved ComputeSpec onto the deployment for the container
    backend.
 
-Merge precedence is **Agent config wins over EnvironmentSpec**: the
-EnvironmentSpec is the fulfillment/base layer, and any value the Agent set
-explicitly is preserved. This keeps existing agent configs (authored without an
-environment) behaving identically.
+Merge precedence is **EnvironmentSpec wins over the Agent config**: the Agent
+config supplies defaults, and the EnvironmentSpec overrides them where it sets a
+value. Fields the EnvironmentSpec leaves unset fall back to the Agent's
+defaults, so an agent authored without an environment behaves identically.
+
+This ordering is the middle tier of an intended precedence chain
+``deployment overrides > EnvironmentSpec > Agent defaults``. A future
+deployment-specific override layer (e.g. an inline ``environment_overrides`` on
+the deployment) slots in by applying this same merge a second time with the
+higher-priority spec last, so each successive layer overrides the previous.
 """
 
 from __future__ import annotations
@@ -157,13 +163,14 @@ def merge_environment_spec_into_agent_config(
 
 
 def _merge_environment_block(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
-    """Fill FabricConfig.environment mirror fields where the Agent left them unset."""
+    """Override FabricConfig.environment mirror fields with the EnvironmentSpec's values."""
     environment = config.setdefault("environment", {})
     if not isinstance(environment, dict):
         return
 
-    # Scalar mirror fields: only fill when the Agent did not set them. The spec's
-    # ``workspace_path``/``artifacts_path`` map onto the config's
+    # Scalar mirror fields: the EnvironmentSpec overrides the Agent's value when
+    # it sets one; an unset spec field leaves the Agent default in place. The
+    # spec's ``workspace_path``/``artifacts_path`` map onto the config's
     # ``workspace``/``artifacts`` (the harness paths); the entity/tenant
     # ``workspace`` is unrelated and never merged here.
     scalar_fields = {
@@ -175,18 +182,18 @@ def _merge_environment_block(config: dict[str, Any], env_spec: EnvironmentSpecIn
     }
     for spec_attr, config_key in scalar_fields.items():
         value = getattr(env_spec, spec_attr)
-        if value is not None and config_key not in environment:
+        if value is not None:
             environment[config_key] = value
 
-    # Dict mirror fields: EnvironmentSpec is the base, Agent keys win on collision.
+    # Dict mirror fields: Agent supplies the base, EnvironmentSpec keys win on collision.
     for field in ("connection", "metadata", "settings"):
         spec_value = getattr(env_spec, field)
         if spec_value:
-            environment[field] = {**spec_value, **environment.get(field, {})}
+            environment[field] = {**environment.get(field, {}), **spec_value}
 
 
 def _merge_process_env(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
-    """Merge plaintext env vars into environment.env (Agent keys win)."""
+    """Merge plaintext env vars into environment.env (EnvironmentSpec keys win)."""
     if not env_spec.env:
         return
     environment = config.setdefault("environment", {})
@@ -194,11 +201,11 @@ def _merge_process_env(config: dict[str, Any], env_spec: EnvironmentSpecInline) 
         return
     existing = environment.get("env")
     existing = existing if isinstance(existing, dict) else {}
-    environment["env"] = {**env_spec.env, **existing}
+    environment["env"] = {**existing, **env_spec.env}
 
 
 def _merge_model_provider_override(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
-    """Apply an external model-provider override to models.default where unset."""
+    """Apply an external model-provider override to models.default (overrides the Agent)."""
     override = env_spec.model_provider_override
     if override is None:
         return
@@ -208,21 +215,21 @@ def _merge_model_provider_override(config: dict[str, Any], env_spec: Environment
     model = models.setdefault("default", {})
     if not isinstance(model, dict):
         return
-    if "base_url" not in model:
-        model["base_url"] = override.base_url
-    if override.provider is not None and "provider" not in model:
+    model["base_url"] = override.base_url
+    if override.provider is not None:
         model["provider"] = override.provider
-    if override.api_key is not None and "api_key_env" not in model:
+    if override.api_key is not None:
         model["api_key_env"] = override.api_key
 
 
 def _merge_mcp(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
-    """Fulfill Agent-declared MCP servers by name (Agent keys win).
+    """Fulfill Agent-declared MCP servers by name (EnvironmentSpec fulfillment wins).
 
     McpFulfillment is a request/fulfill contract: the Agent DECLARES an MCP
     server by name and the EnvironmentSpec PROVIDES its url/env/secrets. A
     fulfillment whose name the Agent did not declare is ignored - an environment
-    must not add MCP servers the Agent never requested.
+    must not add MCP servers the Agent never requested. For a declared server the
+    fulfillment overrides the Agent's url and env on collision.
     """
     if not env_spec.mcp:
         return
@@ -238,13 +245,12 @@ def _merge_mcp(config: dict[str, Any], env_spec: EnvironmentSpecInline) -> None:
         # Only fulfill servers the Agent declared; skip undeclared names.
         if not isinstance(server, dict):
             continue
-        # url: fill only when the Agent did not provide one.
-        if "url" not in server:
-            server["url"] = fulfillment.url
-        # env + secrets merge into the server env; Agent-authored env wins.
+        # url: the fulfillment's endpoint overrides the Agent's.
+        server["url"] = fulfillment.url
+        # env + secrets merge into the server env; fulfillment values win on collision.
         merged_env = {**fulfillment.env, **fulfillment.secrets}
         if merged_env:
             existing_env = server.get("env")
             existing_env = existing_env if isinstance(existing_env, dict) else {}
-            server["env"] = {**merged_env, **existing_env}
+            server["env"] = {**existing_env, **merged_env}
         servers[name] = server

@@ -123,17 +123,18 @@ def test_merge_ignores_non_fabric_config() -> None:
     assert merge_environment_spec_into_agent_config(config, spec) is config
 
 
-def test_merge_env_agent_wins_on_collision() -> None:
+def test_merge_env_spec_wins_on_collision() -> None:
     config = _agent_config(environment={"provider": "local", "env": {"SHARED": "agent"}})
     spec = EnvironmentSpecInline(env={"SHARED": "spec", "ONLY_SPEC": "spec"})
     merged = merge_environment_spec_into_agent_config(config, spec)
-    assert merged["environment"]["env"] == {"SHARED": "agent", "ONLY_SPEC": "spec"}
+    # EnvironmentSpec overrides the Agent's value on collision; unique keys merge.
+    assert merged["environment"]["env"] == {"SHARED": "spec", "ONLY_SPEC": "spec"}
     # Original is not mutated (deep copy).
     assert config["environment"]["env"] == {"SHARED": "agent"}
 
 
-def test_merge_environment_mirror_fields_fill_only_when_unset() -> None:
-    config = _agent_config(environment={"provider": "docker"})
+def test_merge_environment_mirror_fields_override_agent() -> None:
+    config = _agent_config(environment={"provider": "docker", "connection": {"agentkey": "a"}})
     spec = EnvironmentSpecInline(
         provider="k8s",
         workspace_path="/ws",
@@ -144,18 +145,27 @@ def test_merge_environment_mirror_fields_fill_only_when_unset() -> None:
     )
     merged = merge_environment_spec_into_agent_config(config, spec)
     env = merged["environment"]
-    # Agent explicitly set provider -> preserved.
-    assert env["provider"] == "docker"
-    # Agent left these unset -> filled from spec (workspace_path/artifacts_path
-    # -> workspace/artifacts).
+    # EnvironmentSpec overrides the Agent's explicitly-set provider.
+    assert env["provider"] == "k8s"
+    # workspace_path/artifacts_path map onto workspace/artifacts.
     assert env["workspace"] == "/ws"
     assert env["artifacts"] == "/artifacts"
     assert env["control_location"] == "in_env_control"
     assert env["ownership"] == "fabric_owned"
-    assert env["connection"] == {"url": "http://x"}
+    # Dict fields: Agent keys survive, spec keys win on collision.
+    assert env["connection"] == {"agentkey": "a", "url": "http://x"}
 
 
-def test_merge_model_provider_override_applies_when_unset() -> None:
+def test_merge_environment_mirror_field_unset_spec_keeps_agent_default() -> None:
+    # A spec that leaves a scalar unset must not clobber the Agent's value.
+    config = _agent_config(environment={"workspace": "/agent-ws"})
+    spec = EnvironmentSpecInline(provider="k8s")  # workspace_path unset
+    merged = merge_environment_spec_into_agent_config(config, spec)
+    assert merged["environment"]["workspace"] == "/agent-ws"
+    assert merged["environment"]["provider"] == "k8s"
+
+
+def test_merge_model_provider_override_overrides_agent() -> None:
     config = _agent_config()
     spec = EnvironmentSpecInline(
         model_provider_override=ModelProviderOverride(
@@ -167,11 +177,12 @@ def test_merge_model_provider_override_applies_when_unset() -> None:
     merged = merge_environment_spec_into_agent_config(config, spec)
     model = merged["models"]["default"]
     assert model["base_url"] == "https://api.example.com"
-    assert model["provider"] == "openai"  # Agent's explicit provider wins.
+    # EnvironmentSpec's provider overrides the Agent's.
+    assert model["provider"] == "anthropic"
     assert model["api_key_env"] == "MY_SECRET"
 
 
-def test_merge_mcp_fulfills_by_name_agent_url_wins() -> None:
+def test_merge_mcp_fulfills_by_name_env_spec_url_wins() -> None:
     config = _agent_config(mcp={"servers": {"search": {"transport": "streamable-http", "url": "http://agent-url"}}})
     spec = EnvironmentSpecInline(
         mcp={
@@ -182,8 +193,8 @@ def test_merge_mcp_fulfills_by_name_agent_url_wins() -> None:
     )
     merged = merge_environment_spec_into_agent_config(config, spec)
     servers = merged["mcp"]["servers"]
-    # Agent-provided url wins; env + secrets merged in.
-    assert servers["search"]["url"] == "http://agent-url"
+    # Fulfillment url overrides the Agent's; env + secrets merged in.
+    assert servers["search"]["url"] == "http://env-url"
     assert servers["search"]["env"] == {"E": "1", "TOKEN": "secret-ref"}
     # An environment cannot add MCP servers the Agent never declared.
     assert "undeclared" not in servers
