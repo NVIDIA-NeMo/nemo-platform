@@ -30,6 +30,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import gateway as gateway_module
+from nemo_agents_plugin.api.v2 import openai_errors
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import (
     Agent,
@@ -834,3 +835,264 @@ class TestContainerModeByAgentName:
         )
 
         assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-shaped errors on the /-/v1/* surface
+# ---------------------------------------------------------------------------
+
+
+RELAY_FAILURE_DETAIL = (
+    "Fabric runtime startup failed: adapter lifecycle start failed "
+    "(claude_relay_unavailable): NeMo Relay CLI executable was not found"
+)
+
+
+class TestOpenAICompatibleErrors:
+    def test_upstream_detail_is_lifted_into_error_message(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """A FastAPI-shaped upstream body is unwrapped, not embedded as a JSON string."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(503, b'{"detail": "boom"}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 502
+        assert resp.json()["error"] == {
+            "message": "boom",
+            "type": "upstream_error",
+            "code": None,
+            "param": None,
+        }
+
+    def test_adapter_error_code_is_preserved(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """The motivating case: the relay message and its code both reach the client."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(503, json.dumps({"detail": RELAY_FAILURE_DETAIL}).encode())
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        error = resp.json()["error"]
+        assert error["message"] == RELAY_FAILURE_DETAIL
+        assert error["code"] == "claude_relay_unavailable"
+        assert "NeMo Relay CLI executable was not found" in error["message"]
+
+    def test_openai_shaped_upstream_body_passes_through(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """An upstream that already speaks OpenAI is read directly rather than re-wrapped."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        upstream = json.dumps({"error": {"message": "rate limited", "code": "slow_down"}}).encode()
+        httpx_mock = _make_httpx_mock(500, upstream)
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.json()["error"]["message"] == "rate limited"
+        assert resp.json()["error"]["code"] == "slow_down"
+
+    def test_non_json_upstream_body_still_yields_an_envelope(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(500, b"Internal server error in agent")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 502
+        assert resp.json()["error"]["message"] == "Internal server error in agent"
+        assert resp.json()["error"]["type"] == "upstream_error"
+
+    def test_oversized_upstream_body_is_truncated(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """The 500-char cap bounds the envelope, not just the legacy detail string."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        long_detail = "x" * 5000
+        httpx_mock = _make_httpx_mock(500, json.dumps({"detail": long_detail}).encode())
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.json()["error"]["message"] == "x" * openai_errors.UPSTREAM_BODY_MAX_CHARS
+
+    def test_gateway_side_failure_is_also_enveloped(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Errors raised before the request leaves the gateway get an envelope too."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="starting", endpoint=""))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 503
+        error = resp.json()["error"]
+        assert "not routable" in error["message"].lower()
+        assert error["type"] == "server_error"
+
+    def test_connection_failure_is_enveloped(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        client_cm = MagicMock()
+        client_cm.__aenter__ = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=client_cm):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 502
+        assert "Could not connect" in resp.json()["error"]["message"]
+
+    def test_not_found_is_enveloped_with_a_typed_error(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("not found"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/nonexistent/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["error"]["type"] == "not_found_error"
+
+    def test_agent_name_route_is_enveloped(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """The by-agent-name surface is OpenAI-compatible under /-/v1/* too."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 503
+        assert "No running deployment" in resp.json()["error"]["message"]
+
+    def test_detail_is_retained_for_backwards_compatibility(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """Existing readers of the FastAPI shape keep working: both keys are present."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(503, b'{"detail": "boom"}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        body = resp.json()
+        assert body["detail"] == 'Agent returned 503: {"detail": "boom"}'
+        assert body["error"]["message"] == "boom"
+
+    def test_non_openai_path_keeps_detail_only(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Only the /-/v1/* surface changes shape."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(503, b'{"detail": "boom"}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/health",
+                json={},
+            )
+
+        assert resp.status_code == 502
+        assert resp.json() == {"detail": 'Agent returned 503: {"detail": "boom"}'}
+
+    def test_2xx_response_is_untouched(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Envelope shaping must not disturb the success path."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        upstream_body = b'{"id": "chatcmpl-1", "model": "calc-dep"}'
+        httpx_mock = _make_httpx_mock(200, upstream_body)
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 200
+        assert resp.content == upstream_body
+
+    def test_4xx_from_agent_is_still_transparent(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """4xx bodies are the agent's own response and must pass through unshaped."""
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(status="running"))
+        httpx_mock = _make_httpx_mock(422, b'{"detail": "invalid input"}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={},
+            )
+
+        assert resp.status_code == 422
+        assert resp.json() == {"detail": "invalid input"}
+
+
+class TestUnwrapUpstreamError:
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            (b'{"detail": "boom"}', ("boom", None)),
+            (b'{"message": "boom"}', ("boom", None)),
+            (b'{"error": "boom"}', ("boom", None)),
+            (b'{"error": {"message": "boom", "code": "c"}}', ("boom", "c")),
+            (b'{"detail": "boom", "code": "c"}', ("boom", "c")),
+            (b'"boom"', ("boom", None)),
+            (b"boom", ("boom", None)),
+            (b"", ("", None)),
+            (b'{"detail": "failed (some_code): why"}', ("failed (some_code): why", "some_code")),
+        ],
+    )
+    def test_message_and_code_extraction(self, body: bytes, expected: tuple[str, str | None]) -> None:
+        assert openai_errors.unwrap_upstream_error(body) == expected
+
+    def test_unrecognized_json_falls_back_to_raw_text(self) -> None:
+        assert openai_errors.unwrap_upstream_error(b'{"nope": 1}') == ('{"nope": 1}', None)
+
+    def test_list_detail_falls_back_to_raw_text(self) -> None:
+        """FastAPI validation errors put a list on ``detail``; the raw body is more useful."""
+        body = b'{"detail": [{"loc": ["body"], "msg": "field required"}]}'
+        message, code = openai_errors.unwrap_upstream_error(body)
+        assert message == body.decode()
+        assert code is None
+
+    def test_invalid_utf8_does_not_raise(self) -> None:
+        message, code = openai_errors.unwrap_upstream_error(b"\xff\xfe not utf-8")
+        assert "not utf-8" in message
+        assert code is None
+
+
+class TestIsOpenAICompatibleURI:
+    @pytest.mark.parametrize(
+        ("trailing_uri", "expected"),
+        [
+            ("v1/chat/completions", True),
+            ("/v1/chat/completions", True),
+            ("v1", True),
+            ("v1beta/chat", False),
+            ("health", False),
+            ("", False),
+            ("api/v1/chat", False),
+        ],
+    )
+    def test_only_the_v1_surface_matches(self, trailing_uri: str, expected: bool) -> None:
+        assert openai_errors.is_openai_compatible_uri(trailing_uri) is expected

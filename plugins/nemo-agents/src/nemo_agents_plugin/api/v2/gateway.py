@@ -20,6 +20,10 @@ used by the Inference Gateway.
 
 Streaming and SSE are supported: the response is streamed back to the client
 chunk by chunk.  ``text/event-stream`` responses bypass buffering.
+
+Failures under the OpenAI-compatible ``/-/v1/*`` surface are rendered with an
+OpenAI ``error`` envelope beside FastAPI's ``detail`` (see ``openai_errors``);
+every other proxied path keeps ``detail`` alone.
 """
 
 from __future__ import annotations
@@ -31,10 +35,15 @@ from typing import AsyncIterator
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.api.v2.openai_errors import (
+    UpstreamAgentError,
+    is_openai_compatible_uri,
+    openai_error_response,
+)
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.deployment_routing import get_deployment_endpoint, is_deployment_routable
 from nemo_agents_plugin.entities import Agent, AgentDeployment, AgentSession, SessionStatus
@@ -107,13 +116,29 @@ async def _serve_agent_proxy(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
-) -> StreamingResponse:
+) -> Response:
     """Resolve the target deployment for the named agent and forward the request to it.
 
     A persisted session makes its bound deployment authoritative. Without a session, this keeps
     the existing first-routable-deployment behavior. Shared by the read/write route handlers,
     which differ only in their authorization scope (``agents:read`` vs ``agents:write``).
     """
+    try:
+        return await _resolve_and_proxy_agent(workspace, name, trailing_uri, request, entity_client)
+    except HTTPException as exc:
+        if not is_openai_compatible_uri(trailing_uri):
+            raise
+        return openai_error_response(exc)
+
+
+async def _resolve_and_proxy_agent(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient,
+) -> StreamingResponse:
+    """Pick the deployment for *name* — session-bound if one was supplied — and forward."""
     session = await _resolve_request_session(request, workspace, entity_client)
     if session is None:
         deployment = await _resolve_agent_deployment(name, workspace, entity_client)
@@ -151,7 +176,7 @@ async def proxy_by_agent_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Read-scoped (GET/HEAD/OPTIONS) proxy to the active deployment for *agent name*."""
     return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -173,7 +198,7 @@ async def proxy_by_agent_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy to the active deployment for *agent name*."""
     return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -184,12 +209,28 @@ async def _serve_deployment_proxy(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
-) -> StreamingResponse:
+) -> Response:
     """Proxy a request directly to the named deployment.
 
     Returns ``404`` if the deployment doesn't exist, ``503`` if it isn't currently running.
     Shared by the read/write route handlers, which differ only in authorization scope.
     """
+    try:
+        return await _resolve_and_proxy_deployment(workspace, name, trailing_uri, request, entity_client)
+    except HTTPException as exc:
+        if not is_openai_compatible_uri(trailing_uri):
+            raise
+        return openai_error_response(exc)
+
+
+async def _resolve_and_proxy_deployment(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient,
+) -> StreamingResponse:
+    """Look the deployment up, check it against any supplied session, and forward."""
     try:
         dep = await entity_client.get(AgentDeployment, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
@@ -267,7 +308,7 @@ async def proxy_by_deployment_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Read-scoped (GET/HEAD/OPTIONS) proxy directly to the named deployment."""
     return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -289,7 +330,7 @@ async def proxy_by_deployment_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> Response:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy directly to the named deployment."""
     return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -479,11 +520,7 @@ async def _proxy(
                 # aread() consumes the full body before raising so the connection
                 # is cleanly closed rather than reset mid-stream.
                 if response.status_code >= 500:
-                    error_body = await response.aread()
-                    raise HTTPException(
-                        status_code=502,
-                        detail=(f"Agent returned {response.status_code}: {error_body.decode(errors='replace')[:500]}"),
-                    )
+                    raise UpstreamAgentError(response.status_code, await response.aread())
                 async for chunk in response.aiter_bytes():
                     yield chunk
 
