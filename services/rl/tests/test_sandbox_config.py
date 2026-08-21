@@ -98,8 +98,12 @@ def test_egress_is_operator_scoped_not_per_job() -> None:
     for field in ("allow_internet", "public_dns_allow", "egress_allow", "network_policy"):
         assert field not in GRPOTraining.model_fields
 
-    with pytest.raises(ValidationError):
-        GRPOTraining(public_dns_allow=("evil.example",))
+    # Validate a full payload rather than calling the constructor: the discriminator `type`
+    # has no default, so omitting it raises ValidationError on its own and the assertion
+    # would pass even if public_dns_allow were an accepted field. Supplying `type` makes the
+    # forbidden extra the only possible cause.
+    with pytest.raises(ValidationError, match="public_dns_allow"):
+        GRPOTraining.model_validate({"type": "grpo", "public_dns_allow": ["evil.example"]})
 
 
 def test_sandbox_config_carries_both_operator_egress_levers() -> None:
