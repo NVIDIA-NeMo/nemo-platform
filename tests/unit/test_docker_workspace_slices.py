@@ -19,6 +19,7 @@ DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/automodel/no_override_requirements.txt"),
     Path("docker/unsloth/no_override_requirements.txt"),
 )
+RL_BASE_DOCKERFILE = ROOT / "docker/rl/Dockerfile.nmp-rl-base"
 
 
 def _load_pyproject(path: Path) -> dict:
@@ -66,6 +67,17 @@ def test_distributed_image_wandb_specs_match_notice(path: Path) -> None:
     specs = _wandb_package_specs(path)
 
     assert specs == [expected]
+
+
+def test_rl_base_wandb_arg_matches_notice() -> None:
+    """nmp-rl-base pins wandb via ARG so prefetch/cache purge stay on the NOTICE version."""
+    expected = _notice_wandb_version()
+    text = RL_BASE_DOCKERFILE.read_text(encoding="utf-8")
+    match = re.search(r"^ARG WANDB_VERSION=([0-9][0-9.]+)$", text, flags=re.MULTILINE)
+    assert match is not None, "docker/rl/Dockerfile.nmp-rl-base must declare ARG WANDB_VERSION"
+    assert match.group(1) == expected
+    assert '"wandb==${WANDB_VERSION}"' in text
+    assert "purge-stale-wandb-cache.sh" in text
 
 
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
