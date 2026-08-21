@@ -62,7 +62,8 @@ def create_filesets(
         str | None, typer.Option("--project", help="The name of the project associated with this fileset.")
     ] = None,
     purpose: Annotated[
-        Literal["dataset", "generic", "model"] | None, typer.Option("--purpose", help="The purpose of the fileset.")
+        Literal["dataset", "environment", "generic", "model"] | None,
+        typer.Option("--purpose", help="The purpose of the fileset."),
     ] = None,
     storage: Annotated[
         str | None,
@@ -335,7 +336,8 @@ def update_filesets(
         str | None, typer.Option("--project", help="The name of the project associated with this fileset.")
     ] = None,
     purpose: Annotated[
-        Literal["dataset", "generic", "model"] | None, typer.Option("--purpose", help="The purpose of the fileset.")
+        Literal["dataset", "environment", "generic", "model"] | None,
+        typer.Option("--purpose", help="The purpose of the fileset."),
     ] = None,
     input_file: Annotated[
         str | None,

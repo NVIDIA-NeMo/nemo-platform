@@ -1354,7 +1354,7 @@ nemo files filesets create [OPTIONS] [NAME]
 
 Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
 * `--project`: The name of the project associated with this fileset.
-* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, environment, generic, model]
 * `--storage`: The storage configuration for the fileset. If not provided, uses default storage. (JSON string)
 * `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
 
@@ -1504,7 +1504,7 @@ nemo files filesets update [OPTIONS] NAME
 
 Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
 * `--project`: The name of the project associated with this fileset.
-* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, environment, generic, model]
 
 **Help:**
 

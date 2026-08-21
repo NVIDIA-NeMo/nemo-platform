@@ -36,6 +36,43 @@ def test_contract_job_input_validates(fixture_name: str) -> None:
     assert spec.integrations.mlflow.name == "run-001"
 
 
+def test_minimal_grpo_fixture_validates() -> None:
+    path = FIXTURES_DIR / "minimal_grpo.json"
+    spec = RlJobInput.model_validate(json.loads(path.read_text()))
+    assert spec.training.type == "grpo"
+    assert spec.environment == "default/ascii-tree-env"
+    assert spec.training.num_generations_per_prompt == 4
+    assert spec.training.finetuning_type == "all_weights"
+
+
+def test_minimal_grpo_lora_fixture_validates() -> None:
+    path = FIXTURES_DIR / "minimal_grpo_lora.json"
+    spec = RlJobInput.model_validate(json.loads(path.read_text()))
+    assert spec.training.type == "grpo"
+    assert spec.training.finetuning_type == "lora"
+    assert spec.training.lora is not None
+    assert spec.training.lora.rank == 32
+    assert spec.training.lora.alpha == 32
+    assert spec.environment == "default/ascii-tree-env"
+
+
+def test_moe_grpo_lora_fixture_validates() -> None:
+    """``RlSchema`` sets ``extra="forbid"``, so a per-architecture setting the schema does
+    not declare is rejected at submit regardless of what the compiler would do with it."""
+    path = FIXTURES_DIR / "moe_grpo_lora.json"
+    spec = RlJobInput.model_validate(json.loads(path.read_text()))
+
+    assert spec.training.type == "grpo"
+    assert spec.training.automodel_kwargs == {"force_hf": True}
+    assert spec.training.router_aux_loss_coef == 0.0
+    assert spec.training.vllm_tensor_parallel_size == 4
+    assert spec.training.vllm_gpu_memory_utilization == 0.7
+    assert spec.training.lora is not None
+    assert spec.training.lora.exclude_modules == ["*out_proj*"]
+    assert spec.training.lora.use_triton is False
+    assert spec.training.parallelism.expert_parallel_size == 1
+
+
 def test_output_name_cannot_exceed_response_limit() -> None:
     assert len(OutputRequest(name="x" * 255).name or "") == 255
     with pytest.raises(ValueError):

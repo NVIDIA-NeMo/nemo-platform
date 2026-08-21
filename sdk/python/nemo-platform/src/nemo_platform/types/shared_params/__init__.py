@@ -34,4 +34,5 @@ from .platform_job_status import PlatformJobStatus as PlatformJobStatus
 from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
+from .environment_metadata_content import EnvironmentMetadataContent as EnvironmentMetadataContent
 from .tool_calling_metadata_content import ToolCallingMetadataContent as ToolCallingMetadataContent

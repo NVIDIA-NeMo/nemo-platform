@@ -49,17 +49,28 @@ BASE_VENV_MINIMUM_PYTHON_PACKAGE_VERSIONS = {
 
 # Actor FQN -> packages that must import inside that actor's venv.
 #
-# MUST list every venv the build prefetches (the six filters in docker/rl/Dockerfile.nmp-rl-base
-# resolve to SEVEN actors, because `vllm.vllm_worker` matches the sync and async workers alike).
-# Listing all seven is what makes a broken prefetch filter fail here instead of silently shipping an
+# MUST list every venv the build prefetches (the eight filters in docker/rl/Dockerfile.nmp-rl-base
+# resolve to NINE actors, because `vllm.vllm_worker` matches the sync and async workers alike).
+# Listing all nine is what makes a broken prefetch filter fail here instead of silently shipping an
 # image whose workers rebuild their venv on the node at job start.
 WORKER_VENV_IMPORTS = {
-    # DPO + GRPO policy training (--extra fsdp)
+    # DPO policy training, DTensor V1 (--extra fsdp)
     "nemo_rl.models.policy.workers.dtensor_policy_worker.DTensorPolicyWorker": [
         "torch",
         "flash_attn",
         "mamba_ssm",
         "causal_conv1d",
+    ],
+    # GRPO policy training, DTensor V2 (--extra automodel). nemo_automodel and transformer_engine
+    # are checked through distribution metadata instead — see WORKER_VENV_DRIVER_LINKED below.
+    "nemo_rl.models.policy.workers.dtensor_policy_worker_v2.DTensorPolicyWorkerV2": [
+        "torch",
+    ],
+    # GRPO policy training, Megatron (--extra mcore). Also hosts Megatron-native generation in
+    # process. megatron_core / megatron_bridge / transformer_engine are checked through
+    # distribution metadata — see WORKER_VENV_DRIVER_LINKED below.
+    "nemo_rl.models.policy.workers.megatron_policy_worker.MegatronPolicyWorker": [
+        "torch",
     ],
     # GRPO generation (--extra vllm). deep_ep is checked separately — see
     # WORKER_VENV_DRIVER_LINKED below. This is the full check for the vllm tier; the two actors
@@ -110,8 +121,23 @@ WORKER_VENV_IMPORTS = {
 # `ImportError: libcuda.so.1: cannot open shared object file` for purely environmental reasons, so
 # presence is verified through distribution metadata instead — which still catches the case that
 # matters here: the extra failing to install the package at all.
+#
+# Transformer-Engine belongs here for the same reason: importing it loads
+# libtransformer_engine.so, which resolves against the driver and cuDNN. It is listed under BOTH
+# training tiers on purpose — RL's [tool.uv] override-dependencies collapses every TE requirement
+# onto one git rev, so a single build is shared, and asserting it in each venv is what proves the
+# sharing actually happened rather than one tier silently missing it.
 WORKER_VENV_DRIVER_LINKED = {
     "nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker": ["deep_ep"],
+    "nemo_rl.models.policy.workers.dtensor_policy_worker_v2.DTensorPolicyWorkerV2": [
+        "nemo-automodel",
+        "transformer-engine",
+    ],
+    "nemo_rl.models.policy.workers.megatron_policy_worker.MegatronPolicyWorker": [
+        "megatron-core",
+        "megatron-bridge",
+        "transformer-engine",
+    ],
 }
 
 WORKER_IMPORT_CASES = [(fqn, mod) for fqn, mods in sorted(WORKER_VENV_IMPORTS.items()) for mod in mods]
@@ -151,6 +177,23 @@ def test_nmp_rl_training_importable():
     # Exercises the full platform-glue import chain the training entrypoint pulls in
     # (nemo_platform SDK -> plugin -> nmp_common -> nmp_customization_common -> services/rl).
     from nmp.rl.tasks.training import __main__ as training_main  # noqa: F401
+
+
+@pytest.mark.smoke_nmp_rl_training
+def test_sandboxed_gym_driver_imports():
+    """The driver must be able to import the mode-B sandbox modules.
+
+    Sandboxed GRPO calls spinup_nemo_gym_actor() in the DRIVER process, which imports
+    nemo_rl.environments.sandbox.{nemo_gym_actor,host.models}. Both reach
+    nemo_gym.sandbox.broker at module scope, so the base venv needs nemo_gym even though
+    the Gym actor itself runs in its own venv. The `uv sync --all-groups` in the base
+    image is exact and prunes the nemo_gym extra, so this is only satisfied by the
+    explicit `uv pip install` of the Gym workspace member — without it, mode B fails at
+    Gym spin-up with `ModuleNotFoundError: No module named 'nemo_gym'`, minutes into a
+    run and only on a sandbox-capable cluster.
+    """
+    from nemo_rl.environments.sandbox.host.models import NemoGymSandboxedConfig  # noqa: F401
+    from nemo_rl.environments.sandbox.nemo_gym_actor import SandboxedGymActorConfig  # noqa: F401
 
 
 # --- per-worker venvs: where training actually runs ---------------------------------------------

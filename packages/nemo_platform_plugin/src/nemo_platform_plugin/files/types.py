@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class FilesetPurpose(StrEnum):
     DATASET = "dataset"
+    ENVIRONMENT = "environment"
     GENERIC = "generic"
     MODEL = "model"
 
