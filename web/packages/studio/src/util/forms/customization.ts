@@ -5,21 +5,48 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import type {
   AutomodelJobInput,
   AutomodelJobsJobRequest,
+  RlJobInput,
+  RlJobsJobRequest,
   UnslothJobInput,
   UnslothJobsJobRequest,
 } from '@nemo/sdk/generated/customizer/schema';
 import { CustomizationCreateAutomodelJobBody } from '@nemo/sdk/generated/customizer/zod/automodel-jobs';
+import { CustomizationCreateRlJobBody } from '@nemo/sdk/generated/customizer/zod/rl-jobs';
 import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customizer/zod/unsloth-jobs';
-import { isAutomodelJob, type CustomizationJob } from '@studio/util/customizationBackend';
+import {
+  CustomizationBackend,
+  isAutomodelJob,
+  isRlJob,
+  type CustomizationJob,
+} from '@studio/util/customizationBackend';
 import { z } from 'zod';
 
 export interface CustomizationFormFields {
-  backend: 'automodel' | 'unsloth';
+  backend: CustomizationBackend;
   outputName: string;
   description: string;
   automodel: AutomodelJobInput;
   unsloth: UnslothJobInput;
+  rl: RlJobInput;
 }
+
+type DatasetFieldName = 'automodel.dataset.training' | 'unsloth.dataset.path' | 'rl.dataset';
+
+/** Each backend keeps the training dataset reference under a different path. */
+export const DATASET_FIELD_BY_BACKEND: Record<CustomizationBackend, DatasetFieldName> = {
+  automodel: 'automodel.dataset.training',
+  unsloth: 'unsloth.dataset.path',
+  rl: 'rl.dataset',
+};
+
+type ModelFieldName = 'automodel.model' | 'unsloth.model.name' | 'rl.model';
+
+/** Likewise for the base model reference. */
+export const MODEL_FIELD_BY_BACKEND: Record<CustomizationBackend, ModelFieldName> = {
+  automodel: 'automodel.model',
+  unsloth: 'unsloth.model.name',
+  rl: 'rl.model',
+};
 
 const UNSLOTH_DEFAULT_TARGET_MODULES = [
   'q_proj',
@@ -30,6 +57,37 @@ const UNSLOTH_DEFAULT_TARGET_MODULES = [
   'up_proj',
   'down_proj',
 ];
+
+// Every value here is sent on each submit, so these must match the backend defaults
+// (services/rl/src/nmp/rl/schemas.py); `max_steps` stays unset so `epochs` drives length.
+const RL_DPO_DEFAULTS: RlJobInput = {
+  model: '',
+  dataset: '',
+  training: {
+    type: 'dpo',
+    epochs: 1,
+    learning_rate: 1e-4,
+    batch_size: 32,
+    micro_batch_size: 1,
+    max_seq_length: 2048,
+    warmup_steps: 0,
+    weight_decay: 0.01,
+    ref_policy_kl_penalty: 0.05,
+    preference_loss_weight: 1,
+    sft_loss_weight: 0,
+    preference_average_log_probs: false,
+    sft_average_log_probs: false,
+    max_grad_norm: 1.0,
+    parallelism: {
+      num_nodes: 1,
+      num_gpus_per_node: 1,
+      tensor_parallel_size: 1,
+      pipeline_parallel_size: 1,
+      context_parallel_size: 1,
+      sequence_parallel: false,
+    },
+  },
+};
 
 export const FORM_DEFAULTS: CustomizationFormFields = {
   backend: 'automodel',
@@ -106,6 +164,7 @@ export const FORM_DEFAULTS: CustomizationFormFields = {
     optimizer: { learning_rate: 2e-4, weight_decay: 0, optim: 'adamw_8bit' },
     hardware: { precision: 'bf16' },
   },
+  rl: RL_DPO_DEFAULTS,
 };
 
 const automodelBodySpec = CustomizationCreateAutomodelJobBody.shape.spec;
@@ -137,17 +196,28 @@ const unslothSpecSchema = unslothBodySpec.omit({ output: true }).extend({
   }),
 });
 
+const rlBodySpec = CustomizationCreateRlJobBody.shape.spec;
+const rlSpecSchema = rlBodySpec.omit({ output: true }).extend({
+  model: z.string().min(1, 'Please select a model'),
+  dataset: z.string().min(1, 'Training dataset is required'),
+});
+
 export const customizationFormSchema = z
   .object({
-    backend: z.enum(['automodel', 'unsloth']),
+    backend: z.nativeEnum(CustomizationBackend),
     outputName: z.string().min(1, 'Output model name is required'),
     description: z.string(),
     automodel: z.unknown(),
     unsloth: z.unknown(),
+    rl: z.unknown(),
   })
   .superRefine((data, ctx) => {
-    const spec = data.backend === 'automodel' ? automodelSpecSchema : unslothSpecSchema;
-    const value = data.backend === 'automodel' ? data.automodel : data.unsloth;
+    const specByBackend = {
+      automodel: [automodelSpecSchema, data.automodel],
+      unsloth: [unslothSpecSchema, data.unsloth],
+      rl: [rlSpecSchema, data.rl],
+    } as const;
+    const [spec, value] = specByBackend[data.backend];
     const result = spec.safeParse(value);
     if (!result.success) {
       for (const issue of result.error.issues) {
@@ -175,6 +245,15 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobs
     },
   };
 };
+
+export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => ({
+  name: f.outputName || undefined,
+  description: f.description || undefined,
+  spec: {
+    ...f.rl,
+    output: { name: f.outputName || undefined },
+  },
+});
 
 export const formToUnslothCreate = (f: CustomizationFormFields): UnslothJobsJobRequest => {
   const { training } = f.unsloth;
@@ -213,6 +292,15 @@ export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields 
       description: job.description ?? '',
       backend: 'automodel',
       automodel: stripNulls(job.spec) as AutomodelJobInput,
+    };
+  }
+  if (isRlJob(job)) {
+    return {
+      ...FORM_DEFAULTS,
+      outputName: generateDefaultName(),
+      description: job.description ?? '',
+      backend: 'rl',
+      rl: stripNulls(job.spec) as RlJobInput,
     };
   }
   return {
