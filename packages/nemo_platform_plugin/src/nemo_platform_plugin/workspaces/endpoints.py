@@ -43,9 +43,7 @@ def list_workspaces(
 ) -> Paginated[Workspace]: ...
 
 
-def _get_workspace_on_conflict(
-    body: CreateWorkspaceRequest, workspace: str | None
-) -> PreparedRequest[Workspace]:
+def _get_workspace_on_conflict(body: CreateWorkspaceRequest, workspace: str | None) -> PreparedRequest[Workspace]:
     """Build the retrieve request replayed when ``create_workspace(exist_ok=True)`` 409s."""
     return get_workspace(name=body.name, workspace=workspace)
 
@@ -83,9 +81,7 @@ def list_workspace_members(*, workspace: str) -> WorkspaceMemberListResponse: ..
 
 @post("/apis/entities/v2/workspaces/{workspace}/members")
 @abstractmethod
-def create_workspace_member(
-    *, workspace: str, body: CreateWorkspaceMemberRequest
-) -> WorkspaceMember: ...
+def create_workspace_member(*, workspace: str, body: CreateWorkspaceMemberRequest) -> WorkspaceMember: ...
 
 
 @put("/apis/entities/v2/workspaces/{workspace}/members/{principal_id}")
