@@ -67,9 +67,17 @@
     & th {
       display: flex;
       align-items: center;
-      &[data-pinned] {
-        justify-content: center;
-      }
+    }
+
+    /* Pinned cells hold a single control (select checkbox, row-actions menu).
+       Both th and td need flex centering: `justify-items`/`text-align` below
+       are inert on a block-level td, which left-aligns the row checkbox while
+       the flex header centers the select-all checkbox. */
+    & th[data-pinned],
+    & td[data-pinned] {
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     /* Pinned columns: stay at configured size, don't grow */
