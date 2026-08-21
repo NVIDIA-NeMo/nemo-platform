@@ -135,6 +135,17 @@ def test_legacy_api_extra_args_service_selection_suppresses_default_service_grou
     assert "--service-group=all" not in args
 
 
+def test_legacy_api_extra_args_services_selection_suppresses_default_service_group() -> None:
+    documents = _helm_template(
+        "--set-string",
+        "api.extraArgs[0]=--services=evaluator",
+    )
+
+    args = _api_container(documents)["args"]
+    assert args.count("--services=evaluator") == 1
+    assert not any(arg.startswith("--service-group=") for arg in args)
+
+
 def test_default_controller_selection_renders_controller_group_all() -> None:
     documents = _helm_template()
 
@@ -208,6 +219,17 @@ def test_legacy_controller_extra_args_selection_suppresses_default_controller_gr
     args = _controller_container(documents)["args"]
     assert args.count("--controller-group=core") == 1
     assert "--controller-group=all" not in args
+
+
+def test_legacy_controller_extra_args_controllers_selection_suppresses_default_controller_group() -> None:
+    documents = _helm_template(
+        "--set-string",
+        "core.controller.extraArgs[0]=--controllers=models",
+    )
+
+    args = _controller_container(documents)["args"]
+    assert args.count("--controllers=models") == 1
+    assert not any(arg.startswith("--controller-group=") for arg in args)
 
 
 def test_external_clickhouse_disables_embedded_dependency() -> None:
