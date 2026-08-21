@@ -8,6 +8,7 @@ import { server } from '@studio/mocks/node';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { useLocation, useSearchParams } from 'react-router';
 
 vi.mock('use-debounce', () => ({
   useDebounce: (value: unknown) => [value, { cancel: () => {}, flush: () => {} }],
@@ -43,13 +44,39 @@ const sampleVm = {
   parent: '',
 };
 
+const PanelUrlProbe = () => {
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const clearPanelParams = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('virtualModel');
+    nextParams.delete('tab');
+    setSearchParams(nextParams);
+  };
+
+  return (
+    <>
+      <output data-testid="panel-location">{location.search}</output>
+      <button type="button" onClick={clearPanelParams}>
+        Clear panel URL
+      </button>
+    </>
+  );
+};
+
 const renderDataViewAt = (entry: string) =>
   renderRoute(<VirtualModelsDataView workspace="default" />, {
     history: entry,
     routes: [
       {
         path: '/workspaces/:workspace/virtual-models',
-        element: <VirtualModelsDataView workspace="default" />,
+        element: (
+          <>
+            <VirtualModelsDataView workspace="default" />
+            <PanelUrlProbe />
+          </>
+        ),
       },
     ],
   });
@@ -127,5 +154,52 @@ describe('VirtualModelsDataView', () => {
     await user.click(await screen.findByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it('opens chat for a virtual model through the row action', async () => {
+    const user = userEvent.setup();
+    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
+    renderDataView();
+
+    await screen.findByText('my-vm');
+
+    await user.click(screen.getByRole('button', { name: 'Row Actions' }));
+    await user.click(await screen.findByText('Chat'));
+
+    expect(screen.getByTestId('panel-location')).toHaveTextContent('?virtualModel=my-vm&tab=chat');
+    expect(screen.getByRole('radio', { name: 'Chat' })).toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'Task prompt' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
+  });
+
+  it('opens a linked virtual model directly on its chat tab', async () => {
+    const user = userEvent.setup();
+    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
+    renderDataViewAt('/workspaces/default/virtual-models?virtualModel=my-vm&tab=chat');
+
+    expect(await screen.findByRole('radio', { name: 'Chat' })).toBeChecked();
+    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Details' }));
+
+    expect(screen.getByTestId('panel-location')).toHaveTextContent(
+      '?virtualModel=my-vm&tab=details'
+    );
+    expect(screen.getByRole('radio', { name: 'Details' })).toBeChecked();
+  });
+
+  it('closes the panel when its URL state is removed', async () => {
+    const user = userEvent.setup();
+    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
+    renderDataViewAt('/workspaces/default/virtual-models?virtualModel=my-vm&tab=chat');
+
+    expect(await screen.findByRole('radio', { name: 'Chat' })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'Clear panel URL' }));
+
+    expect(screen.getByTestId('panel-location')).toBeEmptyDOMElement();
+    await waitFor(() =>
+      expect(screen.queryByRole('radio', { name: 'Chat' })).not.toBeInTheDocument()
+    );
   });
 });

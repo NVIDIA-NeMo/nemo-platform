@@ -29,6 +29,9 @@ class TraceFilterParam(TypedDict, total=False):
     id: str
     """Filter by canonical Intake trace id."""
 
+    agent_name: str
+    """Filter by root-span agent name."""
+
     evaluation_id: str
     """Deprecated alias for evaluation_name. Use evaluation_name instead."""
 

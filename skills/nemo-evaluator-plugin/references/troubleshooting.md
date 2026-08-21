@@ -17,7 +17,7 @@ nemo evaluator agent-evaluate explain
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `No such command 'evaluation'` | The legacy generated CLI group is not the plugin surface | Use `nemo evaluator ...` |
-| Guidance or `--help` references a local plugin `run` verb | That execution path is being retired | Use `submit`, or the standalone SDK for local iteration |
+| Guidance or `--help` references a local plugin `run` verb | That execution path is being retired; `client.evaluator.run()` is already gone | Use `submit`, or the standalone SDK for local iteration |
 | Agent-eval metric fails every trial with a missing template key | The metric uses the dataset-driven `item.*` context in a task-driven run | Use `inputs.*`, `reference.*`, `task.*`, `trial.*`, or `sample.output_text` |
 | Spec validation error | Fields do not match the current job schema | Run the matching `explain` command and validate against the spec class before submission |
 | Dataset row has missing fields | Jinja templates or `field_mapping` do not match row keys | Inspect one row and every referenced template before rerunning |
@@ -29,9 +29,12 @@ nemo evaluator agent-evaluate explain
 | `ModelRef` fails with the standalone SDK | Model references are resolved by the platform submission path | Use a concrete `Model` with the standalone SDK or use `submit` with `ModelRef` |
 | Fileset evaluation cannot load data | The reference, fragment, or workspace is wrong | Verify the `FilesetRef` and access it through the same workspace |
 | Result download fails while progress shows 100% | Metric progress finished before the platform job finalized artifacts | Call `job.wait_until_done()` before `get_result()` or `download_artifacts()` |
+| `AttributeError` on `get_result()` or `download_artifacts()` after `submit(tasks=...)` | A taskset submission returns `AgentEvaluatorJobResource`, which publishes agent-eval results rather than row scores and carries neither method | Wait with `job.wait_until_done()`, then read scores through `client.evaluator.agent_eval_results` |
+| `TypeError` naming `config`, `field_mapping`, `prompt_template`, or `metric_bundle_packager` on `submit(tasks=...)` | Those configure a *row* evaluation; a taskset run is configured by its runner | Drop them and configure the runner passed as `target` |
+| `UnsubmittableRunnerError` for a non-Gym runner | Only a Gym runner has a wire form today | Write the job input by hand with the matching runner target and submit it |
+| `UnsubmittableRunnerError` for a Gym runner | A `hydra_params` value has no JSON form; a hand-built target or CLI payload cannot carry it either | Replace the value with something JSON-representable, or run in-process with `AgentEvaluator()` |
 | Agent-eval rejects the spec | Both or neither of `target` and `trials` were provided | Provide exactly one |
-| Taskset evaluation lacks held-out reference data | Stored tasks do not carry grader-only `reference` | Use inline `AgentEvalTaskInput` when the metric needs held-out per-task data |
-| Runner target fails to start | The runtime dependency, CLI, config, credentials, or Docker access is missing | Check the selected Codex, Fabric, or Harbor runner prerequisites |
+| Runner target fails to start | The runtime dependency, CLI, config, credentials, or Docker access is missing | Check the selected Fabric, Harbor, or Gym runner prerequisites. Gym resolves the `gym` CLI from `PATH` only, and installs into its own environment because it requires Ray |
 
 ## Debug in the smallest scope
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Task entrypoint for ``agents.invoke``."""
+"""Task entrypoint for ``agents.execute``."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import signal
 import sys
 from types import FrameType
 
-from nemo_agents_plugin.jobs.invoke import AgentInvocationJob
+from nemo_agents_plugin.jobs.execute import ExecuteAgentJob
 from nemo_platform_plugin.sdk_provider import get_task_sdk
 from nemo_platform_plugin.tasks.dispatcher import run_task
 
@@ -30,7 +30,7 @@ def main() -> int:
     except Exception:
         logger.exception("Failed to build task SDK for agents")
         return 2
-    return run_task(AgentInvocationJob, sdk=sdk)
+    return run_task(ExecuteAgentJob, sdk=sdk)
 
 
 if __name__ == "__main__":

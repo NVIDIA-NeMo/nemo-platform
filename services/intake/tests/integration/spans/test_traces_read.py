@@ -106,7 +106,10 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert "test_case_id" not in trace
     assert "source_format" not in trace
     assert "project" not in trace
-    assert "models" not in trace
+    # models and providers were withheld when this API was designed (#9); ASTD-391's
+    # details card needs them, so they are now part of the rollup response.
+    assert trace["models"] == ["gpt-4o-mini"]
+    assert trace["providers"] == ["openai"]
 
     get_response = client.get(f"/apis/intake/v2/workspaces/default/traces/{trace['id']}")
     assert get_response.status_code == 200, get_response.text
@@ -129,6 +132,9 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert "input_tokens" not in summary_trace
     assert "cost_usd" not in summary_trace
     assert "span_count" not in summary_trace
+    # summary skips the span aggregate join, so these have no value to report
+    assert "models" not in summary_trace
+    assert "providers" not in summary_trace
     assert "input" not in summary_trace
     assert "output" not in summary_trace
 

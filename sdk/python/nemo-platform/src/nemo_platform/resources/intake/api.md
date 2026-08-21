@@ -208,10 +208,22 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.intake import Trace, TraceFilter, TraceSortField, TracesPage
+from nemo_platform.types.intake import (
+    CostRollupResponse,
+    LatencyRollupResponse,
+    TokenRollupResponse,
+    Trace,
+    TraceFilter,
+    TraceMetricBucketParam,
+    TraceMetricPointResponse,
+    TraceMetrics,
+    TraceSortField,
+    TracesPage,
+)
 ```
 
 Methods:
 
 - <code title="get /apis/intake/v2/workspaces/{workspace}/traces/{id}">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">retrieve</a>(id, \*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_retrieve_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace.py">Trace</a></code>
 - <code title="get /apis/intake/v2/workspaces/{workspace}/traces">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace.py">SyncDefaultPagination[Trace]</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/traces/metrics">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">get_metrics</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_get_metrics_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace_metrics.py">TraceMetrics</a></code>

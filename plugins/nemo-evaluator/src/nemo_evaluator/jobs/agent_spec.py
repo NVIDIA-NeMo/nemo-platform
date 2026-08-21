@@ -66,18 +66,6 @@ class AgentTarget(BaseModel):
     )
 
 
-class CodexRunnerTarget(BaseModel):
-    """Generate trials by driving the Codex CLI agent runner."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["codex"] = "codex"
-    model: str | None = Field(
-        default=None, description="Codex model to use (e.g. 'gpt-5.5'); CLI default when omitted."
-    )
-    timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Codex CLI, in seconds.")
-
-
 class FabricRunnerTarget(BaseModel):
     """Generate trials by driving an agent harness through the NeMo Fabric runtime.
 
@@ -209,7 +197,7 @@ class GymRunnerTarget(BaseModel):
 
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved
 #: to a runtime at run time. ``kind``-discriminated; widen with more members as runners land.
-AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | GymRunnerTarget | HarborRunnerTarget
+AgentRunnerTarget: TypeAlias = FabricRunnerTarget | GymRunnerTarget | HarborRunnerTarget
 
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).
@@ -239,7 +227,7 @@ def target_agent_identity(target: Target | Model | AgentBase | None) -> tuple[st
         return target.agent, None
     if isinstance(target, ModelTarget):
         return None, target.model.name
-    if isinstance(target, CodexRunnerTarget | FabricRunnerTarget):
+    if isinstance(target, FabricRunnerTarget):
         return None, target.model
     # Bare SDK values, as carried by the dataset-driven eval spec.
     if isinstance(target, AgentBase):
@@ -313,9 +301,9 @@ class _AgentEvalSpecCommon(BaseModel):
 
     target: Target | None = Field(
         default=None,
-        description="What generates trials online: a Model or Agent endpoint, or an agent runner (e.g. Codex "
-        "CLI). Endpoint targets carry their own request config (prompt template / inference params). "
-        "Mutually exclusive with `trials`.",
+        description="What generates trials online: a Model or Agent endpoint, or an agent runner (e.g. a "
+        "Fabric harness). Endpoint targets carry their own request config (prompt template / inference "
+        "params). Mutually exclusive with `trials`.",
     )
     trials: list[AgentEvalTrial] | None = Field(
         default=None,

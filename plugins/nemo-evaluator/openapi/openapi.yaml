@@ -2098,14 +2098,14 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ModelTarget'
           - $ref: '#/components/schemas/AgentTarget'
-          - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
           - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
-            an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
-            config (prompt template / inference params). Mutually exclusive with `trials`.'
+            an agent runner (e.g. a Fabric harness). Endpoint targets carry their
+            own request config (prompt template / inference params). Mutually exclusive
+            with `trials`.'
         trials:
           title: Trials
           description: Precomputed trials to score directly (offline eval), instead
@@ -2270,14 +2270,14 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ModelTarget'
           - $ref: '#/components/schemas/AgentTarget'
-          - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
           - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
-            an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
-            config (prompt template / inference params). Mutually exclusive with `trials`.'
+            an agent runner (e.g. a Fabric harness). Endpoint targets carry their
+            own request config (prompt template / inference params). Mutually exclusive
+            with `trials`.'
         trials:
           title: Trials
           description: Precomputed trials to score directly (offline eval), instead
@@ -3039,27 +3039,6 @@ components:
         polymorphically (typed as an abstract base), which renders as an opaque
 
         object in the spec; this concrete DTO documents the actual fields.'
-    CodexRunnerTarget:
-      properties:
-        kind:
-          type: string
-          const: codex
-          title: Kind
-          default: codex
-        model:
-          title: Model
-          description: Codex model to use (e.g. 'gpt-5.5'); CLI default when omitted.
-          type: string
-        timeout_s:
-          type: integer
-          minimum: 1.0
-          title: Timeout S
-          description: Per-task timeout for the Codex CLI, in seconds.
-          default: 600
-      additionalProperties: false
-      type: object
-      title: CodexRunnerTarget
-      description: Generate trials by driving the Codex CLI agent runner.
     DatetimeFilter:
       additionalProperties: false
       properties:

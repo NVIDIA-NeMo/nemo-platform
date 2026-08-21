@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
-from nemo_agents_plugin.jobs.invoke import AgentInvocationJob
+from nemo_agents_plugin.jobs.execute import ExecuteAgentJob
 from nemo_agents_plugin.service import AgentsService
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
@@ -41,7 +41,7 @@ def _extract_tar_members(content: bytes, target_dir: Path) -> dict[str, str]:
     return files
 
 
-def test_invoke_job_materializes_layered_input_workspace(tmp_path: Path) -> None:
+def test_execute_job_materializes_layered_input_workspace(tmp_path: Path) -> None:
     with create_test_client(
         _TestAgentsService,
         FilesService,
@@ -97,7 +97,7 @@ def test_invoke_job_materializes_layered_input_workspace(tmp_path: Path) -> None
 
         job_name = "invoke-layered-workdir"
         create_response = ctx.test_client.post(
-            "/apis/agents/v2/workspaces/default/jobs/invoke",
+            "/apis/agents/v2/workspaces/default/jobs/execute",
             json={
                 "name": job_name,
                 "spec": {
@@ -139,12 +139,12 @@ def test_invoke_job_materializes_layered_input_workspace(tmp_path: Path) -> None
             (request.base_dir / "artifacts" / "trace.json").write_text("{}\n")
             return FabricRuntimeResult(status="succeeded", response="done")
 
-        with patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke):
-            result = AgentInvocationJob().run(job["spec"], ctx=job_ctx, sdk=ctx.sdk)
+        with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+            result = ExecuteAgentJob().run(job["spec"], ctx=job_ctx, sdk=ctx.sdk)
         assert result["status"] == "completed"
         assert result["input_workdir"]["name"] == "input_workdir"
 
-        results_response = ctx.test_client.get(f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results")
+        results_response = ctx.test_client.get(f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results")
         assert results_response.status_code == 200, results_response.text
         assert sorted(item["name"] for item in results_response.json()["data"]) == sorted(
             [
@@ -156,13 +156,13 @@ def test_invoke_job_materializes_layered_input_workspace(tmp_path: Path) -> None
         )
 
         result_response = ctx.test_client.get(
-            f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results/input_workdir"
+            f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results/input_workdir"
         )
         assert result_response.status_code == 200, result_response.text
         assert result_response.json()["name"] == "input_workdir"
 
         download_response = ctx.test_client.get(
-            f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results/input_workdir/download"
+            f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results/input_workdir/download"
         )
         assert download_response.status_code == 200, download_response.text
         files = _extract_tar_members(download_response.content, tmp_path / "downloaded-input-workdir")
@@ -175,7 +175,7 @@ def test_invoke_job_materializes_layered_input_workspace(tmp_path: Path) -> None
         assert "source: base\n" not in files.values()
 
         output_download_response = ctx.test_client.get(
-            f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results/output_workdir/download"
+            f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results/output_workdir/download"
         )
         assert output_download_response.status_code == 200, output_download_response.text
         output_files = _extract_tar_members(output_download_response.content, tmp_path / "downloaded-output-workdir")
@@ -184,7 +184,7 @@ def test_invoke_job_materializes_layered_input_workspace(tmp_path: Path) -> None
         )
 
 
-def test_invoke_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> None:
+def test_execute_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> None:
     with create_test_client(
         _TestAgentsService,
         FilesService,
@@ -218,7 +218,7 @@ def test_invoke_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> No
 
         job_name = "invoke-fabric-raises"
         create_response = ctx.test_client.post(
-            "/apis/agents/v2/workspaces/default/jobs/invoke",
+            "/apis/agents/v2/workspaces/default/jobs/execute",
             json={
                 "name": job_name,
                 "spec": {
@@ -249,12 +249,12 @@ def test_invoke_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> No
             raise RuntimeError("fabric exploded")
 
         with (
-            patch("nemo_agents_plugin.jobs.invoke.invoke_agent_config_request_once", _invoke),
+            patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
             pytest.raises(RuntimeError, match="fabric exploded"),
         ):
-            AgentInvocationJob().run(job["spec"], ctx=job_ctx, sdk=ctx.sdk)
+            ExecuteAgentJob().run(job["spec"], ctx=job_ctx, sdk=ctx.sdk)
 
-        results_response = ctx.test_client.get(f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results")
+        results_response = ctx.test_client.get(f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results")
         assert results_response.status_code == 200, results_response.text
         assert sorted(item["name"] for item in results_response.json()["data"]) == sorted(
             [
@@ -266,7 +266,7 @@ def test_invoke_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> No
         )
 
         output_workdir_response = ctx.test_client.get(
-            f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results/output_workdir/download"
+            f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results/output_workdir/download"
         )
         assert output_workdir_response.status_code == 200, output_workdir_response.text
         output_files = _extract_tar_members(output_workdir_response.content, tmp_path / "downloaded-output-workdir")
@@ -276,7 +276,7 @@ def test_invoke_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> No
         )
 
         artifacts_response = ctx.test_client.get(
-            f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results/output_artifacts/download"
+            f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results/output_artifacts/download"
         )
         assert artifacts_response.status_code == 200, artifacts_response.text
         artifact_files = _extract_tar_members(artifacts_response.content, tmp_path / "downloaded-output-artifacts")
@@ -286,7 +286,7 @@ def test_invoke_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> No
         )
 
         error_response = ctx.test_client.get(
-            f"/apis/agents/v2/workspaces/default/jobs/invoke/{job_name}/results/fabric_error/download"
+            f"/apis/agents/v2/workspaces/default/jobs/execute/{job_name}/results/fabric_error/download"
         )
         assert error_response.status_code == 200, error_response.text
         error_payload = json.loads(error_response.content)

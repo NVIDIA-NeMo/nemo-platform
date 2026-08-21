@@ -71,8 +71,8 @@ class GymAgentTaskRunner:
     def config(self) -> GymRuntimeConfig:
         """The settings this runner was constructed with.
 
-        Read-only, and the whole config rather than a property per field: unlike the Codex and
-        Fabric runtimes, everything shaping a Gym run already lives in one validated object.
+        Read-only, and the whole config rather than a property per field: unlike the Fabric
+        runtimes, everything shaping a Gym run already lives in one validated object.
 
         Exposed so a live runner can be described as the job-spec target that reproduces it, without
         reaching into a private attribute from another package. ``runner_info()`` cannot serve that

@@ -143,7 +143,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
         marker="STUDIO_UI_VITE_FF_INTAKE_ENABLED", config_path="studio.feature_flags.intake_enabled", default="true"
     ),
     EnvMapping(
-        marker="STUDIO_UI_VITE_FF_JOBS_ENABLED", config_path="studio.feature_flags.jobs_enabled", default="false"
+        marker="STUDIO_UI_VITE_FF_JOBS_ENABLED", config_path="studio.feature_flags.jobs_enabled", default="true"
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_MEMBERS_ENABLED", config_path="studio.feature_flags.members_enabled", default="true"

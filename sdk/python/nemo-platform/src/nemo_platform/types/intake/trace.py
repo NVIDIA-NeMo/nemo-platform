@@ -15,7 +15,7 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
@@ -35,6 +35,10 @@ class Trace(BaseModel):
     status: SpanStatus
 
     workspace: str
+
+    agent_name: Optional[str] = None
+
+    agent_version: Optional[str] = None
 
     cached_tokens: Optional[int] = None
 
@@ -64,6 +68,9 @@ class Trace(BaseModel):
 
     input_tokens: Optional[int] = None
 
+    models: Optional[List[str]] = None
+    """Distinct models used across the trace's spans. Omitted in summary mode."""
+
     name: Optional[str] = None
 
     output: Optional[str] = None
@@ -73,6 +80,12 @@ class Trace(BaseModel):
     """
 
     output_tokens: Optional[int] = None
+
+    providers: Optional[List[str]] = None
+    """Distinct inference providers used across the trace's spans.
+
+    Omitted in summary mode.
+    """
 
     root_span_id: Optional[str] = None
 

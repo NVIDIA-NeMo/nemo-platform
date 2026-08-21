@@ -23,7 +23,6 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskInput,
     AgentEvalTaskSpec,
     AgentTarget,
-    CodexRunnerTarget,
     FabricRunnerTarget,
     GymRunnerTarget,
     HarborRunnerTarget,
@@ -232,7 +231,6 @@ def _publish(client: AsyncNeMoPlatform | None, *, required: bool = True, agent_n
             GymRunnerTarget(agent="simple_agent", agent_config="conf/agent.yaml", resources_server="mcqa"),
             ("simple_agent", None),
         ),
-        (CodexRunnerTarget(model="gpt-5.5"), (None, "gpt-5.5")),
         (FabricRunnerTarget(config={}, model="p/m"), (None, "p/m")),
         (None, (None, None)),
     ],
@@ -296,7 +294,6 @@ def test_agent_name_derived_from_gym_target_needs_no_override() -> None:
     "target",
     [
         ModelTarget(model=Model(name="gpt-4o", url="http://model")),
-        CodexRunnerTarget(model="gpt-5.5"),
         FabricRunnerTarget(config={}),
         None,
     ],
@@ -317,7 +314,7 @@ def test_blank_identity_fields_are_rejected() -> None:
 
 @pytest.mark.parametrize(
     "target",
-    [ModelTarget(model=Model(name="gpt-4o", url="http://model")), CodexRunnerTarget(model="gpt-5.5"), None],
+    [ModelTarget(model=Model(name="gpt-4o", url="http://model")), FabricRunnerTarget(config={}), None],
 )
 def test_explicit_agent_name_satisfies_undeducible_targets(target: Target | None) -> None:
     spec = _input_spec(
@@ -509,7 +506,7 @@ def _job_context(tmp_path: Path, *, job_id: str | None = None) -> JobContext:
 def _job_spec(*, required: bool = True) -> AgentEvalSpec:
     return AgentEvalSpec(
         tasks=[AgentEvalTaskSpec(id="task-1", intent="Answer.")],
-        target=CodexRunnerTarget(model="gpt-5.5"),
+        target=FabricRunnerTarget(config={}, model="p/m"),
         publication=PublicationSpec(
             intake=IntakePublicationSpec(evaluation_id="eval-1", agent_name="a", required=required)
         ),
@@ -520,7 +517,7 @@ def test_job_does_not_publish_without_a_publication_spec(tmp_path: Path, mocker:
     mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=_FakeEvaluator())
     client = _FakeClient()
 
-    spec = AgentEvalSpec(tasks=[AgentEvalTaskSpec(id="task-1", intent="Answer.")], target=CodexRunnerTarget())
+    spec = AgentEvalSpec(tasks=[AgentEvalTaskSpec(id="task-1", intent="Answer.")], target=FabricRunnerTarget(config={}))
     result = AgentEvalJob().run(
         spec.model_dump(), ctx=_job_context(tmp_path), async_sdk=cast(AsyncNeMoPlatform, client)
     )

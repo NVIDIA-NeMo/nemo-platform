@@ -4,6 +4,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.models.client import ModelsClient
 from nmp.guardrails.app.utils.config_utils import (
     _load_and_execute_py_config,
     configure_rails_config,
@@ -163,13 +164,18 @@ class TestEnrichConfigWithData:
 class TestConfigureRailsConfig:
     @pytest.fixture
     def mock_platform_sdk(self):
-        with patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk") as mock:
-            mock_sdk = MagicMock()
-            mock_sdk.models.get_openai_route_base_url.return_value = (
+        with (
+            patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk") as get_sdk,
+            patch("nmp.guardrails.app.utils.model_routing.client_from_platform") as make_client,
+        ):
+            sdk = MagicMock()
+            models = MagicMock()
+            models.get_openai_route_base_url.return_value = (
                 "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
             )
-            mock.return_value = mock_sdk
-            yield mock
+            get_sdk.return_value = sdk
+            make_client.return_value = models
+            yield sdk, models, make_client
 
     def test_resolves_model_entity_references(self, mock_platform_sdk):
         """Test that configure_rails_config resolves Model Entity references."""
@@ -183,6 +189,9 @@ class TestConfigureRailsConfig:
 
         result = configure_rails_config(rails_config, model)
 
+        sdk, models, make_client = mock_platform_sdk
+        make_client.assert_called_once_with(sdk, ModelsClient)
+        models.get_openai_route_base_url.assert_called_once_with(workspace="default")
         main_model = result.models[0]
         assert (
             main_model.parameters["base_url"]

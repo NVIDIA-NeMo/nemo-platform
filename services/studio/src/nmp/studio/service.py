@@ -13,6 +13,7 @@ from typing import ClassVar
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse
+from nemo_platform_plugin.authz import Permission
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
 from nmp.studio import assistant
@@ -101,6 +102,14 @@ class StudioService(Service[StudioConfig]):
     def description(self) -> str:
         """Service description for OpenAPI docs."""
         return "Serves the NeMo Studio web application and local assistant bridge"
+
+    def extra_permissions(self) -> list[Permission]:
+        """Return permissions not attached to routes."""
+        return []
+
+    def extra_role_permissions(self) -> dict[str, list[Permission]]:
+        """Return role grants beyond the default permission heuristic."""
+        return {}
 
     def get_routers(self) -> list[RouterConfig]:
         """Return routers for the studio service.

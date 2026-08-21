@@ -121,7 +121,7 @@ Templates read `raw_attributes` through `SpanTemplates/rawAttributes.ts` (`parse
 | Section            | Accordion label | Body                                                                     |
 | ------------------ | --------------- | ------------------------------------------------------------------------ |
 | `llm`              | Usage           | Token/cost grid (`buildSpanLlmEntries`, minus model params in kind body) |
-| `input` / `output` | Input / Output  | `SpanPayloadBlock`                                                       |
+| `input` / `output` | Input / Output  | `SpanPayloadView` + `raw`/`md`/`json` toggle on the trigger              |
 | `metadata`         | Metadata        | `buildSpanSummaryEntries` via `KeyValueRows`                             |
 | `annotations`      | Annotations     | `AnnotationsPanel` (+ count badge on trigger)                            |
 | _(custom)_         | _(per kind)_    | `template.customSections(span)` — open by default                        |
@@ -129,6 +129,14 @@ Templates read `raw_attributes` through `SpanTemplates/rawAttributes.ts` (`parse
 4. **Raw JSON debug** — collapsible `RawJsonDebug` dump of the full span object
 
 Expand/collapse-all from the trace toolbar drives section state via `expandToken` / `collapseToken` props (tree view). "Add note" on a row opens the Annotations section and focuses its note field via `focusNoteNonce`.
+
+### Payload formats
+
+Every payload renders through `SpanPayloadView` in one of three formats: `raw` (verbatim text), `md` (rendered markdown), or `json` (pretty-printed and syntax-highlighted). A payload opens in `json` when it parses as JSON and `raw` otherwise, so the common case needs no click.
+
+Input and Output pair the view with `SpanPayloadFormatToggle` on the section trigger. The two share state through `useSpanPayloadFormat`, called in `SpanMetadataAccordions` because the toggle renders in `slotEnd` while the payload renders in `slotContent`. The control hides itself when the span has no payload and disables `json` (with a tooltip) for payloads that are not JSON. Selecting a format on a collapsed section also opens it. The choice is scoped to the payload text it was made for, so selecting a span with a different payload re-derives the default rather than keeping a view that payload cannot satisfy. A span whose payload is byte-identical keeps the selection, since either one renders the same text the same way. The trigger is a `<summary>`, so each button suppresses the row toggle.
+
+Payloads at or above 20,000 characters paint a spinner for one frame before mounting the renderer, and skip Shiki highlighting so the full text always appears. Kind-specific payloads (e.g. the retriever query) use `SpanPayloadView` without a toggle and take the same default.
 
 ### Metadata catchall
 

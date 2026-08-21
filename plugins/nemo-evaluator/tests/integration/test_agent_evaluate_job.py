@@ -6,8 +6,8 @@
 These exercise the job against *real* execution seams, across the dimensions that
 matter for this work:
 
-* target type — a Codex *runner*, plus Model and Agent endpoint targets pointed at an
-  IGW mock provider (canned response, so no real model or key);
+* target type — Model and Agent endpoint targets pointed at an IGW mock provider
+  (canned response, so no real model or key);
 * metric form — an inline metric bundle, plus a stored ``MetricRef`` resolved against
   the live entity store;
 * execution mode — in-process ``run_local`` and service-side ``submit`` on both the
@@ -15,9 +15,8 @@ matter for this work:
   ``docker_platform`` fixtures in ``conftest.py``. (Docker submit is xfail today — the
   cpu-tasks image predates this work; tracked in AALGO-301.)
 
-Marked ``integration`` (auto-applied to ``/integration/`` paths). Codex-dependent tests
-gate on ``@requires_codex`` (skip when the ``codex`` CLI is absent, needs a logged-in
-ChatGPT account); Model/Agent tests need only the running platform's IGW.
+Marked ``integration`` (auto-applied to ``/integration/`` paths). Model/Agent tests
+need only the running platform's IGW.
 
 Run directly::
 
@@ -28,7 +27,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sys
 import uuid
 from pathlib import Path
@@ -50,7 +48,6 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
     AgentEvalTaskInput,
     AgentTarget,
-    CodexRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
 )
@@ -69,9 +66,9 @@ from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.testing import add_mock_provider
 from nmp.testing.e2e import wait_for_platform_job
 
-#: Opt-in: these tests spin real ``nemo services`` platforms (subprocess/docker/auth) and some need
-#: a local ``codex`` CLI + login, so they're kept out of the standard CI integration job. Run them
-#: locally (or on demand) with ``RUN_AGENT_EVAL_INTEGRATION=1``.
+#: Opt-in: these tests spin real ``nemo services`` platforms (subprocess/docker/auth), so they're
+#: kept out of the standard CI integration job. Run them locally (or on demand) with
+#: ``RUN_AGENT_EVAL_INTEGRATION=1``.
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
@@ -80,22 +77,12 @@ pytestmark = [
     ),
 ]
 
-#: Codex model the runner drives. ChatGPT-account dependent; gpt-5.5 is known-good.
-CODEX_MODEL = "gpt-5.5"
-
 WORKSPACE = "default"
 
 #: Headers a job's task SDK carries (mirrors ``get_task_sdk``): an internal service principal the
 #: default PDP policy grants full permissions. Authenticates test-side calls against the
 #: auth-enabled platform without standing up OIDC.
 SERVICE_PRINCIPAL_HEADERS = {"X-NMP-Principal-Id": "service:evaluator", "X-NMP-Internal": "true"}
-
-
-def _codex_available() -> bool:
-    return shutil.which("codex") is not None
-
-
-requires_codex = pytest.mark.skipif(not _codex_available(), reason="codex CLI not on PATH")
 
 
 # Pickle metrics defined in this test module BY VALUE so the cloudpickle bundle embeds the class
@@ -261,52 +248,15 @@ def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) ->
     assert scores[0]["outputs"][0]["value"] in (True, 1.0)
 
 
-@requires_codex
-@pytest.mark.timeout(300)
-def test_run_local_codex_runner_scores_a_real_trial() -> None:
-    # One real Codex run covering dim 1 (runner) x dim 2 (inline metric) x dim 3 (run): the CLI
-    # produces a trial and a user-defined inline metric scores its output. (Every task must declare
-    # >=1 metric — the SDK evaluator rejects a metric-less task — so this is the minimal real run.)
-    input_spec = AgentEvalInputSpec(
-        tasks=[
-            AgentEvalTaskInput(
-                id="say-done",
-                intent="Agent follows a trivial instruction and exits cleanly.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
-                metrics=[_output_contains_metric("DONE")],
-            )
-        ],
-        target=CodexRunnerTarget(model=CODEX_MODEL),
-    )
-
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
-
-    assert result["status"] == "completed"
-    bundle = _bundle_dir(result)
-
-    trials = _read_jsonl(bundle / "trials.jsonl")
-    assert len(trials) == 1
-    assert trials[0]["task_id"] == "say-done"
-    assert trials[0]["status"] == "completed"
-
-    scores = _read_jsonl(bundle / "scores.jsonl")
-    assert [score["metric_type"] for score in scores] == ["output-contains"]
-    assert scores[0]["trial_id"] == trials[0]["id"]
-    # The custom metric actually validated the agent's output (it replied "DONE").
-    output = scores[0]["outputs"][0]
-    assert output["name"] == "contains"
-    assert output["value"] in (True, 1.0)
-
-
 # --- submit: service-side execution -----------------------------------------
 
 
 def _offline_trials_input_spec() -> dict:
     """Submitter-facing spec: one precomputed trial scored offline by one inline metric.
 
-    No target — so no online generation, no codex, no IGW. Runs entirely inside the task container,
-    isolating the docker-backend-wiring + entrypoint condition (rather than also depending on a codex
-    CLI/auth the image doesn't carry)."""
+    No target — so no online generation and no IGW. Runs entirely inside the task container,
+    isolating the docker-backend-wiring + entrypoint condition (rather than also depending on a model
+    endpoint the image cannot reach)."""
     return AgentEvalInputSpec(
         tasks=[
             AgentEvalTaskInput(
@@ -425,21 +375,6 @@ def test_mixed_job_types_list_endpoints_do_not_cross_render(subprocess_platform:
     assert agent_name not in row_names
 
 
-def _codex_eval_input_spec() -> dict:
-    """Submitter-facing spec: one Codex-runner task scored by one inline metric."""
-    return AgentEvalInputSpec(
-        tasks=[
-            AgentEvalTaskInput(
-                id="say-done",
-                intent="Agent follows a trivial instruction and exits cleanly.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
-                metrics=[_output_contains_metric("DONE")],
-            )
-        ],
-        target=CodexRunnerTarget(model=CODEX_MODEL),
-    ).model_dump(mode="json")
-
-
 def _harbor_eval_input_spec() -> dict:
     """Minimal Harbor target submission; compilation must reject it before task execution."""
     return AgentEvalInputSpec(
@@ -454,84 +389,12 @@ def _harbor_eval_input_spec() -> dict:
     ).model_dump(mode="json")
 
 
-@requires_codex
-@pytest.mark.timeout(600)
-def test_submit_to_subprocess_backend_runs_agent_eval(subprocess_platform: str) -> None:
-    # dim 3 (submit) x dim 4 (subprocess backend): submit through the plugin route; the jobs service
-    # compiles + runs the task as a host subprocess (which has codex), to completion.
-    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
-    client.workspaces.create(name=WORKSPACE, exist_ok=True)
-
-    response = NemoJobScheduler().submit_remote(
-        AgentEvalJob,
-        _codex_eval_input_spec(),
-        base_url=subprocess_platform,
-        workspace=WORKSPACE,
-        profile="default",
-    )
-    job_name = response.get("name") or response.get("id")
-    assert job_name, f"submit response carried no job name/id: {response}"
-
-    job = wait_for_platform_job(client, job_name, WORKSPACE, timeout=480)
-    assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
-
-    # Persistence: run() wrote a queryable result record, retrievable via the typed SDK resource
-    # (client.evaluator.agent_eval_results -> the /agent-eval-results route). The record is keyed by
-    # the job id and denormalizes the target it ran against; the full bundle lives in bundle_ref.
-    result = client.evaluator.agent_eval_results.retrieve(job_name, workspace=WORKSPACE)
-    assert result.job_id == job_name
-    assert (result.target_kind, result.target_name) == ("codex", CODEX_MODEL)
-    assert result.bundle_ref
-    assert result.created_at is not None
-
-
-@requires_codex
-@pytest.mark.timeout(600)
-def test_submit_with_stored_metric_ref_resolves_and_scores(subprocess_platform: str) -> None:
-    # dim 2 (stored MetricRef): store a metric in the platform, reference it by name, and submit.
-    # The server-side to_spec must resolve the ref against the live entity store + files service
-    # (not an inline bundle) before the job runs.
-    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
-    client.workspaces.create(name=WORKSPACE, exist_ok=True)
-
-    metric_name = _unique("done-contains")
-    stored = _output_contains_metric("DONE")
-    create = httpx.post(
-        f"{subprocess_platform}/apis/evaluator/v2/workspaces/{WORKSPACE}/metrics/{metric_name}",
-        content=stored.model_dump_json(),
-        headers={"content-type": "application/json"},
-        timeout=30,
-    )
-    assert create.status_code in (200, 201), f"metric create failed: {create.status_code} {create.text}"
-
-    spec = AgentEvalInputSpec(
-        tasks=[
-            AgentEvalTaskInput(
-                id="say-done",
-                intent="Agent follows a trivial instruction and exits cleanly.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
-                metrics=[MetricRef(f"{WORKSPACE}/{metric_name}")],
-            )
-        ],
-        target=CodexRunnerTarget(model=CODEX_MODEL),
-    ).model_dump(mode="json")
-
-    response = NemoJobScheduler().submit_remote(
-        AgentEvalJob, spec, base_url=subprocess_platform, workspace=WORKSPACE, profile="default"
-    )
-    job_name = response.get("name") or response.get("id")
-    assert job_name, f"submit response carried no job name/id: {response}"
-
-    job = wait_for_platform_job(client, job_name, WORKSPACE, timeout=480)
-    assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
-
-
 @pytest.mark.timeout(420)
 def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -> None:
     # dim 2 (stored taskset ref) x dim 3 (submit): store a metric + two tasks + a taskset, then submit
     # an agent eval whose `tasks` is a TasksetRef (no inline tasks). Server-side to_spec must load the
     # taskset, expand BOTH member tasks, and resolve each task's stored MetricRef — all against the
-    # live entity store — before the job runs. A Model target -> IGW mock provider keeps it codex-free.
+    # live entity store — before the job runs. A Model target -> IGW mock provider keeps it hermetic.
     client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 
@@ -609,7 +472,6 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
     # inference client (AgentEvalJob._build_evaluator) — otherwise the IGW returns 401 and the job
     # fails. A clean completion proves the forwarded service-principal headers authenticate online
     # inference under auth, with no bearer. (Probed directly too: service headers -> 200, none -> 401.)
-    # No codex: the target is an IGW mock provider, so this runs without the runner toolchain.
     sdk = NeMoPlatform(base_url=auth_subprocess_platform, default_headers=SERVICE_PRINCIPAL_HEADERS, max_retries=2)
     sdk.workspaces.create(name=WORKSPACE, exist_ok=True)
     model_name = _unique("auth-model")
@@ -693,7 +555,7 @@ def test_submit_harbor_target_to_docker_backend_fails_fast(docker_platform: str)
     reason="agent-eval can't run under the docker backend until the cpu-tasks image is rebuilt with "
     "this work: the published image predates the nemo_evaluator.tasks.agent_evaluate entrypoint "
     "(container exits with ModuleNotFoundError). This submits an offline trials spec (no online "
-    "generation, no codex, no IGW), so the stale image is the only remaining failure cause — the "
+    "generation, no online target, no IGW), so the stale image is the only remaining failure cause — the "
     "xfail flips the moment the image ships the entrypoint. Tracked in AALGO-301.",
     strict=False,
 )
@@ -703,7 +565,7 @@ def test_submit_to_docker_backend_runs_agent_eval(docker_platform: str) -> None:
     # cpu-tasks container. Verified to genuinely reach the docker backend (it creates a container
     # from the cpu-tasks image); it fails today because that image predates this work — hence xfail.
     # An offline trials spec keeps the task self-contained in-container, so this isolates the
-    # backend-wiring + entrypoint condition rather than also depending on a codex CLI/auth.
+    # backend-wiring + entrypoint condition rather than also depending on a live model endpoint.
     client = NeMoPlatform(base_url=docker_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 

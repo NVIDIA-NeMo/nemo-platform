@@ -1505,12 +1505,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute:
     post:
       tags:
       - Agents
       summary: Create Job
-      operationId: create_job_apis_agents_v2_workspaces__workspace__jobs_invoke_post
+      operationId: create_job_apis_agents_v2_workspaces__workspace__jobs_execute_post
       parameters:
       - name: workspace
         in: path
@@ -1523,14 +1523,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/InvokeJobRequest'
+              $ref: '#/components/schemas/ExecuteJobRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvokeJob'
+                $ref: '#/components/schemas/ExecuteJob'
         '422':
           description: Validation Error
           content:
@@ -1541,7 +1541,7 @@ paths:
       tags:
       - Agents
       summary: List Jobs
-      operationId: list_jobs_apis_agents_v2_workspaces__workspace__jobs_invoke_get
+      operationId: list_jobs_apis_agents_v2_workspaces__workspace__jobs_execute_get
       parameters:
       - name: workspace
         in: path
@@ -1574,7 +1574,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/InvokeJobsSortField'
+          - $ref: '#/components/schemas/ExecuteJobsSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -1586,7 +1586,7 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/InvokeJobsListFilter'
+          $ref: '#/components/schemas/ExecuteJobsListFilter'
         description: Filter jobs on various criteria.
       responses:
         '200':
@@ -1594,19 +1594,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvokeJobsPage'
+                $ref: '#/components/schemas/ExecuteJobsPage'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{job}/results/{name}:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{job}/results/{name}:
     get:
       tags:
       - Agents
       summary: Get Job Result
-      operationId: get_job_result_apis_agents_v2_workspaces__workspace__jobs_invoke__job__results__name__get
+      operationId: get_job_result_apis_agents_v2_workspaces__workspace__jobs_execute__job__results__name__get
       parameters:
       - name: workspace
         in: path
@@ -1639,12 +1639,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{job}/results/{name}/download:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{job}/results/{name}/download:
     get:
       tags:
       - Agents
       summary: Download Job Result
-      operationId: download_job_result_apis_agents_v2_workspaces__workspace__jobs_invoke__job__results__name__download_get
+      operationId: download_job_result_apis_agents_v2_workspaces__workspace__jobs_execute__job__results__name__download_get
       parameters:
       - name: workspace
         in: path
@@ -1680,12 +1680,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{name}:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{name}:
     get:
       tags:
       - Agents
       summary: Get Job
-      operationId: get_job_apis_agents_v2_workspaces__workspace__jobs_invoke__name__get
+      operationId: get_job_apis_agents_v2_workspaces__workspace__jobs_execute__name__get
       parameters:
       - name: workspace
         in: path
@@ -1705,7 +1705,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvokeJob'
+                $ref: '#/components/schemas/ExecuteJob'
         '422':
           description: Validation Error
           content:
@@ -1716,7 +1716,7 @@ paths:
       tags:
       - Agents
       summary: Delete Job
-      operationId: delete_job_apis_agents_v2_workspaces__workspace__jobs_invoke__name__delete
+      operationId: delete_job_apis_agents_v2_workspaces__workspace__jobs_execute__name__delete
       parameters:
       - name: workspace
         in: path
@@ -1739,12 +1739,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{name}/cancel:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{name}/cancel:
     post:
       tags:
       - Agents
       summary: Cancel Job
-      operationId: cancel_job_apis_agents_v2_workspaces__workspace__jobs_invoke__name__cancel_post
+      operationId: cancel_job_apis_agents_v2_workspaces__workspace__jobs_execute__name__cancel_post
       parameters:
       - name: workspace
         in: path
@@ -1764,19 +1764,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvokeJob'
+                $ref: '#/components/schemas/ExecuteJob'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{name}/logs:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{name}/logs:
     get:
       tags:
       - Agents
       summary: Get Job Logs
-      operationId: get_job_logs_apis_agents_v2_workspaces__workspace__jobs_invoke__name__logs_get
+      operationId: get_job_logs_apis_agents_v2_workspaces__workspace__jobs_execute__name__logs_get
       parameters:
       - name: workspace
         in: path
@@ -1815,12 +1815,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{name}/results:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{name}/results:
     get:
       tags:
       - Agents
       summary: List Job Results
-      operationId: list_job_results_apis_agents_v2_workspaces__workspace__jobs_invoke__name__results_get
+      operationId: list_job_results_apis_agents_v2_workspaces__workspace__jobs_execute__name__results_get
       parameters:
       - name: workspace
         in: path
@@ -1847,12 +1847,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/agents/v2/workspaces/{workspace}/jobs/invoke/{name}/status:
+  /apis/agents/v2/workspaces/{workspace}/jobs/execute/{name}/status:
     get:
       tags:
       - Agents
       summary: Get Job Status
-      operationId: get_job_status_apis_agents_v2_workspaces__workspace__jobs_invoke__name__status_get
+      operationId: get_job_status_apis_agents_v2_workspaces__workspace__jobs_execute__name__status_get
       parameters:
       - name: workspace
         in: path
@@ -2627,6 +2627,196 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/sessions:
+    post:
+      tags:
+      - Agent Sessions
+      summary: Create Session
+      description: Create a logical conversation for an existing deployment.
+      operationId: create_session_apis_agents_v2_workspaces__workspace__sessions_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agent Sessions
+      summary: List Sessions
+      description: List sessions in a workspace, optionally filtered by deployment
+        ID.
+      operationId: list_sessions_apis_agents_v2_workspaces__workspace__sessions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SessionFilter'
+        description: 'Filter results on various criteria. Supports bracket notation
+          (?filter[field][$op]=value), JSON ({"field":{"$op":"value"}}), and text
+          syntax (field:"value"). Operators: $eq (exact match), $like (substring),
+          $lt, $lte, $gt, $gte (comparison), $in, $nin (set membership), $and, $or,
+          $not (logical). Default operator is $eq.'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AgentSession_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/sessions/{name}:
+    get:
+      tags:
+      - Agent Sessions
+      summary: Get Session
+      description: Get a session by name.
+      operationId: get_session_apis_agents_v2_workspaces__workspace__sessions__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agent Sessions
+      summary: Delete Session
+      description: Permanently delete a session by name.
+      operationId: delete_session_apis_agents_v2_workspaces__workspace__sessions__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/sessions/{name}/close:
+    post:
+      tags:
+      - Agent Sessions
+      summary: Close Session
+      description: Close a session. Closing an already-closed session is idempotent.
+      operationId: close_session_apis_agents_v2_workspaces__workspace__sessions__name__close_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Agent:
@@ -2861,45 +3051,102 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
-    AgentInvocationJobConfig:
+    AgentSession:
       properties:
-        agent:
+        name:
           type: string
-          pattern: ^[\w\-.]+(/[\w\-.]+)?$
-          title: Agent
-          description: Agent entity name or workspace/name ref.
-        input:
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
           type: string
-          title: Input
-          description: Prompt to pass to the agent.
-        workdir:
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        deployment_id:
+          type: string
+          minLength: 1
+          title: Deployment Id
+          description: Immutable ID of the AgentDeployment this session belongs to.
+        status:
           allOf:
-          - $ref: '#/components/schemas/AgentWorkdir'
-          description: Optional working directory configuration for the invocation.
-        timeout_seconds:
-          type: number
-          exclusiveMinimum: 0.0
-          title: Timeout Seconds
-          description: Maximum time to wait for Fabric to return an invocation result.
-          default: 3600
+          - $ref: '#/components/schemas/SessionStatus'
+          description: 'Lifecycle status: active | closed.'
+          default: active
+        last_active_at:
+          title: Last Active At
+          description: UTC timestamp of the last activity in the session.
+          nullable: true
+          type: string
+          format: date-time
+        expires_at:
+          title: Expires At
+          description: UTC timestamp when the session expires, if expiration is configured.
+          nullable: true
+          type: string
+          format: date-time
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
-      - agent
-      - input
-      title: AgentInvocationJobConfig
-    AgentInvocationStepConfig:
-      properties:
-        request:
-          $ref: '#/components/schemas/AgentInvocationJobConfig'
-        agent:
-          $ref: '#/components/schemas/ResolvedAgentConfig'
-        workdir:
-          $ref: '#/components/schemas/AgentWorkdir'
-      type: object
-      required:
-      - request
-      - agent
-      title: AgentInvocationStepConfig
+      - workspace
+      - deployment_id
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AgentSession
+      description: 'A durable logical conversation associated with an AgentDeployment.
+
+
+        The session entity owns Platform-level conversation identity only. Live
+
+        harness state remains process-local to the deployment''s serving runtime.'
     AgentWorkdir:
       properties:
         base_workdir:
@@ -3156,6 +3403,23 @@ components:
       - agent
       title: CreateDeploymentRequest
       description: Request body for ``POST /v2/workspaces/{workspace}/deployments``.
+    CreateSessionRequest:
+      properties:
+        deployment_id:
+          type: string
+          minLength: 1
+          title: Deployment Id
+          description: ID of the AgentDeployment to create a session for.
+        name:
+          title: Name
+          description: Optional session name. Auto-generated from deployment name
+            + random suffix if omitted.
+          type: string
+      type: object
+      required:
+      - deployment_id
+      title: CreateSessionRequest
+      description: Request body for ``POST /v2/workspaces/{workspace}/sessions``.
     DatetimeFilter:
       additionalProperties: false
       properties:
@@ -3737,21 +4001,46 @@ components:
         them required at the schema layer surfaces the requirement as a
 
         422 at submit time instead of a confusing dispatched-job failure.'
-    FileStorageType:
-      type: string
-      enum:
-      - fileset
-      title: FileStorageType
-    HTTPValidationError:
+    ExecuteAgentJobConfig:
       properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
+        agent:
+          type: string
+          pattern: ^[\w\-.]+(/[\w\-.]+)?$
+          title: Agent
+          description: Agent entity name or workspace/name ref.
+        input:
+          type: string
+          title: Input
+          description: Prompt to pass to the agent.
+        workdir:
+          allOf:
+          - $ref: '#/components/schemas/AgentWorkdir'
+          description: Optional working directory configuration for the execution.
+        timeout_seconds:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Timeout Seconds
+          description: Maximum time to wait for Fabric to return an execution result.
+          default: 3600
       type: object
-      title: HTTPValidationError
-    InvokeJob:
+      required:
+      - agent
+      - input
+      title: ExecuteAgentJobConfig
+    ExecuteAgentStepConfig:
+      properties:
+        request:
+          $ref: '#/components/schemas/ExecuteAgentJobConfig'
+        agent:
+          $ref: '#/components/schemas/ResolvedAgentConfig'
+        workdir:
+          $ref: '#/components/schemas/AgentWorkdir'
+      type: object
+      required:
+      - request
+      - agent
+      title: ExecuteAgentStepConfig
+    ExecuteJob:
       properties:
         id:
           title: Id
@@ -3777,7 +4066,7 @@ components:
           type: string
           format: date-time
         spec:
-          $ref: '#/components/schemas/AgentInvocationStepConfig'
+          $ref: '#/components/schemas/ExecuteAgentStepConfig'
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
         status_details:
@@ -3800,8 +4089,8 @@ components:
       required:
       - name
       - spec
-      title: InvokeJob
-    InvokeJobRequest:
+      title: ExecuteJob
+    ExecuteJobRequest:
       properties:
         name:
           title: Name
@@ -3813,7 +4102,7 @@ components:
           title: Project
           type: string
         spec:
-          $ref: '#/components/schemas/AgentInvocationJobConfig'
+          $ref: '#/components/schemas/ExecuteAgentJobConfig'
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3828,8 +4117,8 @@ components:
       type: object
       required:
       - spec
-      title: InvokeJobRequest
-    InvokeJobsListFilter:
+      title: ExecuteJobRequest
+    ExecuteJobsListFilter:
       additionalProperties: false
       properties:
         created_at:
@@ -3858,13 +4147,13 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Jobs updated at 'gte' datetime or 'lte' datetime.
-      title: InvokeJobsListFilter
+      title: ExecuteJobsListFilter
       type: object
-    InvokeJobsPage:
+    ExecuteJobsPage:
       properties:
         data:
           items:
-            $ref: '#/components/schemas/InvokeJob'
+            $ref: '#/components/schemas/ExecuteJob'
           type: array
           title: Data
         pagination:
@@ -3883,15 +4172,29 @@ components:
       type: object
       required:
       - data
-      title: InvokeJobsPage
-    InvokeJobsSortField:
+      title: ExecuteJobsPage
+    ExecuteJobsSortField:
       type: string
       enum:
       - created_at
       - -created_at
       - updated_at
       - -updated_at
-      title: InvokeJobsSortField
+      title: ExecuteJobsSortField
+    FileStorageType:
+      type: string
+      enum:
+      - fileset
+      title: FileStorageType
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
     LogLine:
       properties:
         timestamp:
@@ -3947,6 +4250,29 @@ components:
       required:
       - data
       title: NemoListResponse_AgentDeployment_
+    NemoListResponse_AgentSession_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentSession'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AgentSession_
     NemoListResponse_Agent_:
       properties:
         data:
@@ -4646,6 +4972,23 @@ components:
       - config
       - config_format
       title: ResolvedAgentConfig
+    SessionFilter:
+      additionalProperties: false
+      description: Query filter for ``GET /v2/workspaces/{workspace}/sessions``.
+      properties:
+        deployment_id:
+          description: Filter to sessions for this deployment ID.
+          title: Deployment Id
+          type: string
+      title: SessionFilter
+      type: object
+    SessionStatus:
+      type: string
+      enum:
+      - active
+      - closed
+      title: SessionStatus
+      description: Lifecycle status of an agent session.
     StringFilter:
       additionalProperties: false
       properties:

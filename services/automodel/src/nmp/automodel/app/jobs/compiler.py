@@ -5,8 +5,9 @@
 
 import logging
 
-from nemo_platform import AsyncNeMoPlatform, NotFoundError
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -17,6 +18,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesRequestsSpec,
     ResourcesSpec,
 )
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import ModelDeploymentConfig, ModelEntity
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DeploymentParams,
@@ -266,11 +269,13 @@ async def _resolve_deployment_config_ref(
     config_ref: str,
     workspace: str,
     sdk: AsyncNeMoPlatform,
-):
+) -> ModelDeploymentConfig:
     """Resolve a ``name`` or ``workspace/name`` string to a ModelDeploymentConfig."""
     ref = parse_entity_ref(config_ref, default_workspace=workspace)
+    models = client_from_platform(sdk, AsyncModelsClient)
     try:
-        return await sdk.inference.deployment_configs.retrieve(name=ref.name, workspace=ref.workspace)
+        response = await models.get_deployment_config(name=ref.name, workspace=ref.workspace)
+        return response.data()
     except NotFoundError as e:
         raise PlatformJobCompilationError(
             f"deployment_config references '{config_ref}' which does not exist in workspace '{ref.workspace}'."
@@ -315,7 +320,7 @@ async def _validate_deployment_config(
     resolved_config = await _resolve_deployment_config_ref(dc, workspace, sdk)
 
     # LoRA job referencing a config that has lora_enabled=False
-    if is_lora and resolved_config.nim_deployment and resolved_config.nim_deployment.lora_enabled is False:
+    if is_lora and resolved_config.model_spec.lora_enabled is False:
         raise PlatformJobCompilationError(
             f"deployment_config references '{dc}' which has lora_enabled=false, "
             "but this is a LoRA training job. The deployment would not load LoRA adapters. "
@@ -326,7 +331,9 @@ async def _validate_deployment_config(
     if produces_new_model:
         output_name = transformed_spec.output.name
         try:
-            existing_me = await sdk.models.retrieve(name=output_name, workspace=workspace)
+            models = client_from_platform(sdk, AsyncModelsClient)
+            response = await models.get_model(name=output_name, workspace=workspace)
+            existing_me = response.data()
         except NotFoundError:
             # Output model entity doesn't exist yet, so a string
             # ref is inherently invalid -- it was created for a different model.
@@ -338,9 +345,9 @@ async def _validate_deployment_config(
 
         # Output model entity already exists (retraining to create a new FileSet).
         # Verify the config actually targets this model entity.
-        nim = resolved_config.nim_deployment
+        model_spec = resolved_config.model_spec
         config_targets_model = (resolved_config.model_entity_id == f"{existing_me.workspace}/{existing_me.name}") or (
-            nim and nim.model_name == existing_me.name and nim.model_namespace == existing_me.workspace
+            model_spec.model_name == existing_me.name and model_spec.model_namespace == existing_me.workspace
         )
         if not config_targets_model:
             raise PlatformJobCompilationError(

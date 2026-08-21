@@ -33,6 +33,22 @@ inputs:
     description: Helm values file path (relative to repo root)
     required: false
     default: e2e/k8s/values/kind.yaml
+  helm-extra-args:
+    description: Extra arguments passed to Helm install, for example additional -f values files
+    required: false
+    default: ""
+  kind-enable-network-policies:
+    description: Create Kind without the default CNI and install Calico for NetworkPolicy enforcement
+    required: false
+    default: "false"
+  kind-enable-gateway:
+    description: Install Gateway API, run cloud-provider-kind, and create the test Gateway
+    required: false
+    default: "true"
+  wait-for-api:
+    description: Wait for the Gateway-routed API endpoint after installing NeMo Platform
+    required: false
+    default: "true"
   kind-image-pull-token:
     description: Token for pulling images into Kind
     required: true
@@ -119,6 +135,8 @@ runs:
         KUBE_NAMESPACE: ${{ inputs['kube-namespace'] }}
         NGC_API_KEY: ${{ inputs['ngc-api-key'] }}
         GITHUB_TOKEN: ${{ inputs['kind-image-pull-token'] }}
+        KIND_ENABLE_GATEWAY: ${{ inputs['kind-enable-gateway'] }}
+        KIND_ENABLE_NETWORK_POLICIES: ${{ inputs['kind-enable-network-policies'] }}
       run: bash e2e/k8s/scripts/setup_local_kind_cpu.sh
 
     - name: Set default kubectl namespace
@@ -128,6 +146,7 @@ runs:
       run: kubectl config set-context --current --namespace="${NAMESPACE}"
 
     - name: Verify Gateway API setup
+      if: ${{ inputs['kind-enable-gateway'] == 'true' }}
       shell: bash
       env:
         NAMESPACE: ${{ inputs['kube-namespace'] }}
@@ -164,6 +183,7 @@ runs:
         NMP_E2E_REGISTRY: ${{ inputs['image-registry'] }}
         NMP_E2E_TAG: ${{ inputs['image-tag'] }}
         HELM_VALUES: ${{ inputs['helm-values'] }}
+        HELM_EXTRA_ARGS: ${{ inputs['helm-extra-args'] }}
         REQUIRE_NMP_E2E_IMAGES: "true"
         POSTGRES_IMAGE: docker.io/library/postgres
         BUSYBOX_IMAGE: docker.io/library/busybox:stable
@@ -180,7 +200,7 @@ runs:
         fi
 
     - name: Wait for API
-      if: ${{ inputs['install-nemo-platform'] == 'true' }}
+      if: ${{ inputs['install-nemo-platform'] == 'true' && inputs['wait-for-api'] == 'true' }}
       shell: bash
       env:
         NMP_E2E_CLUSTER_URL: ${{ env.NMP_E2E_CLUSTER_URL }}
