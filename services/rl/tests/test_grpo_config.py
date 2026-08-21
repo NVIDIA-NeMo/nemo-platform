@@ -834,3 +834,22 @@ def test_vllm_gpu_memory_utilization_is_configurable(
     assert (
         compile_grpo_config(default_step, job_ctx)["policy"]["generation"]["vllm_cfg"]["gpu_memory_utilization"] == 0.5
     )
+
+
+def test_compiled_config_carries_the_progress_reporting_extras(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The compiled grpo block is the only channel to the driver's logger.
+
+    ``grpo_driver`` builds NemoRLLogger via ``for_schedule``, reading these three with
+    getattr. They are extras NeMo-RL never looks at, so nothing downstream fails loudly if
+    the compiler stops emitting them -- progress reporting just silently reverts to
+    defaults, and the job still succeeds.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    grpo = compile_grpo_config(step, job_ctx)["grpo"]
+
+    assert grpo["steps_per_epoch"] >= 1
+    assert "progress_time_series_metrics" in grpo
+    assert "progress_min_report_interval_seconds" in grpo
