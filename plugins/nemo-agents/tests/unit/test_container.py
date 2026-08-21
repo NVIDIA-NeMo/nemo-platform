@@ -2576,6 +2576,9 @@ class TestInstallableContractVersion:
             "0.3.0.post402.dev0+062f0ac6e8",  # setuptools-scm from a source checkout
             "0.3.0+local",
             "1.2.3.dev0",
+            "1.2.3dev0",
+            "1.2.3-dev0",
+            "1.2.3_dev0",
         ],
     )
     def test_unpublishable_versions_are_rejected(self, version: str) -> None:
@@ -2583,6 +2586,14 @@ class TestInstallableContractVersion:
 
         with pytest.raises(ValueError, match="Fabric packaging pins this exact version"):
             require_installable_contract_version(version)
+
+    def test_a_checkout_version_reports_both_reasons(self) -> None:
+        from nemo_agents_plugin.container.template import require_installable_contract_version
+
+        with pytest.raises(ValueError) as excinfo:
+            require_installable_contract_version("0.3.0.post402.dev0+062f0ac6e8")
+
+        assert "carries a local build identifier and is a developmental release" in str(excinfo.value)
 
     @pytest.mark.parametrize("version", ["0.3.0", "0.4.0", "1.0.0.post1", "0.4.0rc1"])
     def test_published_versions_are_accepted(self, version: str) -> None:
@@ -2601,32 +2612,25 @@ class TestInstallableContractVersion:
 
     @pytest.mark.parametrize("value", ["1", "true", "YES"])
     def test_env_override_allows_an_unpublished_version(self, value: str, monkeypatch: pytest.MonkeyPatch) -> None:
-        from nemo_agents_plugin.container.template import (
-            ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV,
-            require_installable_contract_version,
-        )
+        from nemo_agents_plugin.container.template import require_installable_contract_version
 
-        monkeypatch.setenv(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, value)
+        monkeypatch.setenv("NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION", value)
         require_installable_contract_version("0.3.0.post402.dev0+062f0ac6e8")
 
     def test_env_override_ignores_unset_and_falsey(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from nemo_agents_plugin.container.template import (
-            ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV,
-            require_installable_contract_version,
-        )
+        from nemo_agents_plugin.container.template import require_installable_contract_version
 
-        monkeypatch.setenv(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, "0")
+        monkeypatch.setenv("NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION", "0")
         with pytest.raises(ValueError):
             require_installable_contract_version("0.3.0+local")
 
     def test_override_cannot_bypass_an_unresolved_version(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from nemo_agents_plugin.container.template import (
-            ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV,
             UNRESOLVED_CONTRACT_VERSION,
             require_installable_contract_version,
         )
 
-        monkeypatch.setenv(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, "1")
+        monkeypatch.setenv("NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION", "1")
 
         with pytest.raises(ValueError, match="Unable to resolve the installed nemo-platform contract version"):
             require_installable_contract_version(UNRESOLVED_CONTRACT_VERSION)

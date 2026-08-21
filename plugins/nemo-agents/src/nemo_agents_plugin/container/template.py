@@ -27,6 +27,7 @@ Two rendering modes are supported:
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -43,7 +44,9 @@ DOCKERFILE_SENTINEL = "# Managed by `nemo agents package` — safe to delete if 
 
 UNRESOLVED_CONTRACT_VERSION = "0.0.0"
 
-ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV = "NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION"
+#: PEP 440 dev segment. The separator is optional, so ``1.2.3dev0`` is a dev
+#: release too and normalizes to ``1.2.3.dev0``.
+_DEV_SEGMENT = re.compile(r"[-_.]?dev[-_.]?[0-9]*$")
 
 
 def is_plugin_managed(path: Path) -> bool:
@@ -683,22 +686,23 @@ def require_installable_contract_version(contract_version: str, *, pins_contract
     if not pins_contract_version:
         return
 
-    if os.environ.get(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, "").strip().lower() in {"1", "true", "yes"}:
+    if os.environ.get("NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION", "").strip().lower() in {"1", "true", "yes"}:
         return
 
-    reason = ""
-    if "+" in contract_version:
-        reason = "is a local build identifier, which package indexes do not serve"
-    elif ".dev" in contract_version:
-        reason = "is a developmental release, which is not published for this project"
-    if not reason:
+    public, _, local = contract_version.partition("+")
+    reasons = []
+    if local:
+        reasons.append("carries a local build identifier")
+    if _DEV_SEGMENT.search(public):
+        reasons.append("is a developmental release")
+    if not reasons:
         return
 
     raise ValueError(
-        f"The installed nemo-platform version '{contract_version}' {reason}. "
-        "Fabric packaging pins this exact version inside the image, so the build would fail "
-        "while resolving it. Install a released nemo-platform to package an agent, or set "
-        f"{ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV}=1 if your index serves this version."
+        f"The installed nemo-platform version '{contract_version}' {' and '.join(reasons)}, so no "
+        "package index serves it. Fabric packaging pins this exact version inside the image, so the "
+        "build would fail while resolving it. Install a released nemo-platform to package an agent, "
+        "or set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this version."
     )
 
 
