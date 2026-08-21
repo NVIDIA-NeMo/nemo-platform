@@ -46,6 +46,27 @@ SOUNDFILE_LIBSNDFILE_PATTERNS = (
 BASE_VENV_MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "wandb": "0.28.2",
 }
+WANDB_KEEP_VERSION = BASE_VENV_MINIMUM_PYTHON_PACKAGE_VERSIONS["wandb"]
+UV_CACHE = Path("/opt/uv_cache")
+NSIGHT_PATTERNS = (
+    "/usr/local/bin/nsys",
+    "/usr/local/bin/nsys-ui",
+    "/usr/local/bin/ncu",
+    "/usr/local/bin/ncu-ui",
+    "/usr/local/cuda/bin/nsys",
+    "/usr/local/cuda/bin/nsys-ui",
+    "/usr/local/cuda/bin/ncu",
+    "/usr/local/cuda/bin/ncu-ui",
+    "/usr/local/cuda*/bin/nsys",
+    "/usr/local/cuda*/bin/nsys-ui",
+    "/usr/local/cuda*/bin/ncu",
+    "/usr/local/cuda*/bin/ncu-ui",
+    "/usr/local/cuda*/NsightSystems*",
+    "/usr/local/cuda*/nsight-systems*",
+    "/usr/local/cuda*/nsight-compute*",
+    "/opt/nvidia/nsight-systems*",
+    "/opt/nvidia/nsight-compute*",
+)
 
 # Actor FQN -> packages that must import inside that actor's venv.
 #
@@ -242,6 +263,65 @@ def test_worker_venvs_symlink_into_shared_cache():
 def test_soundfile_libsndfile_removed():
     remaining = sorted(path for pattern in SOUNDFILE_LIBSNDFILE_PATTERNS for path in glob(pattern))
     assert remaining == [], f"file cleanup left scanner-visible libsndfile files: {remaining}"
+
+
+@pytest.mark.smoke_nmp_rl_training
+def test_stale_wandb_cache_removed():
+    """Scanners walk /opt/uv_cache, so leftover wandb 0.28.1 still reports Go CVEs."""
+    if not UV_CACHE.is_dir():
+        pytest.skip(f"{UV_CACHE} does not exist")
+    stale: list[str] = []
+    for path in UV_CACHE.rglob("wandb-*"):
+        name = path.name
+        if name == f"wandb-{WANDB_KEEP_VERSION}.dist-info":
+            continue
+        if name == f"wandb-{WANDB_KEEP_VERSION}.tar.gz":
+            continue
+        if name.startswith(f"wandb-{WANDB_KEEP_VERSION}-"):
+            continue
+        if name.startswith("wandb-") and (
+            name.endswith(".dist-info") or name.endswith(".whl") or name.endswith(".tar.gz")
+        ):
+            stale.append(str(path))
+    assert stale == [], f"stale wandb artifacts remain in uv cache: {stale}"
+
+
+@pytest.mark.smoke_nmp_rl_training
+def test_worker_wandb_is_patched_when_present():
+    """Prefetch `uv sync --locked` reinstalls NeMo-RL's wandb 0.28.1 into worker venvs."""
+    from packaging.version import Version
+
+    too_old: list[str] = []
+    minimum = Version(WANDB_KEEP_VERSION)
+    for actor_dir in sorted(p for p in RAY_VENVS.glob("*") if (p / "bin" / "python").exists()):
+        python = actor_dir / "bin" / "python"
+        probe = subprocess.run(
+            [
+                str(python),
+                "-c",
+                "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('wandb') else 1)",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode != 0:
+            continue
+        result = subprocess.run(
+            [str(python), "-c", "import importlib.metadata as m; print(m.version('wandb'))"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"wandb metadata missing in {actor_dir}:\n{result.stderr}"
+        actual = result.stdout.strip()
+        if Version(actual) < minimum:
+            too_old.append(f"{actor_dir.name}: {actual}")
+    assert too_old == [], "worker venvs still have unpatched wandb: " + "; ".join(too_old)
+
+
+@pytest.mark.smoke_nmp_rl_training
+def test_nsight_profilers_removed():
+    remaining = sorted({path for pattern in NSIGHT_PATTERNS for path in glob(pattern)})
+    assert remaining == [], f"Nsight profiler files remain (GO-2026-5942 x/net): {remaining}"
 
 
 @pytest.mark.smoke_nmp_rl_training
