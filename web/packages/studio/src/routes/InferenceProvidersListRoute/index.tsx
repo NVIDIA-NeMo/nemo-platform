@@ -67,7 +67,7 @@ export const InferenceProvidersListRoute: FC = () => {
         />
         <InferenceProvidersDataView
           workspace={workspace}
-          emptyStateActions={addProviderButton}
+          onCreate={() => setIsCreatePanelOpen(true)}
           attributes={{
             Stack: {
               className: 'flex-1 min-h-0',

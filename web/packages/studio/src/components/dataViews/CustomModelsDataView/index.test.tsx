@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { ModelEntitysPage } from '@nemo/sdk/generated/platform/schema';
 import { CustomModelsDataView } from '@studio/components/dataViews/CustomModelsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
@@ -65,7 +66,7 @@ describe('CustomModelsDataView', () => {
 
     renderComponent();
 
-    expect(await screen.findByText('Manage Custom Models')).toBeInTheDocument();
+    expect(await screen.findByText(ENTITY_EMPTY_STATES.customModels.heading)).toBeInTheDocument();
   });
 
   it('renders the error state when there is an error fetching models', async () => {

@@ -5,7 +5,7 @@ import { FilesetOutput, FilesetPurpose } from '@nemo/sdk/generated/platform/sche
 import { FilesetDetailRoute } from '@studio/routes/FilesetDetailRoute';
 import { render } from '@studio/tests/util/render';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render as rtlRender, screen } from '@testing-library/react';
+import { render as rtlRender, act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
@@ -110,11 +110,19 @@ describe('FilesetDetailRoute', () => {
       </TestProviders>
     );
 
-  it('opens the Files tab when the initial URL has ?tab=files', () => {
+  it('opens the Files tab when the initial URL has ?tab=files', async () => {
     renderAtUrl('/?tab=files');
 
     expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('fileset-files-tab')).toBeInTheDocument();
+
+    // The empty Files tab's self-service help renders a CodeSnippet whose
+    // syntax highlighting resolves asynchronously after mount. Flush it here
+    // so the state update lands inside act() instead of leaking past this
+    // test's synchronous assertions.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   });
 
   it('falls back to the default tab when ?tab= is an unknown value', () => {

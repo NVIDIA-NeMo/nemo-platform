@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { SecretsDataView } from '@studio/components/dataViews/SecretsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { server } from '@studio/mocks/node';
@@ -13,7 +14,7 @@ import { MemoryRouter } from 'react-router';
 
 const workspace = 'default';
 
-const renderComponent = (props?: { emptyStateActions?: React.ReactNode }) => {
+const renderComponent = (props?: { onCreate?: () => void }) => {
   return render(
     <MemoryRouter>
       <TestProviders>
@@ -74,21 +75,24 @@ describe('SecretsDataView', () => {
         )
       );
 
-      renderComponent();
+      renderComponent({ onCreate: () => {} });
 
       expect(
-        await screen.findByText('Manage Secrets', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText(ENTITY_EMPTY_STATES.secrets.heading, undefined, {
+          timeout: XL_SELECTOR_TIMEOUT,
+        })
       ).toBeInTheDocument();
 
+      expect(screen.getByText(ENTITY_EMPTY_STATES.secrets.subheading)).toBeInTheDocument();
       expect(
-        screen.getByText(
-          'Start by creating a secret, refer to the documentation for formatting details.'
-        )
+        screen.getByRole('button', { name: ENTITY_EMPTY_STATES.secrets.createAction?.label })
       ).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /Documentation/ })).toBeInTheDocument();
     });
 
-    it('renders empty state actions when provided', async () => {
+    it('invokes onCreate when the create button is clicked', async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+
       server.use(
         http.get(`${PLATFORM_BASE_URL}/apis/secrets/v2/workspaces/:workspace/secrets`, () =>
           HttpResponse.json({
@@ -104,15 +108,16 @@ describe('SecretsDataView', () => {
         )
       );
 
-      renderComponent({
-        emptyStateActions: <button type="button">Create Secret</button>,
-      });
+      renderComponent({ onCreate });
 
-      expect(
-        await screen.findByText('Manage Secrets', undefined, { timeout: XL_SELECTOR_TIMEOUT })
-      ).toBeInTheDocument();
+      const createButton = await screen.findByRole(
+        'button',
+        { name: ENTITY_EMPTY_STATES.secrets.createAction?.label },
+        { timeout: XL_SELECTOR_TIMEOUT }
+      );
+      await user.click(createButton);
 
-      expect(screen.getByRole('button', { name: 'Create Secret' })).toBeInTheDocument();
+      expect(onCreate).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -146,11 +151,13 @@ describe('SecretsDataView', () => {
       await user.type(searchInput, 'nonexistent-secret-name');
 
       expect(
-        await screen.findByText('No Results Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText('No results found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
       ).toBeInTheDocument();
 
-      expect(screen.getByText('No secrets match your search')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Clear Search' })).toBeInTheDocument();
+      expect(
+        screen.getByText('No items match your current search or filters.')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Clear Filters' })).toBeInTheDocument();
     });
   });
 });

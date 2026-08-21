@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -32,12 +32,12 @@ export const optimizerRoutes: RouteObject[] = gateOptimizerRoutes(
         {
           path: ROUTES.workspace.optimizer,
           element: <OptimizerRoute />,
-          errorElement: <ErrorPanel title="Insights" />,
+          errorElement: <RouteErrorPanel title="Insights" />,
         },
         {
           path: ROUTES.workspace.optimizerInsight,
           element: <OptimizerInsightRoute />,
-          errorElement: <ErrorPanel title="Insight" />,
+          errorElement: <RouteErrorPanel title="Insight" />,
         },
       ]
     : []

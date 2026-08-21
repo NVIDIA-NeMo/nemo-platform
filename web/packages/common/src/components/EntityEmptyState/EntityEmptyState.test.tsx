@@ -38,18 +38,18 @@ describe('EntityEmptyState', () => {
       expect(screen.getByText(descriptor.subheading)).toBeInTheDocument();
     });
 
-    it('toggles between the NeMo CLI command and the agent prompt', async () => {
+    it('toggles between the agent prompt and the NeMo CLI command', async () => {
       const user = userEvent.setup();
       wrap(<Guardrails onCreate={vi.fn()} />);
 
       const help = screen.getByTestId('entity-empty-state-help');
-      // CLI is the default selection.
-      expect(help).toHaveTextContent(descriptor.cliCommand as string);
-      expect(help).not.toHaveTextContent(descriptor.skillPrompt as string);
-
-      await user.click(screen.getByRole('radio', { name: 'Ask an agent' }));
+      // Ask an agent is the default selection.
       expect(help).toHaveTextContent(descriptor.skillPrompt as string);
       expect(help).not.toHaveTextContent(descriptor.cliCommand as string);
+
+      await user.click(screen.getByRole('radio', { name: 'CLI' }));
+      expect(help).toHaveTextContent(descriptor.cliCommand as string);
+      expect(help).not.toHaveTextContent(descriptor.skillPrompt as string);
     });
 
     it('invokes onCreate from the primary CTA', async () => {
@@ -67,6 +67,28 @@ describe('EntityEmptyState', () => {
         screen.queryByRole('button', { name: descriptor.createAction?.label })
       ).not.toBeInTheDocument();
     });
+
+    it('resets the CLI/agent selection when the descriptor changes on rerender', () => {
+      const membersDescriptor = ENTITY_EMPTY_STATES.members;
+      const { rerender } = wrap(<EntityEmptyState entity="members" variant="first-use" />);
+
+      const help = screen.getByTestId('entity-empty-state-help');
+      // `members` has no skillPrompt, so its only (and default) option is CLI.
+      expect(help).toHaveTextContent(membersDescriptor.cliCommand as string);
+
+      rerender(
+        <MemoryRouter>
+          <ToastProvider>
+            <EntityEmptyState entity="guardrails" variant="first-use" />
+          </ToastProvider>
+        </MemoryRouter>
+      );
+
+      // `guardrails` has a skillPrompt, so `kind` must reset to the agent default instead of
+      // sticking with the previous descriptor's CLI-only selection.
+      expect(help).toHaveTextContent(descriptor.skillPrompt as string);
+      expect(help).not.toHaveTextContent(descriptor.cliCommand as string);
+    });
   });
 
   describe('no-results', () => {
@@ -79,7 +101,7 @@ describe('EntityEmptyState', () => {
         screen.queryByRole('button', { name: descriptor.createAction?.label })
       ).not.toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Clear Filters' }));
       expect(onClearFilters).toHaveBeenCalledTimes(1);
     });
   });

@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import {
+  EntityEmptyState,
+  type EntityEmptyStateProps,
+} from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
@@ -37,6 +42,11 @@ import { ComponentProps, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 type AgentEvalJobRow = AgentEvaluateJob & { id: string };
+
+/** Variant-specific `EntityEmptyState` props for the `agentEvaluations` entity, minus `entity`/`className`. */
+type AgentEvaluationsEmptyStateProps =
+  | Omit<Extract<EntityEmptyStateProps, { variant: 'first-use' }>, 'entity' | 'className'>
+  | Omit<Extract<EntityEmptyStateProps, { variant: 'no-results' }>, 'entity' | 'className'>;
 
 const STATUS_OPTIONS_WITH_ALL = [{ value: '', label: 'All' }, ...STATUS_FILTER_OPTIONS];
 
@@ -183,15 +193,10 @@ export const AgentEvaluationsDataView = () => {
     }),
   ];
 
-  const hasActiveFilters =
-    !!dataViewState.debouncedSearchBar || dataViewState.debouncedColumnFilters.length > 0;
-  const isInitialEmpty = jobs.length === 0 && !isLoading && !error && !hasActiveFilters;
-
   if (error) {
     return (
-      <TableEmptyState
-        header="Failed to fetch evaluations"
-        emptyMessage="An error occurred while loading evaluation jobs."
+      <ErrorPanel
+        errorMessage={getErrorMessage(error ?? new Error('Failed to fetch evaluations'))}
       />
     );
   }
@@ -225,23 +230,13 @@ export const AgentEvaluationsDataView = () => {
             requestStatus: isLoading && !jobsData ? 'loading' : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: () =>
-              isInitialEmpty ? (
-                <TableEmptyState
-                  header="No evaluation jobs yet"
-                  emptyMessage="Apply a model_optimization suggestion or submit an evaluate-agent job to see results here."
-                />
-              ) : (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No evaluation jobs match your search or filters."
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  }
-                />
-              ),
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) => {
+              const emptyStateProps: AgentEvaluationsEmptyStateProps =
+                hasFiltersApplied || hasSearchApplied
+                  ? { variant: 'no-results', onClearFilters: dataViewState.resetFilters }
+                  : { variant: 'first-use' };
+              return <EntityEmptyState entity="agentEvaluations" {...emptyStateProps} />;
+            },
           },
         }}
       />

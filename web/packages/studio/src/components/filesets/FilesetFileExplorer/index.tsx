@@ -251,10 +251,10 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                 )}
                 {!rowContents.length ? (
                   <FilesetFileExplorerEmptyState
-                    searchQuery={searchQuery}
+                    hasSearchApplied={!!searchQuery}
                     isReadWriteDataset={isReadWriteDataset}
-                    onNewDirectory={() => setNewDirectoryOpen(true)}
                     onUploadFile={handleOpenUploadModal}
+                    onClearSearch={() => handleSearchQueryChange('', clearSelectedItems)}
                   />
                 ) : (
                   <Flex className="w-full overflow-hidden border-base border-1 rounded-lg">

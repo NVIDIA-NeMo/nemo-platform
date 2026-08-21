@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
+import { FilesetPurpose, type FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/constants';
 import { DatasetsTable } from '@studio/components/DatasetsTable';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
@@ -83,6 +84,21 @@ vi.mock('@studio/components/DatasetCreateModal', () => ({
       ) : null
   ),
 }));
+
+vi.mock('@studio/components/FilesetCreateModal', () => ({
+  FilesetCreateModal: vi.fn(({ open, purpose }: { open?: boolean; purpose?: string }) =>
+    open ? (
+      <div data-testid="fileset-create-modal">
+        <span data-testid="fileset-modal-purpose">{purpose}</span>
+      </div>
+    ) : null
+  ),
+}));
+
+vi.mock('@studio/constants/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studio/constants/environment')>();
+  return { ...actual, FILESET_DETAILS_ENABLED: true };
+});
 
 const FILESETS_URL = `${PLATFORM_BASE_URL}/apis/files/v2/workspaces/:workspace/filesets`;
 
@@ -449,25 +465,33 @@ describe('DatasetsTable', () => {
       });
     });
 
-    it('shows the "Manage Filesets" empty state with no filters active', async () => {
+    it('shows the first-use empty state with no filters active and opens the create modal', async () => {
       installListHandler([]);
       renderTable();
 
       expect(
-        await screen.findByText('Manage Filesets', undefined, { timeout: LG_SELECTOR_TIMEOUT })
+        await screen.findByText(ENTITY_EMPTY_STATES.filesets.heading, undefined, {
+          timeout: LG_SELECTOR_TIMEOUT,
+        })
       ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          'Create a fileset to upload training data, models, or other files. Choose a purpose — Generic, Dataset, or Model — to control which metadata is available.'
-        )
-      ).toBeInTheDocument();
+      expect(screen.getByText(ENTITY_EMPTY_STATES.filesets.subheading)).toBeInTheDocument();
+
+      const createButton = screen.getByRole('button', {
+        name: ENTITY_EMPTY_STATES.filesets.createAction?.label,
+      });
+      await user.click(createButton);
+
+      const modal = await screen.findByTestId('fileset-create-modal');
+      expect(within(modal).getByTestId('fileset-modal-purpose')).toHaveTextContent(
+        FilesetPurpose.dataset
+      );
     });
 
-    it('shows "No Results Found" and a Clear Filters button when search is active', async () => {
+    it('shows the no-results empty state with a Clear filters button when search is active', async () => {
       installListHandler([]);
       renderTable({ enableFilters: true });
 
-      // Type into the search bar to activate hasSearchOrFilters
+      // Type into the search bar to activate hasSearchApplied
       const searchInput = await screen.findByPlaceholderText(/search/i, undefined, {
         timeout: LG_SELECTOR_TIMEOUT,
       });
@@ -475,10 +499,12 @@ describe('DatasetsTable', () => {
       await user.paste('no-match');
 
       expect(
-        await screen.findByText('No Results Found', undefined, { timeout: LG_SELECTOR_TIMEOUT })
+        await screen.findByText('No results found', undefined, { timeout: LG_SELECTOR_TIMEOUT })
       ).toBeInTheDocument();
-      expect(screen.getByText('No filesets match your filters')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Clear Filters/i })).toBeInTheDocument();
+      expect(
+        screen.getByText('No items match your current search or filters.')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Clear filters/i })).toBeInTheDocument();
     });
   });
 

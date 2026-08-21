@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { gateMembersRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
@@ -17,6 +17,6 @@ export const memberRoutes: RouteObject[] = gateMembersRoutes([
   {
     path: ROUTES.workspace.members,
     element: <WorkspaceMembersRoute />,
-    errorElement: <ErrorPanel title="Members" />,
+    errorElement: <RouteErrorPanel title="Members" />,
   },
 ]);
