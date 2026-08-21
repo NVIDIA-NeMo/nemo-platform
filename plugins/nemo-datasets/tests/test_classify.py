@@ -239,6 +239,36 @@ def test_sparse_ground_truth_falls_through_to_extractable_answer():
     assert result.verifiability.coverage == 1.0
 
 
+def test_a_sparse_column_does_not_outrank_the_real_answer_column():
+    """Coverage is a fraction of the column's rows, not of the rows that happened to hold text.
+
+    Scored the other way, a column present in one row out of a thousand rates 1.0 and outranks the
+    genuine answer column at 0.8 -- and the profile then reports that 1.0 as the coverage, which the
+    contract says a consumer may read literally. It would point a verifier at the wrong column.
+    """
+    features = [_f("q", "string"), _f("a", "string"), _f("note", "string")]
+    rows = [
+        {"q": f"question {i}", "a": (f"reasoning #### {i}" if i % 10 < 8 else "no marker"), "note": None}
+        for i in range(1000)
+    ]
+    rows[0]["note"] = "\\boxed{7}"  # the only row this column is present in at all
+
+    result = classify_rows(features, {}, rows)
+
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 0.8
+    assert "'a'" in result.verifiability.evidence[0].detail
+
+
+def test_a_column_present_in_one_row_is_not_a_verification_target():
+    """The same ranking read on its own: one hit in a thousand rows is below the coverage floor."""
+    features = [_f("q", "string"), _f("note", "string")]
+    rows = [{"q": f"question {i}", "note": None} for i in range(1000)]
+    rows[0]["note"] = "\\boxed{7}"
+
+    assert classify_rows(features, {}, rows).verifiability is None
+
+
 def test_implicit_prompt_evidence_from_embedded_transcript():
     features = [_f("chosen", "string"), _f("rejected", "string")]
     rows = [{"chosen": "\n\nHuman: hi\n\nAssistant: hello", "rejected": "\n\nHuman: hi\n\nAssistant: hey"}]
