@@ -16,7 +16,6 @@ import { useEntitiesListWorkspaceMembers } from '@nemo/sdk/generated/platform/ap
 import type { WorkspaceMember } from '@nemo/sdk/generated/platform/schema';
 import { type DropdownEntry, Text } from '@nvidia/foundations-react-core';
 import { Loading } from '@studio/components/Layouts/Loading';
-import { Pencil, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo } from 'react';
 
 export interface MembersDataViewProps {
@@ -118,12 +117,10 @@ export const MembersDataView: FC<MembersDataViewProps> = ({
           enableResizing: false,
           rowActions: (member: WorkspaceMemberWithId): DropdownEntry[] => [
             {
-              slotStart: <Pencil />,
               children: 'Edit Role',
               onSelect: () => onEditMember(member),
             },
             {
-              slotStart: <Trash />,
               children: 'Remove',
               danger: true,
               onSelect: () => onRemoveMember(member),

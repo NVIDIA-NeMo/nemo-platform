@@ -17,7 +17,7 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import type { Meta, StoryObj } from '@storybook/react';
-import { MessagesSquare, ChartBar, Eye, Pencil, Trash } from 'lucide-react';
+import { Eye, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -376,23 +376,19 @@ export const WithSelectionAndActions: StoryObj = {
           enableResizing: false,
           rowActions: (job): DropdownEntry[] => [
             {
-              slotStart: <Eye />,
               children: 'View details',
               onSelect: () => alert(`View: ${job.name}`),
             },
             {
-              slotStart: <ChartBar />,
               children: 'Evaluate',
               onSelect: () => alert(`Evaluate: ${job.name}`),
             },
             {
-              slotStart: <MessagesSquare />,
               children: 'Chat',
               disabled: job.status !== 'completed',
               onSelect: () => alert(`Chat: ${job.name}`),
             },
             {
-              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => alert(`Delete: ${job.name}`),
@@ -472,17 +468,14 @@ export const LongTextWrapping: StoryObj = {
           enableResizing: false,
           rowActions: (dataset): DropdownEntry[] => [
             {
-              slotStart: <Eye />,
               children: 'View',
               onSelect: () => alert(`View: ${dataset.name}`),
             },
             {
-              slotStart: <Pencil />,
               children: 'Edit',
               onSelect: () => alert(`Edit: ${dataset.name}`),
             },
             {
-              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => alert(`Delete: ${dataset.name}`),
@@ -827,9 +820,8 @@ export const InteractiveElementExclusion: StoryObj = {
           size: 58,
           enableResizing: false,
           rowActions: (job): DropdownEntry[] => [
-            { slotStart: <Eye />, children: 'View', onSelect: () => alert(`Menu: ${job.name}`) },
+            { children: 'View', onSelect: () => alert(`Menu: ${job.name}`) },
             {
-              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => alert(`Delete: ${job.name}`),

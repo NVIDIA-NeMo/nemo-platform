@@ -26,7 +26,6 @@ import type { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema
 import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { EditSecretModal } from '@studio/routes/SecretsListRoute/EditSecretModal';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Pencil, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 
 export interface SecretsDataViewProps {
@@ -146,7 +145,6 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({ workspace, onCreate,
           enableResizing: false,
           rowActions: (secret: SecretWithId): DropdownEntry[] => [
             {
-              slotStart: <Pencil />,
               children: 'Edit',
               onSelect: () => {
                 setModalSecret(secret);
@@ -154,7 +152,6 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({ workspace, onCreate,
               },
             },
             {
-              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => {
