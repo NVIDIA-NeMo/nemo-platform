@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Mapping
 from typing import Any
 
@@ -31,7 +32,7 @@ from nemo_platform.beta.evaluator.metrics.protocol import (
 )
 from nemo_platform.beta.evaluator.values.atif import Trajectory
 from nemo_platform.beta.evaluator.values.evidence import EVIDENCE_TRACE
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -204,8 +205,22 @@ class TrialMeasurements(BaseModel):
     cache_creation_tokens: int | None = None
     cache_read_tokens: int | None = None
     runtime_sec: float | None = None
+    cost_usd: float | None = Field(default=None, allow_inf_nan=False)
     reward: float | None = None
     passed: bool | None = None
+
+    @field_validator("cost_usd", mode="before")
+    @classmethod
+    def _reject_boolean_cost(cls, value: Any) -> Any:
+        """Refuse a ``bool`` cost, which coercion would otherwise hide.
+
+        ``bool`` is an ``int`` subclass, so ``True`` would validate as a cost of 1.0. Every other
+        unusable value is already refused: ``allow_inf_nan=False`` covers NaN and the infinities
+        however they were spelled, and float coercion covers an int too large to represent.
+        """
+        if isinstance(value, bool):
+            raise ValueError("cost_usd must be a number, not a bool")
+        return value
 
     @classmethod
     def from_metadata(cls, metadata: Mapping[str, Any] | None) -> TrialMeasurements:
@@ -225,6 +240,7 @@ class TrialMeasurements(BaseModel):
         return cls(
             **tokens,
             runtime_sec=_runtime_sec(metadata),
+            cost_usd=_as_float(metadata.get("cost_usd")),
             reward=_reward(metadata, passed),
             passed=passed,
         )
@@ -255,6 +271,19 @@ def _as_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
     return value if isinstance(value, int) else None
+
+
+def _as_float(value: Any) -> float | None:
+    # bool is an int subclass; never treat True/False as a measurement. NaN, the infinities, and
+    # integers too large to represent are rejected too: none can be serialised onto the wire, so
+    # recording one would fail the publish of an otherwise good trial.
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
 
 
 def _runtime_sec(metadata: Mapping[str, Any]) -> float | None:

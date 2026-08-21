@@ -85,6 +85,7 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     assert trials["pass-task"].status == AgentEvalTrialStatus.COMPLETED
     assert trials["pass-task"].metadata["reward"] == 1.0
     assert trials["pass-task"].metadata["prompt_tokens"] == 100
+    assert trials["pass-task"].metadata["cost_usd"] == 0.25
     assert trials["pass-task"].evidence is not None
     assert trials["fail-task"].status == AgentEvalTrialStatus.PARTIAL
     assert trials["fail-task"].error is not None
