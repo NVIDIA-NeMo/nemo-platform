@@ -23,7 +23,6 @@ from nmp.platform_runner.config import (
     resolve_run_configuration,
 )
 from nmp.platform_runner.controller_threads import (
-    RUNNER_JOIN_TIMEOUT_SECONDS,
     join_and_untrack_runner_threads,
     start_controller_threads,
     start_sidecar_threads,
@@ -37,7 +36,6 @@ from nmp.platform_runner.loader import (
 )
 from nmp.platform_runner.registry import (
     AVAILABLE_SIDECARS,
-    SELF_TRACKING_SIDECARS,
     check_no_controller_sidecar_collision,
 )
 from nmp.platform_runner.server import run_server, run_server_with_reload
@@ -193,8 +191,7 @@ def run_platform(
         join_and_untrack_runner_threads(
             controller_threads,
             thread_by_name,
-            controller_run_funcs.keys() | (sidecar_run_funcs.keys() - SELF_TRACKING_SIDECARS),
-            join_timeout=RUNNER_JOIN_TIMEOUT_SECONDS,
+            controller_run_funcs.keys() | sidecar_run_funcs.keys(),
         )
 
 

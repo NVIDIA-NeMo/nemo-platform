@@ -41,9 +41,6 @@ AVAILABLE_SIDECARS: dict[str, str] = {
     "auth-proxy": "nmp.common.auth.workload_proxy.main:run",
 }
 
-# These sidecars own health tracking for resource threads hidden from the runner.
-SELF_TRACKING_SIDECARS: frozenset[str] = frozenset({"auth-proxy"})
-
 SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
     "models": {"adapters"},
 }

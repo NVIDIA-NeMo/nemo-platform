@@ -14,7 +14,7 @@ from nmp.common.config.base import OIDCConfig
 from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter
 from nmp.common.service import Service
 from nmp.platform_runner import config as runner_config
-from nmp.platform_runner import server
+from nmp.platform_runner import controller_threads, server
 
 
 class DummyService(Service):
@@ -174,6 +174,7 @@ def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
             return resource_thread.is_alive()
 
     def run(stop_signal: threading.Event) -> None:
+        generation = manager.await_controller_registration("auth-proxy")
         resource_thread.start()
         # The health loop stops independently of the resource thread.
         health_loop = Loop(
@@ -188,6 +189,17 @@ def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
         stop_signal.wait(timeout=5.0)
         health_loop.join(timeout=2.0)
         # The sidecar intentionally leaves the live resource tracked.
+        manager.mark_controller_stopping("auth-proxy", generation)
+
+        def cleanup_after_resource_exit() -> None:
+            resource_thread.join()
+            manager.stop_tracking_controller(
+                "auth-proxy",
+                generation,
+                allow_stopping=True,
+            )
+
+        threading.Thread(target=cleanup_after_resource_exit, daemon=True).start()
 
     try:
         with (
@@ -211,7 +223,7 @@ def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
         manager.clear()
 
 
-def test_crashed_sidecar_does_not_block_readiness() -> None:
+def test_crashed_required_sidecar_blocks_readiness() -> None:
     crashed = threading.Event()
 
     def crash(_stop_signal: threading.Event) -> None:
@@ -234,7 +246,10 @@ def test_crashed_sidecar_does_not_block_readiness() -> None:
 
             with TestClient(app) as client:
                 assert crashed.wait(timeout=1.0)
-                assert client.get("/health/ready").status_code == 200
+                assert client.get("/health/ready").status_code == 503
+                status = client.get("/status").json()
+                assert status["status"] == "unhealthy"
+                assert status["controllers"] == {"healthy": False, "status": {"adapters": False}}
     finally:
         manager.clear()
 
@@ -259,6 +274,51 @@ def test_build_platform_app_loads_dependent_sidecar_into_lifespan(monkeypatch: p
             assert client.get("/").status_code == 200
 
     assert stopped.wait(timeout=1.0)
+
+
+def test_sidecar_thread_start_failure_rolls_back_started_controllers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller_stopped = threading.Event()
+    manager = ControllerManager.get_instance()
+    manager.clear()
+
+    def controller_run(stop_signal: threading.Event) -> None:
+        manager.register("models_controller", MagicMock(is_healthy=True, unhealthy_reason=None))
+        stop_signal.wait(timeout=2)
+        controller_stopped.set()
+
+    original_start = controller_threads._RunnerThread.start
+
+    def fail_sidecar_start(thread: controller_threads._RunnerThread) -> None:
+        if thread.component_name == "adapters":
+            raise RuntimeError("sidecar thread start failed")
+        original_start(thread)
+
+    monkeypatch.setattr(controller_threads._RunnerThread, "start", fail_sidecar_start)
+
+    with (
+        patch("nmp.platform_runner.server.get_platform_config") as platform_config,
+        patch("nmp.platform_runner.server.get_auth_config", return_value=_auth_config(False)),
+        patch("nmp.common.auth.middleware.get_auth_config", return_value=_auth_config(False)),
+    ):
+        platform_config.return_value.seed_on_startup = False
+        platform_config.return_value.redirect_root_to_studio = False
+        app = server.create_app(
+            services=[],
+            controller_run_funcs={"models": controller_run},
+            sidecar_run_funcs={"adapters": _dummy_sidecar},
+        )
+
+        from fastapi.testclient import TestClient
+
+        with pytest.raises(RuntimeError, match="sidecar thread start failed"), TestClient(app):
+            pass
+
+    assert controller_stopped.wait(timeout=2)
+    assert manager.get_all_loops() == {}
+    assert manager.validate_all_healthy() == (False, {"adapters": False})
+    manager.clear()
 
 
 def test_build_platform_app_rejects_controller_sidecar_name_collision(monkeypatch: pytest.MonkeyPatch) -> None:

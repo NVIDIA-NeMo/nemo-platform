@@ -30,8 +30,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from ipaddress import ip_address
 
 import httpx
 import uvicorn
@@ -50,11 +51,14 @@ AUTH_PROXY_PRINCIPAL_ENVVAR = "NMP_AUTH_PROXY_PRINCIPAL"
 # creator). When set, the service principal acts on behalf of this identity so
 # the platform scopes access to what that principal can reach.
 AUTH_PROXY_ON_BEHALF_OF_ENVVAR = "NMP_AUTH_PROXY_ON_BEHALF_OF"
+AUTH_PROXY_ALLOW_NON_LOOPBACK_ENVVAR = "NMP_AUTH_PROXY_ALLOW_NON_LOOPBACK"
 DEFAULT_AUTH_PROXY_HOST = "127.0.0.1"
 DEFAULT_AUTH_PROXY_PORT = 8090
 
 _READ_TIMEOUT_ENVVAR = "NMP_AUTH_PROXY_READ_TIMEOUT"
 _PRINCIPAL_ID_HEADER = "x-nmp-principal-id"
+_PRINCIPAL_EMAIL_HEADER = "x-nmp-principal-email"
+_PRINCIPAL_GROUPS_HEADER = "x-nmp-principal-groups"
 _ON_BEHALF_OF_HEADER = "x-nmp-principal-on-behalf-of"
 # Companion metadata for the on-behalf-of principal. The platform derives the
 # delegated user's groups/email from these (Principal.from_headers -> effective_*),
@@ -65,29 +69,52 @@ _ON_BEHALF_OF_HEADER = "x-nmp-principal-on-behalf-of"
 _ON_BEHALF_OF_EMAIL_HEADER = "x-nmp-principal-on-behalf-of-email"
 _ON_BEHALF_OF_GROUPS_HEADER = "x-nmp-principal-on-behalf-of-groups"
 
-# Minimal request-header sanitization. We only drop what would be actively wrong:
+# Request-header sanitization drops identity, framing, and hop-by-hop metadata:
 # - the workload's own credential / principal / on-behalf-of headers (we set the
 #   identity), so they can't be spoofed or conflict with what we stamp;
 # - host and content-length, which httpx recomputes for the upstream request
 #   (a stale value corrupts routing / the body).
-_STRIP_REQUEST_HEADERS = frozenset(
+_HOP_BY_HOP_HEADERS = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+    }
+)
+_STRIP_REQUEST_HEADERS = _HOP_BY_HOP_HEADERS | frozenset(
     {
         "host",
         "content-length",
         "authorization",
         _PRINCIPAL_ID_HEADER,
+        _PRINCIPAL_EMAIL_HEADER,
+        _PRINCIPAL_GROUPS_HEADER,
         _ON_BEHALF_OF_HEADER,
         _ON_BEHALF_OF_EMAIL_HEADER,
         _ON_BEHALF_OF_GROUPS_HEADER,
     }
 )
 # We stream the response, so the upstream's framing headers no longer apply.
-_STRIP_RESPONSE_HEADERS = frozenset(
-    {
-        "content-length",
-        "transfer-encoding",
+_STRIP_RESPONSE_HEADERS = _HOP_BY_HOP_HEADERS | frozenset({"content-length"})
+_MULTI_VALUE_RESPONSE_HEADERS = frozenset({"set-cookie"})
+
+
+def _sanitized_headers(headers: Mapping[str, str], *, strip: frozenset[str]) -> dict[str, str]:
+    """Remove fixed and Connection-nominated hop-by-hop headers."""
+    connection_tokens = {
+        token.strip().lower()
+        for key, value in headers.items()
+        if key.lower() == "connection"
+        for token in value.split(",")
+        if token.strip()
     }
-)
+    blocked = strip | connection_tokens
+    return {key: value for key, value in headers.items() if key.lower() not in blocked}
 
 
 def _upstream_base_url() -> str:
@@ -130,13 +157,14 @@ def build_app(*, base_url: str, principal: str, on_behalf_of: str | None = None)
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     )
     async def forward(request: Request, path: str) -> StreamingResponse:
-        headers = {k: v for k, v in request.headers.items() if k.lower() not in _STRIP_REQUEST_HEADERS}
+        headers = _sanitized_headers(request.headers, strip=_STRIP_REQUEST_HEADERS)
         headers[_PRINCIPAL_ID_HEADER] = principal_id
         if on_behalf_of:
             headers[_ON_BEHALF_OF_HEADER] = on_behalf_of
         url = httpx.URL(path="/" + path, query=request.url.query.encode("utf-8"))
-        body = await request.body()
-        upstream = client.build_request(request.method, url, headers=headers, content=body)
+        # Stream request bodies to keep a co-located caller from forcing the
+        # privileged proxy to buffer an unbounded payload in memory.
+        upstream = client.build_request(request.method, url, headers=headers, content=request.stream())
         response = await client.send(upstream, stream=True)
 
         async def _body() -> AsyncIterator[bytes]:
@@ -149,12 +177,18 @@ def build_app(*, base_url: str, principal: str, on_behalf_of: str | None = None)
             finally:
                 await response.aclose()
 
-        resp_headers = {k: v for k, v in response.headers.items() if k.lower() not in _STRIP_RESPONSE_HEADERS}
-        return StreamingResponse(
+        resp_headers = _sanitized_headers(
+            response.headers,
+            strip=_STRIP_RESPONSE_HEADERS | _MULTI_VALUE_RESPONSE_HEADERS,
+        )
+        proxy_response = StreamingResponse(
             _body(),
             status_code=response.status_code,
             headers=resp_headers,
         )
+        for cookie in response.headers.get_list("set-cookie"):
+            proxy_response.headers.append("set-cookie", cookie)
+        return proxy_response
 
     return app
 
@@ -192,6 +226,21 @@ class _ServerThreadController(Controller):
         return "auth-proxy uvicorn thread is not running"
 
 
+def _unregister_quietly(manager: ControllerManager, name: str, *, context: str) -> None:
+    """Best-effort unregister that never masks a caller's in-flight exception.
+
+    Called from inside ``except Exception:`` blocks below. A bare ``manager.unregister(...)``
+    there would let a second exception (e.g. a ``KeyError`` from racing with
+    ``ControllerManager.watch_delayed_exit``'s background cleanup thread over the same
+    loop name) replace the original failure on the bare ``raise`` that follows,
+    hiding the real cause from logs/health status.
+    """
+    try:
+        manager.unregister(name)
+    except Exception:
+        logger.exception("auth-proxy failed to unregister %r %s", name, context)
+
+
 def run(parent_stop_signal: threading.Event | None = None) -> None:
     """Serve the auth proxy and report its lifecycle through ControllerManager."""
     if parent_stop_signal is None:
@@ -199,12 +248,12 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
         return
 
     manager = ControllerManager.get_instance()
-    with manager.controller_registration_context("auth-proxy"):
-        manager.await_controller_registration("auth-proxy")
+    generation = manager.await_controller_registration("auth-proxy")
+    with manager.controller_registration_context("auth-proxy", generation):
         try:
             base_url, principal, on_behalf_of, host, port, server = _build_server()
         except Exception:
-            manager.mark_controller_failed("auth-proxy")
+            manager.mark_controller_failed("auth-proxy", generation, reason="auth-proxy server setup failed")
             raise
         _log_startup(host=host, port=port, base_url=base_url, principal=principal, on_behalf_of=on_behalf_of)
 
@@ -220,25 +269,30 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
             # Register first so stale tracking blocks a second server bind.
             manager.register(health_loop.name, health_loop)
         except Exception:
-            manager.mark_controller_failed("auth-proxy")
+            manager.mark_controller_failed("auth-proxy", generation, reason="auth-proxy health registration failed")
             raise
 
         try:
             thread.start()
         except Exception:
-            manager.unregister(health_loop.name)
-            manager.mark_controller_failed("auth-proxy")
+            _unregister_quietly(manager, health_loop.name, context="after Uvicorn thread failed to start")
+            manager.mark_controller_failed("auth-proxy", generation, reason="auth-proxy Uvicorn thread failed to start")
             raise
 
         try:
             health_loop.start()
         except Exception:
             uvicorn_still_alive = _join_uvicorn_thread(server, thread, context="after startup failed")
-            manager.mark_controller_failed("auth-proxy")
+            manager.mark_controller_failed("auth-proxy", generation, reason="auth-proxy health loop failed to start")
             if uvicorn_still_alive:
-                _watch_delayed_uvicorn_exit(manager, thread)
+                # Do not allow another generation to bind while the failed
+                # generation's Uvicorn thread still owns the listen socket.
+                manager.mark_controller_stopping("auth-proxy", generation)
+                manager.watch_delayed_exit(
+                    thread, "auth-proxy", generation, clear_state=False, thread_name="auth-proxy-uvicorn-cleanup"
+                )
             else:
-                manager.unregister(health_loop.name)
+                _unregister_quietly(manager, health_loop.name, context="after health loop failed to start")
             raise
 
         try:
@@ -252,20 +306,13 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
                 logger.warning(
                     "Leaving health tracking in place for %r; its uvicorn thread did not finish in time", "auth-proxy"
                 )
-                _watch_delayed_uvicorn_exit(manager, thread)
+                manager.mark_controller_stopping("auth-proxy", generation)
+                manager.watch_delayed_exit(
+                    thread, "auth-proxy", generation, clear_state=True, thread_name="auth-proxy-uvicorn-cleanup"
+                )
             else:
-                manager.stop_tracking_controller("auth-proxy")
+                manager.stop_tracking_controller("auth-proxy", generation)
             logger.info("auth-proxy sidecar stopped")
-
-
-def _watch_delayed_uvicorn_exit(manager: ControllerManager, thread: threading.Thread) -> None:
-    """Drop auth-proxy tracking after a delayed Uvicorn exit."""
-
-    def _wait_and_untrack() -> None:
-        thread.join()
-        manager.stop_tracking_controller("auth-proxy")
-
-    threading.Thread(target=_wait_and_untrack, name="auth-proxy-uvicorn-cleanup", daemon=True).start()
 
 
 def _build_server() -> tuple[str, str, str | None, str, int, uvicorn.Server]:
@@ -275,10 +322,30 @@ def _build_server() -> tuple[str, str, str | None, str, int, uvicorn.Server]:
         raise RuntimeError(f"{AUTH_PROXY_PRINCIPAL_ENVVAR} is required for the auth-proxy sidecar")
     on_behalf_of = os.environ.get(AUTH_PROXY_ON_BEHALF_OF_ENVVAR) or None
     host = os.environ.get(AUTH_PROXY_HOST_ENVVAR, DEFAULT_AUTH_PROXY_HOST)
+    if not _is_loopback_host(host) and os.environ.get(AUTH_PROXY_ALLOW_NON_LOOPBACK_ENVVAR, "").lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        raise RuntimeError(
+            f"{AUTH_PROXY_HOST_ENVVAR} must be a loopback address; set "
+            f"{AUTH_PROXY_ALLOW_NON_LOOPBACK_ENVVAR}=true only if external exposure is intentional"
+        )
     port = int(os.environ.get(AUTH_PROXY_PORT_ENVVAR, str(DEFAULT_AUTH_PROXY_PORT)))
     app = build_app(base_url=base_url, principal=principal, on_behalf_of=on_behalf_of)
     config = uvicorn.Config(app, host=host, port=port, log_level="info", access_log=False)
     return base_url, principal, on_behalf_of, host, port, uvicorn.Server(config)
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return whether a bind host is explicitly loopback-only."""
+    normalized = host.strip().strip("[]")
+    if normalized.lower() == "localhost":
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 def _log_startup(*, host: str, port: int, base_url: str, principal: str, on_behalf_of: str | None) -> None:
@@ -286,10 +353,19 @@ def _log_startup(*, host: str, port: int, base_url: str, principal: str, on_beha
         "Starting auth-proxy sidecar on %s:%s -> %s (principal=service:%s, delegated=%s)",
         host,
         port,
-        base_url,
+        _redact_url_credentials(base_url),
         principal,
         on_behalf_of is not None,
     )
+
+
+def _redact_url_credentials(url: str) -> str:
+    """Remove URL userinfo before writing an upstream address to logs."""
+    try:
+        parsed = httpx.URL(url)
+        return str(parsed.copy_with(username=None, password=None))
+    except Exception:
+        return "<invalid upstream URL>"
 
 
 def _run_untracked() -> None:

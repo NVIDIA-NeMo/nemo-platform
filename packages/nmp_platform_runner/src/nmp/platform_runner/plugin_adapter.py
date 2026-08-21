@@ -201,8 +201,8 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
                 "Plugin controller %r on_startup() failed — controller will not run.",
                 controller.name,
             )
-            adapter._loop.close()
-            return
+            adapter.shutdown()
+            raise
 
         monitored = TrackLastExecutionTime(adapter)
         waiter = TimedLoopWaiter(
@@ -224,8 +224,30 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
                 controller.name,
             )
             adapter.shutdown()
-            return
-        loop.start()
+            raise
+        try:
+            loop.start()
+        except Exception:
+            _unregister_quietly(loop.name, controller.name)
+            adapter.shutdown()
+            raise
         loop.join()
 
     return run
+
+
+def _unregister_quietly(loop_name: str, controller_name: str) -> None:
+    """Best-effort unregister that never masks the caller's in-flight exception.
+
+    Called from an ``except Exception:`` block after ``loop.start()`` fails. A
+    bare ``ControllerManager.unregister(...)`` there would let a second
+    exception replace the original failure on the ``raise`` that follows,
+    hiding the real cause from logs/health status.
+    """
+    try:
+        ControllerManager.get_instance().unregister(loop_name)
+    except Exception:
+        logger.exception(
+            "Plugin controller %r failed to unregister its control loop after loop.start() failed",
+            controller_name,
+        )

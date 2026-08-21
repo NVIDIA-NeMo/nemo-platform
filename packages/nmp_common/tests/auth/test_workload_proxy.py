@@ -24,7 +24,11 @@ from nmp.common.controller import ControllerManager, Loop
 def test_forward_stamps_service_principal_and_preserves_path() -> None:
     upstream = "http://nemo-platform-api:8080"
     route = respx.post(f"{upstream}/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions").mock(
-        return_value=httpx.Response(200, json={"ok": True})
+        return_value=httpx.Response(
+            200,
+            json={"ok": True},
+            headers={"connection": "x-upstream-hop", "x-upstream-hop": "secret"},
+        )
     )
     app = build_app(base_url=upstream, principal="agents")
     client = TestClient(app)
@@ -32,7 +36,11 @@ def test_forward_stamps_service_principal_and_preserves_path() -> None:
     resp = client.post(
         "/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions",
         json={"model": "m", "messages": []},
-        headers={"authorization": "Bearer not-used"},
+        headers={
+            "authorization": "Bearer not-used",
+            "connection": "x-client-hop",
+            "x-client-hop": "secret",
+        },
     )
 
     assert resp.status_code == 200
@@ -42,6 +50,10 @@ def test_forward_stamps_service_principal_and_preserves_path() -> None:
     # The proxy sets the service-principal identity and drops the placeholder auth.
     assert sent.headers["x-nmp-principal-id"] == "service:agents"
     assert "authorization" not in {k.lower() for k in sent.headers}
+    assert "x-client-hop" not in {k.lower() for k in sent.headers}
+    assert "connection" not in resp.headers
+    assert "x-upstream-hop" not in resp.headers
+    assert sent.content == b'{"model":"m","messages":[]}'
 
 
 @respx.mock
@@ -85,6 +97,8 @@ def test_forward_strips_inbound_on_behalf_of_to_prevent_spoofing() -> None:
         "/apis/entities/v2/workspaces",
         headers={
             "x-nmp-principal-id": "service:platform",
+            "x-nmp-principal-email": "attacker@evil.test",
+            "x-nmp-principal-groups": "platform-admins",
             "x-nmp-principal-on-behalf-of": "user:attacker",
             # Companion metadata must not be smuggled onto our stamped OBO id:
             # the platform derives effective groups/email from these and feeds
@@ -98,7 +112,9 @@ def test_forward_strips_inbound_on_behalf_of_to_prevent_spoofing() -> None:
     sent_keys = {k.lower() for k in sent.headers}
     assert sent.headers["x-nmp-principal-id"] == "service:agents"
     assert sent.headers["x-nmp-principal-on-behalf-of"] == "user:alice"
-    # The inbound companion headers are dropped (we stamp only the OBO id).
+    # Inbound companion metadata cannot be attached to either stamped identity.
+    assert "x-nmp-principal-email" not in sent_keys
+    assert "x-nmp-principal-groups" not in sent_keys
     assert "x-nmp-principal-on-behalf-of-email" not in sent_keys
     assert "x-nmp-principal-on-behalf-of-groups" not in sent_keys
 
@@ -146,6 +162,29 @@ def test_forward_passes_through_upstream_status() -> None:
 
     resp = client.get("/apis/entities/v2/workspaces")
     assert resp.status_code == 403
+
+
+@respx.mock
+def test_forward_preserves_separate_set_cookie_headers() -> None:
+    upstream = "http://nemo-platform-api:8080"
+    respx.get(f"{upstream}/session").mock(
+        return_value=httpx.Response(
+            200,
+            headers=[
+                ("set-cookie", "session=one; Path=/; HttpOnly"),
+                ("set-cookie", "csrf=two; Path=/"),
+            ],
+        )
+    )
+    app = build_app(base_url=upstream, principal="agents")
+
+    with TestClient(app) as client:
+        response = client.get("/session")
+
+    assert response.headers.get_list("set-cookie") == [
+        "session=one; Path=/; HttpOnly",
+        "csrf=two; Path=/",
+    ]
 
 
 def test_healthz_does_not_require_upstream() -> None:
@@ -311,6 +350,54 @@ def test_run_setup_failure_before_server_start_is_visible_as_unhealthy(monkeypat
     assert status.get("auth-proxy") is False
 
 
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "proxy.example.com"])
+def test_build_server_rejects_non_loopback_bind_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setenv("NMP_AUTH_PROXY_HOST", host)
+
+    with pytest.raises(RuntimeError, match="must be a loopback address"):
+        workload_proxy_main._build_server()
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.10.20.30", "::1", "[::1]", "localhost"])
+def test_loopback_host_validation_accepts_explicit_loopback(host: str) -> None:
+    assert workload_proxy_main._is_loopback_host(host)
+
+
+def test_startup_log_redacts_upstream_url_credentials(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="nmp.common.auth.workload_proxy.main"):
+        workload_proxy_main._log_startup(
+            host="127.0.0.1",
+            port=8090,
+            base_url="https://sensitive-user:sensitive-password@platform.example.test:8443/base",
+            principal="agents",
+            on_behalf_of=None,
+        )
+
+    assert "sensitive-user" not in caplog.text
+    assert "sensitive-password" not in caplog.text
+    assert "https://platform.example.test:8443/base" in caplog.text
+
+
+def test_build_server_allows_explicit_non_loopback_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setenv("NMP_AUTH_PROXY_HOST", "0.0.0.0")
+    monkeypatch.setenv("NMP_AUTH_PROXY_ALLOW_NON_LOOPBACK", "true")
+    monkeypatch.setattr(workload_proxy_main, "build_app", lambda **_kwargs: object())
+    sentinel_server = object()
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", lambda _config: sentinel_server)
+
+    _, _, _, host, _, server = workload_proxy_main._build_server()
+
+    assert host == "0.0.0.0"
+    assert server is sentinel_server
+
+
 def test_run_registration_failure_never_starts_server_and_remains_unhealthy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -399,10 +486,13 @@ def test_run_health_loop_start_failure_tracks_uvicorn_until_delayed_exit(
         assert server_started.wait(timeout=2)
         assert "auth-proxy" in manager.get_all_loops()
         assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+        with pytest.raises(RuntimeError, match="still stopping"):
+            manager.await_controller_registration("auth-proxy")
     finally:
         release_server.set()
 
-    assert _wait_until(lambda: manager.validate_all_healthy() == (True, {}))
+    assert _wait_until(lambda: "auth-proxy" not in manager.get_all_loops())
+    assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
 
 
 def _wait_until(predicate: Callable[[], bool], timeout: float = 2.0, interval: float = 0.02) -> bool:

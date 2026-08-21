@@ -29,7 +29,6 @@ from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
 from nmp.platform_runner.config import DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS, PlatformAppConfig
 from nmp.platform_runner.controller_threads import (
-    RUNNER_JOIN_TIMEOUT_SECONDS,
     join_and_untrack_runner_threads,
     start_controller_threads,
     start_sidecar_threads,
@@ -43,7 +42,6 @@ from nmp.platform_runner.loader import (
 )
 from nmp.platform_runner.registry import (
     AVAILABLE_SIDECARS,
-    SELF_TRACKING_SIDECARS,
     check_no_controller_sidecar_collision,
     get_available_controllers,
     get_available_services,
@@ -177,16 +175,35 @@ def create_app(
         controller_threads = []
         thread_by_name: dict[str, threading.Thread] = {}
         platform_seed_task: asyncio.Task[None] | None = None
-        if controller_run_funcs:
-            logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
-            started = start_controller_threads(controller_run_funcs, controller_stop_signal)
-            thread_by_name.update(zip(controller_run_funcs, started))
-            controller_threads.extend(started)
-        if sidecar_run_funcs:
-            logger.info("Starting sidecars in lifespan: %s", list(sidecar_run_funcs))
-            started = start_sidecar_threads(sidecar_run_funcs, controller_stop_signal)
-            thread_by_name.update(zip(sidecar_run_funcs, started))
-            controller_threads.extend(started)
+        try:
+            # start_*_threads can block synchronously: on a mid-batch failure
+            # (e.g. thread.start() raising under thread exhaustion) it rolls
+            # back already-started components by joining them, which — like
+            # the shutdown join below — can take up to each component's
+            # configured timeout. Run it off the event loop so a failure here
+            # doesn't stall every other in-flight request during startup.
+            if controller_run_funcs:
+                logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
+                started = await asyncio.to_thread(
+                    start_controller_threads, controller_run_funcs, controller_stop_signal
+                )
+                thread_by_name.update(zip(controller_run_funcs, started))
+                controller_threads.extend(started)
+            if sidecar_run_funcs:
+                logger.info("Starting sidecars in lifespan: %s", list(sidecar_run_funcs))
+                started = await asyncio.to_thread(start_sidecar_threads, sidecar_run_funcs, controller_stop_signal)
+                thread_by_name.update(zip(sidecar_run_funcs, started))
+                controller_threads.extend(started)
+        except Exception:
+            controller_stop_signal.set()
+            await asyncio.to_thread(
+                join_and_untrack_runner_threads,
+                controller_threads,
+                thread_by_name,
+                controller_run_funcs.keys() | sidecar_run_funcs.keys(),
+            )
+            await close_shared_http_clients()
+            raise
 
         if platform_seed_state is not None:
             try:
@@ -225,11 +242,15 @@ def create_app(
                 pass
 
         controller_stop_signal.set()
-        join_and_untrack_runner_threads(
+        # join_and_untrack_runner_threads blocks synchronously (it polls with
+        # time.sleep) for up to each component's shutdown timeout — offload it
+        # so a slow-to-stop controller/sidecar (e.g. auth-proxy's 16s budget)
+        # doesn't stall the event loop and every other in-flight request.
+        await asyncio.to_thread(
+            join_and_untrack_runner_threads,
             controller_threads,
             thread_by_name,
-            controller_run_funcs.keys() | (sidecar_run_funcs.keys() - SELF_TRACKING_SIDECARS),
-            join_timeout=RUNNER_JOIN_TIMEOUT_SECONDS,
+            controller_run_funcs.keys() | sidecar_run_funcs.keys(),
         )
 
         await close_shared_http_clients()

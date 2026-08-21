@@ -477,10 +477,13 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
     Returns ``(True, detail)`` when ``/status`` is absent but ``/cluster-info`` confirms a hosted platform.
-    Returns ``(False, detail)`` when unhealthy, unreachable, or empty after retry.
+    Returns ``(False, detail)`` when unhealthy, unreachable, or still unhealthy after retry.
 
-    If ``controllers.status`` is empty on the first call (startup timing race),
-    waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
+    A controller shows up in ``controllers.status`` as soon as the runner starts
+    tracking it — before it has registered its control loop — so an in-progress
+    startup can legitimately report unhealthy on the first call, not just an
+    empty ``controllers.status``. Either case waits ``_CONTROLLER_HEALTH_RETRY_DELAY``
+    seconds and retries once before giving up.
     """
     verify = client_verify_from_env()
     root = base_url.rstrip("/")
@@ -508,9 +511,12 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
 
         if status_map:
             unhealthy = [name for name, ok in status_map.items() if not ok]
-            if unhealthy:
-                return False, f"Unhealthy controllers: {', '.join(unhealthy)}"
-            return True, ""
+            if not unhealthy:
+                return True, ""
+            if attempt == 0:
+                _pause(_CONTROLLER_HEALTH_RETRY_DELAY)
+                continue
+            return False, f"Unhealthy controllers: {', '.join(unhealthy)}"
 
         if attempt == 0:
             _pause(_CONTROLLER_HEALTH_RETRY_DELAY)

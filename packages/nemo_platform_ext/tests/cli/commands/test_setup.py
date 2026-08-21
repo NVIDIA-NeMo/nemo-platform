@@ -3340,11 +3340,31 @@ class TestCheckControllerHealth:
         assert msg == ""
 
     def test_unhealthy_controller(self):
+        # A controller shows up as unhealthy immediately (before it has registered
+        # its control loop), so an in-progress startup can legitimately look
+        # unhealthy on the first call — this must retry once before giving up,
+        # same as the empty-status_map case below.
         resp = _status_response(healthy=False, controller_status={"models_controller": False})
-        with patch(f"{SETUP_MOD}.httpx.get", return_value=resp):
+        with (
+            patch(f"{SETUP_MOD}.httpx.get", return_value=resp),
+            patch(f"{SETUP_MOD}._pause") as mock_pause,
+        ):
             ok, msg = _check_controller_health("http://localhost:8080")
         assert ok is False
         assert "models_controller" in msg
+        mock_pause.assert_called_once_with(_CONTROLLER_HEALTH_RETRY_DELAY)
+
+    def test_unhealthy_controller_recovers_after_retry(self):
+        starting_resp = _status_response(healthy=False, controller_status={"models_controller": False})
+        healthy_resp = _status_response(healthy=True, controller_status={"models_controller": True})
+        with (
+            patch(f"{SETUP_MOD}.httpx.get", side_effect=[starting_resp, healthy_resp]),
+            patch(f"{SETUP_MOD}._pause") as mock_pause,
+        ):
+            ok, msg = _check_controller_health("http://localhost:8080")
+        assert ok is True
+        assert msg == ""
+        mock_pause.assert_called_once_with(_CONTROLLER_HEALTH_RETRY_DELAY)
 
     def test_empty_controllers_retries_then_succeeds(self):
         empty_resp = _status_response(healthy=True, controller_status={})

@@ -105,6 +105,11 @@ def create_platform_health_router(
 
         manager = ControllerManager.get_instance()
         all_healthy, controllers = manager.validate_all_healthy(detailed=True)
+        if not all_healthy:
+            # Keep the aggregate signal consistent with /health/ready. A caller
+            # looking only at the top-level field must not miss a controller or
+            # required-sidecar failure.
+            status_value = "unhealthy"
 
         return PlatformStatusResponse(
             status=status_value,
