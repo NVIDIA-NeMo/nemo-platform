@@ -53,9 +53,15 @@ COPY --from=root-busybox /bin/cat /bin/cat
 COPY --from=root-busybox /bin/head /bin/head
 COPY --from=root-busybox /bin/tail /bin/tail
 COPY --from=root-busybox /bin/grep /bin/grep
+COPY --from=root-busybox /bin/sed /bin/sed
+COPY --from=root-busybox /bin/tee /bin/tee
 COPY --from=root-busybox /bin/echo /bin/echo
 COPY --from=root-busybox /bin/sleep /bin/sleep
 COPY --from=root-busybox /bin/dirname /bin/dirname
+COPY --from=root-busybox /bin/basename /bin/basename
+COPY --from=builder /bin/bash /bin/bash
+COPY --from=builder /bin/uv /bin/uv
+COPY --from=builder /usr/bin/env /usr/bin/env
 
 ENV USERNAME=nvs \
     HOME=/home/nvs

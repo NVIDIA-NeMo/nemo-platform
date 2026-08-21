@@ -28,7 +28,8 @@ RUN uv venv --python /usr/local/bin/python3.13 /opt/gym-venv \
 
 FROM cpu-tasks AS runtime
 COPY --chown=1000:1000 --from=gym-builder /opt/gym-venv /opt/gym-venv
-ENV PATH="/opt/gym-venv/bin:/app/.venv/bin:$PATH"
+ENV PATH="/opt/gym-venv/bin:/app/.venv/bin:$PATH" \
+    PYTHONPATH=""
 
 FROM runtime AS smoke-test
 RUN gym --help >/dev/null \
