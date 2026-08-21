@@ -227,7 +227,7 @@ async def test_evaluation_context_is_forwarded_to_default_on_observability(monke
 
     await run_module.run_analyst(
         agent="smoke-agent",
-        agent_spec=None,
+        ethos=None,
         workspace="default",
         base_url="http://localhost:8080",
         client=cast(AsyncNeMoPlatform, client),
@@ -255,7 +255,7 @@ async def test_per_run_observability_opt_out_skips_setup(monkeypatch: pytest.Mon
 
     await run_module.run_analyst(
         agent="remote-agent",
-        agent_spec=None,
+        ethos=None,
         workspace="default",
         base_url="https://remote.example",
         client=cast(AsyncNeMoPlatform, client),
