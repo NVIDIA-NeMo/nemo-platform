@@ -91,6 +91,22 @@ export const DisabledWithStoredSettings: Story = {
 };
 
 /**
+ * A config with its main model set — the model completions are generated against when the
+ * guardrail's tests run. Sits alongside a task LLM to show the two are distinct: only the
+ * `main` entry populates the field.
+ */
+export const WithMainModel: Story = {
+  args: {
+    config: {
+      models: [
+        { type: 'main', engine: 'nim', mode: 'chat', model: 'default/llama-3.1-8b-instruct' },
+        { type: 'content_safety', engine: 'nim', model: 'system/nemoguard-8b-content-safety' },
+      ],
+    },
+  },
+};
+
+/**
  * A config whose other rails Studio cannot configure yet. They stay in the saved document
  * untouched and remain visible in the read-only sections further down the tab.
  */

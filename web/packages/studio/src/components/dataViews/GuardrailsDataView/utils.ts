@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
+import { getMainModelName as getMainModelNameFromModels } from '@studio/routes/guardrails/GuardrailConfigTab/mainModel';
 
 /**
  * Count the total number of configured rail flows across input, output, and
@@ -22,7 +23,7 @@ export function countRails(data?: RailsConfig): number {
 
 /** Return the `model` field of the first model entry with type "main", or undefined. */
 export function getMainModelName(data?: RailsConfig): string | undefined {
-  return data?.models?.find((m) => m.type === 'main')?.model;
+  return getMainModelNameFromModels(data?.models) || undefined;
 }
 
 export interface RailCounts {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { GuardrailConfigurationPanel } from '@studio/routes/guardrails/GuardrailConfigTab/GuardrailConfigurationPanel';
 import {
@@ -12,6 +13,26 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { FC } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
+
+// The model select fetches its own options; its internals are not what we're testing here.
+// The stub renders the current value and a button that picks a fixed model, which is enough
+// to assert what the panel reads out of the config and what it writes back.
+vi.mock('@nemo/common/src/components/ModelSelectV2', () => ({
+  WorkspaceModelSelect: ({
+    value,
+    onValueChange,
+  }: {
+    value: ModelSelection | null;
+    onValueChange: (selection: ModelSelection) => void;
+  }) => (
+    <div>
+      <span data-testid="main-model-value">{value?.model ?? ''}</span>
+      <button type="button" onClick={() => onValueChange({ model: 'default/llama' })}>
+        Pick model
+      </button>
+    </div>
+  ),
+}));
 
 const mountPanel = (data?: RailsConfig) => {
   const seen: { values?: GuardrailFormValues } = {};
@@ -118,6 +139,40 @@ describe('GuardrailConfigurationPanel', () => {
 
     await waitFor(() => {
       expect(seen.values?.config.prompts).toBeUndefined();
+    });
+  });
+});
+
+describe('main model field', () => {
+  const TASK_LLM = {
+    type: 'content_safety',
+    engine: 'nim',
+    model: 'system/nemoguard-8b-content-safety',
+  };
+
+  it('shows the configured main model', () => {
+    mountPanel({ models: [{ type: 'main', engine: 'nim', model: 'default/gpt-4' }] });
+
+    expect(screen.getByTestId('main-model-value')).toHaveTextContent('default/gpt-4');
+  });
+
+  it('shows nothing when the config declares only task LLMs', () => {
+    mountPanel({ models: [TASK_LLM] });
+
+    expect(screen.getByTestId('main-model-value')).toHaveTextContent('');
+  });
+
+  it('writes a main entry without disturbing task LLMs', async () => {
+    const user = userEvent.setup();
+    const seen = mountPanel({ models: [TASK_LLM] });
+
+    await user.click(screen.getByRole('button', { name: 'Pick model' }));
+
+    await waitFor(() => {
+      expect(seen.values?.config.models).toEqual([
+        TASK_LLM,
+        { type: 'main', engine: 'nim', mode: 'chat', model: 'default/llama' },
+      ]);
     });
   });
 });
