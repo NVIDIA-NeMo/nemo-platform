@@ -30,7 +30,11 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, type DropdownEntry, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { FINETUNING_TYPE_FILTER_OPTIONS } from '@studio/components/dataViews/CustomModelsDataView/constants';
+import {
+  DEFAULT_CUSTOM_MODELS_FILTER,
+  FINETUNING_TYPE_FILTER_OPTIONS,
+  HAS_ADAPTERS,
+} from '@studio/components/dataViews/CustomModelsDataView/constants';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
 import { DeploymentIndicator } from '@studio/components/dataViews/CustomModelsDataView/DeploymentIndicator';
 import { KindTag } from '@studio/components/dataViews/CustomModelsDataView/KindTag';
@@ -46,14 +50,6 @@ import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 type SearchQuery = Record<string, unknown>;
-
-const HAS_BASE_MODEL = { 'data.base_model': { $not: { $eq: null } } };
-const HAS_ADAPTERS = { adapters: { $exists: true } };
-
-/**
- * Default filter: show only "custom" models (has base_model, finetuning_type, or adapters).
- */
-const DEFAULT_CUSTOM_MODELS_FILTER = { $or: [HAS_BASE_MODEL, HAS_ADAPTERS] };
 
 interface CustomModelsFilterParams {
   name?: string;

@@ -10,7 +10,12 @@ import type {
 } from '@nemo/sdk/generated/customizer/schema';
 import { CustomizationCreateAutomodelJobBody } from '@nemo/sdk/generated/customizer/zod/automodel-jobs';
 import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customizer/zod/unsloth-jobs';
-import { isAutomodelJob, type CustomizationJob } from '@studio/util/customizationBackend';
+import {
+  isAutomodelJob,
+  isAutomodelSpec,
+  isUnslothSpec,
+  type CustomizationJob,
+} from '@studio/util/customizationBackend';
 import { z } from 'zod';
 
 export interface CustomizationFormFields {
@@ -206,20 +211,35 @@ const stripNulls = <T>(value: T): T => {
 };
 
 export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields => {
-  if (isAutomodelJob(job)) {
-    return {
-      ...FORM_DEFAULTS,
-      outputName: generateDefaultName(),
-      description: job.description ?? '',
-      backend: 'automodel',
-      automodel: stripNulls(job.spec) as AutomodelJobInput,
-    };
-  }
-  return {
+  const base = {
     ...FORM_DEFAULTS,
     outputName: generateDefaultName(),
     description: job.description ?? '',
-    backend: 'unsloth',
-    unsloth: stripNulls(job.spec) as UnslothJobInput,
   };
+  return isAutomodelJob(job)
+    ? { ...base, backend: 'automodel', automodel: stripNulls(job.spec) as AutomodelJobInput }
+    : { ...base, backend: 'unsloth', unsloth: stripNulls(job.spec) as UnslothJobInput };
+};
+
+export const getInitialFormValuesFromState = (
+  state: unknown
+): CustomizationFormFields | undefined => {
+  if (typeof state !== 'object' || state === null) return undefined;
+  const { initialValues, cloneFromJob } = state as {
+    initialValues?: unknown;
+    cloneFromJob?: unknown;
+  };
+
+  if (customizationFormSchema.safeParse(initialValues).success) {
+    return initialValues as CustomizationFormFields;
+  }
+
+  if (typeof cloneFromJob === 'object' && cloneFromJob !== null) {
+    const spec = (cloneFromJob as Record<string, unknown>).spec;
+    if (isAutomodelSpec(spec) || isUnslothSpec(spec)) {
+      return jobToFormFields(cloneFromJob as CustomizationJob);
+    }
+  }
+
+  return undefined;
 };
