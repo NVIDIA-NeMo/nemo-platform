@@ -120,7 +120,7 @@ async def create_deployment_config(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during deployment config creation: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except Exception:
@@ -253,7 +253,7 @@ async def update_deployment_config(
     deployment_config_name = name
     logger.info(f"Updating deployment config: {workspace}/{deployment_config_name}")
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     try:
         if config_input.model_entity_id:
             await check_model_entity_access(auth_client, config_input.model_entity_id, workspace)
@@ -270,7 +270,7 @@ async def update_deployment_config(
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during deployment config update: {e}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
     except Exception:
@@ -304,7 +304,7 @@ async def delete_all_deployment_config_versions(
     dependent deployments to reach DELETED status before deleting the config.
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     deployment_config_name = name
     logger.info(f"Deleting all versions of deployment config: {workspace}/{deployment_config_name}")
 
@@ -358,7 +358,7 @@ async def delete_deployment_config_version(
     dependent deployments to reach DELETED status before deleting the config version.
     """
     if not deployments_enabled():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=ERR_DEPLOYMENTS_NOT_ENABLED)
     deployment_config_name = config
     logger.info(f"Deleting deployment config version: {workspace}/{deployment_config_name} version {name}")
 

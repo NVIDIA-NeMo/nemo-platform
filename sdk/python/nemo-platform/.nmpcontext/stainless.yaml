@@ -904,13 +904,20 @@ resources:
           retrieve: get /apis/intake/v2/workspaces/{workspace}/sessions/{id}
       traces:
         models:
+          cost_rollup_response: CostRollupResponse
+          latency_rollup_response: LatencyRollupResponse
+          token_rollup_response: TokenRollupResponse
           trace: Trace
           trace_filter: TraceFilter
+          trace_metric_bucket_param: TraceMetricBucketParam
+          trace_metric_point_response: TraceMetricPointResponse
+          trace_metrics: TraceMetrics
           trace_sort_field: TraceSortField
           traces_page: TracesPage
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/traces
           retrieve: get /apis/intake/v2/workspaces/{workspace}/traces/{id}
+          get_metrics: get /apis/intake/v2/workspaces/{workspace}/traces/metrics
   evaluations:
     standalone_api: true
     models:

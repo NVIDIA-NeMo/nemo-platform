@@ -92,6 +92,68 @@ const AutomodelParallelism = ({ disabled }: { disabled: boolean }) => {
   );
 };
 
+const RlParallelism = ({ disabled }: { disabled: boolean }) => {
+  const { control } = useFormContext<CustomizationFormFields>();
+  return (
+    <Stack gap="density-lg">
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.num_nodes', control }}
+        formFieldProps={{ slotLabel: 'Nodes' }}
+        defaultValue={1}
+        min={1}
+        max={16}
+        step={1}
+        disabled={disabled}
+      />
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.num_gpus_per_node', control }}
+        formFieldProps={{ slotLabel: 'GPUs per Node' }}
+        defaultValue={1}
+        min={1}
+        max={8}
+        step={1}
+        disabled={disabled}
+      />
+      <Text kind="label/bold/md">Parallelism</Text>
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.tensor_parallel_size', control }}
+        formFieldProps={{ slotLabel: 'Tensor (TP)' }}
+        defaultValue={1}
+        min={1}
+        max={8}
+        step={1}
+        disabled={disabled}
+      />
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.pipeline_parallel_size', control }}
+        formFieldProps={{ slotLabel: 'Pipeline (PP)' }}
+        defaultValue={1}
+        min={1}
+        max={8}
+        step={1}
+        disabled={disabled}
+      />
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.context_parallel_size', control }}
+        formFieldProps={{
+          slotLabel: 'Context (CP)',
+          slotInfo: 'Splits the sequence dimension across GPUs, for long-sequence runs.',
+        }}
+        defaultValue={1}
+        min={1}
+        max={8}
+        step={1}
+        disabled={disabled}
+      />
+      <ControlledSwitch
+        useControllerProps={{ name: 'rl.training.parallelism.sequence_parallel', control }}
+        formFieldProps={{ slotLabel: 'Sequence Parallel', labelPosition: 'left' }}
+        disabled={disabled}
+      />
+    </Stack>
+  );
+};
+
 const UnslothHardware = ({ disabled }: { disabled: boolean }) => {
   const { control } = useFormContext<CustomizationFormFields>();
   return (
@@ -121,6 +183,8 @@ export const ComputeResourcesSection = () => {
     <FormSection title="Compute Resources">
       {backend === 'automodel' ? (
         <AutomodelParallelism disabled={disabled} />
+      ) : backend === 'rl' ? (
+        <RlParallelism disabled={disabled} />
       ) : (
         <UnslothHardware disabled={disabled} />
       )}

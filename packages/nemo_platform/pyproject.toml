@@ -245,8 +245,8 @@ nemo-agents-plugin = [
   "pyyaml>=6.0",
   "anthropic>=0.88.0",
   "rich>=13.7.1",
-  "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.3.0",
-  "nemo-fabric-adapters-hermes>=0.1.0,<0.3.0; python_version < '3.14'",
+  "nemo-fabric[claude,codex,deepagents,relay]>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0; python_version < '3.14'",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -316,8 +316,8 @@ nemo-evaluator-sdk = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.6.0,<0.7",
-  "nemo-fabric>=0.1.1,<0.3.0",
+  "nemo-relay>=0.7.2,<0.8",
+  "nemo-fabric>=0.2.0,<0.3.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -611,7 +611,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "evaluator.evaluate" = "nemo_evaluator.jobs.evaluate:EvaluateJob"
 "evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
 "insights.analyze-job" = "nemo_insights_plugin.jobs.analyze:AnalyzeJob"
-"agents.invoke" = "nemo_agents_plugin.jobs.invoke:AgentInvocationJob"
+"agents.execute" = "nemo_agents_plugin.jobs.execute:ExecuteAgentJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]

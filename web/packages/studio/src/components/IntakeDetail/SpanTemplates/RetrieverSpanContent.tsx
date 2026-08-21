@@ -8,7 +8,7 @@
 import type { IntakeAccordionItem } from '@nemo/common/src/components/IntakeAccordion';
 import type { Span } from '@nemo/sdk/generated/platform/schema';
 import { Text } from '@nvidia/foundations-react-core';
-import { SpanPayloadBlock } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadBlock';
+import { SpanPayloadView } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadView';
 import {
   extractRetrievedDocuments,
   readRawAttribute,
@@ -56,7 +56,7 @@ export const retrieverCustomSections = (span: Span): IntakeAccordionItem[] => {
       value: QUERY_SECTION,
       slotLabel: sectionLabel('Query'),
       slotContent: (
-        <SpanPayloadBlock value={query} emptyMessage="No query was captured for this retrieval." />
+        <SpanPayloadView value={query} emptyMessage="No query was captured for this retrieval." />
       ),
     },
     {

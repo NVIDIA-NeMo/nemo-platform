@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 from nemo_insights_plugin.analyst import run as run_module
 from nemo_insights_plugin.analyst.deps import AnalystDeps
+from nemo_insights_plugin.analyst.observability import AnalystEvaluationContext
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients
 from nooa.context_blocks import ResultStatus
@@ -66,6 +67,12 @@ def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> 
 
     monkeypatch.setattr(run_module, "build_analyst_agent", fake_build_agent)
     monkeypatch.setattr(run_module, "_run_agent", fake_run_agent)
+
+    class Observability:
+        def shutdown(self) -> None:
+            seen["shutdown"] = True
+
+    monkeypatch.setattr(run_module, "setup_analyst_observability", lambda **_kwargs: Observability())
 
 
 async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -175,12 +182,12 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
     client = FakeClient()
     seen: dict[str, object] = {}
     _stub_pipeline(monkeypatch, seen)
+    monkeypatch.setenv(run_module.ANALYST_OBSERVABILITY_ENV, "true")
 
     class FailingObservability:
         def shutdown(self) -> None:
             raise RuntimeError("shutdown failed")
 
-    monkeypatch.setattr(run_module, "_analyst_observability_enabled", lambda: True)
     monkeypatch.setattr(
         run_module,
         "setup_analyst_observability",
@@ -195,5 +202,64 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
         )
+
+    assert client.closed
+
+
+async def test_evaluation_context_is_forwarded_to_default_on_observability(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient()
+    seen: dict[str, object] = {}
+    _stub_pipeline(monkeypatch, seen)
+
+    class Observability:
+        def shutdown(self) -> None:
+            seen["shutdown"] = True
+
+    def fake_setup(**kwargs: object) -> Observability:
+        seen["observability"] = kwargs
+        return Observability()
+
+    monkeypatch.setattr(run_module, "setup_analyst_observability", fake_setup)
+    evaluation_context = AnalystEvaluationContext(
+        evaluation_name="nemo-analyst-1",
+        test_case_name="smoke/g1",
+    )
+
+    await run_module.run_analyst(
+        agent="smoke-agent",
+        agent_spec=None,
+        workspace="default",
+        base_url="http://localhost:8080",
+        client=cast(AsyncNeMoPlatform, client),
+        analyst_evaluation=evaluation_context,
+    )
+
+    assert seen["observability"] == {
+        "base_url": "http://localhost:8080",
+        "workspace": "default",
+        "target_agent": "smoke-agent",
+        "evaluation_context": evaluation_context,
+    }
+    assert seen["shutdown"] is True
+
+
+async def test_per_run_observability_opt_out_skips_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient()
+    seen: dict[str, object] = {}
+    _stub_pipeline(monkeypatch, seen)
+
+    def fail_setup(**kwargs: object) -> None:
+        raise AssertionError(f"unexpected observability setup: {kwargs}")
+
+    monkeypatch.setattr(run_module, "setup_analyst_observability", fail_setup)
+
+    await run_module.run_analyst(
+        agent="remote-agent",
+        agent_spec=None,
+        workspace="default",
+        base_url="https://remote.example",
+        client=cast(AsyncNeMoPlatform, client),
+        enable_observability=False,
+    )
 
     assert client.closed

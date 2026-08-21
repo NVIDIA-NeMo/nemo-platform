@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""E2E tests for Fabric-backed agent invocation jobs."""
+"""E2E tests for Fabric-backed agent execution jobs."""
 
 from __future__ import annotations
 
@@ -47,14 +47,14 @@ def _job_diagnostic_message(sdk: NeMoPlatform, job: Any, workspace: str, prefix:
     return "\n".join(parts)
 
 
-def _list_invoke_job_results(sdk: NeMoPlatform, workspace: str, job_name: str) -> dict[str, Any]:
-    response = sdk._client.get(_agents_url(sdk, workspace, f"jobs/invoke/{job_name}/results"))
-    assert response.status_code == 200, f"Failed to list invoke job results for {job_name}: {response.text}"
+def _list_execute_job_results(sdk: NeMoPlatform, workspace: str, job_name: str) -> dict[str, Any]:
+    response = sdk._client.get(_agents_url(sdk, workspace, f"jobs/execute/{job_name}/results"))
+    assert response.status_code == 200, f"Failed to list execute job results for {job_name}: {response.text}"
     return response.json()
 
 
-def _download_invoke_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str) -> bytes:
-    response = sdk._client.get(_agents_url(sdk, workspace, f"jobs/invoke/{job_name}/results/{result_name}/download"))
+def _download_execute_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str) -> bytes:
+    response = sdk._client.get(_agents_url(sdk, workspace, f"jobs/execute/{job_name}/results/{result_name}/download"))
     assert response.status_code == 200, f"Failed to download result {result_name!r} for {job_name}: {response.text}"
     return response.content
 
@@ -151,8 +151,8 @@ def _mock_backed_workspace_agent_config(agent_name: str, model_name: str) -> dic
 
 
 def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, workspace: str) -> None:
-    agent_name = unique_name("invoke-agent")
-    job_name = unique_name("invoke-job")
+    agent_name = unique_name("execute-agent")
+    job_name = unique_name("execute-job")
     model_name = unique_name("invoke-model")
     fileset_name = unique_name("invoke-inputs")
     generated_report = "Fabric wrote this deterministic e2e report.\n"
@@ -193,7 +193,7 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
 
     try:
         response = sdk._client.post(
-            _agents_url(sdk, workspace, "jobs/invoke"),
+            _agents_url(sdk, workspace, "jobs/execute"),
             json={
                 "name": job_name,
                 "spec": {
@@ -210,10 +210,10 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
             sdk,
             completed_job,
             workspace,
-            f"Invoke job failed with status: {completed_job.status}",
+            f"Execute job failed with status: {completed_job.status}",
         )
 
-        results = _list_invoke_job_results(sdk, workspace, job_name)
+        results = _list_execute_job_results(sdk, workspace, job_name)
         assert {
             "input_workdir",
             "output_workdir",
@@ -222,27 +222,27 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         }.issubset(_result_names(results))
 
         # The input snapshot contains the original file, but not the agent-generated one
-        input_workdir = _download_invoke_job_result(sdk, workspace, job_name, "input_workdir")
+        input_workdir = _download_execute_job_result(sdk, workspace, job_name, "input_workdir")
         input_members = _tar_member_names(input_workdir)
         assert _tar_contains(input_members, "context.txt")
         assert not _tar_contains(input_members, "generated-report.md")
 
         # The output snapshot contains the original file AND the agent-generated one
-        output_workdir = _download_invoke_job_result(sdk, workspace, job_name, "output_workdir")
+        output_workdir = _download_execute_job_result(sdk, workspace, job_name, "output_workdir")
         output_members = _tar_member_names(output_workdir)
         assert _tar_contains(output_members, "context.txt")
         assert _tar_contains(output_members, "generated-report.md")
         assert _tar_text_by_suffix(output_workdir, "generated-report.md") == generated_report
 
         # The output artifacts contains Fabric-produced files
-        artifacts = _download_invoke_job_result(sdk, workspace, job_name, "output_artifacts")
+        artifacts = _download_execute_job_result(sdk, workspace, job_name, "output_artifacts")
         artifacts_members = _tar_member_names(artifacts)
         assert _tar_contains(artifacts_members, "adapter-invocation.json")
         assert _tar_contains(artifacts_members, "stdout.txt")
         assert _tar_contains(artifacts_members, "stderr.txt")
 
         # The run result captures platform-normalized Fabric RunResult details
-        run_result = json.loads(_download_invoke_job_result(sdk, workspace, job_name, "fabric_run_result"))
+        run_result = json.loads(_download_execute_job_result(sdk, workspace, job_name, "fabric_run_result"))
         assert run_result["status"] == "succeeded"
         assert run_result["runtime_id"].startswith("runtime-")
         assert run_result["invocation_id"]
@@ -262,8 +262,8 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
     sdk: NeMoPlatform,
     workspace: str,
 ) -> None:
-    agent_name = unique_name("invoke-agent")
-    job_name = unique_name("invoke-job")
+    agent_name = unique_name("execute-agent")
+    job_name = unique_name("execute-job")
     model_name = unique_name("invoke-model")
     fileset_name = unique_name("invoke-inputs")
     partial_report = "Fabric wrote this file before the model failed.\n"
@@ -308,7 +308,7 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
 
     try:
         response = sdk._client.post(
-            _agents_url(sdk, workspace, "jobs/invoke"),
+            _agents_url(sdk, workspace, "jobs/execute"),
             json={
                 "name": job_name,
                 "spec": {
@@ -325,10 +325,10 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
             sdk,
             completed_job,
             workspace,
-            f"Invoke job unexpectedly finished with status: {completed_job.status}",
+            f"Execute job unexpectedly finished with status: {completed_job.status}",
         )
 
-        results = _list_invoke_job_results(sdk, workspace, job_name)
+        results = _list_execute_job_results(sdk, workspace, job_name)
         assert {
             "input_workdir",
             "output_workdir",
@@ -338,25 +338,27 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         assert "fabric_error" not in _result_names(results)
 
         # The input snapshot is as expected
-        input_workdir = _download_invoke_job_result(sdk, workspace, job_name, "input_workdir")
+        input_workdir = _download_execute_job_result(sdk, workspace, job_name, "input_workdir")
         assert _tar_contains(_tar_member_names(input_workdir), "context.txt")
         assert not _tar_contains(_tar_member_names(input_workdir), "partial-before-error.txt")
 
         # We do still get an output snapshot even when Fabric fails, and it does contain
         # the file that Fabric created before failing
-        output_workdir = _download_invoke_job_result(sdk, workspace, job_name, "output_workdir")
+        output_workdir = _download_execute_job_result(sdk, workspace, job_name, "output_workdir")
         output_members = _tar_member_names(output_workdir)
         assert _tar_contains(output_members, "context.txt")
         assert _tar_contains(output_members, "partial-before-error.txt")
         assert _tar_text_by_suffix(output_workdir, "partial-before-error.txt") == partial_report
 
         # The run result includes status=failed and error details
-        run_result = json.loads(_download_invoke_job_result(sdk, workspace, job_name, "fabric_run_result"))
+        run_result = json.loads(_download_execute_job_result(sdk, workspace, job_name, "fabric_run_result"))
         assert run_result["status"] == "failed"
         assert run_result["request_id"] == job_name
         assert run_result["runtime_id"].startswith("runtime-")
         assert run_result["invocation_id"]
-        assert run_result["error"]["code"] == "adapter_reported_failure"
-        assert run_result["error"]["message"] == "adapter reported an invocation failure"
+        assert run_result["error"]["code"] == "deepagents_invocation_failed"
+        error_message = run_result["error"]["message"]
+        assert "InternalServerError" in error_message
+        assert "Error code: 500" in error_message
     finally:
         delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
