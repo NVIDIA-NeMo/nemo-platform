@@ -265,7 +265,10 @@ def _collect_secrets(config: dict[str, Any], env_spec: EnvironmentSpecInline) ->
     the server config; the fulfillment overrides the Agent's url/env on collision.
 
     Raises :class:`EnvironmentResolutionError` when the same env var name maps to
-    two different secret references (an ambiguous, unresolvable collision).
+    two different secret references (an ambiguous, unresolvable collision), or
+    when a name is bound both as a secret and as a plaintext value (in the merged
+    ``environment.env`` or a declared MCP server's ``env``) - the effective
+    credential would otherwise depend on runtime env construction order.
     """
     secrets: dict[str, str] = {}
 
@@ -302,4 +305,38 @@ def _collect_secrets(config: dict[str, Any], env_spec: EnvironmentSpecInline) ->
                 for env_name, ref in fulfillment.secrets.items():
                     _record(env_name, ref)
 
+    _reject_plaintext_secret_collisions(config, secrets)
     return secrets
+
+
+def _reject_plaintext_secret_collisions(config: dict[str, Any], secrets: dict[str, str]) -> None:
+    """Reject any secret-bound env name that is also bound as a plaintext value.
+
+    A name present both in ``secrets`` (injected as a secret-backed env var) and
+    as a plaintext value in the merged ``environment.env`` or a declared MCP
+    server's ``env`` would double-bind: the effective value would depend on
+    runtime env construction order. Reject it up front.
+    """
+    if not secrets:
+        return
+
+    def _check(env_map: Any, where: str) -> None:
+        if not isinstance(env_map, dict):
+            return
+        clash = sorted(name for name in secrets if name in env_map)
+        if clash:
+            raise EnvironmentResolutionError(
+                f"Env var(s) {', '.join(clash)} are bound both as a secret and as a "
+                f"plaintext value ({where}). Use one or the other."
+            )
+
+    environment = config.get("environment")
+    if isinstance(environment, dict):
+        _check(environment.get("env"), "environment.env")
+
+    mcp = config.get("mcp")
+    servers = mcp.get("servers") if isinstance(mcp, dict) else None
+    if isinstance(servers, dict):
+        for name, server in servers.items():
+            if isinstance(server, dict):
+                _check(server.get("env"), f"mcp.servers.{name}.env")

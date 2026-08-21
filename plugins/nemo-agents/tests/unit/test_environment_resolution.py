@@ -257,6 +257,31 @@ def test_merge_same_secret_reference_twice_is_ok() -> None:
     assert result.secrets == {"TOKEN": "default/same"}
 
 
+def test_merge_rejects_top_level_plaintext_and_secret_same_name() -> None:
+    # Same name bound both as plaintext env and as a secret is ambiguous.
+    config = _agent_config()
+    spec = EnvironmentSpecInline(env={"TOKEN": "plain"}, secrets={"TOKEN": "default/token"})
+    with pytest.raises(EnvironmentResolutionError, match="both as a secret and as a plaintext"):
+        merge_environment_spec_into_agent_config(config, spec)
+
+
+def test_merge_rejects_agent_plaintext_and_spec_secret_same_name() -> None:
+    # The plaintext binding can come from the Agent config, not just the spec.
+    config = _agent_config(environment={"env": {"TOKEN": "agent-plain"}})
+    spec = EnvironmentSpecInline(secrets={"TOKEN": "default/token"})
+    with pytest.raises(EnvironmentResolutionError, match="both as a secret and as a plaintext"):
+        merge_environment_spec_into_agent_config(config, spec)
+
+
+def test_merge_rejects_mcp_plaintext_and_secret_same_name() -> None:
+    config = _agent_config(mcp={"servers": {"search": {"transport": "streamable-http", "url": "http://a"}}})
+    spec = EnvironmentSpecInline(
+        mcp={"search": McpFulfillment(url="http://a", env={"TOKEN": "plain"}, secrets={"TOKEN": "default/token"})},
+    )
+    with pytest.raises(EnvironmentResolutionError, match="both as a secret and as a plaintext"):
+        merge_environment_spec_into_agent_config(config, spec)
+
+
 def test_merge_no_environment_reference_is_identical_to_today() -> None:
     # Baseline agent config with no environment merged behaves unchanged.
     config = _agent_config()

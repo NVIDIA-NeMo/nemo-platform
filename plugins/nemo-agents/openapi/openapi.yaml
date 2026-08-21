@@ -154,6 +154,150 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/compute-specs:
+    post:
+      tags:
+      - Agent Compute Specs
+      summary: Create Compute Spec
+      description: Create a new AgentComputeSpec.
+      operationId: create_compute_spec_apis_agents_v2_workspaces__workspace__compute_specs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateComputeSpecRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentComputeSpec'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agent Compute Specs
+      summary: List Compute Specs
+      description: List AgentComputeSpecs in the workspace.
+      operationId: list_compute_specs_apis_agents_v2_workspaces__workspace__compute_specs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AgentComputeSpec_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/compute-specs/{name}:
+    get:
+      tags:
+      - Agent Compute Specs
+      summary: Get Compute Spec
+      description: Get an AgentComputeSpec by name.
+      operationId: get_compute_spec_apis_agents_v2_workspaces__workspace__compute_specs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentComputeSpec'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agent Compute Specs
+      summary: Delete Compute Spec
+      description: Delete an AgentComputeSpec by name.
+      operationId: delete_compute_spec_apis_agents_v2_workspaces__workspace__compute_specs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/agents/v2/workspaces/{workspace}/deployments:
     post:
       tags:
@@ -377,6 +521,294 @@ paths:
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/environment-specs:
+    post:
+      tags:
+      - Agent Environment Specs
+      summary: Create Environment Spec
+      description: Create a new AgentEnvironmentSpec.
+      operationId: create_environment_spec_apis_agents_v2_workspaces__workspace__environment_specs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEnvironmentSpecRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvironmentSpec'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agent Environment Specs
+      summary: List Environment Specs
+      description: List AgentEnvironmentSpecs in the workspace.
+      operationId: list_environment_specs_apis_agents_v2_workspaces__workspace__environment_specs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AgentEnvironmentSpec_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/environment-specs/{name}:
+    get:
+      tags:
+      - Agent Environment Specs
+      summary: Get Environment Spec
+      description: Get an AgentEnvironmentSpec by name.
+      operationId: get_environment_spec_apis_agents_v2_workspaces__workspace__environment_specs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvironmentSpec'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agent Environment Specs
+      summary: Delete Environment Spec
+      description: Delete an AgentEnvironmentSpec by name.
+      operationId: delete_environment_spec_apis_agents_v2_workspaces__workspace__environment_specs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/environments:
+    post:
+      tags:
+      - Agent Environments
+      summary: Create Environment
+      description: Create a new AgentEnvironment.
+      operationId: create_environment_apis_agents_v2_workspaces__workspace__environments_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEnvironmentRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvironment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agent Environments
+      summary: List Environments
+      description: List AgentEnvironments in the workspace.
+      operationId: list_environments_apis_agents_v2_workspaces__workspace__environments_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AgentEnvironment_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/environments/{name}:
+    get:
+      tags:
+      - Agent Environments
+      summary: Get Environment
+      description: Get an AgentEnvironment by name.
+      operationId: get_environment_apis_agents_v2_workspaces__workspace__environments__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvironment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agent Environments
+      summary: Delete Environment
+      description: Delete an AgentEnvironment by name.
+      operationId: delete_environment_apis_agents_v2_workspaces__workspace__environments__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -2908,6 +3340,88 @@ components:
         \nThe agent's spec files live at the locations returned by\n:func:`agent_spec_file_ref`\
         \ and :func:`agent_config_file_ref` \u2014 they\nare **not** stored on the\
         \ entity because the paths are fully derivable\nfrom ``(workspace, name)``."
+    AgentComputeSpec:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        resources:
+          allOf:
+          - $ref: '#/components/schemas/ComputeResources'
+          description: k8s-style resource requests/limits for the execute container.
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AgentComputeSpec
+      description: 'A reusable compute spec (k8s-style resource requests/limits).
+
+
+        Entity type: ``agent_compute_spec``
+
+        Referenced by an AgentEnvironment''s ``compute_spec`` (by name or inline).'
     AgentDeployment:
       properties:
         name:
@@ -2933,8 +3447,33 @@ components:
           additionalProperties: true
           type: object
           title: Config
-          description: Resolved agent config with IGW URL injected, written when the
-            deployment is created.
+          description: Resolved agent config with IGW URL injected and any referenced
+            environment spec merged in, written when the deployment is created.
+        environment:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentEnvironmentInline.
+          - $ref: '#/components/schemas/AgentEnvironmentInline'
+          title: Environment
+          description: '"workspace/name" ref to an AgentEnvironment, an inline environment,
+            or None. Snapshotted at create time for provenance; the resolved values
+            live in config/compute/secrets.'
+        compute:
+          allOf:
+          - $ref: '#/components/schemas/ComputeSpecInline'
+          description: Resolved compute snapshot from the referenced environment.
+            Compiled into the container resources for docker/k8s modes; ignored for
+            subprocess.
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
+          description: Resolved secret env references from the referenced environment,
+            as ENV_VAR_NAME -> 'workspace/secret-name'. Compiled into secret-backed
+            container env vars (never plaintext) for docker/k8s modes; ignored for
+            subprocess.
         status:
           type: string
           enum:
@@ -3051,6 +3590,277 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
+    AgentEnvironment:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        environment_spec:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to EnvironmentSpecInline.
+          - $ref: '#/components/schemas/EnvironmentSpecInline'
+          title: Environment Spec
+          description: '"workspace/name" ref to an AgentEnvironmentSpec, an inline
+            spec, or None.'
+        compute_spec:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to ComputeSpecInline.
+          - $ref: '#/components/schemas/ComputeSpecInline'
+          title: Compute Spec
+          description: '"workspace/name" ref to an AgentComputeSpec, an inline spec,
+            or None.'
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AgentEnvironment
+      description: 'A composition of an environment spec and a compute spec.
+
+
+        Entity type: ``agent_environment``
+
+        The single thing an AgentDeployment references. Each part is a
+
+        ``ref | inline | None`` union so specs can be authored once and reused.'
+    AgentEnvironmentInline:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        environment_spec:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to EnvironmentSpecInline.
+          - $ref: '#/components/schemas/EnvironmentSpecInline'
+          title: Environment Spec
+          description: '"workspace/name" ref to an AgentEnvironmentSpec, an inline
+            spec, or None.'
+        compute_spec:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to ComputeSpecInline.
+          - $ref: '#/components/schemas/ComputeSpecInline'
+          title: Compute Spec
+          description: '"workspace/name" ref to an AgentComputeSpec, an inline spec,
+            or None.'
+      type: object
+      title: AgentEnvironmentInline
+      description: 'Inline AgentEnvironment - a composition of environment + compute
+        specs.
+
+
+        Each part is a ``ref | inline | None`` union: a ``"workspace/name"`` string
+
+        references a stored spec entity, an object provides the spec inline, and
+
+        ``None`` omits it. (A ``sandbox_spec`` is out of scope for now and omitted.)'
+    AgentEnvironmentSpec:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        env:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env
+          description: Plaintext, non-secret env vars.
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
+          description: ENV_VAR_NAME -> Secrets-service/plugin ref.
+        model_provider_override:
+          allOf:
+          - $ref: '#/components/schemas/ModelProviderOverride'
+          description: Set only to point at a non-IGW external model provider.
+        provider:
+          type: string
+          title: Provider
+          description: local | docker | opensandbox | k8s.
+          default: local
+        workspace_path:
+          title: Workspace Path
+          description: Workspace path visible to the harness.
+          type: string
+        artifacts_path:
+          title: Artifacts Path
+          description: Provider-specific artifact output location.
+          type: string
+        control_location:
+          title: Control Location
+          description: external_control | in_env_control.
+          type: string
+        ownership:
+          title: Ownership
+          description: caller_owned | fabric_owned.
+          type: string
+        connection:
+          additionalProperties: true
+          type: object
+          title: Connection
+          description: Provider connection metadata (server url, cred ref, namespace).
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Consumer-provided passthrough metadata.
+        settings:
+          additionalProperties: true
+          type: object
+          title: Settings
+          description: Provider-specific settings.
+        mcp:
+          additionalProperties:
+            $ref: '#/components/schemas/McpFulfillment'
+          type: object
+          title: Mcp
+          description: server-name -> fulfillment (url/env/secrets) for an Agent-declared
+            MCP dependency.
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AgentEnvironmentSpec
+      description: 'A reusable environment spec (the dependencies an agent reaches).
+
+
+        Entity type: ``agent_environment_spec``
+
+        Referenced by an AgentEnvironment''s ``environment_spec`` (by name or inline).'
     AgentSession:
       properties:
         name:
@@ -3346,6 +4156,44 @@ components:
       - updated_at
       - -updated_at
       title: AnalyzeJobsSortField
+    ComputeResources:
+      properties:
+        limits:
+          additionalProperties:
+            type: string
+          type: object
+          title: Limits
+          description: k8s resource limits (e.g. cpu, memory, nvidia.com/gpu).
+        requests:
+          additionalProperties:
+            type: string
+          type: object
+          title: Requests
+          description: k8s resource requests.
+      type: object
+      title: ComputeResources
+      description: 'Kubernetes-style resource requests/limits.
+
+
+        Mirrors ``nemo_deployments_plugin.entities.ResourceRequirements`` so the
+
+        agents entity schema does not depend on the deployments plugin. Compiled
+
+        into the execute container''s resources for container deployment modes.'
+    ComputeSpecInline:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        resources:
+          allOf:
+          - $ref: '#/components/schemas/ComputeResources'
+          description: k8s-style resource requests/limits for the execute container.
+      type: object
+      title: ComputeSpecInline
+      description: Inline compute spec - the resources an invocation runs with.
     CreateAgentRequest:
       properties:
         name:
@@ -3373,6 +4221,26 @@ components:
       - config
       title: CreateAgentRequest
       description: Request body for ``POST /v2/workspaces/{workspace}/agents``.
+    CreateComputeSpecRequest:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        resources:
+          allOf:
+          - $ref: '#/components/schemas/ComputeResources'
+          description: k8s-style resource requests/limits for the execute container.
+        name:
+          type: string
+          title: Name
+          description: Unique compute-spec name within the workspace.
+      type: object
+      required:
+      - name
+      title: CreateComputeSpecRequest
+      description: Request body for ``POST /v2/workspaces/{workspace}/compute-specs``.
     CreateDeploymentRequest:
       properties:
         agent:
@@ -3398,11 +4266,130 @@ components:
           title: Image
           description: Container image for docker/k8s modes. Ignored for subprocess.
           default: ''
+        environment:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentEnvironmentInline.
+          - $ref: '#/components/schemas/AgentEnvironmentInline'
+          title: Environment
+          description: 'Optional AgentEnvironment: a "workspace/name" ref, an inline
+            environment, or None. Resolved and snapshotted onto the deployment at
+            create time.'
       type: object
       required:
       - agent
       title: CreateDeploymentRequest
       description: Request body for ``POST /v2/workspaces/{workspace}/deployments``.
+    CreateEnvironmentRequest:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        environment_spec:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to EnvironmentSpecInline.
+          - $ref: '#/components/schemas/EnvironmentSpecInline'
+          title: Environment Spec
+          description: '"workspace/name" ref to an AgentEnvironmentSpec, an inline
+            spec, or None.'
+        compute_spec:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to ComputeSpecInline.
+          - $ref: '#/components/schemas/ComputeSpecInline'
+          title: Compute Spec
+          description: '"workspace/name" ref to an AgentComputeSpec, an inline spec,
+            or None.'
+        name:
+          type: string
+          title: Name
+          description: Unique environment name within the workspace.
+      type: object
+      required:
+      - name
+      title: CreateEnvironmentRequest
+      description: Request body for ``POST /v2/workspaces/{workspace}/environments``.
+    CreateEnvironmentSpecRequest:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        env:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env
+          description: Plaintext, non-secret env vars.
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
+          description: ENV_VAR_NAME -> Secrets-service/plugin ref.
+        model_provider_override:
+          allOf:
+          - $ref: '#/components/schemas/ModelProviderOverride'
+          description: Set only to point at a non-IGW external model provider.
+        provider:
+          type: string
+          title: Provider
+          description: local | docker | opensandbox | k8s.
+          default: local
+        workspace_path:
+          title: Workspace Path
+          description: Workspace path visible to the harness.
+          type: string
+        artifacts_path:
+          title: Artifacts Path
+          description: Provider-specific artifact output location.
+          type: string
+        control_location:
+          title: Control Location
+          description: external_control | in_env_control.
+          type: string
+        ownership:
+          title: Ownership
+          description: caller_owned | fabric_owned.
+          type: string
+        connection:
+          additionalProperties: true
+          type: object
+          title: Connection
+          description: Provider connection metadata (server url, cred ref, namespace).
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Consumer-provided passthrough metadata.
+        settings:
+          additionalProperties: true
+          type: object
+          title: Settings
+          description: Provider-specific settings.
+        mcp:
+          additionalProperties:
+            $ref: '#/components/schemas/McpFulfillment'
+          type: object
+          title: Mcp
+          description: server-name -> fulfillment (url/env/secrets) for an Agent-declared
+            MCP dependency.
+        name:
+          type: string
+          title: Name
+          description: Unique environment-spec name within the workspace.
+      type: object
+      required:
+      - name
+      title: CreateEnvironmentSpecRequest
+      description: Request body for ``POST /v2/workspaces/{workspace}/environment-specs``.
     CreateSessionRequest:
       properties:
         deployment_id:
@@ -3490,6 +4477,85 @@ components:
         projected without the agents plugin depending on that plugin at the
 
         entity-schema layer.'
+    EnvironmentSpecInline:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description.
+          default: ''
+        env:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env
+          description: Plaintext, non-secret env vars.
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
+          description: ENV_VAR_NAME -> Secrets-service/plugin ref.
+        model_provider_override:
+          allOf:
+          - $ref: '#/components/schemas/ModelProviderOverride'
+          description: Set only to point at a non-IGW external model provider.
+        provider:
+          type: string
+          title: Provider
+          description: local | docker | opensandbox | k8s.
+          default: local
+        workspace_path:
+          title: Workspace Path
+          description: Workspace path visible to the harness.
+          type: string
+        artifacts_path:
+          title: Artifacts Path
+          description: Provider-specific artifact output location.
+          type: string
+        control_location:
+          title: Control Location
+          description: external_control | in_env_control.
+          type: string
+        ownership:
+          title: Ownership
+          description: caller_owned | fabric_owned.
+          type: string
+        connection:
+          additionalProperties: true
+          type: object
+          title: Connection
+          description: Provider connection metadata (server url, cred ref, namespace).
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Consumer-provided passthrough metadata.
+        settings:
+          additionalProperties: true
+          type: object
+          title: Settings
+          description: Provider-specific settings.
+        mcp:
+          additionalProperties:
+            $ref: '#/components/schemas/McpFulfillment'
+          type: object
+          title: Mcp
+          description: server-name -> fulfillment (url/env/secrets) for an Agent-declared
+            MCP dependency.
+      type: object
+      title: EnvironmentSpecInline
+      description: 'Inline environment spec - the dependencies and configuration an
+        agent reaches.
+
+
+        This is the fulfillment half of a request/fulfill split: the Agent declares
+
+        the dependencies it needs; the EnvironmentSpec provides concrete endpoints
+
+        and secret references. It compiles into the agent.yaml / FabricConfig and
+
+        the injected process environment.'
     EvaluateAgentSpec:
       properties:
         agent:
@@ -4227,6 +5293,89 @@ components:
       title: LogLine
       description: One line shaped to match ``PlatformJobLog`` so Studio's LogViewer
         renders it as-is.
+    McpFulfillment:
+      properties:
+        url:
+          type: string
+          title: Url
+          description: Endpoint the environment provides for this MCP server.
+        env:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env
+          description: Non-secret env for the MCP server.
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
+          description: ENV_NAME -> Secrets-service ref, merged into the MCP server
+            env at compile.
+      type: object
+      required:
+      - url
+      title: McpFulfillment
+      description: 'EnvironmentSpec-side fulfillment for one MCP server the Agent
+        declares.
+
+
+        The Agent DECLARES an MCP dependency by name; the EnvironmentSpec PROVIDES
+
+        the url + env + secrets for that same name. Matched by server-name key at
+
+        compile time; ``secrets`` are merged into the server''s ``env``.'
+    ModelProviderOverride:
+      properties:
+        base_url:
+          type: string
+          title: Base Url
+          description: External model-provider endpoint.
+        api_key:
+          title: Api Key
+          description: Secrets-service ref for the provider API key (only needed for
+            external providers).
+          type: string
+        provider:
+          title: Provider
+          description: Provider selector (e.g. "openai", "anthropic").
+          type: string
+      type: object
+      required:
+      - base_url
+      title: ModelProviderOverride
+      description: 'Exceptional external model-provider override.
+
+
+        Null in the normal case: model selection is on the Agent and the provider
+
+        URL is the Inference Gateway (auto-injected). Set ONLY to point the agent
+        at
+
+        a non-IGW external provider endpoint.'
+    NemoListResponse_AgentComputeSpec_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentComputeSpec'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AgentComputeSpec_
     NemoListResponse_AgentDeployment_:
       properties:
         data:
@@ -4250,6 +5399,52 @@ components:
       required:
       - data
       title: NemoListResponse_AgentDeployment_
+    NemoListResponse_AgentEnvironmentSpec_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentEnvironmentSpec'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AgentEnvironmentSpec_
+    NemoListResponse_AgentEnvironment_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentEnvironment'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AgentEnvironment_
     NemoListResponse_AgentSession_:
       properties:
         data:
