@@ -42,7 +42,12 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     standard_evidence_descriptors,
 )
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    CandidateEvidence,
+    EvidenceDescriptor,
+    read_atif,
+)
 
 from .build_spec import execute_build_plan, plan_task_build
 from .layout import prepare_run_layout, resolve_run_dir
@@ -436,6 +441,7 @@ def build_trial_from_artifacts(
         logs_dir=layout.agent_log_dir,
         final_state_dir=layout.workspace_dir,
         trace_path=trace_path if trace_path.exists() else None,
+        trace_format=EVIDENCE_FORMAT_ATIF if read_atif(trace_path) is not None else None,
         verifier_logs_dir=verifier_log_dir(layout),
         primary_log="nat_agent.log",
     )

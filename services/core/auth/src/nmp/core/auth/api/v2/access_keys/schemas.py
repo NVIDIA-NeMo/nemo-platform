@@ -12,6 +12,9 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyNotImplementedErrorResponse as AccessKeyNotImplementedErrorResponse,
 )
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyRevokeResponse as AccessKeyRevokeResponse
+from nemo_platform_plugin.auth.access_keys.types import (
+    AccessKeyStatusChangeResponse as AccessKeyStatusChangeResponse,
+)
 from pydantic import BaseModel, Field
 
 

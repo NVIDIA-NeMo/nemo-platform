@@ -6,7 +6,7 @@
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 import yaml
@@ -28,6 +28,16 @@ def static_authz_data():
     path = Path(__file__).parent.parent / "src/nmp/core/auth/assets/static-authz.yaml"
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def test_access_key_lifecycle_routes_are_available_to_authenticated_owners(
+    static_authz_data: dict[str, Any],
+) -> None:
+    endpoints = static_authz_data["authz"]["endpoints"]
+
+    for action in ["suspend", "unsuspend"]:
+        rule = endpoints[f"/apis/auth/v2/access-keys/{{jti}}/{action}"]["post"]
+        assert rule == {"permissions": [], "scopes": []}
 
 
 @pytest.fixture

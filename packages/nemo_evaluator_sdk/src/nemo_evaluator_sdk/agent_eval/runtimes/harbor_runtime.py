@@ -61,7 +61,11 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     standard_evidence_descriptors,
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence
+from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    CandidateEvidence,
+    read_atif,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
@@ -1172,10 +1176,14 @@ def _trial_from_harbor_result(trial_dir: Path, data: Mapping[str, Any], *, rewar
     status = AgentEvalTrialStatus.COMPLETED if error is None and reward is not None else AgentEvalTrialStatus.PARTIAL
 
     trace_path = trial_dir / "agent" / "trajectory.json"
+    # Only agents with SUPPORTS_ATIF write this file, so its absence is normal: oracle and nop
+    # never produce one.
+    trajectory = read_atif(trace_path)
     descriptors = standard_evidence_descriptors(
         logs_dir=trial_dir / "agent",
         final_state_dir=trial_dir / "artifacts",
         trace_path=trace_path if trace_path.exists() else None,
+        trace_format=EVIDENCE_FORMAT_ATIF if trajectory is not None else None,
         verifier_logs_dir=trial_dir / "verifier",
     )
 

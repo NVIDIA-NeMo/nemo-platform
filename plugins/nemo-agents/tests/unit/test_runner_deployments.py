@@ -11,11 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
-from nemo_agents_plugin.entities import Endpoint
+from nemo_agents_plugin.entities import ComputeResources, Endpoint
 from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
+    ReservedSecretEnvVarError,
     UnreachableGatewayURLError,
+    build_container_resources,
     build_deployment_config,
     executor_for_mode,
     map_status,
@@ -244,6 +246,138 @@ def test_build_deployment_config_always_single_container() -> None:
     assert cfg.config_files[0].path == "/tmp/nemo/config.yaml"
     loaded = yaml.safe_load(cfg.config_files[0].content)
     assert loaded["llms"]["nim"]["_type"] == "nim"
+
+
+def test_build_container_resources_none_is_empty() -> None:
+    resources = build_container_resources(None, mode="k8s")
+    assert resources.limits == {}
+    assert resources.requests == {}
+
+
+def test_build_container_resources_k8s_passes_both() -> None:
+    compute = ComputeResources(limits={"cpu": "2", "nvidia.com/gpu": "1"}, requests={"cpu": "1"})
+    resources = build_container_resources(compute, mode="k8s")
+    assert resources.limits == {"cpu": "2", "nvidia.com/gpu": "1"}
+    assert resources.requests == {"cpu": "1"}
+
+
+def test_build_container_resources_docker_consolidates_to_limits() -> None:
+    compute = ComputeResources(limits={"cpu": "2"}, requests={"cpu": "1", "memory": "1Gi"})
+    resources = build_container_resources(compute, mode="docker")
+    # Docker has no scheduling requests: requests fold into limits, limits win on collision.
+    assert resources.limits == {"cpu": "2", "memory": "1Gi"}
+    assert resources.requests == {}
+
+
+def test_build_deployment_config_applies_k8s_resources() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+        resources=ComputeResources(limits={"cpu": "2"}, requests={"cpu": "1"}),
+    )
+    container = cfg.containers[0]
+    assert container.resources.limits == {"cpu": "2"}
+    assert container.resources.requests == {"cpu": "1"}
+
+
+def test_build_deployment_config_docker_resources_limits_only() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/tmp/nemo/config.yaml",
+        mode="docker",
+        resources=ComputeResources(limits={"cpu": "2"}, requests={"memory": "1Gi"}),
+    )
+    container = cfg.containers[0]
+    assert container.resources.limits == {"cpu": "2", "memory": "1Gi"}
+    assert container.resources.requests == {}
+
+
+def test_build_deployment_config_no_resources_is_empty() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+    )
+    assert cfg.containers[0].resources.limits == {}
+    assert cfg.containers[0].resources.requests == {}
+
+
+def test_build_deployment_config_emits_secret_ref_env_vars() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+        secrets={"APP_TOKEN": "default/app-token", "OTHER": "prod/other-secret"},
+    )
+    by_name = {e.name: e for e in cfg.containers[0].env}
+    # Secret-backed env vars carry a secret_ref, never a plaintext value.
+    assert by_name["APP_TOKEN"].value is None
+    assert by_name["APP_TOKEN"].secret_ref is not None
+    assert by_name["APP_TOKEN"].secret_ref.workspace == "default"
+    assert by_name["APP_TOKEN"].secret_ref.name == "app-token"
+    # A workspace-qualified reference keeps its explicit workspace.
+    assert by_name["OTHER"].secret_ref is not None
+    assert by_name["OTHER"].secret_ref.workspace == "prod"
+    assert by_name["OTHER"].secret_ref.name == "other-secret"
+    # The plaintext secret value never appears in the rendered config.
+    assert "app-token" not in yaml.safe_dump([e.model_dump() for e in cfg.containers[0].env if e.value])
+
+
+def test_build_deployment_config_no_secrets_adds_no_secret_env() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+    )
+    assert all(e.secret_ref is None for e in cfg.containers[0].env)
+
+
+@pytest.mark.parametrize("mode", ["docker", "k8s"])
+@pytest.mark.parametrize(
+    "reserved_name",
+    ["NMP_WORKSPACE", "NMP_AGENT_NAME", "NMP_BASE_URL", "PYTHONPATH", "AGENT_CONFIG_PATH", "NAT_CONFIG_PATH"],
+)
+def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(reserved_name: str, mode: str) -> None:
+    # A secret env var whose name collides with a platform-generated container
+    # env var is rejected up front (behavior would otherwise differ by substrate).
+    with pytest.raises(ReservedSecretEnvVarError, match=reserved_name):
+        build_deployment_config(
+            name="hello-dep",
+            workspace="default",
+            image="nat-runtime:latest",
+            port=8000,
+            agent_config={},
+            platform_base_url="http://nmp-api:8080",
+            config_mount_path="/workspace/config.yaml",
+            mode=mode,
+            secrets={reserved_name: "default/some-secret"},
+        )
 
 
 def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:

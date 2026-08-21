@@ -25,10 +25,16 @@ from typing import Any
 from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
     Agent,
+    AgentComputeSpec,
     AgentDeployment,
+    AgentEnvironment,
+    AgentEnvironmentInline,
+    AgentEnvironmentSpec,
     AgentSession,
+    ComputeSpecInline,
     DeploymentMode,
     DeploymentStatus,
+    EnvironmentSpecInline,
 )
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
@@ -62,6 +68,13 @@ class CreateDeploymentRequest(BaseModel):
     image: str = Field(
         default="",
         description="Container image for docker/k8s modes. Ignored for subprocess.",
+    )
+    environment: str | AgentEnvironmentInline | None = Field(
+        default=None,
+        description=(
+            'Optional AgentEnvironment: a "workspace/name" ref, an inline environment, or None. '
+            "Resolved and snapshotted onto the deployment at create time."
+        ),
     )
 
 
@@ -111,6 +124,36 @@ class SessionFilter(NemoFilter):
     )
 
 
+class CreateEnvironmentRequest(AgentEnvironmentInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/environments``."""
+
+    name: str = Field(description="Unique environment name within the workspace.")
+
+
+class CreateEnvironmentSpecRequest(EnvironmentSpecInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/environment-specs``."""
+
+    name: str = Field(description="Unique environment-spec name within the workspace.")
+
+
+class CreateComputeSpecRequest(ComputeSpecInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/compute-specs``."""
+
+    name: str = Field(description="Unique compute-spec name within the workspace.")
+
+
+class EnvironmentFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/environments``."""
+
+
+class EnvironmentSpecFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/environment-specs``."""
+
+
+class ComputeSpecFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/compute-specs``."""
+
+
 # ---------------------------------------------------------------------------
 # List response type aliases
 # ---------------------------------------------------------------------------
@@ -118,3 +161,6 @@ class SessionFilter(NemoFilter):
 AgentPage = NemoListResponse[Agent]
 DeploymentPage = NemoListResponse[AgentDeployment]
 SessionPage = NemoListResponse[AgentSession]
+EnvironmentPage = NemoListResponse[AgentEnvironment]
+EnvironmentSpecPage = NemoListResponse[AgentEnvironmentSpec]
+ComputeSpecPage = NemoListResponse[AgentComputeSpec]

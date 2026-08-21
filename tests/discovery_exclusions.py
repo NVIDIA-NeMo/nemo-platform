@@ -19,9 +19,3 @@ if find_spec("nemo_experimentalist_plugin") is None:
     TEST_DISCOVERY_EXCLUSIONS[Path("plugins/nemo-experimentalist/tests")] = (
         "The optional experimentalist dependency group is not installed in the root test environment."
     )
-
-if find_spec("nemo_eval_author_plugin") is None:
-    TEST_DISCOVERY_EXCLUSIONS[Path("plugins/nemo-eval-author/tests")] = (
-        "Eval Author ships in the optional experimentalist dependency group, which is not installed "
-        "in the root test environment."
-    )

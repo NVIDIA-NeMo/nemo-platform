@@ -168,6 +168,30 @@ def test_scoped_access_key_created_by_auth_service_authenticates_platform_reques
             assert response.status_code == 200, response.text
             assert response.json()["name"] == workspace
 
+            suspend_key = client.post(f"{ACCESS_KEYS_PATH}/{access_key_jti}/suspend", headers=user_headers)
+            assert suspend_key.status_code == 200, suspend_key.text
+            assert suspend_key.json() == {
+                "jti": access_key_jti,
+                "status": "SUSPENDED",
+                "changed": True,
+            }
+            _wait_for_authorization_response(
+                lambda: authenticate_with_access_key(access_key),
+                expected_status_code=401,
+            )
+
+            unsuspend_key = client.post(f"{ACCESS_KEYS_PATH}/{access_key_jti}/unsuspend", headers=user_headers)
+            assert unsuspend_key.status_code == 200, unsuspend_key.text
+            assert unsuspend_key.json() == {
+                "jti": access_key_jti,
+                "status": "ACTIVE",
+                "changed": True,
+            }
+            _wait_for_authorization_response(
+                lambda: authenticate_with_access_key(access_key),
+                expected_status_code=200,
+            )
+
             authenticate_response = authenticate_with_access_key(access_key)
             invalid_authenticate_response = authenticate_with_access_key(_tamper_jwt(access_key))
 

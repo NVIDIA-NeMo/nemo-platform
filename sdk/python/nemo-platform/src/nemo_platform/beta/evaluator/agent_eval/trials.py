@@ -273,6 +273,7 @@ def standard_evidence_descriptors(
     logs_dir: str | Path,
     final_state_dir: str | Path,
     trace_path: str | Path | None = None,
+    trace_format: str | None = None,
     initial_state_ref: str | None = None,
     verifier_logs_dir: str | Path | None = None,
     primary_log: str | None = None,
@@ -283,6 +284,9 @@ def standard_evidence_descriptors(
     ``trace`` (trajectory, ATIF-normalized when available), ``logs`` (agent log
     dir), ``final_state`` (workspace), and ``verifier_logs`` (only when present).
     Callers may add their own extension keys to the returned mapping.
+
+    ``trace_format`` declares the trace's format; without it the format is inferred from the
+    filename, which misreads an ATIF trajectory that is not named for it.
     """
     descriptors: dict[str, EvidenceDescriptor] = {}
 
@@ -299,7 +303,7 @@ def standard_evidence_descriptors(
         is_atif = trace_name.startswith("atif") or ".atif." in trace_name
         descriptors[EVIDENCE_TRACE] = EvidenceDescriptor(
             kind=EVIDENCE_TRACE,
-            format=EVIDENCE_FORMAT_ATIF if is_atif else EVIDENCE_FORMAT_JSON,
+            format=trace_format or (EVIDENCE_FORMAT_ATIF if is_atif else EVIDENCE_FORMAT_JSON),
             ref=str(trace_path),
         )
 

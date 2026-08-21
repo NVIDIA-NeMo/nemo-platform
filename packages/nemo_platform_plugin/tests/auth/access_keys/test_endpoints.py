@@ -37,3 +37,19 @@ def test_list_access_keys_endpoint_supports_pagination() -> None:
     assert prepared.method == "GET"
     assert prepared.path_template == "/apis/auth/v2/access-keys"
     assert prepared.query_params == {"page": 3, "page_size": 25}
+
+
+def test_suspend_access_key_endpoint_uses_jti_path_param() -> None:
+    prepared = endpoints.suspend_access_key(jti="ak_example")
+
+    assert prepared.method == "POST"
+    assert prepared.path_template == "/apis/auth/v2/access-keys/{jti}/suspend"
+    assert prepared.path_params == {"jti": "ak_example"}
+
+
+def test_unsuspend_access_key_endpoint_uses_jti_path_param() -> None:
+    prepared = endpoints.unsuspend_access_key(jti="ak_example")
+
+    assert prepared.method == "POST"
+    assert prepared.path_template == "/apis/auth/v2/access-keys/{jti}/unsuspend"
+    assert prepared.path_params == {"jti": "ak_example"}
