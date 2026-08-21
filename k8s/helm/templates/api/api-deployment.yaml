@@ -54,7 +54,7 @@ spec:
           image: {{ include "nmp-api.image" . | quote }}
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           args:
-            {{- include "nmp-api.serviceSelectionArgs" . | nindent 12 }}
+            {{- include "nmp-api.serviceSelectionArgs" . | trim | nindent 12 }}
             - "--host={{ include "nemo-platform.bindHost" . }}"
             - "--port={{ .Values.api.service.port }}"
             - "--keep-alive-timeout-seconds={{ .Values.api.server.keepAliveTimeoutSeconds }}"

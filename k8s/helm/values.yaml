@@ -659,7 +659,7 @@ api:
     keepAliveTimeoutSeconds: 5
   # -- Predefined service group passed to `nemo services run --service-group`. Ignored when api.services is non-empty.
   serviceGroup: all
-  # -- Explicit services passed to `nemo services run --services`. When non-empty, overrides api.serviceGroup. Can be a list or a comma-separated string.
+  # -- Explicit services passed to `nemo services run --services`. When non-empty, overrides api.serviceGroup. Must be a list.
   services: []
   # -- Additional arguments to pass to the Platform API service
   extraArgs: []
@@ -893,8 +893,8 @@ core:
       # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template.
       name: ""
     # -- Predefined controller group passed to `nemo services run --controller-group`. Ignored when core.controller.controllers is non-empty.
-    controllerGroup: all
-    # -- Explicit controllers passed to `nemo services run --controllers`. When non-empty, overrides core.controller.controllerGroup. Can be a list or a comma-separated string.
+    controllerGroup: core
+    # -- Explicit controllers passed to `nemo services run --controllers`. When non-empty, overrides core.controller.controllerGroup. Must be a list.
     controllers: []
     # -- Additional arguments to pass to the Core Controller service
     extraArgs: []

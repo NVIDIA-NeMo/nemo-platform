@@ -82,12 +82,10 @@ core.controller.controllers takes precedence over core.controller.controllerGrou
 {{- if not (include "nmp-core.hasControllerSelectionExtraArgs" .) -}}
 {{- $controllers := .Values.core.controller.controllers | default list -}}
 {{- if $controllers -}}
-{{- $controllerList := "" -}}
-{{- if kindIs "slice" $controllers -}}
-{{- $controllerList = join "," $controllers -}}
-{{- else -}}
-{{- $controllerList = toString $controllers -}}
+{{- if not (kindIs "slice" $controllers) -}}
+{{- fail "core.controller.controllers must be a list when set" -}}
 {{- end -}}
+{{- $controllerList := join "," $controllers -}}
 {{- if not ($controllerList | trim) -}}
 {{- fail "core.controller.controllers must not be empty when set" -}}
 {{- end -}}

@@ -135,21 +135,21 @@ def test_legacy_api_extra_args_service_selection_suppresses_default_service_grou
     assert "--service-group=all" not in args
 
 
-def test_default_controller_selection_renders_controller_group_all() -> None:
+def test_default_controller_selection_renders_controller_group_core() -> None:
     documents = _helm_template()
 
-    assert "--controller-group=all" in _controller_container(documents)["args"]
+    assert "--controller-group=core" in _controller_container(documents)["args"]
 
 
 def test_controller_group_can_be_configured() -> None:
     documents = _helm_template(
         "--set",
-        "core.controller.controllerGroup=core",
+        "core.controller.controllerGroup=all",
     )
 
     args = _controller_container(documents)["args"]
-    assert "--controller-group=core" in args
-    assert "--controller-group=all" not in args
+    assert "--controller-group=all" in args
+    assert "--controller-group=core" not in args
 
 
 def test_controllers_override_default_controller_group() -> None:
@@ -161,6 +161,24 @@ def test_controllers_override_default_controller_group() -> None:
     args = _controller_container(documents)["args"]
     assert "--controllers=models,jobs" in args
     assert not any(arg.startswith("--controller-group=") for arg in args)
+
+
+def test_api_services_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set-string",
+        "api.services=evaluator",
+    )
+
+    assert "api.services must be a list when set" in stderr
+
+
+def test_controllers_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set-string",
+        "core.controller.controllers=models",
+    )
+
+    assert "core.controller.controllers must be a list when set" in stderr
 
 
 def test_legacy_controller_extra_args_selection_suppresses_default_controller_group() -> None:
