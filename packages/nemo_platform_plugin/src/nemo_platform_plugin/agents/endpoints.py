@@ -12,19 +12,17 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any
 
-from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 from nemo_platform_plugin.agents.types import (
     Agent,
     AgentDeployment,
-    AgentPage,
     CreateAgentDeploymentRequest,
     CreateAgentRequest,
-    DeploymentPage,
     InvokeAgentRequest,
     ListAgentsQueryParams,
     ListDeploymentsQueryParams,
 )
+from nemo_platform_plugin.client.endpoint import delete, get, post
+from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 
 _AGENTS = "/apis/agents/v2/workspaces/{workspace}/agents"
 _DEPLOYMENTS = "/apis/agents/v2/workspaces/{workspace}/deployments"
@@ -54,9 +52,7 @@ def _get_agent_on_conflict(body: CreateAgentRequest, workspace: str | None) -> P
 
 @post(_AGENTS, get_on_conflict=_get_agent_on_conflict)
 @abstractmethod
-def create_agent(
-    *, workspace: str | None = None, body: CreateAgentRequest, exist_ok: bool = False
-) -> Agent: ...
+def create_agent(*, workspace: str | None = None, body: CreateAgentRequest, exist_ok: bool = False) -> Agent: ...
 
 
 @delete(f"{_AGENTS}/{{name}}")
@@ -83,9 +79,7 @@ def list_deployments(
 
 @post(_DEPLOYMENTS)
 @abstractmethod
-def create_deployment(
-    *, workspace: str | None = None, body: CreateAgentDeploymentRequest
-) -> AgentDeployment: ...
+def create_deployment(*, workspace: str | None = None, body: CreateAgentDeploymentRequest) -> AgentDeployment: ...
 
 
 @delete(f"{_DEPLOYMENTS}/{{name}}")
@@ -100,13 +94,9 @@ def delete_deployment(*, workspace: str | None = None, name: str) -> None: ...
 
 @post(f"{_AGENTS}/{{name}}/-/v1/chat/completions")
 @abstractmethod
-def invoke_agent(
-    *, workspace: str | None = None, name: str, body: InvokeAgentRequest
-) -> dict[str, Any]: ...
+def invoke_agent(*, workspace: str | None = None, name: str, body: InvokeAgentRequest) -> dict[str, Any]: ...
 
 
 @post(f"{_DEPLOYMENTS}/{{name}}/-/v1/chat/completions")
 @abstractmethod
-def invoke_deployment(
-    *, workspace: str | None = None, name: str, body: InvokeAgentRequest
-) -> dict[str, Any]: ...
+def invoke_deployment(*, workspace: str | None = None, name: str, body: InvokeAgentRequest) -> dict[str, Any]: ...

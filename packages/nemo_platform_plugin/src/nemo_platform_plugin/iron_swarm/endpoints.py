@@ -17,9 +17,7 @@ from nemo_platform_plugin.iron_swarm.types import (
     CreateManifestRequest,
     CreateRunRequest,
     IronSwarmManifest,
-    IronSwarmManifestPage,
     IronSwarmRun,
-    IronSwarmRunPage,
     ListManifestsQueryParams,
     ListRunsQueryParams,
     UpdateManifestRequest,
@@ -48,9 +46,7 @@ def list_manifests(
 ) -> Paginated[IronSwarmManifest]: ...
 
 
-def _get_manifest_on_conflict(
-    body: CreateManifestRequest, workspace: str | None
-) -> PreparedRequest[IronSwarmManifest]:
+def _get_manifest_on_conflict(body: CreateManifestRequest, workspace: str | None) -> PreparedRequest[IronSwarmManifest]:
     return get_manifest(name=body.agent, workspace=workspace)
 
 
@@ -63,9 +59,7 @@ def create_manifest(
 
 @patch(f"{_MANIFESTS}/{{name}}")
 @abstractmethod
-def update_manifest(
-    *, workspace: str | None = None, name: str, body: UpdateManifestRequest
-) -> IronSwarmManifest: ...
+def update_manifest(*, workspace: str | None = None, name: str, body: UpdateManifestRequest) -> IronSwarmManifest: ...
 
 
 @post(f"{_MANIFESTS}/{{name}}/refresh")
@@ -112,6 +106,4 @@ def delete_run(*, workspace: str | None = None, name: str) -> None: ...
 
 @post("/apis/iron-swarm/v2/workspaces/{workspace}/model-config/validate")
 @abstractmethod
-def validate_model(
-    *, workspace: str | None = None, body: ValidateModelRequest
-) -> ValidateModelResponse: ...
+def validate_model(*, workspace: str | None = None, body: ValidateModelRequest) -> ValidateModelResponse: ...

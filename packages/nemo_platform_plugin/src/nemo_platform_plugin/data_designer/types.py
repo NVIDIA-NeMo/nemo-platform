@@ -13,10 +13,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, NotRequired, TypedDict
 
-from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage, PlatformJobStatus, PlatformJobStatusResponse
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.schema import Page
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Preview types

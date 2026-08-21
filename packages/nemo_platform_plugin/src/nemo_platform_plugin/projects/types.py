@@ -15,7 +15,6 @@ from typing import NotRequired, TypedDict
 from nemo_platform_plugin.schema import Page
 from pydantic import BaseModel
 
-
 # ---------------------------------------------------------------------------
 # Response types
 # ---------------------------------------------------------------------------

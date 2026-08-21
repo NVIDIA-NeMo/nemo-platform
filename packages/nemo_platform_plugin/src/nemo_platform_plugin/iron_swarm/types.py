@@ -10,11 +10,10 @@ iron_swarm resource from ``nemo_iron_swarm_plugin.sdk``.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 from nemo_platform_plugin.schema import Page
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ---------------------------------------------------------------------------
 # Response types

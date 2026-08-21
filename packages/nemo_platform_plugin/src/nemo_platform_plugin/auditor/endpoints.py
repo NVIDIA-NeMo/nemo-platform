@@ -14,10 +14,8 @@ from typing import Any
 
 from nemo_platform_plugin.auditor.types import (
     AuditConfig,
-    AuditConfigPage,
     AuditJobResponse,
     AuditTarget,
-    AuditTargetPage,
     CreateAuditConfigRequest,
     CreateAuditTargetRequest,
     ListAuditConfigsQueryParams,
@@ -67,9 +65,7 @@ def create_audit_config(
 
 @put(f"{_CONFIGS}/{{name}}")
 @abstractmethod
-def update_audit_config(
-    *, workspace: str | None = None, name: str, body: UpdateAuditConfigRequest
-) -> AuditConfig: ...
+def update_audit_config(*, workspace: str | None = None, name: str, body: UpdateAuditConfigRequest) -> AuditConfig: ...
 
 
 @delete(f"{_CONFIGS}/{{name}}")
@@ -109,9 +105,7 @@ def create_audit_target(
 
 @put(f"{_TARGETS}/{{name}}")
 @abstractmethod
-def update_audit_target(
-    *, workspace: str | None = None, name: str, body: UpdateAuditTargetRequest
-) -> AuditTarget: ...
+def update_audit_target(*, workspace: str | None = None, name: str, body: UpdateAuditTargetRequest) -> AuditTarget: ...
 
 
 @delete(f"{_TARGETS}/{{name}}")

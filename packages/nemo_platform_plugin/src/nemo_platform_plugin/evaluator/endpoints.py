@@ -20,16 +20,13 @@ from nemo_platform_plugin.client.endpoint import delete, get, post
 from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 from nemo_platform_plugin.evaluator.types import (
     AgentEvalResult,
-    AgentEvalResultPage,
     CreateMetricRequest,
     EvalResult,
-    EvalResultPage,
     EvaluatorJobResponse,
     ListAgentEvalResultsQueryParams,
     ListEvalResultsQueryParams,
     ListMetricsQueryParams,
     MetricBundle,
-    MetricBundlePage,
     SubmitAgentEvalJobRequest,
     SubmitEvaluateJobRequest,
 )
@@ -48,16 +45,12 @@ _METRICS = "/apis/evaluator/v2/workspaces/{workspace}/metrics"
 
 @post(_EVAL_JOBS)
 @abstractmethod
-def submit_evaluate_job(
-    *, workspace: str | None = None, body: SubmitEvaluateJobRequest
-) -> EvaluatorJobResponse: ...
+def submit_evaluate_job(*, workspace: str | None = None, body: SubmitEvaluateJobRequest) -> EvaluatorJobResponse: ...
 
 
 @post(_AGENT_EVAL_JOBS)
 @abstractmethod
-def submit_agent_eval_job(
-    *, workspace: str | None = None, body: SubmitAgentEvalJobRequest
-) -> EvaluatorJobResponse: ...
+def submit_agent_eval_job(*, workspace: str | None = None, body: SubmitAgentEvalJobRequest) -> EvaluatorJobResponse: ...
 
 
 # ---------------------------------------------------------------------------

@@ -43,9 +43,7 @@ def _get_project_on_conflict(body: CreateProjectRequest, workspace: str | None) 
 
 @post(_PROJECTS, get_on_conflict=_get_project_on_conflict)
 @abstractmethod
-def create_project(
-    *, workspace: str | None = None, body: CreateProjectRequest, exist_ok: bool = False
-) -> Project: ...
+def create_project(*, workspace: str | None = None, body: CreateProjectRequest, exist_ok: bool = False) -> Project: ...
 
 
 @put(f"{_PROJECTS}/{{name}}")

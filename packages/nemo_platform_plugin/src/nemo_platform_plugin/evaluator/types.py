@@ -16,7 +16,6 @@ from typing import Any, NotRequired, TypedDict
 from nemo_platform_plugin.schema import Page
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ---------------------------------------------------------------------------
 # Response types
 # ---------------------------------------------------------------------------
