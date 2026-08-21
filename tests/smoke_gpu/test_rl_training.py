@@ -26,23 +26,22 @@ run each import in the venv that actually owns the package, using that venv's ow
 """
 
 import subprocess
-from glob import glob
 from pathlib import Path
 
 import pytest
+from file_removals import assert_file_patterns_absent, read_file_patterns
 from python_package_versions import assert_python_package_min_versions
 
 RAY_VENVS = Path("/opt/ray_venvs")
-SOUNDFILE_LIBSNDFILE_PATTERNS = (
+FINAL_FILE_REMOVALS = Path("/smoke_test/removals/files/final/customizer-codecs.txt")
+SOUNDFILE_FILE_REMOVALS = {
     "/opt/nemo_rl_venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so",
     "/opt/ray_venvs/*/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so",
     "/opt/uv_cache/archive-v0/*/_soundfile_data/libsndfile_*.so",
-    # The shim is removed with the codec; see docker/rl/codec-file-removals.txt for why
-    # keeping it is worse than not shipping soundfile at all.
     "/opt/nemo_rl_venv/lib/python3.*/site-packages/soundfile.py",
     "/opt/ray_venvs/*/lib/python3.*/site-packages/soundfile.py",
     "/opt/uv_cache/archive-v0/*/soundfile.py",
-)
+}
 BASE_VENV_MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "wandb": "0.28.2",
 }
@@ -283,8 +282,9 @@ def test_worker_venvs_symlink_into_shared_cache():
 
 @pytest.mark.smoke_nmp_rl_training
 def test_soundfile_libsndfile_removed():
-    remaining = sorted(path for pattern in SOUNDFILE_LIBSNDFILE_PATTERNS for path in glob(pattern))
-    assert remaining == [], f"file cleanup left scanner-visible libsndfile files: {remaining}"
+    patterns = read_file_patterns(FINAL_FILE_REMOVALS)
+    assert SOUNDFILE_FILE_REMOVALS.issubset(patterns)
+    assert_file_patterns_absent(patterns)
 
 
 @pytest.mark.smoke_nmp_rl_training
