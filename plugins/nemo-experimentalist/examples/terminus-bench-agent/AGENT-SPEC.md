@@ -1,7 +1,7 @@
 ---
 name: terminus-bench-agent
 created_timestamp: 2026-08-21T22:03:52+00:00
-author: asutermorris@nvidia.com
+author: asutermorris
 ---
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
