@@ -5,6 +5,7 @@
 # The final image copies BusyBox shell utilities for parity with the task runtime.
 
 ARG AUDITOR_PYTHON_IMAGE=python:3.13.15-slim-trixie
+ARG AUDITOR_RUNTIME_BASE=python:3.13.15-slim-trixie
 
 ARG CACHE_HOME=/tmp/.cache
 
@@ -134,7 +135,17 @@ RUN apt-get update && apt-get upgrade -y && \
 RUN groupadd --gid ${USER_GID} ${USERNAME} && \
     useradd --uid ${USER_UID} --gid ${USER_GID} --create-home --shell /bin/bash ${USERNAME}
 
-FROM base AS core-final
+RUN mkdir -p /source-distributions/auditor-tasks && \
+    bash /usr/local/bin/collect-apt-sources.sh /source-distributions/auditor-tasks/apt --installed && \
+    python /usr/local/bin/collect-cpython-source.py \
+        --python /usr/local/bin/python \
+        --output /source-distributions/auditor-tasks
+
+FROM ${AUDITOR_RUNTIME_BASE} AS core-final
+
+COPY --from=base /etc/passwd /etc/passwd
+COPY --from=base /etc/group /etc/group
+COPY --from=base --chown=1000:1000 /home/nvs /home/nvs
 
 # Copying handful commands into the destination image
 COPY --from=root-busybox /bin/chmod /bin/chmod
@@ -173,17 +184,13 @@ ENV PYTHONPATH=/app/plugins/nemo-auditor/src:/app/packages/nmp_common/src:/app/s
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy installed packages and application
-COPY --chown=nvs:nvs --from=py-builder /app /app
-COPY --chown=nvs:nvs --from=py-builder /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
+COPY --chown=1000:1000 --from=py-builder /app /app
+COPY --chown=1000:1000 --from=py-builder /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
+COPY --chown=1000:1000 --from=base /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
 ARG CACHE_HOME
-COPY --chown=nvs:nvs --from=py-builder ${CACHE_HOME} ${CACHE_HOME}
+COPY --chown=1000:1000 --from=py-builder ${CACHE_HOME} ${CACHE_HOME}
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
-RUN bash /usr/local/bin/collect-apt-sources.sh /usr/share/nemo-platform/source-distributions/auditor-tasks/apt --installed && \
-    uv run --no-project --python /usr/local/bin/python \
-        /usr/local/bin/collect-cpython-source.py \
-        --python /usr/local/bin/python \
-        --output /usr/share/nemo-platform/source-distributions/auditor-tasks
 
 ENV USERNAME=nvs \
     HOME=/home/nvs

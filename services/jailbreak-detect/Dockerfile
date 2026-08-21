@@ -12,7 +12,10 @@
 # Build context is this directory (so pyproject.toml + uv.lock + model/ are present).
 # Requires BuildKit/buildx (this file uses a `RUN --mount=type=cache` build mount):
 #   docker buildx build -t nemo/jailbreak-detect:0.1.0 --load .
-FROM python:3.11-slim
+ARG PYTHON_IMAGE=python:3.11-slim
+ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.8
+
+FROM ${PYTHON_IMAGE} AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 
@@ -35,7 +38,22 @@ RUN useradd --create-home --uid 1000 jbd && \
     chown -R 1000:0 /opt/jailbreak-detect && \
     chmod -R g+rwX /opt/jailbreak-detect
 
+FROM ${DISTROLESS_BASE} AS runtime
+
 ENV PATH="/app/.venv/bin:$PATH"
+ENV JAILBREAK_CHECK_DEVICE=cpu \
+    HF_HOME=/opt/jailbreak-detect/.cache/huggingface \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+COPY --chown=1000:0 --from=builder /app/.venv /app/.venv
+COPY --chown=1000:0 --from=builder /app/classifier.py /app/server.py ./
+COPY --chown=1000:0 --from=builder /opt/jailbreak-detect /opt/jailbreak-detect
+
 USER 1000
 EXPOSE 8000
 ENTRYPOINT ["python", "server.py", "start"]
