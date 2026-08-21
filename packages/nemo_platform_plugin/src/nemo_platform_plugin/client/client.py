@@ -263,6 +263,45 @@ def _should_resolve_conflict(response: httpx.Response, request: PreparedRequest)
     return True
 
 
+class _InferenceNamespace:
+    """Compat shim for the legacy ``sdk.inference.*`` resource tree.
+
+    The old Stainless SDK exposed ``sdk.inference.providers``, ``.deployments``,
+    ``.deployment_configs``, and ``.virtual_models`` as sub-resources.  In the
+    typed-client world providers/deployments/deployment_configs live on
+    :class:`ModelsClient` and virtual_models on :class:`VirtualModelsClient`.
+    This namespace dispatches accordingly so existing ``sdk.inference.<x>``
+    call sites keep working while callers migrate to ``sdk.models.<method>``.
+    """
+
+    def __init__(self, client: "BaseNemoClient") -> None:
+        self._client = client
+
+    @property
+    def providers(self) -> NemoClient:
+        from nemo_platform_plugin.models.client import ModelsClient
+
+        return ModelsClient.from_client(self._client)
+
+    @property
+    def deployments(self) -> NemoClient:
+        from nemo_platform_plugin.models.client import ModelsClient
+
+        return ModelsClient.from_client(self._client)
+
+    @property
+    def deployment_configs(self) -> NemoClient:
+        from nemo_platform_plugin.models.client import ModelsClient
+
+        return ModelsClient.from_client(self._client)
+
+    @property
+    def virtual_models(self) -> NemoClient:
+        from nemo_platform_plugin.virtual_models.client import VirtualModelsClient
+
+        return VirtualModelsClient.from_client(self._client)
+
+
 class BaseNemoClient:
     """Shared logic for sync and async NeMo clients.
 
@@ -379,6 +418,88 @@ class BaseNemoClient:
     def with_retry(self, retry: RetryPolicy) -> Self:
         """Shorthand for ``with_options(retry=...)``."""
         return self.with_options(retry=retry)
+
+    # ---------------------------------------------------------------------------
+    # Convenience properties — return typed resource clients sharing this
+    # client's transport.  Lazy imports avoid circular dependencies (typed
+    # clients subclass NemoClient / AsyncNemoClient).
+    # ---------------------------------------------------------------------------
+
+    @property
+    def files(self) -> NemoClient:
+        from nemo_platform_plugin.files.client import FilesClient
+
+        return FilesClient.from_client(self)
+
+    @property
+    def models(self) -> NemoClient:
+        from nemo_platform_plugin.models.client import ModelsClient
+
+        return ModelsClient.from_client(self)
+
+    @property
+    def workspaces(self) -> NemoClient:
+        from nemo_platform_plugin.workspaces.client import WorkspacesClient
+
+        return WorkspacesClient.from_client(self)
+
+    @property
+    def secrets(self) -> NemoClient:
+        from nemo_platform_plugin.secrets.client import SecretsClient
+
+        return SecretsClient.from_client(self)
+
+    @property
+    def jobs(self) -> NemoClient:
+        from nemo_platform_plugin.jobs.client import JobsClient
+
+        return JobsClient.from_client(self)
+
+    @property
+    def agents(self) -> NemoClient:
+        from nemo_platform_plugin.agents.client import AgentsClient
+
+        return AgentsClient.from_client(self)
+
+    @property
+    def auditor(self) -> NemoClient:
+        from nemo_platform_plugin.auditor.client import AuditorClient
+
+        return AuditorClient.from_client(self)
+
+    @property
+    def guardrail(self) -> NemoClient:
+        from nemo_platform_plugin.guardrail.client import GuardrailClient
+
+        return GuardrailClient.from_client(self)
+
+    @property
+    def evaluator(self) -> NemoClient:
+        from nemo_platform_plugin.evaluator.client import EvaluatorClient
+
+        return EvaluatorClient.from_client(self)
+
+    @property
+    def projects(self) -> NemoClient:
+        from nemo_platform_plugin.projects.client import ProjectsClient
+
+        return ProjectsClient.from_client(self)
+
+    @property
+    def data_designer(self) -> NemoClient:
+        from nemo_platform_plugin.data_designer.client import DataDesignerClient
+
+        return DataDesignerClient.from_client(self)
+
+    @property
+    def iron_swarm(self) -> NemoClient:
+        from nemo_platform_plugin.iron_swarm.client import IronSwarmClient
+
+        return IronSwarmClient.from_client(self)
+
+    @property
+    def inference(self) -> _InferenceNamespace:
+        return _InferenceNamespace(self)
 
     def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
         """Filter out None values and JSON-serialize dicts/lists in query params."""
