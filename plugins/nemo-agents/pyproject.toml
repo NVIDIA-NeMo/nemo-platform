@@ -32,6 +32,10 @@ dependencies = [
     "botocore>=1.40.46,<1.40.62",
     "httpx>=0.27",
     "pyyaml>=6.0",
+    # Base, not optional: the generated nemo-platform extra mirrors this list only,
+    # and the plugin advertises `agents.package-agent` unconditionally.
+    "jinja2>=3.1",
+    "python-on-whales>=0.60",
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",
     "rich>=13.7.1",
@@ -81,7 +85,8 @@ nat_hermes_agent_adapter = "nat_hermes_agent_adapter.register"
 nat_openclaw_agent_adapter = "nat_openclaw_agent_adapter.register"
 
 [project.optional-dependencies]
-container = ["jinja2>=3.1", "python-on-whales>=0.60"]
+# Moved to [project] dependencies; kept so older install instructions resolve.
+container = []
 test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

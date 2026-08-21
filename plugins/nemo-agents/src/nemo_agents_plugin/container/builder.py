@@ -78,7 +78,7 @@ def docker_build(
         ImageBuildError: On build failure.
     """
     try:
-        from python_on_whales import docker  # ty: ignore[unresolved-import]
+        from python_on_whales import docker
     except ImportError as exc:
         raise ContainerToolingUnavailableError("building images") from exc
 
@@ -277,6 +277,7 @@ def build_fabric_agent_image(
     agent_version: str | None = None,
     agent_author: str | None = None,
     template_path: str | None = None,
+    tag_namespace: str | None = None,
     skip_validation: bool = False,
     generate_ignore: bool = True,
     platforms: list[str] | None = None,
@@ -288,6 +289,9 @@ def build_fabric_agent_image(
     This is intentionally separate from ``build_nat_agent_image`` so Fabric
     packaging can grow without inheriting NAT-specific args such as
     ``nat_version`` or ``NAT_CONFIG_FILE``.
+
+    *tag_namespace* prefixes the final reference, supplied or derived, so callers
+    that do not own the daemon cannot repoint a reference somebody else owns.
     """
     if pyproject is not None and pyproject.exists():
         context_dir = pyproject.resolve().parent
@@ -334,6 +338,8 @@ def build_fabric_agent_image(
     )
     if tag is None:
         tag = _default_tag_from_meta(meta)
+    if tag_namespace:
+        tag = f"{tag_namespace}/{tag}"
 
     build_args = {
         "BASE_IMAGE_URL": resolved_base_url,

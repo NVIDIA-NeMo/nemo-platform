@@ -2534,3 +2534,36 @@ class TestPackagingSafetyRegressions:
 
         assert user_file.exists()
         assert "USER OWNED" in user_file.read_text()
+
+
+class TestFabricTagNamespace:
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_explicit_tag_is_prefixed(self, mock_build: MagicMock, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        mock_build.return_value = "placeholder"
+        build_fabric_agent_image(
+            fabric_agent_config, tag="my-agent:1.0", tag_namespace="nemo-agents/default", skip_validation=True
+        )
+
+        assert mock_build.call_args.kwargs["tag"] == "nemo-agents/default/my-agent:1.0"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_derived_tag_is_prefixed(self, mock_build: MagicMock, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        mock_build.return_value = "placeholder"
+        build_fabric_agent_image(
+            fabric_agent_config, tag_namespace="nemo-agents/default", skip_validation=True, agent_author="x"
+        )
+
+        assert mock_build.call_args.kwargs["tag"].startswith("nemo-agents/default/")
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_cli_path_is_unnamespaced(self, mock_build: MagicMock, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        mock_build.return_value = "placeholder"
+        build_fabric_agent_image(fabric_agent_config, tag="my-agent:1.0", skip_validation=True)
+
+        assert mock_build.call_args.kwargs["tag"] == "my-agent:1.0"

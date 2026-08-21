@@ -249,10 +249,15 @@ curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/status"
 curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/logs"
 ```
 
-The result carries the tag to hand to `nemo agents deploy --image`:
+The tag to hand to `nemo agents deploy --image` is published as a
+`package_result` job result:
+
+```bash
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/results"
+```
 
 ```json
-{"image": "my-agent-c81769830e30:26.08.21", "agent": "my-agent"}
+{"image": "nemo-agents/default/my-agent:1.0", "agent": "my-agent"}
 ```
 
 The job downloads the agent's spec fileset into a temporary build context,
@@ -270,6 +275,8 @@ local packaging flags above.
 | Fabric only | `nemo-agents-spec-v1` agents only. NAT workflows build from a source checkout, so they stay on the CLI. |
 | No publish | The image is left in the host daemon. Pushing to a registry from the platform is not wired up yet — use `nemo agents package --publish` locally for that. |
 | Constrained base image | `base_image_url`, `base_image_tag`, `python_version`, and `uv_version` are interpolated into the Dockerfile unescaped, so the API restricts them to a strict image/version grammar. The CLI, whose caller already owns the host, is unrestricted. |
+| Namespaced tags | Every image lands at `nemo-agents/{workspace}/{tag}`, derived or submitted, and `tag` may not contain `/`. Docker tags are daemon-global while the auth boundary here is the workspace, so an unqualified tag would let one workspace repoint another's image on the shared host. A workspace whose name is outside the Docker path grammar (entity names still allow `@` and `+`) is rejected at POST. |
+| Managed `.dockerignore` | A `.dockerignore` in the spec fileset is discarded. Validation reads the staged tree off disk and Docker applies exclusions afterwards, so a user-supplied one could exclude `agent.yaml` or a referenced skill, pass validation, build, and fail only at container start. The CLI still honours a `.dockerignore` you wrote yourself. |
 
 #### `agent.yaml` validation
 

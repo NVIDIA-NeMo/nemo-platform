@@ -20,7 +20,9 @@ submissions up front rather than letting them fail opaquely at schedule time.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
@@ -37,6 +39,7 @@ from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
+from nemo_platform_plugin.job_results import ResultRef
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import (
@@ -51,11 +54,24 @@ logger = logging.getLogger(__name__)
 _SUBPROCESS_PROVIDER: Literal["subprocess"] = "subprocess"
 _DEFAULT_PROFILE = "default"
 
+PACKAGE_RESULT_NAME = "package_result"
+
 #: Docker reference grammar, anchored so no newline can smuggle in a build instruction.
 #: Optional registry host with port, then one or more path components.
 IMAGE_REPOSITORY_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$"
 IMAGE_TAG_PATTERN = r"^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$"
 VERSION_PATTERN = r"^[0-9]+(\.[0-9]+){0,2}$"
+
+#: Docker tags are daemon-global but the auth boundary is the workspace, so every
+#: image is nested under ``{TAG_NAMESPACE}/{workspace}/``.
+TAG_NAMESPACE = "nemo-agents"
+
+#: One name component plus optional tag — no ``/``, so a submitted value cannot
+#: climb out of that namespace.
+IMAGE_NAME_PATTERN = r"^[a-z0-9][a-z0-9._-]*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$"
+
+#: Narrower than the platform's entity names, which still permit ``@`` and ``+``.
+_DOCKER_PATH_COMPONENT = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 _HOST_BUILD_REQUIREMENT = (
     "Agent packaging builds an image with the host Docker CLI, so it requires a "
@@ -73,7 +89,12 @@ class PackageAgentInput(BaseModel):
     agent: str = Field(description="Name of the Agent entity to package.")
     tag: str | None = Field(
         default=None,
-        description="Image tag. Defaults to '{agent_name}-{agent_id}:{agent_version}'.",
+        pattern=IMAGE_NAME_PATTERN,
+        description=(
+            "Image name and optional tag, always nested under "
+            "'nemo-agents/{workspace}/'. Defaults to "
+            "'{agent_name}-{agent_id}:{agent_version}'."
+        ),
     )
     # These four are interpolated into the rendered Dockerfile unescaped
     # (``ARG BASE_IMAGE_URL={{ base_image_url }}``), and unlike the CLI the
@@ -200,6 +221,7 @@ class PackageAgentJob(NemoJob):
         assert isinstance(spec, PackageAgentSpec), (
             f"PackageAgentJob.compile received unexpected spec type: {type(spec).__name__}"
         )
+        cls._require_namespaceable_workspace(workspace)
         resolved_profile = profile or _DEFAULT_PROFILE
         await cls._require_subprocess_profile(resolved_profile, async_sdk)
 
@@ -222,12 +244,24 @@ class PackageAgentJob(NemoJob):
         )
 
     @staticmethod
+    def _require_namespaceable_workspace(workspace: str) -> None:
+        """Reject a workspace that cannot be spelled as a Docker path component."""
+        if not _DOCKER_PATH_COMPONENT.match(workspace):
+            raise PlatformJobCompilationError(
+                f"Workspace '{workspace}' cannot be used as an image namespace: Docker path "
+                "components allow only lowercase letters, digits, '.', '_' and '-'. Package this "
+                "agent from a workspace with a Docker-safe name, or build locally with "
+                "`nemo agents package`."
+            )
+
+    @staticmethod
     async def _require_subprocess_profile(profile: str, async_sdk: object) -> None:
         """Reject the submission unless *profile* resolves to a host subprocess backend."""
         if async_sdk is None:
             raise PlatformJobDependencyUnavailableError(
                 f"Unable to resolve execution profile '{profile}': no platform client was injected. "
-                "Retry the submission."
+                "This is a scheduler wiring fault rather than a transient one — resubmitting will not "
+                "help until the Jobs service is restarted with a platform client."
             )
         try:
             profiles = (
@@ -258,13 +292,13 @@ class PackageAgentJob(NemoJob):
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
         """Stage the agent's spec fileset into a temp build context and build the image."""
-        del ctx
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
 
         cfg = PackageAgentSpec.model_validate(config)
         with tempfile.TemporaryDirectory(prefix="nemo-agent-package-") as tmp:
             build_dir = Path(tmp)
             asyncio.run(self._stage(cfg, build_dir, async_sdk))
+            self._drop_staged_dockerignore(build_dir)
             agent_config_path = build_dir / AGENT_CONFIG_FILENAME
             agent_config_path.write_text(
                 yaml.safe_dump(cfg.agent_config, sort_keys=False),
@@ -281,11 +315,41 @@ class PackageAgentJob(NemoJob):
                 sandbox_runtime=cfg.sandbox_runtime,
                 agent_version=cfg.agent_version,
                 agent_author=cfg.agent_author,
+                tag_namespace=f"{TAG_NAMESPACE}/{cfg.workspace}",
                 skip_validation=cfg.skip_validation,
                 on_progress=logger.info,
             )
 
-        return {"image": image, "agent": cfg.agent}
+        payload = {"image": image, "agent": cfg.agent}
+        ref = self._save_package_result(ctx, payload)
+        if ref is None:
+            return payload
+        return {"status": "completed", **payload, PACKAGE_RESULT_NAME: ref.model_dump()}
+
+    @staticmethod
+    def _drop_staged_dockerignore(build_dir: Path) -> None:
+        """Discard a fileset-supplied ``.dockerignore``.
+
+        Validation reads the staged tree off disk but Docker applies exclusions
+        afterwards, so one excluding ``agent.yaml`` would validate, build, then
+        fail at container start.
+        """
+        staged = build_dir / ".dockerignore"
+        if not staged.exists():
+            return
+        logger.warning("Discarding .dockerignore from the agent spec fileset; the managed one is used instead.")
+        staged.unlink()
+
+    @staticmethod
+    def _save_package_result(ctx: JobContext | None, payload: dict[str, str | None]) -> ResultRef | None:
+        """Publish *payload* through the results API so ``/results`` can serve the tag."""
+        if ctx is None:
+            logger.warning("No job context available; the image tag will not be retrievable from the results API.")
+            return None
+        path = ctx.storage.ephemeral / f"{PACKAGE_RESULT_NAME}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return ctx.results.save(PACKAGE_RESULT_NAME, path)
 
     @staticmethod
     async def _stage(cfg: PackageAgentSpec, build_dir: Path, async_sdk: AsyncNeMoPlatform | None) -> None:

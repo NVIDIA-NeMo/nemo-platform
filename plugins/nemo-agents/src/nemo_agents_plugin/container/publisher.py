@@ -41,7 +41,7 @@ def docker_push(
         ImagePublishError: On tag or push failure.
     """
     try:
-        from python_on_whales import docker  # ty: ignore[unresolved-import]
+        from python_on_whales import docker
     except ImportError as exc:
         raise ContainerToolingUnavailableError("publishing images") from exc
 
