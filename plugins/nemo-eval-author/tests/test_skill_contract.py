@@ -38,6 +38,7 @@ file runs against nothing but pytest and PyYAML.
 
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
@@ -77,6 +78,13 @@ _CORE_REFERENCE = re.compile(rf"\b{re.escape(_CORE_DIR.name)}\b(?!-)")
 # than failing is what lets this file run wherever the skills themselves run.
 _needs_harbor = pytest.mark.skipif(
     find_spec("harbor") is None, reason="Harbor is not installed, so it can judge nothing"
+)
+
+# Root reads a mode-000 file regardless, so the failure these tests stage cannot
+# happen there and the tests would pass without proving anything.
+_needs_unreadable_files = pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0,
+    reason="this user can read a file whatever its mode, so unreadability cannot be staged",
 )
 
 # Harbor brings these in, so a bundled script may name them. Nothing else outside
@@ -167,6 +175,17 @@ def suite(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return tmp_path
+
+
+def _tree_state(root: Path) -> dict[str, bytes | None]:
+    """Map every path under root to its bytes, so an in-place edit is visible.
+
+    Comparing names alone cannot catch a script that rewrote a file that was
+    already there, which is the promise this is here to hold.
+    """
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes() if path.is_file() else None for path in root.rglob("*")
+    }
 
 
 def _named(report: dict, name: str) -> dict:
@@ -432,11 +451,75 @@ def test_discover_finds_configs_without_pyyaml(suite: Path) -> None:
 
 def test_discovery_writes_no_files(suite: Path) -> None:
     """The scripts report and the agent saves, which is what makes the skill safe to run."""
-    before = {path.relative_to(suite).as_posix() for path in suite.rglob("*")}
+    before = _tree_state(suite)
 
     _run_discover(suite)
 
-    assert {path.relative_to(suite).as_posix() for path in suite.rglob("*")} == before
+    assert _tree_state(suite) == before
+
+
+def test_discover_reports_a_config_pyyaml_cannot_parse(suite: Path) -> None:
+    """Broken YAML is a finding, not a crash.
+
+    A tab cannot start a YAML token, so PyYAML raises ``yaml.YAMLError``, which is
+    not a ``ValueError``. Left uncaught it escaped the scan and took the whole run
+    down with a traceback and no report at all. The file still names Harbor work,
+    so it is reported through the same fallback that runs when PyYAML is absent.
+    """
+    (suite / "broken.yaml").write_text("datasets:\n\t- path: ./tabbed\n", encoding="utf-8")
+
+    _, report = _run_discover(suite)
+
+    assert "harbor-job.yaml" in [config["path"] for config in report["configs"]], (
+        "one broken file must not hide the configs around it"
+    )
+    parse = _named(report, "config-parse")
+    assert parse["status"] == "fail"
+    assert "broken.yaml" in parse["message"]
+    assert parse["hint"], "an unreadable config must tell the user what to do"
+
+
+def test_discover_ignores_a_yaml_file_that_declares_no_harbor_work(suite: Path) -> None:
+    """Broken YAML that names no datasets or tasks is somebody else's file."""
+    (suite / "docker-compose.yaml").write_text("services:\n\t- broken\n", encoding="utf-8")
+
+    _, report = _run_discover(suite)
+
+    assert [config["path"] for config in report["configs"]] == ["harbor-job.yaml"]
+
+
+@_needs_unreadable_files
+def test_discover_reports_an_unreadable_ethos(suite: Path) -> None:
+    """ETHOS.md is advisory, so failing to read it must not cost the whole report."""
+    ethos = suite / "ETHOS.md"
+    ethos.write_text("# doctrine\n", encoding="utf-8")
+    ethos.chmod(0o000)
+    try:
+        _, report = _run_discover(suite, with_harbor=False)
+    finally:
+        ethos.chmod(0o644)
+
+    assert report["ethos_path"] is None, "an unread file defines no doctrine"
+    check = _named(report, "ethos")
+    assert check["status"] == "warn"
+    assert check["severity"] == "advisory"
+
+
+@_needs_unreadable_files
+def test_discover_keeps_an_unreadable_dataset_file_out_of_the_fingerprint(suite: Path) -> None:
+    """One unreadable file must neither abort the fingerprint nor silently join it."""
+    _, baseline = _run_discover(suite, with_harbor=False)
+
+    blocked = suite / "dataset" / "task-one" / "blocked.bin"
+    blocked.write_bytes(b"payload")
+    blocked.chmod(0o000)
+    try:
+        _, report = _run_discover(suite, with_harbor=False)
+    finally:
+        blocked.chmod(0o644)
+
+    assert report["input_file_count"] == baseline["input_file_count"]
+    assert report["fingerprint"] == baseline["fingerprint"]
 
 
 def test_discover_fails_with_a_hint_when_the_path_is_missing(tmp_path: Path) -> None:

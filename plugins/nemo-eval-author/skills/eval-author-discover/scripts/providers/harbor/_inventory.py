@@ -16,7 +16,8 @@ next whenever Harbor is importable.
 ``yaml`` is used when available and is not a dependency of this skill: Harbor
 depends on PyYAML, so a repository with Harbor installed always has it. Without
 it, config detection falls back to a top-level key scan and every candidate is
-marked unparsed.
+marked unparsed. A file PyYAML rejects falls back to that same scan, so a config
+with broken syntax is reported rather than silently missing.
 """
 
 from __future__ import annotations
@@ -36,6 +37,10 @@ try:
     import yaml
 except ModuleNotFoundError:  # ships with Harbor; absent only when Harbor is
     yaml = None  # ty: ignore[invalid-assignment]
+
+# Malformed YAML raises yaml.YAMLError, which is not a ValueError. Empty without
+# PyYAML, so the except clause naming these stays valid either way.
+_PARSE_ERRORS: tuple[type[BaseException], ...] = () if yaml is None else (yaml.YAMLError,)
 
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
 _MAX_CONFIG_DEPTH = 4
@@ -71,8 +76,9 @@ _PRUNE_DIR_NAMES = frozenset(
 class ConfigCandidate:
     """A repository-owned Harbor config file.
 
-    ``data`` is empty when PyYAML is absent and the file is YAML. The ladder
-    needs parsed data, so an unparsed candidate is reported and skipped.
+    ``data`` is empty when the file could not be parsed, either because PyYAML is
+    absent or because the syntax is broken. The ladder needs parsed data, so an
+    unparsed candidate is reported and skipped.
     """
 
     path: Path
@@ -142,14 +148,31 @@ def scan_repository(repo_root: Path) -> RepositoryScan:
                 "config-parse",
                 FAIL,
                 "Cannot read {} config file{}: {}.".format(len(unparsed), "s" if len(unparsed) != 1 else "", names),
-                hint="Install PyYAML, which arrives with Harbor, to read YAML configs.",
+                hint=(
+                    "Install PyYAML, which arrives with Harbor, to read YAML configs."
+                    if yaml is None
+                    else "Fix the YAML syntax in each file this message names."
+                ),
             )
         )
 
     ethos: tuple[str, bytes] | None = None
-    if (repo_root / "ETHOS.md").is_file():
-        ethos = ("ETHOS.md", (repo_root / "ETHOS.md").read_bytes())
-        checks.append(_check("ethos", PASS, "ETHOS.md defines the agent doctrine.", severity=ADVISORY))
+    ethos_file = repo_root / "ETHOS.md"
+    if ethos_file.is_file():
+        try:
+            ethos = ("ETHOS.md", ethos_file.read_bytes())
+        except OSError as exc:
+            checks.append(
+                _check(
+                    "ethos",
+                    WARN,
+                    "ETHOS.md exists but cannot be read: {}.".format(exc.strerror or exc),
+                    severity=ADVISORY,
+                    hint="Make ETHOS.md readable to record the agent doctrine.",
+                )
+            )
+        else:
+            checks.append(_check("ethos", PASS, "ETHOS.md defines the agent doctrine.", severity=ADVISORY))
     else:
         checks.append(
             _check(
@@ -161,8 +184,8 @@ def scan_repository(repo_root: Path) -> RepositoryScan:
             )
         )
 
-    datasets = _dataset_paths(repo_root)
     tasks = _task_paths(repo_root)
+    datasets = _dataset_paths(tasks)
     if tasks:
         checks.append(
             _check(
@@ -230,11 +253,12 @@ def _candidate(path: Path) -> ConfigCandidate | None:
     if is_json or yaml is not None:
         try:
             data = json.loads(text) if is_json else yaml.safe_load(text)
-        except (json.JSONDecodeError, ValueError):
-            return None
-        if not isinstance(data, dict) or not _has_work(data):
-            return None
-        return ConfigCandidate(path=path, data=data, parsed=True)
+        except (json.JSONDecodeError, ValueError, *_PARSE_ERRORS):
+            pass  # unparseable, so fall back to the key scan
+        else:
+            if not isinstance(data, dict) or not _has_work(data):
+                return None
+            return ConfigCandidate(path=path, data=data, parsed=True)
 
     if not _WORK_KEY_PATTERN.search(text):
         return None
@@ -245,20 +269,17 @@ def _has_work(data: dict[str, Any]) -> bool:
     return any(isinstance(data.get(name), list) and data[name] for name in _WORK_KEYS)
 
 
-def _dataset_paths(repo_root: Path) -> list[Path]:
-    datasets: set[Path] = set()
-    for directory in walk_dirs(repo_root):
-        if directory != repo_root and directory.name != "task_template" and (directory / "task.toml").is_file():
-            datasets.add(directory.parent)
-    return sorted(datasets)
-
-
 def _task_paths(repo_root: Path) -> list[Path]:
     return sorted(
         directory
         for directory in walk_dirs(repo_root)
         if directory != repo_root and directory.name != "task_template" and (directory / "task.toml").is_file()
     )
+
+
+def _dataset_paths(tasks: list[Path]) -> list[Path]:
+    """Return the directories holding the tasks, which is what Harbor calls a dataset."""
+    return sorted({task.parent for task in tasks})
 
 
 def _fingerprint(
@@ -272,17 +293,39 @@ def _fingerprint(
         if not dataset.is_relative_to(repo_root):
             continue
         for directory in walk_dirs(dataset):
-            files.update(
-                path for path in directory.iterdir() if path.is_file() and path.resolve().is_relative_to(repo_root)
-            )
+            try:
+                entries = list(directory.iterdir())
+            except OSError:
+                continue
+            files.update(path for path in entries if path.is_file() and path.resolve().is_relative_to(repo_root))
     files.discard(repo_root / "ETHOS.md")
 
     digest = hashlib.sha256()
+    counted = 0
     for path in sorted(files):
+        body = _file_digest(path)
+        if body is None:
+            continue
         digest.update(str(path.relative_to(repo_root)).encode())
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(body)
         digest.update(b"\0")
+        counted += 1
     if ethos is not None:
         digest.update(ethos[0].encode() + b"\0" + ethos[1] + b"\0")
-    return digest.hexdigest(), len(files) + (ethos is not None)
+    return digest.hexdigest(), counted + (ethos is not None)
+
+
+def _file_digest(path: Path) -> bytes | None:
+    """Return the file's digest, or None when it cannot be read.
+
+    Hashing each file separately keeps a file the fingerprint cannot read out of
+    the digest entirely, rather than contributing the bytes read before the
+    failure. ``file_digest`` reads in chunks, so a large repository-owned dataset
+    never lands in memory whole.
+    """
+    try:
+        with path.open("rb") as source:
+            return hashlib.file_digest(source, "sha256").digest()
+    except OSError:
+        return None

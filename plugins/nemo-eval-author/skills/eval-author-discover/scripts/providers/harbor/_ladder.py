@@ -74,7 +74,8 @@ async def run_ladder(candidate: ConfigCandidate, repo_root: Path) -> ValidationO
                 "schema",
                 FAIL,
                 "Cannot read {} to validate it.".format(candidate.path.name),
-                hint="Install PyYAML, which arrives with Harbor, to read YAML configs.",
+                # Harbor is importable here, so it brought PyYAML: the syntax is the fault.
+                hint="Fix the file's YAML syntax, which PyYAML could not parse.",
             )
         )
         return outcome
@@ -122,7 +123,11 @@ async def _resolve(config: JobConfig, outcome: ValidationOutcome) -> Job | None:
     try:
         with tempfile.TemporaryDirectory(prefix="eval-author-jobs-") as scratch:
             job = await Job.create(config.model_copy(update={"jobs_dir": Path(scratch)}))
-            job._close_logger_handlers()
+            # Cleanup on a private API, and it has to precede the scratch removal.
+            # Resolution already succeeded, so a Harbor rename here is not a
+            # resolution failure and must not be reported as one.
+            with contextlib.suppress(Exception):
+                job._close_logger_handlers()
     except Exception as exc:
         outcome.checks.append(
             _check(

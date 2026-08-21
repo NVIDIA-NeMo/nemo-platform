@@ -120,7 +120,7 @@ rung's failure often disappears once you fix a higher one.
 |---|---|
 | `harbor` | Harbor is not importable by this interpreter. Re-run with the interpreter from **Before you start** |
 | `config` | No config file declares a nonempty `datasets` or `tasks` list. Confirm with the user where their suite lives |
-| `config-parse` | The file could not be read, because PyYAML is missing. Harbor ships PyYAML, so this means the wrong interpreter |
+| `config-parse` | A config file did not parse. Either PyYAML is missing, which means the wrong interpreter, or the file's YAML is broken. The hint says which |
 | `schema` | Harbor rejected the config's shape. The message carries the offending field path |
 | `resolution` | Harbor could not turn the config into a job. Usually a `datasets[].path` that does not exist. This fails before any container starts |
 | `tasks` | Some resolved directories are not valid Harbor tasks. A task directory needs a parseable `task.toml` and an `environment/` directory, even when the image is prebuilt |
@@ -129,7 +129,9 @@ rung's failure often disappears once you fix a higher one.
 | `agent` | The named built-in agent does not exist, or the `import_path` does not import. Check the message for which |
 | `backend` | The environment backend failed preflight. For `docker`, confirm the daemon is running with `docker info` |
 | `round-trip` | The Harbor CLI rejected the config file's bytes. This is the weakest rung: it round-trips the schema only, so it can pass while `resolution` fails |
-| `ethos` | Advisory. `ETHOS.md` is absent, so no agent doctrine is defined for this repository |
+| `harbor-cli` | Advisory. No `harbor` executable exists on `PATH`, so the `round-trip` rung cannot run |
+| `compatibility` | The installed Harbor does not expose the resolved task list, so `tasks`, `coverage`, and `credentials` cannot run. Install a Harbor version that exposes it |
+| `ethos` | Advisory. `ETHOS.md` is absent or unreadable, so no agent doctrine is defined for this repository |
 | `tasks-on-disk` | Advisory, and always unproven. A count of directories holding a `task.toml` |
 
 ## Step 4: verify before you report

@@ -34,11 +34,11 @@ The Eval Author agent that Experimentalist insight mode still uses lives in
 
 ## Dependencies
 
-The scripts under `skills/*/scripts/` import the standard library only, so they run
-on whatever Python the customer already has. Where a real answer needs a provider,
-the skill defers to the provider's own validators rather than guessing from file
-layout, which is why `eval-author-discover` probes for an installed Harbor and asks
-Harbor to judge each config.
+The scripts under `skills/*/scripts/` import nothing beyond the standard library and
+Harbor itself, so they run on whatever Python the customer already has. Where a real
+answer needs a provider, the skill defers to the provider's own validators rather
+than guessing from file layout, which is why `eval-author-discover` probes for an
+installed Harbor and asks Harbor to judge each config.
 
 `tests/test_skill_contract.py` holds to the same boundary and imports nothing from
 the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that

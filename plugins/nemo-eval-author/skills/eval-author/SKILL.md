@@ -96,7 +96,8 @@ user, not to you.
   your own report under `.eval-author/`, which is theirs to commit or ignore. The
   bundled scripts write nothing at all; saving is your job, not theirs.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
-  report that and stop. Do not install it into the user's environment.
+  say so and stop short of proving anything. Report what you found regardless, and
+  do not install the provider into the user's environment.
 - **Do not run the suite.** Prove it can run and hand over the command. Starting a
   job spends the user's compute and credentials on a decision they did not make.
 - **Trusted repositories only.** Validating a config can execute repository code,
