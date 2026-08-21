@@ -326,14 +326,18 @@ def platform_server(clickhouse: None) -> Iterator[str]:  # noqa: ARG001 - orderi
 # SDK helpers (reuse the Insights plugin's own client/preflight code)         #
 # --------------------------------------------------------------------------- #
 def _count_traces() -> int:
-    from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
     from nemo_insights_plugin.client import make_client
+    from nemo_platform_plugin.intake_trace_provider import IntakeTraceProvider
+    from nemo_platform_plugin.trace_provider import TraceQuery
 
     async def _run() -> int:
         client = make_client(BASE_URL)
-        backend = make_analyst_backend(client=client, insights_output=None)
         try:
-            return await backend.count_agent_sessions(agent=TEST_AGENT, workspace=WORKSPACE)
+            provider = IntakeTraceProvider(client, workspace=WORKSPACE, agent_name=TEST_AGENT)
+            count = 0
+            async for _ in provider.filter_traces(TraceQuery(limit=1000)):
+                count += 1
+            return count
         finally:
             await client.close()
 

@@ -1,20 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Data-access backend for the analyst's tools and final change-set.
+"""Insight storage backend for the analyst's final change-set.
 
-Every tool talks to the platform through one :class:`AnalystBackend`, built
-once per run by the CLI and shared via ``AnalystDeps`` instead of threading a
-raw SDK client around. The backend owns the SDK client and exposes:
-
-- read-only Intake queries (spans, span groups, feedback annotations, and a
-  span-rollup session count),
-- ``list_insights`` so the analyst can see what already exists, and
-- ``persist_result``: the single write entry point that takes the analyst's
-  :class:`~nemo_insights_plugin.analyst.result.AnalystResult` and stores it.
-
-Intake reads (spans, span groups, annotations, session count) always hit the
-live platform.
+Trace reads are supplied separately through the shared ``TraceProvider``
+contract. This backend owns only Insight listing and result persistence.
 
 Insights always go to the platform. :class:`RemoteAnalystBackend` lists them via
 the plugin API and persists the result as Insight rows through it. Given an
@@ -27,9 +17,7 @@ failing a run whose platform writes already succeeded.
 
 :class:`LocalAnalystBackend` never touches the plugin API, listing from and
 persisting to the file alone. It is **maintainer tooling, not a user-facing
-mode**: the insights evaluation treats the YAML as the artifact under test and runs
-against subjects that expose Intake but not the Insights plugin (see
-``evaluation/README.md``). There is no CLI flag for it; only ``make_analyst_backend``'s
+mode**. There is no CLI flag for it; only ``make_analyst_backend``'s
 ``local_only`` argument selects it.
 
 :func:`make_analyst_backend` picks one. The client's lifecycle is owned by the
@@ -40,24 +28,18 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
 
 import httpx
 import yaml
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_insights_plugin.entities import Insight, InsightStatus
 from nemo_insights_plugin.schema import InsightListItem, InsightPage
-from nemo_platform import AsyncNeMoPlatform, omit
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.schema import PaginationData
 
 
 class InsightNotFoundError(Exception):
     """No insight with the given id exists in the workspace."""
-
-
-def _dump(item) -> dict:
-    """Serialize one SDK model to a plain JSON-able dict (drop null fields)."""
-    return item.model_dump(mode="json", exclude_none=True)
 
 
 def _union_refs(existing: list[str] | None, new: list[str] | None) -> list[str]:
@@ -71,234 +53,11 @@ def _union_refs(existing: list[str] | None, new: list[str] | None) -> list[str]:
     return merged
 
 
-async def _drain(paginator, *, limit: int) -> tuple[list, bool]:
-    """Pull up to *limit* items across pages; return ``(items, truncated)``.
-
-    ``truncated`` is True when the stream still had more items than *limit*,
-    so the model knows it is looking at a capped view and can narrow its
-    filter or raise the limit.
-    """
-    items: list = []
-    truncated = False
-    async for item in paginator:
-        if len(items) >= limit:
-            truncated = True
-            break
-        items.append(item)
-    return items, truncated
-
-
-def _page_size_for(limit: int) -> int:
-    """Per-page size for a drain: big enough to minimize round-trips."""
-    return max(1, min(limit, 100))
-
-
-def _merge_since_filter(filter_obj: dict | None, *, since: datetime | None) -> dict | None:
-    """Return *filter_obj* with an enforced ``started_at >= since`` lower bound."""
-    return _merge_datetime_lower_bound(filter_obj, key="started_at", since=since)
-
-
-def _merge_created_since_filter(filter_obj: dict | None, *, since: datetime | None) -> dict | None:
-    """Return *filter_obj* with an enforced ``created_at >= since`` lower bound."""
-    return _merge_datetime_lower_bound(filter_obj, key="created_at", since=since)
-
-
-def _merge_datetime_lower_bound(filter_obj: dict | None, *, key: str, since: datetime | None) -> dict | None:
-    if since is None:
-        return filter_obj
-
-    merged: dict = dict(filter_obj or {})
-    existing = merged.get(key)
-    lower_bound = since.isoformat()
-    if isinstance(existing, dict):
-        existing = dict(existing)
-        current = existing.get("gte")
-        current_datetime = _parse_datetime(current)
-        since_datetime = _parse_datetime(since)
-        if current_datetime is None or since_datetime is None or current_datetime < since_datetime:
-            existing["gte"] = lower_bound
-        merged[key] = existing
-    else:
-        merged[key] = {"gte": lower_bound}
-    return merged
-
-
-def _parse_datetime(value: object) -> datetime | None:
-    """Parse a datetime-like lower bound and normalize it to UTC."""
-    if isinstance(value, datetime):
-        parsed = value
-    elif isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value)
-        except ValueError:
-            return None
-    else:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _merge_eval_filter(filter_obj: dict | None, *, evaluation_id: str | None) -> dict | None:
-    """AND-pin the run scope onto a span filter.
-
-    Mirrors ``_merge_since_filter``: a set ``evaluation_id`` is forced onto every
-    read (overwriting any model-supplied value), so a run-scoped analyst never
-    reads across runs that share a workspace. ``None`` is a no-op.
-    """
-    if evaluation_id is None:
-        return filter_obj
-    merged: dict = dict(filter_obj or {})
-    merged["evaluation_id"] = evaluation_id
-    return merged
-
-
 class AnalystBackend(ABC):
-    """Read-only Intake access (shared) plus pluggable result persistence.
-
-    The read surface is a thin, uniform pass-through over the Intake SDK: every
-    list method takes the raw Intake ``filter`` dict and ``sort`` field and
-    drains pages up to ``limit``, and there are get-by-id and evaluator-score
-    primitives. The analyst composes these in Nooa CodeAct rather than relying
-    on a wide catalog of narrow tools. Reads always hit the live platform, even
-    in local insights mode.
-    """
+    """Pluggable Insight listing and result persistence."""
 
     def __init__(self, client: AsyncNeMoPlatform) -> None:
         self.client = client
-
-    # -- reads: always against the live platform -------------------------- #
-
-    async def count_agent_sessions(
-        self,
-        *,
-        agent: str,
-        workspace: str,
-        since: datetime | None = None,
-        evaluation_id: str | None = None,
-    ) -> int:
-        """Count distinct sessions (the agent's "traces") via the span rollup.
-
-        Intake has no agent-scoped trace count — only spans carry the agent
-        identity — so a "trace" is one distinct ``session_id`` among the agent's
-        spans. This rolls those spans up server-side with :meth:`list_span_groups`
-        and reports the full distinct-group ``total``.
-        """
-        groups = await self.list_span_groups(
-            workspace=workspace,
-            filter={"agent_name": agent},
-            group_by="session_id",
-            limit=1,
-            since=since,
-            evaluation_id=evaluation_id,
-        )
-        return groups["total"]
-
-    async def list_spans(
-        self,
-        *,
-        workspace: str,
-        filter: dict | None,
-        sort: str,
-        mode: str,
-        limit: int,
-        since: datetime | None = None,
-        evaluation_id: str | None = None,
-    ) -> dict:
-        effective_filter = _merge_eval_filter(_merge_since_filter(filter, since=since), evaluation_id=evaluation_id)
-        paginator = self.client.intake.spans.list(
-            workspace=workspace,
-            page_size=_page_size_for(limit),
-            sort=cast(Any, sort),
-            filter=cast(Any, effective_filter) or omit,
-            mode=cast(Any, mode),
-        )
-        items, truncated = await _drain(paginator, limit=limit)
-        return {
-            "spans": [_dump(s) for s in items],
-            "count": len(items),
-            "truncated": truncated,
-        }
-
-    async def list_span_groups(
-        self,
-        *,
-        workspace: str,
-        filter: dict | None,
-        group_by: str = "session_id",
-        sort: str = "-span_count",
-        limit: int,
-        since: datetime | None = None,
-        evaluation_id: str | None = None,
-    ) -> dict:
-        """Group matching spans server-side and return the group rows.
-
-        Each row is ``{"group": {<by-field>: value, ...}, "span_count": int}``.
-        Grouping by ``session_id`` recovers the AUT's distinct sessions (its
-        "traces") in a single request, so a wide survey fans out across many
-        sessions instead of burning the budget on the spans of a few. ``total``
-        is the server's full group count; ``truncated`` means more groups
-        matched than were returned on this page.
-        """
-        effective_filter = _merge_eval_filter(_merge_since_filter(filter, since=since), evaluation_id=evaluation_id)
-        page_size = max(1, min(limit, 1000))
-        page = await self.client.intake.spans.groups.list(
-            workspace=workspace,
-            by=group_by,
-            page=1,
-            page_size=page_size,
-            filter=cast(Any, effective_filter or omit),
-            sort=cast(Any, sort),
-        )
-        groups = [_dump(g) for g in page.data]
-        total = page.pagination.total_results if page.pagination is not None else len(groups)
-        return {
-            "groups": groups,
-            "grouped_by": group_by,
-            "count": len(groups),
-            "total": total,
-            "truncated": total > len(groups),
-        }
-
-    async def list_annotations(
-        self,
-        *,
-        workspace: str,
-        filter: dict | None,
-        sort: str,
-        limit: int,
-        since: datetime | None = None,
-    ) -> dict:
-        effective_filter = _merge_created_since_filter(filter, since=since)
-        paginator = self.client.intake.annotations.list(
-            workspace=workspace,
-            page_size=_page_size_for(limit),
-            sort=cast(Any, sort),
-            filter=cast(Any, effective_filter) or omit,
-        )
-        items, truncated = await _drain(paginator, limit=limit)
-        return {
-            "annotations": [_dump(a) for a in items],
-            "count": len(items),
-            "truncated": truncated,
-        }
-
-    async def get_span(self, *, workspace: str, span_id: str) -> dict:
-        span = await self.client.intake.spans.retrieve(span_id, workspace=workspace)
-        return _dump(span)
-
-    async def get_annotation(self, *, workspace: str, annotation_id: str) -> dict:
-        annotation = await self.client.intake.annotations.retrieve(annotation_id, workspace=workspace)
-        return _dump(annotation)
-
-    async def list_scores(self, *, workspace: str, span_id: str) -> dict:
-        results = await self.client.intake.spans.evaluator_results.list(span_id, workspace=workspace)
-        return {
-            "evaluator_results": [_dump(r) for r in results],
-            "count": len(results),
-        }
-
-    # -- insight read + result persistence: varies by backend ------------- #
 
     @abstractmethod
     async def list_insights(
@@ -563,12 +322,11 @@ class LocalAnalystBackend(AnalystBackend):
 
     Maintainer tooling for the insights evaluation, not a user-facing mode — no CLI
     flag reaches it. The evaluation treats the YAML as the artifact under test
-    (checked in, hashed, diffed across runs) and analyzes subjects that expose
-    Intake but not the Insights plugin, so its runs must neither require nor
-    touch platform Insight rows.
+    (checked in, hashed, diffed across runs) and may analyze subjects without
+    the Insights plugin, so its runs must neither require nor touch platform
+    Insight rows.
 
-    Reads of traces/spans/annotations still hit the live platform, but insights
-    are both listed from and written to the file. Ids are minted locally, so a
+    Insights are both listed from and written to the file. Ids are minted locally, so a
     file written this way is an independent store rather than a mirror of
     platform rows.
 
@@ -671,7 +429,7 @@ def make_analyst_backend(
     *insights_output* (when set) additionally receives a mirror of what the
     platform stored. *local_only* is reserved for the insights evaluation: it skips
     the platform and makes *insights_output* the sole store, so a path is
-    required. No CLI flag sets it. Reads always go through *client*.
+    required. No CLI flag sets it.
     """
     if local_only:
         if not insights_output:

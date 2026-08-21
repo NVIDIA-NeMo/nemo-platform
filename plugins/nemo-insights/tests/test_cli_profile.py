@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import typer
-from nemo_insights_plugin import cli
+from nemo_insights_plugin import cli, trace_provider_factory
 from nemo_insights_plugin.analyst.cli import AnalystCLI
 from nemo_insights_plugin.contracts.checks import CheckResult
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
@@ -180,6 +180,128 @@ def test_analyze_flags_override_profile(app: typer.Typer, profile_tree: Path, mo
     assert recorder.kwargs is not None
     assert recorder.kwargs["agent"] == "other"
     assert recorder.kwargs["workspace"] == "other-ws"
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (["--trace-provider", "langsmith"], "--langsmith-project is required"),
+        (["--langsmith-project", "project-a"], "--langsmith-project requires"),
+        (["--trace-provider", "mlflow"], "--mlflow-experiment is required"),
+        (["--mlflow-experiment", "experiment-a"], "--mlflow-experiment requires"),
+        (["--mlflow-tracking-uri", "http://localhost:5000"], "--mlflow-tracking-uri requires"),
+        (["--trace-provider", "unknown"], "--trace-provider must be"),
+    ],
+)
+def test_analyze_rejects_invalid_trace_provider_configuration(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    arguments: list[str],
+    expected: str,
+) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", *arguments])
+
+    assert result.exit_code == 1
+    assert expected in result.stderr
+    assert recorder.kwargs is None
+
+
+def test_analyze_constructs_langsmith_provider(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    constructed: list[dict[str, object]] = []
+
+    class FakeLangSmithClient:
+        def __init__(self, **kwargs: object) -> None:
+            constructed.append(kwargs)
+
+        async def __aenter__(self) -> "FakeLangSmithClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def read_project(self, *, project_name: str | None) -> SimpleNamespace:
+            assert project_name == "project-a"
+            return SimpleNamespace(id="project-id")
+
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.setattr(trace_provider_factory, "AsyncLangSmithClient", FakeLangSmithClient)
+    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(
+        app,
+        ["run", "--trace-provider", "langsmith", "--langsmith-project", "project-a"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert constructed == [{"api_url": None, "api_key": "test-key", "workspace_id": None}]
+    assert recorder.kwargs is not None
+    provider = recorder.kwargs["trace_provider"]
+    assert isinstance(provider, trace_provider_factory.LangSmithTraceProvider)
+    assert provider.project_id == "project-id"
+
+
+def test_analyze_constructs_mlflow_provider(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    constructed: list[str | None] = []
+
+    class FakeMLflowClient:
+        def __init__(self, tracking_uri: str | None = None) -> None:
+            constructed.append(tracking_uri)
+
+        def get_experiment_by_name(self, name: str) -> SimpleNamespace:
+            assert name == "experiment-a"
+            return SimpleNamespace(experiment_id="experiment-id")
+
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.setattr(trace_provider_factory, "MlflowClient", FakeMLflowClient)
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--trace-provider",
+            "mlflow",
+            "--mlflow-experiment",
+            "experiment-a",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert constructed == ["http://localhost:5000"]
+    assert recorder.kwargs is not None
+    provider = recorder.kwargs["trace_provider"]
+    assert isinstance(provider, trace_provider_factory.MLflowTraceProvider)
+    assert provider.experiment_id == "experiment-id"
+
+
+def test_mlflow_environment_does_not_change_default_intake_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+
+    config = cli._resolve_trace_provider_config(
+        trace_provider="intake",
+        langsmith_project=None,
+        mlflow_experiment=None,
+        mlflow_tracking_uri=None,
+    )
+
+    assert isinstance(config, trace_provider_factory.IntakeTraceConfig)
 
 
 def test_profile_env_is_loaded_before_base_url_resolution(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
@@ -600,7 +722,7 @@ def test_analyze_constructor_failure_warns_then_exits_cleanly(
     error_lines = [line for line in result.stderr.splitlines() if line.startswith("Error:")]
     assert error_lines == [
         "Error: analysis failed: invalid remote client context. "
-        "Check --base-url/NMP_BASE_URL, authentication, workspace, and Intake availability."
+        "Check --base-url/NMP_BASE_URL, trace-provider credentials, workspace, and service availability."
     ]
     assert "analyst run failed" not in result.stderr
     assert "Traceback" not in result.output

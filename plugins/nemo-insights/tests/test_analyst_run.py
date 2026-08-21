@@ -92,6 +92,7 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
     assert seen["backend_client"] is client
     build_kwargs = cast(dict[str, object], seen["build_kwargs"])
     assert cast(AnalystDeps, build_kwargs["deps"]).backend is not None
+    assert cast(AnalystDeps, build_kwargs["deps"]).trace_provider is not None
     assert seen["model_client"] is client
     model_clients = cast(ConfiguredModelClients, seen["model_clients"])
     assert cast(FakeModelClient, model_clients.default).closed
@@ -157,7 +158,7 @@ def test_verbose_echo_maps_nooa_reasoning_tools_and_execution(capsys: pytest.Cap
                 {
                     "tool_call_id": "call-1",
                     "function_name": "execute_python",
-                    "arguments": '{"code":"await self.fetch_spans()"}',
+                    "arguments": '{"code":"await self.filter_traces()"}',
                 }
             ],
         )
@@ -167,14 +168,14 @@ def test_verbose_echo_maps_nooa_reasoning_tools_and_execution(capsys: pytest.Cap
             tool_call_id="call-1",
             execution_count=1,
             execution_status=ResultStatus.COMPLETE,
-            stdout="2 sessions\n",
+            stdout="2 traces\n",
         )
     )
 
     assert capsys.readouterr().err.splitlines() == [
         "[thought] inspect the failing sessions",
-        '[tool] execute_python({"code":"await self.fetch_spans()"})',
-        "[result] execute_python -> 2 sessions",
+        '[tool] execute_python({"code":"await self.filter_traces()"})',
+        "[result] execute_python -> 2 traces",
     ]
 
 

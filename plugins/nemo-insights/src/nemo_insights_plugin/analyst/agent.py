@@ -29,7 +29,7 @@ scoped to them via ``AnalystDeps``.
 from typing import Annotated, Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
-from nemo_insights_plugin.analyst.functions import annotations, insights, spans
+from nemo_insights_plugin.analyst.functions import insights, traces
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, hidden, strategy
@@ -61,88 +61,52 @@ MAX_SUMMARY_TOKENS = 80_000
 INSTRUCTIONS = """
 You are the Analyst agent for the NeMo Insights plugin. Analyze recent
 production and evaluation traces from the agent under test (AUT),
-**{agent}**, and file Insights for the highest-impact failure patterns
-you find. An Insight is a named, persistent description of a recurring
-problem in the AUT, scoped specifically enough to act on and generally
-enough to recur. Insights are the unit of work the rest of the
-optimization loop runs on, so the bar on signal-to-noise is high: a
-noisy Insight burns developer trust and is worse than no Insight at all.
+**{agent}**, and file Insights for the highest-impact recurring failure
+patterns you find. An Insight must be specific enough to act on and general
+enough to recur. A noisy Insight is worse than no Insight.
 
 ## Operating principles
 
-1. Quality over quantity. Two precise, well-evidenced Insights beat
-   ten vague ones. Insights such as "Retrieval is
-   failing" or "The agent is slow" are underspecified and not useful.
-2. Traces are receipts. Every Insight must cite the specific Intake
-   trace IDs you used as evidence so a developer can audit your
-   reasoning and build regression tests. A trace id is the ``trace_id``
-   carried on the evidence spans (not the ``session_id`` you grouped
-   by). Aim for at least three representative traces per Insight before
-   filing.
-3. Find the sweet spot between specific and general. A good
-   description names the failure mode, the affected tool or model
-   call and the conditions that trigger it. Avoid descriptions that only fit a single input.
-4. Do not duplicate. Check existing Insights for the AUT before
-   filing a new one. If you find new evidence for an existing open
-   Insight, append it to that Insight rather than creating a
-   near-duplicate.
-5. Prioritize by impact. Negative end-user and developer feedback
-   ranks highest, then explicit error-status spans, then evaluator
-   regressions, then latency or cost outliers, then divergence from
-   the agent's described intent. Issues that are more widespread and occur in many different sessions are higher impact than those that occur in one session.
+1. Quality over quantity. Two precise, well-evidenced Insights beat ten vague
+   ones. Name the failure mode, affected component, and triggering conditions.
+2. Traces are receipts. Every Insight must cite the ``id`` of each evidence
+   trace returned by the trace tools. Aim for at least three representative
+   traces before filing a recurring pattern.
+3. Prioritize negative user or developer feedback, explicit errors, evaluator
+   regressions, latency or cost outliers, and divergence from the agent spec,
+   in that order. Prefer patterns spread across multiple traces.
+4. Do not duplicate. Check existing Insights before filing. Append new trace
+   evidence to an existing open Insight instead of creating a near-duplicate.
 
 ## Method
 
-1. Scope to the AUT through spans and fan out across sessions first.
-   Intake traces cannot be filtered by agent — only spans carry the
-   agent identity — so there is no agent-scoped trace tool. Spans can be
-   filtered by ``agent_name``, so anchor your survey on spans scoped to
-   **{agent}** (the span tools default to this agent). The AUT's work is
-   organized into sessions (one ``session_id`` per end-to-end run), so
-   begin with ``fetch_spans`` grouped by ``session_id`` (pass
-   ``group_by="session_id"``) to recover the AUT's sessions in one shot and
-   survey **many** of them — looking at 100 sessions is far more
-   informative than 100 spans drawn from 2 sessions, especially in this
-   initial exploration phase. Only pull a flat span list (``fetch_spans``
-   without ``group_by``) once you have specific sessions worth opening up, and
-   try to scope the spans you retrieve to the impactful ones.
-2. Start with feedback: it is the strongest signal of a real problem.
-   Pull negative end-user and developer feedback first, then fan out
-   over the AUT's sessions with ``fetch_spans`` grouped by
-   ``session_id``, looking for errors, outliers, and clusters of similar
-   failures across as many sessions as you can.
-3. Drill into the spans behind each candidate cluster: take the
-   ``session_id`` (or ``trace_id``) of an interesting session and call
-   ``fetch_spans`` with that filter (or ``get_span`` for one span) to
-   find the actual LLM and tool calls where the root cause lives.
-   Correlate feedback to its session via the session or trace id.
-4. Check the existing Insights for the agent so you know which of your
-   findings are new and which extend an Insight that already exists.
+1. Call ``filter_traces`` first to survey a broad set of lightweight trace
+   summaries. Start with error traces, then inspect a broader sample.
+2. Call ``read_traces`` with bounded batches of interesting trace IDs. Process
+   the returned traces row by row and cluster recurring failures across rows.
+   Each row has ``id`` plus a provider-native ``data`` object. Inspect that
+   object rather than assuming one universal span schema. It includes the
+   trace's detailed execution records and available feedback/evaluation
+   signals.
+3. Trace a candidate failure through its model/tool execution records and
+   feedback before treating it as evidence. Do not infer root cause from a
+   summary alone.
+4. Check existing Insights so you know which findings are new and which add
+   evidence to an existing Insight.
 
 ## Reporting your findings
 
-When your analysis is complete, report everything in one final
-``AnalystResult`` via ``return_result`` with your full change-set:
+When analysis is complete, return one ``AnalystResult`` with the full
+change-set:
 
-- ``new_insights``: Insights that do not already exist. Give each a
-  short, human-readable title (a sentence naming the failure, e.g.
-  'Retrieval drops relevant context near the token limit'), a
-  description covering failure mode + affected component and
-  the trace IDs as evidence.
-- ``updated_insights``: new evidence — trace refs
-  for Insights that already exist. Reference the target Insight by its
-  ``id`` from the ``list_insights`` output (e.g.
-  'insight-5Q2LoF8z8M9JZxZsHwJKNn'), not by its name. Appending evidence
-  is the only change allowed on an existing Insight (you cannot rename,
-  re-describe, or restatus it). Use this instead of re-filing a
-  near-duplicate of an existing Insight.
+- ``new_insights``: new problems, each with a short title, actionable
+  description, and evidence trace IDs.
+- ``updated_insights``: evidence for existing Insights. Reference the target
+  by its store-assigned ``id`` and append only trace IDs.
 
-Producing the result ends the run, so gather all your evidence first
-and emit one complete, well-evidenced change-set. If you found
-nothing worth filing, return empty lists and say so in the summary.
-
-Notes:
-- Do not refer to the AUT agent as the AUT in the insights you create. The developer is not familiar with this vocabulary.
+Producing the result ends the run. If nothing meets the evidence bar, return
+empty lists and explain that in the summary. Do not call the agent "the AUT"
+in developer-facing Insights.
 """
 
 
@@ -187,123 +151,48 @@ class Analyst(Agent):
             instructions = f"{instructions}\n{AGENT_SPEC_HEADER}\n\n{agent_spec.strip()}\n"
         self.context["analyst_instructions"] = instructions
 
-    async def fetch_spans(
+    async def filter_traces(
         self,
-        filter: dict[str, object] | None = None,
-        group_by: str | None = None,
-        sort: str | None = None,
-        mode: str = "detailed",
-        limit: int | None = None,
+        trace_ids: list[str] | None = None,
+        started_after: str | None = None,
+        started_before: str | None = None,
+        has_error: bool | None = None,
+        limit: int = 100,
     ) -> dict[str, object]:
-        """List the AUT's spans from Intake, or roll them up into groups.
+        """List lightweight traces from the configured provider.
 
-        One method, two modes:
-
-        - **Grouped** (pass ``group_by``, e.g. ``group_by="session_id"``): rolls
-          the matching spans up server-side into one row per group and returns
-          ``{"groups": [...], "grouped_by": str, "count": int, "total": int,
-          "truncated": bool}``, where each group is
-          ``{"group": {<by-field>: value, ...}, "span_count": int}``. ``total`` is
-          the server's full distinct-group count. **Start here** for initial
-          exploration: grouping by ``session_id`` recovers the AUT's sessions
-          so you fan out across **many** of them in one shot.
-        - **Flat** (omit ``group_by``): returns the individual spans as
-          ``{"spans": [...], "count": int, "truncated": bool}``. Use this once
-          you have specific sessions worth opening up; scope it with a
-          ``session_id`` or ``trace_id`` filter.
-
-        In both modes ``truncated`` means more matched than ``limit``; narrow
-        the filter or raise ``limit``.
+        Returns trace IDs and provider-native summary blobs. ``truncated``
+        means more traces matched than were returned.
 
         Args:
-            filter: Raw Intake span filter pushed to the server. Supported keys:
-                ``agent_name`` (e.g. "codex"), ``status`` ("success"/"error"/"cancelled"/"unknown"),
-                ``kind`` ("LLM"/"TOOL"/"AGENT"/"CHAIN"/"EVALUATOR"/...),
-                ``session_id``, ``trace_id``, ``parent_span_id`` (direct
-                children of a span), ``model``, ``provider``, ``tool_name``,
-                ``source``, ``project``, ``agent_id``, ``evaluation_id``,
-                ``test_case_id``, and ``started_at`` (a range, e.g.
-                ``{"gte": "2026-06-01T00:00:00"}``). Those are the only keys
-                Intake serves. Every one takes a single exact value;
-                ``started_at`` is the only key that takes a range, and no key
-                accepts ``$in``. ``agent_name`` defaults
-                to the run's agent under test when omitted; pass an explicit
-                value to query another agent, or ``"__all__"`` to disable
-                agent scoping. There is no span-id filter; use ``get_span``.
-            group_by: When set, the span field(s) to group by. Only
-                ``session_id`` and ``trace_id`` are groupable; pass one or both
-                comma-separated. Omit for a flat span list.
-            sort: Sort field. Defaults to ``"-started_at"`` for flat mode and
-                ``"-span_count"`` for grouped mode.
-            mode: ``"summary"`` omits input/output; ``"detailed"`` includes
-                everything. Ignored in grouped mode.
-            limit: Max rows to pull, clamped to the run's ceiling. Defaults to
-                100 in grouped mode and 50 in flat mode.
+            trace_ids: Optional provider-native trace IDs to resolve.
+            started_after: Optional inclusive ISO 8601 lower time bound.
+            started_before: Optional inclusive ISO 8601 upper time bound.
+            has_error: True for failed traces, False for successful traces,
+                or None for either.
+            limit: Maximum trace refs to return, clamped to the run ceiling.
         """
-        return await spans.fetch_spans(
+        return await traces.filter_traces(
             self._deps,
-            filter=filter,
-            group_by=group_by,
-            sort=sort,
-            mode=mode,
+            trace_ids=trace_ids,
+            started_after=started_after,
+            started_before=started_before,
+            has_error=has_error,
             limit=limit,
         )
 
-    async def get_span(self, span_id: str) -> dict[str, object]:
-        """Fetch one Intake span by id.
+    async def read_traces(self, trace_ids: list[str]) -> dict[str, object]:
+        """Hydrate traces row by row from the configured provider.
+
+        Each returned row has ``id`` and a provider-native ``data`` blob. For
+        Intake the blob contains the trace, spans, annotations, and evaluator
+        results. For LangSmith it contains the run tree and feedback. For
+        MLflow it contains the native trace info, spans, and assessments.
 
         Args:
-            span_id: Intake span id, such as one cited by an annotation.
+            trace_ids: Provider-native IDs returned by ``filter_traces``.
         """
-        return await spans.get_span(self._deps, span_id=span_id)
-
-    async def fetch_scores(self, span_id: str) -> dict[str, object]:
-        """Fetch evaluator results (scores) attached to a span.
-
-        Evaluator results are verifier/judge outputs. Each has a ``name``, a
-        numeric ``value`` and/or ``string_value``, and an optional ``comment``.
-        For terminal-bench/eval traces the score lives on the EVALUATOR span.
-        Returns ``{"evaluator_results": [...], "count": int}``.
-
-        Args:
-            span_id: Intake span id to read evaluator results for.
-        """
-        return await spans.fetch_scores(self._deps, span_id=span_id)
-
-    async def fetch_annotations(
-        self,
-        filter: dict[str, object] | None = None,
-        sort: str = "-created_at",
-        limit: int = 50,
-    ) -> dict[str, object]:
-        """List span/session annotations (feedback, labels, notes), newest first.
-
-        Returns ``{"annotations": [...], "count": int, "truncated": bool}``;
-        ``truncated`` means more matched than ``limit``.
-
-        Args:
-            filter: Raw Intake annotation filter pushed to the server. Supported
-                keys: ``kind`` ("feedback"/"label"/"note"/"metadata"),
-                ``value_text`` (e.g. "negative" for feedback, or a label's text
-                value), ``name`` (label name, e.g. "helpfulness"),
-                ``value_numeric`` (a range object, e.g. ``{"lte": 2}`` for low
-                scores), ``span_id``, ``session_id``, ``created_by``, and
-                ``created_at`` (a range). To start with negative feedback use
-                ``{"kind": "feedback", "value_text": "negative"}``. Omit to
-                list all annotations.
-            sort: Sort field; ``"-created_at"`` (default, newest first) or
-                ``"created_at"``.
-            limit: Max annotations to pull across pages, clamped to the ceiling.
-        """
-        return await annotations.fetch_annotations(self._deps, filter=filter, sort=sort, limit=limit)
-
-    async def get_annotation(self, annotation_id: str) -> dict[str, object]:
-        """Fetch one Intake annotation by id.
-
-        Args:
-            annotation_id: Intake annotation id.
-        """
-        return await annotations.get_annotation(self._deps, annotation_id=annotation_id)
+        return await traces.read_traces(self._deps, trace_ids=trace_ids)
 
     async def list_insights(
         self,

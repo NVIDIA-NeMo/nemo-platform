@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, make_check_result
 from nemo_insights_plugin.profile import AnalysisProfile
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatformError
+from nemo_platform_plugin.intake_trace_provider import IntakeTraceProvider
 from nemo_platform_plugin.nooa_model_client import configured_model_refs
+from nemo_platform_plugin.trace_provider import TraceQuery
 
 _EXPECTED_PLATFORM_ERRORS = (NeMoPlatformError, httpx.HTTPError, OSError, RuntimeError, ValueError)
 
@@ -36,8 +37,9 @@ async def _default_workspace_ok(base_url: str, workspace: str, agent: str) -> bo
     client: AsyncNeMoPlatform | None = None
     try:
         client = make_client(base_url)
-        backend = make_analyst_backend(client=client, insights_output=None)
-        await backend.count_agent_sessions(agent=agent, workspace=workspace)
+        provider = IntakeTraceProvider(client, workspace=workspace, agent_name=agent)
+        async for _ in provider.filter_traces(TraceQuery(limit=1)):
+            break
         return True
     except _EXPECTED_PLATFORM_ERRORS:
         return False

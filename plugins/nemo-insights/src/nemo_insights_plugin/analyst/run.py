@@ -22,12 +22,14 @@ from nemo_insights_plugin.analyst.observability import (
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.intake_trace_provider import IntakeTraceProvider
 from nemo_platform_plugin.nooa_model_client import (
     ConfiguredModelClients,
     ConfiguredModelRefs,
     activate_model_clients,
     resolve_model_clients,
 )
+from nemo_platform_plugin.trace_provider import TraceProvider
 from nooa.context_blocks import EventBase
 from nooa.events import LLMComplete, PythonOutput
 
@@ -55,6 +57,7 @@ async def run_analyst(
     analyst_evaluation: AnalystEvaluationContext | None = None,
     enable_observability: bool = True,
     model_refs: ConfiguredModelRefs | None = None,
+    trace_provider: TraceProvider | None = None,
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
 
@@ -73,14 +76,17 @@ async def run_analyst(
             alone. Reserved for the insights evaluation — no CLI flag sets it.
             Requires *insights_output*.
         verbose: Whether to stream model/tool events to stderr.
-        since: Optional incremental lower bound enforced on trace/span reads.
-        evaluation_id: Optional run scope; AND-pinned onto every span read.
+        since: Optional incremental lower bound enforced on trace reads.
+        evaluation_id: Optional Intake evaluation scope configured on the
+            default trace provider.
         analyst_evaluation: Optional Evaluation and test-case
             identity attached to the Analyst's own OTLP trace.
         enable_observability: Whether this run may export the Analyst's own
             OTLP trace. The environment variable can still disable export.
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
+        trace_provider: Optional read-only trace source. Defaults to Intake
+            scoped to this run's workspace, agent, and evaluation.
     """
     observability = None
     model_clients: ConfiguredModelClients | None = None
@@ -92,12 +98,19 @@ async def run_analyst(
             insights_output=insights_output_path,
             local_only=local_only,
         )
+        provider = trace_provider or IntakeTraceProvider(
+            client,
+            workspace=workspace,
+            agent_name=agent,
+            evaluation_id=evaluation_id,
+        )
         deps = AnalystDeps(
             agent=agent,
             workspace=workspace,
             base_url=base_url,
             insights_output=insights_output_path,
             backend=backend,
+            trace_provider=provider,
             since=since,
             evaluation_id=evaluation_id,
         )

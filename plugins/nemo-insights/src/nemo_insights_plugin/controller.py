@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from typing import Any, ClassVar, TypeVar, cast
 from zoneinfo import ZoneInfo
 
-from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
@@ -26,8 +25,10 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityConflictError,
     NemoEntityNotFoundError,
 )
+from nemo_platform_plugin.intake_trace_provider import IntakeTraceProvider
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
+from nemo_platform_plugin.trace_provider import TraceQuery
 
 logger = logging.getLogger(__name__)
 
@@ -170,10 +171,10 @@ class InsightsAnalysisController(NemoController):
         if since is None:
             return True
         try:
-            backend = make_analyst_backend(client=self.sdk, insights_output=None)
-            trace_count = await backend.count_agent_sessions(
-                agent=config.agent, workspace=config.workspace, since=since
-            )
+            provider = IntakeTraceProvider(self.sdk, workspace=config.workspace, agent_name=config.agent)
+            trace_count = 0
+            async for _ in provider.filter_traces(TraceQuery(started_after=since, limit=_MIN_NEW_TRACES_FOR_ANALYSIS)):
+                trace_count += 1
         except Exception:
             logger.exception(
                 "Failed to count new traces for agent '%s'; deferring submission",

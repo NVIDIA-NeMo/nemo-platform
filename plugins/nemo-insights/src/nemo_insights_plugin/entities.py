@@ -60,7 +60,7 @@ class Insight(NemoEntity, entity_type="insights_insight"):
     trace_refs: list[str] = Field(
         default_factory=list,
         description=(
-            "Intake trace ids the analyst identified as evidence for this "
+            "Provider-native trace ids the analyst identified as evidence for this "
             "insight. This is used as evidence for the insight UI to "
             "communicate to the developer what traces triggered the issue, and "
             "can also be used to identify other similar traces that might "
