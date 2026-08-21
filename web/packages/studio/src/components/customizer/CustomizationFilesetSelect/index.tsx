@@ -39,14 +39,15 @@ import { useCustomizationDatasetValidation } from '@studio/hooks/useCustomizatio
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { TrainingType } from '@studio/util/customizerSchema';
 import { inferJsonContentType, isJsonFile } from '@studio/util/files';
-import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import {
+  DATASET_FIELD_BY_BACKEND,
+  type CustomizationFormFields,
+} from '@studio/util/forms/customization';
 import { Database, FolderOpen } from 'lucide-react';
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useController, useFormContext, useWatch } from 'react-hook-form';
 
 const NEW_DATASET_VALUE = '__new_dataset__';
-
-type DatasetFieldName = 'automodel.dataset.training' | 'unsloth.dataset.path';
 
 export interface CustomizationFilesetSelectProps {
   disabled?: boolean;
@@ -59,11 +60,12 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   const { control, setValue } = useFormContext<CustomizationFormFields>();
   const backend = useWatch({ control, name: 'backend' });
 
-  const fieldName: DatasetFieldName =
-    backend === 'automodel' ? 'automodel.dataset.training' : 'unsloth.dataset.path';
   const automodelTrainingType = useWatch({ control, name: 'automodel.training.training_type' });
+
+  const fieldName = DATASET_FIELD_BY_BACKEND[backend];
+  // Unsloth is SFT-only; RL is DPO-only; automodel carries its own selector.
   const trainingType: TrainingType =
-    backend === 'automodel' ? (automodelTrainingType ?? 'sft') : 'sft';
+    backend === 'rl' ? 'dpo' : backend === 'automodel' ? (automodelTrainingType ?? 'sft') : 'sft';
 
   const {
     field: { value: selectedRef, onChange: setSelectedRef, onBlur },
@@ -153,6 +155,12 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   return (
     <Stack gap="density-2xl">
       <Text kind="body/bold/lg">Training Data</Text>
+      {trainingType === 'dpo' && (
+        <Text kind="body/regular/md" color="secondary">
+          DPO datasets hold preference pairs — chosen and rejected responses for the same prompt.
+          BinaryPreference, Tulu3, HelpSteer3 and native Preference formats are all accepted.
+        </Text>
+      )}
       <Text kind="body/regular/md">
         Datasets should be in JSONL format and split into separate, representative training and
         validation sets. For formatting guidelines, refer to the{' '}
