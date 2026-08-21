@@ -11,11 +11,13 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import {
   AGENT_CONFIG_FILENAME,
-  agentSpecFilesetName,
   FABRIC_CONFIG_FORMAT,
-  parseAgentConfig,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
 import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+import {
+  agentSpecFilesetName,
+  parseAgentConfig,
+} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
 import { UseMutationOptions, useMutation } from '@tanstack/react-query';
 
 export interface CreateAgentFromUploadParams {

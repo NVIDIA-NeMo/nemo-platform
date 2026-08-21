@@ -20,20 +20,22 @@ import {
 } from '@studio/api/agents/useCreateAgentFromUpload';
 import {
   AGENT_CONFIG_FILENAME,
-  agentNameFromConfig,
-  collectAgentEntries,
-  findNonUtf8Path,
-  parseAgentConfig,
-  tooManyPickedFiles,
-  totalEntryBytes,
   uploadAgentFormSchema,
-  validateAgentEntries,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
 import type {
   UploadAgentEntry,
   UploadAgentFormData,
   UploadAgentModalProps,
 } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+import {
+  agentNameFromConfig,
+  collectAgentEntries,
+  findNonUtf8Path,
+  parseAgentConfig,
+  tooManyPickedFiles,
+  totalEntryBytes,
+  validateAgentEntries,
+} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type ChangeEventHandler, type FC, useCallback, useMemo, useRef, useState } from 'react';

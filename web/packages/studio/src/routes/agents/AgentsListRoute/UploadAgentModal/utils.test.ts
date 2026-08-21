@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  MAX_AGENT_SPEC_FILES,
+  MAX_PICKED_FILES,
+} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
+import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+import {
   AgentConfigParseError,
   agentNameFromConfig,
   agentSpecFilesetName,
   collectAgentEntries,
   findNonUtf8Path,
   isIgnoredPath,
-  MAX_AGENT_SPEC_FILES,
-  MAX_PICKED_FILES,
   parseAgentConfig,
   tooManyPickedFiles,
   validateAgentEntries,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
-import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
 
 const makeFile = (relativePath: string, contents = 'x'): File => {
   const file = new File([contents], relativePath.split('/').pop() ?? relativePath);
