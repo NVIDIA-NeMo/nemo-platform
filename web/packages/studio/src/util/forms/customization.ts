@@ -348,12 +348,29 @@ export const customizationFormSchema = z
       spec = rlSpecSchema;
       value = data.rl;
       const grpo = data.grpo as Partial<GrpoFormFields> | undefined;
-      if (grpo?.trainingType === 'grpo' && !grpo?.environmentFileset) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'A reward environment fileset is required for GRPO training',
-          path: ['grpo', 'environmentFileset'],
-        });
+      if (grpo?.trainingType === 'grpo') {
+        if (!grpo.environmentFileset) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A reward environment fileset is required for GRPO training',
+            path: ['grpo', 'environmentFileset'],
+          });
+        }
+        // Mirrors the backend's _generation_length_fits_context validator: max_seq_length
+        // is the whole prompt + generation budget, so a larger generation cap is
+        // unsatisfiable and the job is rejected at submit.
+        const maxSeqLength = (data.rl as RlJobInput | undefined)?.training?.max_seq_length;
+        if (
+          grpo.max_new_tokens != null &&
+          maxSeqLength != null &&
+          grpo.max_new_tokens > maxSeqLength
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Max new tokens cannot exceed the max sequence length (${maxSeqLength}), which is the total prompt + generation budget`,
+            path: ['grpo', 'max_new_tokens'],
+          });
+        }
       }
     }
     const result = spec.safeParse(value);
@@ -545,7 +562,7 @@ export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields 
           ratio_clip_max: grpo.ratio_clip_max ?? defaults.ratio_clip_max,
           temperature: grpo.temperature ?? defaults.temperature,
           val_at_start: grpo.val_at_start ?? defaults.val_at_start,
-          max_new_tokens: grpo.max_new_tokens,
+          max_new_tokens: grpo.max_new_tokens ?? defaults.max_new_tokens,
           finetuning_type: grpo.finetuning_type ?? defaults.finetuning_type,
           lora: grpo.lora ? { ...defaults.lora, ...grpo.lora } : defaults.lora,
         }),

@@ -23,10 +23,10 @@ import { ComponentProps, FC, ReactNode } from 'react';
 const HyperparameterRows: FC<{ job: CustomizationJob }> = ({ job }) => {
   const rows: ReactNode[] = [];
   const { training } = job.spec;
-  // RL keeps these on spec.training rather than spec.schedule/spec.optimizer, so they
-  // read as blank for DPO and GRPO until the job details work lands.
-  const schedule = isRlJob(job) ? undefined : job.spec.schedule;
-  const optimizer = isRlJob(job) ? undefined : job.spec.optimizer;
+  // RL flattens these onto spec.training under the same names; the other backends
+  // split them into spec.schedule / spec.optimizer.
+  const schedule = isRlJob(job) ? job.spec.training : job.spec.schedule;
+  const optimizer = isRlJob(job) ? job.spec.training : job.spec.optimizer;
 
   rows.push(<KVPair key="epochs" label="Epochs" value={schedule?.epochs} />);
   rows.push(<KVPair key="max-steps" label="Max Steps" value={schedule?.max_steps} />);

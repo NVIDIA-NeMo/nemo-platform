@@ -365,7 +365,8 @@ export const GrpoParametersSection = () => {
                     useControllerProps={{ name: 'rl.training.keep_top_k', control }}
                     formFieldProps={{
                       slotLabel: 'Keep Top-K Checkpoints',
-                      slotInfo: 'Number of best checkpoints to retain, ranked by validation loss.',
+                      slotInfo:
+                        'Number of best checkpoints to retain, ranked by mean validation reward — higher is better. Falls back to the latest checkpoint when the dataset ships no validation split.',
                     }}
                     defaultValue={1}
                     min={1}
