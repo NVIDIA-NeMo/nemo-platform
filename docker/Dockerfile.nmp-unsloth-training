@@ -26,7 +26,7 @@
 #       also missing (common on newer CUDA stacks), logging "FA2 = False /
 #       Xformers = None".
 #   2. Editable installs of the platform glue (nemo-platform SDK, plugin,
-#      nmp-common, nmp-unsloth) from the in-repo workspace slice.
+#      nmp-common, nmp-unsloth[integrations]) from the in-repo workspace slice.
 #
 # Publish target: nmp-unsloth-training
 # Default tag:    `local` (override via BAKE_TAG at build time).
@@ -164,15 +164,17 @@ RUN chown -R ${USER_UID}:${USER_GID} /app
 
 # Step 2: install the platform glue editably. No [unsloth] extra here — that's
 # what we just installed in step 1, and re-triggering it would force the
-# resolver to re-evaluate the whole HF stack.
+# resolver to re-evaluate the whole HF stack. The [integrations] extra is
+# training-runtime only; nmp-api installs nmp-unsloth without extras.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --reinstall-package wandb \
     --overrides /opt/docker/no_override_requirements.txt \
     -e /app/sdk/python/nemo-platform \
     -e /app/packages/nemo_platform_plugin \
     -e /app/packages/nmp_common \
     -e /app/packages/nmp_customization_common \
-    -e "/app/services/unsloth"
+    -e "/app/services/unsloth[integrations]"
 
 # hf-transfer can pull huggingface-hub 1.x — install then re-pin hub + transformers.
 RUN --mount=type=cache,target=/root/.cache/uv \

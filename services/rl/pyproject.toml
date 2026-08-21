@@ -21,15 +21,15 @@ dependencies = [
     "packaging>=24.0",
 ]
 
-# Heavy ML deps (nemo-rl, ray, megatron, etc.) are NOT declared here: they are built
-# from source into the nmp-rl-base image by docker/rl/Dockerfile.nmp-rl-base, pinned
-# via the NEMO_RL_REF build-arg (see docker-bake.hcl, which pins an explicit commit
-# rather than the Dockerfile's branch default). The platform glue installs on top.
-# The package stays importable without them (compile.py + schemas), so plugin
-# discovery and the compiler pay no install cost.
+# Heavy ML deps (nemo-rl, ray, megatron, torch, transformers, etc.) are NOT declared here: they are
+# provided by the published NGC NeMo-RL container (v0.6.0) that
+# docker/Dockerfile.nmp-rl-base builds on, with the platform glue installed on
+# top — exactly like the reference customizer. The package stays importable
+# without that stack (compile.py + schemas), so plugin discovery and the compiler pay
+# no install cost.
 [project.optional-dependencies]
 integrations = [
-    "wandb>=0.25.1",
+    "wandb>=0.28.2",
     "mlflow-skinny",
 ]
 # Only pi-to-gym-conversion needs these, and it runs on an internet-capable host rather

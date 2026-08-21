@@ -9,9 +9,7 @@ requires-python = ">=3.11,<3.15"
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
-    "datasets>=3.3.1",
     "pydantic>=2.10.6",
-    "transformers>=4.48.0",
     "typer>=0.12.5",
 ]
 version = "0.0.0"
