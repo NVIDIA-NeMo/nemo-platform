@@ -5,6 +5,20 @@
 
 import pyarrow as pa
 from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
+from nemo_platform_plugin.files.dataset_profile import FeatureSchema
+
+
+def _fields(feature: FeatureSchema | None) -> list[FeatureSchema]:
+    """The named child fields of a container node.
+
+    Asserting them present rather than indexing through the optionals states the same expectation
+    the test already has -- this node is a struct, so it has fields -- and states it as a failure
+    the test reports rather than an `AttributeError` from inside a comprehension.
+    """
+    assert feature is not None, "expected a container node, found none"
+    assert feature.fields is not None, f"expected {feature.name!r} to have child fields"
+    return feature.fields
+
 
 # --- from a declared arrow schema (parquet) ------------------------------------------------------
 
@@ -22,7 +36,7 @@ def test_from_arrow_list_of_role_content_structs_is_messages():
     feature = derive_features([], schema)[0]
     assert feature.dtype == "messages"
     assert feature.items.dtype == "struct"
-    assert [f.name for f in feature.items.fields] == ["role", "content"]
+    assert [f.name for f in _fields(feature.items)] == ["role", "content"]
 
 
 def test_from_arrow_fixed_and_variable_lists_agree_on_shape():
@@ -48,7 +62,7 @@ def test_from_rows_list_of_role_content_structs_is_messages():
     rows = [{"conv": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"}]}]
     feature = derive_features(rows)[0]
     assert feature.dtype == "messages"
-    assert {f.name for f in feature.items.fields} == {"role", "content"}
+    assert {f.name for f in _fields(feature.items)} == {"role", "content"}
 
 
 def test_from_rows_sharegpt_from_value_is_messages():
@@ -57,7 +71,7 @@ def test_from_rows_sharegpt_from_value_is_messages():
     rows = [{"conversations": [{"from": "human", "value": "hi"}, {"from": "gpt", "value": "yo"}]}]
     feature = derive_features(rows)[0]
     assert feature.dtype == "messages"
-    assert {f.name for f in feature.items.fields} == {"from", "value"}
+    assert {f.name for f in _fields(feature.items)} == {"from", "value"}
 
 
 def test_from_arrow_sharegpt_from_value_is_messages():
@@ -76,7 +90,7 @@ def test_from_rows_lists_infer_their_element_type():
 def test_from_rows_nested_struct():
     feature = derive_features([{"meta": {"id": 1, "src": "a"}}, {"meta": {"id": 2, "src": "b"}}])[0]
     assert feature.dtype == "struct"
-    assert {f.name for f in feature.fields} == {"id", "src"}
+    assert {f.name for f in _fields(feature)} == {"id", "src"}
 
 
 def test_from_rows_all_null_column_is_json():

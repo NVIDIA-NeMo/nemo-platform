@@ -175,7 +175,6 @@ def _build_profile() -> DatasetProfile:
             rows_present=2048,
             files_read=2,
             files_present=2,
-            row_budget=1024,
         ),
         partitions=[
             PartitionProfile(
