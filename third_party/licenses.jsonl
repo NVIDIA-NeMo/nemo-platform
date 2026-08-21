@@ -7,14 +7,12 @@
 {"name": "aiohttp", "license": "APACHE-2.0", "compatible": true}
 {"name": "aiohttp-retry", "license": "MIT", "compatible": true}
 {"name": "aioitertools", "license": "MIT", "compatible": true}
-{"name": "aiolimiter", "license": "MIT", "compatible": true}
 {"name": "aiosignal", "license": "APACHE-2.0", "compatible": true}
 {"name": "aiosqlite", "license": "MIT", "compatible": true}
 {"name": "alembic", "license": "MIT", "compatible": true}
 {"name": "annotated-doc", "license": "MIT", "compatible": true}
 {"name": "annotated-types", "license": "MIT", "compatible": true}
 {"name": "anthropic", "license": "MIT", "compatible": true}
-{"name": "antlr4-python3-runtime", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "anyascii", "license": "ISC", "compatible": true}
 {"name": "anyio", "license": "MIT", "compatible": true}
 {"name": "appdirs", "license": "MIT", "compatible": true}
@@ -41,7 +39,6 @@
 {"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorama", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorlog", "license": "MIT", "compatible": true}
-{"name": "connect-python", "license": "APACHE-2.0", "compatible": true}
 {"name": "contourpy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cryptography", "license": "APACHE-2.0", "compatible": true}
 {"name": "cycler", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -83,7 +80,6 @@
 {"name": "fonttools", "license": "MIT", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "gepa", "license": "MIT", "compatible": true}
 {"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "github.com/cenkalti/backoff/v5", "license": "MIT", "compatible": true}
 {"name": "github.com/cespare/xxhash/v2", "license": "MIT", "compatible": true}
@@ -202,8 +198,6 @@
 {"name": "langgraph-sdk", "license": "MIT", "compatible": true}
 {"name": "langsmith", "license": "MIT", "compatible": true}
 {"name": "lark", "license": "MIT", "compatible": true}
-{"name": "latex2sympy2-extended", "license": "MIT", "compatible": true}
-{"name": "linkify-it-py", "license": "MIT", "compatible": true}
 {"name": "litellm", "license": "MIT", "compatible": true}
 {"name": "loguru", "license": "MIT", "compatible": true}
 {"name": "lxml", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -213,16 +207,12 @@
 {"name": "marko", "license": "MIT", "compatible": true}
 {"name": "markupsafe", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "marshmallow", "license": "MIT", "compatible": true}
-{"name": "math-verify", "license": "APACHE-2.0", "compatible": true}
 {"name": "matplotlib", "license": "PSF-2.0", "compatible": true}
 {"name": "mcp", "license": "MIT", "compatible": true}
-{"name": "mdit-py-plugins", "license": "MIT", "compatible": true}
 {"name": "mdurl", "license": "MIT", "compatible": true}
 {"name": "mlflow-skinny", "license": "APACHE-2.0", "compatible": true}
 {"name": "mmh3", "license": "MIT", "compatible": true}
 {"name": "more-itertools", "license": "MIT", "compatible": true}
-{"name": "mpmath", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "msgpack", "license": "APACHE-2.0", "compatible": true}
 {"name": "multidict", "license": "APACHE-2.0", "compatible": true}
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
@@ -256,7 +246,6 @@
 {"name": "oauthlib", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "onnxruntime", "license": "MIT", "compatible": true}
 {"name": "openai", "license": "APACHE-2.0", "compatible": true}
-{"name": "openai-agents", "license": "MIT", "compatible": true}
 {"name": "openai-codex", "license": "APACHE-2.0", "compatible": true}
 {"name": "openai-codex-cli-bin", "license": "APACHE-2.0", "compatible": true}
 {"name": "openapi-pydantic", "license": "MIT", "compatible": true}
@@ -299,8 +288,6 @@
 {"name": "portalocker", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "postgrest", "license": "MIT", "compatible": true}
 {"name": "prettytable", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "prime-sandboxes", "license": "MIT", "compatible": true}
-{"name": "prime-tunnel", "license": "MIT", "compatible": true}
 {"name": "prometheus-client", "license": "APACHE-2.0", "compatible": true}
 {"name": "prometheus-fastapi-instrumentator", "license": "ISC", "compatible": true}
 {"name": "prompt-toolkit", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -325,14 +312,12 @@
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyparsing", "license": "MIT", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "pyqwest", "license": "MIT", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-multipart", "license": "APACHE-2.0", "compatible": true}
 {"name": "pytz", "license": "MIT", "compatible": true}
 {"name": "pyyaml", "license": "MIT", "compatible": true}
-{"name": "pyzmq", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "ragas", "license": "APACHE-2.0", "compatible": true}
 {"name": "realtime", "license": "MIT", "compatible": true}
 {"name": "referencing", "license": "MIT", "compatible": true}
@@ -356,7 +341,6 @@
 {"name": "scipy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "secretstorage", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sentry-sdk", "license": "MIT", "compatible": true}
-{"name": "setproctitle", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "setuptools", "license": "MIT", "compatible": true}
 {"name": "shellingham", "license": "ISC", "compatible": true}
 {"name": "shortuuid", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -381,11 +365,9 @@
 {"name": "supabase", "license": "MIT", "compatible": true}
 {"name": "supabase-auth", "license": "MIT", "compatible": true}
 {"name": "supabase-functions", "license": "MIT", "compatible": true}
-{"name": "sympy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "tabulate", "license": "MIT", "compatible": true}
 {"name": "tblib", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "tenacity", "license": "APACHE-2.0", "compatible": true}
-{"name": "textual", "license": "MIT", "compatible": true}
 {"name": "tiktoken", "license": "MIT", "compatible": true}
 {"name": "tokenizers", "license": "APACHE-2.0", "compatible": true}
 {"name": "toml", "license": "MIT", "compatible": true}
@@ -405,7 +387,6 @@
 {"name": "typing-inspection", "license": "MIT", "compatible": true}
 {"name": "tzdata", "license": "APACHE-2.0", "compatible": true}
 {"name": "tzlocal", "license": "MIT", "compatible": true}
-{"name": "uc-micro-py", "license": "MIT", "compatible": true}
 {"name": "uncalled-for", "license": "MIT", "compatible": true}
 {"name": "urllib3", "license": "MIT", "compatible": true}
 {"name": "uuid-utils", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -419,7 +400,6 @@
 {"name": "wcwidth", "license": "MIT", "compatible": true}
 {"name": "websocket-client", "license": "APACHE-2.0", "compatible": true}
 {"name": "websockets", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "wget", "license": "PUBLIC DOMAIN", "compatible": true}
 {"name": "wrapt", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "xdg-base-dirs", "license": "ISC", "compatible": true}
 {"name": "xxhash", "license": "BSD-3-CLAUSE", "compatible": true}
