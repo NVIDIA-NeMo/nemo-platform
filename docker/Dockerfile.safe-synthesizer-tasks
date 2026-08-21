@@ -218,8 +218,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY docker/scripts/cve-cleanup.sh /bin/
 # Perl CVE cleanup removes dpkg-dev/build-essential; keep the non-Perl
 # compiler toolchain available for runtime JIT/native extension builds.
-RUN apt-mark manual gcc g++ make libc6-dev && \
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/remove-listed-files.py,readonly \
+    --mount=type=bind,source=docker/removals/files/base/cve-cleanup-runtime.txt,target=/tmp/file-removals.txt,readonly \
+    apt-mark manual gcc g++ make libc6-dev && \
     sh /bin/cve-cleanup.sh && \
+    python /tmp/remove-listed-files.py /tmp/file-removals.txt && \
     printf 'int main(void) { return 0; }\n' | gcc -x c - -o /tmp/gcc-check && \
     rm -f /tmp/gcc-check
 RUN mkdir -p "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}" "${OUTLINES_CACHE_DIR}" && \

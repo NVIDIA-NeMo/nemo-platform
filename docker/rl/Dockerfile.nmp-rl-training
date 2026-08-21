@@ -77,9 +77,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --label platform-glue
 
 # Late file cleanup for bundled or non-package-managed files.
-RUN --mount=type=bind,source=docker/scripts/remove-listed-files.sh,target=/tmp/remove-listed-files.sh,readonly \
-    --mount=type=bind,source=docker/customizer/removals/files/nmp-rl-training.txt,target=/tmp/file-removals.txt,readonly \
-    bash /tmp/remove-listed-files.sh /tmp/file-removals.txt
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/remove-listed-files.py,readonly \
+    --mount=type=bind,source=docker/removals/files/final/customizer-codecs.txt,target=/tmp/file-removals.txt,readonly \
+    python /tmp/remove-listed-files.py /tmp/file-removals.txt
 
 # Runtime uv cache: the base's /opt/uv_cache ships READ-ONLY on purpose - the prefetched venvs
 # symlink their package files into it, so a writable cache would let code running in this container
@@ -107,7 +107,8 @@ FROM runtime AS smoke-test
 ARG SMOKE_MARKER
 USER 0
 COPY tests/smoke_gpu/ /smoke_test/
-RUN uv-glue pip install --python /opt/nemo_rl_venv/bin/python --no-cache --reinstall pytest && \
+RUN --mount=type=bind,source=docker/removals/files/final/customizer-codecs.txt,target=/smoke_test/removals/files/final/customizer-codecs.txt,readonly \
+    uv-glue pip install --python /opt/nemo_rl_venv/bin/python --no-cache --reinstall pytest && \
     /opt/nemo_rl_venv/bin/pytest /smoke_test/ -m ${SMOKE_MARKER} -v
 
 FROM runtime
