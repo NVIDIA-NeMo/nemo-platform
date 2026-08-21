@@ -1,7 +1,7 @@
 ---
 name: terminus-bench-agent
-created_timestamp: 2026-06-15T00:00:00+00:00
-author: gdilorenzo@nvidia.com
+created_timestamp: 2026-08-21T22:03:52+00:00
+author: asutermorris@nvidia.com
 ---
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
@@ -14,6 +14,9 @@ Experimentalist copies the Harbor repository for every candidate, then imports
 `src/harbor` inside the candidate copy, so measurements always exercise the
 proposed code rather than an installed Harbor package already cached by the
 evaluator process.
+
+This example was inspired by `gdilorenzo@nvidia.com`'s earlier
+`terminal-bench-agent` work.
 
 ## Purpose
 
