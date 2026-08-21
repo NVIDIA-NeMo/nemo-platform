@@ -3,15 +3,15 @@
 
 # NeMo Eval Author
 
-Two skills that an agent reads to work on the evaluation suites in a user's own
-repository. There is no CLI, no service, and no importable code, so this directory
-builds no package at all. A customer points their agent at `skills/` and nothing
-gets installed.
+Three skills help an agent work on repository-owned evaluation suites and
+understand agent traces from Intake. This directory builds no package. A
+customer points their agent at `skills/`, and nothing gets installed.
 
 | Skill | Role |
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
+| [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Explains one Intake trace without presuming that it failed. |
 
 ## Where findings go
 
@@ -19,8 +19,13 @@ gets installed.
 JSON as front matter so a later model reads the verdict without Harbor. It is
 visible and worth committing: a teammate who reads it skips the discovery pass.
 
+`eval-author-inspect-trace` leaves one report per trace under
+`.eval-author/traces/`. The report preserves the complete Intake bundle in its
+front matter. Its findings use `behavior`, `issue`, `recovery`, and `uncertainty`
+categories.
+
 The scripts write no files. They report to stdout and the skill tells the agent
-where to save, because that is a judgement about someone's repository.
+where to save because that is a judgment about someone's repository.
 
 ## Why skills instead of an agent
 
@@ -34,16 +39,19 @@ The Eval Author agent that Experimentalist insight mode still uses lives in
 
 ## Dependencies
 
-The scripts under `skills/*/scripts/` import nothing beyond the standard library and
-Harbor itself, so they run on whatever Python the customer already has. Where a real
-answer needs a provider, the skill defers to the provider's own validators rather
-than guessing from file layout, which is why `eval-author-discover` probes for an
-installed Harbor and asks Harbor to judge each config.
+The Intake and entry-point scripts use only the Python standard library. The
+Harbor validation ladder also imports Harbor and its transitive dependencies.
+The discovery flow asks Harbor to judge each configuration instead of guessing
+from file layout.
 
-`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
-the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that
-make Harbor judge a fixture suite skip when Harbor is absent, which is why this
-directory declares no dependencies and appears in no dependency group.
+The Intake client reads `NMP_BASE_URL` and `NMP_ACCESS_TOKEN`. It permits HTTP
+only for loopback targets, rejects redirects, and makes read-only requests under
+`/apis/intake/v2/workspaces/{workspace}`.
+
+`tests/test_skill_contract.py` enforces the same dependency boundary.
+`tests/test_intake_scripts.py` tests the HTTP client against a local fake server.
+Neither test module imports the Platform. The five Harbor integration tests skip
+when Harbor is absent.
 
 Adding a runtime dependency to a bundled script is a breaking change for anyone who
 copied the skill, so the contract test walks each script's imports and fails on
