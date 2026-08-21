@@ -356,7 +356,7 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         assert run_result["request_id"] == job_name
         assert run_result["runtime_id"].startswith("runtime-")
         assert run_result["invocation_id"]
-        assert run_result["error"]["code"] == "adapter_reported_failure"
-        assert run_result["error"]["message"] == "adapter reported an invocation failure"
+        assert run_result["error"]["code"] == "deepagents_invocation_failed"
+        assert "intentional e2e model failure" in run_result["error"]["message"]
     finally:
         delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
