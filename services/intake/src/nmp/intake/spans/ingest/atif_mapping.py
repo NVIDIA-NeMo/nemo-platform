@@ -16,6 +16,7 @@ from typing import Any
 
 from nmp.intake.config import DEFAULT_ATIF_MAX_SUBAGENT_DEPTH, MAX_ATIF_MAX_SUBAGENT_DEPTH
 from nmp.intake.spans.domain import (
+    NEMO_STEP_ID_ATTRIBUTE,
     EvaluatorResult,
     EvaluatorResultDataType,
     IntakeSpan,
@@ -347,6 +348,7 @@ def _step_to_span(
         cost_total_usd=_decimal(metrics.cost_usd) if metrics is not None else None,
         raw_attributes=raw_step,
     )
+    attribute_bags.number[NEMO_STEP_ID_ATTRIBUTE] = float(step.step_id)
     step_started_at = _step_started_at(step, index, ingested_at)
     return IntakeSpan(
         workspace=workspace,
@@ -358,7 +360,6 @@ def _step_to_span(
         kind=_step_kind(step),
         name=(default_agent_name if isinstance(step, AtifStepAgent) else f"{step.source}-{step.step_id}"),
         status=SpanStatus.SUCCESS,
-        step_id=step.step_id,
         start_time=step_started_at,
         end_time=_clamped_end(step_started_at, step_ended_at),
         attributes_string=attribute_bags.string,

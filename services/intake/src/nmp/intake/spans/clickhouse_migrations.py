@@ -103,7 +103,6 @@ def _create_spans_schema(client, settings: ClickHouseMigrationSettings) -> None:
             kind LowCardinality(String) DEFAULT 'UNKNOWN',
             name String DEFAULT '',
             status LowCardinality(String) DEFAULT 'unknown',
-            step_id Nullable(UInt64),
 
             start_time DateTime64(6) CODEC(Delta(8), ZSTD(1)),
             end_time DateTime64(6) DEFAULT toDateTime64(0, 6) CODEC(Delta(8), ZSTD(1)),
@@ -243,22 +242,6 @@ def _add_evaluator_results_skip_indexes(client, settings: ClickHouseMigrationSet
     client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_created_at")
 
 
-def _add_atif_step_id(client, settings: ClickHouseMigrationSettings) -> None:
-    """Persist ATIF trajectory order and recover it from retained raw step payloads."""
-
-    table = _table(settings, "spans")
-    client.command(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS step_id Nullable(UInt64) AFTER status")
-    client.command(
-        f"""
-        ALTER TABLE {table}
-        UPDATE step_id = nullIf(JSONExtractUInt(attributes_string['atif.raw'], 'step_id'), 0)
-        WHERE source_format = 'atif'
-          AND step_id IS NULL
-          AND JSONExtractString(attributes_string['atif.raw'], 'source') IN ('system', 'user', 'agent')
-        """
-    )
-
-
 def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) -> None:
     """Create the root-span trace index and insert-time projection."""
 
@@ -396,9 +379,6 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     # map. Rebuild backfills them from ``spans``, which shares trace_index's retention window, so
     # no retained history is lost. A separate revision because 0007 already shipped.
     ("ch_trace_index_0008_agent", _create_trace_index_schema),
-    # ATIF step order is part of the durable span contract. The migration also
-    # recovers retained step spans because ATIF raw payloads preserved step_id.
-    ("ch_spans_0003_atif_step_id", _add_atif_step_id),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

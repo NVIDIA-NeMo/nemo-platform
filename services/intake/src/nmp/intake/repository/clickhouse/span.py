@@ -13,7 +13,7 @@ from nmp.common.api.common import PaginatedResult
 from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseInsert, ClickHouseQuery
 from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.repository.span import SpanRepository
-from nmp.intake.spans.domain import IntakeResponseMode, IntakeSpan, SpanGroup, SpanListFilter
+from nmp.intake.spans.domain import NEMO_STEP_ID_ATTRIBUTE, IntakeResponseMode, IntakeSpan, SpanGroup, SpanListFilter
 from nmp.intake.spans.span_attribute_catalog import where_clause
 from nmp.intake.spans.storage import (
     dict_to_row,
@@ -35,7 +35,6 @@ SPAN_COLUMNS = [
     "kind",
     "name",
     "status",
-    "step_id",
     "start_time",
     "end_time",
     "attributes_string",
@@ -349,7 +348,8 @@ def _order_by(sort: str) -> str:
     column = SPAN_SORT_COLUMNS.get(field)
     if column is None:
         raise ValueError(f"Unsupported span sort field: {field}")
-    return f"{column} {direction}, step_id {direction} NULLS LAST, id ASC"
+    nemo_step_id = f"nullIf(attributes_number['{NEMO_STEP_ID_ATTRIBUTE}'], 0)"
+    return f"{column} {direction}, {nemo_step_id} {direction} NULLS LAST, id ASC"
 
 
 def _group_order_by(sort: str, group_by: list[str]) -> str:
@@ -374,7 +374,6 @@ def _span_to_row(span: IntakeSpan) -> dict[str, Any]:
         "kind": span.kind.value,
         "name": span.name,
         "status": span.status.value,
-        "step_id": span.step_id,
         "start_time": span.start_time,
         "end_time": span.end_time or _ZERO_DATETIME,
         "attributes_string": span.attributes_string,
@@ -428,7 +427,6 @@ def _row_to_span(
         kind=normalize_span_kind(row.get("kind")),
         name=row.get("name") or "",
         status=normalize_span_status(row.get("status")),
-        step_id=int(row["step_id"]) if row.get("step_id") is not None else None,
         start_time=row["start_time"],
         end_time=_none_if_zero_datetime(row.get("end_time")),
         attributes_string=dict(row.get("attributes_string") or {}),

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
-from nmp.intake.spans.domain import SpanKind, SpanStatus
+from nmp.intake.spans.domain import NEMO_STEP_ID_ATTRIBUTE, SpanKind, SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -553,9 +553,9 @@ def test_atif_mapping_persists_step_order_when_timestamps_match() -> None:
     )
 
     spans = trajectory_to_spans(workspace="default", trajectory=trajectory, ingested_at=timestamp)
-    steps = [span for span in spans if span.step_id is not None]
+    steps = [span for span in spans if NEMO_STEP_ID_ATTRIBUTE in span.attributes_number]
 
-    assert [(span.name, span.start_time, span.step_id) for span in steps] == [
+    assert [(span.name, span.start_time, span.attributes_number[NEMO_STEP_ID_ATTRIBUTE]) for span in steps] == [
         ("system-1", timestamp, 1),
         ("user-2", timestamp, 2),
     ]
