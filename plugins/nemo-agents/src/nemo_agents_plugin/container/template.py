@@ -89,7 +89,7 @@ _ENV_MAP: dict[str, str] = {
     "uv_version": "NEMO_AGENTS_UV_VERSION",
 }
 
-PINNED_NEMO_RELAY_CLI_VERSION = "0.6.0"
+PINNED_NEMO_RELAY_CLI_VERSION = "0.7.3"
 PINNED_NEMO_RELAY_INSTALLER_COMMIT = "40c5990361afc26ae8b901ff1f49c2b03ddd9ede"
 PINNED_NEMO_RELAY_INSTALLER_SHA256 = "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb"
 
@@ -238,14 +238,16 @@ COPY ./ /workspace
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" . && \\
+    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
+      "nemo-relay=={{ pinned_nemo_relay_cli_version }}" . && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% else %}
 # The plugin owns the supported Fabric adapter and harness dependency set.
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" && \\
+    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
+      "nemo-relay=={{ pinned_nemo_relay_cli_version }}" && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% endif %}
 

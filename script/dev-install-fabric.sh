@@ -28,7 +28,7 @@
 #
 # Usage:
 #   script/dev-install-fabric.sh                                # version matching the installed bindings
-#   NEMO_RELAY_VERSION=0.6.0-rc.4 script/dev-install-fabric.sh   # pin a specific gateway release
+#   NEMO_RELAY_VERSION=0.7.3 script/dev-install-fabric.sh        # pin a specific gateway release
 set -euo pipefail
 
 VENV_PY=".venv/bin/python"
@@ -38,7 +38,7 @@ if [ ! -x "$VENV_PY" ]; then
 fi
 
 # NeMo-Relay tags releases with the version PyPI publishes, but PyPI normalizes prereleases
-# (0.6.0rc4) while the git tag is semver (0.6.0-rc.4), so convert.
+# (for example, 0.7.0rc1) while the git tag is semver (0.7.0-rc.1), so convert.
 if [ -z "${NEMO_RELAY_VERSION:-}" ]; then
   bindings_version="$("$VENV_PY" -c 'import importlib.metadata as m; print(m.version("nemo-relay"))' 2>/dev/null || true)"
   if [ -z "$bindings_version" ]; then

@@ -357,6 +357,8 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         assert run_result["runtime_id"].startswith("runtime-")
         assert run_result["invocation_id"]
         assert run_result["error"]["code"] == "deepagents_invocation_failed"
-        assert run_result["error"]["message"]
+        error_message = run_result["error"]["message"]
+        assert "InternalServerError" in error_message
+        assert "Error code: 500" in error_message
     finally:
         delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)

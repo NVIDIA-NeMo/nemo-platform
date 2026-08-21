@@ -328,7 +328,7 @@ def test_trajectory_telemetry_built_from_relay_types() -> None:
     assert component["kind"] == "observability" and component["enabled"] is True
     cfg = component["config"]
     # The ATIF/ATOF file exporter is configured with the names both runtimes agree on. Since
-    # nemo-relay 0.6 the ATOF destination lives in a typed sink list rather than flat on the config.
+    # Since nemo-relay 0.6 the ATOF destination lives in a typed sink list rather than flat on the config.
     assert cfg["atif"]["enabled"] is True
     assert cfg["atif"]["filename_template"] == crt._common.ATIF_FILENAME_TEMPLATE
     assert cfg["atof"]["enabled"] is True
