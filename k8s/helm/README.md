@@ -227,7 +227,7 @@ and
 | core | object | This object has the following default values for the core deployment configuration. | Core deployment configuration settings |
 | core.controller.affinity | object | `{}` | Affinity configuration for the controller service. |
 | core.controller.annotations | object | `{}` | Annotations to add to the controller service deployment. |
-| core.controller.controllerGroup | string | `"core"` | Predefined controller group passed to `nemo services run --controller-group`. Ignored when core.controller.controllers is non-empty. |
+| core.controller.controllerGroup | string | `"all"` | Predefined controller group passed to `nemo services run --controller-group`. Ignored when core.controller.controllers is non-empty. |
 | core.controller.controllers | list | `[]` | Explicit controllers passed to `nemo services run --controllers`. When non-empty, overrides core.controller.controllerGroup. Must be a list. |
 | core.controller.env | object | `{}` | Additional environment variables to pass to containers. This is an object formatted like NAME: value or NAME: valueFrom: {object}. |
 | core.controller.extraArgs | list | `[]` | Additional arguments to pass to the Core Controller service |

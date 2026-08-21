@@ -893,7 +893,7 @@ core:
       # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template.
       name: ""
     # -- Predefined controller group passed to `nemo services run --controller-group`. Ignored when core.controller.controllers is non-empty.
-    controllerGroup: core
+    controllerGroup: all
     # -- Explicit controllers passed to `nemo services run --controllers`. When non-empty, overrides core.controller.controllerGroup. Must be a list.
     controllers: []
     # -- Additional arguments to pass to the Core Controller service
