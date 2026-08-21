@@ -2567,3 +2567,103 @@ class TestFabricTagNamespace:
         build_fabric_agent_image(fabric_agent_config, tag="my-agent:1.0", skip_validation=True)
 
         assert mock_build.call_args.kwargs["tag"] == "my-agent:1.0"
+
+
+class TestInstallableContractVersion:
+    @pytest.mark.parametrize(
+        "version",
+        [
+            "0.3.0.post402.dev0+062f0ac6e8",  # setuptools-scm from a source checkout
+            "0.3.0+local",
+            "1.2.3.dev0",
+        ],
+    )
+    def test_unpublishable_versions_are_rejected(self, version: str) -> None:
+        from nemo_agents_plugin.container.template import require_installable_contract_version
+
+        with pytest.raises(ValueError, match="Fabric packaging pins this exact version"):
+            require_installable_contract_version(version)
+
+    @pytest.mark.parametrize("version", ["0.3.0", "0.4.0", "1.0.0.post1", "0.4.0rc1"])
+    def test_published_versions_are_accepted(self, version: str) -> None:
+        from nemo_agents_plugin.container.template import require_installable_contract_version
+
+        require_installable_contract_version(version)
+
+    def test_missing_install_keeps_its_own_message(self) -> None:
+        from nemo_agents_plugin.container.template import (
+            UNRESOLVED_CONTRACT_VERSION,
+            require_installable_contract_version,
+        )
+
+        with pytest.raises(ValueError, match="Unable to resolve the installed nemo-platform contract version"):
+            require_installable_contract_version(UNRESOLVED_CONTRACT_VERSION)
+
+    @pytest.mark.parametrize("value", ["1", "true", "YES"])
+    def test_env_override_allows_an_unpublished_version(self, value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container.template import (
+            ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV,
+            require_installable_contract_version,
+        )
+
+        monkeypatch.setenv(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, value)
+        require_installable_contract_version("0.3.0.post402.dev0+062f0ac6e8")
+
+    def test_env_override_ignores_unset_and_falsey(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container.template import (
+            ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV,
+            require_installable_contract_version,
+        )
+
+        monkeypatch.setenv(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, "0")
+        with pytest.raises(ValueError):
+            require_installable_contract_version("0.3.0+local")
+
+    def test_override_cannot_bypass_an_unresolved_version(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container.template import (
+            ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV,
+            UNRESOLVED_CONTRACT_VERSION,
+            require_installable_contract_version,
+        )
+
+        monkeypatch.setenv(ALLOW_UNPUBLISHED_CONTRACT_VERSION_ENV, "1")
+
+        with pytest.raises(ValueError, match="Unable to resolve the installed nemo-platform contract version"):
+            require_installable_contract_version(UNRESOLVED_CONTRACT_VERSION)
+
+    def test_custom_template_may_use_an_unpublished_version(self) -> None:
+        from nemo_agents_plugin.container.template import require_installable_contract_version
+
+        require_installable_contract_version("0.3.0.post402.dev0+062f0ac6e8", pins_contract_version=False)
+
+    def test_custom_template_still_needs_an_installed_platform(self) -> None:
+        from nemo_agents_plugin.container.template import (
+            UNRESOLVED_CONTRACT_VERSION,
+            require_installable_contract_version,
+        )
+
+        with pytest.raises(ValueError, match="Unable to resolve"):
+            require_installable_contract_version(UNRESOLVED_CONTRACT_VERSION, pins_contract_version=False)
+
+    def test_render_with_custom_template_allows_a_checkout_version(
+        self, tmp_path: Path, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "0.3.0.post402.dev0+062f0ac6e8")
+        custom = tmp_path / "custom.j2"
+        custom.write_text("FROM scratch\nLABEL agent={{ agent_name }}\n")
+
+        result = template.render_fabric_dockerfile(fabric_agent_config, template_path=str(custom))
+
+        assert "FROM scratch" in result
+
+    def test_render_rejects_a_source_checkout_version(
+        self, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "0.3.0.post402.dev0+062f0ac6e8")
+
+        with pytest.raises(ValueError, match="local build identifier"):
+            template.render_fabric_dockerfile(fabric_agent_config)
