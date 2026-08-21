@@ -6,10 +6,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import typer
 from click.exceptions import Exit as ClickExit
+from nemo_agents_plugin.container.errors import AgentConfigValidationError, ManagedFileConflictError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -382,7 +385,7 @@ class TestFabricDockerfileTemplate:
     """Direct contract tests for the Fabric template before its renderer is wired."""
 
     @staticmethod
-    def _render(**overrides: object) -> str:
+    def _render(**overrides: Any) -> str:
         from dataclasses import asdict
 
         from nemo_agents_plugin.container.template import (
@@ -1329,7 +1332,7 @@ class TestBuildAgentImage:
         bad.write_text("no_workflow_here: true\n")
         mock_build.return_value = "x:latest"
 
-        with pytest.raises((SystemExit, ClickExit)):
+        with pytest.raises(AgentConfigValidationError):
             build_nat_agent_image(bad, nat_version="1.0.0")
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
@@ -1430,7 +1433,7 @@ class TestDefaultTag:
 
 
 class TestDockerPush:
-    def _call_push(self, mock_docker: MagicMock, **kwargs: str | None) -> str:
+    def _call_push(self, mock_docker: MagicMock, **kwargs: Any) -> str:
         import sys
         from importlib import reload
 
@@ -1598,7 +1601,7 @@ class TestEndToEndPipeline:
         bad = tmp_path / "bad_agent.yaml"
         bad.write_text("llms:\n  x: {}\n")
 
-        with pytest.raises((SystemExit, ClickExit)):
+        with pytest.raises(AgentConfigValidationError):
             build_nat_agent_image(bad, nat_version="1.0.0")
 
         mock_build.assert_not_called()
@@ -2137,7 +2140,9 @@ class TestPackageCommand:
         assert "Image ready: my-agent:1.0" in result.stdout
         assert "Published: nvcr.io/my-org/my-agent:1.0" in result.stdout
         mock_build.assert_called_once()
-        mock_push.assert_called_once_with(local_tag="my-agent:1.0", registry="nvcr.io/my-org", push_tag=None)
+        mock_push.assert_called_once_with(
+            local_tag="my-agent:1.0", registry="nvcr.io/my-org", push_tag=None, on_progress=typer.echo
+        )
 
     def test_publish_without_registry_fails(self, package_cli, agent_config: Path) -> None:
         """``--publish`` without ``--registry`` is rejected before any build runs."""
@@ -2524,7 +2529,7 @@ class TestPackagingSafetyRegressions:
         user_file = agent_config.parent / "Dockerfile.generated"
         user_file.write_text("USER OWNED — DO NOT DELETE\n")
 
-        with pytest.raises((SystemExit, ClickExit)):
+        with pytest.raises(ManagedFileConflictError):
             build_nat_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
 
         assert user_file.exists()
