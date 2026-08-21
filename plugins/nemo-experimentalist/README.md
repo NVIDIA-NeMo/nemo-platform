@@ -78,9 +78,7 @@ single leader, so complementary strengths stay alive across rounds.
   analyze traces or host an Insight API.
 - [Eval Author](src/nemo_experimentalist_plugin/eval_author/README.md) builds the
   Insight-specific evaluation suite, and Insight mode invokes it automatically. It
-  ships inside this plugin. The separate
-  [Eval Author package](../nemo-eval-author/README.md) is the customer-facing path,
-  and it ships skills rather than an agent or a CLI.
+  ships inside this plugin.
 - **Harbor** runs the task containers that score every candidate.
 - **NeMo Experiments** mirrors each run and its candidates as an experiment
   group, so the lineage is visible in Studio. Structure only — rewards and

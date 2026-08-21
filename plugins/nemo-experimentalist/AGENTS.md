@@ -29,9 +29,6 @@ Experimentalist imports nothing from `nemo-eval-author-plugin`, so the package c
   ten borrows to zero, so it went away with them.
 - `tests/test_contract_dependency.py` asserts that this plugin never declares
   `nemo-eval-author-plugin` as a dependency, which is what keeps the cycle broken.
-- `plugins/nemo-eval-author/` ships the customer-facing skills and nothing else. Its CLI
-  and `discovery/` package went away with the pivot to skills, and with them the last
-  borrow from this plugin, so neither side imports the other now.
 - Agent tests live in `tests/eval_author/`. This plugin's `conftest.py` already covers the
   isolation those tests need, so the Eval Author copy went away.
 
@@ -44,8 +41,7 @@ plugin's `AgentsCLI` discovers and mounts. There is no top-level
 
 The Analyst follows the same rule: `nemo agents analyst run` (was `nemo insights
 analyze`). Prefer `ctx.command_path` over a hardcoded path when a message quotes the
-command back to the user. Eval Author had a command group under this rule and no
-longer does; it ships skills instead.
+command back to the user.
 
 ### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone (superseded)
 
