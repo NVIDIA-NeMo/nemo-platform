@@ -15,12 +15,21 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing_extensions import Literal
 
-from .access_key_list_params import AccessKeyListParams as AccessKeyListParams
-from .access_key_create_params import AccessKeyCreateParams as AccessKeyCreateParams
-from .access_key_list_response import AccessKeyListResponse as AccessKeyListResponse
-from .access_key_create_response import AccessKeyCreateResponse as AccessKeyCreateResponse
-from .access_key_revoke_response import AccessKeyRevokeResponse as AccessKeyRevokeResponse
-from .access_key_metadata_response import AccessKeyMetadataResponse as AccessKeyMetadataResponse
-from .access_key_status_change_response import AccessKeyStatusChangeResponse as AccessKeyStatusChangeResponse
+from ..._models import BaseModel
+
+__all__ = ["AccessKeyStatusChangeResponse"]
+
+
+class AccessKeyStatusChangeResponse(BaseModel):
+    """Response returned after a reversible Scoped Access Key status change."""
+
+    changed: bool
+    """True when this request changed the key's persistent status."""
+
+    jti: str
+    """Stable JWT ID for this Scoped Access Key."""
+
+    status: Literal["ACTIVE", "EXPIRED", "SUSPENDED"]
+    """Resulting effective status of the key, including expiration."""
