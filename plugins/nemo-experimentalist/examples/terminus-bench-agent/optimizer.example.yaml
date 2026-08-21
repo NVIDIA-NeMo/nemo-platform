@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Copy to optimizer.yaml and replace the dataset paths before running doctor.
+# Prepare this directory with prepare-candidate-source.sh. It is a disposable
+# Harbor snapshot with the Experimentalist-only wrapper overlaid at its root.
+agent: terminus-2
+agent_source: /absolute/path/to/staged-harbor-candidate-source
+agent_spec: ./AGENT-SPEC.md
+task_template: /absolute/path/to/terminal-bench-task-template
+datasets:
+  train: /absolute/path/to/terminal-bench-train
+  validation: /absolute/path/to/terminal-bench-validation
+workspace: default
+experiment_config:
+  outcome_evaluator: harbor-native
+  max_rounds: 1
+  max_candidates: 1
+  max_survivors: 1
+  trajectory_scorer: null
+  terminator: null
+  outcome_evaluator_config:
+    import_path: harbor_wrapper:WrappedAgent
+    n_attempts: 1
+    n_concurrent_trials: 1
+    quiet: false
+    trace_format: atif
+  storage:
+    # Keep candidates local until a winning change is explicitly reviewed and
+    # committed on the Harbor fork branch.
+    publish_winner: false
