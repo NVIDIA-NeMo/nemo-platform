@@ -52,13 +52,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             "default": fabric.ModelConfig(**model_payload),
         },
         instructions=_instructions_config(config),
-        environment=fabric.EnvironmentConfig(
-            provider=config.environment.provider,
-            workspace=config.environment.workspace,
-            artifacts=config.environment.artifacts,
-            env=runtime_env,
-            settings=config.environment.settings,
-        ),
+        environment=_environment_config(config, runtime_env),
         skills=_skills_config(config),
         mcp=_mcp_config(config),
         tools=_tools_config(config),
@@ -71,6 +65,36 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
 def _platform_runtime_env() -> dict[str, str]:
     """Forward the Platform location needed by SDK-backed child tools."""
     return {name: value for name in PLATFORM_RUNTIME_ENV_VARS if (value := os.environ.get(name))}
+
+
+def _environment_config(config: AgentConfig, runtime_env: dict[str, str]) -> Any:
+    """Build FabricConfig.environment, merging spec env + mirror fields.
+
+    ``runtime_env`` carries platform-injected values (base URLs, gateway
+    credential). The EnvironmentSpec's plaintext ``env`` (merged onto
+    ``config.environment.env`` at deploy time) is layered underneath so
+    platform-injected values win on key collision.
+    """
+    environment = config.environment
+    env = {**environment.env, **runtime_env}
+    kwargs: dict[str, Any] = {
+        "provider": environment.provider,
+        "workspace": environment.workspace,
+        "artifacts": environment.artifacts,
+        "env": env,
+        "settings": environment.settings,
+    }
+    # Forward optional Fabric mirror fields only when set, so defaults stay with
+    # Fabric rather than being pinned by the platform config.
+    if environment.control_location is not None:
+        kwargs["control_location"] = environment.control_location
+    if environment.ownership is not None:
+        kwargs["ownership"] = environment.ownership
+    if environment.connection:
+        kwargs["connection"] = environment.connection
+    if environment.metadata:
+        kwargs["metadata"] = environment.metadata
+    return fabric.EnvironmentConfig(**kwargs)
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:

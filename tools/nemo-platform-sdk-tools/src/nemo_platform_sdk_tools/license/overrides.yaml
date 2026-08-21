@@ -112,6 +112,7 @@ overrides:
   vine: BSD-3-Clause # Promises/futures library for Celery
 
   # Configuration / Parsing
+  antlr4-python3-runtime: BSD-3-Clause # ANTLR 4 runtime; via latex2sympy2-extended <- math-verify
   expandvars: MIT # Shell-style env var expansion
   ply: BSD-3-Clause # Python Lex-Yacc (parsing)
 
@@ -244,6 +245,7 @@ overrides:
   supervisor: BSD-3-Clause
   typing-extensions: PSF-2.0
   unsloth-zoo: LGPL-3.0-or-later
+  wget: Public Domain # Declares "License: Public Domain" (no SPDX id); via verifiers <- NeMo Gym
   zope-interface: ZPL-2.0
 
   # Files service

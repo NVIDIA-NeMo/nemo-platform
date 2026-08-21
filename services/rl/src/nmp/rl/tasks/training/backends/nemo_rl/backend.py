@@ -30,12 +30,19 @@ from nmp.rl.app.jobs.training.schemas import (
 from nmp.rl.app.jobs.training.schemas import (
     TrainingBackend as TrainingBackendEnum,
 )
-from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import convert_dcp_to_huggingface
+from nmp.rl.entities.values import FinetuningType
+from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import (
+    LORA_ADAPTER_SEARCH_PATHS,
+    convert_dcp_to_huggingface,
+    copy_lora_adapter,
+    find_lora_adapter_root,
+)
 from nmp.rl.tasks.training.chat_templates import apply_chat_template_to_checkpoint
 from nmp.rl.tasks.training.errors.parser import parse_error_from_output
 from nmp.rl.tasks.training.protocol import LibraryConfig, TrainingBackend
 
 from .dpo_config import compile_dpo_config
+from .grpo_config import compile_grpo_config
 from .ray_bootstrap import create_bootstrap_from_env
 
 logger = logging.getLogger(__name__)
@@ -45,9 +52,9 @@ _DRIVER_DIR = Path(__file__).parent
 
 
 class NemoRLBackend(TrainingBackend):
-    """TrainingBackend implementation for NeMo RL (DPO).
+    """TrainingBackend implementation for NeMo RL (DPO and GRPO).
 
-    This backend handles DPO (Direct Preference Optimization) training using NeMo RL.
+    This backend handles DPO and GRPO training using NeMo RL.
 
     Key responsibilities:
     - Run pre-training conversions (model to HF format) via injected converter
@@ -94,13 +101,12 @@ class NemoRLBackend(TrainingBackend):
         if training_type == TrainingType.DPO:
             return compile_dpo_config(customizer_config, self._job_ctx)
 
-        # GRPO is reserved headroom in the schema but not yet implemented. Reject
-        # it here — the earliest training-type-specific wiring point — so the job
-        # fails fast with a clear message instead of routing to an unfinished stub
-        # and crashing deep inside the training container.
+        if training_type == TrainingType.GRPO:
+            return compile_grpo_config(customizer_config, self._job_ctx)
+
         raise NotImplementedError(
-            f"NemoRLBackend does not yet support training type {training_type.value!r}. "
-            f"Only {TrainingType.DPO.value!r} is currently available."
+            f"NemoRLBackend does not support training type {training_type.value!r}. "
+            f"Supported: {TrainingType.DPO.value!r}, {TrainingType.GRPO.value!r}."
         )
 
     def execute_training(
@@ -208,9 +214,12 @@ class NemoRLBackend(TrainingBackend):
         if training_type == TrainingType.DPO:
             return _DRIVER_DIR / "dpo_driver.py"
 
+        if training_type == TrainingType.GRPO:
+            return _DRIVER_DIR / "grpo_driver.py"
+
         raise NotImplementedError(
             f"No training driver available for training type {training_type.value!r}; "
-            f"only {TrainingType.DPO.value!r} is currently supported."
+            f"supported: {TrainingType.DPO.value!r}, {TrainingType.GRPO.value!r}."
         )
 
     def find_best_checkpoint(
@@ -265,32 +274,63 @@ class NemoRLBackend(TrainingBackend):
     ) -> CheckpointInfo:
         """Process NeMo RL checkpoint to standard output format.
 
-        The NeMo RL driver already converts checkpoints to HuggingFace format.
-        This method copies the output and applies the chat template.
-
-        Args:
-            checkpoint_path: Path to the checkpoint directory in the DCP format
-            output_path: Where to write the processed checkpoint in the HF format
-            customizer_config: Training configuration
-            library_config: Library-specific config (contains chat template)
-
-        Returns:
-            CheckpointInfo with output path, format, and precision
+        Full-weight jobs convert DCP → HuggingFace. GRPO LoRA jobs publish the exported
+        HF-PEFT adapter tree, which NeMo-RL nests under ``policy/weights`` rather than
+        leaving at the checkpoint root; only if no adapter is found do they fall back to
+        DCP conversion, and the artifact is still labelled PEFT.
         """
         logger.info("Processing created checkpoint")
+        is_lora = customizer_config.training.finetuning_type == FinetuningType.LORA
+
+        # Temporary: dump checkpoint tree for adapter / conversion debugging.
+        tree_entries: list[str] = []
+        if checkpoint_path.is_dir():
+            for root, dirs, files in os.walk(checkpoint_path):
+                rel_root = Path(root).relative_to(checkpoint_path)
+                for name in sorted(dirs):
+                    tree_entries.append(str(rel_root / name) + "/")
+                for name in sorted(files):
+                    tree_entries.append(str(rel_root / name))
+        else:
+            tree_entries.append(f"<not a directory: {checkpoint_path}>")
+        logger.info(
+            "Checkpoint tree under %s (%d entries):\n%s",
+            checkpoint_path,
+            len(tree_entries),
+            "\n".join(tree_entries) if tree_entries else "<empty>",
+        )
+
+        if is_lora:
+            adapter_root = find_lora_adapter_root(checkpoint_path)
+            if adapter_root is not None:
+                logger.info("Copying LoRA adapter from %s to %s", adapter_root, output_path)
+                copy_lora_adapter(checkpoint_path, adapter_root, output_path)
+                return CheckpointInfo(
+                    path=str(output_path),
+                    format=CheckpointFormat.HF_PEFT,
+                    precision=customizer_config.model.precision,
+                )
+            # DCP conversion below rebuilds full weights, which is wrong for an adapter
+            # run, so say why it was reached rather than failing three frames deeper.
+            logger.warning(
+                "No adapter_config.json under %s (searched %s); falling back to DCP conversion",
+                checkpoint_path,
+                ", ".join(str(path) for path in LORA_ADAPTER_SEARCH_PATHS),
+            )
+
         hf_checkpoint_path = convert_dcp_to_huggingface(checkpoint_path, output_path)
 
-        # Apply chat template if available
+        # Apply chat template if available (full-weight / merged HF trees only)
         chat_template = None
         if library_config and library_config.config_dict:
             chat_template = library_config.config_dict.get("policy", {}).get("tokenizer", {}).get("chat_template")
 
-        if chat_template:
+        if chat_template and not is_lora:
             apply_chat_template_to_checkpoint(hf_checkpoint_path, chat_template)
             logger.debug("Applied chat template to checkpoint")
 
         return CheckpointInfo(
             path=str(hf_checkpoint_path),
-            format=CheckpointFormat.HF,
+            format=CheckpointFormat.HF_PEFT if is_lora else CheckpointFormat.HF,
             precision=customizer_config.model.precision,
         )

@@ -43,7 +43,7 @@ class AccessKeyCreateResponse(BaseModel):
     principal: str
     """Principal ID stamped into the token."""
 
-    status: Literal["ACTIVE", "EXPIRED", "REVOKED"]
+    status: Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"]
 
     token_type: Literal["Bearer"]
 

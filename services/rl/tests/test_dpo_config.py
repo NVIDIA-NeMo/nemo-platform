@@ -29,6 +29,7 @@ from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import (
     _build_logger_config,
     _build_optimizer_config,
     _build_scheduler_config,
+    _build_tokenizer_config,
     _megatron_cfg_disabled,
 )
 from nmp.rl.tasks.training.datasets.preparation import PreparedDataset
@@ -261,3 +262,25 @@ def test_the_dpo_block_carries_the_default_when_unstated(tmp_path: Path) -> None
     cfg = compile_dpo_config(step_config, _job_ctx(tmp_path))
 
     assert cfg["dpo"]["progress_time_series_metrics"] is None, "absent means everything, not nothing"
+
+
+def test_tokenizer_config_omits_chat_template_when_none() -> None:
+    """NeMo-RL's TokenizerConfig has ``chat_template: NotRequired[str]``.
+
+    Absent is valid; ``None`` is not. ``resolve_chat_template`` returns None for any
+    model that ships no template and has no user override, so emitting the key
+    unconditionally fails MasterConfig validation in the driver. Shared by DPO and
+    GRPO, hence tested on the helper rather than in one backend.
+    """
+    tokenizer = _build_tokenizer_config("/var/run/scratch/job/model", None)
+
+    assert "chat_template" not in tokenizer
+    assert tokenizer["name"] == "/var/run/scratch/job/model"
+    # NotRequired[dict | None] -- None is accepted here, unlike chat_template.
+    assert tokenizer["chat_template_kwargs"] is None
+
+
+def test_tokenizer_config_keeps_chat_template_when_present() -> None:
+    tokenizer = _build_tokenizer_config("/model", "{{ bos_token }}")
+
+    assert tokenizer["chat_template"] == "{{ bos_token }}"

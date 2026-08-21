@@ -8,8 +8,8 @@
 # from source (rather than the prebuilt NGC nemo-rl image) lets us pin any RL commit via
 # NEMO_RL_REF; Gym follows as RL's submodule pin.
 #
-# DPO trains on `fsdp`; GRPO trains on `fsdp` and generates on `vllm`. mcore, automodel, sglang
-# and trtllm are deliberately not built.
+# DPO trains on `fsdp`. GRPO trains on `automodel` (DTensor V2) or `mcore`
+# (Megatron) and generates on `vllm`. sglang and trtllm are deliberately not built.
 #
 # Two things drive most of what follows, both covered in README.md:
 #   - Workers do not run in the base venv. The `uv sync --extra` calls only warm the uv cache; the
@@ -129,9 +129,9 @@ ENV RAY_USAGE_STATS_ENABLED=0 \
     NEMO_GYM_VENV_DIR=/opt/gym_venvs
 
 # ---- builder: uv sync RL + Gym with the extras we use ----
-# Only fsdp (DPO/GRPO training), vllm (GRPO generation), nemo_gym and modelopt are built. The mcore
-# and automodel extras are deliberately EXCLUDED: alternative training backends the customizer does
-# not use, and the only source of Transformer-Engine (the longest CUDA compile).
+# fsdp (DPO training), automodel (GRPO training on DTensor V2, the only LoRA-capable DTensor
+# backend), mcore (Megatron training + Megatron-native generation), vllm (generation), nemo_gym and
+# modelopt are built. sglang and trtllm are not: vLLM covers generation for every config we compile.
 FROM base AS builder
 ARG BUILD_UID=2000
 ARG BUILD_GID=2000
@@ -185,9 +185,9 @@ ENV NVTE_BUILD_MAX_JOBS=${NVTE_BUILD_MAX_JOBS} \
 # layer's cache key depends on the dependency graph, not on every RL source file. See README.md,
 # "Layering for fast CI rebuilds".
 #
-# TensorRT-LLM is excluded (we never build the trtllm extra). Megatron-Bridge must stay, even though
-# the mcore extra is not built: `uv run` validates the lock, which needs metadata for every path
-# source, so removing it fails the prefetch step below.
+# TensorRT-LLM is excluded (we never build the trtllm extra). Megatron-Bridge must stay: it is the
+# mcore extra's entry point, and its nested Megatron-LM submodule supplies megatron-core. Both are
+# editable path sources, so `uv run` also needs their metadata to validate the lock.
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} pyproject.toml uv.lock ./
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=TensorRT-LLM-workspace --exclude=TensorRT-LLM-workspace/** \
@@ -202,11 +202,15 @@ USER ${BUILD_UID}:${BUILD_GID}
 ARG UV_SYNC_MODE=--frozen
 
 # Warm the uv CACHE, one extra at a time (they conflict). This is where the heavy compiles happen
-# (mamba-ssm, causal-conv1d, deep_ep, deep_gemm); the wheels
+# (mamba-ssm, causal-conv1d, deep_ep, deep_gemm, and Transformer-Engine via automodel); the wheels
 # land in the cache so the prefetch below materializes each venv without recompiling.
 #
 # `uv sync` is EXACT, so these do NOT accumulate - each --extra prunes the previous one and the base
 # venv ends up with default deps + groups only. The populated cache is the real product.
+#
+# Conflicting extras resolve in separate forks but still share cache entries when a fork lands on the
+# same pinned source, so mcore reuses the Transformer-Engine wheel automodel built. See README.md,
+# "Why the `mcore` backend is built".
 #
 # --no-install-project installs dependencies but not nemo-rl itself; the root package is added
 # editable in a cheap step after the full-source COPY.
@@ -242,7 +246,9 @@ grep -Fq \
     "${list_inl}"
 
 uv sync ${UV_SYNC_MODE} --extra vllm      --no-install-project   # GRPO generation (vllm 0.20 cu130 + flashinfer + deep_gemm/deep_ep)
-uv sync ${UV_SYNC_MODE} --extra fsdp      --no-install-project   # DPO/GRPO policy training (flash-attn, mamba-ssm, causal-conv1d)
+uv sync ${UV_SYNC_MODE} --extra fsdp      --no-install-project   # DPO policy training (flash-attn, mamba-ssm, causal-conv1d)
+uv sync ${UV_SYNC_MODE} --extra automodel --no-install-project   # GRPO policy training, DTensor V2 (+ LoRA); builds Transformer-Engine
+uv sync ${UV_SYNC_MODE} --extra mcore     --no-install-project   # Megatron training + Megatron-native generation; reuses automodel's TE
 uv sync ${UV_SYNC_MODE} --extra modelopt  --no-install-project   # quantization / model-opt
 uv sync ${UV_SYNC_MODE} --extra nemo_gym  --no-install-project   # NeMo-Gym (uv workspace member)
 uv sync ${UV_SYNC_MODE} --all-groups      --no-install-project   # build/test/etc groups
@@ -255,6 +261,19 @@ uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenac
 # W&B ships a scanner-visible Go binary. Keep it above the fixed go-git/grpc
 # and Go stdlib floors even when NeMo-RL's lock has an older wheel.
 uv pip install --python /opt/nemo_rl_venv/bin/python "wandb==0.28.2"
+
+# NeMo-Gym in the BASE venv, for the DRIVER - not a duplicate of the nemo_gym extra above.
+# Sandboxed (mode B) GRPO imports nemo_rl.environments.sandbox in the driver process:
+# host/models.py needs BROKER_TOKEN_ENV / BROKER_URL_ENV and backends/base.py needs
+# EpisodeResources, both from nemo_gym.sandbox.broker. The `--all-groups` sync above is EXACT, so
+# it prunes the nemo_gym extra back out of the base venv and the driver dies with
+# `ModuleNotFoundError: No module named 'nemo_gym'` at Gym spin-up. Worker venvs are unaffected -
+# they get nemo_gym from the extra.
+# --no-deps is safe and deliberate: the driver's import closure is
+# nemo_gym.sandbox.broker -> broker/wire.py -> providers/base.py, whose only third-party import is
+# pydantic (already present). Resolving Gym's full dependency set here could move RL's pinned stack.
+uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps \
+    -e /opt/nemo-rl/3rdparty/Gym-workspace/Gym
 
 # CVE GHSA-mqqc-3gqh-h2x8: drop ray's bundled old aiohttp from the uv cache.
 find "${UV_CACHE_DIR}" -type d -path "*ray/_private/runtime_env/agent/thirdparty_files/aiohttp*" -exec rm -rf {} + || true
@@ -282,6 +301,21 @@ EOF
 # Excluding here keeps them out of this layer - removing them later would leave them extractable.
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/nemo-rl
 
+# TEMPORARY: NemotronH on DTensor v2 dies in Automodel's parallelizer, which reaches for
+# model.backbone.layers while both the stock-HF and Automodel NemotronH name the trunk
+# `model` (only the HF checkpoint KEYS use a backbone. prefix). Fixed on Automodel main
+# (parallelizer.py: `inner = model.backbone if hasattr(model, "backbone") else model.model`)
+# but NVIDIA-NeMo/RL main still pins 24b47e8, which predates it. Drop this once the
+# submodule is bumped past that fix.
+#
+# Bind-mounted rather than COPY-ed: this stage already runs as ${BUILD_UID}, so a COPY would
+# land root-owned and could not be cleaned up afterwards, and anything left behind ships in
+# the layer. The mount keeps the patch out of the image entirely.
+RUN --mount=type=bind,source=docker/rl/patches/automodel-nemotronh-trunk.patch,target=/patches/nemotronh.patch \
+    cd /opt/nemo-rl && \
+    git apply --check -p1 /patches/nemotronh.patch && \
+    git apply -p1 --verbose /patches/nemotronh.patch
+
 # Install the workspace ROOT (nemo-rl) editable. --no-install-project above installed every
 # DEPENDENCY and workspace MEMBER (incl. nemo-gym) but skipped the root; this adds it with --no-deps
 # (deps already present). .git is on disk now, so nemo_rl.__version__ picks up its +<sha> suffix.
@@ -293,8 +327,13 @@ RUN umask 022 && uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps 
 # cache. See README.md, "Prefetching the per-worker venvs".
 #
 # Filters are SUBSTRING matches on actor FQNs, and one venv is built PER ACTOR, so actors sharing
-# an extra still need their own filter. Six filters -> seven venvs:
-#   dtensor_policy_worker.DTensorPolicyWorker      -> fsdp      (DPO/GRPO training)
+# an extra still need their own filter. Eight filters -> nine venvs:
+#   dtensor_policy_worker.DTensorPolicyWorker      -> fsdp      (DPO training)
+#   dtensor_policy_worker_v2.DTensorPolicyWorkerV2 -> automodel (GRPO training; the only LoRA-capable
+#       DTensor worker). The V1 filter does not match it - the FQN reads `dtensor_policy_worker_v2.`.
+#   megatron_policy_worker.MegatronPolicyWorker    -> mcore     (GRPO training on Megatron; also
+#       hosts Megatron-native generation, which runs in-process rather than as its own actor).
+#       Does not match modelopt's `megatron_quant_policy_worker.MegatronQuantPolicyWorker`.
 #   vllm.vllm_worker                               -> vllm      (GRPO generation) - matches both the
 #       sync and async workers, which is wanted: NeMo-Gym forces async rollouts.
 #   sync_rollout_actor.SyncRolloutActor            -> vllm      (GRPO rollout driver)
@@ -303,13 +342,15 @@ RUN umask 022 && uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps 
 #   broker_actor.SandboxEpisodeBrokerActor         -> nemo_gym  (per-episode sandbox broker)
 # Kept specific on purpose: a bare "vllm" would also match modelopt's vllm_quant_worker.
 #
-# NOT prefetched: automodel, mcore, sglang, trtllm, modelopt-quant
-# and the async-GRPO bookkeeping actors; those build on the node if a config selects them.
+# NOT prefetched: sglang, trtllm, modelopt-quant, MegatronValueWorker / DTensorValueWorkerV2 (GRPO
+# is critic-free) and the async-GRPO bookkeeping actors; those build on the node if selected.
 RUN <<"EOF" bash -exu
 umask 022
 export UV_LINK_MODE=symlink
 uv run nemo_rl/utils/prefetch_venvs.py \
     dtensor_policy_worker.DTensorPolicyWorker \
+    dtensor_policy_worker_v2.DTensorPolicyWorkerV2 \
+    megatron_policy_worker.MegatronPolicyWorker \
     vllm.vllm_worker \
     sync_rollout_actor.SyncRolloutActor \
     nemo_gym.NemoGym \
@@ -321,6 +362,9 @@ uv run nemo_rl/utils/prefetch_venvs.py \
 # The vLLM-tier actors are listed too: the publish stage privatizes `vllm/` in whatever venvs exist,
 # so a filter that stops producing one would leave that worker sharing ray_executor.py again.
 for actor in \
+    nemo_rl.models.policy.workers.dtensor_policy_worker.DTensorPolicyWorker \
+    nemo_rl.models.policy.workers.dtensor_policy_worker_v2.DTensorPolicyWorkerV2 \
+    nemo_rl.models.policy.workers.megatron_policy_worker.MegatronPolicyWorker \
     nemo_rl.environments.nemo_gym.NemoGym \
     nemo_rl.environments.sandbox.nemo_gym_actor.SandboxedGymActor \
     nemo_rl.environments.sandbox.broker_actor.SandboxEpisodeBrokerActor \
@@ -427,6 +471,11 @@ ARG RUNTIME_GID=1000
 # their own dependencies, so RL's `setuptools>=80.10.2` override cannot reach them. The result is an
 # older setuptools left in the shipped cache that no venv uses. Runs here, after every venv exists,
 # and only drops archives nothing symlinks into.
+#
+# Still correct now that the mcore extra IS built: installing Megatron-Bridge does not change what
+# its BUILD environment resolves, so the old setuptools remains cached and unreferenced. Deleting
+# only unreferenced archives is what makes that safe - the mcore venv links the locked setuptools,
+# so that archive is kept.
 RUN <<"EOF" bash -exu
 for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
     ls "${d}"setuptools-*.dist-info >/dev/null 2>&1 || continue

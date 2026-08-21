@@ -7,4 +7,5 @@ export const PURPOSE_LABELS: Record<FilesetPurpose, string> = {
   [FilesetPurpose.generic]: 'Generic',
   [FilesetPurpose.dataset]: 'Dataset',
   [FilesetPurpose.model]: 'Model',
+  [FilesetPurpose.environment]: 'Environment',
 };

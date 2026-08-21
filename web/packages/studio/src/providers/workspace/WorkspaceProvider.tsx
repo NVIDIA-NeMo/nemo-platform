@@ -30,12 +30,13 @@ export const WorkspaceProvider: FC<WorkspaceProviderProps> = ({ children }) => {
     }
   }, [profile?.workspace, storedWorkspace, setStoredWorkspace]);
 
-  // Sync URL namespace to localStorage when on a project route (for persistence)
+  // Persist route changes, but do not react to storedWorkspace changes. Otherwise, tabs on
+  // different workspace routes continuously overwrite each other's shared localStorage value.
   useEffect(() => {
-    if (workspaceParam && workspaceParam !== storedWorkspace) {
+    if (workspaceParam) {
       setStoredWorkspace(workspaceParam);
     }
-  }, [workspaceParam, storedWorkspace, setStoredWorkspace]);
+  }, [workspaceParam, setStoredWorkspace]);
 
   const { isPending: isWorkspaceLoading, error: workspaceError } = useEntitiesGetWorkspace(
     selectedWorkspace ?? '',

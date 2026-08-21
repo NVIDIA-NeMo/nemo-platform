@@ -28,6 +28,7 @@ from nemo_platform.types.access_keys import (
     AccessKeyListResponse,
     AccessKeyCreateResponse,
     AccessKeyRevokeResponse,
+    AccessKeyStatusChangeResponse,
 )
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
@@ -153,6 +154,90 @@ class TestAccessKeys:
                 "",
             )
 
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_suspend(self, client: NeMoPlatform) -> None:
+        access_key = client.access_keys.suspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_suspend(self, client: NeMoPlatform) -> None:
+        response = client.access_keys.with_raw_response.suspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        access_key = response.parse()
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_suspend(self, client: NeMoPlatform) -> None:
+        with client.access_keys.with_streaming_response.suspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            access_key = response.parse()
+            assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_suspend(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
+            client.access_keys.with_raw_response.suspend(
+                "",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_unsuspend(self, client: NeMoPlatform) -> None:
+        access_key = client.access_keys.unsuspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_unsuspend(self, client: NeMoPlatform) -> None:
+        response = client.access_keys.with_raw_response.unsuspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        access_key = response.parse()
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_unsuspend(self, client: NeMoPlatform) -> None:
+        with client.access_keys.with_streaming_response.unsuspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            access_key = response.parse()
+            assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_unsuspend(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
+            client.access_keys.with_raw_response.unsuspend(
+                "",
+            )
+
 
 class TestAsyncAccessKeys:
     parametrize = pytest.mark.parametrize(
@@ -273,5 +358,89 @@ class TestAsyncAccessKeys:
     async def test_path_params_delete(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
             await async_client.access_keys.with_raw_response.delete(
+                "",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_suspend(self, async_client: AsyncNeMoPlatform) -> None:
+        access_key = await async_client.access_keys.suspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_suspend(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.access_keys.with_raw_response.suspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        access_key = await response.parse()
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_suspend(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.access_keys.with_streaming_response.suspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            access_key = await response.parse()
+            assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_suspend(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
+            await async_client.access_keys.with_raw_response.suspend(
+                "",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_unsuspend(self, async_client: AsyncNeMoPlatform) -> None:
+        access_key = await async_client.access_keys.unsuspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_unsuspend(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.access_keys.with_raw_response.unsuspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        access_key = await response.parse()
+        assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_unsuspend(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.access_keys.with_streaming_response.unsuspend(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            access_key = await response.parse()
+            assert_matches_type(AccessKeyStatusChangeResponse, access_key, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_unsuspend(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
+            await async_client.access_keys.with_raw_response.unsuspend(
                 "",
             )

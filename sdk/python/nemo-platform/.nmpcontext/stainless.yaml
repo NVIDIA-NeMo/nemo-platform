@@ -735,7 +735,11 @@ resources:
       # them under `files`, which would break ``from nemo_platform.types.shared import
       # FilesetMetadata`` imports downstream (models service tests).
       fileset_metadata: FilesetMetadata
+      environment_metadata_content: EnvironmentMetadataContent
       dataset_metadata_content: DatasetMetadataContent
+      # Every FilesetMetadata member has to live in $shared alongside it. Left under
+      # `files`, sync-models homes this one there and FilesetMetadata's import of it
+      # becomes shared -> files -> shared, which fails at import time.
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
       finetuning_type: FinetuningType
@@ -979,7 +983,10 @@ resources:
       access_key_metadata_response: AccessKeyMetadataResponse
       access_key_not_implemented_error_response: AccessKeyNotImplementedErrorResponse
       access_key_revoke_response: AccessKeyRevokeResponse
+      access_key_status_change_response: AccessKeyStatusChangeResponse
     methods:
       list: get /apis/auth/v2/access-keys
       create: post /apis/auth/v2/access-keys
       delete: delete /apis/auth/v2/access-keys/{jti}
+      suspend: post /apis/auth/v2/access-keys/{jti}/suspend
+      unsuspend: post /apis/auth/v2/access-keys/{jti}/unsuspend

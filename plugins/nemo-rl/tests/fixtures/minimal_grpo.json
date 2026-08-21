@@ -1,0 +1,16 @@
+{
+  "model": "default/qwen3-0.6b",
+  "dataset": "default/ascii-tree-gym-data",
+  "environment": "default/ascii-tree-env",
+  "training": {
+    "type": "grpo",
+    "max_steps": 1,
+    "batch_size": 8,
+    "micro_batch_size": 1,
+    "learning_rate": 5e-6,
+    "max_seq_length": 1024,
+    "num_generations_per_prompt": 4,
+    "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1 }
+  },
+  "output": { "name": "qwen3-0.6b-grpo" }
+}

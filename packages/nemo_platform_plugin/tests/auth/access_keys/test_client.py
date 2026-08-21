@@ -16,6 +16,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
     AccessKeyRevokeResponse,
+    AccessKeyStatusChangeResponse,
 )
 from nemo_platform_plugin.client.errors import NemoHTTPError
 
@@ -25,6 +26,8 @@ class _AccessKeysClientStub:
         self.create_access_key = MagicMock()
         self.list_access_keys = MagicMock()
         self.revoke_access_key = MagicMock()
+        self.suspend_access_key = MagicMock()
+        self.unsuspend_access_key = MagicMock()
 
     def as_client(self) -> AccessKeysClient:
         return cast(AccessKeysClient, self)
@@ -64,6 +67,22 @@ def test_access_key_issuer_client_revokes_by_jti() -> None:
 
     assert result == revoked
     client.revoke_access_key.assert_called_once_with(jti="ak_example")
+
+
+def test_access_key_issuer_client_suspends_and_unsuspends_by_jti() -> None:
+    client = _AccessKeysClientStub()
+    client.suspend_access_key.return_value.data.return_value = AccessKeyStatusChangeResponse(
+        jti="ak_example", status="SUSPENDED", changed=True
+    )
+    client.unsuspend_access_key.return_value.data.return_value = AccessKeyStatusChangeResponse(
+        jti="ak_example", status="ACTIVE", changed=True
+    )
+    issuer = AccessKeyIssuerClient(client.as_client())
+
+    assert issuer.suspend("ak_example").changed
+    assert issuer.unsuspend("ak_example").changed
+    client.suspend_access_key.assert_called_once_with(jti="ak_example")
+    client.unsuspend_access_key.assert_called_once_with(jti="ak_example")
 
 
 def test_access_key_issuer_client_lists_requested_page() -> None:

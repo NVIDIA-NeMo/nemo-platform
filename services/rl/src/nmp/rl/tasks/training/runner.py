@@ -230,8 +230,13 @@ class TrainingRunner:
 
             # Runner writes config to disk
             config_path.parent.mkdir(parents=True, exist_ok=True)
+            # safe_dump, not dump: the driver reads this back with OmegaConf.load, whose
+            # loader is SafeLoader-based. Plain yaml.dump serializes a tuple (or any other
+            # Python object) as a !!python/... tag that the driver then cannot construct,
+            # so the job fails minutes later with a line number instead of a cause.
+            # safe_dump raises here, at compile time, naming the offending value.
             with open(config_path, "w") as f:
-                yaml.dump(config_dict, f, default_flow_style=False)
+                yaml.safe_dump(config_dict, f, default_flow_style=False)
 
             logger.info(f"Library config written to: {config_path}")
             self._dist_ctx.signal(BARRIER_CONFIG_READY)

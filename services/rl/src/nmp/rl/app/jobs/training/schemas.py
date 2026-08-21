@@ -11,6 +11,7 @@ turns it into the NeMo-RL YAML.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from nmp.customization_common.training.reporting import ProgressReportingConfig
 from nmp.rl.app.constants import DEFAULT_OUTPUT_MODEL_PATH, DEFAULT_SEED, DEFAULT_TRAINING_OUTPUT_PATH
@@ -55,6 +56,41 @@ class DPOConfig(BaseModel):
     max_grad_norm: float = Field(default=1.0, ge=0.0)
 
 
+class GRPOConfig(BaseModel):
+    """GRPO hyperparameters for NeMo Gym rollouts."""
+
+    num_generations_per_prompt: int = Field(default=8, gt=0)
+    num_prompts_per_step: int | None = Field(default=None, gt=0)
+    # Rollout sampling. Both land in NeMo-RL's policy.generation block, which is what
+    # _prepare_nemo_gym_rows stamps onto every Gym row, so they reach colocated and
+    # sandboxed rollouts alike.
+    temperature: float = Field(default=1.0, gt=0.0)
+    max_new_tokens: int | None = Field(default=None, gt=0)
+    normalize_rewards: bool = True
+    overlong_filtering: bool = False
+    max_rollout_turns: int = Field(default=1, gt=0)
+    ref_policy_kl_penalty: float = Field(default=0.0, ge=0.0)
+    ratio_clip_min: float = Field(default=0.2, ge=0.0)
+    ratio_clip_max: float = Field(default=0.28, ge=0.0)
+    max_grad_norm: float = Field(default=1.0, ge=0.0)
+    # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
+    automodel_kwargs: dict[str, Any] | None = None
+    router_aux_loss_coef: float | None = Field(default=None, ge=0.0)
+    vllm_tensor_parallel_size: int | None = Field(default=None, gt=0)
+    vllm_gpu_memory_utilization: float = Field(default=0.5, gt=0.0, le=1.0)
+
+
+class LoRAConfig(BaseModel):
+    """LoRA settings carried on the training step (maps to NeMo-RL lora_cfg)."""
+
+    rank: int = Field(default=16, gt=0)
+    alpha: int = Field(default=32, gt=0)
+    dropout: float = Field(default=0.0, ge=0.0, le=1.0)
+    target_modules: list[str] | None = None
+    exclude_modules: list[str] | None = None
+    use_triton: bool = True
+
+
 class WandBConfig(BaseModel):
     project: str | None = None
     name: str | None = None
@@ -89,11 +125,32 @@ class TrainingStepConfig(BaseModel):
         training_type: TrainingType
         finetuning_type: FinetuningType | None = None
         dpo: DPOConfig | None = None
+        grpo: GRPOConfig | None = None
+        lora: LoRAConfig | None = None
+
+    class GymConfig(BaseModel):
+        """NeMo Gym environment paths and sandbox mode (GRPO only)."""
+
+        environment_path: str | None = None
+        sandbox_environment_path: str | None = None
+        sandbox_dataset_path: str | None = None
+        sandboxed: bool = True
+        gym_runtime_image: str | None = None
+        allow_internet: bool = False
+        public_dns_allow: list[str] = Field(default_factory=list)
+        # Scheme the cluster's OpenSandbox server speaks. Operator-scoped like the egress
+        # settings; resolved by the compiler because RlConfig is not readable from the
+        # training pod. None takes NeMo-RL's default.
+        sandbox_server_protocol: str | None = None
+        # Operator-scoped, from platformConfig.rl.sandbox_resources / sandbox_ttl_s.
+        sandbox_resources: dict[str, str] | None = None
+        sandbox_ttl_s: int | None = None
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1
         max_steps: int | None = None
         val_check_interval: float | None = None
+        val_at_start: bool = False
         val_at_end: bool = True
         keep_top_k: int = 1
         progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
@@ -120,6 +177,7 @@ class TrainingStepConfig(BaseModel):
         tensor_parallel_size: int = 1
         pipeline_parallel_size: int = 1
         context_parallel_size: int = 1
+        expert_parallel_size: int = 1
         sequence_parallel: bool = False
         activation_checkpointing: bool = False
 
@@ -132,6 +190,7 @@ class TrainingStepConfig(BaseModel):
     model: ModelConfig
     dataset: DatasetConfig
     training: TrainingConfig
+    gym: GymConfig | None = None
     schedule: ScheduleConfig
     batch: BatchConfig
     optimizer: OptimizerConfig

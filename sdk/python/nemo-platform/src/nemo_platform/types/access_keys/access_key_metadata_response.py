@@ -41,7 +41,7 @@ class AccessKeyMetadataResponse(BaseModel):
     principal: str
     """Principal ID stamped into the token."""
 
-    status: Literal["ACTIVE", "EXPIRED", "REVOKED"]
+    status: Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"]
 
     description: Optional[str] = None
     """Human-readable description of the Scoped Access Key."""
