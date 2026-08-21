@@ -16,21 +16,25 @@ Two failure classes are caught at .so load time, before any GPU device is touche
                          the one installed (ABI mismatch)
 """
 
-from glob import glob
+from pathlib import Path
 
 import pytest
+from file_removals import assert_file_patterns_absent, read_file_patterns
 from python_package_versions import assert_python_package_min_versions
 
-SOUNDFILE_PATTERNS = (
+BASE_FILE_REMOVALS = (Path("/smoke_test/removals/files/base/pytorch-ngc-common.txt"),)
+FINAL_FILE_REMOVALS = Path("/smoke_test/removals/files/final/customizer-codecs.txt")
+SOUNDFILE_FILE_REMOVALS = {
     "/opt/venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so",
-    # The shim is removed with its payload; see the removals file for why keeping it is
-    # worse than not shipping soundfile at all.
     "/opt/venv/lib/python3.*/site-packages/soundfile.py",
-)
+}
+DALI_FILE_REMOVALS = {
+    "/usr/local/lib/python3.12/dist-packages/nvidia/dali",
+    "/usr/local/lib/python3.12/dist-packages/nvidia_dali_cuda130-*.dist-info",
+}
 MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "bitsandbytes": "0.49.2",
     "mamba-ssm": "2.3.0",
-    "nvidia-dali-cuda130": "2.2.0",
     "wandb": "0.28.2",
 }
 
@@ -73,8 +77,9 @@ def test_nmp_automodel_training_importable():
 
 @pytest.mark.smoke_nmp_automodel_training
 def test_soundfile_libsndfile_removed():
-    remaining = sorted(path for pattern in SOUNDFILE_PATTERNS for path in glob(pattern))
-    assert remaining == [], f"file cleanup left scanner-visible libsndfile files: {remaining}"
+    patterns = read_file_patterns(FINAL_FILE_REMOVALS)
+    assert SOUNDFILE_FILE_REMOVALS.issubset(patterns)
+    assert_file_patterns_absent(patterns)
 
 
 @pytest.mark.smoke_nmp_automodel_training
@@ -92,9 +97,11 @@ def test_transformers_audio_backend_probe_is_off():
 
 
 @pytest.mark.smoke_nmp_automodel_training
-def test_dali_still_importable_after_file_cleanup():
-    import importlib.metadata
-
-    import nvidia.dali  # noqa: F401
-
-    assert importlib.metadata.version("nvidia-dali-cuda130")
+def test_dali_files_removed():
+    patterns = [
+        pattern
+        for pattern in read_file_patterns(*BASE_FILE_REMOVALS)
+        if "/nvidia/dali" in pattern or "nvidia_dali_cuda130" in pattern
+    ]
+    assert DALI_FILE_REMOVALS.issubset(patterns)
+    assert_file_patterns_absent(patterns)
