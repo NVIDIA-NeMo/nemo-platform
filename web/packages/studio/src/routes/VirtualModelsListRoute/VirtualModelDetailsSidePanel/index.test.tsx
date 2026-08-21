@@ -4,6 +4,7 @@
 import { VirtualModel } from '@nemo/sdk/generated/platform/schema';
 import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 
 const vm: VirtualModel = {
   id: 'default/my-vm',
@@ -29,7 +30,15 @@ const vm: VirtualModel = {
 
 describe('VirtualModelDetailsSidePanel', () => {
   it('renders core fields and middleware config read-only', () => {
-    renderRoute(<VirtualModelDetailsSidePanel open virtualModel={vm} onClose={() => {}} />);
+    renderRoute(
+      <VirtualModelDetailsSidePanel
+        open
+        virtualModel={vm}
+        tab="details"
+        onTabChange={() => {}}
+        onClose={() => {}}
+      />
+    );
 
     expect(screen.getByText('my-vm')).toBeInTheDocument();
     expect(screen.getAllByText('default/gpt-4o').length).toBeGreaterThan(0);
@@ -40,9 +49,53 @@ describe('VirtualModelDetailsSidePanel', () => {
   });
 
   it('shows "None" for empty middleware pipelines', () => {
-    renderRoute(<VirtualModelDetailsSidePanel open virtualModel={vm} onClose={() => {}} />);
+    renderRoute(
+      <VirtualModelDetailsSidePanel
+        open
+        virtualModel={vm}
+        tab="details"
+        onTabChange={() => {}}
+        onClose={() => {}}
+      />
+    );
 
     expect(screen.getByText('Post-response')).toBeInTheDocument();
     expect(screen.getAllByText('None').length).toBeGreaterThan(0);
+  });
+
+  it('reports tab selections to the parent', async () => {
+    const user = userEvent.setup();
+    const onTabChange = vi.fn();
+    renderRoute(
+      <VirtualModelDetailsSidePanel
+        open
+        virtualModel={vm}
+        tab="details"
+        onTabChange={onTabChange}
+        onClose={() => {}}
+      />
+    );
+
+    await user.click(screen.getByRole('radio', { name: 'Chat' }));
+
+    expect(onTabChange).toHaveBeenCalledWith('chat');
+  });
+
+  it('chats with the virtual model from the controlled Chat tab', async () => {
+    const user = userEvent.setup();
+    renderRoute(
+      <VirtualModelDetailsSidePanel
+        open
+        virtualModel={vm}
+        tab="chat"
+        onTabChange={() => {}}
+        onClose={() => {}}
+      />
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Task prompt' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Inference parameters' }));
+    expect(screen.getByRole('spinbutton', { name: 'Max tokens value' })).toHaveValue(4096);
   });
 });
