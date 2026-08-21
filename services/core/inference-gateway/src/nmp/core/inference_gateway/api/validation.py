@@ -27,7 +27,7 @@ def validate_entity_name(value: str, *, field_name: str = "name") -> None:
     """
     if not _ENTITY_NAME_PATTERN.match(value):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid {field_name}: {NAME_PATTERN_DESCRIPTION}",
         )
 
