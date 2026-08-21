@@ -126,7 +126,7 @@ export const GrpoParametersSection = () => {
                 'Cap on tokens generated per rollout turn. Defaults to the max sequence length, letting a rollout run until the context is exhausted; lower it to bound response length and rollout duration. Cannot exceed max sequence length. NeMo RL key: max_new_tokens.',
             }}
             defaultValue={2048}
-            min={1}
+            min={128}
             max={131072}
             step={128}
             disabled={disabled}
