@@ -1253,17 +1253,20 @@ def _register_ethos_commands(app: typer.Typer) -> None:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
-        sdk = _platform_sdk(_resolve_base_url(base_url))
-        request = MigrationRequest(
-            agent=name,
-            workspace=workspace,
-            dry_run=dry_run,
-            cleanup=cleanup,
-        )
         try:
+            sdk = _platform_sdk(_resolve_base_url(base_url))
+            request = MigrationRequest(
+                agent=name,
+                workspace=workspace,
+                dry_run=dry_run,
+                cleanup=cleanup,
+            )
             report = run_migration(request, sdk=sdk)
         except MigrationError as exc:
             typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        except Exception as exc:
+            typer.echo(f"Error: migration failed: {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
         for line in report.lines:

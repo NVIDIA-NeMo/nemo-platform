@@ -147,6 +147,20 @@ def test_cli_exposes_only_platform_migration_options() -> None:
     assert "--experiment-dir" not in result.stdout
 
 
+def test_cli_normalizes_unexpected_migration_failures() -> None:
+    failure = OSError("interrupted")
+
+    with (
+        patch("nemo_agents_plugin.cli._platform_sdk", return_value=object()),
+        patch("nemo_agents_plugin.ethos_migrate.run_migration", side_effect=failure),
+    ):
+        result = CliRunner().invoke(AgentsCLI().get_cli(), ["ethos", "migrate", "--name", AGENT])
+
+    assert result.exit_code == 1
+    assert result.stderr.endswith("Error: migration failed: interrupted\n")
+    assert not isinstance(result.exception, OSError)
+
+
 def test_registration_warning_prints_the_migration_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     package = tmp_path / "agents" / OLD
     tree(package, legacy_files())
