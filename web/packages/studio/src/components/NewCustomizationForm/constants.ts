@@ -3,7 +3,7 @@
 
 import { OptimizerType } from '@nemo/sdk/generated/customizer/schema';
 
-/** Optimizer + LR-scheduler pairs the RL backend accepts. */
+/** Optimizer + LR-scheduler pairs offered by the RL backends (DPO and GRPO share the set). */
 export const OPTIMIZER_TYPE_ITEMS = [
   { value: OptimizerType.adamw_with_cosine_annealing, children: 'AdamW + Cosine Annealing' },
   { value: OptimizerType.adam_with_cosine_annealing, children: 'Adam + Cosine Annealing' },

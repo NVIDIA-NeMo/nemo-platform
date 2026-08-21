@@ -37,10 +37,10 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { LINK_DOCS_FINE_TUNE_DATASET_FORMAT_REQUIREMENTS } from '@studio/constants/links';
 import { useCustomizationDatasetValidation } from '@studio/hooks/useCustomizationDatasetValidation';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import type { TrainingType } from '@studio/util/customizerSchema';
 import { inferJsonContentType, isJsonFile } from '@studio/util/files';
 import {
   DATASET_FIELD_BY_BACKEND,
+  resolveTrainingType,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
 import { Database, FolderOpen } from 'lucide-react';
@@ -61,11 +61,10 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   const backend = useWatch({ control, name: 'backend' });
 
   const automodelTrainingType = useWatch({ control, name: 'automodel.training.training_type' });
+  const rlTrainingType = useWatch({ control, name: 'grpo.trainingType' });
 
   const fieldName = DATASET_FIELD_BY_BACKEND[backend];
-  // Unsloth is SFT-only; RL is DPO-only; automodel carries its own selector.
-  const trainingType: TrainingType =
-    backend === 'rl' ? 'dpo' : backend === 'automodel' ? (automodelTrainingType ?? 'sft') : 'sft';
+  const trainingType = resolveTrainingType(backend, automodelTrainingType, rlTrainingType);
 
   const {
     field: { value: selectedRef, onChange: setSelectedRef, onBlur },
@@ -154,28 +153,33 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
 
   return (
     <Stack gap="density-2xl">
-      <Text kind="body/bold/lg">Training Data</Text>
-      {trainingType === 'dpo' && (
-        <Text kind="body/regular/md" color="secondary">
-          DPO datasets hold preference pairs — chosen and rejected responses for the same prompt.
-          BinaryPreference, Tulu3, HelpSteer3 and native Preference formats are all accepted.
+      <Text kind="body/bold/lg">
+        {trainingType === 'grpo' ? 'Training Prompts' : 'Training Data'}
+      </Text>
+      {trainingType === 'grpo' ? (
+        <Text kind="body/regular/md">
+          GRPO datasets use NeMo Gym format. Each record must include{' '}
+          <code>responses_create_params</code> and <code>agent_ref</code>; agent-specific fields
+          such as <code>vf_env_id</code> are optional. Use the <code>pi-to-gym-conversion</code> CLI
+          to convert Prime Intellect hub environments into a verifiers dataset.
+        </Text>
+      ) : (
+        <Text kind="body/regular/md">
+          Datasets should be in JSONL format and split into separate, representative training and
+          validation sets. For formatting guidelines, refer to the{' '}
+          <Anchor
+            href={LINK_DOCS_FINE_TUNE_DATASET_FORMAT_REQUIREMENTS}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Dataset Format Requirements
+          </Anchor>
+          .
         </Text>
       )}
-      <Text kind="body/regular/md">
-        Datasets should be in JSONL format and split into separate, representative training and
-        validation sets. For formatting guidelines, refer to the{' '}
-        <Anchor
-          href={LINK_DOCS_FINE_TUNE_DATASET_FORMAT_REQUIREMENTS}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Dataset Format Requirements
-        </Anchor>
-        .
-      </Text>
 
       <FormField
-        slotLabel="Dataset"
+        slotLabel={trainingType === 'grpo' ? 'Training Prompts' : 'Dataset'}
         slotError={
           fieldError?.message ??
           (hasMissingTrainingFiles
@@ -228,6 +232,14 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
           }}
           disabled={disabled}
         />
+      )}
+      {backend === 'rl' && trainingType === 'dpo' && (
+        <Text kind="body/regular/md" color="secondary">
+          Dataset must contain <strong>training.jsonl</strong> in a preference format (chosen /
+          rejected pairs, BinaryPreference, Tulu3, HelpSteer3, or native Preference).{' '}
+          <strong>validation.jsonl</strong> is optional — training data is split automatically when
+          it is absent.
+        </Text>
       )}
 
       {fetchFilesetStatus === 'pending' && selectedParts?.name && (

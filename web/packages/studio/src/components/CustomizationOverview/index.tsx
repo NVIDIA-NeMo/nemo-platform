@@ -68,6 +68,7 @@ export const CustomizationOverview: FC<Props> = ({ customizationJobName, workspa
     fileset: getDatasetUri(customization) || undefined,
   });
 
+  // RL keeps epochs on spec.training; the other backends use spec.schedule.
   const epochs = customization
     ? isRlJob(customization)
       ? customization.spec?.training?.epochs

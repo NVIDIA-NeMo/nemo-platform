@@ -25,8 +25,10 @@ import { BackendSelectionSection } from '@studio/components/NewCustomizationForm
 import { ComputeResourcesSection } from '@studio/components/NewCustomizationForm/ComputeResourcesSection';
 import { DpoParametersSection } from '@studio/components/NewCustomizationForm/DpoParametersSection';
 import { GeneralParametersSection } from '@studio/components/NewCustomizationForm/GeneralParametersSection';
+import { GrpoParametersSection } from '@studio/components/NewCustomizationForm/GrpoParametersSection';
 import { LoraParametersSection } from '@studio/components/NewCustomizationForm/LoraParametersSection';
 import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/ModelSelectionSection';
+import { RewardEnvironmentSection } from '@studio/components/NewCustomizationForm/RewardEnvironmentSection';
 import { TrainingMethodSection } from '@studio/components/NewCustomizationForm/TrainingMethodSection';
 import { getWorkspaceCustomizationJobDetailsRoute } from '@studio/routes/utils';
 import {
@@ -87,10 +89,15 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
     control: form.control,
     name: 'unsloth.training.finetuning_type',
   });
+  // Bound to `grpo.trainingType` rather than `rl.training.type`: the form holds one
+  // `rl.training` object, and flipping the union discriminator in place would leave it
+  // carrying the other arm's fields. `formToRlCreate` sets `type` from this on submit.
+  const grpoTrainingType = useWatch({ control: form.control, name: 'grpo.trainingType' });
   const finetuningType = backend === 'automodel' ? automodelFinetuningType : unslothFinetuningType;
-  // RL is DPO-only and full-weight, so it has neither a finetuning type nor LoRA params.
   const isLora =
     backend !== 'rl' && (finetuningType === 'lora' || finetuningType === 'lora_merged');
+  const isDpo = backend === 'rl' && grpoTrainingType !== 'grpo';
+  const isGrpo = backend === 'rl' && grpoTrainingType === 'grpo';
 
   const { mutateAsync: createAutomodel, isPending: isPendingAutomodel } =
     useCustomizationCreateAutomodelJob({
@@ -200,26 +207,27 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                     <Divider />
                     <ModelSelectionSection />
                     <Divider />
-                    {/* RL exposes no fine-tuning or training type: it is DPO, full-weight. */}
-                    {backend !== 'rl' && (
+                    <TrainingMethodSection />
+                    {isGrpo && (
                       <>
-                        <TrainingMethodSection />
                         <Divider />
+                        <RewardEnvironmentSection />
                       </>
                     )}
+                    <Divider />
                     <CustomizationFilesetSelect disabled={isPending} />
                     <Divider />
-                    <GeneralParametersSection />
-                    {backend === 'rl' && (
-                      <>
-                        <Divider />
-                        <DpoParametersSection />
-                      </>
-                    )}
+                    {isGrpo ? <GrpoParametersSection /> : <GeneralParametersSection />}
                     {isLora && (
                       <>
                         <Divider />
                         <LoraParametersSection />
+                      </>
+                    )}
+                    {isDpo && (
+                      <>
+                        <Divider />
+                        <DpoParametersSection />
                       </>
                     )}
                     <Divider />
