@@ -21,7 +21,7 @@ Shared agent platform; pre-production evaluation and red-teaming; GPU-backed cus
 
 ### System Requirements
 
-Kubernetes 1.33+, kubectl, ReadWriteMany storage, and an NGC API key.
+Kubernetes 1.33+.
 GPU workloads need NVIDIA GPU nodes and the GPU Operator or device plugin.
 See the [support matrix](https://docs.nvidia.com/nemo-platform/documentation/reference/support-matrix).
 
