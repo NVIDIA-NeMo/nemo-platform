@@ -361,7 +361,7 @@ def test_build_deployment_config_no_secrets_adds_no_secret_env() -> None:
 @pytest.mark.parametrize("mode", ["docker", "k8s"])
 @pytest.mark.parametrize(
     "reserved_name",
-    ["NMP_WORKSPACE", "NMP_AGENT_NAME", "NMP_BASE_URL", "AGENT_CONFIG_PATH", "NAT_CONFIG_PATH"],
+    ["NMP_WORKSPACE", "NMP_AGENT_NAME", "NMP_BASE_URL", "PYTHONPATH", "AGENT_CONFIG_PATH", "NAT_CONFIG_PATH"],
 )
 def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(reserved_name: str, mode: str) -> None:
     # A secret env var whose name collides with a platform-generated container

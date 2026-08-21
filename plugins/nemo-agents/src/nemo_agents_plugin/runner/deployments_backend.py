@@ -77,12 +77,15 @@ _AUTH_PROXY_IDENTITY = "agents"
 # secret value over the generated one, while k8s ignores the colliding secret
 # (explicit ``env`` entries take precedence over the managed Secret's
 # ``envFrom``), so the behavior would be inconsistent and surprising. Reject the
-# collision at compile time instead.
+# collision at compile time instead. ``PYTHONPATH`` is only injected in the
+# k8s plugin-wheels path, but is reserved unconditionally so the guard does not
+# depend on the deployment mode.
 _RESERVED_ENV_VAR_NAMES = frozenset(
     {
         "NMP_WORKSPACE",
         "NMP_AGENT_NAME",
         "NMP_BASE_URL",
+        "PYTHONPATH",
         _AGENT_CONFIG_PATH_ENV,
         _NAT_CONFIG_ENV,
     }
