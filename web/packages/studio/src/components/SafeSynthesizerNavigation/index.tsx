@@ -3,7 +3,7 @@
 
 import { PageHeader, Stack, TabsList, TabsRoot, TabsTrigger } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getSafeSynthesizerJobRoute, getSafeSynthesizerJobReportRoute } from '@studio/routes/utils';
+import { getGenerateJobRoute, getGenerateJobReportRoute } from '@studio/routes/utils';
 import { FC } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -26,13 +26,13 @@ export const SafeSynthesizerNavigation: FC<SafeSynthesizerNavigationProps> = ({
         <TabsList>
           <TabsTrigger
             value="summary"
-            onClick={() => navigate(getSafeSynthesizerJobRoute(workspace, jobName))}
+            onClick={() => navigate(getGenerateJobRoute(workspace, jobName))}
           >
             Summary
           </TabsTrigger>
           <TabsTrigger
             value="report"
-            onClick={() => navigate(getSafeSynthesizerJobReportRoute(workspace, jobName))}
+            onClick={() => navigate(getGenerateJobReportRoute(workspace, jobName))}
           >
             Report
           </TabsTrigger>

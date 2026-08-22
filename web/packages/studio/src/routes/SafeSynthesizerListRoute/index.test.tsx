@@ -10,7 +10,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 
 // Mock the DataView component with a minimal implementation
 vi.mock('@studio/components/dataViews/SafeSynthesizerJobsDataView', () => ({
-  SafeSynthesizerJobsDataView: () => <div data-testid="safe-synthesizer-data-view">DataView</div>,
+  GenerateJobsDataView: () => <div data-testid="safe-synthesizer-data-view">DataView</div>,
 }));
 vi.mock('@studio/providers/breadcrumbs/useBreadcrumbs', async (importOriginal) => {
   const actual =

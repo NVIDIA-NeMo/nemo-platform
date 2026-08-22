@@ -650,7 +650,6 @@ nemo_agents_files_telemetry = "nemo_agents_plugin.telemetry.files_service_export
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli"]
-safe-synthesizer = "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"
 agents = "nemo_agents_plugin.cli:AgentsCLI"
 anonymizer = "nemo_anonymizer_plugin.cli:AnonymizerCLI"
 auditor = "nemo_auditor.cli:AuditorPluginCLI"
@@ -725,6 +724,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "customization.automodel.jobs" = "nemo_automodel_plugin.jobs.jobs:AutomodelJob"
 "customization.rl.jobs" = "nemo_rl_plugin.jobs.jobs:RlJob"
 "customization.unsloth.jobs" = "nemo_unsloth_plugin.jobs.jobs:UnslothJob"
+"safe-synthesizer.generate" = "nemo_safe_synthesizer_plugin.jobs.generate:GenerateJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]
