@@ -167,6 +167,30 @@ The packaging command runs locally; Platform services are not required.
 |---|---|
 | Docker | A running Docker-compatible daemon |
 | Container dependencies | Install with `uv sync --package nemo-agents-plugin --extra container` from the repository root |
+| A released `nemo-platform` (Fabric only) | Fabric images pin the installed `nemo-platform` version and resolve it from an index. A source checkout reports a setuptools-scm version such as `0.3.0.post402.dev0+062f0ac6e8`, which no index serves, so packaging stops before building. See below. |
+
+##### Packaging a Fabric agent from a source checkout
+
+`nemo agents package` renders `uv pip install "nemo-platform[nemo-agents-plugin]==<version>"`
+into the Fabric image, where `<version>` is whatever is installed on the build
+host. A checkout reports something like `0.3.0.post402.dev0+062f0ac6e8`, which is
+both a developmental release and a local build identifier — neither of which a
+public index serves — so the command fails immediately:
+
+```text
+Error: The installed nemo-platform version '0.3.0.post402.dev0+062f0ac6e8' carries
+a local build identifier and is a developmental release, so no package index serves
+it. Fabric packaging pins this exact version inside the image, so the build would
+fail while resolving it. Install a released nemo-platform to package an agent, or
+set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this
+version.
+```
+
+Supplying your own `--template` also skips the check, since a custom template
+need not pin the contract version at all.
+
+NAT packaging is unaffected — it installs the packaged project plus a published
+`nvidia-nat` release.
 
 #### Progressive pipeline
 
@@ -366,6 +390,12 @@ The old shared environment variables have been replaced:
 | `NAT_BASE_IMAGE_URL` | `NEMO_AGENTS_BASE_IMAGE_URL` |
 | `NAT_BASE_IMAGE_TAG` | `NEMO_AGENTS_BASE_IMAGE_TAG` |
 | `NAT_PYTHON_VERSION` | `NEMO_AGENTS_PYTHON_VERSION` |
+
+Additional environment variables:
+
+| Variable | Effect |
+|---|---|
+| `NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION` | Set to `1` to let Fabric packaging pin an unpublished `nemo-platform` version (a local build identifier or a `.dev` release). Use only when the build's index serves that version. Does not apply when `nemo-platform` is not installed at all. |
 
 There are no compatibility aliases. `NAT_VERSION` remains available only for
 NAT workflow packaging.
