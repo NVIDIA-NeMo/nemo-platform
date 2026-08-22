@@ -5,19 +5,30 @@
 
 from __future__ import annotations
 
+import logging
+import threading
+import time
+from collections.abc import Callable, Iterator
 from unittest.mock import patch
 
 import httpx
+import pytest
 import respx
 from fastapi.testclient import TestClient
+from nmp.common.auth.workload_proxy import main as workload_proxy_main
 from nmp.common.auth.workload_proxy.main import build_app
+from nmp.common.controller import ControllerManager, Loop
 
 
 @respx.mock
 def test_forward_stamps_service_principal_and_preserves_path() -> None:
     upstream = "http://nemo-platform-api:8080"
     route = respx.post(f"{upstream}/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions").mock(
-        return_value=httpx.Response(200, json={"ok": True})
+        return_value=httpx.Response(
+            200,
+            json={"ok": True},
+            headers={"connection": "x-upstream-hop", "x-upstream-hop": "secret"},
+        )
     )
     app = build_app(base_url=upstream, principal="agents")
     client = TestClient(app)
@@ -25,7 +36,11 @@ def test_forward_stamps_service_principal_and_preserves_path() -> None:
     resp = client.post(
         "/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions",
         json={"model": "m", "messages": []},
-        headers={"authorization": "Bearer not-used"},
+        headers={
+            "authorization": "Bearer not-used",
+            "connection": "x-client-hop",
+            "x-client-hop": "secret",
+        },
     )
 
     assert resp.status_code == 200
@@ -35,6 +50,10 @@ def test_forward_stamps_service_principal_and_preserves_path() -> None:
     # The proxy sets the service-principal identity and drops the placeholder auth.
     assert sent.headers["x-nmp-principal-id"] == "service:agents"
     assert "authorization" not in {k.lower() for k in sent.headers}
+    assert "x-client-hop" not in {k.lower() for k in sent.headers}
+    assert "connection" not in resp.headers
+    assert "x-upstream-hop" not in resp.headers
+    assert sent.content == b'{"model":"m","messages":[]}'
 
 
 @respx.mock
@@ -78,6 +97,8 @@ def test_forward_strips_inbound_on_behalf_of_to_prevent_spoofing() -> None:
         "/apis/entities/v2/workspaces",
         headers={
             "x-nmp-principal-id": "service:platform",
+            "x-nmp-principal-email": "attacker@evil.test",
+            "x-nmp-principal-groups": "platform-admins",
             "x-nmp-principal-on-behalf-of": "user:attacker",
             # Companion metadata must not be smuggled onto our stamped OBO id:
             # the platform derives effective groups/email from these and feeds
@@ -91,7 +112,9 @@ def test_forward_strips_inbound_on_behalf_of_to_prevent_spoofing() -> None:
     sent_keys = {k.lower() for k in sent.headers}
     assert sent.headers["x-nmp-principal-id"] == "service:agents"
     assert sent.headers["x-nmp-principal-on-behalf-of"] == "user:alice"
-    # The inbound companion headers are dropped (we stamp only the OBO id).
+    # Inbound companion metadata cannot be attached to either stamped identity.
+    assert "x-nmp-principal-email" not in sent_keys
+    assert "x-nmp-principal-groups" not in sent_keys
     assert "x-nmp-principal-on-behalf-of-email" not in sent_keys
     assert "x-nmp-principal-on-behalf-of-groups" not in sent_keys
 
@@ -141,6 +164,29 @@ def test_forward_passes_through_upstream_status() -> None:
     assert resp.status_code == 403
 
 
+@respx.mock
+def test_forward_preserves_separate_set_cookie_headers() -> None:
+    upstream = "http://nemo-platform-api:8080"
+    respx.get(f"{upstream}/session").mock(
+        return_value=httpx.Response(
+            200,
+            headers=[
+                ("set-cookie", "session=one; Path=/; HttpOnly"),
+                ("set-cookie", "csrf=two; Path=/"),
+            ],
+        )
+    )
+    app = build_app(base_url=upstream, principal="agents")
+
+    with TestClient(app) as client:
+        response = client.get("/session")
+
+    assert response.headers.get_list("set-cookie") == [
+        "session=one; Path=/; HttpOnly",
+        "csrf=two; Path=/",
+    ]
+
+
 def test_healthz_does_not_require_upstream() -> None:
     app = build_app(base_url="http://nemo-platform-api:8080", principal="agents")
     client = TestClient(app)
@@ -169,3 +215,290 @@ def test_lifespan_closes_upstream_client() -> None:
         assert test_client.get("/healthz").status_code == 200
         assert upstream_client.is_closed is False
     assert upstream_client.is_closed is True
+
+
+@pytest.fixture(autouse=True)
+def _reset_controller_manager() -> Iterator[None]:
+    ControllerManager._instance = None
+    yield
+    ControllerManager._instance = None
+
+
+def test_run_registers_and_unregisters_healthy_loop_for_health_reporting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expose a running auth-proxy as healthy and remove it on shutdown."""
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+
+    server_started = threading.Event()
+
+    class _FakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            server_started.set()
+            while not self.should_exit:
+                threading.Event().wait(timeout=0.05)
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _FakeServer)
+
+    manager = ControllerManager.get_instance()
+    for _ in range(2):
+        server_started.clear()
+        stop_signal = threading.Event()
+        run_thread = threading.Thread(target=workload_proxy_main.run, args=(stop_signal,), daemon=True)
+        run_thread.start()
+        try:
+            assert server_started.wait(timeout=2)
+
+            def _registered() -> bool:
+                return "auth-proxy" in manager.get_all_loops()
+
+            assert _wait_until(_registered)
+            assert _wait_until(lambda: manager.validate_all_healthy() == (True, {"auth-proxy": True}))
+        finally:
+            stop_signal.set()
+            run_thread.join(timeout=5)
+        assert not run_thread.is_alive()
+        assert manager.validate_all_healthy() == (True, {})
+
+
+def test_run_leaves_controller_tracked_when_uvicorn_thread_outlives_shutdown(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Keep a hung Uvicorn server tracked until it exits."""
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setattr(workload_proxy_main, "_UVICORN_JOIN_TIMEOUT_SECONDS", 0.05)
+
+    server_started = threading.Event()
+    hang_forever = threading.Event()
+
+    class _HangingFakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            server_started.set()
+            hang_forever.wait(timeout=5)
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _HangingFakeServer)
+
+    manager = ControllerManager.get_instance()
+    stop_signal = threading.Event()
+    run_thread = threading.Thread(target=workload_proxy_main.run, args=(stop_signal,), daemon=True)
+    run_thread.start()
+    try:
+        assert server_started.wait(timeout=2)
+        assert _wait_until(lambda: "auth-proxy" in manager.get_all_loops())
+
+        with caplog.at_level(logging.WARNING, logger="nmp.common.controller.controller_manager"):
+            stop_signal.set()
+            run_thread.join(timeout=5)
+        assert not run_thread.is_alive()
+
+        assert "auth-proxy" in manager.get_all_loops()
+        assert "Leaving health tracking in place for 'auth-proxy'" in caplog.text
+    finally:
+        hang_forever.set()
+
+    assert _wait_until(lambda: "auth-proxy" not in manager.get_all_loops())
+
+    restarted_server = threading.Event()
+
+    class _RestartedFakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            restarted_server.set()
+            while not self.should_exit:
+                threading.Event().wait(timeout=0.001)
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _RestartedFakeServer)
+
+    second_stop_signal = threading.Event()
+    second_run_thread = threading.Thread(
+        target=workload_proxy_main.run,
+        args=(second_stop_signal,),
+        daemon=True,
+    )
+    second_run_thread.start()
+    try:
+        assert restarted_server.wait(timeout=2)
+        assert _wait_until(lambda: manager.validate_all_healthy() == (True, {"auth-proxy": True}))
+    finally:
+        second_stop_signal.set()
+        second_run_thread.join(timeout=5)
+
+    assert not second_run_thread.is_alive()
+    assert manager.validate_all_healthy() == (True, {})
+
+
+def test_run_setup_failure_before_server_start_is_visible_as_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report auth-proxy setup failures through controller health."""
+    monkeypatch.delenv("NMP_AUTH_PROXY_PRINCIPAL", raising=False)
+
+    manager = ControllerManager.get_instance()
+    stop_signal = threading.Event()
+
+    with pytest.raises(RuntimeError, match="NMP_AUTH_PROXY_PRINCIPAL"):
+        workload_proxy_main.run(stop_signal)
+
+    all_healthy, status = manager.validate_all_healthy()
+    assert all_healthy is False
+    assert status.get("auth-proxy") is False
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "proxy.example.com"])
+def test_build_server_rejects_non_loopback_bind_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setenv("NMP_AUTH_PROXY_HOST", host)
+
+    with pytest.raises(RuntimeError, match="must be a loopback address"):
+        workload_proxy_main._build_server()
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.10.20.30", "::1", "[::1]", "localhost"])
+def test_loopback_host_validation_accepts_explicit_loopback(host: str) -> None:
+    assert workload_proxy_main._is_loopback_host(host)
+
+
+def test_startup_log_redacts_upstream_url_credentials(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="nmp.common.auth.workload_proxy.main"):
+        workload_proxy_main._log_startup(
+            host="127.0.0.1",
+            port=8090,
+            base_url="https://sensitive-user:sensitive-password@platform.example.test:8443/base",
+            principal="agents",
+            on_behalf_of=None,
+        )
+
+    assert "sensitive-user" not in caplog.text
+    assert "sensitive-password" not in caplog.text
+    assert "https://platform.example.test:8443/base" in caplog.text
+
+
+def test_build_server_allows_explicit_non_loopback_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setenv("NMP_AUTH_PROXY_HOST", "0.0.0.0")
+    monkeypatch.setenv("NMP_AUTH_PROXY_ALLOW_NON_LOOPBACK", "true")
+    monkeypatch.setattr(workload_proxy_main, "build_app", lambda **_kwargs: object())
+    sentinel_server = object()
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", lambda _config: sentinel_server)
+
+    _, _, _, host, _, server = workload_proxy_main._build_server()
+
+    assert host == "0.0.0.0"
+    assert server is sentinel_server
+
+
+def test_run_registration_failure_never_starts_server_and_remains_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject duplicate tracking before starting Uvicorn."""
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    server_started = threading.Event()
+
+    class _FakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            server_started.set()
+            while not self.should_exit:
+                threading.Event().wait(timeout=0.01)
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _FakeServer)
+    manager = ControllerManager.get_instance()
+
+    def _fail_registration(_name: str, _loop: object) -> None:
+        raise ValueError("duplicate")
+
+    monkeypatch.setattr(manager, "register", _fail_registration)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        workload_proxy_main.run(threading.Event())
+
+    assert not server_started.wait(timeout=0.5)
+    assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+
+
+def test_run_uvicorn_thread_start_failure_removes_registered_loop_and_remains_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+
+    real_start = threading.Thread.start
+
+    def _start(thread: threading.Thread) -> None:
+        if thread.name != "auth-proxy-uvicorn":
+            real_start(thread)
+        else:
+            raise RuntimeError("thread start failed")
+
+    monkeypatch.setattr(threading.Thread, "start", _start)
+    manager = ControllerManager.get_instance()
+
+    with pytest.raises(RuntimeError, match="thread start failed"):
+        workload_proxy_main.run(threading.Event())
+
+    assert manager.get_all_loops() == {}
+    assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+
+
+def test_run_health_loop_start_failure_tracks_uvicorn_until_delayed_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setattr(workload_proxy_main, "_UVICORN_JOIN_TIMEOUT_SECONDS", 0.05)
+
+    server_started = threading.Event()
+    release_server = threading.Event()
+
+    class _HangingFakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            server_started.set()
+            release_server.wait(timeout=5)
+
+    def _fail_health_loop_start(_loop: Loop) -> None:
+        raise RuntimeError("health loop start failed")
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _HangingFakeServer)
+    monkeypatch.setattr(Loop, "start", _fail_health_loop_start)
+    manager = ControllerManager.get_instance()
+
+    try:
+        with pytest.raises(RuntimeError, match="health loop start failed"):
+            workload_proxy_main.run(threading.Event())
+
+        assert server_started.wait(timeout=2)
+        assert "auth-proxy" in manager.get_all_loops()
+        assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+        with pytest.raises(RuntimeError, match="still stopping"):
+            manager.await_controller_registration("auth-proxy")
+    finally:
+        release_server.set()
+
+    assert _wait_until(lambda: "auth-proxy" not in manager.get_all_loops())
+    assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+
+
+def _wait_until(predicate: Callable[[], bool], timeout: float = 2.0, interval: float = 0.02) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()

@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,7 @@ import pytest
 from nemo_platform_ext.local import process
 from nemo_platform_ext.local.services import ServiceRunConfig
 from nemo_platform_ext.local.transport import probe_status, wait_for_status
+from nmp.common.controller import ControllerManager
 
 
 def _free_tcp_port() -> int:
@@ -70,17 +72,15 @@ def test_create_app_starts_and_joins_controller_threads() -> None:
 
 
 @pytest.mark.integration
-def test_create_app_controller_thread_join_timeout() -> None:
-    """A controller that ignores the stop signal should not hang shutdown —
-    ``thread.join(timeout=5)`` should return even if the controller is still running."""
+def test_create_app_controller_thread_join_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stuck controller must not hang shutdown."""
     started = threading.Event()
+    release = threading.Event()
 
-    def stubborn_controller(stop_signal: threading.Event) -> None:
+    def stubborn_controller(_stop_signal: threading.Event) -> None:
         started.set()
         # Ignore stop_signal — simulate a controller that hangs.
-        import time
-
-        time.sleep(300)
+        release.wait(timeout=300)
 
     with (
         patch("nmp.platform_runner.server.get_platform_config") as mock_pc,
@@ -93,17 +93,26 @@ def test_create_app_controller_thread_join_timeout() -> None:
 
         from nmp.platform_runner.server import create_app
 
+        monkeypatch.setattr(
+            "nmp.platform_runner.controller_threads.DEFAULT_RUNNER_JOIN_TIMEOUT_SECONDS",
+            0.05,
+        )
         app = create_app(services=[], controller_run_funcs={"stubborn": stubborn_controller})
 
         from fastapi.testclient import TestClient
 
-        # The TestClient __exit__ triggers lifespan exit, which calls thread.join(timeout=5).
-        # This should NOT hang forever — the 5s timeout should let shutdown proceed.
-        with TestClient(app):
-            assert started.wait(timeout=2.0), "controller thread did not start"
-
-        # If we got here, shutdown didn't hang. The stubborn thread is still running
-        # but as a daemon thread it will be cleaned up when the test process exits.
+        manager = ControllerManager.get_instance()
+        try:
+            started_at = time.monotonic()
+            with TestClient(app):
+                assert started.wait(timeout=2.0), "controller thread did not start"
+            assert time.monotonic() - started_at < 1.0
+        finally:
+            release.set()
+            for thread in app.state.controller_threads:
+                thread.join(timeout=2.0)
+            # Avoid leaking singleton state into later integration tests.
+            manager.clear()
 
 
 @pytest.mark.integration

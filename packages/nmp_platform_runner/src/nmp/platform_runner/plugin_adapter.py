@@ -25,7 +25,7 @@ from fastapi import FastAPI
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.service import NemoService
 from nmp.common.config import get_platform_config
-from nmp.common.controller import Controller, Loop, TimedLoopWaiter, TrackLastExecutionTime
+from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter, TrackLastExecutionTime
 from nmp.common.service import RouterConfig, Service
 from nmp.common.service.api.health import wait_for_service_ready
 
@@ -201,8 +201,8 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
                 "Plugin controller %r on_startup() failed — controller will not run.",
                 controller.name,
             )
-            adapter._loop.close()
-            return
+            adapter.shutdown()
+            raise
 
         monitored = TrackLastExecutionTime(adapter)
         waiter = TimedLoopWaiter(
@@ -216,7 +216,38 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
             stop_signal=stop_signal,
         )
         loop.name = f"controller-plugin-{controller.name}"
-        loop.start()
+        try:
+            ControllerManager.get_instance().register(loop.name, loop)
+        except Exception:
+            logger.exception(
+                "Plugin controller %r failed to register its control loop — controller will not run.",
+                controller.name,
+            )
+            adapter.shutdown()
+            raise
+        try:
+            loop.start()
+        except Exception:
+            _unregister_quietly(loop.name, controller.name)
+            adapter.shutdown()
+            raise
         loop.join()
 
     return run
+
+
+def _unregister_quietly(loop_name: str, controller_name: str) -> None:
+    """Best-effort unregister that never masks the caller's in-flight exception.
+
+    Called from an ``except Exception:`` block after ``loop.start()`` fails. A
+    bare ``ControllerManager.unregister(...)`` there would let a second
+    exception replace the original failure on the ``raise`` that follows,
+    hiding the real cause from logs/health status.
+    """
+    try:
+        ControllerManager.get_instance().unregister(loop_name)
+    except Exception:
+        logger.exception(
+            "Plugin controller %r failed to unregister its control loop after loop.start() failed",
+            controller_name,
+        )

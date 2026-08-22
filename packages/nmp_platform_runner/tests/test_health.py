@@ -101,3 +101,19 @@ def test_registered_not_ready_service_degrades_status_and_blocks_readiness() -> 
     }
     assert ready_response.status_code == 503
     assert ready_response.json() == {"detail": {"status": "not_ready"}}
+
+
+def test_failed_controller_makes_top_level_status_unhealthy() -> None:
+    manager = ControllerManager.get_instance()
+    manager.mark_controller_failed("models", reason="startup failed")
+    client = _client_for([ProbeService("entities", ready=True)])
+
+    status_response = client.get("/status")
+
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "unhealthy"
+    assert status_response.json()["controllers"] == {
+        "healthy": False,
+        "status": {"models": False},
+    }
+    assert client.get("/health/ready").status_code == 503
