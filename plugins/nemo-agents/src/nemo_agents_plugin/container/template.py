@@ -44,9 +44,9 @@ DOCKERFILE_SENTINEL = "# Managed by `nemo agents package` — safe to delete if 
 
 UNRESOLVED_CONTRACT_VERSION = "0.0.0"
 
-#: PEP 440 dev segment. The separator is optional, so ``1.2.3dev0`` is a dev
-#: release too and normalizes to ``1.2.3.dev0``.
-_DEV_SEGMENT = re.compile(r"[-_.]?dev[-_.]?[0-9]*$")
+#: PEP 440 dev segment. The separator is optional and the spelling is case
+#: insensitive, so ``1.2.3dev0`` and ``1.2.3.DEV0`` both normalize to ``1.2.3.dev0``.
+_DEV_SEGMENT = re.compile(r"[-_.]?dev[-_.]?[0-9]*$", re.IGNORECASE)
 
 
 def is_plugin_managed(path: Path) -> bool:

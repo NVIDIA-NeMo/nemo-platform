@@ -2579,6 +2579,11 @@ class TestInstallableContractVersion:
             "1.2.3dev0",
             "1.2.3-dev0",
             "1.2.3_dev0",
+            # PEP 440 normalizes case, so these are dev releases too.
+            "1.2.3.DEV0",
+            "1.2.3DEV0",
+            "1.2.3-DEV0",
+            "1.2.3_DEV0",
         ],
     )
     def test_unpublishable_versions_are_rejected(self, version: str) -> None:
