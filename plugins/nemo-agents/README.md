@@ -173,19 +173,21 @@ The packaging command runs locally; Platform services are not required.
 
 `nemo agents package` renders `uv pip install "nemo-platform[nemo-agents-plugin]==<version>"`
 into the Fabric image, where `<version>` is whatever is installed on the build
-host. Working from a checkout, that version carries a local build identifier,
-which PEP 440 keeps off public indexes, so the command fails immediately:
+host. A checkout reports something like `0.3.0.post402.dev0+062f0ac6e8`, which is
+both a developmental release and a local build identifier — neither of which a
+public index serves — so the command fails immediately:
 
 ```text
-Error: The installed nemo-platform version '0.3.0.post402.dev0+062f0ac6e8' is a
-local build identifier, which package indexes do not serve.
+Error: The installed nemo-platform version '0.3.0.post402.dev0+062f0ac6e8' carries
+a local build identifier and is a developmental release, so no package index serves
+it. Fabric packaging pins this exact version inside the image, so the build would
+fail while resolving it. Install a released nemo-platform to package an agent, or
+set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this
+version.
 ```
 
-Install a released `nemo-platform` to package a Fabric agent. If you build
-against an index that does serve the version, set
-`NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1` to proceed anyway. Supplying
-your own `--template` also skips the check, since a custom template need not
-pin the contract version at all.
+Supplying your own `--template` also skips the check, since a custom template
+need not pin the contract version at all.
 
 NAT packaging is unaffected — it installs the packaged project plus a published
 `nvidia-nat` release.
