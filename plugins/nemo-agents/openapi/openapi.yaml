@@ -5060,8 +5060,10 @@ components:
           description: Name of the Agent entity to package.
         tag:
           title: Tag
-          description: Image tag. Defaults to '{agent_name}-{agent_id}:{agent_version}'.
+          description: Image name and optional tag, always nested under 'nemo-agents/{workspace}/'.
+            Defaults to '{agent_name}-{agent_id}:{agent_version}'.
           type: string
+          pattern: ^[a-z0-9][a-z0-9._-]*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
         base_image_url:
           title: Base Image Url
           description: Base image repository override (e.g. 'nvcr.io/nvidia/base/ubuntu').
@@ -5109,7 +5111,7 @@ components:
       required:
       - agent
       title: PackageAgentInput
-      description: 'Submitter-facing shape: an agent name plus the packaging knobs.'
+      description: 'What a caller POSTs: an agent name plus the packaging knobs.'
     PackageAgentJob:
       properties:
         id:
@@ -5259,8 +5261,10 @@ components:
           description: Name of the Agent entity to package.
         tag:
           title: Tag
-          description: Image tag. Defaults to '{agent_name}-{agent_id}:{agent_version}'.
+          description: Image name and optional tag, always nested under 'nemo-agents/{workspace}/'.
+            Defaults to '{agent_name}-{agent_id}:{agent_version}'.
           type: string
+          pattern: ^[a-z0-9][a-z0-9._-]*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
         base_image_url:
           title: Base Image Url
           description: Base image repository override (e.g. 'nvcr.io/nvidia/base/ubuntu').
