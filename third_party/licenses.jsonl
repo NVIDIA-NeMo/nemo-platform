@@ -352,6 +352,7 @@
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-multipart", "license": "APACHE-2.0", "compatible": true}
+{"name": "python-on-whales", "license": "MIT", "compatible": true}
 {"name": "pytz", "license": "MIT", "compatible": true}
 {"name": "pyyaml", "license": "MIT", "compatible": true}
 {"name": "ragas", "license": "APACHE-2.0", "compatible": true}

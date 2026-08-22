@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 
-import typer
+from nemo_agents_plugin.container.builder import ProgressCallback, emit_progress
+from nemo_agents_plugin.container.errors import ContainerToolingUnavailableError, ImagePublishError
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ def docker_push(
     local_tag: str,
     registry: str,
     push_tag: str | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> str:
     """Tag a local Docker image and push it to a remote registry.
 
@@ -35,36 +37,29 @@ def docker_push(
         The remote image tag that was pushed.
 
     Raises:
-        typer.Exit: On tag or push failure.
+        ContainerToolingUnavailableError: When python-on-whales is missing.
+        ImagePublishError: On tag or push failure.
     """
     try:
-        from python_on_whales import docker  # ty: ignore[unresolved-import]
-    except ImportError:
-        typer.echo(
-            "Error: 'python-on-whales' is required for publishing images.  "
-            "From the repository root, install it with:  "
-            "uv sync --package nemo-agents-plugin --extra container",
-            err=True,
-        )
-        raise typer.Exit(code=1)
+        from python_on_whales import docker
+    except ImportError as exc:
+        raise ContainerToolingUnavailableError("publishing images") from exc
 
     if push_tag is None:
         # Strip any leading/trailing slashes from the registry.
         push_tag = f"{registry.rstrip('/')}/{local_tag}"
 
-    typer.echo(f"Tagging {local_tag} -> {push_tag}")
+    emit_progress(on_progress, f"Tagging {local_tag} -> {push_tag}")
     try:
         docker.tag(local_tag, push_tag)
     except Exception as exc:
-        typer.echo(f"Docker tag failed: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise ImagePublishError(f"Docker tag failed: {exc}") from exc
 
-    typer.echo(f"Pushing {push_tag} ...")
+    emit_progress(on_progress, f"Pushing {push_tag} ...")
     try:
         docker.push(push_tag)
     except Exception as exc:
-        typer.echo(f"Docker push failed: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise ImagePublishError(f"Docker push failed: {exc}") from exc
 
-    typer.echo(f"Successfully pushed {push_tag}")
+    emit_progress(on_progress, f"Successfully pushed {push_tag}")
     return push_tag

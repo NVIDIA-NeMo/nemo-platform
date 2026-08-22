@@ -243,6 +243,8 @@ nemo-agents-plugin = [
   "botocore>=1.40.46,<1.40.62",
   "httpx>=0.27",
   "pyyaml>=6.0",
+  "jinja2>=3.1",
+  "python-on-whales>=0.60",
   "anthropic>=0.88.0",
   "rich>=13.7.1",
   "nemo-fabric[claude,codex,deepagents,relay]>=0.2.0,<0.3.0",
@@ -612,6 +614,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
 "insights.analyze-job" = "nemo_insights_plugin.jobs.analyze:AnalyzeJob"
 "agents.execute" = "nemo_agents_plugin.jobs.execute:ExecuteAgentJob"
+"agents.package-agent" = "nemo_agents_plugin.jobs.package_agent:PackageAgentJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]

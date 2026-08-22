@@ -230,6 +230,54 @@ nemo agents package \
 This flag bypasses strict config loading, runtime translation and planning, and
 referenced-artifact checks. It can produce an image that fails at startup.
 
+#### Packaging an agent that already lives on the platform
+
+The CLI above packages a directory on your machine. For an agent created
+through Studio or `nemo agents create`, the source of truth is the
+`{agent}-spec` fileset instead, and the `agents.package` job builds from that:
+
+```bash
+curl -X POST "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package" \
+  -H 'Content-Type: application/json' \
+  -d '{"spec": {"agent": "my-agent", "tag": "my-agent:1.0"}}'
+```
+
+Poll it like any other platform job:
+
+```bash
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/status"
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/logs"
+```
+
+The tag to hand to `nemo agents deploy --image` is published as a
+`package_result` job result:
+
+```bash
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/results"
+```
+
+```json
+{"image": "nemo-agents/default/my-agent:1.0", "agent": "my-agent"}
+```
+
+The job downloads the agent's spec fileset into a temporary build context,
+writes `agent.yaml` from the stored config, and runs the same Fabric build the
+CLI runs.
+
+From the CLI the same job is `nemo agents package-agent submit`. It is
+deliberately *not* named `package`: the generated job sub-group mounts onto the
+same Typer app that already owns `nemo agents package`, and would shadow the
+local packaging flags above.
+
+| Limitation | Detail |
+|---|---|
+| Host build | The step runs as a **host subprocess**, not in a container — the Fabric Dockerfile needs a real Docker CLI for its BuildKit cache mounts. Submissions are rejected at POST time wherever no subprocess execution profile is registered (notably `runtime = kubernetes`). |
+| Fabric only | `nemo-agents-spec-v1` agents only. NAT workflows build from a source checkout, so they stay on the CLI. |
+| No publish | The image is left in the host daemon. Pushing to a registry from the platform is not wired up yet — use `nemo agents package --publish` locally for that. |
+| Constrained base image | `base_image_url`, `base_image_tag`, `python_version`, and `uv_version` are interpolated into the Dockerfile unescaped, so the API restricts them to a strict grammar: an optional registry host with port followed by `/`-separated path components for `base_image_url`, `[A-Za-z0-9_][A-Za-z0-9._-]{0,127}` for `base_image_tag`, and up to three dot-separated numbers for the two versions. `PackageAgentInput` in `openapi/openapi.yaml` is the source of truth. The CLI, whose caller already owns the host, is unrestricted. |
+| Namespaced tags | Every image lands at `nemo-agents/{workspace}/{tag}`, derived or submitted, and `tag` may not contain `/`. Docker tags are daemon-global while the auth boundary here is the workspace, so an unqualified tag would let one workspace repoint another's image on the shared host. A workspace whose name is outside the Docker path grammar (entity names still allow `@` and `+`) is rejected at POST. |
+| Managed `.dockerignore` | A `.dockerignore` in the spec fileset is discarded. Validation reads the staged tree off disk and Docker applies exclusions afterwards, so a user-supplied one could exclude `agent.yaml` or a referenced skill, pass validation, build, and fail only at container start. The CLI still honours a `.dockerignore` you wrote yourself. |
+
 #### `agent.yaml` validation
 
 Before a build, Platform agent packaging:
