@@ -183,6 +183,50 @@ def delete_filesets(
     typer.echo("✓ Deleted successfully")
 
 
+@app.command("get-profile")
+@collect_warnings
+@handle_errors
+def get_profile_filesets(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument()],
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    output_format: EntityOutputFormatOption = None,
+) -> None:
+    """Get the stored profile for a fileset, with the current profiling state.
+
+    `state` is `ready` (a profile is available), `running` (a job is in flight),
+    `paused` (a job exists but is suspended and will produce nothing until resumed),
+    `cancelled` (the last job was stopped deliberately and no profile exists),
+    `failed` (the last job errored and no profile exists), or `absent` (never
+    profiled). A stored profile short-circuits without querying the Jobs service, so
+    a re-profile running over an existing profile still reads `ready` (with the
+    current profile) and GET stays resilient to a Jobs-service outage.
+
+    There is no `stale`. A profile carries no content digest to compare a fresh
+    listing against — see `DatasetProfile` for why it deliberately holds no
+    staleness marker — so a stored profile describes the fileset as of its
+    `created_at`, and whether that is still good enough is the caller's call."""
+    state: CLIContext = ctx.obj
+    output_format = state.get_output_format(output_format)
+
+    kwargs = build_kwargs(
+        workspace=workspace,
+    )
+    if handle_code_generation(["files", "filesets"], "get_profile", kwargs, output_format, state):
+        return
+
+    client = state.get_client()
+    result = client.files.filesets.get_profile(name, **kwargs)
+
+    format_output(
+        result,
+        is_list=False,
+        output_format=output_format,
+        no_truncate=state.get_no_truncate(),
+        timestamp_format=state.get_timestamp_format(),
+    )
+
+
 @app.command("list")
 @collect_warnings
 @handle_errors
@@ -279,6 +323,50 @@ def list_filesets(
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)
+
+
+@app.command("profile")
+@collect_warnings
+@handle_errors
+def profile_filesets(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument()],
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    row_budget: Annotated[
+        int | None,
+        typer.Option(
+            "--row-budget",
+            help="Rows the profiler may read per _partition_, divided across that partition's files rather than applied to each one. Omit (or pass 0) to read every row, which is the default: the profiler folds, so memory is flat in rows and an exhaustive read buys exact row counts, proven value enumerations, and `rows_complete`. Set a budget when the fileset is large enough that the transfer is the cost worth bounding — files are read over the network, so an uncapped run pulls every row group over the wire. Named to match the profiler's own `row_budget`, which is the value this becomes.",
+        ),
+    ] = None,
+    output_format: EntityOutputFormatOption = None,
+) -> None:
+    """Profile a fileset's dataset contents.
+
+    Submits a background job that runs the dataset profiler over the fileset, stores
+    the resulting profile (read it via `GET .../filesets/{name}/profile`), and
+    publishes it as a job result artifact. If a profiling job for this fileset is
+    already on its way, that job is returned instead of submitting a duplicate."""
+    state: CLIContext = ctx.obj
+    output_format = state.get_output_format(output_format)
+
+    kwargs = build_kwargs(
+        workspace=workspace,
+        row_budget=row_budget,
+    )
+    if handle_code_generation(["files", "filesets"], "profile", kwargs, output_format, state):
+        return
+
+    client = state.get_client()
+    result = client.files.filesets.profile(name, **kwargs)
+
+    format_output(
+        result,
+        is_list=False,
+        output_format=output_format,
+        no_truncate=state.get_no_truncate(),
+        timestamp_format=state.get_timestamp_format(),
+    )
 
 
 @app.command("get")

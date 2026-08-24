@@ -18,10 +18,24 @@
 from __future__ import annotations
 
 from .fileset import Fileset as Fileset
+from .evidence import Evidence as Evidence
+from .quantiles import Quantiles as Quantiles
+from .file_error import FileError as FileError
 from .secret_ref import SecretRef as SecretRef
+from .text_stats import TextStats as TextStats
 from .cache_status import CacheStatus as CacheStatus
+from .column_stats import ColumnStats as ColumnStats
 from .fileset_file import FilesetFile as FilesetFile
+from .message_stats import MessageStats as MessageStats
+from .numeric_stats import NumericStats as NumericStats
+from .sampling_info import SamplingInfo as SamplingInfo
+from .split_profile import SplitProfile as SplitProfile
+from .verifiability import Verifiability as Verifiability
+from .feature_schema import FeatureSchema as FeatureSchema
+from .dataset_profile import DatasetProfile as DatasetProfile
 from .fileset_purpose import FilesetPurpose as FilesetPurpose
+from .categorical_stats import CategoricalStats as CategoricalStats
+from .partition_profile import PartitionProfile as PartitionProfile
 from .s3_storage_config import S3StorageConfig as S3StorageConfig
 from .ngc_storage_config import NGCStorageConfig as NGCStorageConfig
 from .fileset_list_params import FilesetListParams as FilesetListParams
@@ -32,10 +46,14 @@ from .local_storage_config import LocalStorageConfig as LocalStorageConfig
 from .fileset_create_params import FilesetCreateParams as FilesetCreateParams
 from .fileset_update_params import FilesetUpdateParams as FilesetUpdateParams
 from .file_list_files_params import FileListFilesParams as FileListFilesParams
+from .fileset_profile_params import FilesetProfileParams as FilesetProfileParams
 from .file_upload_file_params import FileUploadFileParams as FileUploadFileParams
 from .s3_storage_config_param import S3StorageConfigParam as S3StorageConfigParam
+from .fileset_profile_response import FilesetProfileResponse as FilesetProfileResponse
 from .ngc_storage_config_param import NGCStorageConfigParam as NGCStorageConfigParam
+from .partition_classification import PartitionClassification as PartitionClassification
 from .huggingface_storage_config import HuggingfaceStorageConfig as HuggingfaceStorageConfig
 from .local_storage_config_param import LocalStorageConfigParam as LocalStorageConfigParam
 from .list_fileset_files_response import ListFilesetFilesResponse as ListFilesetFilesResponse
+from .submit_profile_job_response import SubmitProfileJobResponse as SubmitProfileJobResponse
 from .huggingface_storage_config_param import HuggingfaceStorageConfigParam as HuggingfaceStorageConfigParam

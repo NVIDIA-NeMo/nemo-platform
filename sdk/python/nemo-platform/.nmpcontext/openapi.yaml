@@ -2251,6 +2251,99 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile:
+    post:
+      tags:
+      - Files
+      summary: Profile Fileset
+      description: 'Profile a fileset''s dataset contents.
+
+
+        Submits a background job that runs the dataset profiler over the fileset,
+
+        stores the resulting profile (read it via ``GET .../filesets/{name}/profile``),
+
+        and publishes it as a job result artifact. If a profiling job for this fileset
+
+        is already on its way, that job is returned instead of submitting a duplicate.'
+      operationId: profile_fileset_apis_files_v2_workspaces__workspace__filesets__name__profile_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/ProfileFilesetRequest'
+              title: Request
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitProfileJobResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Files
+      summary: Get Fileset Profile
+      description: "Get the stored profile for a fileset, with the current profiling\
+        \ state.\n\n``state`` is ``ready`` (a profile is available), ``running`` (a\
+        \ job is in flight), ``paused``\n(a job exists but is suspended and will produce\
+        \ nothing until resumed), ``cancelled`` (the last\njob was stopped deliberately\
+        \ and no profile exists), ``failed`` (the last job errored and no\nprofile\
+        \ exists), or ``absent`` (never profiled). A stored profile short-circuits\
+        \ without\nquerying the Jobs service, so a re-profile running over an existing\
+        \ profile still reads\n``ready`` (with the current profile) and GET stays\
+        \ resilient to a Jobs-service outage.\n\nThere is no ``stale``. A profile\
+        \ carries no content digest to compare a fresh listing against \u2014\nsee\
+        \ ``DatasetProfile`` for why it deliberately holds no staleness marker \u2014\
+        \ so a stored profile\ndescribes the fileset as of its ``created_at``, and\
+        \ whether that is still good enough is the\ncaller's call."
+      operationId: get_fileset_profile_apis_files_v2_workspaces__workspace__filesets__name__profile_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilesetProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/guardrails/v2/workspaces/{workspace}/checks:
     post:
       tags:
@@ -9495,6 +9588,47 @@ components:
       title: CapturedChatMessage
       description: A flexible message model that requires a valid role field but allows
         provider-specific fields.
+    CategoricalStats:
+      properties:
+        distinct_count:
+          type: integer
+          title: Distinct Count
+          description: 'How many distinct values the vocabulary holds. Exact, with
+            no cap to have silently hit: this model is built only for a column that
+            stayed inside the vocabulary bounds all the way through, so there is nothing
+            to caveat. A small bounded set corroborates score / category roles, and
+            `<= 2` is what confirms a binary preference label.'
+        values:
+          title: Values
+          description: "The observed values, present only when this column's `semantic_role`\
+            \ marks it a controlled vocabulary (label | provenance | meta | rank)\
+            \ and it holds at most 32 of them. Cardinality alone cannot be the gate:\
+            \ it inverts on small data, where every column holds few distinct values\
+            \ \u2014 free text included \u2014 so a three-row dataset had its prompts\
+            \ stored verbatim. A role says what a column *is*, at any size. Read `PartitionProfile.rows_complete`\
+            \ to know whether this is the whole vocabulary or only what the sampled\
+            \ rows showed."
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+      - distinct_count
+      title: CategoricalStats
+      description: "The vocabulary of a column that has one.\n\nPresent only when\
+        \ the column really is a bounded controlled vocabulary. Absent otherwise,\
+        \ and\nthe absence *is* the claim: this column is not a vocabulary.\n\nIt\
+        \ used to be a general cardinality count on every string and numeric column.\
+        \ Counting distinct\nvalues exactly means *retaining* them, and for a column\
+        \ of prompts the set of distinct values is\nthe column. What that bought was\
+        \ a reading of \"9,954 distinct in 10,000 rows\", which says free\ntext, which\
+        \ ``semantic_role`` and the length quantiles already said for free. Nothing\
+        \ read it\neither: the only consumers of the number are a ``<= 2`` test that\
+        \ confirms a binary label and\nthe ``<= 32`` gate on ``values`` below.\n\n\
+        The values themselves ARE row content, so they appear only for a column whose\
+        \ detected role makes\nit a controlled vocabulary \u2014 the assert-only-what-was-proven\
+        \ rule applied to the one place the\nprofiler would otherwise leak the data\
+        \ it is describing."
     ChatCompletionAssistantMessageParam:
       properties:
         role:
@@ -9829,6 +9963,40 @@ components:
       - policy
       title: ClavataRailOptions
       description: Configuration data for the Clavata API
+    ColumnStats:
+      properties:
+        null_rate:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Null Rate
+          default: 0.0
+        text:
+          allOf:
+          - $ref: '#/components/schemas/TextStats'
+          description: dtype == string
+        numeric:
+          allOf:
+          - $ref: '#/components/schemas/NumericStats'
+          description: dtype in {int*, uint*, float*}
+        messages:
+          allOf:
+          - $ref: '#/components/schemas/MessageStats'
+          description: dtype == messages (list of {role, content})
+        categorical:
+          allOf:
+          - $ref: '#/components/schemas/CategoricalStats'
+          description: Present only when the column is a bounded controlled vocabulary;
+            absence means it is not one.
+      type: object
+      title: ColumnStats
+      description: "Measurements for one top-level column (keyed by name in ``PartitionProfile.stats``).\n\
+        \nThe kind-specific block is populated by dtype; deep measurements fold into\
+        \ it (e.g.\n``MessageStats.content_chars``) so stats stay flat \u2014 no path\
+        \ addressing to drift against the\nschema tree. Never row values \u2014 profiles\
+        \ stay safe to display / export without leaking data \u2014\nwith one role-gated\
+        \ exception: ``categorical.values``, and only for a column whose role makes\
+        \ it\na controlled vocabulary rather than free text that happens to repeat."
     ComputeResourceSpec:
       properties:
         cpu:
@@ -10693,6 +10861,79 @@ components:
       type: object
       title: DatasetMetadataContent
       description: Content for dataset-type filesets.
+    DatasetProfile:
+      properties:
+        kind:
+          type: string
+          const: dataset
+          title: Kind
+          description: "What this profile describes. Pinned rather than an open vocabulary,\
+            \ unlike the value vocabularies above: a discriminator has to be exact,\
+            \ and a `DatasetProfile` whose kind says anything else is malformed, not\
+            \ forward-compatible. Today `dataset` is the only member, so a consumer\
+            \ sees `DatasetProfile` directly; when a second profiler lands, the stored\
+            \ and returned type widens to a discriminated union and this is what tells\
+            \ them apart. It carries a default, so profiles written before it existed\
+            \ validate cleanly \u2014 which is precisely why it is cheap to add now\
+            \ and expensive to add once a union is in the wire format."
+          default: dataset
+        profile_schema_version:
+          type: string
+          title: Profile Schema Version
+          description: "Semver of THIS contract (e.g. \"1.0\") \u2014 gates consumer\
+            \ compatibility."
+          default: '1.0'
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        profiler_info:
+          additionalProperties: true
+          type: object
+          title: Profiler Info
+          description: Free-form profiler metadata (name, version, git sha, timings).
+        sampling:
+          allOf:
+          - $ref: '#/components/schemas/SamplingInfo'
+          description: How much data the profile is based on.
+        partitions:
+          items:
+            $ref: '#/components/schemas/PartitionProfile'
+          type: array
+          title: Partitions
+          description: Single partition in the common homogeneous case; there is no
+            fileset-level rollup.
+        file_errors:
+          items:
+            $ref: '#/components/schemas/FileError'
+          type: array
+          title: File Errors
+          description: 'Every file the profiler could not fully use, from anywhere
+            in the fileset: a format with no reader, a corrupt shard, a partially
+            parsed one. Reporting them is what keeps a directory of .csv shards from
+            profiling as an exhaustively scanned *empty* dataset, indistinguishable
+            from one that really is empty. One list rather than two, because "a file
+            I could not use" is the same finding whether or not a partition managed
+            to group it first, and a reader asking "did anything go wrong?" should
+            not have to look twice.'
+      type: object
+      required:
+      - created_at
+      - sampling
+      - partitions
+      title: DatasetProfile
+      description: "The machine-owned dataset profile \u2014 the root of the stored\
+        \ contract.\n\nDeliberately carries no staleness marker, and no per-file manifest\
+        \ to reconstruct one from. A\nstored digest would freeze \"which files count\
+        \ as inputs\" into the data at write time, and that\njudgment moves: once\
+        \ card front-matter drives split declaration, ``README.md`` becomes an input.\n\
+        Changing the rule would then invalidate every stored profile at once, with\
+        \ no way to tell a real\nchange from a definition change.\n\nSo a profile\
+        \ says when it was made and nothing about whether it still holds. ``created_at``\
+        \ is\nthe whole of it. That is deliberate while profiling is user-triggered\
+        \ and nothing consumes\nfreshness; when something does, the cheap primitive\
+        \ is a fileset version token from the storage\nbackend, which costs no listing\
+        \ and freezes no policy \u2014 not a manifest reconstructed here."
     DateRangeFilter:
       description: Filter for date ranges.
       properties:
@@ -12024,6 +12265,30 @@ components:
       required:
       - data
       title: EvaluatorResultsPage
+    Evidence:
+      properties:
+        kind:
+          type: string
+          title: Kind
+          description: "column_name | column_dtype | content_probe | split_name |\
+            \ file_name | card_metadata | user_hint | error \u2014 `user_hint` for\
+            \ a caller-supplied column role the data could not support, and `error`\
+            \ for when a detector could not run at all, so an absent finding is distinguishable\
+            \ from a finding of absence."
+        detail:
+          type: string
+          title: Detail
+          description: Self-describing evidence, e.g. "answer matches '#### <number>'
+            in 100% of 1024 sampled rows".
+      type: object
+      required:
+      - kind
+      - detail
+      title: Evidence
+      description: "Why the profiler believes what it detected.\n\nCaptured at profile\
+        \ time \u2014 the only moment it is cheap and guaranteed to match the stored\n\
+        result; once the data or the profiler version moves, a re-run explains the\
+        \ *new* snapshot, not\nthe stored one."
     ExecutedAction:
       properties:
         action_name:
@@ -12331,6 +12596,60 @@ components:
       type: object
       title: FactCheckingRailConfig
       description: Configuration data for the fact-checking rail.
+    FeatureSchema:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Column / struct-field name; "" for a list element.
+          default: ''
+        dtype:
+          type: string
+          title: Dtype
+          description: "string | bool | int8..int64 / uint8..uint64 | float16/32/64\
+            \ | struct | list | messages | image | audio | video | json | ... \u2014\
+            \ fixed-width numeric widths as the source file reports them."
+        semantic_role:
+          title: Semantic Role
+          description: "Detected role (from the role vocabulary), valid at any depth\
+            \ of the tree; omitted when nothing was detected. The only detected attribute\
+            \ in the structure layer \u2014 its evidence lands in PartitionClassification.evidence.\
+            \ Named `semantic_role`, not `role`, so it never collides with a message\
+            \ struct's `role` key."
+          type: string
+        semantic_role_source:
+          title: Semantic Role Source
+          description: "Where `semantic_role` came from: detected | declared. A declared\
+            \ role was supplied by the caller and only accepted because the dtype\
+            \ could carry it; a detected one was inferred from the column name. Kept\
+            \ as a field rather than left to evidence prose because the distinction\
+            \ is per-column and actionable \u2014 a UI renders a declared role as\
+            \ confirmed and a detected one as a suggestion to correct."
+          type: string
+        fields:
+          title: Fields
+          description: 'dtype == struct: named child fields.'
+          items:
+            $ref: '#/components/schemas/FeatureSchema'
+          type: array
+        items:
+          allOf:
+          - $ref: '#/components/schemas/FeatureSchema'
+          description: 'dtype in {list, messages}: element schema.'
+      type: object
+      required:
+      - dtype
+      title: FeatureSchema
+      description: "One node of the row schema, derived de novo from the data (there\
+        \ is no external JSON-Schema\nstore to reference). Carries the measured layout\
+        \ (name, dtype, children) plus at most one\ndetected ``semantic_role`` marker\
+        \ stacked on the same node.\n\nRecursive and fully expanded: a ``struct``\
+        \ node has child ``fields``; a ``list`` / ``messages``\nnode has an element\
+        \ ``items`` \u2014 for ``messages`` the per-message ``{role, content}`` struct\
+        \ is\nspelled out, so a vision message whose content is a list of typed parts\
+        \ shows up structurally.\nThe column-level chat summary lives in ``MessageStats``\
+        \ on the stats side. This tree is the\nclean, bridgeable schema artifact (e.g.\
+        \ to a JSON Schema or a UI columns view)."
     FeedbackAnnotation:
       properties:
         annotation_id:
@@ -12432,6 +12751,37 @@ components:
       type: object
       title: FiddlerGuardrails
       description: Configuration for Fiddler Guardrails.
+    FileError:
+      properties:
+        path:
+          type: string
+          title: Path
+          description: Relative path within the fileset.
+        error:
+          type: string
+          title: Error
+          description: 'Why this file was not fully read: unreadable, corrupt, partially
+            parsed, or in a format with no reader. A file that was read cleanly never
+            appears here, so the absence of a path is itself the claim that it was
+            fine.'
+      type: object
+      required:
+      - path
+      - error
+      title: FileError
+      description: 'A file the profiler could not fully use, and why.
+
+
+        Only failures are enumerated. Healthy files are counted (``SplitProfile.num_files``),
+        because a
+
+        per-file record for each of them scaled the profile with shard count while
+        telling a reader
+
+        nothing: at 512 shards those records were 95% of the payload and every one
+        of them said "this
+
+        file was fine". Problems are the part worth naming, and there are few.'
     FileStorageType:
       type: string
       enum:
@@ -12586,6 +12936,42 @@ components:
       required:
       - data
       title: FilesetOutputsPage
+    FilesetProfileResponse:
+      properties:
+        state:
+          type: string
+          enum:
+          - ready
+          - running
+          - paused
+          - cancelled
+          - failed
+          - absent
+          title: State
+          description: 'ready (a profile exists) | running (a job is in flight) |
+            paused (a job exists but is suspended and will produce nothing until resumed)
+            | cancelled (the last job was stopped deliberately and no profile exists;
+            just re-run) | failed (the last job errored and no profile exists; worth
+            investigating) | absent (never profiled). `cancelled` is kept apart from
+            `failed` because nothing is broken and the remedy differs; callers that
+            do not care can treat the two alike. There is no `stale`: a profile carries
+            no content digest to check a fresh listing against, so a profile that
+            exists always reads `ready` and describes the fileset as of its `created_at`.'
+        job_name:
+          title: Job Name
+          description: 'Name of the profiling job behind the state: the in-flight
+            job when running or paused, and the job that ended when cancelled or failed.'
+          type: string
+        profile:
+          allOf:
+          - $ref: '#/components/schemas/DatasetProfile'
+          description: The stored profile, present when ready. It describes the fileset
+            as of its `created_at`, not as of now.
+      type: object
+      required:
+      - state
+      title: FilesetProfileResponse
+      description: The stored profile plus the status of profiling for this fileset.
     FilesetPurpose:
       type: string
       enum:
@@ -14635,6 +15021,55 @@ components:
       - num_mamba_layers
       title: MambaConfig
       description: Mamba/State Space Model configuration.
+    MessageStats:
+      properties:
+        turns:
+          allOf:
+          - $ref: '#/components/schemas/Quantiles'
+          description: Per-row turn count (p99 -> packing long chats).
+        content_chars:
+          allOf:
+          - $ref: '#/components/schemas/Quantiles'
+          description: Per-row total content length -> chat sequence length.
+        roles_seen:
+          items:
+            type: string
+          type: array
+          title: Roles Seen
+          description: "The distinct role strings actually present in the sampled\
+            \ rows, verbatim \u2014 e.g. [\"system\", \"user\", \"assistant\", \"\
+            tool\"], but equally ShareGPT's [\"human\", \"gpt\"] or a house convention.\
+            \ A measurement of row content, not a vocabulary the profiler picks from,\
+            \ so it is deliberately not an enum: an unexpected role is the finding\
+            \ worth reporting, and normalizing or dropping it would hide exactly what\
+            \ a consumer needs to see before choosing a chat template. Bounded: this\
+            \ is fed straight from row content, and a column with more distinct roles\
+            \ than fit here is not a chat column, which the first few dozen already\
+            \ say."
+        ends_with_assistant_rate:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Ends With Assistant Rate
+          description: Key signal separating an SFT target (conversation ends on an
+            assistant turn) from a prompt-only row.
+        valid_alternation_rate:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Valid Alternation Rate
+        has_tool_calls:
+          type: boolean
+          title: Has Tool Calls
+          default: false
+      type: object
+      required:
+      - turns
+      - content_chars
+      - ends_with_assistant_rate
+      - valid_alternation_rate
+      title: MessageStats
+      description: Measurements for a ``messages`` column (a list of ``{role, content}``).
     MessageTemplate:
       properties:
         type:
@@ -16122,6 +16557,24 @@ components:
           type: number
       title: NumericFilter
       type: object
+    NumericStats:
+      properties:
+        min:
+          type: number
+          title: Min
+        max:
+          type: number
+          title: Max
+        mean:
+          type: number
+          title: Mean
+      type: object
+      required:
+      - min
+      - max
+      - mean
+      title: NumericStats
+      description: Measurements for a numeric column.
     OIDCDiscoveryResponse:
       properties:
         issuer:
@@ -16366,6 +16819,139 @@ components:
         \ \u2014 ``cost_usd``,\n``latency_ms``, or ``evaluators.<name>``. Defaults\
         \ to cost (x) vs latency (y): both exist for\nevery group, so the chart always\
         \ has something to render before anyone customizes it."
+    PartitionClassification:
+      properties:
+        modality:
+          type: string
+          title: Modality
+          description: text | image_text | audio_text | ...
+          default: text
+        dataset_type:
+          type: string
+          title: Dataset Type
+          description: "Dataset-type vocabulary (prompt_completion, preference_pair,\
+            \ ...). A SUMMARY, not the basis for a decision \u2014 it is the most\
+            \ specific single structure the roles satisfy, and a dataset routinely\
+            \ satisfies several. The `semantic_role` markers are what a consumer should\
+            \ match on; `candidates` lists everything this one is a projection of."
+        candidates:
+          items:
+            type: string
+          type: array
+          title: Candidates
+          description: "Every dataset type the assigned roles satisfy, most specific\
+            \ first, so `candidates[0] == dataset_type`. prompt + completion + score\
+            \ + label is genuinely both scored_response and unpaired_preference; reporting\
+            \ only the first made rule order an invisible tie-break and hid that the\
+            \ data supports more than one use. Deliberately not a capability list\
+            \ (\"supports DPO\") \u2014 trainer requirements shift and differ per\
+            \ framework, so that mapping belongs in the consumer, computed from the\
+            \ roles."
+        format:
+          title: Format
+          description: standard | conversational | mixed
+          type: string
+        prompt_form:
+          title: Prompt Form
+          description: explicit | implicit | n/a
+          type: string
+        verifiability:
+          allOf:
+          - $ref: '#/components/schemas/Verifiability'
+          description: Present only when a verification target was found; keeps its
+            own coverage-scoped evidence.
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+          description: 'Why the type / roles / axes were assigned: one flat list,
+            detail strings self-describe what they support. A profile-time snapshot;
+            unrecoverable once the data or profiler version move.'
+      type: object
+      required:
+      - dataset_type
+      title: PartitionClassification
+      description: "What the data *is*, described objectively \u2014 the stored basis\
+        \ a downstream reader uses to decide\nwhich tasks the dataset can train.\n\
+        \nHolds the partition-level findings only: column-level semantics are the\
+        \ ``semantic_role`` markers\non the feature nodes they describe, but the evidence\
+        \ for *why* they were assigned is recorded here."
+    PartitionProfile:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: "Identifies this partition, and unique within a profile. It\
+            \ is the path prefix its files share within the fileset: a top-level directory,\
+            \ or \"\" when they sit at the fileset root. Empty is a safe sentinel\
+            \ precisely because no directory can be named it, so root-level files\
+            \ stay distinct from a directory literally called 'default'. Once card\
+            \ front-matter is parsed, a declared config name populates this field\
+            \ instead \u2014 the same claim from a better source. For display, read\
+            \ it as `name or \"default\"`: storing that default was a lossy habit,\
+            \ because a lone partition under `data/` then reported \"default\" and\
+            \ threw away the only thing identifying it."
+          default: ''
+        file_formats:
+          items:
+            type: string
+          type: array
+          title: File Formats
+          description: "The distinct formats this partition's files are in, sorted\
+            \ \u2014 normally exactly one, and more than one when a stray .jsonl sits\
+            \ beside .parquet shards. That is noise, not a second dataset, so it stays\
+            \ in this partition and shows up here rather than splitting it. jsonl\
+            \ | parquet are read today; csv | arrow are reserved vocabulary the profiler\
+            \ cannot read yet and reports on `DatasetProfile.file_errors` instead."
+        splits:
+          items:
+            $ref: '#/components/schemas/SplitProfile'
+          type: array
+          title: Splits
+          description: card-declared > path-detected > single 'default' split.
+        features:
+          items:
+            $ref: '#/components/schemas/FeatureSchema'
+          type: array
+          title: Features
+          description: 'The row schema: measured layout plus detected role markers,
+            derived de novo (nested).'
+        stats:
+          additionalProperties:
+            $ref: '#/components/schemas/ColumnStats'
+          type: object
+          title: Stats
+          description: Top-level column name -> measurements; sparse (a column with
+            nothing worth measuring is omitted); keys are a subset of the top-level
+            `features` names.
+        rows_complete:
+          type: boolean
+          title: Rows Complete
+          description: "True => every row of every file in THIS partition was read.\
+            \ Only then can a consumer assert enum / required in a bridged JSON Schema,\
+            \ or read a verifiability coverage of 1.0 as literal.\n\nNamed for what\
+            \ it measures. It was `stats_complete`, which promised more than it delivered:\
+            \ `Quantiles` is an estimate by construction however much was read, bounded\
+            \ for the cost reason its own docstring gives. Whether a number is exact\
+            \ is a property of that number, and every one of them says so; this says\
+            \ only whether anything was missed on the way in.\n\nScoped to the partition\
+            \ because that is where it is decided \u2014 a corrupt shard in one partition\
+            \ says nothing about the measurements in another, and a fileset-wide flag\
+            \ quietly downgraded every partition to the worst one."
+        classification:
+          $ref: '#/components/schemas/PartitionClassification'
+      type: object
+      required:
+      - splits
+      - features
+      - rows_complete
+      - classification
+      title: PartitionProfile
+      description: "A file-group sharing one row schema and one source directory (roughly\
+        \ an HF config).\n\nFile membership and row counts live on ``splits`` \u2014\
+        \ every file lands in exactly one split, so\npartition-level files / num_examples\
+        \ would be derivable duplication."
     PatronusEvaluateApiParams:
       properties:
         success_strategy:
@@ -17484,6 +18070,25 @@ components:
       type: object
       title: PrivateAIDetectionOptions
       description: Configuration options for Private AI.
+    ProfileFilesetRequest:
+      properties:
+        row_budget:
+          title: Row Budget
+          description: "Rows the profiler may read per *partition*, divided across\
+            \ that partition's files rather than applied to each one. Omit (or pass\
+            \ 0) to read every row, which is the default: the profiler folds, so memory\
+            \ is flat in rows and an exhaustive read buys exact row counts, proven\
+            \ value enumerations, and `rows_complete`. Set a budget when the fileset\
+            \ is large enough that the transfer is the cost worth bounding \u2014\
+            \ files are read over the network, so an uncapped run pulls every row\
+            \ group over the wire. Named to match the profiler's own `row_budget`,\
+            \ which is the value this becomes."
+          type: integer
+          minimum: 0.0
+      type: object
+      title: ProfileFilesetRequest
+      description: Options for a profiling run. Every field is optional; an empty
+        body profiles with defaults.
     Project:
       properties:
         id:
@@ -17802,6 +18407,41 @@ components:
       required:
       - data
       title: PromptsPage
+    Quantiles:
+      properties:
+        p50:
+          type: integer
+          title: P50
+        p95:
+          type: integer
+          title: P95
+        p99:
+          type: integer
+          title: P99
+        max:
+          type: integer
+          title: Max
+      type: object
+      required:
+      - p50
+      - p95
+      - p99
+      - max
+      title: Quantiles
+      description: "A per-row distribution summary. p99 = long-tail sequence-length\
+        \ signal; max = hard cap.\n\nThe shape is the point, not the precision. Mean\
+        \ and max cannot tell \"uniformly medium-length\"\napart from \"mostly short\
+        \ with a long tail\", and those call for opposite sequence budgets \u2014\
+        \ set\none from `max` and most of the memory is wasted, set it from the mean\
+        \ and the tail is silently\ntruncated. Reading p50 against p99 is what answers\
+        \ it.\n\n**p50 / p95 / p99 are estimates, within a couple of percent.** They\
+        \ are read off counters bucketed\nby magnitude rather than from the lengths\
+        \ themselves, which is what keeps the profiler's memory\nflat in rows. Every\
+        \ row is counted, so the *rank* is exact; only the value is rounded, and it\
+        \ is\nrounded to a bound that does not grow with the dataset. That is the\
+        \ cheap error to accept here,\nbecause whoever reads these rounds to a power\
+        \ of two anyway.\n\n**`max` is exact**, always, and is the only number here\
+        \ safe to treat as a hard bound."
     RailStatus:
       properties:
         status:
@@ -18350,6 +18990,74 @@ components:
       required:
       - bucket
       title: S3StorageConfig
+    SamplingInfo:
+      properties:
+        rows_scanned:
+          type: integer
+          title: Rows Scanned
+          description: Total rows actually parsed across all files.
+        rows_present:
+          title: Rows Present
+          description: "How many rows the fileset holds, scanned or not \u2014 the\
+            \ denominator `rows_scanned` is a fraction of. Populated whenever every\
+            \ file's count is *known*, regardless of how much was read: a row-capped\
+            \ run over parquet still knows its totals from the footers, and that is\
+            \ exactly when the ratio carries information. None means at least one\
+            \ file's count is unknown \u2014 never zero, never an estimate."
+          type: integer
+        files_read:
+          type: integer
+          title: Files Read
+          description: Files actually opened and read from. A count, not a list --
+            the paths of healthy shards are the one part of a profile that grows without
+            bound and informs no decision; `SplitProfile.num_files` counts them per
+            split, and only the ones that went wrong are named, on `DatasetProfile.file_errors`.
+        files_present:
+          type: integer
+          title: Files Present
+          description: "Data files the fileset holds, whether or not this run could\
+            \ read them \u2014 the denominator `files_read` is a fraction of. Includes\
+            \ files in formats with no reader, since those are data that went unprofiled\
+            \ (they are named on `DatasetProfile.file_errors`). A README is not data\
+            \ and is counted nowhere. Every readable file should be opened, since\
+            \ head-sampling a *subset of files* hides columns that appear only in\
+            \ later shards, so expect these two to match until scale forces file-level\
+            \ sampling."
+        bytes_present:
+          type: integer
+          title: Bytes Present
+          description: "On-disk bytes of every data file the fileset holds, whether\
+            \ or not this run could read it \u2014 the size of the dataset as it sits,\
+            \ independent of how much was profiled. Redundant with the sum over `SplitProfile.size_bytes`\
+            \ exactly when nothing failed, and load-bearing when something did: a\
+            \ file in a format with no reader never reaches a partition, so a directory\
+            \ of .csv shards beside one .parquet would otherwise weigh in at the parquet\
+            \ alone. Same reason `files_present` is kept alongside the per-split counts\
+            \ \u2014 a denominator stops being derivable the moment coverage is partial,\
+            \ which is the only time it is read."
+          default: 0
+      type: object
+      required:
+      - rows_scanned
+      - files_read
+      - files_present
+      title: SamplingInfo
+      description: "How much of the data the profile is based on \u2014 coverage,\
+        \ stated as numbers.\n\nDeliberately carries no ``exhaustive`` flag. That\
+        \ bit was answering two questions at once: \"are\nthese measurements facts\
+        \ or estimates?\", which is a property of each measurement and is now\nstated\
+        \ by each of them, and \"did I see all the data?\", which is this block's\
+        \ job and needs\nnumerators and denominators rather than a boolean. It also\
+        \ folded together causes that call for\ndifferent people to act \u2014 a short\
+        \ read is the caller's choice, a corrupt shard is the data\nowner's problem,\
+        \ and a missing reader is ours.\n\nNor does it record the caller's row limit.\
+        \ Reading everything is now the default and costs what\nreading some of it\
+        \ costs, so a short read is unusual \u2014 and when it happens ``rows_scanned``\n\
+        against ``rows_present`` already says so. *Why* is not the profile's business:\
+        \ a limit is an\ninput, and the only other cause is a file that failed, which\
+        \ is named on ``file_errors``.\n\nThe dataset-wide question is still one expression\
+        \ away, and still says which half failed::\n\n    all(p.rows_complete for\
+        \ p in profile.partitions) and not profile.file_errors"
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$
@@ -18867,6 +19575,86 @@ components:
       required:
       - data
       title: SpansPage
+    SplitProfile:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: 'The on-disk name: train | test | train_prefs | ...'
+        canonical:
+          title: Canonical
+          description: 'Normalized concept: train | validation | test; None when nothing
+            matches. E.g. train_prefs -> train, with the variant''s intent kept in
+            `name`.'
+          type: string
+        data_files:
+          title: Data Files
+          description: "A glob selecting exactly this split's files, relative to the\
+            \ fileset root: \"helpsteer2/train*.parquet\". Gives the files back their\
+            \ addressability without giving back the per-file manifest \u2014 one\
+            \ pattern per split, whatever the shard count \u2014 so a consumer can\
+            \ hand a reader the files of one split without listing the fileset and\
+            \ re-deriving which shards belong where. Named for HF card front-matter's\
+            \ `configs[].data_files`, which is the declared form of this same claim\
+            \ and, once cards are parsed, the thing that will replace this inference\
+            \ rather than sit beside it in a second vocabulary.\n\n`*` spans any run\
+            \ of characters except `/` \u2014 the one reading shared by shell globs,\
+            \ Python's glob, fsspec and HF \u2014 so the pattern means the same thing\
+            \ wherever it is pasted. `**` is never emitted, because its meaning is\
+            \ not shared.\n\nNone when no single pattern selects these files and nothing\
+            \ else (shards spread across subdirectories, say). Never approximate:\
+            \ a pattern is emitted only after being matched back against every file\
+            \ in the fileset and found to select this split exactly. A glob is an\
+            \ instruction to go read files, so a near miss is not a rougher answer\
+            \ \u2014 it silently pulls a README, or a neighbouring split's shards,\
+            \ into a training set."
+          type: string
+        num_files:
+          type: integer
+          title: Num Files
+          description: "How many files resolved into this split. Partitioning is exhaustive\
+            \ and disjoint \u2014 each file of the partition lands in exactly one\
+            \ split \u2014 so these sum to the partition's file count. A count rather\
+            \ than a list: the paths of healthy shards are the one part of a profile\
+            \ that grows without bound and informs no decision."
+          default: 0
+        size_bytes:
+          type: integer
+          title: Size Bytes
+          description: "On-disk bytes of this split's files, summed. Answers whether\
+            \ the data fits wherever the reader means to put it \u2014 the first question\
+            \ asked of an unfamiliar dataset, and one a row count cannot answer, since\
+            \ a row ranges from an integer score to a reasoning trace. Unlike `num_examples`\
+            \ this is never None: it comes from the file listing rather than from\
+            \ reading, so a file that failed mid-read still contributes its size.\
+            \ Bytes as stored \u2014 compressed, and several times this once decoded\
+            \ into memory. Covers only files a partition grouped; a format with no\
+            \ reader never reaches a split, so weigh the whole fileset with `SamplingInfo.bytes_present`."
+          default: 0
+        num_examples:
+          title: Num Examples
+          description: "Rows in this split, counting every one of its files whether\
+            \ or not that file's rows were read. Always exact \u2014 summed from parquet\
+            \ footers or from files read to their end \u2014 and None the moment any\
+            \ one file's count is unknown. Never an estimate, so it carries no accuracy\
+            \ caveat: a capped run still reports the true total whenever the footers\
+            \ knew it."
+          type: integer
+      type: object
+      required:
+      - name
+      title: SplitProfile
+      description: "A split within a partition.\n\nResolution precedence (declared\
+        \ structure beats detection):\n\n1. HF card front-matter when the fileset\
+        \ ships a README \u2014 ``configs[].data_files`` maps splits to\n   file globs\
+        \ explicitly;\n2. best-effort detection from file paths (train/test/validation\
+        \ markers, sharded layouts like\n   ``data/train-00000-of-00003.parquet``);\
+        \ path markers are matched against canonical names and\n   common aliases\
+        \ (val/valid/dev -> validation), the normalized concept lands in ``canonical``,\
+        \ and\n   the split keeps its on-disk ``name``;\n3. otherwise leave it alone:\
+        \ a single \"default\" split holding all files.\n\nA split encoded as a *data\
+        \ column* (a value inside each row rather than a file grouping) is not\nresolved\
+        \ here; such files profile as a single split."
     StatusEnum:
       type: string
       enum:
@@ -18925,6 +19713,42 @@ components:
           type: array
       title: StringFilter
       type: object
+    SubmitProfileJobResponse:
+      properties:
+        job_name:
+          type: string
+          title: Job Name
+          description: Name of the submitted profiling job.
+        job_id:
+          type: string
+          title: Job Id
+          description: ID of the submitted profiling job.
+        status:
+          title: Status
+          description: Status of the job at submission time.
+          type: string
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace of the profiled fileset.
+        fileset:
+          type: string
+          title: Fileset
+          description: Name of the profiled fileset.
+        reused:
+          type: boolean
+          title: Reused
+          description: True if an already-running profiling job was returned instead
+            of submitting a new one.
+          default: false
+      type: object
+      required:
+      - job_name
+      - job_id
+      - workspace
+      - fileset
+      title: SubmitProfileJobResponse
+      description: Response for a submitted fileset-profiling job.
     SubprocessExecutionProvider:
       properties:
         provider:
@@ -19085,6 +19909,17 @@ components:
       - task
       title: TaskPrompt
       description: Configuration for prompts that will be used for a specific task.
+    TextStats:
+      properties:
+        chars:
+          allOf:
+          - $ref: '#/components/schemas/Quantiles'
+          description: Per-row character-length distribution.
+      type: object
+      required:
+      - chars
+      title: TextStats
+      description: Measurements for a ``string`` column.
     TokenRollupResponse:
       properties:
         sum:
@@ -19979,6 +20814,30 @@ components:
       - msg
       - type
       title: ValidationError
+    Verifiability:
+      properties:
+        method:
+          type: string
+          title: Method
+          description: extractable_final_answer | ground_truth_column | constraint
+            | test_cases
+        coverage:
+          title: Coverage
+          description: Fraction of sampled rows with a usable verification target.
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+      type: object
+      required:
+      - method
+      title: Verifiability
+      description: A found verification target. Present only when one exists; absence
+        *is* the claim (not verifiable).
     VirtualModel:
       properties:
         name:
