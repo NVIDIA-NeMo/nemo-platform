@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from typing import BinaryIO
 
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.readers.base import FilePreview, ReadResult, register_reader
@@ -14,6 +15,42 @@ from nemo_datasets_plugin.profiler.readers.base import FilePreview, ReadResult, 
 # Rows handed over at a time by :meth:`JsonlReader.batches`, matching the parquet reader so the
 # caller's working set does not depend on which format it happens to be folding.
 _BATCH_ROWS = 1024
+
+# Signatures of the formats a `.jsonl` most often turns out to actually be. Only *binary* ones are
+# listed, and that is the whole discipline here: none of these bytes can begin a text file, so there
+# is no reading of the data under which they are legitimate and the check cannot have a false
+# positive. A file that really is text but not line-delimited objects -- a pretty-printed JSON array,
+# a file of bare scalars -- is deliberately left to `_records`, which already degrades to "skipped N
+# unparseable line(s)". A first line that is not an object is not proof the rest are not, and this
+# reader's whole stance on a bad line is that it costs that line rather than the file.
+_BINARY_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"PAR1", "a parquet file"),
+    (b"\x1f\x8b", "a gzip archive"),
+    (b"PK\x03\x04", "a zip archive"),
+    (b"ARROW1", "an arrow IPC file"),
+)
+
+# Enough for the longest signature above. Read once, from a stream the caller is opening anyway.
+_SNIFF_BYTES = 16
+
+
+def _check_magic(stream: BinaryIO) -> None:
+    """Reject a file whose leading bytes say it is some other format entirely.
+
+    Line-delimited JSON has no signature of its own to check, so this can only ever say what the
+    file is *not*. That is still the difference between "not line-delimited JSON: begins with the
+    magic bytes of a gzip archive" and forty thousand lines of ``Expecting value``, which is what a
+    misnamed shard reports today -- a message that reads like corrupt data and sends the reader
+    looking at the wrong thing.
+
+    Called from every entry point rather than :meth:`JsonlReader.peek` alone: the pipeline discards
+    what a peek raises, so the read path is where this message reaches a ``FileError``.
+    """
+    head = stream.read(_SNIFF_BYTES)
+    stream.seek(0)
+    for magic, description in _BINARY_MAGIC:
+        if head.startswith(magic):
+            raise ValueError(f"not line-delimited JSON: the file begins with the magic bytes of {description}")
 
 
 def _records(stream) -> Iterator[tuple[dict | None, str | None]]:
@@ -43,8 +80,10 @@ class JsonlReader:
     file_format = "jsonl"
 
     def peek(self, source: FileSource, entry: FileEntry) -> FilePreview:
-        """Nothing. A line-delimited file declares no schema and carries no row count, which is why
-        a partition holding one cannot be folded without reading it first."""
+        """Nothing but a format check. A line-delimited file declares no schema and carries no row
+        count, which is why a partition holding one cannot be folded without reading it first."""
+        with source.open(entry.path) as stream:
+            _check_magic(stream)
         return FilePreview()
 
     def batches(
@@ -66,6 +105,7 @@ class JsonlReader:
         unparseable = 0
         first_failure: str | None = None
         with source.open(entry.path) as stream:
+            _check_magic(stream)
             for record, failure in _records(stream):
                 if record is None:
                     unparseable += 1
@@ -90,6 +130,7 @@ class JsonlReader:
         first_failure: str | None = None
         hit_cap = False
         with source.open(entry.path) as stream:
+            _check_magic(stream)
             for record, failure in _records(stream):
                 # Branching on the record rather than the failure: the two are exclusive, and this
                 # way the type narrows without an ignore standing in for the reasoning.

@@ -97,6 +97,54 @@ def test_parquet_reader_zero_cap_reads_no_rows(tmp_path):
     assert result.arrow_schema is not None  # schema is still known without reading rows
 
 
+# --- magic bytes ---------------------------------------------------------------------------------
+
+# Driven through all three, because a check that guards only one of them guards nothing: the
+# pipeline peeks a partition and *discards* the failures, so the reason a file was rejected reaches
+# a FileError only if the read path raises it too.
+_ENTRY_POINTS = {
+    "peek": lambda reader, source, entry: reader.peek(source, entry),
+    "read": lambda reader, source, entry: reader.read(source, entry),
+    "batches": lambda reader, source, entry: list(reader.batches(source, entry)),
+}
+
+
+def _drive(file_format, entry_point, tmp_path, name):
+    return _ENTRY_POINTS[entry_point](get_reader(file_format), LocalFileSource(tmp_path), FileEntry(name, 0))
+
+
+@pytest.mark.parametrize("entry_point", list(_ENTRY_POINTS))
+def test_parquet_reader_rejects_a_file_that_was_never_parquet(tmp_path, entry_point):
+    # Format is chosen by extension, so anything named .parquet arrives here — including the HTML
+    # error page a failed download saves under the requested filename.
+    (tmp_path / "d.parquet").write_bytes(b"<!DOCTYPE html><html><body>404 Not Found</body></html>")
+
+    with pytest.raises(ValueError, match="not a parquet file"):
+        _drive("parquet", entry_point, tmp_path, "d.parquet")
+
+
+@pytest.mark.parametrize("entry_point", list(_ENTRY_POINTS))
+def test_parquet_reader_names_truncation_apart_from_the_wrong_format(tmp_path, entry_point):
+    # A cut-short upload still opens with PAR1, so only the trailing marker distinguishes it. The two
+    # answers point at different problems — a bad name versus a bad transfer — and are worth keeping
+    # apart.
+    path = tmp_path / "d.parquet"
+    _write_parquet(path, PARQUET_ROWS)
+    path.write_bytes(path.read_bytes()[:-4])
+
+    with pytest.raises(ValueError, match="truncated parquet file"):
+        _drive("parquet", entry_point, tmp_path, "d.parquet")
+
+
+def test_parquet_reader_rejects_a_file_too_small_for_both_markers(tmp_path):
+    # Four bytes of PAR1 and nothing else passes *both* marker checks — the leading and trailing
+    # reads land on the same bytes — so the size guard is what rejects it, not the markers.
+    (tmp_path / "d.parquet").write_bytes(b"PAR1")
+
+    with pytest.raises(ValueError, match="cannot hold both PAR1 markers"):
+        _drive("parquet", "peek", tmp_path, "d.parquet")
+
+
 # --- jsonl reader --------------------------------------------------------------------------------
 
 
@@ -145,3 +193,45 @@ def test_jsonl_reader_survives_an_unparseable_line(tmp_path):
 def test_jsonl_reader_clean_read_reports_no_error(tmp_path):
     (tmp_path / "d.jsonl").write_text('{"a": 1}\n{"a": 2}\n')
     assert get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0)).error is None
+
+
+@pytest.mark.parametrize("entry_point", list(_ENTRY_POINTS))
+@pytest.mark.parametrize(
+    ("leading_bytes", "expected"),
+    [
+        (b"\x1f\x8b\x08\x00\x00\x00\x00\x00", "gzip archive"),  # a .jsonl.gz that lost its suffix
+        (b"PAR1\x15\x04\x15\x00\x15\x02", "parquet file"),
+        (b"PK\x03\x04\x14\x00\x00\x00", "zip archive"),
+        (b"ARROW1\x00\x00\xff\xff\xff\xff", "arrow IPC file"),
+    ],
+)
+def test_jsonl_reader_rejects_a_misnamed_binary_file(tmp_path, leading_bytes, expected, entry_point):
+    # Without this the file reports "skipped N unparseable line(s)" — a message that reads like
+    # corrupt data and sends the reader looking at the wrong thing.
+    (tmp_path / "d.jsonl").write_bytes(leading_bytes + b"\x00" * 64)
+
+    with pytest.raises(ValueError, match=expected):
+        _drive("jsonl", entry_point, tmp_path, "d.jsonl")
+
+
+def test_jsonl_reader_leaves_a_textual_mismatch_to_the_line_parser(tmp_path):
+    # A pretty-printed JSON array is the other common misnaming, and is deliberately *not* rejected:
+    # it is text, no signature proves it wrong, and a first line that is not an object says nothing
+    # about the rest. It stays with `_records`, which reports the lines it could not read rather than
+    # discarding a file that may still hold rows — as this one does.
+    (tmp_path / "d.jsonl").write_text('[\n  {"a": 1},\n  {"a": 2}\n]\n')
+
+    result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0))
+
+    assert result.rows == [{"a": 2}]  # the one line that happens to stand alone as an object
+    assert result.error is not None and "line 1" in result.error
+
+
+def test_jsonl_reader_accepts_an_empty_file(tmp_path):
+    # Nothing to sniff is not a failed sniff. An empty shard has no rows, which the reader already
+    # reports as zero rather than as an error.
+    (tmp_path / "d.jsonl").write_bytes(b"")
+
+    result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0))
+
+    assert result.rows == [] and result.num_rows == 0 and result.error is None

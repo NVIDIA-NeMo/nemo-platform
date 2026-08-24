@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import io
 from collections.abc import Iterator
+from typing import BinaryIO
 
 import pyarrow.parquet as pq
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
@@ -15,6 +17,40 @@ from nemo_datasets_plugin.profiler.readers.base import FilePreview, ReadResult, 
 # dataset, large enough that per-batch overhead stays invisible.
 _BATCH_ROWS = 1024
 
+# Every parquet file opens and closes with these four bytes; the trailing copy is what marks the
+# footer. https://parquet.apache.org/docs/file-format/
+_MAGIC = b"PAR1"
+
+
+def _check_magic(stream: BinaryIO) -> None:
+    """Confirm the stream is a parquet file before pyarrow tries to read one.
+
+    Format is decided by extension, so anything named ``.parquet`` reaches this reader — a truncated
+    upload, a file that was never parquet, an HTML error page saved under the wrong name. Left to
+    pyarrow, all three come back as a decode failure from somewhere inside the footer, which tells a
+    consumer that the profiler could not read the file but not that the file is the wrong shape.
+
+    Checking *both* markers is what separates the two answers worth having: a missing leading marker
+    means this was never a parquet file, while a missing trailing one means it was and the bytes
+    stop early. Eight bytes at known offsets, so it costs one extra seek against the footer read
+    that follows it.
+
+    Called from every entry point, not just :meth:`ParquetReader.peek`. The pipeline peeks a whole
+    partition before it reads any of it and discards the failures, on the grounds that a file that
+    cannot be peeked will fail again with a reason when it is read -- so the read path is where this
+    message has to be raised for it to reach a ``FileError`` at all.
+    """
+    size = stream.seek(0, io.SEEK_END)
+    if size < len(_MAGIC) * 2:
+        raise ValueError(f"not a parquet file: {size} bytes cannot hold both PAR1 markers")
+    stream.seek(0)
+    if stream.read(len(_MAGIC)) != _MAGIC:
+        raise ValueError("not a parquet file: no PAR1 marker at the start")
+    stream.seek(-len(_MAGIC), io.SEEK_END)
+    if stream.read(len(_MAGIC)) != _MAGIC:
+        raise ValueError("truncated parquet file: no PAR1 marker at the end")
+    stream.seek(0)
+
 
 class ParquetReader:
     file_format = "parquet"
@@ -23,6 +59,7 @@ class ParquetReader:
         """Schema and exact row count from the footer. Reads no rows, so a partition's whole shape is
         knowable for the cost of one seek per file."""
         with source.open(entry.path) as stream:
+            _check_magic(stream)
             parquet_file = pq.ParquetFile(stream)
             return FilePreview(arrow_schema=parquet_file.schema_arrow, num_rows=parquet_file.metadata.num_rows)
 
@@ -41,6 +78,7 @@ class ParquetReader:
         """
         scanned = 0
         with source.open(entry.path) as stream:
+            _check_magic(stream)
             parquet_file = pq.ParquetFile(stream)
             if row_cap == 0:
                 return
@@ -56,6 +94,7 @@ class ParquetReader:
 
     def read(self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None) -> ReadResult:
         with source.open(entry.path) as stream:
+            _check_magic(stream)
             parquet_file = pq.ParquetFile(stream)
             num_rows = parquet_file.metadata.num_rows
             arrow_schema = parquet_file.schema_arrow
