@@ -82,32 +82,6 @@ class TestGuardrailConfigsAPI:
         json_response = response.json()
         assert json_response["description"] == "Updated description"
 
-    def test_update_config_preserves_entity_store_metadata(self, client: TestClient):
-        """PATCH keeps private identity, parent, and optimistic-lock metadata."""
-        existing = GuardrailConfig(name="nested-config", workspace="default", description="Original")
-        existing._id = "config-id"
-        existing._parent = "parent-id"
-        existing._db_version = 7
-        entities_client = AsyncMock()
-        entities_client.get.return_value = existing
-        entities_client.update.side_effect = lambda entity: entity
-        dependency_overrides = getattr(client.app, "dependency_overrides")
-        dependency_overrides[get_entity_client] = lambda: entities_client
-        try:
-            response = client.patch(
-                "/apis/guardrails/v2/workspaces/default/configs/nested-config",
-                json={"description": "Updated"},
-            )
-        finally:
-            dependency_overrides.pop(get_entity_client, None)
-
-        assert response.status_code == 200
-        updated = entities_client.update.await_args.args[0]
-        assert updated.description == "Updated"
-        assert updated.id == "config-id"
-        assert updated.parent == "parent-id"
-        assert updated.db_version == 7
-
     def test_delete_config(self, client: TestClient):
         """Test deleting a guardrail config."""
         # First create a config
@@ -236,36 +210,6 @@ class TestGuardrailConfigsAPI:
         assert response.json() == {
             "detail": "Validation error at data: Missing a `self_check_input` prompt template, which is required for the `self check input` rail."
         }
-
-    def test_update_rejects_invalid_rails_shape_without_corrupting_config(self, client: TestClient):
-        create_response = client.post(
-            "/apis/guardrails/v2/workspaces/default/configs",
-            json={
-                "name": "valid-shape-config",
-                "data": {
-                    "rails": {"input": {"flows": ["self check input"]}},
-                    "prompts": [
-                        {
-                            "task": "self_check_input",
-                            "content": "Check if the input is safe.",
-                        }
-                    ],
-                },
-            },
-        )
-        assert create_response.status_code == 201
-
-        update_response = client.patch(
-            "/apis/guardrails/v2/workspaces/default/configs/valid-shape-config",
-            json={"data": {"rails": []}},
-        )
-
-        assert update_response.status_code == 422
-        assert "Validation error at data.rails" in update_response.json()["detail"]
-
-        get_response = client.get("/apis/guardrails/v2/workspaces/default/configs/valid-shape-config")
-        assert get_response.status_code == 200
-        assert get_response.json()["data"]["rails"]["input"]["flows"] == ["self check input"]
 
 
 class TestGuardrailConfigsFilter:

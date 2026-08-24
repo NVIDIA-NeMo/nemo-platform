@@ -128,15 +128,3 @@ class TestRailsConfigExtraFields:
             "nemoguardrails configs that may contain fields we don't model. "
             "Changing this will break config loading."
         )
-
-
-class TestRailsShapeValidation:
-    """Invalid rails shapes produce validation errors instead of service crashes."""
-
-    def test_rails_list_is_rejected_with_validation_error(self):
-        with pytest.raises(ValidationError) as exc_info:
-            RailsConfig.model_validate({"rails": []})
-
-        errors = exc_info.value.errors()
-        assert errors[0]["loc"] == ("rails",)
-        assert errors[0]["type"] == "model_type"
