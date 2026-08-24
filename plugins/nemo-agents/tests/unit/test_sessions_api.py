@@ -32,10 +32,12 @@ def _make_deployment(
     name: str = "fabric-dep",
     workspace: str = "default",
     deployment_id: str = "deployment-id",
+    created_by: str | None = None,
 ) -> AgentDeployment:
     deployment = AgentDeployment(name=name, workspace=workspace, agent="fabric-agent", status="running")
     deployment._id = deployment_id
     deployment._created_at = NOW
+    deployment._created_by = created_by
     return deployment
 
 
@@ -60,8 +62,10 @@ def _make_session(
 
 
 async def _persist_session(session: AgentSession) -> AgentSession:
+    assert session.created_by is None
     session._id = "session-id"
     session._created_at = NOW
+    session._created_by = OWNER_PRINCIPAL_ID
     return session
 
 
@@ -107,6 +111,7 @@ class TestCreateSession:
         assert body["name"] == "session-one"
         assert body["deployment_id"] == "deployment-id"
         assert body["status"] == "active"
+        assert body["created_by"] == OWNER_PRINCIPAL_ID
         mock_entity_client.find_one.assert_awaited_once_with(
             AgentDeployment,
             workspace="default",
@@ -121,6 +126,17 @@ class TestCreateSession:
 
         assert response.status_code == 201
         assert response.json()["name"] == "fabric-dep-a1b2c3d4"
+
+    def test_create_for_deployment_owned_by_another_principal(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.find_one.return_value = _make_deployment(created_by="deployment-owner")
+        mock_entity_client.create.side_effect = _persist_session
+
+        response = client.post(BASE, json={"deployment_id": "deployment-id", "name": "session-one"})
+
+        assert response.status_code == 201
+        assert response.json()["created_by"] == OWNER_PRINCIPAL_ID
 
     def test_create_requires_deployment_id(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         response = client.post(BASE, json={"name": "session-one"})
@@ -166,7 +182,7 @@ class TestListSessions:
         body = response.json()
         assert body["data"][0]["name"] == "session-one"
         assert body["pagination"]["total_results"] == 1
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] is None
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"created_by": OWNER_PRINCIPAL_ID}
 
     def test_list_filters_by_deployment_id(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list.return_value = _list_response(_make_session())
@@ -174,7 +190,10 @@ class TestListSessions:
         response = client.get(f"{BASE}?filter[deployment_id]=deployment-id")
 
         assert response.status_code == 200
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"deployment_id": "deployment-id"}
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {
+            "deployment_id": "deployment-id",
+            "created_by": OWNER_PRINCIPAL_ID,
+        }
 
     def test_list_rejects_unknown_filter(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         response = client.get(f"{BASE}?filter[unknown]=value")

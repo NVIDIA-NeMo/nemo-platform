@@ -106,9 +106,11 @@ async def list_sessions(
     sort: str = Query(default="-created_at"),
     filter: SessionFilter | dict[str, object] = Depends(_session_filter_dep),
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> SessionPage:
-    """List sessions in a workspace, optionally filtered by deployment ID."""
-    filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
+    """List the current principal's sessions, optionally filtered by deployment ID."""
+    filter_dict = dict(filter) if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
+    filter_dict["created_by"] = effective_principal_id
     try:
         result = await entity_client.list(
             AgentSession,
