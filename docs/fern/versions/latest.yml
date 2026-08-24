@@ -310,7 +310,7 @@ navigation:
                 path: ../../safe-synthesizer/about/evaluation.mdx
               - page: Jobs
                 path: ../../safe-synthesizer/about/jobs.mdx
-              - page: Local and Subprocess Execution
+              - page: Runtime Environment
                 path: ../../safe-synthesizer/about/host-local-development.mdx
               - page: Parameters Reference
                 path: ../../safe-synthesizer/about/reference.mdx

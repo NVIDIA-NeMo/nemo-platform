@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: plugin-function
-description: Creates in-process NemoFunction surfaces for NeMo Platform plugins. Use when adding a function, declaring spec_schema, mounting function routes with add_function_routes, understanding the two CLI verbs (run / submit), or streaming NDJSON frames. Trigger keywords - function, NemoFunction, spec_schema, add_function_routes, nemo_platform_plugin.functions, two verbs, run, submit, streaming, NDJSON, FunctionContext.
+description: Creates in-process NemoFunction surfaces for NeMo Platform plugins. Use when adding a function, declaring spec_schema, mounting function routes with add_function_routes, understanding the CLI verb submit (plus optional explain only for jobs), or streaming NDJSON frames. Trigger keywords - function, NemoFunction, spec_schema, add_function_routes, nemo_platform_plugin.functions, submit, streaming, NDJSON, FunctionContext.
 ---
 
 # Plugin Functions (NemoFunction)
@@ -11,7 +11,7 @@ description: Creates in-process NemoFunction surfaces for NeMo Platform plugins.
 A `NemoFunction` is the third primitive on a plugin, alongside `NemoResource` and `NemoJob`. It's an in-process request handler — no scheduler, no backend dispatch — that the platform exposes as both a CLI subcommand and an HTTP route automatically.
 
 ```text
-nemo <plugin> <fn> run    [--spec '{...}' | --spec-file FILE] [--workspace W] [<spec-flag>...]
+nemo <plugin> <fn> submit [--spec '{...}' | --spec-file FILE] [--workspace W] [<spec-flag>...]
 nemo <plugin> <fn> submit [--spec '{...}' | --spec-file FILE] \
                           [--base-url URL | --cluster URL] \
                           [--workspace W] [--request-id ID] [<spec-flag>...]
@@ -24,7 +24,7 @@ nemo <plugin> <fn> submit [--spec '{...}' | --spec-file FILE] \
 Every scalar leaf in `spec_schema` becomes a Typer flag automatically. Nested submodels recurse with dotted paths (`--target.url`, `--target.timeout-seconds`). For a function with `spec_schema = GreetSpec(name: str)`:
 
 ```text
-$ nemo my-plugin greet run --help
+$ nemo my-plugin greet submit --help
 ...
 Function Spec:
   --name <NAME>  Name to greet.

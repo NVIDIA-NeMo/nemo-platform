@@ -3,22 +3,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: plugin-job
-description: Creates schedulable NemoJob surfaces for NeMo Platform plugins. Use when adding a job, declaring spec_schema / input_spec_schema / to_spec / compile, mounting job routes with add_job_routes, understanding the three CLI verbs (run / submit / explain), or running jobs in containers. Trigger keywords - job, NemoJob, spec_schema, input_spec_schema, to_spec, compile, add_job_routes, nemo_platform_plugin.jobs, three verbs, run, submit, explain, NemoJobScheduler.
+description: Creates schedulable NemoJob surfaces for NeMo Platform plugins. Use when adding a job, declaring spec_schema / input_spec_schema / to_spec / compile, mounting job routes with add_job_routes, understanding the submit/explain CLI verbs, or running jobs in containers. Trigger keywords - job, NemoJob, spec_schema, input_spec_schema, to_spec, compile, add_job_routes, nemo_platform_plugin.jobs, submit, explain, NemoJobScheduler.
 ---
 
 # Plugin Jobs (NemoJob)
 
-A `NemoJob` drives three CLI verbs that the platform auto-generates from the class:
+A `NemoJob` drives two CLI verbs that the platform auto-generates from the class:
 
 ```
-nemo <plugin> <job> run      [--spec '{...}' | --spec-file FILE]
 nemo <plugin> <job> submit   [--profile <p>] [--cluster <c>] \
                              [--spec '{...}' | --spec-file FILE] \
                              [-o <backend>.<key>=<value> ...] [--options-file FILE]
 nemo <plugin> <job> explain  [--profile <p>]
 ```
 
-`run` is in-process (no platform); `submit` POSTs to the plugin service, which compiles the spec and hands it off to the Jobs service for cluster execution; `explain` prints the schemas locally.
+`submit` POSTs to the plugin service, which compiles the spec and hands it off to the Jobs service for cluster execution; `explain` prints the schemas locally.
 
 ## Class Signature
 
@@ -194,15 +193,15 @@ from nemo_platform_plugin.discovery import discover_jobs
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 job_cls = discover_jobs()["data-designer.generate"]
-result = NemoJobScheduler().run_local(
+result = NemoJobScheduler().submit_remote(
     job_cls,
     {"num_records": 10, "model": "gpt-oss-120b"},
+    base_url="http://localhost:8080",
 )
 ```
 
-`run_local` is synchronous. It drives `NemoJob.to_spec` once via
-`asyncio.run` to produce the canonical spec, then calls `run` directly.
-`KeyError` if no job is registered under the key.
+`submit_remote` POSTs the job to the plugin service. Pass `base_url` (or rely on
+documented env resolution). `KeyError` if no job is registered under the key.
 
 ## In Job Containers
 
@@ -245,7 +244,7 @@ No mocking, no FastAPI, no platform needed. See the `plugin-testing` skill for s
 
 - **`name` is the suffix only**: For entry-point key `"data-designer.generate"`, `NemoJob.name = "generate"`. Setting the full key logs a warning at startup.
 - **`spec_schema` is required**: `add_job_routes` raises `TypeError` if `spec_schema` is `None`. Declare it before mounting routes.
-- **`compile()` default raises `NotImplementedError`**: Jobs that haven't overridden it fail at `submit` time with a clear 422. Local `run` doesn't need `compile`.
+- **`compile()` default raises `NotImplementedError`**: Jobs that haven't overridden it fail at `submit` time with a clear 422. `submit` always goes through the platform compile path.
 - **`run()` must be synchronous**: Use `asyncio.run()` for async work inside.
 - **`run()` returns a JSON-serializable dict**: No datetime, no Pydantic models, no custom classes.
 - **Jobs are stateless**: A new instance is constructed per call; don't store state on `self`.

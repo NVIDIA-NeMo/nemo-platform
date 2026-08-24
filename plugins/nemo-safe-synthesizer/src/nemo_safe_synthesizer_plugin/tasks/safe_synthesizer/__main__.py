@@ -8,6 +8,7 @@ which generates synthetic data using the Nemo Safe Synthesizer SDK.
 """
 
 import os
+import sys
 
 # Disable PyTorch inductor remote cache to avoid Redis warnings from vLLM.
 # These must be set before any PyTorch imports.
@@ -399,6 +400,7 @@ def run_from_env() -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Run the task entry point from platform environment variables."""
+    argv = sys.argv[1:] if argv is None else argv
     if argv:
         raise SystemExit("This task module no longer accepts local execution commands.")
     run_from_env()

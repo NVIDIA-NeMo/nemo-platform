@@ -24,7 +24,7 @@ evaluation result before promotion.
 | ------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Model optimization  | An agent uses a single frontier model where a smaller model or route split may preserve quality at lower cost | Suggests a model swap or Switchyard random-routing virtual model                                            |
 | Skill optimization  | The agent uses skills and has an evaluation suite                                                             | Suggests running `nemo agents optimize-skills` to improve skill files and keep changes that pass evaluation |
-| Prompt optimization | The agent has an optimization config and baseline dataset                                                     | Suggests `nemo agents optimize run` for Fabric-backed tuning                                                |
+| Prompt optimization | The agent has an optimization config and baseline dataset                                                     | Suggests `nemo agents optimize submit` for Fabric-backed tuning                                                |
 | New model scan      | Difference between the current model list and the previous optimizer snapshot                                 | Suggests evaluating or auditing newly available models                                                      |
 
 Optimizer state is stored in the `nemo-agent-optimizer` fileset:
@@ -195,7 +195,7 @@ and keeps the change only when the evaluation result improves.
 <Tab title="CLI">
 
 ```bash
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 Set `open_pr: true` in the YAML when you want the loop to prepare a
@@ -230,6 +230,7 @@ What it does under the hood:
 <Tab title="Python SDK">
 
 ```python
+import os
 import yaml
 from pathlib import Path
 
@@ -241,6 +242,7 @@ NemoJobScheduler().submit_remote(
     OptimizeSkillsJob,
     spec,
     workspace="default",
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
 )
 ```
 
@@ -273,7 +275,7 @@ nemo files list nemo-agent-telemetry
 
 ## Run Prompt and Parameter Tuning
 
-The `nemo agents optimize run` command runs Fabric-backed numeric
+The `nemo agents optimize submit` command runs Fabric-backed numeric
 optimization through `agents.optimize` (implementation in
 `nemo-optimization`). Input must be a Fabric-native agent package
 (`schema_version: fabric.agent/v1alpha1`). The golden-path harness is
@@ -294,7 +296,7 @@ After `uv sync --package nemo-agents-plugin` (and activating `.venv`), invoke
 <Tab title="CLI">
 
 ```bash
-nemo agents optimize run \
+nemo agents optimize submit \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly.yaml" \
   --workspace default
 ```
@@ -306,7 +308,7 @@ Ask your coding agent:
 
 > Run prompt tuning on my deployed agent against this optimization config.
 
-The `agents-optimize` skill suggests `nemo agents optimize run` when the
+The `agents-optimize` skill suggests `nemo agents optimize submit` when the
 agent has an optimization config and a baseline dataset. Verify it is
 installed:
 
@@ -317,7 +319,7 @@ nemo skills show agents-optimize
 What it does under the hood:
 
 - Confirms the agent has a Fabric-native optimization YAML.
-- Runs `nemo agents optimize run` (or `submit` for platform jobs).
+- Runs `nemo agents optimize submit` (or `submit` for platform jobs).
 - Compares results against the evaluation baseline and surfaces deltas
   for review.
 
@@ -349,7 +351,7 @@ result = NemoJobScheduler().submit_remote(
         "workspace": WORKSPACE,
     },
     workspace=WORKSPACE,
-    sdk=client,
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
 )
 print(result)
 ```
@@ -376,7 +378,7 @@ export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-
 
 # These environment variables are templated into optimize-mcp.yaml.
 
-nemo agents optimize run \
+nemo agents optimize submit \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-mcp.yaml" \
   --workspace default
 ```
@@ -421,7 +423,7 @@ result = NemoJobScheduler().submit_remote(
         "workspace": WORKSPACE,
     },
     workspace=WORKSPACE,
-    sdk=client,
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
 )
 print(result)
 ```

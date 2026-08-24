@@ -62,7 +62,7 @@
     path: ../../safe-synthesizer/about/data-synthesis.mdx
   - page: Evaluation
     path: ../../safe-synthesizer/about/evaluation.mdx
-  - page: Host-Local Development
+  - page: Runtime Environment
     path: ../../safe-synthesizer/about/host-local-development.mdx
   - page: Overview
     path: ../../safe-synthesizer/about/index.mdx

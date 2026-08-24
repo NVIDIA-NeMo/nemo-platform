@@ -88,7 +88,7 @@ No MCP, no extra checkouts. Good first smoke for optimize.
 cd /path/to/nemo-platform
 source .venv/bin/activate   # if not already
 
-nemo agents optimize run \
+nemo agents optimize submit \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly.yaml" \
   --workspace default
 ```
@@ -120,7 +120,7 @@ print(
         OptimizeJob,
         {"optimize_config": str(optimize_config), "workspace": WORKSPACE},
         workspace=WORKSPACE,
-        sdk=client,
+        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     )
 )
 ```
@@ -171,7 +171,7 @@ export NEMO_AGENTS_IGW_API_KEY="${NEMO_AGENTS_IGW_API_KEY:-not-used}"
 ### 2. Run optimize against the stored agent
 
 ```bash
-nemo agents optimize run \
+nemo agents optimize submit \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly-via-agent.yaml" \
   --agent hermes-optimize-chatonly \
   --workspace default
@@ -235,7 +235,7 @@ export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-ana
 export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
-nemo agents optimize run \
+nemo agents optimize submit \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-mcp.yaml" \
   --workspace default
 ```
@@ -280,7 +280,7 @@ print(
         OptimizeJob,
         {"optimize_config": str(optimize_config), "workspace": WORKSPACE},
         workspace=WORKSPACE,
-        sdk=client,
+        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     )
 )
 ```
@@ -294,7 +294,7 @@ print(
 | `nemo: command not found` | `source .venv/bin/activate` after `uv sync --package nemo-agents-plugin` |
 | `No module named hermes_cli` | Re-run the `hermes-agent==0.18.2 --no-deps` install (needed after every fresh `uv sync`) |
 | `No module named 'nemo_fabric_adapters'` | `export ADAPTER_PYTHON="$(pwd)/.venv/bin/python"` |
-| Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before `optimize run` |
+| Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before `optimize submit` |
 | Analyzer / LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api; keep using `analyzer-inference-api.yaml` |
 | Dataset / config file not found | Run from the `nemo-platform` repo root |
 | Agent create fails on fileset size / too many files | Pass `--agent-config` to `agents/chatonly/agent.yaml` (slim dir), not the parent examples folder |
