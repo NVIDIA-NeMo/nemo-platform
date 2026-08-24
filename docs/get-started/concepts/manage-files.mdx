@@ -89,7 +89,7 @@ import os
 from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform(
-    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    base_url=os.environ.get("NMP_BASE_URL") or "http://localhost:8080",
     workspace="default",
 )
 ```
