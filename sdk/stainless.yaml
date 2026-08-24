@@ -257,12 +257,16 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
+          fileset_profile_response: FilesetProfileResponse
+          submit_profile_job_response: SubmitProfileJobResponse
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
           retrieve: get /apis/files/v2/workspaces/{workspace}/filesets/{name}
           delete: delete /apis/files/v2/workspaces/{workspace}/filesets/{name}
           update: patch /apis/files/v2/workspaces/{workspace}/filesets/{name}
+          profile: post /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile
+          get_profile: get /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile
       otlp:
         subresources:
           logs:
@@ -736,7 +740,28 @@ resources:
       # FilesetMetadata`` imports downstream (models service tests).
       fileset_metadata: FilesetMetadata
       environment_metadata_content: EnvironmentMetadataContent
+      # DatasetMetadataContent and the DatasetProfile tree it now carries are pinned here for the
+      # same reason as FilesetMetadata above: DatasetMetadataContent is already published as
+      # ``nemo_platform.types.shared.DatasetMetadataContent``, and letting sync-models re-home it
+      # under `files` would break that import for existing consumers. The profile models come with
+      # it -- they are reachable from DatasetMetadataContent.profile, so splitting them across
+      # $shared and a resource would leave a shared model referencing a resource-scoped one.
       dataset_metadata_content: DatasetMetadataContent
+      dataset_profile: DatasetProfile
+      partition_profile: PartitionProfile
+      partition_classification: PartitionClassification
+      column_stats: ColumnStats
+      feature_schema: FeatureSchema
+      categorical_stats: CategoricalStats
+      evidence: Evidence
+      file_error: FileError
+      message_stats: MessageStats
+      numeric_stats: NumericStats
+      quantiles: Quantiles
+      sampling_info: SamplingInfo
+      split_profile: SplitProfile
+      text_stats: TextStats
+      verifiability: Verifiability
       # Every FilesetMetadata member has to live in $shared alongside it. Left under
       # `files`, sync-models homes this one there and FilesetMetadata's import of it
       # becomes shared -> files -> shared, which fails at import time.

@@ -113,6 +113,9 @@ def _profile_and_publish(
     row_budget: int | None,
     column_roles: dict[str, str],
 ) -> int:
+    # Uncapped by default, and especially right for this task: the whole fileset has already been
+    # downloaded, so capping would pay the full transfer cost and still hand back partial statistics
+    # and an incomplete profile. Having bought the bytes, read them.
     logger.info("Profiling with a row budget of %s per partition", row_budget if row_budget else "unbounded")
     dataset_profile = profile(source, row_budget=row_budget, column_roles=column_roles)
 
