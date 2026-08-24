@@ -34,7 +34,6 @@ def test_local_file_source_lists_sorted_with_sizes(tmp_path):
 
     assert [e.path for e in entries] == ["a.parquet", "b.jsonl", "sub/c.jsonl"]
     assert all(e.size_bytes > 0 for e in entries)
-    assert all(e.checksum is None for e in entries)  # local sources report no checksum
 
 
 def test_local_file_source_open_reads_bytes(tmp_path):

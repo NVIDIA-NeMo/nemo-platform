@@ -21,7 +21,6 @@ class FileEntry:
 
     path: str  # POSIX-style path relative to the source root
     size_bytes: int
-    checksum: str | None = None  # "sha256:..." when the source reports one; None otherwise
 
 
 class FileSource(Protocol):
