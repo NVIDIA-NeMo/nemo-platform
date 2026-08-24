@@ -6,7 +6,6 @@ import {
   applyFormToConfig,
   type GuardrailFormValues,
 } from '@studio/routes/guardrails/GuardrailForm/formModel';
-import { useGuardrailForm } from '@studio/routes/guardrails/GuardrailForm/useGuardrailForm';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface DraftRailsConfig {
@@ -28,13 +27,11 @@ export interface DraftRailsConfig {
  * something different from what the editor displays.
  */
 export const useDraftRailsConfig = (): DraftRailsConfig => {
-  const { config } = useGuardrailForm();
   const {
     control,
     formState: { isDirty },
   } = useFormContext<GuardrailFormValues>();
-  // Fields all have string defaults, so watched values are never undefined at runtime.
   const values = useWatch({ control }) as GuardrailFormValues;
 
-  return { isDirty, draftConfig: applyFormToConfig(config.data, values) };
+  return { isDirty, draftConfig: applyFormToConfig(values) };
 };

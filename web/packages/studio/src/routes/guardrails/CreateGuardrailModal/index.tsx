@@ -3,6 +3,8 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { BASIC_ALL_MODELS_DROPDOWN_FILTER } from '@nemo/common/src/api/models/useModels';
+import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { ENTITY_NAME_HELP, entityNameSchema, toCopyName } from '@nemo/common/src/utils/entityName';
@@ -11,8 +13,11 @@ import type {
   GuardrailConfig,
   GuardrailConfigInput,
   GuardrailConfigInputData,
+  RailsConfig,
 } from '@nemo/sdk/generated/platform/schema';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { resolveDefaultGuardrailModel } from '@studio/routes/guardrails/defaultModel';
+import { setMainModelName } from '@studio/routes/guardrails/GuardrailConfigTab/mainModel';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef } from 'react';
@@ -40,6 +45,14 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose, sourceConfig })
 
   const isDuplicate = Boolean(sourceConfig);
   const defaultName = sourceConfig?.name ? toCopyName(sourceConfig.name) : '';
+
+  // Only for a fresh config — a duplicate inherits the source's models below. Held to the
+  // open modal so closing it doesn't leave a query running.
+  const { groups } = useModelsFromWorkspace({
+    workspace: workspace ?? null,
+    query: BASIC_ALL_MODELS_DROPDOWN_FILTER,
+    queryOptions: { enabled: open && !isDuplicate },
+  });
 
   const {
     control,
@@ -86,6 +99,16 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose, sourceConfig })
     if (sourceConfig) {
       if (sourceConfig.description) payload.description = sourceConfig.description;
       if (sourceConfig.data) payload.data = { ...sourceConfig.data } as GuardrailConfigInputData;
+    } else {
+      // Seed the main model so the new config can run its tests without a detour through
+      // the Configuration tab. Resolution returning null (no models served, or none with a
+      // provider) creates the config without `models` — the tab's field then shows empty,
+      // which beats writing a name that fails at run time.
+      const model = resolveDefaultGuardrailModel(groups);
+      if (model) {
+        const railsConfig: RailsConfig = { models: setMainModelName(undefined, model) };
+        payload.data = railsConfig as GuardrailConfigInputData;
+      }
     }
 
     let config: GuardrailConfig;

@@ -82,7 +82,7 @@ export const GuardrailFormProvider: FC<{ config: GuardrailConfig; children: Reac
   const save = useMemo(
     () =>
       form.handleSubmit(async (submitted) => {
-        const data = applyFormToConfig(config.data, submitted);
+        const data = applyFormToConfig(submitted);
         try {
           await updateConfig({ workspace, name, data: { data: { ...data } } });
         } catch {
@@ -104,7 +104,7 @@ export const GuardrailFormProvider: FC<{ config: GuardrailConfig; children: Reac
           // ignore — save already succeeded
         }
       }),
-    [form, config.data, updateConfig, workspace, name, queryClient, clearStored, toast]
+    [form, updateConfig, workspace, name, queryClient, clearStored, toast]
   );
 
   const resetToServer = useCallback(() => {
