@@ -3,6 +3,7 @@
 
 """Compatibility fixes for the Fabric Deep Agents runtime bundled in the image."""
 
+import inspect
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -27,8 +28,16 @@ def virtualize_skill_sources(skill_paths: Iterable[str], workspace_root: Path) -
 
 
 def apply_deepagents_skill_path_compatibility() -> None:
-    """Patch Fabric 0.1.1 to honor virtual-mode skill paths under its workspace."""
-    from nemo_fabric_adapters.deepagents import adapter
+    """Patch legacy Fabric to honor virtual-mode skill paths under its workspace."""
+    from nemo_fabric_adapters.deepagents import adapter as adapter_module
+
+    adapter: Any = adapter_module
+
+    # Fabric 0.2 uses typed runtime/config objects and resolves relative skill
+    # paths directly against the workspace. Its adapter no longer needs this
+    # payload-based compatibility patch.
+    if "base_dir" in inspect.signature(adapter.resolve_backend).parameters:
+        return
 
     common_utils = adapter.common_utils
 

@@ -130,21 +130,39 @@ def test_deepagents_runtime_can_load_packaged_skill_library() -> None:
 
 
 def test_fabric_compatibility_resolves_packaged_skills_in_virtual_mode() -> None:
+    from nemo_fabric_adapter_contract.models import (
+        AgentConfig,
+        AgentSkillConfig,
+        ArtifactManifest,
+        ControlLocation,
+        EnvironmentHandle,
+        EnvironmentOwnership,
+        RuntimeContext,
+    )
     from nemo_fabric_adapters.deepagents import adapter
 
-    config = translate_agent_config(load_agent_config(AGENT_ROOT / "agent.yaml")).model_dump(mode="json")
-    payload = {
-        "base_dir": str(AGENT_ROOT),
-        "capability_plan": {"native": {"skill_paths": [str(AGENT_ROOT / "skills")]}},
-        "config": config,
-    }
     apply_deepagents_skill_path_compatibility()
 
-    backend = adapter.resolve_backend(payload)
-    skill_sources = adapter.resolve_skills(payload)
+    runtime_context = RuntimeContext(
+        runtime_id="test-runtime",
+        invocation_id="test-invocation",
+        request_id="test-request",
+        environment=EnvironmentHandle(
+            environment_id="test-environment",
+            provider="local",
+            control_location=ControlLocation.EXTERNAL_CONTROL,
+            workspace=".",
+            ownership=EnvironmentOwnership.CALLER_OWNED,
+        ),
+        artifacts=ArtifactManifest(),
+    )
+    config = AgentConfig(skills=AgentSkillConfig(paths=["skills"]))
+    backend = adapter.resolve_backend(runtime_context, str(AGENT_ROOT))
+    skill_sources = adapter.resolve_skills(config)
 
     assert isinstance(backend, FilesystemBackend)
-    assert skill_sources == ["/skills"]
+    assert skill_sources is not None
+    assert skill_sources == ["skills"]
     skills, error = _list_skills_with_errors(backend, skill_sources[0])
     assert error is None
     assert {skill["name"] for skill in skills} == {
