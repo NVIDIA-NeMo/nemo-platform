@@ -114,7 +114,7 @@ describe('GuardrailChecksTab', () => {
     expect(
       await screen.findByText('Result Summary', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    expect(screen.getByRole('row', { name: /My SSN is 123-45-6789/ })).toHaveTextContent('Guarded');
+    expect(screen.getByRole('row', { name: /My SSN is 123-45-6789/ })).toHaveTextContent('Blocked');
     expect(screen.getByRole('row', { name: /Hello there/ })).toHaveTextContent('Not run');
     expect(screen.getByTestId('checks-location')).toHaveTextContent(
       getGuardrailChecksSubTabRoute(WORKSPACE, 'pii-filter', GuardrailChecksSubTab.Results)

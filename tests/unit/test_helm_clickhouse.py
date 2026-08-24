@@ -60,6 +60,15 @@ def _api_container(documents: list[dict]) -> dict:
     return deployment["spec"]["template"]["spec"]["containers"][0]
 
 
+def _controller_container(documents: list[dict]) -> dict:
+    deployment = next(
+        document
+        for document in documents
+        if document["kind"] == "Deployment" and document["metadata"]["name"] == "nemo-platform-core-controller"
+    )
+    return deployment["spec"]["template"]["spec"]["containers"][0]
+
+
 def _envoy_config(documents: list[dict]) -> dict:
     config_map = next(
         document
@@ -78,6 +87,7 @@ def test_default_intake_selection_renders_embedded_clickhouse_dependency() -> No
 
     clickhouse_resources = _clickhouse_resources(documents)
     assert {document["kind"] for document in clickhouse_resources} >= {"Secret", "Service", "StatefulSet"}
+    assert "--service-group=all" in _api_container(documents)["args"]
 
     env = _env_by_name(_api_container(documents))
     assert env["NMP_INTAKE_CLICKHOUSE_URL"]["value"] == "http://nemo-platform-clickhouse:8123"
@@ -93,12 +103,133 @@ def test_core_service_group_can_skip_embedded_clickhouse_dependency() -> None:
         "externalClickhouse.existingSecret=shared-postgresql",
         "--set",
         "externalClickhouse.existingSecretPasswordKey=nemo-password",
+        "--set",
+        "api.serviceGroup=core",
+    )
+
+    assert _clickhouse_resources(documents) == []
+    args = _api_container(documents)["args"]
+    assert "--service-group=core" in args
+    assert "--service-group=all" not in args
+
+
+def test_api_services_override_default_service_group() -> None:
+    documents = _helm_template(
+        "--set",
+        "api.services={evaluator,guardrails}",
+    )
+
+    args = _api_container(documents)["args"]
+    assert "--services=evaluator,guardrails" in args
+    assert not any(arg.startswith("--service-group=") for arg in args)
+
+
+def test_legacy_api_extra_args_service_selection_suppresses_default_service_group() -> None:
+    documents = _helm_template(
         "--set-string",
         "api.extraArgs[0]=--service-group=core",
     )
 
-    assert _clickhouse_resources(documents) == []
-    assert "--service-group=core" in _api_container(documents)["args"]
+    args = _api_container(documents)["args"]
+    assert args.count("--service-group=core") == 1
+    assert "--service-group=all" not in args
+
+
+def test_legacy_api_extra_args_services_selection_suppresses_default_service_group() -> None:
+    documents = _helm_template(
+        "--set-string",
+        "api.extraArgs[0]=--services=evaluator",
+    )
+
+    args = _api_container(documents)["args"]
+    assert args.count("--services=evaluator") == 1
+    assert not any(arg.startswith("--service-group=") for arg in args)
+
+
+def test_default_controller_selection_renders_controller_group_all() -> None:
+    documents = _helm_template()
+
+    assert "--controller-group=all" in _controller_container(documents)["args"]
+
+
+def test_controller_group_can_be_configured() -> None:
+    documents = _helm_template(
+        "--set",
+        "core.controller.controllerGroup=core",
+    )
+
+    args = _controller_container(documents)["args"]
+    assert "--controller-group=core" in args
+    assert "--controller-group=all" not in args
+
+
+def test_controllers_override_default_controller_group() -> None:
+    documents = _helm_template(
+        "--set",
+        "core.controller.controllers={models,jobs}",
+    )
+
+    args = _controller_container(documents)["args"]
+    assert "--controllers=models,jobs" in args
+    assert not any(arg.startswith("--controller-group=") for arg in args)
+
+
+def test_api_services_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set-string",
+        "api.services=evaluator",
+    )
+
+    assert "api.services must be a list when set" in stderr
+
+
+def test_falsy_api_services_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set",
+        "api.services=false",
+    )
+
+    assert "api.services must be a list when set" in stderr
+
+
+def test_controllers_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set-string",
+        "core.controller.controllers=models",
+    )
+
+    assert "core.controller.controllers must be a list when set" in stderr
+
+
+def test_falsy_controllers_must_be_a_list() -> None:
+    stderr = _helm_template_failure(
+        "--set",
+        "core.controller.controllers=false",
+    )
+
+    assert "core.controller.controllers must be a list when set" in stderr
+
+
+def test_legacy_controller_extra_args_selection_suppresses_default_controller_group() -> None:
+    documents = _helm_template(
+        "--set-string",
+        "core.controller.extraArgs[0]=--controller-group=core",
+    )
+
+    args = _controller_container(documents)["args"]
+    assert args.count("--controller-group=core") == 1
+    assert "--controller-group=all" not in args
+
+
+def test_legacy_controller_extra_args_controllers_selection_suppresses_default_controller_group() -> None:
+    documents = _helm_template(
+        "--set-string",
+        "core.controller.extraArgs[0]=--controllers=models",
+    )
+
+    args = _controller_container(documents)["args"]
+    assert args.count("--controllers=models") == 1
+    assert not any(arg.startswith("--controller-group=") for arg in args)
 
 
 def test_external_clickhouse_disables_embedded_dependency() -> None:
