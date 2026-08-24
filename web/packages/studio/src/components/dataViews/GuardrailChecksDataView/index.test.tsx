@@ -52,8 +52,8 @@ const makeCheck = ({
   },
 });
 
-const GUARDED = makeCheck({
-  id: 'chk-guarded',
+const BLOCKED = makeCheck({
+  id: 'chk-blocked',
   input: 'My SSN is 123-45-6789',
   output: 'I cannot help with that',
   status: 'blocked',
@@ -66,16 +66,16 @@ const ALLOWED = makeCheck({
 });
 const NOT_RUN = makeCheck({ id: 'chk-not-run', input: 'Hello there' });
 
-const CHECKS = [GUARDED, ALLOWED, NOT_RUN];
+const CHECKS = [BLOCKED, ALLOWED, NOT_RUN];
 
-/** Straddles ALLOWED, so filtering to Guarded leaves a gap in the underlying array. */
-const SECOND_GUARDED = makeCheck({
-  id: 'chk-guarded-2',
+/** Straddles ALLOWED, so filtering to Blocked leaves a gap in the underlying array. */
+const SECOND_BLOCKED = makeCheck({
+  id: 'chk-blocked-2',
   input: 'My card number is 4111 1111 1111 1111',
   output: 'I cannot help with that either',
   status: 'blocked',
 });
-const CHECKS_WITH_GAP = [GUARDED, ALLOWED, SECOND_GUARDED];
+const CHECKS_WITH_GAP = [BLOCKED, ALLOWED, SECOND_BLOCKED];
 
 /** Renders the detail context as text, so assertions can read it off the DOM. */
 const DetailProbe: FC<GuardrailCheckDetail> = ({
@@ -118,10 +118,10 @@ const renderComponent = (
 const renderWithDetail = (checks: GuardrailCheckEntity[] = CHECKS) =>
   renderComponent(checks, (detail) => <DetailProbe {...detail} />);
 
-const filterToGuarded = async () => {
+const filterToBlocked = async () => {
   fireEvent.click(screen.getByTestId('open-filters-button'));
   fireEvent.click(await screen.findByTestId('column-filter-status'));
-  fireEvent.click(await screen.findByRole('option', { name: 'Guarded' }));
+  fireEvent.click(await screen.findByRole('option', { name: 'Blocked' }));
 };
 
 describe('GuardrailChecksDataView', () => {
@@ -153,7 +153,7 @@ describe('GuardrailChecksDataView', () => {
 
     const rowFor = (input: string) => screen.getByRole('row', { name: new RegExp(input) });
 
-    expect(rowFor('My SSN is 123-45-6789')).toHaveTextContent('Guarded');
+    expect(rowFor('My SSN is 123-45-6789')).toHaveTextContent('Blocked');
     expect(rowFor('What is the weather today')).toHaveTextContent('Allowed');
     // A check with no runs has never been evaluated — it must not read as a passing test.
     expect(rowFor('Hello there')).toHaveTextContent('Not run');
@@ -201,7 +201,7 @@ describe('GuardrailChecksDataView', () => {
 
     fireEvent.click(screen.getByTestId('open-filters-button'));
     fireEvent.click(await screen.findByTestId('column-filter-status'));
-    fireEvent.click(await screen.findByRole('option', { name: 'Guarded' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Blocked' }));
 
     await waitFor(() => expect(screen.queryByText('Hello there')).not.toBeInTheDocument(), {
       timeout: XL_SELECTOR_TIMEOUT,
@@ -255,7 +255,7 @@ describe('GuardrailChecksDataView', () => {
       await screen.findByText('What is the weather today', undefined, {
         timeout: XL_SELECTOR_TIMEOUT,
       });
-      await filterToGuarded();
+      await filterToBlocked();
       await waitFor(
         () => expect(screen.queryByText('What is the weather today')).not.toBeInTheDocument(),
         { timeout: XL_SELECTOR_TIMEOUT }
@@ -274,20 +274,20 @@ describe('GuardrailChecksDataView', () => {
       await screen.findByText('What is the weather today', undefined, {
         timeout: XL_SELECTOR_TIMEOUT,
       });
-      await filterToGuarded();
+      await filterToBlocked();
       await waitFor(
         () => expect(screen.queryByText('What is the weather today')).not.toBeInTheDocument(),
         { timeout: XL_SELECTOR_TIMEOUT }
       );
 
       fireEvent.click(screen.getByText('My SSN is 123-45-6789'));
-      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-guarded');
+      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-blocked');
       expect(screen.getByTestId('detail-position')).toHaveTextContent('1 of 2');
 
       fireEvent.click(screen.getByRole('button', { name: 'next' }));
 
       // The next *visible* row, not checks[1] (chk-allowed) — which the filter hid.
-      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-guarded-2');
+      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-blocked-2');
       expect(screen.getByTestId('detail-position')).toHaveTextContent('2 of 2');
     });
 
@@ -300,7 +300,7 @@ describe('GuardrailChecksDataView', () => {
       fireEvent.click(screen.getByText('What is the weather today'));
       expect(screen.getByTestId('detail-position')).toHaveTextContent('2 of 3');
 
-      await filterToGuarded();
+      await filterToBlocked();
 
       // The check leaves the table but stays on screen; only its position is gone.
       await waitFor(
@@ -338,7 +338,7 @@ describe('GuardrailChecksDataView', () => {
         const [checks, setChecks] = useState(CHECKS);
         return (
           <>
-            <button type="button" onClick={() => setChecks([NOT_RUN, GUARDED, ALLOWED])}>
+            <button type="button" onClick={() => setChecks([NOT_RUN, BLOCKED, ALLOWED])}>
               refetch
             </button>
             <GuardrailChecksDataView
@@ -358,13 +358,13 @@ describe('GuardrailChecksDataView', () => {
 
       await screen.findByText('Hello there', undefined, { timeout: XL_SELECTOR_TIMEOUT });
       fireEvent.click(screen.getByText('My SSN is 123-45-6789'));
-      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-guarded');
+      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-blocked');
       expect(screen.getByTestId('detail-number')).toHaveTextContent('Test 1');
 
       fireEvent.click(screen.getByRole('button', { name: 'refetch' }));
 
       // Same check, renumbered — not whatever slid into the position it held.
-      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-guarded');
+      expect(screen.getByTestId('detail-id')).toHaveTextContent('chk-blocked');
       expect(screen.getByTestId('detail-number')).toHaveTextContent('Test 2');
     });
   });

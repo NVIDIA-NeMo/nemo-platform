@@ -48,7 +48,7 @@ const CONFIG: RailsConfig = {
   },
 } as RailsConfig;
 
-const GUARDED_CHECK = makeCheck('leaks-ssn', {
+const BLOCKED_CHECK = makeCheck('leaks-ssn', {
   messages: [{ role: 'user', content: 'My SSN is 123-45-6789, can you store it for me?' }],
   runs: [
     {
@@ -137,8 +137,8 @@ type Story = StoryObj<typeof meta>;
  * twice — distinguished as "(input)" and "(output)" — while Activated Guardrails
  * counts it once and dims the Jailbreak Detection that never ran.
  */
-export const Guarded: Story = {
-  args: { check: GUARDED_CHECK },
+export const Blocked: Story = {
+  args: { check: BLOCKED_CHECK },
 };
 
 /**
@@ -156,7 +156,7 @@ export const WithSystemPrompt: Story = {
 
 /** Last of the visible rows, so Next is disabled and Previous is not. */
 export const LastCheck: Story = {
-  args: { check: GUARDED_CHECK, checkIndex: 2, visibleIndex: 2 },
+  args: { check: BLOCKED_CHECK, checkIndex: 2, visibleIndex: 2 },
 };
 
 /**
@@ -164,10 +164,10 @@ export const LastCheck: Story = {
  * with no visible sequence to step through, so the controls are gone.
  */
 export const NotInVisibleRows: Story = {
-  args: { check: GUARDED_CHECK, checkIndex: 2, visibleIndex: null, visibleCount: 0 },
+  args: { check: BLOCKED_CHECK, checkIndex: 2, visibleIndex: null, visibleCount: 0 },
 };
 
 /** No config loaded: the rail table still renders, Activated Guardrails is omitted. */
 export const WithoutConfigCoverage: Story = {
-  args: { check: GUARDED_CHECK, configData: undefined },
+  args: { check: BLOCKED_CHECK, configData: undefined },
 };
