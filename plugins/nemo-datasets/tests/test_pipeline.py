@@ -428,6 +428,23 @@ def test_profile_survives_conflicting_shard_schemas(tmp_path):
     assert partition.features[0].dtype == "json"  # mixed, and honest about it
 
 
+def test_an_unreadable_file_says_what_it_actually_is(tmp_path):
+    # The payoff for the magic-byte checks, and the reason they cannot live in `peek` alone: `peek`
+    # runs first and its failures are discarded, so this message only reaches a FileError because the
+    # read path raises it too. Without it both shards report a decode error from inside the parser,
+    # which reads like corrupt data rather than a file that was never this format.
+    _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
+    (tmp_path / "test-00000-of-00001.parquet").write_bytes(b"<!DOCTYPE html><html>404</html>")
+    (tmp_path / "extra.jsonl").write_bytes(b"\x1f\x8b\x08\x00" + b"\x00" * 32)
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    errors = {e.path: e.error for e in result.file_errors}
+    assert "not a parquet file" in errors["test-00000-of-00001.parquet"]
+    assert "gzip archive" in errors["extra.jsonl"]
+    assert result.partitions[0].stats  # and the shard that was fine is still measured
+
+
 def test_profile_isolates_unreadable_files(tmp_path):
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
     (tmp_path / "test-00000-of-00001.parquet").write_bytes(b"not a real parquet file")
