@@ -19,6 +19,9 @@ from nemo_platform.types.guardrail import (
     GuardrailCheckResponse,
     GuardrailsDataParam,
 )
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.guardrail.client import GuardrailClient
+from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest
 
 from e2e.guardrails.utils import (
     BACKEND_RESPONSE,
@@ -51,11 +54,17 @@ def _post_check(
     if extra_guardrails:
         guardrails.update(extra_guardrails)
 
-    return test_case.sdk.guardrail.check(
-        workspace=test_case.workspace,
-        model=test_case.backend_model_ref,
-        messages=_check_messages(test_case),
-        guardrails=cast(GuardrailsDataParam, guardrails),
+    return (
+        client_from_platform(test_case.sdk, GuardrailClient)
+        .check_guardrail(
+            workspace=test_case.workspace,
+            body=GuardrailCheckRequest(
+                model=test_case.backend_model_ref,
+                messages=_check_messages(test_case),
+                guardrails=cast(GuardrailsDataParam, guardrails),
+            ),
+        )
+        .data()
     )
 
 

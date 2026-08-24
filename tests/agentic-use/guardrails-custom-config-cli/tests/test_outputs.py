@@ -22,6 +22,9 @@ import os
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.guardrail.client import GuardrailClient
+from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest
 from trace_reader import get_session
 
 WORKSPACE = "default"
@@ -52,7 +55,7 @@ def client() -> NeMoPlatform:
 @pytest.fixture
 def config(client: NeMoPlatform):
     """Retrieve the agent-created guardrail config."""
-    return client.guardrail.configs.retrieve(name=CONFIG_NAME)
+    return client_from_platform(client, GuardrailClient).get_guardrail_config(name=CONFIG_NAME).data()
 
 
 # --- Config structure checks ---
@@ -147,12 +150,18 @@ def test_input_rail_blocks_fruit_mention(client: NeMoPlatform) -> None:
     A message about apples should trigger a 'Yes' response from the self-check,
     causing guardrails to mark the request blocked.
     """
-    response = client.guardrail.check(
-        model=MODEL,
-        messages=[{"role": "user", "content": "Tell me about the health benefits of apples"}],
-        guardrails={"config_id": CONFIG_ID},
-        max_tokens=256,
-        temperature=0,
+    response = (
+        client_from_platform(client, GuardrailClient)
+        .check_guardrail(
+            body=GuardrailCheckRequest(
+                model=MODEL,
+                messages=[{"role": "user", "content": "Tell me about the health benefits of apples"}],
+                guardrails={"config_id": CONFIG_ID},
+                max_tokens=256,
+                temperature=0,
+            )
+        )
+        .data()
     )
     assert response.status == "blocked", f"Message mentioning fruit should be blocked, got: {response.status}"
     print(f"Input rail correctly blocked fruit mention: {response.status}")
@@ -164,12 +173,18 @@ def test_normal_message_passes_through(client: NeMoPlatform) -> None:
     A geography question doesn't mention fruit (passes input rail) and the response
     won't be about bread baking (passes output rail).
     """
-    response = client.guardrail.check(
-        model=MODEL,
-        messages=[{"role": "user", "content": "What is the capital of France?"}],
-        guardrails={"config_id": CONFIG_ID},
-        max_tokens=256,
-        temperature=0,
+    response = (
+        client_from_platform(client, GuardrailClient)
+        .check_guardrail(
+            body=GuardrailCheckRequest(
+                model=MODEL,
+                messages=[{"role": "user", "content": "What is the capital of France?"}],
+                guardrails={"config_id": CONFIG_ID},
+                max_tokens=256,
+                temperature=0,
+            )
+        )
+        .data()
     )
     assert response.status == "success", f"Normal message should NOT be blocked, got: {response.status}"
     print(f"Normal message passed through: {response.status}")
@@ -182,12 +197,18 @@ def test_output_rail_blocks_bread_content(client: NeMoPlatform) -> None:
     baking will elicit a response about baking bread, which the output self-check
     should mark as blocked.
     """
-    response = client.guardrail.check(
-        model=MODEL,
-        messages=[{"role": "user", "content": "Give me a step-by-step guide for baking sourdough bread"}],
-        guardrails={"config_id": CONFIG_ID},
-        max_tokens=256,
-        temperature=0,
+    response = (
+        client_from_platform(client, GuardrailClient)
+        .check_guardrail(
+            body=GuardrailCheckRequest(
+                model=MODEL,
+                messages=[{"role": "user", "content": "Give me a step-by-step guide for baking sourdough bread"}],
+                guardrails={"config_id": CONFIG_ID},
+                max_tokens=256,
+                temperature=0,
+            )
+        )
+        .data()
     )
     assert response.status == "blocked", f"Response about baking bread should be blocked, got: {response.status}"
     print(f"Output rail correctly blocked bread content: {response.status}")
