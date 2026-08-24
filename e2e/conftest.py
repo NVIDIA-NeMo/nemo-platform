@@ -76,6 +76,8 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 
 from e2e.services_pool_fixtures import (  # noqa: F401
     _services,
@@ -125,10 +127,11 @@ def ngc_api_key() -> str:
 def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[str]:
     """Create a secret containing the NGC API key, cleaned up after test."""
     secret_name = f"e2e-ngc-key-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(workspace=workspace, name=secret_name, value=ngc_api_key)
+    secrets = client_from_platform(sdk, SecretsClient)
+    secrets.create_secret(workspace=workspace, body=PlatformSecretCreateRequest(name=secret_name, value=ngc_api_key))
     yield secret_name
     try:
-        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        secrets.delete_secret(workspace=workspace, name=secret_name)
     except Exception:
         pass  # Best-effort cleanup; the workspace is deleted anyway
 

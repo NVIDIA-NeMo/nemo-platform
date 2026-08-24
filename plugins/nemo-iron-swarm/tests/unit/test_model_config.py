@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from _doubles import make_entity, make_job_context, make_sdk
 from nemo_iron_swarm_plugin.agent_resolver import inject_gateway_url
 from nemo_iron_swarm_plugin.jobs import _common
@@ -17,11 +18,22 @@ from nemo_iron_swarm_plugin.model_config import ModelChoice, WarGameModels
 
 
 class _FakeSecrets:
+    """Stands in for the typed ``SecretsClient``, not the old ``sdk.secrets`` resource."""
+
     def __init__(self, values: dict[str, str]) -> None:
         self._values = values
 
-    def access(self, name: str, *, workspace: str) -> Any:
-        return SimpleNamespace(value=self._values.get(name))
+    def access_secret(self, *, name: str, workspace: str) -> Any:
+        return SimpleNamespace(data=lambda: SimpleNamespace(value=self._values.get(name)))
+
+
+@pytest.fixture(autouse=True)
+def _route_secrets_client(monkeypatch: Any) -> None:
+    """``build_model_env`` resolves keys through ``client_from_platform(sdk, SecretsClient)``.
+
+    The sdk doubles here carry their client on ``.secrets``, so hand that back directly.
+    """
+    monkeypatch.setattr(_common, "client_from_platform", lambda sdk, _cls: sdk.secrets)
 
 
 def _sdk(secrets: dict[str, str]) -> Any:
@@ -113,12 +125,18 @@ class _Secrets:
     def __init__(self, values: dict[str, str], *, reachable: bool = True) -> None:
         self._values, self._reachable = values, reachable
 
-    def access(self, name: str, *, workspace: str) -> Any:
+    def access_secret(self, *, name: str, workspace: str) -> Any:
         if not self._reachable:
             raise RuntimeError("secrets store unreachable")
         if name not in self._values:
             raise KeyError(name)
-        return SimpleNamespace(value=self._values[name])
+        return SimpleNamespace(data=lambda: SimpleNamespace(value=self._values[name]))
+
+
+def _sdk_with(secrets: _Secrets, monkeypatch: Any) -> Any:
+    """An sdk double carrying its typed client on ``.secrets``, per ``_route_secrets_client``."""
+    del monkeypatch  # routing is handled by the autouse fixture
+    return SimpleNamespace(secrets=secrets)
 
 
 def _config_double(monkeypatch: Any, dotenv_key: str | None) -> None:
@@ -138,7 +156,7 @@ def test_resolve_model_key_prefers_the_named_secret(monkeypatch: Any) -> None:
     from nemo_iron_swarm_plugin.jobs import _common as common
 
     _config_double(monkeypatch, "from-dotenv")
-    sdk = SimpleNamespace(secrets=_Secrets({"my-key": "chosen", "iron-swarm-inference-key": "provisioned"}))
+    sdk = _sdk_with(_Secrets({"my-key": "chosen", "iron-swarm-inference-key": "provisioned"}), monkeypatch)
 
     assert common.resolve_model_key(sdk, "my-key", workspace="default") == "chosen"
 
@@ -148,7 +166,7 @@ def test_resolve_model_key_falls_back_to_the_provisioned_secret(monkeypatch: Any
     from nemo_iron_swarm_plugin.jobs import _common as common
 
     _config_double(monkeypatch, "from-dotenv")
-    sdk = SimpleNamespace(secrets=_Secrets({"iron-swarm-inference-key": "provisioned"}))
+    sdk = _sdk_with(_Secrets({"iron-swarm-inference-key": "provisioned"}), monkeypatch)
 
     assert common.resolve_model_key(sdk, None, workspace="default") == "provisioned"
 
@@ -159,10 +177,10 @@ def test_resolve_model_key_falls_back_to_the_dotenv(monkeypatch: Any) -> None:
 
     _config_double(monkeypatch, "from-dotenv")
 
-    absent = SimpleNamespace(secrets=_Secrets({}))
+    absent = _sdk_with(_Secrets({}), monkeypatch)
     assert common.resolve_model_key(absent, None, workspace="default") == "from-dotenv"
 
-    unreachable = SimpleNamespace(secrets=_Secrets({}, reachable=False))
+    unreachable = _sdk_with(_Secrets({}, reachable=False), monkeypatch)
     assert common.resolve_model_key(unreachable, None, workspace="default") == "from-dotenv"
 
 
@@ -170,4 +188,4 @@ def test_resolve_model_key_none_when_nothing_resolves(monkeypatch: Any) -> None:
     from nemo_iron_swarm_plugin.jobs import _common as common
 
     _config_double(monkeypatch, None)
-    assert common.resolve_model_key(SimpleNamespace(secrets=_Secrets({})), None, workspace="default") is None
+    assert common.resolve_model_key(_sdk_with(_Secrets({}), monkeypatch), None, workspace="default") is None
