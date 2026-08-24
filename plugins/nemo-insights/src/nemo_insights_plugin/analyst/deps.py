@@ -13,16 +13,16 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from nemo_insights_plugin.analyst.analyst_backend import AnalystBackend
+from nemo_platform_plugin.trace_provider import TraceProvider
 
 
 @dataclass
 class AnalystDeps:
     """Per-run configuration injected into every analyst read method.
 
-    Every tool talks to the platform through a single :class:`AnalystBackend`
-    built once by the CLI and shared here, rather than constructing an SDK
-    client per call. The CLI owns the backend's client lifecycle (closing it
-    when the run finishes), so tools must not close it.
+    Trace tools use a shared :class:`TraceProvider`; Insight tools use the
+    separate :class:`AnalystBackend`. Both are built once by the caller and
+    injected here, so tools do not own their clients' lifecycles.
 
     Attributes:
         agent: Agent under test. Used as the default ``agent_name`` filter for
@@ -33,8 +33,9 @@ class AnalystDeps:
         insights_output: When set, the backend also persists insights to this
             local YAML file, mirroring the rows the platform stored (run
             metadata).
-        backend: Shared data-access backend used by every tool.
-        since: Optional lower bound for scheduled incremental analysis. Backend
+        backend: Shared Insight listing and persistence backend.
+        trace_provider: Shared read-only trace provider.
+        since: Optional lower bound for scheduled incremental analysis. Trace
             reads enforce this even if the model omits a time filter.
         max_results: Hard ceiling on items any single fetch may pull across
             pages. A fetch's ``limit`` is clamped to this so a wide filter
@@ -46,7 +47,8 @@ class AnalystDeps:
     workspace: str = "default"
     base_url: str | None = None
     insights_output: str | None = None
-    backend: AnalystBackend | None = None  # set by the CLI per run
+    backend: AnalystBackend | None = None
+    trace_provider: TraceProvider | None = None
     since: datetime | None = None
-    evaluation_id: str | None = None  # run scope; AND-pinned onto every span read
+    evaluation_id: str | None = None  # Intake evaluation scope configured on the provider
     max_results: int = 200

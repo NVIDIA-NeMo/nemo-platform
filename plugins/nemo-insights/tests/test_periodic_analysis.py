@@ -16,8 +16,6 @@ from nemo_insights_plugin.analyst.analyst_backend import (
     InsightsFileStore,
     LocalAnalystBackend,
     RemoteAnalystBackend,
-    _merge_eval_filter,
-    _merge_since_filter,
     make_analyst_backend,
 )
 from nemo_insights_plugin.analyst.result import AnalystResult, InsightUpdate, NewInsight
@@ -38,7 +36,6 @@ from nemo_insights_plugin.entities import (
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due, previous_scheduled
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types.intake.spans.span_group import SpanGroup
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import JobResults
@@ -48,37 +45,6 @@ from nemo_platform_plugin.jobs.constants import (
 )
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 from pydantic import ValidationError
-
-
-def test_merge_since_filter_adds_lower_bound() -> None:
-    since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
-
-    result = _merge_since_filter({"agent_name": "research-agent"}, since=since)
-
-    assert result == {
-        "agent_name": "research-agent",
-        "started_at": {"gte": "2026-06-04T12:00:00+00:00"},
-    }
-
-
-def test_merge_since_filter_keeps_later_existing_lower_bound() -> None:
-    since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
-
-    result = _merge_since_filter(
-        {"started_at": {"gte": "2026-06-04T13:00:00+00:00"}},
-        since=since,
-    )
-
-    assert result == {"started_at": {"gte": "2026-06-04T13:00:00+00:00"}}
-
-
-def test_merge_since_filter_compares_equivalent_iso_representations() -> None:
-    since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
-    current = "2026-06-04T07:00:00-05:00"
-
-    result = _merge_since_filter({"started_at": {"gte": current}}, since=since)
-
-    assert result == {"started_at": {"gte": current}}
 
 
 class _MissingInsights:
@@ -330,174 +296,6 @@ async def test_local_backend_list_preserves_entity_metadata(tmp_path: Path) -> N
     assert page.data[0].id == "insight-local-1"
     assert page.data[0].created_at == _STAMP
     assert page.data[0].updated_at == _STAMP
-
-
-def test_merge_eval_filter_pins_evaluation_id() -> None:
-    assert _merge_eval_filter({"agent_name": "a"}, evaluation_id="run-1") == {
-        "agent_name": "a",
-        "evaluation_id": "run-1",
-    }
-
-
-def test_merge_eval_filter_none_is_noop() -> None:
-    assert _merge_eval_filter({"agent_name": "a"}, evaluation_id=None) == {"agent_name": "a"}
-    assert _merge_eval_filter(None, evaluation_id=None) is None
-
-
-def test_merge_eval_filter_overwrites_model_supplied_scope() -> None:
-    assert _merge_eval_filter({"evaluation_id": "sneaky"}, evaluation_id="run-1") == {
-        "evaluation_id": "run-1",
-    }
-
-
-class _SpanGroups:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
-
-    async def list(self, **kwargs: object) -> SimpleNamespace:
-        self.calls.append(kwargs)
-        return SimpleNamespace(
-            data=[SpanGroup(group={"session_id": "session-1"}, span_count=3, started_at=_STAMP)],
-            pagination=SimpleNamespace(total_results=7),
-        )
-
-
-class _SpanGroupClient:
-    def __init__(self) -> None:
-        self.groups = _SpanGroups()
-        self.intake = SimpleNamespace(
-            spans=SimpleNamespace(groups=self.groups),
-        )
-
-
-@pytest.mark.asyncio
-async def test_count_agent_sessions_uses_server_side_session_groups() -> None:
-    since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
-    client = _SpanGroupClient()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, client))
-
-    count = await backend.count_agent_sessions(
-        agent="research-agent",
-        workspace="default",
-        since=since,
-    )
-
-    assert count == 7
-    assert client.groups.calls == [
-        {
-            "workspace": "default",
-            "by": "session_id",
-            "page": 1,
-            "page_size": 1,
-            "filter": {
-                "agent_name": "research-agent",
-                "started_at": {"gte": "2026-06-04T12:00:00+00:00"},
-            },
-            "sort": "-span_count",
-        }
-    ]
-
-
-class _SpanGroupsPaged:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
-
-    async def list(self, **kwargs: object) -> SimpleNamespace:
-        self.calls.append(kwargs)
-        return SimpleNamespace(
-            data=[
-                SpanGroup(group={"session_id": "session-1"}, span_count=12, started_at=_STAMP),
-                SpanGroup(group={"session_id": "session-2"}, span_count=5, started_at=_STAMP),
-            ],
-            pagination=SimpleNamespace(total_results=37),
-        )
-
-
-class _GroupsBackendClient:
-    def __init__(self, groups: _SpanGroupsPaged) -> None:
-        self.intake = SimpleNamespace(spans=SimpleNamespace(groups=groups))
-
-
-@pytest.mark.asyncio
-async def test_list_span_groups_fans_out_over_sessions() -> None:
-    since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
-    groups = _SpanGroupsPaged()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, _GroupsBackendClient(groups)))
-
-    result = await backend.list_span_groups(
-        workspace="default",
-        filter={"agent_name": "research-agent"},
-        group_by="session_id",
-        limit=100,
-        since=since,
-    )
-
-    stamp = _STAMP.isoformat().replace("+00:00", "Z")
-    assert result == {
-        "groups": [
-            {"group": {"session_id": "session-1"}, "span_count": 12, "started_at": stamp},
-            {"group": {"session_id": "session-2"}, "span_count": 5, "started_at": stamp},
-        ],
-        "grouped_by": "session_id",
-        "count": 2,
-        "total": 37,
-        "truncated": True,
-    }
-    assert groups.calls == [
-        {
-            "workspace": "default",
-            "by": "session_id",
-            "page": 1,
-            "page_size": 100,
-            "filter": {
-                "agent_name": "research-agent",
-                "started_at": {"gte": "2026-06-04T12:00:00+00:00"},
-            },
-            "sort": "-span_count",
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_count_agent_sessions_pins_evaluation_id() -> None:
-    client = _SpanGroupClient()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, client))
-
-    await backend.count_agent_sessions(
-        agent="research-agent",
-        workspace="default",
-        evaluation_id="run-1",
-    )
-
-    assert client.groups.calls == [
-        {
-            "workspace": "default",
-            "by": "session_id",
-            "page": 1,
-            "page_size": 1,
-            "filter": {"agent_name": "research-agent", "evaluation_id": "run-1"},
-            "sort": "-span_count",
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_list_span_groups_pins_evaluation_id() -> None:
-    groups = _SpanGroupsPaged()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, _GroupsBackendClient(groups)))
-
-    await backend.list_span_groups(
-        workspace="default",
-        filter={"agent_name": "research-agent"},
-        group_by="session_id",
-        limit=100,
-        evaluation_id="run-1",
-    )
-
-    assert groups.calls[0]["filter"] == {
-        "agent_name": "research-agent",
-        "evaluation_id": "run-1",
-    }
 
 
 _DENVER = ZoneInfo("America/Denver")

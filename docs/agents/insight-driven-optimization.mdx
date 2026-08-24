@@ -42,16 +42,17 @@ want to automate portions of the agent improvement loop.
 
 ### Requirements
 
-- A NeMo Platform deployment (local or remote) with Intake enabled, so the
-  Analyst has traces to read.
+- A NeMo Platform deployment (local or remote) for model access and Insight
+  persistence. Intake must be enabled when it is the selected trace provider.
 - The optimization plugins installed in the same Python environment as the NeMo command-line
   interface (CLI). From a source checkout, `uv sync` installs all three through the default
   `enabled-plugins` group. The Experimenter and Eval Author plugins require Python earlier than 3.14.
 - Access to the code base for the agent under test. The Experimenter needs
   a change surface (source, prompts, tool definitions, model selection, or
   runtime configuration) and a way to run or evaluate the agent reproducibly.
-- Traces in Intake for the agent under test. The Analyst diagnoses only what
-  it can observe, so an agent with no telemetry cannot be analyzed.
+- Traces in Intake, a LangSmith project, or an MLflow experiment. The Analyst
+  diagnoses only what it can observe, so an agent with no telemetry cannot be
+  analyzed.
 - A supported inference provider and default/fast model pair configured by
   `nemo setup` for the optimization agents. This access is separate from the
   model access that your agent under test needs at runtime.
@@ -71,9 +72,9 @@ uv sync --only-group experimentalist  # Experimenter and Eval Author
 The optimization agents build on the following NeMo Platform service
 dependencies:
 
-- **NeMo Intake** is the first-party trace store that fuels the loop. The
-  Analyst reads execution traces, evaluator scores, and user feedback from
-  Intake.
+- **Trace provider** supplies execution traces and available evaluator or
+  feedback signals. NeMo Intake is the default; LangSmith and MLflow are also
+  supported for manually invoked Analyst runs.
 - **Harbor** so the Experimenter can run candidates through an evaluation
   pipeline and construct Insight-specific suites.
 - **NeMo Experiments** acts as the primary review and persistence surface for
@@ -120,7 +121,7 @@ a profile is found, without replacing variables already set in the shell.
 The optimization agents automate the four steps of the agent iteration loop:
 
 1. **Observe.** The AUT is exercised and emits traces (and optional evaluator
-   scores or feedback) into Intake.
+   scores or feedback) to the selected trace provider.
 2. **Diagnose.** The Analyst crawls those traces, clusters failures, and
    writes or updates Insights.
 3. **Experiment.** The Experimenter picks up a single Insight, hypothesizes
@@ -159,7 +160,7 @@ recurring problem that is stored in the platform entity store with these fields:
 | `description` | string | A paragraph describing the problem statement and the situations in which the failure pattern is observed. |
 | `agent` | string | The registered agent name the Insight is about. |
 | `status` | enum | `open` (default), `resolved`, or `deleted`. An Insight starts open; you resolve it when fixed, or delete it if it is not a real problem. |
-| `trace_refs` | list[string] | Intake trace identifiers (IDs) the Analyst cited as evidence. Drives the evidence view in the user interface (UI) and lets the loop find similar traces. |
+| `trace_refs` | list[string] | Provider-native trace identifiers (IDs) the Analyst cited as evidence. Drives the evidence view in the user interface (UI) and lets the loop find similar traces. |
 
 The store assigns `id`, `created_at`, and `updated_at`. The Analyst aims for at
 least three representative traces as evidence before filing a new Insight, and
@@ -174,17 +175,16 @@ interface (API).
 When a profile governs the run, the Analyst reads and writes the shared local
 file at `<profile-dir>/.nemo-optimizer/insights.yaml` instead, which is the
 same default the Experimenter reads. Pass `--insights-file-output <path>`
-to point at a different file explicitly. Trace and feedback reads still hit
-the live platform at `--base-url` either way, so the local file also covers
-deployments that host Intake data but do not have the Insights plugin
-installed. Each run merges into the file (de-duplicating trace refs) rather
-than overwriting it.
+to point at a different file explicitly. Model access and API-backed Insight
+persistence still use the live platform at `--base-url`. Trace reads use the
+selected provider. Each run merges into the file (de-duplicating trace refs)
+rather than overwriting it.
 
 #### Telemetry Hierarchy
 
-The loop inherits Intake's model: a span is one timed
-operation (LLM call, tool call, and so on), a trace is one end-to-end run, and
-a session groups related traces. Insight evidence is cited at the trace level.
+A trace is one end-to-end run. Each trace provider keeps its native detailed
+shape, including spans or runs and any feedback, scores, or assessments it can
+hydrate. Insight evidence is cited at the trace level with provider-native IDs.
 
 #### Experiment Entities
 
@@ -195,18 +195,14 @@ An optimization run is tracked as an `ExperimentRun`
 
 ### Analyst
 
-The Analyst reads telemetry from Intake and emits Insights. It runs as a
-single reasoning agent with a set of read-only tools over Intake:
+The Analyst reads telemetry from Intake, LangSmith, or MLflow and emits
+Insights. It runs as a single reasoning agent with provider-neutral read tools:
 
-- `fetch_spans`: Survey spans, either grouped (for example by `session_id`,
-  to fan out across many runs) or flat (to drill into one session). Filters
-  include agent, status, span kind, model, provider, tool name, dataset, and
-  time range.
-- `get_span`: Fetch a single span by ID.
-- `fetch_scores`: Read evaluator results (verifier and judge outputs)
-  attached to a span.
-- `fetch_annotations` and `get_annotation`: Read feedback, labels, notes, and
-  metadata. Negative feedback is the strongest starting signal.
+- `filter_traces`: Survey lightweight trace summaries by ID, time range, or
+  error state.
+- `read_traces`: Hydrate selected traces row by row. Each row contains an ID
+  and a provider-native data blob with the execution and feedback signals that
+  provider exposes.
 - `list_insights`: Read existing Insights so findings are de-duplicated
   against what is already filed.
 
@@ -298,7 +294,7 @@ export NMP_BASE_URL=http://127.0.0.1:8080
 export WORKSPACE=default
 export NMP_STUDIO_URL="$NMP_BASE_URL/studio"
 export NMP_ACCESS_TOKEN="$(nemo auth token)"
-export AGENT=your-agent-name           # This agent must have traces in Intake.
+export AGENT=your-agent-name           # This agent must have traces in the selected provider.
 
 nemo setup
 ```
@@ -330,10 +326,11 @@ nemo agents analyst doctor
 nemo agents experimentalist doctor
 ```
 
-### Send Traces to Intake
+### Make Traces Available
 
-The Analyst depends on Intake as its observability store. Your agent must have traces in Intake
-before it can generate Insights.
+The default provider is Intake. The Analyst can instead read an existing
+LangSmith project or MLflow experiment. The selected source must contain traces
+before the Analyst can generate Insights.
 
 ### Generate Insights
 
@@ -351,7 +348,13 @@ Useful flags:
 - `--agent-spec AGENT-SPEC.md`: Append a spec so the Analyst can flag
   divergence from intended behavior.
 - `--insights-file-output tmp/insights.yaml`: Read and write Insights from a
-  specific local YAML file. Trace reads still hit `--base-url`.
+  specific local YAML file. Model access still uses `--base-url`.
+- `--trace-provider langsmith --langsmith-project <project>`: Read from a
+  LangSmith project. Set `LANGSMITH_API_KEY`; `LANGSMITH_ENDPOINT` and
+  `LANGSMITH_WORKSPACE_ID` are optional.
+- `--trace-provider mlflow --mlflow-experiment <name-or-id>`: Read from an
+  MLflow experiment. Set `MLFLOW_TRACKING_URI` or pass
+  `--mlflow-tracking-uri` for a non-default tracking server.
 - `--verbose` or `-v`: Stream the Analyst's tool calls and reasoning to
   standard error.
 
@@ -383,7 +386,7 @@ not appear there because they are stored in the local YAML file.
 
 A successful result contains at least one Insight for the agent. Each Insight
 has a clear `title`, an actionable `description`, and `trace_refs` that point
-to Intake traces.
+to traces in the selected provider.
 
 ### Run an Experiment
 
@@ -537,6 +540,10 @@ Run the Analyst for one analysis of an agent's traces.
 | `--agent-spec` | no | profile `agent_spec`, else `AGENT-SPEC.md` or `README.md` beside the profile | Path to a Markdown spec for the AUT. |
 | `--workspace` | no | profile `workspace`, else `default` | Workspace to operate in. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance the Analyst's tools call. |
+| `--trace-provider` | no | `intake` | Trace source: `intake`, `langsmith`, or `mlflow`. |
+| `--langsmith-project` | for LangSmith | none | LangSmith tracing project name. Requires `LANGSMITH_API_KEY`. |
+| `--mlflow-experiment` | for MLflow | none | MLflow experiment name or ID. |
+| `--mlflow-tracking-uri` | no | `MLFLOW_TRACKING_URI`, then MLflow client configuration | MLflow tracking server URI. |
 | `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
 | `--insights-file-output` | no | off — Insights go to the platform only | Additionally mirror the Insights the platform stored into a local YAML file, platform ids included. Each run merges into the file. |
 | `--verbose` / `-v` | no | off | Stream tool calls and reasoning to standard error. |
@@ -606,16 +613,19 @@ route.
 
 ### Analyst Returns No Insights or Aborts on the Trace Floor
 
-The agent has too few or no traces in Intake for the target workspace. Confirm that telemetry is
-flowing and that you are filtering by the right `agent` name.
+The selected Intake scope, LangSmith project, or MLflow experiment has too few
+or no traces. Confirm that telemetry is flowing and that the provider scope is
+correct.
 
 ### Periodic Analysis Does Not Start
 
 Check that the agent is enabled
 (`nemo insights analysis status`), that `insights.analyst.enabled` is true,
 that the scheduled window has passed in the configured `timezone`, and that at
-least 10 new sessions have landed since the last run. If status shows no model
-selection, re-run `nemo insights analysis enable` after `nemo setup`.
+least 10 new Intake traces have landed since the last run. Periodic analysis
+uses Intake; LangSmith and MLflow are available for manual Analyst runs. If
+status shows no model selection, re-run `nemo insights analysis enable` after
+`nemo setup`.
 
 ### Insights Are Not in the Platform
 

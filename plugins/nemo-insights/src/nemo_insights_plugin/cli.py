@@ -19,6 +19,8 @@ from typing import ClassVar
 
 import httpx
 import typer
+from langsmith.utils import LangSmithError
+from mlflow.exceptions import MlflowException
 from nemo_insights_plugin.analyst.run import ClientConstructionError, run_analyst
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, advisories, format_report, required_failures
@@ -39,9 +41,18 @@ from nemo_insights_plugin.preflight import (
     read_agent_spec,
 )
 from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
+from nemo_insights_plugin.trace_provider_factory import (
+    IntakeTraceConfig,
+    LangSmithTraceConfig,
+    MLflowTraceConfig,
+    TraceProviderConfig,
+    TraceProviderConfigurationError,
+    open_trace_provider,
+)
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.nooa_model_client import configured_model_refs
+from nemo_platform_plugin.trace_provider import TraceProvider
 from nooa import GenerationError
 
 DEFAULT_WORKSPACE = "default"
@@ -57,6 +68,7 @@ class _ResolvedAnalysis:
     insights_output: Path | None
     profile_dir: Path | None
     spec_checks: tuple[CheckResult, ...]
+    trace_provider: TraceProviderConfig
 
 
 def _load_profile_or_error(profile_path: Path | None) -> tuple[AnalysisProfile | None, str | None]:
@@ -104,6 +116,10 @@ def _resolve_analysis(
     base_url: str | None,
     profile_path: Path | None,
     insights_output: Path | None,
+    trace_provider: str,
+    langsmith_project: str | None,
+    mlflow_experiment: str | None,
+    mlflow_tracking_uri: str | None,
 ) -> _ResolvedAnalysis:
     profile, profile_error = _load_profile_or_error(profile_path)
     if profile_error is not None:
@@ -132,6 +148,12 @@ def _resolve_analysis(
 
     resolved_base_url = resolve_base_url(base_url)
     validate_insights_file(insights_output)
+    resolved_trace_provider = _resolve_trace_provider_config(
+        trace_provider=trace_provider,
+        langsmith_project=langsmith_project,
+        mlflow_experiment=mlflow_experiment,
+        mlflow_tracking_uri=mlflow_tracking_uri,
+    )
 
     return _ResolvedAnalysis(
         agent=resolved_agent,
@@ -141,7 +163,39 @@ def _resolve_analysis(
         insights_output=insights_output,
         profile_dir=profile.profile_dir if profile is not None else None,
         spec_checks=tuple(spec_checks),
+        trace_provider=resolved_trace_provider,
     )
+
+
+def _resolve_trace_provider_config(
+    *,
+    trace_provider: str,
+    langsmith_project: str | None,
+    mlflow_experiment: str | None,
+    mlflow_tracking_uri: str | None,
+) -> TraceProviderConfig:
+    if trace_provider not in {"intake", "langsmith", "mlflow"}:
+        raise ProfileError("--trace-provider must be 'intake', 'langsmith', or 'mlflow'")
+    if trace_provider == "langsmith":
+        if not langsmith_project:
+            raise ProfileError("--langsmith-project is required when --trace-provider=langsmith")
+        if mlflow_experiment or mlflow_tracking_uri:
+            raise ProfileError("MLflow options require --trace-provider=mlflow")
+        return LangSmithTraceConfig(project=langsmith_project)
+    if langsmith_project:
+        raise ProfileError("--langsmith-project requires --trace-provider=langsmith")
+    if trace_provider == "mlflow":
+        if not mlflow_experiment:
+            raise ProfileError("--mlflow-experiment is required when --trace-provider=mlflow")
+        return MLflowTraceConfig(
+            experiment=mlflow_experiment,
+            tracking_uri=mlflow_tracking_uri or os.environ.get("MLFLOW_TRACKING_URI"),
+        )
+    if mlflow_experiment:
+        raise ProfileError("--mlflow-experiment requires --trace-provider=mlflow")
+    if mlflow_tracking_uri:
+        raise ProfileError("--mlflow-tracking-uri requires --trace-provider=mlflow")
+    return IntakeTraceConfig()
 
 
 def _prepare_mirror(insights_output: Path | None) -> Path | None:
@@ -174,19 +228,13 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
 
     insights_output = _prepare_mirror(analysis.insights_output)
     try:
-        try:
-            client = make_client(analysis.base_url)
-        except (RuntimeError, ValueError) as exc:
-            raise ClientConstructionError(str(exc)) from None
-        return await run_analyst(
-            agent=analysis.agent,
-            agent_spec=analysis.agent_spec,
-            workspace=analysis.workspace,
-            base_url=analysis.base_url,
-            client=client,
-            insights_output=insights_output,
-            verbose=verbose,
-        )
+        async with open_trace_provider(analysis.trace_provider) as provider:
+            return await _invoke_analyst(
+                analysis,
+                insights_output=insights_output,
+                verbose=verbose,
+                trace_provider=provider,
+            )
     except GenerationError as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(
@@ -196,14 +244,44 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             err=True,
         )
         raise typer.Exit(1) from None
-    except (ClientConstructionError, NeMoPlatformError, httpx.HTTPError) as exc:
+    except (
+        ClientConstructionError,
+        TraceProviderConfigurationError,
+        LangSmithError,
+        MlflowException,
+        NeMoPlatformError,
+        httpx.HTTPError,
+    ) as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(
             f"Error: analysis failed: {detail}. Check --base-url/NMP_BASE_URL, "
-            "authentication, workspace, and Intake availability.",
+            "trace-provider credentials, workspace, and service availability.",
             err=True,
         )
         raise typer.Exit(1) from None
+
+
+async def _invoke_analyst(
+    analysis: _ResolvedAnalysis,
+    *,
+    insights_output: Path | None,
+    verbose: bool,
+    trace_provider: TraceProvider | None = None,
+) -> str:
+    try:
+        client = make_client(analysis.base_url)
+    except (RuntimeError, ValueError) as exc:
+        raise ClientConstructionError(str(exc)) from None
+    return await run_analyst(
+        agent=analysis.agent,
+        agent_spec=analysis.agent_spec,
+        workspace=analysis.workspace,
+        base_url=analysis.base_url,
+        client=client,
+        insights_output=insights_output,
+        verbose=verbose,
+        trace_provider=trace_provider,
+    )
 
 
 def analyze(
@@ -227,7 +305,27 @@ def analyze(
     base_url: str | None = typer.Option(
         None,
         "--base-url",
-        help="Base URL of the running NMP instance the analyst's tools should call.",
+        help="Base URL of the NMP instance used for models and Insight persistence.",
+    ),
+    trace_provider: str = typer.Option(
+        "intake",
+        "--trace-provider",
+        help="Trace source: intake, langsmith, or mlflow.",
+    ),
+    langsmith_project: str | None = typer.Option(
+        None,
+        "--langsmith-project",
+        help="LangSmith tracing project name. Required for the langsmith provider.",
+    ),
+    mlflow_experiment: str | None = typer.Option(
+        None,
+        "--mlflow-experiment",
+        help="MLflow experiment name or id. Required for the mlflow provider.",
+    ),
+    mlflow_tracking_uri: str | None = typer.Option(
+        None,
+        "--mlflow-tracking-uri",
+        help="MLflow tracking server URI. Defaults to MLFLOW_TRACKING_URI or MLflow client configuration.",
     ),
     profile_path: Path | None = typer.Option(
         None,
@@ -273,6 +371,10 @@ def analyze(
             base_url=base_url,
             profile_path=profile_path,
             insights_output=insights_output,
+            trace_provider=trace_provider,
+            langsmith_project=langsmith_project,
+            mlflow_experiment=mlflow_experiment,
+            mlflow_tracking_uri=mlflow_tracking_uri,
         )
         output = asyncio.run(_run_analysis(analysis, verbose=verbose))
     except (ProfileError, EnvFileError, InsightsFileError, OSError, UnicodeError) as exc:

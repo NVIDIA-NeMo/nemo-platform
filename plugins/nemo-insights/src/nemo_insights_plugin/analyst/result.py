@@ -48,7 +48,7 @@ class NewInsight(BaseModel):
     )
     trace_refs: list[str] = Field(
         default_factory=list,
-        description="Intake trace ids that serve as evidence for this insight.",
+        description="Provider-native trace ids that serve as evidence for this insight.",
     )
 
 
@@ -68,7 +68,8 @@ class InsightUpdate(BaseModel):
     trace_refs: list[str] = Field(
         default_factory=list,
         description=(
-            "Intake trace ids to append as new evidence (merged with the insight's existing refs, de-duplicated)."
+            "Provider-native trace ids to append as new evidence "
+            "(merged with the insight's existing refs, de-duplicated)."
         ),
     )
 
