@@ -34,8 +34,8 @@ Per trial, Harbor writes result files (typically `result.json` and `agent/trajec
 token values Harbor recorded. If Harbor didn't record a cost for a run, that run simply has no cost
 (null, not zero).
 
-The evaluator publisher maps Harbor's normalized trial error type and optional message to
-`extra.error`.
+See the shared `../../nemo-intake/references/ingest-formats.md` reference for the exact
+`extra.error` shape and root-span behavior.
 
 ## Minimal per-trial payload
 

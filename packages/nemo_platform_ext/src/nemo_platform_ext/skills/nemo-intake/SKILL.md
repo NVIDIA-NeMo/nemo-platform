@@ -169,10 +169,6 @@ curl -X POST "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluator-resul
   -d '{"span_id":"<span-id>","session_id":"<session-id>","name":"faithfulness/v1","data_type":"NUMERIC","value":0.82}'
 ```
 
-For a terminal trajectory execution error, set
-`extra.error = {"type": "<error class>", "message": "<short message>"}`. Intake promotes it to the
-root span's error status and queryable error fields.
-
 ## Verify ingestion
 
 Always query the interaction back; a successful POST alone is insufficient:
