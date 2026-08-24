@@ -9,7 +9,7 @@ from typing import ClassVar, Literal
 
 import typer
 from nemo_data_designer_plugin.cli.inputs import apply_create_cli_overrides, apply_preview_cli_overrides
-from nemo_data_designer_plugin.cli.personas import download_personas_command, make_fileset_command
+from nemo_data_designer_plugin.cli.personas import make_fileset_command
 from nemo_data_designer_plugin.cli.renderers import CreateRenderer, PreviewRenderer
 from nemo_data_designer_plugin.functions.preview import PreviewFunction
 from nemo_data_designer_plugin.jobs.create import CreateJob
@@ -38,7 +38,6 @@ class DataDesignerCLI(NemoCLI):
             help="Manage Nemotron Personas datasets",
             no_args_is_help=True,
         )
-        personas_app.command("download")(download_personas_command)
         personas_app.command("make-fileset")(make_fileset_command)
 
         app.add_typer(config_app, name="config")
