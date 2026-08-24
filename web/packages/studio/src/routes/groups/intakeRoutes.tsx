@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { Stack } from '@nvidia/foundations-react-core';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
@@ -47,7 +47,7 @@ export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
   {
     path: ROUTES.workspace.intake,
     element: <IntakeLayout />,
-    errorElement: <ErrorPanel title="Intake" />,
+    errorElement: <RouteErrorPanel title="Intake" />,
     children: [
       {
         index: true,
@@ -66,7 +66,7 @@ export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
   {
     path: ROUTES.workspace.intakeSession,
     element: <IntakeSessionDetailRoute />,
-    errorElement: <ErrorPanel title="Intake" />,
+    errorElement: <RouteErrorPanel title="Intake" />,
   },
 ]);
 

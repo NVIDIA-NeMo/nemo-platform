@@ -25,7 +25,7 @@ import {
   getRailCounts,
 } from '@studio/components/dataViews/GuardrailsDataView/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Copy, Trash } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface GuardrailsDataViewProps {
@@ -157,12 +157,10 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           enableResizing: false,
           rowActions: (config: GuardrailConfig): DropdownEntry[] => [
             {
-              slotStart: <Copy />,
               children: 'Duplicate',
               onSelect: () => onRequestDuplicate?.(config),
             },
             {
-              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => onRequestDelete?.(config),

@@ -18,6 +18,10 @@
       "gum": {
         "pkg-path": "gum"
       },
+      "helm-docs": {
+        "pkg-path": "helm-docs",
+        "version": "1.14.2"
+      },
       "osv-scanner": {
         "pkg-path": "osv-scanner",
         "pkg-group": "osv-scanner",
@@ -801,6 +805,126 @@
       "priority": 5
     },
     {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/gbxz6zs7rv9qynjlq5z993cx97js8x5i-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:13:10.955708Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/i6nz37y0ghagc34nlpfngq71fn6z3rs2-helm-docs-1.14.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/29i243jas4fqcpm8wdhbw4hvnyf4yp6h-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:41.686139Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/bgaaxnb9i8fzvkvl6ggddngc0v41wwny-helm-docs-1.14.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/m20s1ywz1i2kgxgd169npi1dvbhar4jk-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:20.091441Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jqrqdlym18aindf0palq4chr2ja7w455-helm-docs-1.14.2"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/7hxy923h5639mxb0lb05asr77arvwyjb-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:45.057500Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/63l33x2rrpzdx0fg7yg776ajm6ilmgx7-helm-docs-1.14.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "yq-go",
       "broken": false,
       "derivation": "/nix/store/fizkq87xqlj4yicyxm2610qqirk29gx6-yq-go-4.53.3.drv",
@@ -924,6 +1048,12 @@
   "compose": {
     "composer": {
       "schema-version": "1.14.0",
+      "install": {
+        "helm-docs": {
+          "pkg-path": "helm-docs",
+          "version": "1.14.2"
+        }
+      },
       "options": {},
       "include": {
         "environments": [

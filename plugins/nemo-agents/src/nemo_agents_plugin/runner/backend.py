@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from nemo_agents_plugin.entities import DeploymentMode, DeploymentStatus, Endpoint
+from nemo_agents_plugin.entities import ComputeResources, DeploymentMode, DeploymentStatus, Endpoint
 
 
 @dataclass(frozen=True)
@@ -97,6 +97,8 @@ class RunnerBackend(ABC):
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
         created_by: str | None = None,
+        resources: ComputeResources | None = None,
+        secrets: dict[str, str] | None = None,
     ) -> DeploymentInfo:
         """Start the agent process; returns status="starting".
 
@@ -105,6 +107,16 @@ class RunnerBackend(ABC):
         agent's platform calls to this principal (on-behalf-of) so its access is
         scoped to what the creator can reach rather than the agents service
         principal's full reach.
+
+        ``resources`` is the snapshotted compute spec's k8s-style
+        requests/limits. Container backends compile it into the execute
+        container's resources (k8s passes both; docker consolidates to limits).
+        Subprocess mode ignores it.
+
+        ``secrets`` maps ENV_VAR_NAME -> "workspace/secret-name" from the
+        resolved environment. Container backends compile these into secret-backed
+        container env vars (never plaintext); the deployments-plugin substrate
+        materializes/mounts them. Subprocess mode ignores it.
         """
         ...
 

@@ -72,8 +72,8 @@ and the task simply has no ``inputs['instruction']``. See :func:`discover_gym_ta
 
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY, GymRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import discover_gym_tasks
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import GymRewardMetric
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.runtime import GymAgentTaskRunner
+from nemo_evaluator_sdk.metrics.runner_rewards import GymRewardMetric
 
 __all__ = [
     "DEFAULT_REWARD_KEY",

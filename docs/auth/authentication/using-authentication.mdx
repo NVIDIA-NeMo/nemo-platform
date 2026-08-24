@@ -134,17 +134,23 @@ Pass `--expires-in <seconds>` to request a specific finite lifetime. Pass
 `--expires-in none` only for deployments where the administrator has explicitly
 allowed unlimited keys.
 
-List keys or revoke one by its stable `jti`:
+List keys, temporarily suspend and restore one, or permanently revoke one by its stable `jti`:
 
 ```bash
 nemo auth access-keys list
 nemo auth access-keys list --page 2 --page-size 100
+nemo auth access-keys suspend ak_0123456789abcdef0123456789abcdef
+nemo auth access-keys unsuspend ak_0123456789abcdef0123456789abcdef
 nemo auth access-keys revoke ak_0123456789abcdef0123456789abcdef
 ```
 
-The list includes each key's `ACTIVE`, `EXPIRED`, or `REVOKED` status plus its
-description, issuer, audiences, creation time, and expiration time. Revocation takes
-effect on subsequent authenticated platform requests. Rotation is not implemented.
+The list includes each key's `ACTIVE`, `EXPIRED`, `SUSPENDED`, or `REVOKED` status
+plus its description, issuer, audiences, creation time, and expiration time. Suspension
+and revocation take effect on subsequent authenticated platform requests. Use suspension
+to temporarily block a key, such as while investigating suspected misuse, without
+permanently revoking it. An unexpired suspended key can be restored with `unsuspend`. If
+the key expires while suspended, `unsuspend` is a no-op and reports `EXPIRED`. A revoked
+key cannot be restored. Rotation is not implemented.
 
 ### Token Inspection
 

@@ -101,8 +101,9 @@ def _token_final_metrics(measurements: TrialMeasurements) -> AtifFinalMetricsPar
 
     Intake promotes these root totals onto the trajectory's root span, where the evaluation rollup
     reads them — so publishing them is what makes token counts show up under the Evaluation. Only the
-    token fields the trial actually recorded are set; a trial whose harness recorded no usage yields
-    ``None`` (no ``final_metrics`` block). Cost is not captured here.
+    fields the trial actually recorded are set; a trial that recorded neither token counts nor a
+    cost yields ``None`` (no ``final_metrics`` block). A recorded cost alone is enough to produce
+    one.
     """
     final_metrics: AtifFinalMetricsParam = {}
     if measurements.prompt_tokens is not None:
@@ -111,6 +112,8 @@ def _token_final_metrics(measurements: TrialMeasurements) -> AtifFinalMetricsPar
         final_metrics["total_completion_tokens"] = measurements.completion_tokens
     if measurements.cache_read_tokens is not None:
         final_metrics["total_cached_tokens"] = measurements.cache_read_tokens
+    if measurements.cost_usd is not None:
+        final_metrics["total_cost_usd"] = measurements.cost_usd
     return final_metrics or None
 
 

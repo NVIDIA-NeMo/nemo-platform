@@ -167,6 +167,30 @@ The packaging command runs locally; Platform services are not required.
 |---|---|
 | Docker | A running Docker-compatible daemon |
 | Container dependencies | Install with `uv sync --package nemo-agents-plugin --extra container` from the repository root |
+| A released `nemo-platform` (Fabric only) | Fabric images pin the installed `nemo-platform` version and resolve it from an index. A source checkout reports a setuptools-scm version such as `0.3.0.post402.dev0+062f0ac6e8`, which no index serves, so packaging stops before building. See below. |
+
+##### Packaging a Fabric agent from a source checkout
+
+`nemo agents package` renders `uv pip install "nemo-platform[nemo-agents-plugin]==<version>"`
+into the Fabric image, where `<version>` is whatever is installed on the build
+host. A checkout reports something like `0.3.0.post402.dev0+062f0ac6e8`, which is
+both a developmental release and a local build identifier — neither of which a
+public index serves — so the command fails immediately:
+
+```text
+Error: The installed nemo-platform version '0.3.0.post402.dev0+062f0ac6e8' carries
+a local build identifier and is a developmental release, so no package index serves
+it. Fabric packaging pins this exact version inside the image, so the build would
+fail while resolving it. Install a released nemo-platform to package an agent, or
+set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this
+version.
+```
+
+Supplying your own `--template` also skips the check, since a custom template
+need not pin the contract version at all.
+
+NAT packaging is unaffected — it installs the packaged project plus a published
+`nvidia-nat` release.
 
 #### Progressive pipeline
 
@@ -229,6 +253,54 @@ nemo agents package \
 
 This flag bypasses strict config loading, runtime translation and planning, and
 referenced-artifact checks. It can produce an image that fails at startup.
+
+#### Packaging an agent that already lives on the platform
+
+The CLI above packages a directory on your machine. For an agent created
+through Studio or `nemo agents create`, the source of truth is the
+`{agent}-spec` fileset instead, and the `agents.package` job builds from that:
+
+```bash
+curl -X POST "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package" \
+  -H 'Content-Type: application/json' \
+  -d '{"spec": {"agent": "my-agent", "tag": "my-agent:1.0"}}'
+```
+
+Poll it like any other platform job:
+
+```bash
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/status"
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/logs"
+```
+
+The tag to hand to `nemo agents deploy --image` is published as a
+`package_result` job result:
+
+```bash
+curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/results"
+```
+
+```json
+{"image": "nemo-agents/default/my-agent:1.0", "agent": "my-agent"}
+```
+
+The job downloads the agent's spec fileset into a temporary build context,
+writes `agent.yaml` from the stored config, and runs the same Fabric build the
+CLI runs.
+
+From the CLI the same job is `nemo agents package-agent submit`. It is
+deliberately *not* named `package`: the generated job sub-group mounts onto the
+same Typer app that already owns `nemo agents package`, and would shadow the
+local packaging flags above.
+
+| Limitation | Detail |
+|---|---|
+| Host build | The step runs as a **host subprocess**, not in a container — the Fabric Dockerfile needs a real Docker CLI for its BuildKit cache mounts. Submissions are rejected at POST time wherever no subprocess execution profile is registered (notably `runtime = kubernetes`). |
+| Fabric only | `nemo-agents-spec-v1` agents only. NAT workflows build from a source checkout, so they stay on the CLI. |
+| No publish | The image is left in the host daemon. Pushing to a registry from the platform is not wired up yet — use `nemo agents package --publish` locally for that. |
+| Constrained base image | `base_image_url`, `base_image_tag`, `python_version`, and `uv_version` are interpolated into the Dockerfile unescaped, so the API restricts them to a strict grammar: an optional registry host with port followed by `/`-separated path components for `base_image_url`, `[A-Za-z0-9_][A-Za-z0-9._-]{0,127}` for `base_image_tag`, and up to three dot-separated numbers for the two versions. `PackageAgentInput` in `openapi/openapi.yaml` is the source of truth. The CLI, whose caller already owns the host, is unrestricted. |
+| Namespaced tags | Every image lands at `nemo-agents/{workspace}/{tag}`, derived or submitted, and `tag` may not contain `/`. Docker tags are daemon-global while the auth boundary here is the workspace, so an unqualified tag would let one workspace repoint another's image on the shared host. A workspace whose name is outside the Docker path grammar (entity names still allow `@` and `+`) is rejected at POST. |
+| Managed `.dockerignore` | A `.dockerignore` in the spec fileset is discarded. Validation reads the staged tree off disk and Docker applies exclusions afterwards, so a user-supplied one could exclude `agent.yaml` or a referenced skill, pass validation, build, and fail only at container start. The CLI still honours a `.dockerignore` you wrote yourself. |
 
 #### `agent.yaml` validation
 
@@ -319,6 +391,12 @@ The old shared environment variables have been replaced:
 | `NAT_BASE_IMAGE_TAG` | `NEMO_AGENTS_BASE_IMAGE_TAG` |
 | `NAT_PYTHON_VERSION` | `NEMO_AGENTS_PYTHON_VERSION` |
 
+Additional environment variables:
+
+| Variable | Effect |
+|---|---|
+| `NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION` | Set to `1` to let Fabric packaging pin an unpublished `nemo-platform` version (a local build identifier or a `.dev` release). Use only when the build's index serves that version. Does not apply when `nemo-platform` is not installed at all. |
+
 There are no compatibility aliases. `NAT_VERSION` remains available only for
 NAT workflow packaging.
 
@@ -383,10 +461,11 @@ installation differs:
 | Config-only | No `--pyproject` | Install the release-matched `nemo-platform[nemo-agents-plugin]` runtime |
 | Project | `--pyproject` provided | Install the release-matched runtime and the project together |
 
-The image includes the supported harness adapters and dependencies, pinned NeMo
-Relay CLI `0.6.0`, a non-root `agent` user, and the packaged agent server on
-port `8000`. The Hermes adapter is installed, but the Hermes harness runtime
-remains excluded until its Python dependency constraint is resolved.
+The image includes the supported harness adapters and dependencies, matching
+NeMo Relay CLI and Python binding version `0.7.3`, a non-root `agent` user, and
+the packaged agent server on port `8000`. The Hermes adapter is installed, but
+the Hermes harness runtime remains excluded until its Python dependency
+constraint is resolved.
 
 #### Deploy the packaged calculator image
 

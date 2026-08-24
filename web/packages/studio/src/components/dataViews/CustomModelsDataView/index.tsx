@@ -9,9 +9,9 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
 import {
@@ -30,18 +30,17 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, type DropdownEntry, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
+import { CustomizeModelModal } from '@studio/components/CustomizeModelModal';
 import { FINETUNING_TYPE_FILTER_OPTIONS } from '@studio/components/dataViews/CustomModelsDataView/constants';
-import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
 import { DeploymentIndicator } from '@studio/components/dataViews/CustomModelsDataView/DeploymentIndicator';
 import { KindTag } from '@studio/components/dataViews/CustomModelsDataView/KindTag';
-import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import type { ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
-import { LINK_DOCS_STUDIO_CUSTOMIZATION } from '@studio/constants/links';
 import { getIntakeTracesRoute } from '@studio/routes/utils';
+import { useBoolean } from '@studio/util/hooks/useBoolean';
 import { keepPreviousData } from '@tanstack/react-query';
-import { BrainCircuit, X, Trash } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -133,6 +132,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
   const navigate = useNavigate();
   const { mutateAsync: deleteModel } = useModelsDeleteModel();
   const { mutateAsync: deleteAdapter } = useModelsDeleteModelAdapter();
+  const [isCustomizeModalOpen, openCustomizeModal, closeCustomizeModal] = useBoolean(false);
 
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
@@ -442,28 +442,18 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
             ),
             renderEmptyState: () =>
               hasActiveFilters ? (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No custom models match your filters"
-                  actions={
-                    <Button kind="tertiary" onClick={resetFilters}>
-                      <X /> Clear Filters
-                    </Button>
-                  }
+                <EntityEmptyState
+                  entity="customModels"
+                  variant="no-results"
+                  onClearFilters={resetFilters}
                 />
               ) : placeholderComponent ? (
                 <>{placeholderComponent}</>
               ) : (
-                <TableEmptyState
-                  header="Manage Custom Models"
-                  emptyMessage="Customize a model by choosing fine-tuning or prompt tuning to meet your specific needs."
-                  icon={<BrainCircuit className="m-0 size-24" />}
-                  actions={
-                    <>
-                      <DocumentationButton href={LINK_DOCS_STUDIO_CUSTOMIZATION} />
-                      <CustomizeModelButton workspace={workspace} />
-                    </>
-                  }
+                <EntityEmptyState
+                  entity="customModels"
+                  variant="first-use"
+                  onCreate={openCustomizeModal}
                 />
               ),
           },
@@ -482,6 +472,11 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
           simpleConfirm
         />
       )}
+      <CustomizeModelModal
+        open={isCustomizeModalOpen}
+        onClose={closeCustomizeModal}
+        workspace={workspace}
+      />
     </>
   );
 };

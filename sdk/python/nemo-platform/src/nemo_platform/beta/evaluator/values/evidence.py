@@ -9,6 +9,7 @@ import asyncio
 import difflib
 import hashlib
 import json
+import logging
 import os
 import shutil
 import signal
@@ -333,6 +334,26 @@ class EvidenceDescriptor(BaseModel):
 def parse_atif(payload: Any) -> Trajectory:
     """Validate a payload as a canonical ATIF :class:`Trajectory` (raises ``ValidationError`` if non-conformant)."""
     return payload if isinstance(payload, Trajectory) else Trajectory.model_validate(payload)
+
+
+logger = logging.getLogger(__name__)
+
+
+def read_atif(path: Path) -> Trajectory | None:
+    """The ATIF trajectory at ``path``, or ``None`` if it is absent, unreadable, or not ATIF.
+
+    A producer whose trajectory filename does not identify the format has to read the file to know
+    what it holds: that a file exists says nothing about whether it is ATIF.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    try:
+        return parse_atif(payload)
+    except ValueError:
+        logger.warning("Trajectory at %s is not valid ATIF; ignoring it.", path)
+        return None
 
 
 class TraceHandle:

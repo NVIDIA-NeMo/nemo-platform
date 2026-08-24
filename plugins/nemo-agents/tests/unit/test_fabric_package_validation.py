@@ -13,9 +13,9 @@ import nemo_agents_plugin.container.fabric_validator as fabric_validator
 import nemo_agents_plugin.container.metadata as metadata
 import nemo_agents_plugin.container.template as template
 import pytest
-import typer
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.container.builder import build_fabric_agent_image
+from nemo_agents_plugin.container.errors import ManagedFileConflictError
 from nemo_agents_plugin.container.fabric_validator import (
     FabricPackageArtifactError,
     FabricPackageValidationError,
@@ -236,7 +236,7 @@ class TestFabricBuilderValidationHook:
             build_env={
                 "agent_framework": "nemo_platform_agent",
                 "contract_version": "1.0.0",
-                "nemo_relay_cli_version": "0.6.0",
+                "nemo_relay_cli_version": template.PINNED_NEMO_RELAY_CLI_VERSION,
                 "base_image_url": "registry.example/base",
                 "base_image_tag": "release",
                 "python_version": "3.13",
@@ -347,6 +347,7 @@ class TestFabricBuilderValidationHook:
             },
             platforms=["linux/amd64"],
             push=True,
+            on_progress=None,
         )
         assert not (tmp_path / "Dockerfile.generated").exists()
         assert not (tmp_path / ".dockerignore").exists()
@@ -448,7 +449,7 @@ class TestFabricBuilderValidationHook:
         generated.write_text(user_content)
         _stub_fabric_render(monkeypatch)
 
-        with pytest.raises(typer.Exit):
+        with pytest.raises(ManagedFileConflictError):
             build_fabric_agent_image(
                 agent_config_path,
                 tag="fabric-agent:test",
@@ -495,6 +496,7 @@ class TestFabricBuilderValidationHook:
             },
             platforms=["linux/amd64"],
             push=True,
+            on_progress=None,
         )
         assert not (tmp_path / "Dockerfile.generated").exists()
         assert not (tmp_path / ".dockerignore").exists()

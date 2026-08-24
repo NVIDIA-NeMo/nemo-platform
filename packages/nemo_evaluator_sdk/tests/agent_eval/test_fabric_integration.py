@@ -270,8 +270,6 @@ def test_fabric_codex_live_eval_captures_atif_trajectory(tmp_path: Path) -> None
             "settings": {"sandbox": "workspace-write"},
         },
         "runtime": {
-            "mode": "oneshot",
-            "transport": "cli",
             "input_schema": "text",
             "output_schema": "message",
             "timeout_seconds": 180,

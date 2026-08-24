@@ -239,7 +239,6 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         artifacts_members = _tar_member_names(artifacts)
         assert _tar_contains(artifacts_members, "adapter-invocation.json")
         assert _tar_contains(artifacts_members, "stdout.txt")
-        assert _tar_contains(artifacts_members, "stderr.txt")
 
         # The run result captures platform-normalized Fabric RunResult details
         run_result = json.loads(_download_execute_job_result(sdk, workspace, job_name, "fabric_run_result"))
@@ -356,7 +355,9 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         assert run_result["request_id"] == job_name
         assert run_result["runtime_id"].startswith("runtime-")
         assert run_result["invocation_id"]
-        assert run_result["error"]["code"] == "adapter_reported_failure"
-        assert run_result["error"]["message"] == "adapter reported an invocation failure"
+        assert run_result["error"]["code"] == "deepagents_invocation_failed"
+        error_message = run_result["error"]["message"]
+        assert "InternalServerError" in error_message
+        assert "Error code: 500" in error_message
     finally:
         delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)

@@ -25,6 +25,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyListResponse,
     AccessKeyRevokeResponse,
     AccessKeyStatus,
+    AccessKeyStatusChangeResponse,
 )
 from nmp.common.config import AuthConfig, get_platform_config
 
@@ -236,6 +237,14 @@ class AccessKeyIssuerService(AccessKeyIssuer):
     def revoke(self, jti: str) -> AccessKeyRevokeResponse:
         self._ensure_enabled()
         raise AccessKeyOperationNotImplementedError(f"Scoped Access Key revocation for {jti} is not implemented.")
+
+    def suspend(self, jti: str) -> AccessKeyStatusChangeResponse:
+        self._ensure_enabled()
+        raise AccessKeyOperationNotImplementedError(f"Scoped Access Key suspension for {jti} is not implemented.")
+
+    def unsuspend(self, jti: str) -> AccessKeyStatusChangeResponse:
+        self._ensure_enabled()
+        raise AccessKeyOperationNotImplementedError(f"Scoped Access Key unsuspension for {jti} is not implemented.")
 
 
 def _create_access_key_token(

@@ -6,7 +6,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -203,14 +203,14 @@ class TestConfigureMoeBackend:
 
         original_getattr = type(hf_config).__getattr__
 
-        def _controlled_getattr(self, name):
+        def _controlled_getattr(self: Any, name: str) -> Any:
             if name == "num_local_experts":
                 return num_local_experts
             if name == "num_experts":
                 return num_experts
             return original_getattr(self, name)
 
-        type(hf_config).__getattr__ = _controlled_getattr
+        type(hf_config).__getattr__ = cast(Any, _controlled_getattr)
         return hf_config
 
     @patch(MODEL_REGISTRY_PATCH)

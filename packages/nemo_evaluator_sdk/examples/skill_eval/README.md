@@ -101,7 +101,7 @@ emitted only by the index task and the gcd task respectively.)
   *obey* the injected skill: weaker models read the guidelines but ignore them,
   producing a flat A/B (a valid, if undramatic, result).
   `nvidia/nemotron-3-super-120b-a12b` produces the lift shown above.
-- The Hermes agent loop budget is `harness.settings.max_iterations` (set to 50
+- The Hermes agent loop budget is `runtime.max_turns` (set to 50
   here). The Fabric Hermes adapter defaults it to **1**, which starves any
   multi-step task — leave it set.
 - The guidelines metrics score the **parsed function signature** (`ast`, with a
