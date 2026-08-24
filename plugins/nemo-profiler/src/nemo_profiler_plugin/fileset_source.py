@@ -185,13 +185,7 @@ class FilesetFileSource:
         self._sizes: dict[str, int] | None = None
 
     def list_files(self) -> list[FileEntry]:
-        """Every file in the fileset, sorted by path.
-
-        ``checksum`` is left unset: the listing carries no digest (``file_ref`` is a locator, not a
-        hash). Nothing reads it today -- the profile deliberately stores no content digest and no
-        staleness marker, for the reasons ``DatasetProfile`` gives -- so the field stays on
-        ``FileEntry`` for a source that can fill it rather than because a consumer is waiting.
-        """
+        """Every file in the fileset, sorted by path."""
         response = self._client.list_files(workspace=self._workspace, name=self._fileset).data()
         entries = sorted(
             (FileEntry(path=file.path, size_bytes=file.size) for file in response.data),

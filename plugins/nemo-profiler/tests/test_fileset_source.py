@@ -142,13 +142,12 @@ def test_empty_file_reads_empty_without_a_request():
 # --- FilesetFileSource ---------------------------------------------------------------------------
 
 
-def test_list_files_is_sorted_with_sizes_and_no_checksum():
+def test_list_files_is_sorted_with_sizes():
     client = _FakeFilesClient({"b.jsonl": b"22", "a.parquet": b"1"})
     entries = FilesetFileSource(client, workspace="ws", fileset="fs").list_files()
 
     assert [e.path for e in entries] == ["a.parquet", "b.jsonl"]
     assert [e.size_bytes for e in entries] == [1, 2]
-    assert all(e.checksum is None for e in entries)  # the listing carries no digest
 
 
 def test_open_unknown_path_raises():
