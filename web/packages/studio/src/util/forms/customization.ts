@@ -224,6 +224,15 @@ export const RL_GRPO_TRAINING_DEFAULTS = {
   // Backend default is 0.0 for GRPO and 0.05 for DPO; the 0.1 inherited from
   // RL_DPO_DEFAULTS would otherwise apply a KL penalty the user never asked for.
   ref_policy_kl_penalty: 0.0,
+  // The shared 1e-4 is SFT-scale and collapses a policy within a few dozen RL steps;
+  // the platform GRPO fixtures train at 5e-6 full-weight, 1e-5 for LoRA.
+  learning_rate: 5e-6,
+  // Backend default is 1e-5; the shared block's Torch 1e-8 overrides it. Fixed here,
+  // not in the shared block, so DPO's numerics are untouched (DPO still diverges).
+  adam_eps: 1e-5,
+  // A step count, not a fraction of an epoch: 50 gives ~10 validation points over the
+  // 500-step default, where a fraction-of-epoch 1.0 gives exactly one.
+  val_check_interval: 50,
 } as RlJobInput['training'];
 
 export const FORM_DEFAULTS: CustomizationFormFields = {
@@ -407,16 +416,54 @@ export const customizationFormSchema = z
       spec = rlSpecSchema;
       value = data.rl;
       const grpo = data.grpo as Partial<GrpoFormFields> | undefined;
-      if (grpo?.trainingType === 'grpo' && !grpo.environmentFileset) {
-        // Form-completeness only. Every other GRPO rule (generation length, advantage
-        // clip range, policy-backend conflicts, truncated importance sampling, HF
-        // override collisions) is enforced by the backend, which reports it with a
-        // precise message; mirroring them here just creates two sources of truth.
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'A reward environment fileset is required for GRPO training',
-          path: ['grpo', 'environmentFileset'],
-        });
+      if (grpo?.trainingType === 'grpo') {
+        if (!grpo.environmentFileset) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A reward environment fileset is required for GRPO training',
+            path: ['grpo', 'environmentFileset'],
+          });
+        }
+        const training = (data.rl as RlJobInput | undefined)?.training;
+        // Mirrors the backend's _generation_length_fits_context validator: max_seq_length
+        // is the whole prompt + generation budget, so a larger generation cap is
+        // unsatisfiable and the job is rejected at submit.
+        const maxSeqLength = training?.max_seq_length;
+        if (
+          grpo.max_new_tokens != null &&
+          maxSeqLength != null &&
+          grpo.max_new_tokens > maxSeqLength
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Max new tokens cannot exceed the max sequence length (${maxSeqLength}), which is the total prompt + generation budget`,
+            path: ['grpo', 'max_new_tokens'],
+          });
+        }
+        // Mirrors the backend's validate_for_training: a remainder otherwise surfaces
+        // only as an assert at the first optimizer step, once the job holds GPUs.
+        const batchSize = training?.batch_size;
+        const generations = grpo.num_generations_per_prompt;
+        // Omitting num_prompts_per_step does not skip the rule: the backend derives it,
+        // and the floor division is the case its own comment flags as the failure.
+        const prompts =
+          grpo.num_prompts_per_step ??
+          (batchSize != null && generations
+            ? Math.max(Math.floor(batchSize / generations), 1)
+            : null);
+        const rolloutBatch = prompts != null && generations != null ? prompts * generations : null;
+        if (
+          rolloutBatch != null &&
+          batchSize != null &&
+          batchSize > 0 &&
+          rolloutBatch % batchSize !== 0
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Prompts per step × rollouts per prompt (${rolloutBatch}) must be a multiple of the global batch size (${batchSize})`,
+            path: ['grpo', 'num_prompts_per_step'],
+          });
+        }
       }
     }
     const result = spec.safeParse(value);

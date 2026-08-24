@@ -65,10 +65,10 @@ export const GrpoParametersSection = () => {
             formFieldProps={{
               slotLabel: 'Rollouts per Prompt',
               slotInfo:
-                'Group size: number of responses sampled per prompt. Larger groups give more stable advantage estimates at higher memory cost.',
+                'Group size: responses sampled per prompt, scored against the group mean. Below 4 the advantage estimate is noisy; larger groups are steadier but cost more memory. NeMo RL key: num_generations_per_prompt.',
             }}
             defaultValue={8}
-            min={1}
+            min={2}
             max={64}
             step={1}
             disabled={disabled}
@@ -126,7 +126,7 @@ export const GrpoParametersSection = () => {
             formFieldProps={{
               slotLabel: 'Max New Tokens',
               slotInfo:
-                'Cap on tokens generated per rollout turn. Defaults to the max sequence length, letting a rollout run until the context is exhausted; lower it to bound response length and rollout duration. Cannot exceed max sequence length. NeMo RL key: max_new_tokens.',
+                "Cap on tokens generated per rollout turn; cannot exceed max sequence length. Known limitation: NeMo Gym's verifiers_agent ignores this and uses its own environment max_tokens, so bound response length through Max Sequence Length or the environment. NeMo RL key: max_new_tokens.",
             }}
             defaultValue={2048}
             min={128}
@@ -325,18 +325,36 @@ export const GrpoParametersSection = () => {
           />
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.learning_rate', control }}
-            formFieldProps={{ slotLabel: 'Learning Rate' }}
-            defaultValue={1e-4}
-            min={1e-6}
-            max={1e-3}
-            step={1e-6}
+            formFieldProps={{
+              slotLabel: 'Learning Rate',
+              slotInfo:
+                'Peak learning rate. RL fine-tuning runs far lower than SFT: the platform GRPO examples train at 5e-6 full-weight and 1e-5 for LoRA. Above roughly 2e-5 a full-weight policy typically collapses within a few dozen steps.',
+            }}
+            defaultValue={5e-6}
+            min={1e-7}
+            max={1e-4}
+            step={1e-7}
+            disabled={disabled}
+          />
+          <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'rl.training.ref_policy_kl_penalty', control }}
+            formFieldProps={{
+              slotLabel: 'KL Penalty',
+              slotInfo:
+                'KL penalty coefficient against the reference policy. Higher values keep the model closer to the reference. 0 disables it, which is what most current GRPO recipes do for verifiable-reward tasks; when enabled it usually sits between 0.001 and 0.01.',
+            }}
+            defaultValue={0.0}
+            min={0}
+            max={0.1}
+            step={0.001}
             disabled={disabled}
           />
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.max_steps', control }}
             formFieldProps={{
               slotLabel: 'Max Steps',
-              slotInfo: 'Maximum training steps. Overrides epochs when set.',
+              slotInfo:
+                'Caps the run at this many optimizer steps. It only ever shortens a run — GRPO trains for one epoch, so the budget is whichever of the two comes first.',
             }}
             defaultValue={500}
             min={1}
@@ -346,7 +364,11 @@ export const GrpoParametersSection = () => {
           />
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.batch_size', control }}
-            formFieldProps={{ slotLabel: 'Global Batch Size' }}
+            formFieldProps={{
+              slotLabel: 'Global Batch Size',
+              slotInfo:
+                'Rollouts per optimizer step, across all GPUs. The rollout batch (prompts per step × rollouts per prompt) is split into chunks of this size, so it has to divide that product exactly.',
+            }}
             defaultValue={32}
             min={1}
             max={256}
@@ -385,6 +407,42 @@ export const GrpoParametersSection = () => {
                     min={0}
                     max={1}
                     step={0.01}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'grpo.ratio_clip_min', control }}
+                    formFieldProps={{
+                      slotLabel: 'Clip ε (Lower)',
+                      slotInfo:
+                        'Lower half-width of the PPO-style importance ratio clip, not the bound itself: the ratio is clipped to [1 − ε_lower, 1 + ε_upper], so 0.2 clips at 0.8. NeMo RL key: ratio_clip_min.',
+                    }}
+                    defaultValue={0.2}
+                    min={0.01}
+                    max={0.5}
+                    step={0.01}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'grpo.ratio_clip_max', control }}
+                    formFieldProps={{
+                      slotLabel: 'Clip ε (Upper)',
+                      slotInfo:
+                        'Upper half-width of the importance ratio clip: the ratio is clipped to [1 − ε_lower, 1 + ε_upper], so 0.28 clips at 1.28. Defaulting it above the lower half-width is the DAPO clip-higher recipe, which leaves more room for low-probability tokens to gain and slows entropy collapse. NeMo RL key: ratio_clip_max.',
+                    }}
+                    defaultValue={0.28}
+                    min={0.01}
+                    max={0.5}
+                    step={0.01}
+                    disabled={disabled}
+                  />
+                  <ControlledSwitch
+                    useControllerProps={{ name: 'grpo.normalize_rewards', control }}
+                    formFieldProps={{
+                      slotLabel: 'Normalize Rewards',
+                      labelPosition: 'left',
+                      slotInfo:
+                        'Normalize rewards within each prompt group before computing advantages.',
+                    }}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
@@ -431,12 +489,12 @@ export const GrpoParametersSection = () => {
                     useControllerProps={{ name: 'rl.training.min_learning_rate', control }}
                     formFieldProps={{
                       slotLabel: 'Min Learning Rate',
-                      slotInfo: 'Minimum LR for cosine decay.',
+                      slotInfo: 'Floor the cosine schedule decays to. Keep it below the peak LR.',
                     }}
                     defaultValue={0}
                     min={0}
-                    max={1e-3}
-                    step={1e-6}
+                    max={1e-4}
+                    step={1e-7}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
@@ -461,12 +519,13 @@ export const GrpoParametersSection = () => {
                     useControllerProps={{ name: 'rl.training.adam_eps', control }}
                     formFieldProps={{
                       slotLabel: 'Adam ε',
-                      slotInfo: 'Numerical stability term.',
+                      slotInfo:
+                        'Numerical stability term. The platform default is 1e-5, the value NeMo uses for bf16 training; 1e-8 is the Torch default.',
                     }}
-                    defaultValue={1e-8}
+                    defaultValue={1e-5}
                     min={1e-10}
-                    max={1e-6}
-                    step={1e-10}
+                    max={1e-4}
+                    step={1e-8}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
@@ -474,12 +533,12 @@ export const GrpoParametersSection = () => {
                     formFieldProps={{
                       slotLabel: 'Evaluate every N steps',
                       slotInfo:
-                        'GRPO validation is a scored rollout pass, not a loss computation. Values ≤ 1.0 are a fraction of an epoch; values > 1.0 are a step count. NeMo RL key: val_check_interval.',
+                        'GRPO validation is a scored rollout pass, not a loss computation, so each one costs about as much as a training step. Interpreted as a step count, clamped to the run length; validation always runs at least once before training ends. NeMo RL key: val_check_interval.',
                     }}
-                    defaultValue={1.0}
-                    min={0.01}
+                    defaultValue={50}
+                    min={2}
                     max={1000}
-                    step={0.01}
+                    step={1}
                     disabled={disabled}
                   />
                   <ControlledSwitch
@@ -611,7 +670,7 @@ export const GrpoParametersSection = () => {
                   slotLabel: 'Use Triton Kernels',
                   labelPosition: 'left',
                   slotInfo:
-                    'DTensor v2 Triton LoRA kernels. Disable when tensor_parallel_size > 1.',
+                    'DTensor v2 Triton LoRA kernels. The backend disables them automatically when tensor_parallel_size > 1, so this flag only applies to single-GPU-per-shard runs.',
                 }}
                 disabled={disabled}
               />
