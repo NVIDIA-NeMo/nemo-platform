@@ -10,10 +10,10 @@ responses that match built-in or custom injection rules.
 from collections.abc import Callable
 from typing import Any
 
-import nemo_platform
+from nemo_platform_plugin.client import errors as nemo_platform
 import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
-from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
+from nemo_platform_plugin.models.types.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
@@ -50,7 +50,7 @@ class TestInjectionDetection:
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
+            harness.sdk.guardrail.delete_guardrail_config(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -108,7 +108,7 @@ class TestInjectionDetection:
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
-        harness.sdk.guardrail.configs.create(
+        harness.sdk.guardrail.create_guardrail_config(
             workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Entity-backed injection detection config for integration tests",

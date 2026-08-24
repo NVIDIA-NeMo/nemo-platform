@@ -24,7 +24,7 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from nemo_platform import APIStatusError
+# TODO: migrate APIStatusError from nemo_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nmp.common.entities.client import (
     EntityConflictError,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from nemo_data_designer_plugin.jobs.run import run_step_config
 from nemo_data_designer_plugin.jobs.spec import DataDesignerStepConfig
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (
@@ -38,7 +38,7 @@ def _get_step_config() -> DataDesignerStepConfig:
         return DataDesignerStepConfig.model_validate_json(f.read())
 
 
-def _get_ctx(sdk: NeMoPlatform) -> JobContext:
+def _get_ctx(sdk: NemoClient) -> JobContext:
     workspace = os.environ[NEMO_JOB_WORKSPACE_ENVVAR]
     job_name = os.environ[NEMO_JOB_ID_ENVVAR]
 

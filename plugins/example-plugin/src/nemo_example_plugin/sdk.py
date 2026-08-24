@@ -10,7 +10,7 @@ The client classes expose them as direct methods via ``method()`` wrappers.
 from __future__ import annotations
 
 from nemo_example_plugin.types import endpoints
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.method import method
@@ -37,11 +37,11 @@ class AsyncExampleClient(_ExampleMethods, AsyncNemoClient):
     """Async client for the example plugin API."""
 
 
-def _make_sync_resource(platform: NeMoPlatform) -> ExampleClient:
+def _make_sync_resource(platform: NemoClient) -> ExampleClient:
     return client_from_platform(platform, ExampleClient)
 
 
-def _make_async_resource(platform: AsyncNeMoPlatform) -> AsyncExampleClient:
+def _make_async_resource(platform: AsyncNemoClient) -> AsyncExampleClient:
     return client_from_platform(platform, AsyncExampleClient)
 
 

@@ -22,7 +22,7 @@ from nemo_agents_plugin.entities import (
     agent_spec_fileset_name,
 )
 from nemo_deployments_plugin.entities import ConfigFile
-from nemo_platform import NotFoundError as PlatformNotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError as PlatformNotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 logger = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ import pytest
 from doubles import make_candidate
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror, group_metadata
-from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
+from nemo_platform_plugin.client.client import AsyncNemoClient, ConflictError, NotFoundError, omit
 
 pytestmark = pytest.mark.asyncio
 
@@ -21,8 +21,8 @@ _NOTFOUND = NotFoundError(
 )
 
 
-def _client(groups: object, experiments: object) -> AsyncNeMoPlatform:
-    return cast(AsyncNeMoPlatform, SimpleNamespace(experiments=groups, evaluations=experiments))
+def _client(groups: object, experiments: object) -> AsyncNemoClient:
+    return cast(AsyncNemoClient, SimpleNamespace(experiments=groups, evaluations=experiments))
 
 
 class _StatefulGroups:

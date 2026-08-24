@@ -11,7 +11,7 @@ framework.
 
 This module is invoked by the platform's host-subprocess executor when a
 caller submits an evaluate-suite job (``POST /apis/agents/.../jobs`` →
-``sdk.jobs.create`` → controller dispatches ``python -m
+``sdk.jobs.create_job`` → controller dispatches ``python -m
 nemo_agents_plugin.tasks.evaluate_suite``).
 """
 

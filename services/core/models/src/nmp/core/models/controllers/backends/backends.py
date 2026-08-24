@@ -6,8 +6,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.inference import ModelDeploymentStatus
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.models.types import ModelDeploymentStatus
 from nmp.core.models.controllers.context import ModelContext
 from pydantic import BaseModel
 
@@ -34,7 +34,7 @@ class ServiceBackend(ABC):
 
     def __init__(
         self,
-        nmp_sdk: AsyncNeMoPlatform,
+        nmp_sdk: AsyncNemoClient,
         config: Dict[str, Any],
     ) -> None:
         """Initialize the service backend.

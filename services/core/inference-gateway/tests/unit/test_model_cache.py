@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from nemo_platform.types.inference import ServedModelMapping
+from nemo_platform_plugin.models.types import ServedModelMapping
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nmp.core.inference_gateway.api import model_cache as model_cache_module
 from nmp.core.inference_gateway.api.backend_format import resolve_backend_format

@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
@@ -214,7 +214,7 @@ class JobDispatcher:
     def __init__(
         self,
         store: EntityClient,
-        sdk: AsyncNeMoPlatform,
+        sdk: AsyncNemoClient,
     ):
         self.store = store
         self.sdk = sdk
@@ -224,7 +224,7 @@ class JobDispatcher:
     # =========================================================================
 
     async def validate_job_secrets(
-        self, job_spec: PlatformJobSpec, job_workspace: str, sdk: Optional[AsyncNeMoPlatform] = None
+        self, job_spec: PlatformJobSpec, job_workspace: str, sdk: Optional[AsyncNemoClient] = None
     ) -> None:
         # Ensure that any referenced secrets in steps exist and the user has access (user-scoped sdk).
         sdk_to_use = sdk if sdk is not None else self.sdk
@@ -256,7 +256,7 @@ class JobDispatcher:
         job_req: CreatePlatformJobRequest,
         workspace: str,
         auth_context: Optional[AuthContext] = None,
-        sdk: Optional[AsyncNeMoPlatform] = None,
+        sdk: Optional[AsyncNemoClient] = None,
     ) -> PlatformJobResponse:
         """Create a new job and its first step."""
         job_name = job_req.name

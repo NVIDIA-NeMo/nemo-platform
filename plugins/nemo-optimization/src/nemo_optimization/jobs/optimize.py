@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import yaml
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -86,7 +86,7 @@ class OptimizeJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NemoClient | None = None) -> dict:
         spec = OptimizeSpec.model_validate(config)
         optimize_config = _load_yaml(Path(spec.optimize_config))
         agent_config = resolve_agent_config(spec.agent, workspace=spec.workspace, sdk=sdk)

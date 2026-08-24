@@ -291,7 +291,11 @@ quickstart_app = typer.Typer(help="Quickstart commands for managing the NeMo Pla
 def cluster_info(ctx: typer.Context) -> None:
     """Show information about the connected platform cluster."""
     import httpx
-    import nemo_platform
+    try:
+        from importlib.metadata import version as _np_version
+        nemo_platform = type("nemo_platform", (), {"__version__": _np_version("nemo-platform-ext", "unknown")})()
+    except Exception:
+        nemo_platform = type("nemo_platform", (), {"__version__": "unknown"})()
 
     base_url: str | None = None
     context_name: str | None = None
@@ -966,7 +970,7 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
     """
     import uuid
 
-    from nemo_platform import NeMoPlatform
+    from nemo_platform_plugin.client.client import NemoClient
     from nemo_platform_plugin.client.adapter import client_from_platform
     from nemo_platform_plugin.jobs.client import JobsClient
     from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
@@ -986,7 +990,7 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
         }
 
     try:
-        client = NeMoPlatform(
+        client = NemoClient(
             base_url=f"http://localhost:{port}",
             workspace="default",
             default_headers=default_headers,

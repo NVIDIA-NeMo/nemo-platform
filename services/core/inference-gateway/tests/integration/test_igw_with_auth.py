@@ -20,7 +20,7 @@ from typing import Generator
 from unittest.mock import patch
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.core.models.service import ModelsService
@@ -54,7 +54,7 @@ def ctx() -> Generator[ClientContext, None, None]:
 
 
 @pytest.fixture(scope="module")
-def sdk(ctx: ClientContext) -> NeMoPlatform:
+def sdk(ctx: ClientContext) -> NemoClient:
     return ctx.sdk
 
 
@@ -62,34 +62,34 @@ def sdk(ctx: ClientContext) -> NeMoPlatform:
 class TestIGWUnauthenticated:
     """Unauthenticated requests should be rejected for all gateway route types."""
 
-    def test_openai_proxy_without_auth_fails(self, sdk: NeMoPlatform):
+    def test_openai_proxy_without_auth_fails(self, sdk: NemoClient):
         response = sdk._client.post(
             "/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions",
             json={"model": "test", "messages": [{"role": "user", "content": "hi"}]},
         )
         assert response.status_code == 401
 
-    def test_openai_list_models_without_auth_fails(self, sdk: NeMoPlatform):
+    def test_openai_list_models_without_auth_fails(self, sdk: NemoClient):
         response = sdk._client.get(
             "/apis/inference-gateway/v2/workspaces/default/openai/-/v1/models",
         )
         assert response.status_code == 401
 
-    def test_model_proxy_without_auth_fails(self, sdk: NeMoPlatform):
+    def test_model_proxy_without_auth_fails(self, sdk: NemoClient):
         response = sdk._client.post(
             "/apis/inference-gateway/v2/workspaces/default/model/test-model/-/v1/chat/completions",
             json={"model": "test", "messages": [{"role": "user", "content": "hi"}]},
         )
         assert response.status_code == 401
 
-    def test_provider_proxy_without_auth_fails(self, sdk: NeMoPlatform):
+    def test_provider_proxy_without_auth_fails(self, sdk: NemoClient):
         response = sdk._client.post(
             "/apis/inference-gateway/v2/workspaces/default/provider/test-provider/-/v1/chat/completions",
             json={"model": "test", "messages": [{"role": "user", "content": "hi"}]},
         )
         assert response.status_code == 401
 
-    def test_provider_ready_without_auth_fails(self, sdk: NeMoPlatform):
+    def test_provider_ready_without_auth_fails(self, sdk: NemoClient):
         response = sdk._client.get(
             "/apis/inference-gateway/v2/workspaces/default/provider/test-provider/ready",
         )
@@ -107,7 +107,7 @@ MOCK_CHAT_RESPONSE = {
 class TestIGWViewerAccess:
     """Viewer role should be able to access all gateway routes."""
 
-    def test_viewer_can_list_openai_models(self, sdk: NeMoPlatform):
+    def test_viewer_can_list_openai_models(self, sdk: NemoClient):
         workspace = short_unique_name("igw-vl")
         viewer_email = unique_email("viewer")
 
@@ -130,7 +130,7 @@ class TestIGWViewerAccess:
         )
         assert response.status_code == 200
 
-    def test_viewer_can_call_openai_chat_completions(self, sdk: NeMoPlatform):
+    def test_viewer_can_call_openai_chat_completions(self, sdk: NemoClient):
         workspace = short_unique_name("igw-vc")
         viewer_email = unique_email("viewer")
         model_name = short_unique_name("mdl")
@@ -161,7 +161,7 @@ class TestIGWViewerAccess:
         )
         assert response.status_code == 200
 
-    def test_viewer_can_call_model_proxy(self, sdk: NeMoPlatform):
+    def test_viewer_can_call_model_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-vm")
         viewer_email = unique_email("viewer")
         model_name = short_unique_name("mdl")
@@ -192,7 +192,7 @@ class TestIGWViewerAccess:
         )
         assert response.status_code == 200
 
-    def test_viewer_can_call_provider_proxy(self, sdk: NeMoPlatform):
+    def test_viewer_can_call_provider_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-vp")
         viewer_email = unique_email("viewer")
 
@@ -222,7 +222,7 @@ class TestIGWViewerAccess:
         )
         assert response.status_code == 200
 
-    def test_viewer_can_check_provider_ready(self, sdk: NeMoPlatform):
+    def test_viewer_can_check_provider_ready(self, sdk: NemoClient):
         workspace = short_unique_name("igw-vr")
         viewer_email = unique_email("viewer")
 
@@ -257,7 +257,7 @@ class TestIGWViewerAccess:
 class TestIGWEditorAccess:
     """Editor role should be able to access all gateway routes (same as Viewer for exec)."""
 
-    def test_editor_can_list_openai_models(self, sdk: NeMoPlatform):
+    def test_editor_can_list_openai_models(self, sdk: NemoClient):
         workspace = short_unique_name("igw-el")
         editor_email = unique_email("editor")
 
@@ -280,7 +280,7 @@ class TestIGWEditorAccess:
         )
         assert response.status_code == 200
 
-    def test_editor_can_call_openai_chat_completions(self, sdk: NeMoPlatform):
+    def test_editor_can_call_openai_chat_completions(self, sdk: NemoClient):
         workspace = short_unique_name("igw-ec")
         editor_email = unique_email("editor")
         model_name = short_unique_name("mdl")
@@ -311,7 +311,7 @@ class TestIGWEditorAccess:
         )
         assert response.status_code == 200
 
-    def test_editor_can_call_model_proxy(self, sdk: NeMoPlatform):
+    def test_editor_can_call_model_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-em")
         editor_email = unique_email("editor")
         model_name = short_unique_name("mdl")
@@ -342,7 +342,7 @@ class TestIGWEditorAccess:
         )
         assert response.status_code == 200
 
-    def test_editor_can_call_provider_proxy(self, sdk: NeMoPlatform):
+    def test_editor_can_call_provider_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-ep")
         editor_email = unique_email("editor")
 
@@ -372,7 +372,7 @@ class TestIGWEditorAccess:
         )
         assert response.status_code == 200
 
-    def test_editor_can_check_provider_ready(self, sdk: NeMoPlatform):
+    def test_editor_can_check_provider_ready(self, sdk: NemoClient):
         workspace = short_unique_name("igw-er")
         editor_email = unique_email("editor")
 
@@ -407,7 +407,7 @@ class TestIGWEditorAccess:
 class TestIGWUnauthorizedWorkspace:
     """Users without a role in the workspace should be denied (403) on all gateway route types."""
 
-    def test_no_role_denied_openai_list_models(self, sdk: NeMoPlatform):
+    def test_no_role_denied_openai_list_models(self, sdk: NemoClient):
         workspace = short_unique_name("igw-nl")
         norole_email = unique_email("norole")
 
@@ -424,7 +424,7 @@ class TestIGWUnauthorizedWorkspace:
         )
         assert response.status_code == 403
 
-    def test_no_role_denied_openai_proxy(self, sdk: NeMoPlatform):
+    def test_no_role_denied_openai_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-no")
         norole_email = unique_email("norole")
 
@@ -442,7 +442,7 @@ class TestIGWUnauthorizedWorkspace:
         )
         assert response.status_code == 403
 
-    def test_no_role_denied_model_proxy(self, sdk: NeMoPlatform):
+    def test_no_role_denied_model_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-nm")
         norole_email = unique_email("norole")
 
@@ -460,7 +460,7 @@ class TestIGWUnauthorizedWorkspace:
         )
         assert response.status_code == 403
 
-    def test_no_role_denied_provider_proxy(self, sdk: NeMoPlatform):
+    def test_no_role_denied_provider_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-np")
         norole_email = unique_email("norole")
 
@@ -478,7 +478,7 @@ class TestIGWUnauthorizedWorkspace:
         )
         assert response.status_code == 403
 
-    def test_no_role_denied_provider_ready(self, sdk: NeMoPlatform):
+    def test_no_role_denied_provider_ready(self, sdk: NemoClient):
         workspace = short_unique_name("igw-nr")
         norole_email = unique_email("norole")
 
@@ -566,7 +566,7 @@ class TestIGWScopeChecks:
     - POST (chat completions, etc.): requires inference:write, platform:write
     """
 
-    def test_read_only_scopes_allow_get_list_models(self, sdk: NeMoPlatform):
+    def test_read_only_scopes_allow_get_list_models(self, sdk: NemoClient):
         with patched_authz_data(_build_authorization_data_igw_scope_explicit):
             workspace = short_unique_name("igw-sr")
             viewer_email = unique_email("viewer")
@@ -586,7 +586,7 @@ class TestIGWScopeChecks:
             )
             assert response.status_code == 200
 
-    def test_read_only_scopes_deny_post_chat_completions(self, sdk: NeMoPlatform):
+    def test_read_only_scopes_deny_post_chat_completions(self, sdk: NemoClient):
         with patched_authz_data(_build_authorization_data_igw_scope_explicit):
             workspace = short_unique_name("igw-sw")
             viewer_email = unique_email("viewer")
@@ -614,7 +614,7 @@ class TestIGWScopeChecks:
             )
             assert response.status_code == 403
 
-    def test_read_write_scopes_allow_post_chat_completions(self, sdk: NeMoPlatform):
+    def test_read_write_scopes_allow_post_chat_completions(self, sdk: NemoClient):
         with patched_authz_data(_build_authorization_data_igw_scope_explicit):
             workspace = short_unique_name("igw-srw")
             viewer_email = unique_email("viewer")
@@ -642,7 +642,7 @@ class TestIGWScopeChecks:
             )
             assert response.status_code == 200
 
-    def test_read_only_scopes_allow_provider_ready(self, sdk: NeMoPlatform):
+    def test_read_only_scopes_allow_provider_ready(self, sdk: NemoClient):
         with patched_authz_data(_build_authorization_data_igw_scope_explicit):
             workspace = short_unique_name("igw-spr")
             viewer_email = unique_email("viewer")
@@ -681,7 +681,7 @@ class TestIGWServicePrincipalAccess:
 
     SERVICE_PRINCIPAL_EVALUATOR = "service:evaluator"
 
-    def test_service_principal_can_list_openai_models(self, sdk: NeMoPlatform):
+    def test_service_principal_can_list_openai_models(self, sdk: NemoClient):
         workspace = short_unique_name("igw-svc-l")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
@@ -694,7 +694,7 @@ class TestIGWServicePrincipalAccess:
         )
         assert response.status_code == 200
 
-    def test_service_principal_can_call_openai_proxy(self, sdk: NeMoPlatform):
+    def test_service_principal_can_call_openai_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-svc-o")
         model_name = short_unique_name("mdl")
 
@@ -715,7 +715,7 @@ class TestIGWServicePrincipalAccess:
         )
         assert response.status_code == 200
 
-    def test_service_principal_can_call_model_proxy(self, sdk: NeMoPlatform):
+    def test_service_principal_can_call_model_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-svc-m")
         model_name = short_unique_name("mdl")
 
@@ -735,7 +735,7 @@ class TestIGWServicePrincipalAccess:
         )
         assert response.status_code == 200
 
-    def test_service_principal_can_call_provider_proxy(self, sdk: NeMoPlatform):
+    def test_service_principal_can_call_provider_proxy(self, sdk: NemoClient):
         workspace = short_unique_name("igw-svc-p")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
@@ -754,7 +754,7 @@ class TestIGWServicePrincipalAccess:
         )
         assert response.status_code == 200
 
-    def test_regular_user_without_role_is_still_denied(self, sdk: NeMoPlatform):
+    def test_regular_user_without_role_is_still_denied(self, sdk: NemoClient):
         """Contrast test: a non-service principal without workspace role is still denied."""
         workspace = short_unique_name("igw-svc-d")
         norole_email = unique_email("norole")
@@ -792,7 +792,7 @@ class TestIGWDelegatedServicePrincipalAccess:
             "X-NMP-Principal-On-Behalf-Of-Email": on_behalf_of,
         }
 
-    def test_delegated_denied_when_obo_user_lacks_role(self, sdk: NeMoPlatform):
+    def test_delegated_denied_when_obo_user_lacks_role(self, sdk: NemoClient):
         # The OBO user has NO role in the workspace: the service bypass must not apply.
         workspace = short_unique_name("igw-obo-d")
         obo_email = unique_email("obo-norole")
@@ -812,7 +812,7 @@ class TestIGWDelegatedServicePrincipalAccess:
         )
         assert response.status_code == 403
 
-    def test_delegated_allowed_when_obo_user_has_role(self, sdk: NeMoPlatform):
+    def test_delegated_allowed_when_obo_user_has_role(self, sdk: NemoClient):
         # The OBO user is granted a role in the workspace: the delegated call is allowed.
         workspace = short_unique_name("igw-obo-a")
         obo_email = unique_email("obo-viewer")
@@ -827,7 +827,7 @@ class TestIGWDelegatedServicePrincipalAccess:
         )
         assert response.status_code == 200
 
-    def test_delegated_openai_proxy_denied_when_obo_user_lacks_role(self, sdk: NeMoPlatform):
+    def test_delegated_openai_proxy_denied_when_obo_user_lacks_role(self, sdk: NemoClient):
         workspace = short_unique_name("igw-obo-po")
         model_name = short_unique_name("mdl")
         obo_email = unique_email("obo-norole")
@@ -848,7 +848,7 @@ class TestIGWDelegatedServicePrincipalAccess:
         )
         assert response.status_code == 403
 
-    def test_delegated_openai_proxy_allowed_when_obo_user_has_role(self, sdk: NeMoPlatform):
+    def test_delegated_openai_proxy_allowed_when_obo_user_has_role(self, sdk: NemoClient):
         workspace = short_unique_name("igw-obo-pa")
         model_name = short_unique_name("mdl")
         obo_email = unique_email("obo-editor")

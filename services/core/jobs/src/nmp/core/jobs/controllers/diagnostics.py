@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.core.jobs.config import config
@@ -74,7 +74,7 @@ def _job_dict(job: Any) -> dict[str, Any]:
 
 
 def collect_job_diagnostics(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     step: JobDiagnosticTarget | None = None,
     *,
     workspace: str | None = None,
@@ -145,7 +145,7 @@ def collect_job_diagnostics(
 
 
 def log_job_diagnostics_if_debug(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     step: JobDiagnosticTarget | None = None,
     *,
     logger: logging.Logger,

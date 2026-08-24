@@ -14,7 +14,7 @@ import time
 import uuid
 
 import pytest
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.client import NemoClient, NotFoundError
 
 # Kind smoke generic deployment image (python -m http.server). Keep in sync with
 # .github/actions/setup-kind-cluster/action.yaml GENERIC_HTTP_* prepull vars.
@@ -31,9 +31,9 @@ def _unique_name(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _deployment_diagnostic(sdk: NeMoPlatform, *, workspace: str, name: str, prefix: str) -> str:
+def _deployment_diagnostic(sdk: NemoClient, *, workspace: str, name: str, prefix: str) -> str:
     try:
-        deployment = sdk.inference.deployments.retrieve(name, workspace=workspace)
+        deployment = sdk.inference.deployments.get_deployment(name, workspace=workspace)
     except NotFoundError:
         return f"{prefix}\nDeployment {name!r} not found."
     return (
@@ -45,7 +45,7 @@ def _deployment_diagnostic(sdk: NeMoPlatform, *, workspace: str, name: str, pref
 
 
 def _wait_for_deployment_ready(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -56,7 +56,7 @@ def _wait_for_deployment_ready(
     last_message: str | None = None
 
     while time.monotonic() < deadline:
-        deployment = sdk.inference.deployments.retrieve(name, workspace=workspace)
+        deployment = sdk.inference.deployments.get_deployment(name, workspace=workspace)
         last_status = deployment.status
         last_message = deployment.status_message
         if deployment.status == "READY":
@@ -85,7 +85,7 @@ def _wait_for_deployment_ready(
 
 
 def _wait_for_deployment_deleted(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -96,7 +96,7 @@ def _wait_for_deployment_deleted(
 
     while time.monotonic() < deadline:
         try:
-            deployment = sdk.inference.deployments.retrieve(name, workspace=workspace)
+            deployment = sdk.inference.deployments.get_deployment(name, workspace=workspace)
             last_status = deployment.status
             if deployment.status == "ERROR":
                 pytest.fail(
@@ -114,12 +114,12 @@ def _wait_for_deployment_deleted(
     pytest.fail(f"Deployment {name!r} was not deleted within {timeout_seconds}s; last status={last_status!r}")
 
 
-def test_generic_model_deployment_lifecycle(sdk: NeMoPlatform, workspace: str) -> None:
+def test_generic_model_deployment_lifecycle(sdk: NemoClient, workspace: str) -> None:
     """Create → READY → delete a generic CPU deployment on the plugin k8s backend."""
     config_name = _unique_name("kind-generic-cfg")
     deployment_name = _unique_name("kind-generic-dep")
 
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         workspace=workspace,
         name=config_name,
         engine="generic",
@@ -132,7 +132,7 @@ def test_generic_model_deployment_lifecycle(sdk: NeMoPlatform, workspace: str) -
             "health_check_path": "/",
         },
     )
-    sdk.inference.deployments.create(
+    sdk.inference.deployments.create_deployment(
         workspace=workspace,
         name=deployment_name,
         config=config_name,
@@ -142,7 +142,7 @@ def test_generic_model_deployment_lifecycle(sdk: NeMoPlatform, workspace: str) -
         _wait_for_deployment_ready(sdk, workspace=workspace, name=deployment_name)
     finally:
         try:
-            sdk.inference.deployments.delete(deployment_name, workspace=workspace)
+            sdk.inference.deployments.delete_deployment(deployment_name, workspace=workspace)
         except NotFoundError:
             pass
 

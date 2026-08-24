@@ -20,7 +20,7 @@ import anyio.to_thread
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from nemo_auditor.authz import scope
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
@@ -59,7 +59,7 @@ async def download_audit_artifacts(
     workspace: str,
     job: str,
     background_tasks: BackgroundTasks,
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> FileResponse:
     """Stream an aggregate tar.gz of all garak report artifacts for an audit job."""
     jobs_client = client_from_platform(sdk, AsyncJobsClient)

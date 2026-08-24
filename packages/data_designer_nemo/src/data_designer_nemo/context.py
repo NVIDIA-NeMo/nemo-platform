@@ -38,7 +38,7 @@ from data_designer_nemo.sdk_translation import sync_to_async_sdk
 from data_designer_nemo.secret_resolver import NMPSecretResolver
 from data_designer_nemo.seed import validate_seed
 from data_designer_nemo.tool_configs import validate_no_tool_configs
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 
 class DataDesignerContext(Protocol):
@@ -62,7 +62,7 @@ class DataDesignerContext(Protocol):
 
 
 class LocalDataDesignerContext:
-    def __init__(self, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str):
+    def __init__(self, sdk: AsyncNemoClient | NemoClient, workspace: str):
         self._sdk = sdk
         self._workspace = workspace
         self._validated_filesystem_roots: set[str] = set()
@@ -128,14 +128,14 @@ class LocalDataDesignerContext:
 
         return [make_noop_provider()]
 
-    def _async_sdk(self) -> AsyncNeMoPlatform:
-        if isinstance(self._sdk, NeMoPlatform):
+    def _async_sdk(self) -> AsyncNemoClient:
+        if isinstance(self._sdk, NemoClient):
             return sync_to_async_sdk(self._sdk)
         return self._sdk
 
 
 class RemoteDataDesignerContext:
-    def __init__(self, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str):
+    def __init__(self, sdk: AsyncNemoClient | NemoClient, workspace: str):
         self._sdk = sdk
         self._workspace = workspace
         self._validated_filesystem_roots: set[str] = set()
@@ -200,14 +200,14 @@ class RemoteDataDesignerContext:
 
         return [make_noop_provider()]
 
-    def _async_sdk(self) -> AsyncNeMoPlatform:
-        if isinstance(self._sdk, NeMoPlatform):
+    def _async_sdk(self) -> AsyncNemoClient:
+        if isinstance(self._sdk, NemoClient):
             return sync_to_async_sdk(self._sdk)
         return self._sdk
 
 
 def create_data_designer_context(
-    is_local: bool, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str
+    is_local: bool, sdk: AsyncNemoClient | NemoClient, workspace: str
 ) -> DataDesignerContext:
     if is_local:
         return LocalDataDesignerContext(sdk, workspace)

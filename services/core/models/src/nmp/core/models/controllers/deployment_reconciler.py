@@ -10,10 +10,10 @@ from enum import Enum, auto
 from logging import getLogger
 from typing import Awaitable, Callable, Optional
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import ConflictError, NotFoundError
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_provider import ModelProvider
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+from nemo_platform_plugin.models.types.model_deployment import ModelDeployment
+from nemo_platform_plugin.models.types.model_provider import ModelProvider
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
@@ -142,7 +142,7 @@ class ModelDeploymentReconciler:
 
     def __init__(
         self,
-        models_sdk: AsyncNeMoPlatform,
+        models_sdk: AsyncNemoClient,
         backend_registry: BackendRegistry,
         controller_config: ControllerConfig,
         entity_cache: ModelEntityCache,

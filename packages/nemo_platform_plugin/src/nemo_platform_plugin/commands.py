@@ -1303,7 +1303,7 @@ def _post_function_submit(
 
 def _resolve_cluster_name_to_base_url(cluster_name: str) -> str:
     """Resolve a configured cluster name to its base URL."""
-    from nemo_platform.config.config import Config
+    from nemo_platform_plugin.client.config.config import Config
 
     config = Config.load()
     for cluster in config.get_config_file().clusters:

@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_platform.types.inference.middleware_call import MiddlewareCall as SDKMiddlewareCall
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
-from nemo_platform.types.inference.virtual_model_inference_config import (
+from nemo_platform_plugin.models.types.middleware_call import MiddlewareCall as SDKMiddlewareCall
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.models.types.virtual_model_inference_config import (
     VirtualModelInferenceConfig as SDKVirtualModelInferenceConfig,
 )
 from nemo_platform_plugin.inference_middleware import (

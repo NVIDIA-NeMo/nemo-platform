@@ -19,9 +19,9 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import Callable
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import ConflictError, NotFoundError
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+from nemo_platform_plugin.models.types.model_entity import ModelEntity
 
 logger = getLogger(__name__)
 
@@ -60,7 +60,7 @@ class ModelEntityCache:
     reads the same entity within a phase observes its own write.
     """
 
-    def __init__(self, models_sdk: AsyncNeMoPlatform, emit_heartbeat: Callable[[], None]) -> None:
+    def __init__(self, models_sdk: AsyncNemoClient, emit_heartbeat: Callable[[], None]) -> None:
         """Initialize the cache.
 
         Args:

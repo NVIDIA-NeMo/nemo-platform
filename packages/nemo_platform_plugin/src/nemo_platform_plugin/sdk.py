@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 SyncResourceT = TypeVar("SyncResourceT")
 AsyncResourceT = TypeVar("AsyncResourceT")
@@ -19,8 +19,8 @@ AsyncResourceT = TypeVar("AsyncResourceT")
 class NemoPluginSDKResources(Generic[SyncResourceT, AsyncResourceT]):
     """Container for plugin SDK resources exposed on platform clients."""
 
-    sync_resource: Callable[[NeMoPlatform], SyncResourceT] | None = None
-    async_resource: Callable[[AsyncNeMoPlatform], AsyncResourceT] | None = None
+    sync_resource: Callable[[NemoClient], SyncResourceT] | None = None
+    async_resource: Callable[[AsyncNemoClient], AsyncResourceT] | None = None
 
     def __post_init__(self) -> None:
         if self.sync_resource is None and self.async_resource is None:
@@ -28,7 +28,7 @@ class NemoPluginSDKResources(Generic[SyncResourceT, AsyncResourceT]):
 
 
 __all__ = [
-    "AsyncNeMoPlatform",
-    "NeMoPlatform",
+    "AsyncNemoClient",
+    "NemoClient",
     "NemoPluginSDKResources",
 ]

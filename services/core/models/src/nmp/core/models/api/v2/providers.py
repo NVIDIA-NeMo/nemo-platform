@@ -4,7 +4,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -86,7 +86,7 @@ async def create_provider(
     request: CreateModelProviderRequest,
     service: ModelProviderService = Depends(get_model_provider_service),
     auth_client: AuthClient = Depends(get_auth_client),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> ModelProvider:
     """
     Create a new model provider.
@@ -139,7 +139,7 @@ async def upsert_provider(
     request: UpsertModelProviderRequest,
     service: ModelProviderService = Depends(get_model_provider_service),
     auth_client: AuthClient = Depends(get_auth_client),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> ModelProvider:
     """
     Create or update a model provider.

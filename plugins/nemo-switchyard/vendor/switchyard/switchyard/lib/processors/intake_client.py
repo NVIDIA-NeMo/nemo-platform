@@ -17,7 +17,7 @@ from switchyard.lib.factories.intake_sink.intake_sink_config import (
 )
 
 if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
 log = logging.getLogger(__name__)
 JsonObject = dict[str, object]
@@ -38,7 +38,7 @@ _SDK_LOGIN_HINT = (
 
 
 class IntakeClient:
-    """Fail-open queue + worker that POSTs completed turns through AsyncNeMoPlatform.
+    """Fail-open queue + worker that POSTs completed turns through AsyncNemoClient.
 
     The SDK handles config bootstrap, auth, and retries. Intake still uses a
     generic POST path because the stable SDK does not expose a generated
@@ -46,7 +46,7 @@ class IntakeClient:
     """
 
     def __init__(self, config: IntakeSinkConfig) -> None:
-        self._client: AsyncNeMoPlatform = _build_sdk_client(config)
+        self._client: AsyncNemoClient = _build_sdk_client(config)
         # Payloads need a concrete workspace even when the SDK resolves it.
         self._config = config.model_copy(update={
             "workspace": config.workspace or _sdk_workspace(self._client) or "default",
@@ -171,12 +171,12 @@ class IntakeClient:
             )
 
 
-def _build_sdk_client(config: IntakeSinkConfig) -> AsyncNeMoPlatform:
-    """Build an ``AsyncNeMoPlatform`` for the intake POST path."""
-    if importlib.util.find_spec("nemo_platform") is None:
+def _build_sdk_client(config: IntakeSinkConfig) -> AsyncNemoClient:
+    """Build an ``AsyncNemoClient`` for the intake POST path."""
+    if importlib.util.find_spec("nemo_platform_plugin") is None:
         raise RuntimeError(_SDK_INSTALL_HINT)
 
-    from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
     client_kwargs: dict[str, object] = {
         "timeout": config.request_timeout_s,
@@ -190,15 +190,15 @@ def _build_sdk_client(config: IntakeSinkConfig) -> AsyncNeMoPlatform:
         client_kwargs["access_token"] = config.api_key
 
     try:
-        return AsyncNeMoPlatform(**client_kwargs)
+        return AsyncNemoClient(**client_kwargs)
     except Exception as exc:
         raise RuntimeError(
-            f"Failed to construct AsyncNeMoPlatform for intake: {exc}. "
+            f"Failed to construct AsyncNemoClient for intake: {exc}. "
             + _SDK_LOGIN_HINT,
         ) from exc
 
 
-def _sdk_workspace(client: AsyncNeMoPlatform) -> str | None:
+def _sdk_workspace(client: AsyncNemoClient) -> str | None:
     workspace = getattr(client, "workspace", None)
     return workspace if isinstance(workspace, str) else None
 

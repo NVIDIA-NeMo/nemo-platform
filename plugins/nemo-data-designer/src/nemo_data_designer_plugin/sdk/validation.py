@@ -28,7 +28,7 @@ from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.runnable import resolve_runnable_config
 from data_designer_nemo.sdk_translation import sync_to_async_sdk
 from nemo_data_designer_plugin._data_designer import create_data_designer
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from pydantic import BaseModel, Field, computed_field
 
 ExecutionContext = Literal["local", "remote"]
@@ -75,7 +75,7 @@ async def _validate_one_context(
     context: ExecutionContext,
     config_builder: dd.DataDesignerConfigBuilder,
     config: dd.DataDesignerConfig,
-    async_sdk: AsyncNeMoPlatform,
+    async_sdk: AsyncNemoClient,
     workspace: str,
 ) -> ValidationContextResult:
     """Run a full validation pass for one execution context, accumulating all errors.
@@ -127,8 +127,8 @@ async def _validate_one_context(
 async def validate_config(
     config_builder: dd.DataDesignerConfigBuilder,
     *,
-    sdk: NeMoPlatform | None = None,
-    async_sdk: AsyncNeMoPlatform | None = None,
+    sdk: NemoClient | None = None,
+    async_sdk: AsyncNemoClient | None = None,
     workspace: str,
     execution_context: ExecutionContext | None = None,
     config_source: str | None = None,
@@ -137,9 +137,9 @@ async def validate_config(
 
     Args:
         config_builder: The Data Designer config to validate.
-        sdk: Sync NeMoPlatform SDK. Used as a fallback to derive ``async_sdk``
+        sdk: Sync NemoClient SDK. Used as a fallback to derive ``async_sdk``
             when one is not supplied.
-        async_sdk: Async NeMoPlatform SDK. If omitted but ``sdk`` is supplied,
+        async_sdk: Async NemoClient SDK. If omitted but ``sdk`` is supplied,
             an async wrapper is built via ``sync_to_async_sdk``.
         workspace: Workspace used to resolve provider references and seed
             sources for the remote context. Pass ``"default"`` if you have
@@ -188,8 +188,8 @@ async def validate_config(
 def validate_config_sync(
     config_builder: dd.DataDesignerConfigBuilder,
     *,
-    sdk: NeMoPlatform | None = None,
-    async_sdk: AsyncNeMoPlatform | None = None,
+    sdk: NemoClient | None = None,
+    async_sdk: AsyncNemoClient | None = None,
     workspace: str,
     execution_context: ExecutionContext | None = None,
     config_source: str | None = None,

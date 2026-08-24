@@ -210,7 +210,7 @@ def _get_entity_client() -> NemoEntitiesClient:
     so the example plugin is self-contained and easy to read.
     """
     # In a real plugin, import this from the platform SDK:
-    #   from nemo_platform.resources.entities import get_entity_client
+    #   from nemo_platform_plugin.entity_client import get_entity_client
     #   entity_client: NemoEntitiesClient = Depends(get_entity_client)
     #
     # The SDK's get_entity_client wires auth context, workspace scoping, and

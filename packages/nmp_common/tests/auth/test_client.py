@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.exceptions import InvalidPermissionFormatError, InvalidScopeFormatError
 from nmp.common.auth.models import Principal
@@ -413,7 +413,7 @@ class TestGetSdkOnBehalfOf:
 
     def test_adds_on_behalf_of_header_to_sync_sdk(self):
         """Test that get_sdk_on_behalf_of adds the on-behalf-of header to a sync SDK."""
-        base_sdk = NeMoPlatform(
+        base_sdk = NemoClient(
             base_url="http://testserver",
             default_headers={"X-NMP-Principal-Id": "service:my-service"},
         )
@@ -428,7 +428,7 @@ class TestGetSdkOnBehalfOf:
 
     def test_get_sdk_on_behalf_of_with_principal_includes_email_and_groups(self):
         """Test that Principal delegation includes delegated email and groups headers."""
-        base_sdk = NeMoPlatform(
+        base_sdk = NemoClient(
             base_url="http://testserver",
             default_headers={"X-NMP-Principal-Id": "service:my-service"},
         )
@@ -449,7 +449,7 @@ class TestGetSdkOnBehalfOf:
 
     def test_preserves_original_sdk(self):
         """Test that get_sdk_on_behalf_of doesn't modify the original SDK."""
-        base_sdk = NeMoPlatform(
+        base_sdk = NemoClient(
             base_url="http://testserver",
             default_headers={"X-NMP-Principal-Id": "service:my-service"},
         )
@@ -469,7 +469,7 @@ class TestGetSdkOnBehalfOf:
 
     def test_preserves_original_headers(self):
         """Test that get_sdk_on_behalf_of preserves all original headers."""
-        base_sdk = NeMoPlatform(
+        base_sdk = NemoClient(
             base_url="http://testserver",
             default_headers={
                 "X-NMP-Principal-Id": "service:my-service",
@@ -489,7 +489,7 @@ class TestGetSdkOnBehalfOf:
 
     def test_can_chain_delegations(self):
         """Test that get_sdk_on_behalf_of can be used multiple times."""
-        base_sdk = NeMoPlatform(
+        base_sdk = NemoClient(
             base_url="http://testserver",
             default_headers={"X-NMP-Principal-Id": "service:my-service"},
         )

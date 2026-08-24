@@ -36,7 +36,7 @@ from nemo_agents_plugin.utils import (
     preflight_validate_llm_models,
     temp_injected_config,
 )
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -205,7 +205,7 @@ class EvaluateAgentJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None = None,
+        sdk: NemoClient | None = None,
     ) -> dict:
         """Run the evaluation by delegating to the ``nat eval`` CLI.
 
@@ -331,7 +331,7 @@ class EvaluateAgentJob(NemoJob):
         cfg: EvaluateAgentSpec,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None,
+        sdk: NemoClient | None,
     ) -> Iterator[Path]:
         """Yield a local path to the eval YAML.
 
@@ -349,7 +349,7 @@ class EvaluateAgentJob(NemoJob):
 
         if sdk is None:
             raise LocalRunError(
-                "EvaluateAgentJob.run requires a 'sdk: NeMoPlatform' to download "
+                "EvaluateAgentJob.run requires a 'sdk: NemoClient' to download "
                 "eval_config_fileset contents, but no platform SDK was available. "
                 "Set NMP_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
             )
@@ -366,7 +366,7 @@ class EvaluateAgentJob(NemoJob):
         ) as tmp:
             tmp_path = Path(tmp)
             logger.info("Downloading fileset %s/%s into %s for eval config.", ws, name, tmp_path)
-            sdk.files.download(local_path=str(tmp_path), fileset=name, workspace=ws)
+            sdk.files.download_file(local_path=str(tmp_path), fileset=name, workspace=ws)
             # ``cfg.eval_config`` is caller-controlled — resolve and confirm
             # it stays inside the downloaded fileset before yielding it, so
             # an absolute path or ``..`` segment can't make ``nat eval`` read
@@ -389,7 +389,7 @@ class EvaluateAgentJob(NemoJob):
         *,
         workspace: str,
         ctx: JobContext,
-        sdk: NeMoPlatform | None,
+        sdk: NemoClient | None,
     ) -> Iterator[Path]:
         """Yield a local base directory for ``nat eval`` outputs.
 
@@ -400,7 +400,7 @@ class EvaluateAgentJob(NemoJob):
         - :class:`FilesetRef` → a fresh tempdir under
           ``ctx.storage.ephemeral``; on successful exit the tempdir is
           uploaded to the named fileset (auto-created if missing) via
-          ``sdk.files.upload`` before being cleaned up.
+          ``sdk.files.upload_file`` before being cleaned up.
 
         The tempdir is removed regardless of whether the upload
         succeeds; failures during upload propagate so the caller sees
@@ -435,7 +435,7 @@ class EvaluateAgentJob(NemoJob):
 
         if sdk is None:
             raise LocalRunError(
-                "EvaluateAgentJob.run requires a 'sdk: NeMoPlatform' to upload "
+                "EvaluateAgentJob.run requires a 'sdk: NemoClient' to upload "
                 "results to a fileset, but no platform SDK was available. "
                 "Set NMP_BASE_URL (so the local CLI can build a default SDK), "
                 "pass an explicit sdk via NemoJobScheduler.run_local(sdk=...), "
@@ -476,7 +476,7 @@ class EvaluateAgentJob(NemoJob):
         *,
         fileset: str,
         workspace: str,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
     ) -> None:
         """Upload *local_dir* recursively to the named fileset.
 
@@ -485,10 +485,10 @@ class EvaluateAgentJob(NemoJob):
 
         *sdk* is the platform SDK handle injected into :meth:`run` by
         the :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler` (signature-based
-        DI). The upload goes through :meth:`sdk.files.upload`.
+        DI). The upload goes through :meth:`sdk.files.upload_file`.
         """
         # Trailing slash uploads contents, not the dir itself.
-        result = sdk.files.upload(
+        result = sdk.files.upload_file(
             local_path=str(local_dir) + "/",
             fileset=fileset,
             workspace=workspace,

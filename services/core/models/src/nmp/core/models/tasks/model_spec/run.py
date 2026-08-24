@@ -18,15 +18,9 @@ import logging
 import os
 from pathlib import Path
 
-from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
-    InternalServerError,
-    NeMoPlatform,
-    NeMoPlatformError,
-    NotFoundError,
-)
-from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoTransportError, InternalServerError, NemoClientError, NotFoundError
+from nemo_platform_plugin.models.types import ModelEntity
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
@@ -73,7 +67,7 @@ def get_config(config_path: Path) -> ModelSpecTaskConfig:
 class ModelSpecRunner:
     """Runner for creating model entities."""
 
-    def __init__(self, sdk: NeMoPlatform, job_ctx: NMPJobContext):
+    def __init__(self, sdk: NemoClient, job_ctx: NMPJobContext):
         self.sdk = sdk
         self.job_ctx = job_ctx
 
@@ -157,7 +151,7 @@ class ModelSpecRunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type((InternalServerError, APITimeoutError, APIConnectionError)),
+        retry=retry_if_exception_type((InternalServerError, NemoTransportError, NemoTransportError)),
         reraise=True,
     )
     def analyze_checkpoint(self, config: ModelSpecTaskConfig) -> ModelEntity:
@@ -178,12 +172,12 @@ class ModelSpecRunner:
         logger.info(f"Fetching model entity: {config.workspace}/{config.name}")
 
         try:
-            me = self.sdk.models.retrieve(config.name, workspace=config.workspace, verbose=True)
+            me = self.sdk.models.get_model(config.name, workspace=config.workspace, verbose=True)
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err
@@ -217,7 +211,7 @@ class ModelSpecRunner:
 
         dest_dir: Path = self.job_ctx.storage_path / "model"
 
-        response = self.sdk.files.list(
+        response = self.sdk.files.list_files(
             fileset=fs.name,
             workspace=fs.workspace,
         )
@@ -239,7 +233,7 @@ class ModelSpecRunner:
 
             non_tensor_files.append(f.path)
 
-        self.sdk.files.download(
+        self.sdk.files.download_file(
             remote_path=non_tensor_files,
             local_path=dest_dir,
             fileset=fs.name,
@@ -286,14 +280,14 @@ class ModelSpecRunner:
         self._merge_existing_spec(me, model_spec)
 
         try:
-            me: ModelEntity = self.sdk.models.update(
+            me: ModelEntity = self.sdk.models.update_model(
                 name=config.name, workspace=config.workspace, spec=model_spec, verbose=True
             )
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err
@@ -301,7 +295,7 @@ class ModelSpecRunner:
         return me
 
 
-def run(*, sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None) -> int:
+def run(*, sdk: NemoClient | None = None, job_ctx: NMPJobContext | None = None) -> int:
     """Execute the model entity creation task.
 
     Args:

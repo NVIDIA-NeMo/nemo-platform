@@ -22,7 +22,7 @@ from typing import Iterator
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -45,7 +45,7 @@ NGC_TEST_VERSION = "25.12"
 
 
 @pytest.fixture
-def ngc_api_key_secret(sdk: NeMoPlatform) -> Iterator[str]:
+def ngc_api_key_secret(sdk: NemoClient) -> Iterator[str]:
     """Create a temporary secret for NGC API key and clean up after use."""
     api_key = os.environ.get("NGC_API_KEY")
     if not api_key:
@@ -65,7 +65,7 @@ def ngc_api_key_secret(sdk: NeMoPlatform) -> Iterator[str]:
 class TestNGCVersionResolution:
     """Test that mutable versions are resolved to immutable version IDs."""
 
-    def test_fileset_resolves_latest_to_version_id(self, sdk: NeMoPlatform, ngc_api_key_secret: str):
+    def test_fileset_resolves_latest_to_version_id(self, sdk: NemoClient, ngc_api_key_secret: str):
         """Test that creating a fileset without version resolves to the latest version ID.
 
         This verifies the fix for cache staleness: when a user creates a fileset
@@ -103,7 +103,7 @@ class TestNGCVersionResolution:
             # original_version should be None (user requested "latest")
             assert storage.original_version is None, f"original_version should be None, got: {storage.original_version}"
 
-    def test_fileset_with_explicit_version_preserves_both(self, sdk: NeMoPlatform, ngc_api_key_secret: str):
+    def test_fileset_with_explicit_version_preserves_both(self, sdk: NemoClient, ngc_api_key_secret: str):
         """Test that creating a fileset with an explicit version preserves it correctly."""
         name = f"ngc-test-{uuid.uuid4().hex[:8]}"
 
@@ -135,7 +135,7 @@ class TestNGCVersionResolution:
 class TestNGCStorageBackend:
     """Test NGC storage backend with real NGC resources."""
 
-    def test_list_files_from_ngc_resource(self, sdk: NeMoPlatform, ngc_api_key_secret: str):
+    def test_list_files_from_ngc_resource(self, sdk: NemoClient, ngc_api_key_secret: str):
         """Test listing files from an NGC resource."""
         name = f"ngc-test-{uuid.uuid4().hex[:8]}"
 
@@ -152,7 +152,7 @@ class TestNGCStorageBackend:
             },
         ) as fileset:
             # List files from the NGC resource
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -166,7 +166,7 @@ class TestNGCStorageBackend:
                 assert file_info.size is not None
                 assert file_info.size >= 0
 
-    def test_download_file_from_ngc_resource(self, sdk: NeMoPlatform, ngc_api_key_secret: str):
+    def test_download_file_from_ngc_resource(self, sdk: NemoClient, ngc_api_key_secret: str):
         """Test downloading a file from an NGC resource."""
         name = f"ngc-test-{uuid.uuid4().hex[:8]}"
 
@@ -183,7 +183,7 @@ class TestNGCStorageBackend:
             },
         ) as fileset:
             # First list files to get a file path
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -193,7 +193,7 @@ class TestNGCStorageBackend:
             test_file = files.data[0]
 
             # Download the file
-            content = sdk.files.download_content(
+            content = sdk.files.download_file(
                 remote_path=test_file.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -201,7 +201,7 @@ class TestNGCStorageBackend:
 
             assert len(content) == test_file.size
 
-    def test_download_with_range_request(self, sdk: NeMoPlatform, ngc_api_key_secret: str):
+    def test_download_with_range_request(self, sdk: NemoClient, ngc_api_key_secret: str):
         """Test partial download using HTTP Range header."""
         name = f"ngc-test-{uuid.uuid4().hex[:8]}"
 
@@ -218,7 +218,7 @@ class TestNGCStorageBackend:
             },
         ) as fileset:
             # First list files to get a file path
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -247,7 +247,7 @@ class TestNGCCaching:
 
     def test_cache_path_uses_resolved_version_not_latest(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         ngc_api_key_secret: str,
         cache_storage_impl: StorageImpl,
     ):
@@ -280,7 +280,7 @@ class TestNGCCaching:
             assert version_id is not None, "version should be resolved"
 
             # List files to get a file path
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -288,7 +288,7 @@ class TestNGCCaching:
             test_file = files.data[0]
 
             # Download a file to populate the cache
-            content = sdk.files.download_content(
+            content = sdk.files.download_file(
                 remote_path=test_file.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -311,7 +311,7 @@ class TestNGCCaching:
 
     def test_second_download_uses_cache(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         ngc_api_key_secret: str,
         cache_storage_impl: StorageImpl,
         mocker,
@@ -340,7 +340,7 @@ class TestNGCCaching:
             },
         ) as fileset:
             # First list files to get a file path
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -350,7 +350,7 @@ class TestNGCCaching:
             test_file = files.data[0]
 
             # First download - should fetch from source (cache miss)
-            content1 = sdk.files.download_content(
+            content1 = sdk.files.download_file(
                 remote_path=test_file.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -362,7 +362,7 @@ class TestNGCCaching:
             assert download_spy.call_count == 2, "First download should fetch from source (serve + cache)"
 
             # Second download - should be served from cache (no source fetch)
-            content2 = sdk.files.download_content(
+            content2 = sdk.files.download_file(
                 remote_path=test_file.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -389,7 +389,7 @@ class TestNGCCaching:
 
     def test_different_files_cached_separately(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         ngc_api_key_secret: str,
         cache_storage_impl: StorageImpl,
     ):
@@ -409,7 +409,7 @@ class TestNGCCaching:
             },
         ) as fileset:
             # List files to get at least 2 file paths
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -419,14 +419,14 @@ class TestNGCCaching:
             file2 = files.data[1]
 
             # Download first file
-            content1 = sdk.files.download_content(
+            content1 = sdk.files.download_file(
                 remote_path=file1.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
 
             # Download second file
-            content2 = sdk.files.download_content(
+            content2 = sdk.files.download_file(
                 remote_path=file2.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -436,7 +436,7 @@ class TestNGCCaching:
             assert file1.path != file2.path
 
             # Download first file again - should be from cache
-            content3 = sdk.files.download_content(
+            content3 = sdk.files.download_file(
                 remote_path=file1.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -460,7 +460,7 @@ class TestNGCCaching:
 
     def test_byte_range_requests_bypass_cache(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         ngc_api_key_secret: str,
         cache_storage_impl: StorageImpl,
     ):
@@ -480,7 +480,7 @@ class TestNGCCaching:
             },
         ) as fileset:
             # Get a file to test with
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
@@ -488,7 +488,7 @@ class TestNGCCaching:
             test_file = files.data[0]
 
             # First, do a full download to populate cache
-            full_content = sdk.files.download_content(
+            full_content = sdk.files.download_file(
                 remote_path=test_file.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -518,7 +518,7 @@ class TestNGCCaching:
             assert range_content == full_content[:expected_size]
 
             # Another full download should use cache
-            full_content2 = sdk.files.download_content(
+            full_content2 = sdk.files.download_file(
                 remote_path=test_file.path,
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -589,7 +589,7 @@ class TestNGCPublicTargets:
     """
 
     @pytest.mark.parametrize("catalog_url", NGC_PUBLIC_TARGETS_FOR_INTEGRATION)
-    def test_list_files_public_ngc_target(self, sdk: NeMoPlatform, ngc_api_key_secret: str, catalog_url: str):
+    def test_list_files_public_ngc_target(self, sdk: NemoClient, ngc_api_key_secret: str, catalog_url: str):
         """List files from a public NGC resource or model using a catalog URL."""
         org, team, target_name, version, target_type = _parse_ngc_catalog_url(catalog_url)
         fileset_name = f"ngc-pub-{uuid.uuid4().hex[:8]}"
@@ -606,7 +606,7 @@ class TestNGCPublicTargets:
             storage["version"] = version
 
         with create_fileset(sdk, fileset_name, storage=storage) as fileset:
-            files = sdk.files.list(
+            files = sdk.files.list_files(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )

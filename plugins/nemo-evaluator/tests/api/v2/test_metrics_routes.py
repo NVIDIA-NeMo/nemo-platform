@@ -27,7 +27,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entities import ListResponse, PaginationInfo
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.files.types import CreateFilesetRequest
@@ -144,7 +144,7 @@ class _FakeEntityClient:
         )
 
 
-class _FakePlatform(AsyncNeMoPlatform):
+class _FakePlatform(AsyncNemoClient):
     pass
 
 

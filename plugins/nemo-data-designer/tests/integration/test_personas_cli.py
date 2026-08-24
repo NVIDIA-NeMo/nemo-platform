@@ -8,7 +8,7 @@ import nemo_data_designer_plugin.testing.utils as u
 import pytest
 from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_for_locale
 from nemo_data_designer_plugin.cli import personas as personas_module
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import NGCStorageConfig
@@ -46,7 +46,7 @@ def mock_ngc_client() -> Generator[dict[str, Mock]]:
 
 
 @pytest.fixture
-def sdk(monkeypatch: pytest.MonkeyPatch, mock_ngc_client: dict[str, Mock]) -> Generator[NeMoPlatform]:
+def sdk(monkeypatch: pytest.MonkeyPatch, mock_ngc_client: dict[str, Mock]) -> Generator[NemoClient]:
     with u.make_mock_client_context() as client_context:
         monkeypatch.setenv("NGC_API_KEY", "nvapi-abc123")
         yield client_context.sdk
@@ -54,8 +54,8 @@ def sdk(monkeypatch: pytest.MonkeyPatch, mock_ngc_client: dict[str, Mock]) -> Ge
 
 
 @pytest.fixture
-def cli_sdk(monkeypatch: pytest.MonkeyPatch, sdk: NeMoPlatform) -> NeMoPlatform:
-    monkeypatch.setattr(personas_module, "NeMoPlatform", lambda: sdk)
+def cli_sdk(monkeypatch: pytest.MonkeyPatch, sdk: NemoClient) -> NemoClient:
+    monkeypatch.setattr(personas_module, "NemoClient", lambda: sdk)
     return sdk
 
 
@@ -67,7 +67,7 @@ def test_personas_download_is_wired_properly() -> None:
     assert "data-designer download personas" not in result.output
 
 
-def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeMoPlatform) -> None:
+def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NemoClient) -> None:
     result = u.invoke_cli(
         [
             "personas",
@@ -90,7 +90,7 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeM
 
 
 def test_make_fileset_creates_secret_from_env_then_fileset(
-    monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
+    monkeypatch: pytest.MonkeyPatch, cli_sdk: NemoClient
 ) -> None:
     monkeypatch.setenv("MY_NGC_API_KEY", "nvapi-from-env")
 
@@ -170,7 +170,7 @@ def test_make_fileset_bare_secret_name() -> None:
 
 
 def test_make_fileset_create_secret_conflict_does_not_create_fileset(
-    monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
+    monkeypatch: pytest.MonkeyPatch, cli_sdk: NemoClient
 ) -> None:
     client_from_platform(cli_sdk, SecretsClient).create_secret(
         workspace="system",
@@ -198,7 +198,7 @@ def test_make_fileset_create_secret_conflict_does_not_create_fileset(
 
 
 def test_make_fileset_create_secret_internal_error_surfaces_clearly(
-    monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
+    monkeypatch: pytest.MonkeyPatch, cli_sdk: NemoClient
 ) -> None:
     monkeypatch.setenv("MY_NGC_API_KEY", "nvapi-from-env")
 
@@ -231,7 +231,7 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
     assert list(files.list_filesets(workspace=WORKSPACE).items()) == []
 
 
-def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPlatform) -> None:
+def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NemoClient) -> None:
     # First invocation creates the fileset.
     first = u.invoke_cli(
         [
@@ -268,7 +268,7 @@ def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPla
     ]
 
 
-def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: NeMoPlatform) -> None:
+def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: NemoClient) -> None:
     error_message = "kaboom-fileset-error"
 
     mock_files = Mock()

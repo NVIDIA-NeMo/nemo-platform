@@ -16,7 +16,7 @@ from typing import Any, Iterator
 from urllib.parse import urlsplit
 
 import yaml
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.client import NemoClient, NotFoundError
 from nemo_platform_plugin.entities import parse_qualified_name
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ def get_internal_base_url() -> str | None:
 
 def get_default_model() -> str | None:
     """Return the default model for the platform from the SDK context."""
-    from nemo_platform.config import get_context
+    from nemo_platform_plugin.client.config.config import get_context
 
     return get_context().default_model
 
@@ -349,7 +349,7 @@ def validate_llm_models(
     config: dict[str, Any],
     *,
     workspace: str,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
 ) -> None:
     """Pre-flight check that every IGW-routed LLM in *config* exists as a VirtualModel.
 
@@ -357,7 +357,7 @@ def validate_llm_models(
     :data:`_IGW_LLM_TYPES`, strips a leading ``{workspace}/`` qualifier from
     ``model_name`` (mirroring IGW's OpenAI proxy — the VM route takes
     workspace as its own path segment, so the bare name is what it expects)
-    then calls ``sdk.inference.virtual_models.retrieve(name, workspace=workspace)``.
+    then calls ``sdk.inference.virtual_models.get_virtual_model(name, workspace=workspace)``.
     Names are deduplicated *after* stripping so the same model declared under
     multiple LLM keys (e.g. agent + judge) costs one network call.
 
@@ -420,7 +420,7 @@ def validate_llm_models(
     missing: list[tuple[str, str]] = []  # (qualified_name, llm_key)
     for (target_ws, target_name), llm_key in to_check.items():
         try:
-            sdk.inference.virtual_models.retrieve(name=target_name, workspace=target_ws)
+            sdk.inference.virtual_models.get_virtual_model(name=target_name, workspace=target_ws)
         except NotFoundError:
             missing.append((f"{target_ws}/{target_name}", llm_key))
         except Exception as exc:  # pragma: no cover - defensive soft-fail
@@ -454,7 +454,7 @@ def preflight_validate_llm_models(
     config_path: Path,
     *,
     workspace: str,
-    sdk: NeMoPlatform | None,
+    sdk: NemoClient | None,
     agent_config: dict[str, Any] | None = None,
 ) -> None:
     """Load *config_path*, expand env vars, optionally merge an agent config, and validate.

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.models.types import ModelEntity
 from nmp.automodel.adapter import automodel_spec_to_compiler_output
 from nmp.automodel.api.v2.jobs.schemas import CustomizationJobOutput, LoRAParams, OutputResponse, SFTTraining
@@ -39,7 +39,7 @@ def _make_mock_model_entity(
 
 @pytest.fixture
 def mock_sdk():
-    return Mock(spec=AsyncNeMoPlatform)
+    return Mock(spec=AsyncNemoClient)
 
 
 def _make_job_output() -> CustomizationJobOutput:

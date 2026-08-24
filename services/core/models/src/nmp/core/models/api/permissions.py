@@ -12,7 +12,7 @@ AuthClient.has_permissions to check access without a round-trip HTTP call
 to our own API.
 """
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
@@ -23,7 +23,7 @@ from nmp.common.auth import AuthClient
 from nmp.common.entities.utils import parse_entity_ref
 
 
-async def check_secret_access(nmp_sdk: AsyncNeMoPlatform, secret_name: str, workspace: str) -> None:
+async def check_secret_access(nmp_sdk: AsyncNemoClient, secret_name: str, workspace: str) -> None:
     """Check that the current user can access the referenced secret.
 
     Raises:
@@ -39,7 +39,7 @@ async def check_secret_access(nmp_sdk: AsyncNeMoPlatform, secret_name: str, work
         raise ValueError(f"Secret '{secret_name}' not found in workspace '{workspace}'") from None
 
 
-async def check_fileset_access(nmp_sdk: AsyncNeMoPlatform, fileset: str, workspace: str) -> FilesetOutput:
+async def check_fileset_access(nmp_sdk: AsyncNemoClient, fileset: str, workspace: str) -> FilesetOutput:
     """Check that the current user can access the referenced fileset.
 
     Retrieves fileset metadata via the Files API; AuthZ middleware enforces

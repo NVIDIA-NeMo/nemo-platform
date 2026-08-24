@@ -18,7 +18,7 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 # --- fakes ------------------------------------------------------------------
 
@@ -82,8 +82,8 @@ class _FakeClient:
         )
 
 
-def _client(**kwargs: Any) -> AsyncNeMoPlatform:
-    return cast(AsyncNeMoPlatform, _FakeClient(**kwargs))
+def _client(**kwargs: Any) -> AsyncNemoClient:
+    return cast(AsyncNemoClient, _FakeClient(**kwargs))
 
 
 # --- fixtures ---------------------------------------------------------------
@@ -156,7 +156,7 @@ async def test_publishes_trajectory_and_scores() -> None:
         ],
     )
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
     assert len(client.atif_calls) == 1
     assert client.atif_calls[0]["session_id"] == "run-1:t-1"
@@ -190,7 +190,7 @@ async def test_multiple_trials_each_get_their_own_session_and_span() -> None:
         ],
     )
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
     assert len(client.atif_calls) == 2
     assert report.trial_count == 2
@@ -201,7 +201,7 @@ async def test_multiple_trials_each_get_their_own_session_and_span() -> None:
 async def test_trial_without_scores_still_ingests_trajectory() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
     assert len(client.atif_calls) == 1
     assert len(client.eval_calls) == 0
@@ -212,7 +212,7 @@ async def test_explicit_workspace_overrides_client_default() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient(workspace="default")
     report = await publish_to_intake(
-        result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1", workspace="ws-2"
+        result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1", workspace="ws-2"
     )
     assert report.workspace == "ws-2"
     assert client.atif_calls[0]["workspace"] == "ws-2"
@@ -222,7 +222,7 @@ async def test_missing_workspace_raises() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient(workspace=None)
     with pytest.raises(ValueError, match="workspace"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
 
 async def test_unresolvable_span_raises_publish_error() -> None:
@@ -232,14 +232,14 @@ async def test_unresolvable_span_raises_publish_error() -> None:
     )
     client = _FakeClient(root_span_id=None)
     with pytest.raises(PublishError, match="No root span"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
 
 async def test_ingest_failure_propagates() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient(atif_fail=True)
     with pytest.raises(RuntimeError, match="atif ingest 400"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
 
 async def test_failed_and_non_finite_scores_are_skipped_and_reported() -> None:
@@ -255,7 +255,7 @@ async def test_failed_and_non_finite_scores_are_skipped_and_reported() -> None:
         ],
     )
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1")
 
     # Only the finite, completed output is sent to Intake.
     assert {call["name"] for call in client.eval_calls} == {"accuracy.score"}
@@ -280,7 +280,7 @@ async def test_one_trial_failure_does_not_block_others_and_is_reported() -> None
 
     with pytest.raises(PublishError) as excinfo:
         await publish_to_intake(
-            result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1", max_concurrency=1
+            result, platform=cast(AsyncNemoClient, client), experiment_id="exp-1", max_concurrency=1
         )
 
     # The healthy trial still published despite the other failing.

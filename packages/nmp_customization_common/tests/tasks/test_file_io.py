@@ -139,8 +139,8 @@ class TestUploadFileset:
 
         runner.upload_fileset(dest, src.resolve())
 
-        sdk.files.upload.assert_called_once()
-        call = sdk.files.upload.call_args
+        sdk.files.upload_file.assert_called_once()
+        call = sdk.files.upload_file.call_args
         assert call.kwargs["local_path"] == f"{src.resolve()}/"
         assert call.kwargs["remote_path"] == ""
         assert call.kwargs["fileset"] == "qwen-test"
@@ -150,7 +150,7 @@ class TestUploadFileset:
         from nmp.customization_common.schemas.file_io import FileSetRef, FileUploadError
 
         sdk = _make_sdk()
-        sdk.files.upload.side_effect = RuntimeError("upload broke")
+        sdk.files.upload_file.side_effect = RuntimeError("upload broke")
         runner = _make_runner(sdk)
         src = _make_dir(tmp_path)
         dest = FileSetRef(workspace="default", name="x")
@@ -164,7 +164,7 @@ class TestDownloadFileset:
         from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
-        sdk.files.list.return_value = types.SimpleNamespace(
+        sdk.files.list_files.return_value = types.SimpleNamespace(
             data=[
                 types.SimpleNamespace(path="model.safetensors", size=100),
                 types.SimpleNamespace(path="config.json", size=20),
@@ -176,9 +176,9 @@ class TestDownloadFileset:
 
         runner.download_fileset(fileset, dest)
 
-        sdk.files.list.assert_called_once()
-        sdk.files.download.assert_called_once()
-        call = sdk.files.download.call_args
+        sdk.files.list_files.assert_called_once()
+        sdk.files.download_file.assert_called_once()
+        call = sdk.files.download_file.call_args
         assert call.kwargs["fileset"] == "qwen"
         assert call.kwargs["workspace"] == "default"
         assert call.kwargs["local_path"] == str(dest.resolve())
@@ -188,7 +188,7 @@ class TestDownloadFileset:
         from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
-        sdk.files.list.return_value = types.SimpleNamespace(data=[])
+        sdk.files.list_files.return_value = types.SimpleNamespace(data=[])
         runner = _make_runner(sdk)
         dest = tmp_path / "downloads"
         fileset = FileSetRef(workspace="default", name="empty")
@@ -197,7 +197,7 @@ class TestDownloadFileset:
 
         assert stats.files_downloaded == 0
         assert stats.total_bytes == 0
-        sdk.files.download.assert_not_called()
+        sdk.files.download_file.assert_not_called()
 
 
 @pytest.fixture
@@ -260,12 +260,12 @@ class TestUploadRetry:
 
         src = _make_dir(tmp_path)
         sdk = _make_sdk()
-        sdk.files.upload.side_effect = [NemoTransportError(httpx.ReadTimeout("timed out")), None]
+        sdk.files.upload_file.side_effect = [NemoTransportError(httpx.ReadTimeout("timed out")), None]
         runner = _make_runner(sdk)
 
         runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
 
-        assert sdk.files.upload.call_count == 2
+        assert sdk.files.upload_file.call_count == 2
 
     def test_retries_server_error_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
         from nemo_platform_plugin.client.errors import InternalServerError
@@ -274,12 +274,12 @@ class TestUploadRetry:
         src = _make_dir(tmp_path)
         sdk = _make_sdk()
         response = httpx.Response(503, request=httpx.Request("PUT", "http://test/upload"), json={"detail": "down"})
-        sdk.files.upload.side_effect = [InternalServerError(response), None]
+        sdk.files.upload_file.side_effect = [InternalServerError(response), None]
         runner = _make_runner(sdk)
 
         runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
 
-        assert sdk.files.upload.call_count == 2
+        assert sdk.files.upload_file.call_count == 2
 
     def test_retries_rate_limit_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
         """429 is in the client's retryable statuses, but it cannot act on it here."""
@@ -289,12 +289,12 @@ class TestUploadRetry:
         src = _make_dir(tmp_path)
         sdk = _make_sdk()
         response = httpx.Response(429, request=httpx.Request("PUT", "http://test/upload"), json={"detail": "slow down"})
-        sdk.files.upload.side_effect = [RateLimitError(response), None]
+        sdk.files.upload_file.side_effect = [RateLimitError(response), None]
         runner = _make_runner(sdk)
 
         runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
 
-        assert sdk.files.upload.call_count == 2
+        assert sdk.files.upload_file.call_count == 2
 
     def test_gives_up_as_a_file_upload_error(self, tmp_path: Path, no_retry_backoff) -> None:
         from nemo_platform_plugin.client.errors import NemoTransportError
@@ -302,10 +302,10 @@ class TestUploadRetry:
 
         src = _make_dir(tmp_path)
         sdk = _make_sdk()
-        sdk.files.upload.side_effect = NemoTransportError(httpx.ReadTimeout("timed out"))
+        sdk.files.upload_file.side_effect = NemoTransportError(httpx.ReadTimeout("timed out"))
         runner = _make_runner(sdk)
 
         with pytest.raises(FileUploadError):
             runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
 
-        assert sdk.files.upload.call_count == 3
+        assert sdk.files.upload_file.call_count == 3

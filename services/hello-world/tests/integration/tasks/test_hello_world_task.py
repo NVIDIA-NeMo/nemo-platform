@@ -31,7 +31,7 @@ class TestHelloWorldTask:
             assert result.exception is None
 
             # Verify the file was uploaded to the auto-created fileset
-            content = ctx.sdk.files.download_content(
+            content = ctx.sdk.files.download_file(
                 workspace="test-workspace",
                 fileset="hello-world-test-job-123",
                 remote_path="message.txt",
@@ -59,7 +59,7 @@ class TestHelloWorldTask:
             assert result.exception is None
 
             # Verify the file was uploaded
-            content = ctx.sdk.files.download_content(
+            content = ctx.sdk.files.download_file(
                 workspace="test-workspace",
                 fileset="hello-world-custom-msg-job",
                 remote_path="message.txt",

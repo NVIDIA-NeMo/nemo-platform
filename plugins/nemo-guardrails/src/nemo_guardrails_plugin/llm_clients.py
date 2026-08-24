@@ -24,7 +24,7 @@ from types import MappingProxyType
 from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
 from nemoguardrails.llm.providers import register_provider
@@ -49,7 +49,7 @@ def get_request_headers() -> RequestHeaders:
 
 
 @contextmanager
-def platform_headers_context(sdk: AsyncNeMoPlatform) -> Iterator[None]:
+def platform_headers_context(sdk: AsyncNemoClient) -> Iterator[None]:
     """Make platform headers visible to rail model calls in this context.
 
     Model calls happen deep inside nemoguardrails/LangChain library code that

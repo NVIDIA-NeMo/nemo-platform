@@ -11,7 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.models.types import ModelEntity
@@ -63,7 +63,7 @@ def _provider(step: dict[str, Any]) -> str:
 
 @pytest.fixture
 def mock_sdk() -> Mock:
-    return Mock(spec=AsyncNeMoPlatform)
+    return Mock(spec=AsyncNemoClient)
 
 
 # --------------------------------------------------------------------------- #

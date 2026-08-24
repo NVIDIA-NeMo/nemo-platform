@@ -14,7 +14,7 @@ Checks:
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from trace_reader import get_session
@@ -23,13 +23,13 @@ WORKSPACE = "default"
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
+    return NemoClient(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
 @pytest.fixture
-def files_client(client: NeMoPlatform) -> FilesClient:
+def files_client(client: NemoClient) -> FilesClient:
     return client_from_platform(client, FilesClient)
 
 
@@ -52,7 +52,7 @@ def test_harbor_final_fileset_exists(files_client: FilesClient) -> None:
     )
 
 
-def test_verify_file_uploaded(client: NeMoPlatform) -> None:
+def test_verify_file_uploaded(client: NemoClient) -> None:
     """Test that verify.txt was uploaded to harbor-final-fileset with correct content."""
     files = client.files.list(fileset="harbor-final-fileset")
     file_paths = [f.path for f in files.data]

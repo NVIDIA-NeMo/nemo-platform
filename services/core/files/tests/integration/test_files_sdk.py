@@ -23,8 +23,8 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform.filesets.resources import FilesResource
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.files.client import FilesResource
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.client import FilesClient
@@ -620,7 +620,7 @@ class TestFilesRoundTrip:
             assert len(files.data) == 1
             assert files.data[0].path == "config.yaml"
 
-    def test_large_directory_upload_download(self, sdk: NeMoPlatform, files_resource: FilesResource):
+    def test_large_directory_upload_download(self, sdk: NemoClient, files_resource: FilesResource):
         """Test uploading and downloading a larger directory structure."""
         with create_fileset(sdk) as fileset:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -779,7 +779,7 @@ class TestFilesUploadAutoCreate:
     """Tests for fileset_auto_create parameter."""
 
     def test_upload_creates_fileset(
-        self, sdk: NeMoPlatform, files_resource: FilesResource, tmp_path: Path, fileset_cleanup: Callable[[str], None]
+        self, sdk: NemoClient, files_resource: FilesResource, tmp_path: Path, fileset_cleanup: Callable[[str], None]
     ):
         """Test that upload() with fileset_auto_create creates the fileset."""
         fileset_name = f"auto-create-upload-{uuid.uuid4().hex[:8]}"
@@ -808,7 +808,7 @@ class TestFilesUploadAutoCreate:
         assert files.data[0].path == "test.txt"
 
     def test_upload_content_creates_fileset(
-        self, sdk: NeMoPlatform, files_resource: FilesResource, fileset_cleanup: Callable[[str], None]
+        self, sdk: NemoClient, files_resource: FilesResource, fileset_cleanup: Callable[[str], None]
     ):
         """Test that upload_content() with fileset_auto_create creates the fileset."""
         fileset_name = f"auto-create-data-{uuid.uuid4().hex[:8]}"
@@ -833,7 +833,7 @@ class TestFilesUploadAutoCreate:
         assert len(files.data) == 1
         assert files.data[0].path == "test.txt"
 
-    def test_upload_without_flag_fails_for_nonexistent_fileset(self, sdk: NeMoPlatform, files_resource: FilesResource):
+    def test_upload_without_flag_fails_for_nonexistent_fileset(self, sdk: NemoClient, files_resource: FilesResource):
         """Test that upload without flag fails for non-existent fileset."""
         fileset_name = f"nonexistent-{uuid.uuid4().hex[:8]}"
         workspace = sdk.workspace or "default"
@@ -881,7 +881,7 @@ class TestFilesUploadAutoCreate:
         assert result.workspace == fileset.workspace
 
     def test_auto_create_generates_name_when_no_fileset_specified(
-        self, sdk: NeMoPlatform, files_resource: FilesResource, fileset_cleanup: Callable[[str], None]
+        self, sdk: NemoClient, files_resource: FilesResource, fileset_cleanup: Callable[[str], None]
     ):
         """Test that fileset_auto_create generates a UUID-based name when no fileset is specified."""
         workspace = sdk.workspace or "default"
@@ -908,7 +908,7 @@ class TestFilesUploadAutoCreate:
         assert files.data[0].path == "test.txt"
 
     def test_auto_create_uses_fileset_from_path_syntax(
-        self, sdk: NeMoPlatform, files_resource: FilesResource, fileset_cleanup: Callable[[str], None]
+        self, sdk: NemoClient, files_resource: FilesResource, fileset_cleanup: Callable[[str], None]
     ):
         """Test that fileset_auto_create uses fileset from path when # syntax is used."""
         fileset_name = f"path-syntax-{uuid.uuid4().hex[:8]}"
@@ -971,7 +971,7 @@ class TestListFilesResponseCacheStatus:
         Priority order: caching > not_cached > cached > not_cacheable
         Returns None for empty list or when all files have None status.
         """
-        from nemo_platform.filesets import ListFilesResponse
+        from filesets.filesystem import ListFilesResponse
 
         files = [
             FilesetFileOutput(
@@ -1083,7 +1083,7 @@ class TestFilesDeleteEdgeCases:
 class TestFilesetImmutabilityForNonServicePrincipals:
     """Test service_source immutability: only service principals can set/change it; uploads are restricted."""
 
-    def test_create_fileset_with_service_source_as_default_principal_fails_to_set(self, sdk: NeMoPlatform):
+    def test_create_fileset_with_service_source_as_default_principal_fails_to_set(self, sdk: NemoClient):
         """Non-service principal cannot set service_source; it is stripped on create."""
         files = client_from_platform(sdk, FilesClient)
         workspace = sdk.workspace or "default"
@@ -1102,7 +1102,7 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         files.delete_fileset(name=name, workspace=workspace)
 
     def test_service_principal_can_set_service_source_and_upload_then_user_cannot_upload(
-        self, sdk_user_and_service: tuple[NeMoPlatform, NeMoPlatform]
+        self, sdk_user_and_service: tuple[NemoClient, NemoClient]
     ):
         """service:customizer can create with service_source and upload; non-service principal cannot upload."""
         sdk_user, sdk_service = sdk_user_and_service
@@ -1142,7 +1142,7 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         client_from_platform(sdk_service, FilesClient).delete_fileset(name=name, workspace=workspace)
 
     def test_non_service_principal_cannot_overwrite_or_remove_service_source_on_update(
-        self, sdk_user_and_service: tuple[NeMoPlatform, NeMoPlatform]
+        self, sdk_user_and_service: tuple[NemoClient, NemoClient]
     ):
         """Non-service principal cannot overwrite, change, or remove service_source via PATCH."""
         sdk_user, sdk_service = sdk_user_and_service

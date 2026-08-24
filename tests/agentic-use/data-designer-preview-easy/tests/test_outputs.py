@@ -22,7 +22,7 @@ import json
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from trace_reader import get_session
 
 EXPECTED_COLUMNS = {"product_category", "product_subcategory", "price", "status", "product_description"}
@@ -95,12 +95,12 @@ PREVIEW_CONFIG = {
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace="default")
+    return NemoClient(base_url=nmp_base_url, workspace="default")
 
 
-def _run_preview(client: NeMoPlatform, num_records: int = 5) -> list[dict]:
+def _run_preview(client: NemoClient, num_records: int = 5) -> list[dict]:
     """Run preview using the low-level SDK API and return the dataset records."""
     try:
         result = client.data_designer._preview(
@@ -152,7 +152,7 @@ def test_agent_ran_preview() -> None:
     print("Test passed: Agent executed a preview command")
 
 
-def test_preview_generates_expected_columns(client: NeMoPlatform) -> None:
+def test_preview_generates_expected_columns(client: NemoClient) -> None:
     """Test that the preview produces data with all five expected columns."""
     records = _run_preview(client)
 
@@ -169,7 +169,7 @@ def test_preview_generates_expected_columns(client: NeMoPlatform) -> None:
     print(f"Test passed: Preview generated {len(records)} records with columns {actual_columns}")
 
 
-def test_preview_subcategory_relationships(client: NeMoPlatform) -> None:
+def test_preview_subcategory_relationships(client: NemoClient) -> None:
     """Test that subcategory values are consistent with their parent category."""
     records = _run_preview(client)
 
@@ -192,7 +192,7 @@ def test_preview_subcategory_relationships(client: NeMoPlatform) -> None:
     print(f"Test passed: All {len(records)} records have valid category-subcategory relationships")
 
 
-def test_preview_data_values_valid(client: NeMoPlatform) -> None:
+def test_preview_data_values_valid(client: NemoClient) -> None:
     """Test that price and status columns contain valid values."""
     records = _run_preview(client)
 
@@ -209,7 +209,7 @@ def test_preview_data_values_valid(client: NeMoPlatform) -> None:
     print(f"Test passed: All {len(records)} records have valid price and status values")
 
 
-def test_preview_llm_descriptions_non_empty(client: NeMoPlatform) -> None:
+def test_preview_llm_descriptions_non_empty(client: NemoClient) -> None:
     """Test that the LLM-generated product_description column has non-empty text."""
     records = _run_preview(client)
 

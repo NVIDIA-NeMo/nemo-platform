@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import ClassVar, cast
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.config import NemoPlatformConfig, Runtime
 from nemo_platform_plugin.job import NemoJob
@@ -99,7 +99,7 @@ class BaseSubmitJob(NemoJob):
     runtime_label: ClassVar[str] = "Training"
 
     @classmethod
-    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> BaseModel:
+    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNemoClient) -> BaseModel:
         """Validate platform refs and return the canonical output spec. Per backend."""
         raise NotImplementedError
 
@@ -118,4 +118,4 @@ class BaseSubmitJob(NemoJob):
         if schema is None:
             raise PlatformJobCompilationError(f"{cls.__name__} is missing an input_spec_schema.")
         job_input = input_spec if isinstance(input_spec, schema) else schema.model_validate(input_spec.model_dump())
-        return await cls._transform(job_input, workspace, cast(AsyncNeMoPlatform, async_sdk))
+        return await cls._transform(job_input, workspace, cast(AsyncNemoClient, async_sdk))

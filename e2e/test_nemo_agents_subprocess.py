@@ -21,7 +21,7 @@ Platform, where this module's local harness configuration would be ignored.
 
 import pytest
 from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from e2e.agents_deploy_helpers import run_agent_deploy_and_invoke
 
@@ -34,7 +34,7 @@ pytestmark = [
 ]
 
 
-def test_nat_agent_deploys_and_invokes_through_gateway(sdk: NeMoPlatform, workspace: str) -> None:
+def test_nat_agent_deploys_and_invokes_through_gateway(sdk: NemoClient, workspace: str) -> None:
     """Deploy a NAT agent as a subprocess and invoke it through the gateway."""
     run_agent_deploy_and_invoke(
         sdk,
@@ -44,7 +44,7 @@ def test_nat_agent_deploys_and_invokes_through_gateway(sdk: NeMoPlatform, worksp
     )
 
 
-def test_fabric_agent_deploys_and_invokes_through_gateway(sdk: NeMoPlatform, workspace: str) -> None:
+def test_fabric_agent_deploys_and_invokes_through_gateway(sdk: NemoClient, workspace: str) -> None:
     """Deploy a Fabric-backed agent as a subprocess and invoke it through the gateway."""
     run_agent_deploy_and_invoke(
         sdk,

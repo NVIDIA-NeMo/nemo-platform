@@ -11,7 +11,7 @@ Mirror of :mod:`nmp.automodel.compile`. Invoked by the plugin's
 
 from __future__ import annotations
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.unsloth.app.jobs.compiler import platform_job_config_compiler as _compile_canonical
 from nmp.unsloth.schemas import UnslothJobOutput
@@ -21,7 +21,7 @@ async def platform_job_config_compiler(
     *,
     workspace: str,
     spec: UnslothJobOutput,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     job_name: str | None = None,
     profile: str | None = None,
 ) -> PlatformJobSpec:

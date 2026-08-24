@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.capabilities import reset_capability_cache
 from nemo_platform_plugin.jobs.api_factory import ContainerSpec as FactoryContainerSpec
 from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec as FactoryCPUExecutionProviderSpec
@@ -309,7 +309,7 @@ def mock_jobs_client():
 
 @fixture
 def mock_nmp_client(_mock_files_client, mock_jobs_client):
-    """Create a flexible mock of NeMoPlatform for testing.
+    """Create a flexible mock of NemoClient for testing.
 
     ``client_from_platform`` is patched in the dispatcher (returns the files client)
     and in every controller module that builds a typed Jobs client. The controller
@@ -600,7 +600,7 @@ async def test_client(mock_dispatcher, mock_store, job_config_with_many_profiles
                 return mock_store
 
             # Create SDK for dependency injection
-            test_sdk = AsyncNeMoPlatform(base_url=ac.base_url, http_client=ac)
+            test_sdk = AsyncNemoClient(base_url=ac.base_url, http_client=ac)
 
             app.dependency_overrides[dep_dispatcher] = override_get_dispatcher
             app.dependency_overrides[get_entity_client] = override_get_entity_client
@@ -627,6 +627,6 @@ async def test_client(mock_dispatcher, mock_store, job_config_with_many_profiles
 
 
 @pytest.fixture
-def test_sdk(test_client: AsyncClient) -> AsyncNeMoPlatform:
+def test_sdk(test_client: AsyncClient) -> AsyncNemoClient:
     # Disable retries to prevent duplicate entity creation attempts on transient errors
-    return AsyncNeMoPlatform(base_url=test_client.base_url, http_client=test_client, max_retries=0)
+    return AsyncNemoClient(base_url=test_client.base_url, http_client=test_client, max_retries=0)

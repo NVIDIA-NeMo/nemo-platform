@@ -16,7 +16,7 @@ import httpx
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.dependencies import get_nemo_client as plugin_get_nemo_client
 from nmp.common.config import PlatformConfig
@@ -333,7 +333,7 @@ class TestDependencyProvider:
         created: list[CloseCountingAsyncClient] = []
         created_lock = Lock()
 
-        def resolve_dependency(index: int) -> AsyncNeMoPlatform | AsyncNemoClient:
+        def resolve_dependency(index: int) -> AsyncNemoClient | AsyncNemoClient:
             resolution_ready.wait(timeout=5)
             factory = provider.get_request_scoped_sdk if index % 2 == 0 else provider.get_request_scoped_nemo_client
             return factory()
@@ -363,7 +363,7 @@ class TestDependencyProvider:
         assert sdk_factory_call.call_count == 1
 
         transport = provider.get_http_client()
-        sdk_clients = [client for client in clients if isinstance(client, AsyncNeMoPlatform)]
+        sdk_clients = [client for client in clients if isinstance(client, AsyncNemoClient)]
         nemo_clients = [client for client in clients if isinstance(client, AsyncNemoClient)]
 
         assert created == [transport]

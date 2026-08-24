@@ -811,7 +811,7 @@ class TestRewriteOptionsUris:
                 "uri": "https://replaced-url",
             }
         }
-        sdk.inference.providers.retrieve.assert_called_once_with(workspace="default", name="build")
+        sdk.inference.providers.get_provider.assert_called_once_with(workspace="default", name="build")
 
     def test_replaces_at_nested_openai_compatible(self) -> None:
         options = {
@@ -844,14 +844,14 @@ class TestRewriteOptionsUris:
                 "uri": "https://dont-replace-me",
             }
         }
-        sdk.inference.providers.retrieve.assert_not_called()
+        sdk.inference.providers.get_provider.assert_not_called()
 
     def test_no_sdk_calls_when_options_have_no_sentinel_at_all(self) -> None:
         options = {"a": {"b": {"c": "leaf"}}, "d": "string"}
         sdk = _mock_sdk()
         _rewrite_options_uris(options, sdk)
         assert options == {"a": {"b": {"c": "leaf"}}, "d": "string"}
-        sdk.inference.providers.retrieve.assert_not_called()
+        sdk.inference.providers.get_provider.assert_not_called()
 
     def test_raises_on_missing_provider(self) -> None:
         options = {"nim": {"nmp_uri_spec": {"inference_gateway": {"workspace": "default"}}}}
@@ -922,7 +922,7 @@ class TestRewriteOptionsUris:
 
     def test_wraps_sdk_lookup_failure_in_runtimeerror(self) -> None:
         sdk = MagicMock()
-        sdk.inference.providers.retrieve.side_effect = LookupError("no such provider")
+        sdk.inference.providers.get_provider.side_effect = LookupError("no such provider")
         options = {
             "nim": {
                 "nmp_uri_spec": {

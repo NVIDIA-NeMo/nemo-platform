@@ -17,7 +17,7 @@ from nemo_experimentalist_plugin.experimentalist import run as experimentalist_r
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 
 
@@ -149,7 +149,7 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         validation_dataset=validation_dataset,
         experiment_dir=paths.experiment,
         workspace="workspace-a",
-        client=cast(AsyncNeMoPlatform, client),
+        client=cast(AsyncNemoClient, client),
         config=optimizer_config,
     )
 
@@ -193,7 +193,7 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
         task_template=DatasetRef(uri=str(paths.train)),
         experiment_dir=paths.experiment,
         workspace="workspace-a",
-        client=cast(AsyncNeMoPlatform, ClosingClient()),
+        client=cast(AsyncNemoClient, ClosingClient()),
         config=EvolutionaryOptimizerConfig(),
     )
 
@@ -252,7 +252,7 @@ async def test_run_experimentalist_does_not_close_caller_client_when_backend_cre
             validation_dataset=DatasetRef(uri=str(paths.validation)),
             experiment_dir=paths.experiment,
             workspace="default",
-            client=cast(AsyncNeMoPlatform, client),
+            client=cast(AsyncNemoClient, client),
             config=EvolutionaryOptimizerConfig(),
         )
 

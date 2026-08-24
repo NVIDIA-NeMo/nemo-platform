@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from tests.auth_idp.providers import ProviderConfig
 
@@ -49,13 +49,13 @@ class AuthIdpRuntime(Protocol):
     def exchange_workload_token(self, subject_token: str) -> TokenSet:
         raise NotImplementedError
 
-    def e2e_setup_sdk(self) -> NeMoPlatform:
+    def e2e_setup_sdk(self) -> NemoClient:
         raise NotImplementedError
 
-    def interactive_user_sdk(self) -> NeMoPlatform:
+    def interactive_user_sdk(self) -> NemoClient:
         raise NotImplementedError
 
-    def workload_provider_sdk(self) -> NeMoPlatform:
+    def workload_provider_sdk(self) -> NemoClient:
         raise NotImplementedError
 
     def workload_role_principals(self) -> list[str]:

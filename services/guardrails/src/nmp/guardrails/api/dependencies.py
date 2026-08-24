@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.entities.client import EntityClient
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service.dependencies import get_entity_client
@@ -48,17 +48,17 @@ def get_rails_service(
 
 
 # Dependency for NeMo Platform
-def get_nemo_platform() -> AsyncNeMoPlatform:
+def get_nemo_platform() -> AsyncNemoClient:
     nim_endpoint_url = settings.nim_endpoint_settings.base_url
     # Remove the /v1 from the end of the URL if it exists
     # This is necessary because the NeMo Platform API SDK expects the base URL to not have the /v1 suffix unlike OpenAI SDK
     if nim_endpoint_url.endswith("/v1"):
         nim_endpoint_url = nim_endpoint_url[: -len("/v1")]
-    return AsyncNeMoPlatform(
+    return AsyncNemoClient(
         inference_base_url=nim_endpoint_url,
         http_client=shared_async_http_client(),
     )
 
 
 RailsServiceDep = Annotated[RailsService, Depends(get_rails_service)]
-NeMoPlatformDep = Annotated[AsyncNeMoPlatform, Depends(get_nemo_platform)]
+NemoClientDep = Annotated[AsyncNemoClient, Depends(get_nemo_platform)]

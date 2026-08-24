@@ -168,11 +168,11 @@ def test_file_contents_seed_dataset() -> None:
         u.make_mock_client_context() as client_context,
         tempfile.TemporaryDirectory() as tmpdir,
     ):
-        client_context.sdk.files.filesets.create(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
+        client_context.sdk.files.create_fileset(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
         for filename in ["abc.txt", "xyz.txt"]:
             filepath = Path(tmpdir) / filename
             filepath.write_text(f"This is {filename}")
-        client_context.sdk.files.upload(
+        client_context.sdk.files.upload_file(
             fileset=u.FILESET_NAME,
             workspace=u.WORKSPACE_NAME,
             local_path=tmpdir,

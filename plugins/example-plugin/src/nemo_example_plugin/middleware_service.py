@@ -72,7 +72,7 @@ def _get_entity_client() -> NemoEntitiesClient:
 
     In production use::
 
-        from nemo_platform.resources.entities import get_entity_client
+        from nemo_platform_plugin.entity_client import get_entity_client
         entity_client: Annotated[NemoEntitiesClient, Depends(get_entity_client)]
     """
     raise NotImplementedError("inject via nemo_platform.resources.entities.get_entity_client")

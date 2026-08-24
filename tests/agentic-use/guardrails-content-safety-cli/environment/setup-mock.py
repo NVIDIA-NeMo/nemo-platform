@@ -15,15 +15,9 @@ import json
 import sys
 import time
 
-from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
-    ConflictError,
-    InternalServerError,
-    NeMoPlatform,
-    NotFoundError,
-    UnprocessableEntityError,
-)
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import ConflictError, InternalServerError, NotFoundError, UnprocessableEntityError
+# TODO: migrate APIConnectionError, APITimeoutError from nemo_platform
 
 # Exceptions we treat as transient readiness errors during setup polling.
 # Anything outside this set (auth errors, bad-request, schema validation
@@ -75,9 +69,9 @@ MOCK_RESPONSE_MAP = {
 }
 
 
-def _register_served_model(sdk: NeMoPlatform, workspace: str, provider_name: str, model_name: str) -> None:
+def _register_served_model(sdk: NemoClient, workspace: str, provider_name: str, model_name: str) -> None:
     """Register provider served-model mapping for IGW model discovery."""
-    sdk.inference.providers.update_status(
+    sdk.inference.providers.update_provider_status(
         name=provider_name,
         workspace=workspace,
         served_models=[
@@ -89,10 +83,10 @@ def _register_served_model(sdk: NeMoPlatform, workspace: str, provider_name: str
     )
 
 
-def _ensure_model_entity(sdk: NeMoPlatform, workspace: str, model_name: str) -> None:
+def _ensure_model_entity(sdk: NemoClient, workspace: str, model_name: str) -> None:
     """Create model entity if missing; ignore already-exists conflicts."""
     try:
-        sdk.models.create(
+        sdk.models.create_model(
             workspace=workspace,
             name=model_name,
             description="Mock model entity for guardrails agentic test",
@@ -102,7 +96,7 @@ def _ensure_model_entity(sdk: NeMoPlatform, workspace: str, model_name: str) -> 
 
 
 def wait_for_model(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     provider_name: str,
     model_name: str,
@@ -131,7 +125,7 @@ def wait_for_model(
 
 
 def wait_for_openai_routing(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     model_name: str,
     timeout: float = 60.0,
@@ -170,7 +164,7 @@ def wait_for_openai_routing(
 
 
 def setup() -> None:
-    sdk = NeMoPlatform(base_url=NMP_BASE_URL)
+    sdk = NemoClient(base_url=NMP_BASE_URL)
 
     # Step 1: Create or update mock provider with static "Yes" response.
     # AGENT and VERIFY run in separate containers against the same DB state,
@@ -181,7 +175,7 @@ def setup() -> None:
     desired_headers = {MOCK_RESPONSE_MAP_HEADER: json.dumps(MOCK_RESPONSE_MAP)}
     print(f"Creating mock provider: {MOCK_PROVIDER_NAME}")
     try:
-        sdk.inference.providers.create(
+        sdk.inference.providers.create_provider(
             workspace=WORKSPACE,
             name=MOCK_PROVIDER_NAME,
             host_url=MOCK_PROVIDER_HOST_URL,
@@ -189,7 +183,7 @@ def setup() -> None:
         )
     except ConflictError:
         print(f"Provider already exists, reconciling headers: {MOCK_PROVIDER_NAME}")
-        sdk.inference.providers.update(
+        sdk.inference.providers.update_provider(
             name=MOCK_PROVIDER_NAME,
             workspace=WORKSPACE,
             host_url=MOCK_PROVIDER_HOST_URL,

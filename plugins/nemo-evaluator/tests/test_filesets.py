@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_evaluator.filesets import FilesetRef, download_dataset
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from pytest_mock import MockerFixture
 
 
@@ -36,7 +36,7 @@ async def test_download_dataset_rejects_fragment_path_escape(mocker: MockerFixtu
         pytest.raises(ValueError, match="Fileset path escapes destination"),
     ):
         await download_dataset(
-            cast(AsyncNeMoPlatform, object()),
+            cast(AsyncNemoClient, object()),
             FilesetRef(root="default/helpsteer2#../../outside.jsonl"),
             str(tmp_path),
         )
@@ -52,7 +52,7 @@ async def test_download_dataset_rejects_absolute_root_path(mocker: MockerFixture
         pytest.raises(ValueError, match="Fileset path escapes destination"),
     ):
         await download_dataset(
-            cast(AsyncNeMoPlatform, object()),
+            cast(AsyncNemoClient, object()),
             FilesetRef(root="/tmp/outside"),
             str(tmp_path),
         )

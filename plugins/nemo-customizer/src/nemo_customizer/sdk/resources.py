@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.customization_contributor import CustomizationContributor
 from nemo_platform_plugin.discovery import discover_customization_contributors
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
@@ -26,7 +26,7 @@ def _coerce_health_payload(payload: object) -> dict[str, object]:
 
 def _mount_contributor_sdk_resources(
     target: object,
-    platform: NeMoPlatform | AsyncNeMoPlatform,
+    platform: NemoClient | AsyncNemoClient,
     contributors: dict[str, CustomizationContributor],
     *,
     async_: bool,
@@ -51,7 +51,7 @@ def _mount_contributor_sdk_resources(
 class Customization:
     """Sync SDK namespace mounted as ``client.customization``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         contributors = discover_customization_contributors()
         _mount_contributor_sdk_resources(self, platform, contributors, async_=False)
@@ -69,7 +69,7 @@ class Customization:
 class AsyncCustomization:
     """Async SDK namespace mounted as ``client.customization``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
         contributors = discover_customization_contributors()
         _mount_contributor_sdk_resources(self, platform, contributors, async_=True)

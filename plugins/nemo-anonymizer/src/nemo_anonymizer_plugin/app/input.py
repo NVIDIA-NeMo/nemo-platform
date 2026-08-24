@@ -15,8 +15,8 @@ from urllib.parse import urlparse
 import anyio
 from anonymizer.config.anonymizer_config import AnonymizerInput
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from filesets.filesystem import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager, FilesetFileManager, TmpDirPath
 from pydantic import BaseModel, Field, ValidationError
 
@@ -96,7 +96,7 @@ def validate_anonymizer_input_source(
 async def prepare_anonymizer_input_async(
     data: AnonymizerInputSpec,
     *,
-    sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+    sdk: AsyncNemoClient | NemoClient | None,
     workspace: str,
     allow_local_paths: bool,
 ) -> PreparedAnonymizerInput:
@@ -105,7 +105,7 @@ async def prepare_anonymizer_input_async(
     if source_kind == "fileset":
         if sdk is None:
             raise AnonymizerInvalidConfigError("Fileset input requires a NeMo Platform SDK.")
-        if isinstance(sdk, NeMoPlatform):
+        if isinstance(sdk, NemoClient):
             return await anyio.to_thread.run_sync(
                 partial(
                     prepare_anonymizer_input,
@@ -123,7 +123,7 @@ async def prepare_anonymizer_input_async(
 def prepare_anonymizer_input(
     data: AnonymizerInputSpec,
     *,
-    sdk: NeMoPlatform | None,
+    sdk: NemoClient | None,
     workspace: str,
     allow_local_paths: bool,
 ) -> PreparedAnonymizerInput:
@@ -140,7 +140,7 @@ def prepare_anonymizer_input(
 async def _download_fileset_input_async(
     source: str,
     *,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     workspace: str,
 ) -> TmpDirPath:
     workspace_name, fileset_name, file_path = _parse_fileset_input_ref(source, workspace=workspace)
@@ -175,7 +175,7 @@ async def _download_fileset_input_async_inner(
 def _download_fileset_input(
     source: str,
     *,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
 ) -> TmpDirPath:
     workspace_name, fileset_name, file_path = _parse_fileset_input_ref(source, workspace=workspace)

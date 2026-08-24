@@ -11,7 +11,7 @@ from typing import cast
 import pytest
 from evaluation import artifact, export
 from evaluation.registry import Subject
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 # --------------------------------------------------------------------------- #
 # fake SDK client
@@ -201,7 +201,7 @@ def test_export_closes_injected_client(tmp_path):
         ["ws-a"],
         tmp_path,
         since=None,
-        client=cast(AsyncNeMoPlatform, client),
+        client=cast(AsyncNemoClient, client),
     )
 
     assert client.closed

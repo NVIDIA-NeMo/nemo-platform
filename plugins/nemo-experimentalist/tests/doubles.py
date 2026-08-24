@@ -39,12 +39,12 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_insights_plugin.entities import Insight
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
-def fake_client() -> AsyncNeMoPlatform:
+def fake_client() -> AsyncNemoClient:
     """A stand-in platform client for paths that only check whether one is present."""
-    return cast(AsyncNeMoPlatform, SimpleNamespace())
+    return cast(AsyncNemoClient, SimpleNamespace())
 
 
 class RecordedEvaluation(dict):
@@ -63,7 +63,7 @@ class FakeBackend(ExperimentalistBackend):
     def __init__(
         self,
         *,
-        client: AsyncNeMoPlatform | None = None,
+        client: AsyncNemoClient | None = None,
         storage: CandidateStorageConfig | None = None,
         insight: Insight | None = None,
     ) -> None:

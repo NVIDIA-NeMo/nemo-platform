@@ -19,11 +19,12 @@ import pytest
 from docker.errors import NotFound
 from nemo_deployments_plugin.backends.labels import container_name as plugin_container_name
 from nemo_deployments_plugin.backends.labels import docker_volume_name
-from nemo_platform import ConflictError, NeMoPlatform, NotFoundError
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.inference.model_provider import ModelProvider
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+from nemo_platform_plugin.models.types.model_deployment import ModelDeployment
+from nemo_platform_plugin.models.types.model_deployment_config import ModelDeploymentConfig
+from nemo_platform_plugin.models.types.model_provider import ModelProvider
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nmp.core.inference_gateway.api.dependencies import global_virtual_model_cache
 from nmp.core.inference_gateway.api.model_cache import ModelCache, ModelProviderInfo
 from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
@@ -35,7 +36,7 @@ DEFAULT_WORKSPACE = "default"
 
 def _wait_for_deployment_ready(
     controller: ModelsController,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     deployment_name: str,
     max_wait: float = 30,
     poll_interval: float = 0.1,
@@ -61,7 +62,7 @@ def _wait_for_deployment_ready(
     @retry(stop=stop_after_delay(max_wait), wait=wait_fixed(poll_interval), reraise=True)
     def _poll():
         controller.step()
-        deployment = sdk.inference.deployments.retrieve(
+        deployment = sdk.inference.deployments.get_deployment(
             deployment_name,
             workspace=DEFAULT_WORKSPACE,
         )
@@ -73,7 +74,7 @@ def _wait_for_deployment_ready(
 
 def _wait_for_deployment_deleted(
     controller: ModelsController,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     deployment_name: str,
     max_wait: float = 30,
     poll_interval: float = 0.1,
@@ -91,7 +92,7 @@ def _wait_for_deployment_deleted(
     def _poll() -> None:
         controller.step()
         try:
-            deployment = sdk.inference.deployments.retrieve(
+            deployment = sdk.inference.deployments.get_deployment(
                 deployment_name,
                 workspace=DEFAULT_WORKSPACE,
             )
@@ -103,7 +104,7 @@ def _wait_for_deployment_deleted(
 
 
 def _create_deployment_with_config(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     config_name: str,
     deployment_name: str,
     mock_nim_image: str,
@@ -122,7 +123,7 @@ def _create_deployment_with_config(
     # Use rsplit to handle registry URLs with port numbers
     # e.g., "registry.example.com/nemo-platform/mock-nim:1.0.0"
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
-    config = sdk.inference.deployment_configs.create(
+    config = sdk.inference.deployment_configs.create_deployment_config(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
         engine="nim",
@@ -134,7 +135,7 @@ def _create_deployment_with_config(
         },
     )
 
-    deployment = sdk.inference.deployments.create(
+    deployment = sdk.inference.deployments.create_deployment(
         workspace=DEFAULT_WORKSPACE,
         name=deployment_name,
         config=config_name,
@@ -144,7 +145,7 @@ def _create_deployment_with_config(
 
 
 def _configure_served_models(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     provider_name: str,
     model_entity_name: str,
     served_model_name: str,
@@ -160,7 +161,7 @@ def _configure_served_models(
     Returns:
         The updated ModelProvider
     """
-    return sdk.inference.providers.update_status(
+    return sdk.inference.providers.update_provider_status(
         provider_name,
         workspace=DEFAULT_WORKSPACE,
         served_models=[
@@ -186,7 +187,7 @@ def _assert_chat_response(response_data: dict[str, Any], route_name: str) -> Non
 
 def _manually_add_provider_to_cache(
     model_cache: ModelCache,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     provider_name: str,
     rebuild_model_entity_map: bool = False,
 ) -> bool:
@@ -205,7 +206,7 @@ def _manually_add_provider_to_cache(
         True if provider was added, False otherwise
     """
     try:
-        provider = sdk.inference.providers.retrieve(
+        provider = sdk.inference.providers.get_provider(
             provider_name,
             workspace=DEFAULT_WORKSPACE,
         )
@@ -233,7 +234,7 @@ def _manually_add_provider_to_cache(
         if not entity_name or "&adapters/" in entity_name:
             continue
         try:
-            sdk.inference.virtual_models.create(
+            sdk.inference.virtual_models.create_virtual_model(
                 workspace=ws,
                 name=entity_name,
                 default_model_entity=f"{ws}/{entity_name}",
@@ -393,7 +394,7 @@ def test_igw_routes_to_deployed_mock_nim(
     _assert_chat_response(openai_chat, "OpenAI route")
 
     # === Phase 8: Cleanup ===
-    sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
+    sdk.inference.deployments.delete_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
     # Drive the non-blocking delete to completion before removing the config.
     _wait_for_deployment_deleted(controller, sdk, deployment_name)
 
@@ -415,7 +416,7 @@ def test_igw_routes_to_deployed_mock_nim(
         # After all retries, log but don't fail - provider deletion is the key check
         print(f"Warning: Container {container_name} still running after retries")
 
-    sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
+    sdk.inference.deployment_configs.delete_deployment_config(config_name, workspace=DEFAULT_WORKSPACE)
 
 
 def test_igw_returns_404_for_unknown_provider(controller_with_docker_and_igw):
@@ -469,7 +470,7 @@ def test_igw_cache_removes_deleted_deployment_provider(
     assert model_cache.get_from_provider(DEFAULT_WORKSPACE, deployment_name) is not None
 
     # Delete deployment
-    sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
+    sdk.inference.deployments.delete_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
     _wait_for_deployment_deleted(controller, sdk, deployment_name)
 
     # Manually remove from cache (simulating cache refresh)
@@ -481,4 +482,4 @@ def test_igw_cache_removes_deleted_deployment_provider(
     assert model_cache.get_from_provider(DEFAULT_WORKSPACE, deployment_name) is None
 
     # Cleanup
-    sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
+    sdk.inference.deployment_configs.delete_deployment_config(config_name, workspace=DEFAULT_WORKSPACE)

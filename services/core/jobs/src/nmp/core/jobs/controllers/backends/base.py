@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Generic, Literal, Optional, TypeVar
 from urllib.parse import SplitResult, quote, urlsplit
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
@@ -330,7 +330,7 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
 
     def __init__(
         self,
-        nmp_sdk: NeMoPlatform,
+        nmp_sdk: NemoClient,
         execution_profile_config: ExecutionProfileConfigT,
         profile_name: str,
     ):

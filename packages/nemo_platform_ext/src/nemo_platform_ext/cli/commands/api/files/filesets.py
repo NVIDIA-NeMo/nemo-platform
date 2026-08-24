@@ -145,7 +145,7 @@ def create_filesets(
         return
 
     client = state.get_client()
-    result = client.files.filesets.create(**all_kwargs)
+    result = client.files.create_fileset(**all_kwargs)
 
     format_output(
         result,
@@ -177,7 +177,7 @@ def delete_filesets(
     kwargs = build_kwargs(
         workspace=workspace,
     )
-    client.files.filesets.delete(name, **kwargs)
+    client.files.delete_fileset(name, **kwargs)
 
     typer.echo("✓ Deleted successfully")
 
@@ -259,13 +259,13 @@ def list_filesets(
     pagination_type = PaginationType.PAGE_NUMBER
     if all_pages:
         items = fetch_all_pages(
-            client.files.filesets.list,
+            client.files.list_filesets,
             path_args=path_args,
             body_args=kwargs,
             pagination_type=pagination_type,
         )
     else:
-        items = client.files.filesets.list(*path_args, **kwargs)
+        items = client.files.list_filesets(*path_args, **kwargs)
 
     format_output(
         items,
@@ -302,7 +302,7 @@ def retrieve_filesets(
         return
 
     client = state.get_client()
-    result = client.files.filesets.retrieve(name, **kwargs)
+    result = client.files.get_fileset(name, **kwargs)
 
     format_output(
         result,
@@ -384,7 +384,7 @@ def update_filesets(
         return
 
     client = state.get_client()
-    result = client.files.filesets.update(**all_kwargs)
+    result = client.files.update_fileset(**all_kwargs)
 
     format_output(
         result,

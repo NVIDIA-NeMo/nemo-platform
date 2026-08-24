@@ -15,20 +15,20 @@ always returns "Yes" (block), so ALL content is blocked.
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 WORKSPACE = "default"
 MODEL = "default/mock-llm"
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
+    return NemoClient(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
 @pytest.fixture
-def guardrail_config_id(client: NeMoPlatform) -> str:
+def guardrail_config_id(client: NemoClient) -> str:
     """Discover the guardrail config the agent created.
 
     Lists all guardrail configs and finds one that uses the mock-llm model.
@@ -64,7 +64,7 @@ def test_guardrail_config_exists(guardrail_config_id: str) -> None:
     print(f"Guardrail config exists: {guardrail_config_id}")
 
 
-def test_content_blocked_by_guardrails(client: NeMoPlatform, guardrail_config_id: str) -> None:
+def test_content_blocked_by_guardrails(client: NemoClient, guardrail_config_id: str) -> None:
     """Test that content sent through guardrails is blocked.
 
     The mock inference backend always returns 'Yes' to the self-check prompt,
@@ -82,7 +82,7 @@ def test_content_blocked_by_guardrails(client: NeMoPlatform, guardrail_config_id
     print(f"Content correctly blocked with status: {response.status}")
 
 
-def test_safe_content_also_blocked(client: NeMoPlatform, guardrail_config_id: str) -> None:
+def test_safe_content_also_blocked(client: NemoClient, guardrail_config_id: str) -> None:
     """Test that even safe content is blocked (expected with mock backend).
 
     Since the mock always returns 'Yes' (block), even safe content gets blocked.

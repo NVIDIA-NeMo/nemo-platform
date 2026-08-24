@@ -3,7 +3,7 @@
 
 """Task that exercises workload-auth by reading a workspace through the public SDK."""
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.jobs.config import get_task_config
 from nmp.common.sdk_factory import get_task_sdk
 from pydantic import BaseModel
@@ -15,12 +15,12 @@ class WorkloadWorkspaceGetConfig(BaseModel):
     workspace: str
 
 
-def run(*, sdk: NeMoPlatform | None = None) -> int:
+def run(*, sdk: NemoClient | None = None) -> int:
     """Read the configured workspace using the public SDK workload identity path."""
     try:
         config = get_task_config(WorkloadWorkspaceGetConfig)
         sdk = sdk or get_task_sdk(as_service="jobs")
-        workspace = sdk.workspaces.retrieve(config.workspace)
+        workspace = sdk.workspaces.get_workspace(config.workspace)
         print(f"Successfully retrieved workspace: {workspace.name}")
         return 0
     except Exception as exc:

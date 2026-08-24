@@ -17,7 +17,7 @@ from typing import Generator
 
 import pytest
 from click.testing import Result
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
@@ -43,19 +43,19 @@ def http_client(client_context: ClientContext) -> TestClient:
 
 
 @pytest.fixture(scope="module")
-def sdk(client_context: ClientContext) -> NeMoPlatform:
+def sdk(client_context: ClientContext) -> NemoClient:
     """SDK client backed by the test client."""
     return client_context.sdk
 
 
 @pytest.fixture(scope="module")
-def files_client(sdk: NeMoPlatform) -> FilesClient:
+def files_client(sdk: NemoClient) -> FilesClient:
     """Provide a FilesClient derived from the SDK."""
     return client_from_platform(sdk, FilesClient)
 
 
 @pytest.fixture
-def random_workspace(sdk: NeMoPlatform) -> str:
+def random_workspace(sdk: NemoClient) -> str:
     """
     Create a random workspace for tests.
 
@@ -63,12 +63,12 @@ def random_workspace(sdk: NeMoPlatform) -> str:
     service dependency to make tests faster, but that requires unique workspace names for isolation.
     """
     workspace_name = f"test-{uuid.uuid4().hex[:8]}"
-    sdk.workspaces.create(name=workspace_name, description=f"Test Workspace {workspace_name}")
+    sdk.workspaces.create_workspace(name=workspace_name, description=f"Test Workspace {workspace_name}")
     return workspace_name
 
 
 class NmpCliRunner(CliRunner):
-    def __init__(self, client: NeMoPlatform):
+    def __init__(self, client: NemoClient):
         super().__init__()
         self.client = client
 
@@ -83,8 +83,8 @@ class NmpCliRunner(CliRunner):
 
 
 @pytest.fixture
-def runner(sdk: NeMoPlatform) -> NmpCliRunner:
-    """Create a CLI test runner with injected NeMoPlatform client."""
+def runner(sdk: NemoClient) -> NmpCliRunner:
+    """Create a CLI test runner with injected NemoClient client."""
     return NmpCliRunner(client=sdk)
 
 

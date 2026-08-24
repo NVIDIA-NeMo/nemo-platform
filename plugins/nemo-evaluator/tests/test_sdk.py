@@ -36,7 +36,7 @@ from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackag
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import FieldMapping, Model, ModelRef, RunConfig, RunConfigOnline, RunConfigOnlineModel
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from pydantic import ValidationError
 from pytest_mock import MockerFixture
@@ -143,9 +143,9 @@ def test_http_utils_builds_evaluator_urls_with_normalized_slashes() -> None:
     platform.base_url = "http://test:8000/"
 
     assert http_utils.base_url("http://test:8000/") == "http://test:8000"
-    assert http_utils.url(cast(NeMoPlatform, platform), "/v1/healthz") == "http://test:8000/apis/evaluator/v1/healthz"
+    assert http_utils.url(cast(NemoClient, platform), "/v1/healthz") == "http://test:8000/apis/evaluator/v1/healthz"
     assert (
-        http_utils.url(cast(NeMoPlatform, platform), "v2/workspaces/{workspace}/evaluate/jobs", "ws")
+        http_utils.url(cast(NemoClient, platform), "v2/workspaces/{workspace}/evaluate/jobs", "ws")
         == "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs"
     )
 
@@ -159,7 +159,7 @@ def test_http_utils_builds_evaluator_job_creation_request_parts() -> None:
     }
 
     assert create_job_payload(_EXACT_MATCH_EVALUATE_INPUT_SPEC) == {"spec": _EXACT_MATCH_EVALUATE_INPUT_SPEC_JSON}
-    assert http_utils.platform_default_headers(cast(NeMoPlatform, platform)) == {
+    assert http_utils.platform_default_headers(cast(NemoClient, platform)) == {
         "Authorization": "Bearer sync-platform-token"
     }
 
@@ -191,7 +191,7 @@ def test_http_utils_builds_encoded_job_route_urls() -> None:
 def test_sync_executor_initializes_without_resource_callbacks() -> None:
     platform = _SyncPlatform()
 
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
 
     assert executor is not None
 
@@ -199,7 +199,7 @@ def test_sync_executor_initializes_without_resource_callbacks() -> None:
 def test_async_executor_initializes_without_resource_callbacks() -> None:
     platform = _AsyncPlatform()
 
-    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNemoClient, platform))
 
     assert executor is not None
 
@@ -207,7 +207,7 @@ def test_async_executor_initializes_without_resource_callbacks() -> None:
 def test_resolve_workspace_requires_explicit_or_default_workspace() -> None:
     """Remote/local executor helpers should fail when no workspace can be resolved."""
     with pytest.raises(ValueError, match="workspace must be provided"):
-        http_utils.resolve_workspace(cast(NeMoPlatform, _PlatformWithoutWorkspace()), None, strict=True)
+        http_utils.resolve_workspace(cast(NemoClient, _PlatformWithoutWorkspace()), None, strict=True)
 
 
 def test_bundle_metrics_for_spec_rejects_non_metric_object() -> None:
@@ -311,7 +311,7 @@ def test_sync_resource_calls_evaluator_plugin_status() -> None:
         json={"plugin": "evaluator", "status": "ok"},
     )
 
-    resource = Evaluator(cast(NeMoPlatform, platform))
+    resource = Evaluator(cast(NemoClient, platform))
 
     assert resource.plugin_status() == {"plugin": "evaluator", "status": "ok"}
     platform._client.get.assert_called_once_with(
@@ -327,14 +327,14 @@ def test_sync_resource_rejects_non_object_plugin_status() -> None:
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v1/healthz"),
         json=["ok"],
     )
-    resource = Evaluator(cast(NeMoPlatform, platform))
+    resource = Evaluator(cast(NemoClient, platform))
 
     with pytest.raises(TypeError, match="JSON object"):
         resource.plugin_status()
 
 
 def test_sync_resource_does_not_expose_backend_methods() -> None:
-    resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+    resource = Evaluator(cast(NemoClient, _SyncPlatform()))
 
     for method_name in ("create", "run_local", "evaluate", "evaluate_benchmark", "execution_mode"):
         assert not hasattr(resource, method_name)
@@ -347,7 +347,7 @@ def test_sync_executor_creates_evaluator_job() -> None:
         request=httpx.Request("POST", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs"),
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
     spec = _EXACT_MATCH_EVALUATE_INPUT_SPEC
 
     job = executor.create(spec=spec, workspace="ws")
@@ -372,7 +372,7 @@ def test_sync_executor_create_does_not_use_asyncio_thread_bridge(mocker: MockerF
         request=httpx.Request("POST", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs"),
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
 
     job = executor.create(spec=_EXACT_MATCH_EVALUATE_INPUT_SPEC, workspace="ws")
 
@@ -390,7 +390,7 @@ def test_sync_executor_create_uses_platform_workspace_by_default() -> None:
         request=httpx.Request("POST", "http://test:8000/apis/evaluator/v2/workspaces/platform-ws/evaluate/jobs"),
         json={"name": "job-123", "spec": _EXACT_MATCH_SPEC},
     )
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
 
     job = executor.create(spec=_EXACT_MATCH_EVALUATE_INPUT_SPEC)
     assert job.name == "job-123"
@@ -411,7 +411,7 @@ def test_sync_executor_create_rejects_malformed_response() -> None:
         request=httpx.Request("POST", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs"),
         json=["job-123"],
     )
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
 
     with pytest.raises(ValidationError):
         executor.create(spec=_EXACT_MATCH_EVALUATE_INPUT_SPEC, workspace="ws")
@@ -431,7 +431,7 @@ def test_sync_executor_waits_when_requested(mocker: MockerFixture) -> None:
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
     wait = mocker.patch("nemo_evaluator.sdk.job_resources.EvaluatorJobResource.wait_until_done")
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
 
     job = executor.create(spec=_EXACT_MATCH_EVALUATE_INPUT_SPEC, workspace="ws", wait_until_done=True)
 
@@ -456,7 +456,7 @@ def test_sync_resource_gets_existing_job_resource() -> None:
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs/job-123"),
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
-    resource = Evaluator(cast(NeMoPlatform, platform))
+    resource = Evaluator(cast(NemoClient, platform))
 
     job = resource.get_job_resource("job-123", workspace="ws")
 
@@ -474,7 +474,7 @@ def test_sync_resource_propagates_missing_job_response() -> None:
         404,
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs/missing"),
     )
-    resource = Evaluator(cast(NeMoPlatform, platform))
+    resource = Evaluator(cast(NemoClient, platform))
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         resource.get_job_resource("missing", workspace="ws")
@@ -490,7 +490,7 @@ def test_sync_resource_url_encodes_reserved_chars_in_job_name() -> None:
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs/job%2F123%3F"),
         json={"name": "job/123?", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
-    resource = Evaluator(cast(NeMoPlatform, platform))
+    resource = Evaluator(cast(NemoClient, platform))
 
     resource.get_job_resource("job/123?", workspace="ws")
 
@@ -506,7 +506,7 @@ class TestEvaluatorSubmit:
     def test_builds_request_from_unpacked_fields(self, mocker: MockerFixture) -> None:
         """Submit should forward public fields to the executor explicitly."""
         platform = _SyncPlatform()
-        resource = Evaluator(cast(NeMoPlatform, platform))
+        resource = Evaluator(cast(NemoClient, platform))
         expected_job = mocker.Mock(spec=EvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", return_value=expected_job)
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -539,7 +539,7 @@ class TestEvaluatorSubmit:
     def test_accepts_fileset_ref_dataset(self, mocker: MockerFixture) -> None:
         """Submit should forward FilesetRef datasets unchanged to the executor."""
         platform = _SyncPlatform()
-        resource = Evaluator(cast(NeMoPlatform, platform))
+        resource = Evaluator(cast(NemoClient, platform))
         expected_job = mocker.Mock(spec=EvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", return_value=expected_job)
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -563,7 +563,7 @@ class TestEvaluatorSubmit:
     def test_accepts_model_ref_target(self, mocker: MockerFixture) -> None:
         """Submit should forward platform ModelRef targets to the plugin executor."""
         platform = _SyncPlatform()
-        resource = Evaluator(cast(NeMoPlatform, platform))
+        resource = Evaluator(cast(NemoClient, platform))
         expected_job = mocker.Mock(spec=EvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", return_value=expected_job)
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -594,7 +594,7 @@ class TestEvaluatorSubmit:
 
     def test_defaults_to_inline_packager_for_builtin_metric(self, mocker: MockerFixture) -> None:
         """Submit of a built-in metric without an explicit packager defaults to inline bundling."""
-        resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+        resource = Evaluator(cast(NemoClient, _SyncPlatform()))
         expected_job = mocker.Mock(spec=EvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", return_value=expected_job)
 
@@ -608,7 +608,7 @@ class TestEvaluatorSubmit:
 
     def test_requires_explicit_packager_for_custom_metric(self) -> None:
         """Submit of a custom metric requires an explicit cloudpickle opt-in."""
-        resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+        resource = Evaluator(cast(NemoClient, _SyncPlatform()))
 
         with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
             resource.submit(
@@ -619,7 +619,7 @@ class TestEvaluatorSubmit:
 
 def test_sync_executor_submit_resolves_model_ref_before_creating_job(mocker: MockerFixture) -> None:
     platform = _SyncPlatform()
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, platform))
     expected_job = mocker.Mock(spec=EvaluatorJobResource)
     create = mocker.patch.object(executor, "create", return_value=expected_job)
     resolved_model = Model(url="https://igw.example.test/v1/chat/completions", name="model-a")
@@ -643,7 +643,7 @@ def test_sync_executor_submit_resolves_model_ref_before_creating_job(mocker: Moc
 
 
 def test_sync_executor_submit_requires_online_model_params_for_model_ref() -> None:
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, _SyncPlatform()))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, _SyncPlatform()))
 
     with pytest.raises(TypeError, match="ModelRef target requires RunConfigOnlineModel"):
         executor.submit(
@@ -656,7 +656,7 @@ def test_sync_executor_submit_requires_online_model_params_for_model_ref() -> No
 
 
 def test_sync_executor_submit_rejects_online_params_without_target() -> None:
-    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, _SyncPlatform()))
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NemoClient, _SyncPlatform()))
 
     with pytest.raises(TypeError, match="offline evaluation requires RunConfig"):
         executor.submit(
@@ -676,7 +676,7 @@ async def test_async_resource_calls_evaluator_plugin_status() -> None:
         json={"plugin": "evaluator", "status": "ok"},
     )
 
-    resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+    resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
 
     assert await resource.plugin_status() == {"plugin": "evaluator", "status": "ok"}
     platform._client.get.assert_awaited_once_with(
@@ -693,14 +693,14 @@ async def test_async_resource_rejects_non_object_plugin_status() -> None:
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v1/healthz"),
         json=["ok"],
     )
-    resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+    resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
 
     with pytest.raises(TypeError, match="JSON object"):
         await resource.plugin_status()
 
 
 def test_async_resource_does_not_expose_backend_methods() -> None:
-    resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+    resource = AsyncEvaluator(cast(AsyncNemoClient, _AsyncPlatform()))
 
     for method_name in ("create", "run_local", "evaluate", "evaluate_benchmark", "execution_mode"):
         assert not hasattr(resource, method_name)
@@ -715,7 +715,7 @@ async def test_async_executor_creates_evaluator_job(mocker: MockerFixture) -> No
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
     http_client_cls = mocker.patch("nemo_evaluator.sdk._executor.httpx.Client")
-    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNemoClient, platform))
     spec = _EXACT_MATCH_EVALUATE_INPUT_SPEC
 
     job = await executor.create(spec=spec, workspace="ws")
@@ -747,7 +747,7 @@ async def test_async_executor_waits_when_requested(mocker: MockerFixture) -> Non
         "nemo_evaluator.sdk.job_resources.AsyncEvaluatorJobResource.wait_until_done",
         new=AsyncMock(),
     )
-    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNemoClient, platform))
 
     job = await executor.create(spec=_EXACT_MATCH_EVALUATE_INPUT_SPEC, workspace="ws", wait_until_done=True)
 
@@ -773,7 +773,7 @@ async def test_async_resource_gets_existing_job_resource() -> None:
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs/job-123"),
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
-    resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+    resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
 
     job = await resource.get_job_resource("job-123", workspace="ws")
 
@@ -794,7 +794,7 @@ async def test_async_resource_url_encodes_reserved_chars_in_job_name() -> None:
         request=httpx.Request("GET", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs/job%2F123%3F"),
         json={"name": "job/123?", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
-    resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+    resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
 
     await resource.get_job_resource("job/123?", workspace="ws")
 
@@ -811,7 +811,7 @@ class TestAsyncEvaluatorSubmit:
     async def test_builds_request_from_unpacked_fields(self, mocker: MockerFixture) -> None:
         """Submit should forward public fields to the executor explicitly."""
         platform = _AsyncPlatform()
-        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+        resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
         expected_job = mocker.Mock(spec=AsyncEvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", new=AsyncMock(return_value=expected_job))
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -845,7 +845,7 @@ class TestAsyncEvaluatorSubmit:
     async def test_accepts_fileset_ref_dataset(self, mocker: MockerFixture) -> None:
         """Submit should forward FilesetRef datasets unchanged to the executor."""
         platform = _AsyncPlatform()
-        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+        resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
         expected_job = mocker.Mock(spec=AsyncEvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", new=AsyncMock(return_value=expected_job))
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -870,7 +870,7 @@ class TestAsyncEvaluatorSubmit:
     async def test_accepts_model_ref_target(self, mocker: MockerFixture) -> None:
         """Submit should forward platform ModelRef targets to the plugin executor."""
         platform = _AsyncPlatform()
-        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, platform))
+        resource = AsyncEvaluator(cast(AsyncNemoClient, platform))
         expected_job = mocker.Mock(spec=AsyncEvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", new=AsyncMock(return_value=expected_job))
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -902,7 +902,7 @@ class TestAsyncEvaluatorSubmit:
     @pytest.mark.asyncio
     async def test_defaults_to_inline_packager_for_builtin_metric(self, mocker: MockerFixture) -> None:
         """Async submit of a built-in metric defaults to inline bundling."""
-        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+        resource = AsyncEvaluator(cast(AsyncNemoClient, _AsyncPlatform()))
         expected_job = mocker.Mock(spec=AsyncEvaluatorJobResource)
         submit = mocker.patch.object(resource._executor, "submit", new=AsyncMock(return_value=expected_job))
 
@@ -917,7 +917,7 @@ class TestAsyncEvaluatorSubmit:
     @pytest.mark.asyncio
     async def test_requires_explicit_packager_for_custom_metric(self) -> None:
         """Async submit of a custom metric requires an explicit cloudpickle opt-in."""
-        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+        resource = AsyncEvaluator(cast(AsyncNemoClient, _AsyncPlatform()))
 
         with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
             await resource.submit(
@@ -937,7 +937,7 @@ async def test_async_executor_remote_submit_uses_platform_async_client_headers_a
         json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
     )
     http_client_cls = mocker.patch("nemo_evaluator.sdk._executor.httpx.Client")
-    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNemoClient, platform))
 
     job = await executor.create(spec=_EXACT_MATCH_EVALUATE_INPUT_SPEC, workspace="ws")
 
@@ -954,7 +954,7 @@ async def test_async_executor_remote_submit_uses_platform_async_client_headers_a
 @pytest.mark.asyncio
 async def test_async_executor_submit_resolves_model_ref_before_creating_job(mocker: MockerFixture) -> None:
     platform = _AsyncPlatform()
-    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNemoClient, platform))
     expected_job = mocker.Mock(spec=AsyncEvaluatorJobResource)
     create = mocker.patch.object(executor, "create", new=AsyncMock(return_value=expected_job))
     resolved_model = Model(url="https://igw.example.test/v1/chat/completions", name="model-a")
@@ -979,7 +979,7 @@ async def test_async_executor_submit_resolves_model_ref_before_creating_job(mock
 
 @pytest.mark.asyncio
 async def test_async_executor_submit_rejects_online_params_without_target() -> None:
-    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, _AsyncPlatform()))
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNemoClient, _AsyncPlatform()))
 
     with pytest.raises(TypeError, match="offline evaluation requires RunConfig"):
         await executor.submit(

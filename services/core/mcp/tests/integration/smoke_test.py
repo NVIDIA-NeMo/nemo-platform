@@ -15,7 +15,7 @@ from typing import Any, Generator
 import pytest
 from fastmcp import FastMCP
 from mcp.types import TextContent
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.mcp.server import create_server
 
@@ -27,7 +27,7 @@ def nmp_base_url() -> str:
 
 
 @pytest.fixture(scope="module")
-def nemo_sdk(nmp_base_url: str) -> Generator[NeMoPlatform, None, None]:
+def nemo_sdk(nmp_base_url: str) -> Generator[NemoClient, None, None]:
     """Create NeMo SDK client for direct API validation."""
     client = get_platform_sdk(base_url=nmp_base_url)
     yield client
@@ -49,7 +49,7 @@ def _text_content(tool_result: Any) -> str:
 class TestMCPServerSmoke:
     """Smoke tests for MCP server basic functionality."""
 
-    def test_nmp_connection(self, nemo_sdk: NeMoPlatform) -> None:
+    def test_nmp_connection(self, nemo_sdk: NemoClient) -> None:
         """Verify we can connect to NeMo Platform instance."""
         # This will raise if NeMo Platform is not accessible
         response = nemo_sdk.workspaces.list()
@@ -68,7 +68,7 @@ class TestMCPServerSmoke:
         assert "list_workspaces" in tool_names
 
     @pytest.mark.asyncio
-    async def test_list_workspaces_matches_sdk(self, mcp_server: FastMCP, nemo_sdk: NeMoPlatform) -> None:
+    async def test_list_workspaces_matches_sdk(self, mcp_server: FastMCP, nemo_sdk: NemoClient) -> None:
         """
         Verify MCP tool returns consistent data with SDK.
 

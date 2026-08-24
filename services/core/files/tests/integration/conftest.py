@@ -15,8 +15,8 @@ import huggingface_hub
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
-from nemo_platform import NeMoPlatform
-from nemo_platform.filesets.resources import FilesResource
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.files.client import FilesResource
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
@@ -58,7 +58,7 @@ def _get_auth_client_from_request(request: Request) -> AuthClient:
     )
 
 
-def _create_asgi_async_files_client(sdk: NeMoPlatform) -> tuple[httpx.AsyncClient, AsyncFilesClient]:
+def _create_asgi_async_files_client(sdk: NemoClient) -> tuple[httpx.AsyncClient, AsyncFilesClient]:
     sdk_http_client = sdk._client
     assert isinstance(sdk_http_client, SDKTestClientAdapter)
     base_url = str(sdk.base_url).rstrip("/")
@@ -74,7 +74,7 @@ def _create_asgi_async_files_client(sdk: NeMoPlatform) -> tuple[httpx.AsyncClien
     )
 
 
-def _install_asgi_files_resource(sdk: NeMoPlatform) -> httpx.AsyncClient:
+def _install_asgi_files_resource(sdk: NemoClient) -> httpx.AsyncClient:
     http_client, async_files_client = _create_asgi_async_files_client(sdk)
     sdk.__dict__["files"] = FilesResource(
         sdk,
@@ -85,7 +85,7 @@ def _install_asgi_files_resource(sdk: NeMoPlatform) -> httpx.AsyncClient:
 
 
 @pytest.fixture
-def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
+def sdk_user_and_service() -> Iterator[tuple[NemoClient, NemoClient]]:
     """Two SDKs sharing the same app: default user principal and service:customizer.
 
     Yields (sdk_user, sdk_service). Use when testing service_source immutability
@@ -113,12 +113,12 @@ def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
         user_async_http_client: httpx.AsyncClient | None = None
         service_async_http_client: httpx.AsyncClient | None = None
         try:
-            sdk_user = NeMoPlatform(
+            sdk_user = NemoClient(
                 base_url=base_url,
                 http_client=SDKTestClientAdapter(client_user),
                 max_retries=0,
             )
-            sdk_service = NeMoPlatform(
+            sdk_service = NemoClient(
                 base_url=base_url,
                 http_client=SDKTestClientAdapter(client_service),
                 max_retries=0,
@@ -136,7 +136,7 @@ def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
 
 
 @pytest.fixture
-def sdk() -> Iterator[NeMoPlatform]:
+def sdk() -> Iterator[NemoClient]:
     """SDK client backed by the test client."""
     with create_test_client(
         FilesService,
@@ -151,13 +151,13 @@ def sdk() -> Iterator[NeMoPlatform]:
 
 
 @pytest.fixture
-def files_client(sdk: NeMoPlatform) -> FilesClient:
+def files_client(sdk: NemoClient) -> FilesClient:
     """Provide a FilesClient derived from the SDK."""
     return client_from_platform(sdk, FilesClient)
 
 
 @pytest.fixture
-def async_files_client(sdk: NeMoPlatform) -> AsyncFilesClient:
+def async_files_client(sdk: NemoClient) -> AsyncFilesClient:
     """Provide the SDK fixture's in-memory AsyncFilesClient."""
     client = sdk.files.fsspec._client
     assert isinstance(client, AsyncFilesClient)
@@ -165,13 +165,13 @@ def async_files_client(sdk: NeMoPlatform) -> AsyncFilesClient:
 
 
 @pytest.fixture
-def files_resource(sdk: NeMoPlatform) -> FilesResource:
+def files_resource(sdk: NemoClient) -> FilesResource:
     """Provide a FilesResource backed by the test FilesClient."""
     return sdk.files
 
 
 @pytest.fixture
-def sdk_allow_user_local_storage(tmp_path) -> Iterator[NeMoPlatform]:
+def sdk_allow_user_local_storage(tmp_path) -> Iterator[NemoClient]:
     """SDK client with allow_user_local_storage enabled."""
     files_config = FilesConfig(
         default_storage_config=LocalStorageConfig(path=str(tmp_path / "default")),
@@ -192,7 +192,7 @@ def sdk_allow_user_local_storage(tmp_path) -> Iterator[NeMoPlatform]:
 
 
 @pytest.fixture
-def client(sdk: NeMoPlatform) -> httpx.Client:
+def client(sdk: NemoClient) -> httpx.Client:
     """TestClient extracted from SDK, sharing the same app context."""
     return sdk._client
 
@@ -209,13 +209,13 @@ def files_config() -> FilesConfig:
 
 
 @pytest.fixture
-def fileset(sdk: NeMoPlatform) -> Iterator[FilesetOutput]:
+def fileset(sdk: NemoClient) -> Iterator[FilesetOutput]:
     with create_fileset(sdk) as fileset:
         yield fileset
 
 
 @pytest.fixture
-def fileset_cleanup(sdk: NeMoPlatform, files_client: FilesClient) -> Iterator[Callable[[str], None]]:
+def fileset_cleanup(sdk: NemoClient, files_client: FilesClient) -> Iterator[Callable[[str], None]]:
     """Fixture that provides a function to register filesets for cleanup.
 
     Usage:

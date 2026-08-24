@@ -43,7 +43,7 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -88,8 +88,8 @@ def _resolve_run_dataset(
     dataset: DatasetSpec,
     *,
     ctx: JobContext,
-    sdk: NeMoPlatform | None = None,
-    async_sdk: AsyncNeMoPlatform | None = None,
+    sdk: NemoClient | None = None,
+    async_sdk: AsyncNemoClient | None = None,
 ) -> InlineDataset | Path:
     """Resolve an evaluator plugin dataset for local SDK execution."""
     if not isinstance(dataset, FilesetRef):
@@ -205,7 +205,7 @@ class EvaluateJob(NemoJob):
         spec: BaseModel,
         entity_client: object,
         job_name: str | None,
-        async_sdk: AsyncNeMoPlatform | None,
+        async_sdk: AsyncNemoClient | None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
@@ -265,7 +265,7 @@ class EvaluateJob(NemoJob):
         # The caller that actually forwarded a sync client was the plugin's local-run path, now
         # removed, so this could likely narrow to the async client alone — left alone here to keep
         # this change a pure deletion.
-        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+        async_sdk: AsyncNemoClient | NemoClient | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve submitter-facing model and metric references into the canonical evaluation spec."""
@@ -297,8 +297,8 @@ class EvaluateJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None = None,
-        async_sdk: AsyncNeMoPlatform | None = None,
+        sdk: NemoClient | None = None,
+        async_sdk: AsyncNemoClient | None = None,
     ) -> dict:
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)

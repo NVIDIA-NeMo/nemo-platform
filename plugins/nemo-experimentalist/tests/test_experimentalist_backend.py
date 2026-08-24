@@ -26,15 +26,15 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
     LocalExperimentalistBackend,
 )
 from nemo_insights_plugin.entities import Insight
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 def _local_backend(tmp_path: Path) -> LocalExperimentalistBackend:
     return LocalExperimentalistBackend(path=tmp_path / "backend")
 
 
-def _as_platform_client(value: object) -> AsyncNeMoPlatform:
-    return cast(AsyncNeMoPlatform, value)
+def _as_platform_client(value: object) -> AsyncNemoClient:
+    return cast(AsyncNemoClient, value)
 
 
 # ---------------------------------------------------------------------------

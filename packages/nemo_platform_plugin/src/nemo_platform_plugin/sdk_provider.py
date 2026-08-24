@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """SDK factory for task containers — the plugin-side interface for getting
-authenticated :class:`~nemo_platform.NeMoPlatform` handles.
+authenticated :class:`~nemo_platform.NemoClient` handles.
 
 Plugin authors use :func:`get_task_sdk` in their ``__main__.py`` entrypoints
 instead of importing from ``nmp.common.sdk_factory``.  This keeps the
@@ -38,10 +38,10 @@ import os
 from importlib.metadata import entry_points
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.constants import is_workload_identity_token_file_set
 
-_SDKT = TypeVar("_SDKT", NeMoPlatform, AsyncNeMoPlatform)
+_SDKT = TypeVar("_SDKT", NemoClient, AsyncNemoClient)
 
 logger = logging.getLogger(__name__)
 
@@ -66,14 +66,14 @@ class SDKProvider(Protocol):
     ``nmp-common`` ships a richer one registered via entry-point.
     """
 
-    def get_task_sdk(self, service_name: str) -> NeMoPlatform:
+    def get_task_sdk(self, service_name: str) -> NemoClient:
         """Build an SDK for use inside a platform-spawned task container.
 
         The returned client authenticates as ``service:{service_name}`` and,
         when ``NMP_PRINCIPAL`` is set, acts on behalf of the job creator.
         """
 
-    def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
+    def get_async_task_sdk(self, service_name: str) -> AsyncNemoClient:
         """Async counterpart of :meth:`get_task_sdk` for use inside a task container.
 
         Authenticates as ``service:{service_name}`` and, when ``NMP_PRINCIPAL``
@@ -88,7 +88,7 @@ class SDKProvider(Protocol):
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | None = None,
-    ) -> NeMoPlatform:
+    ) -> NemoClient:
         """Build a general-purpose sync SDK handle.
 
         Lower-level than :meth:`get_task_sdk` — callers choose their own
@@ -101,7 +101,7 @@ class SDKProvider(Protocol):
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | None = None,
-    ) -> AsyncNeMoPlatform:
+    ) -> AsyncNemoClient:
         """Build a general-purpose async SDK handle.
 
         Used by middleware and controllers that run inside the platform
@@ -170,9 +170,9 @@ class DefaultSDKProvider:
     task containers.  No ``nmp-common`` imports.
     """
 
-    def get_task_sdk(self, service_name: str) -> NeMoPlatform:
+    def get_task_sdk(self, service_name: str) -> NemoClient:
         if is_workload_identity_token_file_set():
-            return NeMoPlatform(
+            return NemoClient(
                 base_url=self._base_url(),
                 default_headers=_workload_identity_headers(internal=True),
             )
@@ -192,16 +192,16 @@ class DefaultSDKProvider:
                 service_name,
             )
 
-        return NeMoPlatform(
+        return NemoClient(
             base_url=self._base_url(),
             default_headers=headers,
         )
 
-    def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
+    def get_async_task_sdk(self, service_name: str) -> AsyncNemoClient:
         # Async mirror of get_task_sdk: identical headers (service principal,
         # internal marker, and full on-behalf-of id/email/groups), async client.
         if is_workload_identity_token_file_set():
-            return AsyncNeMoPlatform(
+            return AsyncNemoClient(
                 base_url=self._base_url(),
                 default_headers=_workload_identity_headers(internal=True),
             )
@@ -221,7 +221,7 @@ class DefaultSDKProvider:
                 service_name,
             )
 
-        return AsyncNeMoPlatform(
+        return AsyncNemoClient(
             base_url=self._base_url(),
             default_headers=headers,
         )
@@ -247,8 +247,8 @@ class DefaultSDKProvider:
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | None = None,
-    ) -> NeMoPlatform:
-        return self._make_sdk(NeMoPlatform, as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+    ) -> NemoClient:
+        return self._make_sdk(NemoClient, as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
 
     def get_async_platform_sdk(
         self,
@@ -256,8 +256,8 @@ class DefaultSDKProvider:
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | None = None,
-    ) -> AsyncNeMoPlatform:
-        return self._make_sdk(AsyncNeMoPlatform, as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+    ) -> AsyncNemoClient:
+        return self._make_sdk(AsyncNemoClient, as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
 
     @staticmethod
     def _build_headers(
@@ -366,7 +366,7 @@ def _resolve_provider() -> SDKProvider:
 # ---------------------------------------------------------------------------
 
 
-def get_task_sdk(service_name: str) -> NeMoPlatform:
+def get_task_sdk(service_name: str) -> NemoClient:
     """Build an authenticated SDK for use inside a platform task container.
 
     Equivalent to the legacy ``nmp.common.sdk_factory.get_task_sdk`` but
@@ -377,13 +377,13 @@ def get_task_sdk(service_name: str) -> NeMoPlatform:
             (e.g. ``"evaluator"``).
 
     Returns:
-        A :class:`~nemo_platform.NeMoPlatform` handle with internal +
+        A :class:`~nemo_platform.NemoClient` handle with internal +
         on-behalf-of headers set.
     """
     return _resolve_provider().get_task_sdk(service_name)
 
 
-def get_async_task_sdk(service_name: str) -> AsyncNeMoPlatform:
+def get_async_task_sdk(service_name: str) -> AsyncNemoClient:
     """Async counterpart of :func:`get_task_sdk` for use inside a task container.
 
     For a (synchronous) job ``run`` that needs to drive an async helper — e.g. an entity-store
@@ -403,7 +403,7 @@ def get_platform_sdk(
     as_service: str | None = None,
     internal: bool = False,
     on_behalf_of: str | None = None,
-) -> NeMoPlatform:
+) -> NemoClient:
     """Build a general-purpose sync SDK handle.
 
     Lower-level than :func:`get_task_sdk` — callers choose their own auth
@@ -422,7 +422,7 @@ def get_async_platform_sdk(
     as_service: str | None = None,
     internal: bool = False,
     on_behalf_of: str | None = None,
-) -> AsyncNeMoPlatform:
+) -> AsyncNemoClient:
     """Build a general-purpose async SDK handle.
 
     Used by middleware and controllers that run inside the platform
@@ -435,7 +435,7 @@ def get_async_platform_sdk(
     )
 
 
-def get_forwarding_headers(sdk: NeMoPlatform | AsyncNeMoPlatform) -> dict[str, str]:
+def get_forwarding_headers(sdk: NemoClient | AsyncNemoClient) -> dict[str, str]:
     """Extract the platform headers an SDK would send on outbound requests.
 
     Returns the ``X-NMP-*`` and trace-propagation headers that *sdk* was
@@ -445,8 +445,8 @@ def get_forwarding_headers(sdk: NeMoPlatform | AsyncNeMoPlatform) -> dict[str, s
     The returned dict is a shallow copy — callers may mutate it freely.
 
     Args:
-        sdk: A :class:`~nemo_platform.NeMoPlatform` or
-            :class:`~nemo_platform.AsyncNeMoPlatform` instance.  For
+        sdk: A :class:`~nemo_platform.NemoClient` or
+            :class:`~nemo_platform.AsyncNemoClient` instance.  For
             per-request headers, pass a request-scoped SDK built with
             ``sdk.with_options(set_default_headers=...)``.
     """

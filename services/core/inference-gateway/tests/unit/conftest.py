@@ -12,8 +12,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from multidict import CIMultiDict, CIMultiDictProxy
-from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.inference.virtual_model import VirtualModel
+from nemo_platform_plugin.models.types import ModelProvider, ServedModelMapping
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel
 from nmp.core.inference_gateway.api.dependencies import (
     global_http_client,
     global_middleware_registry,
@@ -234,7 +234,7 @@ def mock_proxy_client(mock_proxy_response):
 def mock_nmp_sdk():
     """Create a mock async NeMo Platform SDK client.
 
-    This mocks AsyncNeMoPlatform for use with the inference gateway.
+    This mocks AsyncNemoClient for use with the inference gateway.
     """
     m = AsyncMock()
     return m

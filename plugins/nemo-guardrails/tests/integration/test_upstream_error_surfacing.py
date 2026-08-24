@@ -15,10 +15,10 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
 
-import nemo_platform
+from nemo_platform_plugin.client import errors as nemo_platform
 import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
-from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
+from nemo_platform_plugin.models.types.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness
 from nmp.testing.mock_chat_completions import ErrorResponse
 
@@ -94,7 +94,7 @@ class TestUpstreamErrorSurfacing:
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
+            harness.sdk.guardrail.delete_guardrail_config(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -115,7 +115,7 @@ class TestUpstreamErrorSurfacing:
                 vision_model.served_name: vision_model.served_name,
             },
         )
-        harness.sdk.guardrail.configs.create(
+        harness.sdk.guardrail.create_guardrail_config(
             workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Upstream error surfacing test config",
@@ -186,7 +186,7 @@ class TestUpstreamErrorSurfacing:
                     responses=[ErrorResponse(status_code=400, body=TOO_MANY_IMAGES_BODY)],
                 )
 
-                with pytest.raises(nemo_platform.APIStatusError) as exc_info:
+                with pytest.raises(nemo_platform.NemoHTTPError) as exc_info:
                     self._send_message(harness, fixture.vm_name)
 
                 assert exc_info.value.status_code == HTTPStatus.BAD_REQUEST
@@ -221,7 +221,7 @@ class TestUpstreamErrorSurfacing:
                     ],
                 )
 
-                with pytest.raises(nemo_platform.APIStatusError) as exc_info:
+                with pytest.raises(nemo_platform.NemoHTTPError) as exc_info:
                     self._send_message(harness, fixture.vm_name)
 
                 assert exc_info.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR

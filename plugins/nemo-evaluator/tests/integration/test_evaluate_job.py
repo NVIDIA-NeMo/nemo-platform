@@ -19,7 +19,7 @@ from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.testing.e2e import wait_for_platform_job
 
@@ -61,7 +61,7 @@ def test_submit_offline_row_eval_persists_result(subprocess_platform: str) -> No
     # dim: submit x subprocess backend, row (EvaluateJob) path. The jobs service compiles + runs
     # EvaluateJob.run() as a host subprocess; run() writes an EvaluateResult through the async task
     # SDK + entity store. Offline (no target or IGW): the dataset already carries the outputs.
-    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client = NemoClient(base_url=subprocess_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 
     response = NemoJobScheduler().submit_remote(

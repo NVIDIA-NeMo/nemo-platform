@@ -9,7 +9,7 @@ import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.log_utils import sanitize_for_log
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -260,7 +260,7 @@ async def create_job(
     request: CreatePlatformJobRequest,
     auth_client: AuthClient = Depends(get_auth_client),
     dispatcher: JobDispatcher = Depends(dep_dispatcher),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> PlatformJobResponse:
     """Create a new platform job."""
     platform_spec = translate_cpu_container_steps_to_subprocess(

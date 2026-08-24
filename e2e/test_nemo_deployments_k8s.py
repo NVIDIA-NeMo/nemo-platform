@@ -56,7 +56,7 @@ How it runs, and where:
 from __future__ import annotations
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from e2e.deployments_helpers import (
     run_job_deployment_lifecycle,
@@ -70,7 +70,7 @@ _K8S_TIMEOUT_SECONDS = 420
 pytestmark = [pytest.mark.container_only]
 
 
-def test_k8s_service_deployment_reaches_ready(sdk: NeMoPlatform, workspace: str) -> None:
+def test_k8s_service_deployment_reaches_ready(sdk: NemoClient, workspace: str) -> None:
     """A restart_policy=Always nginx service reconciles to a k8s Deployment+Service (READY)."""
     run_service_deployment_lifecycle(
         sdk,
@@ -80,7 +80,7 @@ def test_k8s_service_deployment_reaches_ready(sdk: NeMoPlatform, workspace: str)
     )
 
 
-def test_k8s_job_deployment_reaches_succeeded(sdk: NeMoPlatform, workspace: str) -> None:
+def test_k8s_job_deployment_reaches_succeeded(sdk: NemoClient, workspace: str) -> None:
     """A restart_policy=Never alpine job reconciles to a k8s Job that completes (SUCCEEDED)."""
     run_job_deployment_lifecycle(
         sdk,

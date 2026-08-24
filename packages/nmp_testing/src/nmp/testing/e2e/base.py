@@ -15,7 +15,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.jobs.image import image_builder
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ class E2EBackend(ABC):
     """Abstract base class for e2e test backends.
 
     Supports context manager protocol for automatic cleanup.
-    Produces a NeMoPlatform SDK client for tests.
+    Produces a NemoClient SDK client for tests.
 
     Args:
         config_path: Path to the NeMo Platform configuration YAML file, or an E2EConfig object.
@@ -90,14 +90,14 @@ class E2EBackend(ABC):
         pass
 
     @abstractmethod
-    def get_sdk(self, principal_id: str | None = None) -> NeMoPlatform:
+    def get_sdk(self, principal_id: str | None = None) -> NemoClient:
         """Create an SDK client for the test environment.
 
         Args:
             principal_id: Optional principal ID for authentication (X-NMP-Principal-Id header).
 
         Returns:
-            Configured NeMoPlatform SDK client.
+            Configured NemoClient SDK client.
         """
         pass
 

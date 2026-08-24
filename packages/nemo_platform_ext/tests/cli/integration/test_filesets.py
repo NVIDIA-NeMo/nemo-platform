@@ -6,7 +6,7 @@
 from pathlib import Path
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_ext.cli.app import app
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
@@ -216,7 +216,7 @@ class TestFilesetsUpload:
 
 @pytest.fixture
 def fileset_with_nested_files(
-    sdk: NeMoPlatform, files_client: FilesClient, random_workspace: str, tmp_path: Path
+    sdk: NemoClient, files_client: FilesClient, random_workspace: str, tmp_path: Path
 ) -> dict:
     """Create a fileset with nested file structure for download tests.
 
@@ -240,7 +240,7 @@ def fileset_with_nested_files(
     (dir_b / "file2.txt").write_text("content2")
     (dir_b / "file3.txt").write_text("content3")
 
-    sdk.files.upload(
+    sdk.files.upload_file(
         local_path=str(dir_a),
         fileset=fileset.name,
         workspace=random_workspace,

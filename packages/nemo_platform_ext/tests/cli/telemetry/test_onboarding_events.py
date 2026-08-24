@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
-from nemo_platform.resources.inference.providers import ProvidersResource
+from nemo_platform_plugin.models.client import ModelsClient as ProvidersResource
 from nemo_platform_ext.cli.commands.setup import (
     _bucket_model_count,
     _create_provider,

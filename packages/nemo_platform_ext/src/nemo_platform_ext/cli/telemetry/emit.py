@@ -55,7 +55,11 @@ def telemetry_opted_in() -> bool:
 
 def _client_version() -> str:
     try:
-        import nemo_platform
+        try:
+            from importlib.metadata import version as _np_version
+            nemo_platform = type("nemo_platform", (), {"__version__": _np_version("nemo-platform-ext", "unknown")})()
+        except Exception:
+            nemo_platform = type("nemo_platform", (), {"__version__": "unknown"})()
 
         return nemo_platform.__version__
     except Exception:

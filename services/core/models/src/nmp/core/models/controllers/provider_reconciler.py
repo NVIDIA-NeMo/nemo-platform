@@ -9,14 +9,14 @@ from datetime import datetime, timezone
 from logging import getLogger
 from typing import Callable, TypedDict
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import APIStatusError, ConflictError, NotFoundError
-from nemo_platform.types.inference import ServedModelMapping
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.inference.model_provider import ModelProvider
-from nemo_platform.types.inference.virtual_model import VirtualModel
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoHTTPError, ConflictError, NotFoundError
+from nemo_platform_plugin.models.types import ServedModelMapping
+from nemo_platform_plugin.models.types.model_deployment import ModelDeployment
+from nemo_platform_plugin.models.types.model_deployment_config import ModelDeploymentConfig
+from nemo_platform_plugin.models.types.model_provider import ModelProvider
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel
+from nemo_platform_plugin.models.types.model_entity import ModelEntity
 from nmp.common.datetime_utils import ensure_utc
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.common.entities.utils import parse_entity_ref
@@ -305,7 +305,7 @@ class ModelProviderReconciler:
 
     def __init__(
         self,
-        models_sdk: AsyncNeMoPlatform,
+        models_sdk: AsyncNemoClient,
         controller_config: ControllerConfig,
         entity_cache: ModelEntityCache,
         emit_heartbeat: Callable[[], None],
@@ -704,7 +704,7 @@ class ModelProviderReconciler:
 
             return DiscoverySuccess(models)
 
-        except APIStatusError as e:
+        except NemoHTTPError as e:
             # 404 from the provider proxy is only returned when the provider is not in the gateway
             # cache yet (single code path in IGW). Preserve served_models.
             if e.status_code == 404:

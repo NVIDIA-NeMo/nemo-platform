@@ -735,7 +735,7 @@ class TestResolveOutput:
     def test_fileset_ref_uploads_on_clean_exit(
         self, tmp_path: Path, ctx: JobContext, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Successful exit forwards the staged tempdir to ``sdk.files.upload``."""
+        """Successful exit forwards the staged tempdir to ``sdk.files.upload_file``."""
         captured: dict[str, object] = {}
 
         def fake_upload(
@@ -863,12 +863,12 @@ class TestResolveOutput:
         evaluation artifacts on the floor.
         """
         job = EvaluateAgentJob()
-        with pytest.raises(LocalRunError, match="sdk: NeMoPlatform"):
+        with pytest.raises(LocalRunError, match="sdk: NemoClient"):
             with job._resolve_output(FilesetRef("eval-results"), workspace="default", sdk=None, ctx=ctx):
                 pass
 
     def test_upload_to_fileset_delegates_to_sdk_files(self) -> None:
-        """``_upload_to_fileset`` is a thin wrapper over ``sdk.files.upload``."""
+        """``_upload_to_fileset`` is a thin wrapper over ``sdk.files.upload_file``."""
 
         class _StubFiles:
             def __init__(self) -> None:
@@ -1387,7 +1387,7 @@ def _make_not_found_error(message: str) -> Any:
     just for this — keeps the test module's import surface small and
     matches the existing stub-class style used throughout this file.
     """
-    from nemo_platform import NotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError
 
     class _StubResponse:
         status_code = 404

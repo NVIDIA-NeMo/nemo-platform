@@ -6,7 +6,7 @@
 from collections.abc import Callable, Iterator
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from e2e.guardrails.utils import (
     ChatOutcome,
@@ -22,7 +22,7 @@ from e2e.guardrails.utils import (
 
 @pytest.fixture
 def guardrails_chat_test_case(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
 ) -> Iterator[Callable[..., GuardrailsChatTestCase]]:
     created_configs: list[tuple[str, str]] = []
@@ -60,14 +60,14 @@ def guardrails_chat_test_case(
 
     for config_workspace, config_name in created_configs:
         try:
-            sdk.guardrail.configs.delete(workspace=config_workspace, name=config_name)
+            sdk.guardrail.delete_guardrail_config(workspace=config_workspace, name=config_name)
         except Exception:
             pass
 
 
 @pytest.fixture
 def guardrails_check_test_case(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
 ) -> Iterator[Callable[..., tuple[GuardrailsChatTestCase, dict]]]:
     created_configs: list[tuple[str, str]] = []
@@ -98,7 +98,7 @@ def guardrails_check_test_case(
         setup_mock_provider(sdk, test_case)
 
         if config_mode == "referenced":
-            sdk.guardrail.configs.create(
+            sdk.guardrail.create_guardrail_config(
                 workspace=workspace,
                 name=test_case.config_name,
                 description="E2E content-safety Guardrails checks config",
@@ -112,6 +112,6 @@ def guardrails_check_test_case(
 
     for config_workspace, config_name in created_configs:
         try:
-            sdk.guardrail.configs.delete(workspace=config_workspace, name=config_name)
+            sdk.guardrail.delete_guardrail_config(workspace=config_workspace, name=config_name)
         except Exception:
             pass

@@ -24,7 +24,7 @@ from functools import cache
 from typing import cast
 
 import httpx
-from nemo_platform import DefaultAsyncHttpxClient, DefaultHttpxClient
+from httpx import AsyncClient, Client
 
 
 class _SharedAsyncHttpClient(DefaultAsyncHttpxClient):

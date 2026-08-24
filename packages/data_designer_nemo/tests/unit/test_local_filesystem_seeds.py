@@ -13,7 +13,7 @@ import pytest
 from data_designer_nemo.context import LocalDataDesignerContext
 from data_designer_nemo.errors import NDDInvalidConfigError
 from data_designer_nemo.seed import validate_seed
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.errors import NotFoundError
 
 
@@ -29,20 +29,20 @@ def _make_config(source: Any) -> dd.DataDesignerConfig:
 
 @pytest.mark.asyncio
 async def test_local_validate_seed_passes_existing_local_directory_without_sdk(tmp_path: Path) -> None:
-    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    sdk = AsyncMock(spec=AsyncNemoClient)
 
     validated_root = await validate_seed(
         _make_config(dd.DirectorySeedSource(path=str(tmp_path))), "default", sdk, is_local=True
     )
 
     assert validated_root is None
-    sdk.files.filesets.retrieve.assert_not_called()
-    sdk.files.list.assert_not_called()
+    sdk.files.get_fileset.assert_not_called()
+    sdk.files.list_files.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_local_validate_seed_validates_fileset_for_non_local_path() -> None:
-    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    sdk = AsyncMock(spec=AsyncNemoClient)
     files = Mock()
     files.get_fileset = AsyncMock()
     files.list_files = AsyncMock(return_value=_list_files_response(["corpus/a.md"]))
@@ -58,7 +58,7 @@ async def test_local_validate_seed_validates_fileset_for_non_local_path() -> Non
 
 @pytest.mark.asyncio
 async def test_local_validate_seed_reports_missing_fileset() -> None:
-    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    sdk = AsyncMock(spec=AsyncNemoClient)
     files = Mock()
     files.get_fileset = AsyncMock(side_effect=NotFoundError(httpx.Response(404, text="missing")))
 
@@ -73,7 +73,7 @@ async def test_local_validate_seed_reports_missing_fileset() -> None:
 async def test_local_validate_seed_skips_huggingface_secret_resolution() -> None:
     # Remote mode resolves the HF token against the Files/secret service; local mode must not,
     # since the token may be a plaintext value or an environment variable.
-    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    sdk = AsyncMock(spec=AsyncNemoClient)
 
     validated_root = await validate_seed(
         _make_config(dd.HuggingFaceSeedSource(path="org/dataset", token="hf_local_token")),
@@ -87,7 +87,7 @@ async def test_local_validate_seed_skips_huggingface_secret_resolution() -> None
 
 @pytest.mark.asyncio
 async def test_local_context_validate_caches_fileset_root() -> None:
-    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    sdk = AsyncMock(spec=AsyncNemoClient)
     files = Mock()
     files.get_fileset = AsyncMock()
     files.list_files = AsyncMock(return_value=_list_files_response(["corpus/a.md"]))

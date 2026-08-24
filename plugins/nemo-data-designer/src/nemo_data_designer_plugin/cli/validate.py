@@ -16,7 +16,7 @@ from nemo_data_designer_plugin.sdk.validation import (
     ValidationReport,
     validate_config_sync,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.cli_state import resolve_local_cli_sdks
 
 OutputFormat = Literal["text", "json"]
@@ -78,8 +78,8 @@ def validate_command(
         raise typer.Exit(code=1) from e
 
     sdk, async_sdk = resolve_local_cli_sdks(typer_ctx)
-    sdk = cast("NeMoPlatform | None", sdk)
-    async_sdk = cast("AsyncNeMoPlatform | None", async_sdk)
+    sdk = cast("NemoClient | None", sdk)
+    async_sdk = cast("AsyncNemoClient | None", async_sdk)
 
     if sdk is None and async_sdk is None:
         print_error(

@@ -41,8 +41,9 @@ from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEval
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult, RowScore
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
+from nemo_platform_plugin.client.client import AsyncNemoClient
+# TODO: intake type TraceFilterParam — define in nemo_platform_plugin or use dict[str, Any]
+from typing import Any
 
 pytestmark = pytest.mark.integration
 
@@ -256,7 +257,7 @@ def _result() -> AgentEvalResult:
 
 
 async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
-    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+    async with AsyncNemoClient(base_url=platform_base_url, max_retries=2) as client:
         # Precondition: the Experiment must exist before ingest.
         group = await client.experiments.create(
             workspace=WORKSPACE, name=GROUP_NAME, description="Intake IT", exist_ok=True
@@ -364,7 +365,7 @@ def _nan_result() -> AgentEvalResult:
 async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> None:
     # A NaN value is not representable in JSON and a FAILED score is not a real measurement; neither
     # should reach Intake. Only the finite, completed output should be stored.
-    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+    async with AsyncNemoClient(base_url=platform_base_url, max_retries=2) as client:
         group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
         await client.evaluations.create(
             workspace=WORKSPACE,
@@ -429,7 +430,7 @@ async def test_republishing_the_same_result_is_idempotent(platform_base_url: str
     # double-count. Intake's spans table is a ReplacingMergeTree keyed on start_time, which is only
     # stable because the trajectory carries the run's started_at (see mapping.trial_to_atif_ingest);
     # without it each publish lands a second, uncollapsible row per trial.
-    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+    async with AsyncNemoClient(base_url=platform_base_url, max_retries=2) as client:
         group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
         await client.evaluations.create(
             workspace=WORKSPACE,
@@ -486,7 +487,7 @@ async def test_row_result_publishes_and_is_idempotent(platform_base_url: str) ->
     # The dataset-driven path adapts rows into the publisher's shape rather than using a second
     # mapping, so it inherits the same idempotency guarantee: re-publishing replaces rather than
     # duplicating. Row identity comes from the configured column, not the row's position.
-    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+    async with AsyncNemoClient(base_url=platform_base_url, max_retries=2) as client:
         group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
         await client.evaluations.create(
             workspace=WORKSPACE,

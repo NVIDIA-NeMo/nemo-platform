@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generic, Literal, Type, TypeVar, overload
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import parse_fileset_ref
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from filesets.filesystem import parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
 from nemo_platform_plugin.client.errors import NemoClientError
@@ -34,7 +34,7 @@ class FileDoesNotExist(Exception): ...
 
 
 FileManagerClsT = TypeVar("FileManagerClsT", Type["FilesetFileManager"], Type["AsyncFilesetFileManager"])
-PlatformSDKT = TypeVar("PlatformSDKT", "NeMoPlatform", "AsyncNeMoPlatform")
+PlatformSDKT = TypeVar("PlatformSDKT", "NemoClient", "AsyncNemoClient")
 
 
 @dataclass
@@ -67,7 +67,7 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
 
 
 @dataclass
-class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
+class ResultManager(BaseResultManager[Type[FilesetFileManager], NemoClient]):
     def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
         """Fetch job and return (attempt_id, fileset_name, output_location)."""
         jobs = client_from_platform(self.jobs_sdk, JobsClient)
@@ -134,7 +134,7 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
 
 
 @dataclass
-class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncNeMoPlatform]):
+class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncNemoClient]):
     async def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
         """Fetch job and return (attempt_id, fileset_name, output_location)."""
         jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
@@ -210,8 +210,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform,
-    jobs_sdk: AsyncNeMoPlatform | None = None,
+    files_sdk: AsyncNemoClient,
+    jobs_sdk: AsyncNemoClient | None = None,
     is_async: Literal[True] = True,
 ) -> AsyncResultManager: ...
 
@@ -222,8 +222,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: NeMoPlatform,
-    jobs_sdk: NeMoPlatform | None = None,
+    files_sdk: NemoClient,
+    jobs_sdk: NemoClient | None = None,
     is_async: Literal[False],
 ) -> ResultManager: ...
 
@@ -233,8 +233,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: NeMoPlatform | AsyncNeMoPlatform,
-    jobs_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
+    files_sdk: NemoClient | AsyncNemoClient,
+    jobs_sdk: NemoClient | AsyncNemoClient | None = None,
     is_async: bool = True,
 ) -> ResultManager | AsyncResultManager:
     """Create a ResultManager for uploading job results.
@@ -282,7 +282,7 @@ async def download_from_result_info(
     *,
     artifact_url: str,
     workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform,
+    files_sdk: AsyncNemoClient,
 ) -> tuple[str, TmpDirPath]:
     """
     This is a helper composition function that creates a result_manager

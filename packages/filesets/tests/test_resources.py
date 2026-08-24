@@ -4,7 +4,7 @@
 """Regression tests for the extension FilesResource sub-resource surface.
 
 The vendored extension ``FilesResource`` replaces the Stainless-generated one on
-``NeMoPlatform.files``. It must remain API-compatible with the generated resource
+``NemoClient.files``. It must remain API-compatible with the generated resource
 by exposing the ``filesets`` and ``otlp`` sub-resources; otherwise auto-generated
 CLI commands such as ``nemo files filesets create`` fail at runtime with
 ``'FilesResource' object has no attribute 'filesets'``.
@@ -12,20 +12,20 @@ CLI commands such as ``nemo files filesets create`` fail at runtime with
 
 from __future__ import annotations
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.resources.files.filesets import AsyncFilesetsResource, FilesetsResource
-from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource, OtlpResource
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
 
 def test_sync_files_resource_exposes_filesets_and_otlp() -> None:
-    client = NeMoPlatform(base_url="http://testserver", workspace="test")
+    client = NemoClient(base_url="http://testserver", workspace="test")
 
-    assert isinstance(client.files.filesets, FilesetsResource)
-    assert isinstance(client.files.otlp, OtlpResource)
+    assert isinstance(client.files.filesets, FilesClient)
+    assert isinstance(client.files.otlp, FilesClient)
 
 
 def test_async_files_resource_exposes_filesets_and_otlp() -> None:
-    client = AsyncNeMoPlatform(base_url="http://testserver", workspace="test")
+    client = AsyncNemoClient(base_url="http://testserver", workspace="test")
 
-    assert isinstance(client.files.filesets, AsyncFilesetsResource)
-    assert isinstance(client.files.otlp, AsyncOtlpResource)
+    assert isinstance(client.files.filesets, AsyncFilesClient)
+    assert isinstance(client.files.otlp, AsyncFilesClient)

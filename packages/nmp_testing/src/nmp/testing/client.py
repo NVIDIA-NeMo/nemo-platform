@@ -16,7 +16,7 @@ from typing import Callable, Generator, Mapping, Protocol, TypeVar
 
 import httpx
 from fastapi.testclient import TestClient
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotGiven, not_given
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient, NotGiven, not_given
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.config.base import AuthConfig, Configuration, DatabaseConfig, PlatformConfig, ServiceConfig
@@ -43,11 +43,11 @@ class ClientContext:
     client_type upfront, which is useful when a test needs multiple client types.
     """
 
-    sdk: NeMoPlatform
-    """Synchronous NeMoPlatform SDK client."""
+    sdk: NemoClient
+    """Synchronous NemoClient SDK client."""
 
-    async_sdk: AsyncNeMoPlatform
-    """Asynchronous NeMoPlatform SDK client."""
+    async_sdk: AsyncNemoClient
+    """Asynchronous NemoClient SDK client."""
 
     entity_client: EntityClient
     """EntityClient for direct entity operations."""
@@ -59,7 +59,7 @@ class ClientContext:
     """Captured requests when access_log=True was passed to create_test_client."""
 
 
-ClientT = TypeVar("ClientT", TestClient, AsyncNeMoPlatform, NeMoPlatform, EntityClient, ClientContext)
+ClientT = TypeVar("ClientT", TestClient, AsyncNemoClient, NemoClient, EntityClient, ClientContext)
 
 
 class SDKTestClientAdapter(httpx.Client):
@@ -174,9 +174,9 @@ def _create_svc(
     return svc
 
 
-def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.AsyncClient) -> None:
+def _install_asgi_files_resource(sdk: NemoClient, async_http_client: httpx.AsyncClient) -> None:
     """Route sync SDK file uploads through the in-process test app."""
-    from nemo_platform.filesets.resources import FilesResource
+    from nemo_platform_plugin.files.client import FilesResource
     from nemo_platform_plugin.client.adapter import client_from_platform
     from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
@@ -192,7 +192,7 @@ def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.Asy
             http_client=async_http_client,
         ),
     )
-    original_copy: Callable[..., NeMoPlatform] = sdk.copy
+    original_copy: Callable[..., NemoClient] = sdk.copy
 
     def copy_with_asgi_files(
         *,
@@ -206,7 +206,7 @@ def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.Asy
         default_query: Mapping[str, object] | None = None,
         set_default_query: Mapping[str, object] | None = None,
         _extra_kwargs: Mapping[str, object] | None = None,
-    ) -> NeMoPlatform:
+    ) -> NemoClient:
         clone = original_copy(
             workspace=workspace,
             base_url=base_url,
@@ -252,8 +252,8 @@ def create_test_client(
 
     Args:
         *service_types: One or more Service classes to test
-        client_type: The client type to yield. One of TestClient, AsyncNeMoPlatform,
-                     NeMoPlatform, or EntityClient. Defaults to NeMoPlatform.
+        client_type: The client type to yield. One of TestClient, AsyncNemoClient,
+                     NemoClient, or EntityClient. Defaults to NemoClient.
         dependency_overrides: Custom dependency overrides dict. If get_entity_client
                       is not in dependency_overrides, an EntityClient will be created.
         service_configs: Optional map of service class → config. Overrides defaults
@@ -261,7 +261,7 @@ def create_test_client(
         tmp_dir: Optional temp directory path.
         workspaces: List of workspace names to create. Defaults to ["default"].
                    Pass an empty list to skip workspace creation.
-        workspace: Optional default workspace to set on the NeMoPlatform client.
+        workspace: Optional default workspace to set on the NemoClient client.
         projects: List of projects to create in format "workspace/project_name".
                  Defaults to ["default/test-project"]. If a workspace is referenced
                  but not in the workspaces list, it will be added automatically.
@@ -297,7 +297,7 @@ def create_test_client(
 
     Example (single service):
         with create_test_client(FilesService) as sdk:
-            secret = sdk.secrets.create(workspace="default", name="test", value="value")
+            secret = sdk.secrets.create_secret(workspace="default", name="test", value="value")
 
     Example (multi-service):
         with create_test_client(FilesService, EntitiesService) as sdk:
@@ -320,7 +320,7 @@ def create_test_client(
         with create_test_client(projects=["default/my-project", "ns1/other-project"]) as sdk:
             # "my-project" in "default" and "other-project" in "ns1" are available
             # "ns1" workspace is auto-created since it's referenced in projects
-            sdk.models.create(workspace="default", project="my-project", ...)
+            sdk.models.create_model(workspace="default", project="my-project", ...)
 
     Example (with auth enabled):
         with create_test_client(FilesService, auth_enabled=True) as sdk:
@@ -331,7 +331,7 @@ def create_test_client(
     Example (ClientContext for multiple client types):
         with create_test_client(FilesService, client_type=ClientContext) as ctx:
             # Access any client type
-            ctx.sdk.files.list(workspace="default")  # sync SDK
+            ctx.sdk.files.list_files(workspace="default")  # sync SDK
             await ctx.async_sdk.files.list(workspace="default")  # async SDK
             ctx.test_client.get("/health")  # raw HTTP
 
@@ -349,7 +349,7 @@ def create_test_client(
             for req in entity_requests:
                 assert req.principal_id == "test@example.com"
     """
-    selected_client_type: type[object] = client_type or NeMoPlatform
+    selected_client_type: type[object] = client_type or NemoClient
     with ExitStack() as stack:
         # Create temp directory if not provided
         # Use ignore_cleanup_errors=True because fire-and-forget background tasks
@@ -490,7 +490,7 @@ def create_test_client(
         sdk_factory_module._test_http_client = async_http_client
         stack.callback(lambda: setattr(sdk_factory_module, "_test_http_client", None))
 
-        async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
+        async_sdk = AsyncNemoClient(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
         entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
@@ -513,7 +513,7 @@ def create_test_client(
         if get_sdk_client not in all_overrides:
             from nmp.common.sdk_factory import get_request_scoped_sdk
 
-            def _get_request_scoped_test_sdk() -> AsyncNeMoPlatform:
+            def _get_request_scoped_test_sdk() -> AsyncNemoClient:
                 return get_request_scoped_sdk(async_sdk)
 
             all_overrides[get_sdk_client] = _get_request_scoped_test_sdk
@@ -543,7 +543,7 @@ def create_test_client(
         with TestClient(app) as client:
             # Use max_retries=0 to avoid retry delays on 409 Conflict errors
             sdk_http_client = SDKTestClientAdapter(client)
-            sdk = NeMoPlatform(
+            sdk = NemoClient(
                 workspace=workspace,
                 base_url="http://testserver",
                 http_client=sdk_http_client,
@@ -639,11 +639,11 @@ def create_test_client(
                     )
             else:
                 # No auth - use SDK directly
-                from nemo_platform import ConflictError
+                from nemo_platform_plugin.client.errors import ConflictError
 
                 for ws_id in workspaces_to_create:
                     try:
-                        sdk.workspaces.create(name=ws_id)
+                        sdk.workspaces.create_workspace(name=ws_id)
                     except ConflictError:
                         logger.warning(f"Workspace '{ws_id}' already exists (created by service startup)")
                 for ws_id, proj_name in parsed_projects:
@@ -654,7 +654,7 @@ def create_test_client(
 
             if selected_client_type is TestClient:
                 yield client  # ty: ignore[invalid-yield]
-            elif selected_client_type is AsyncNeMoPlatform:
+            elif selected_client_type is AsyncNemoClient:
                 yield async_sdk  # ty: ignore[invalid-yield]
             elif selected_client_type is EntityClient:
                 yield entity_client  # ty: ignore[invalid-yield]

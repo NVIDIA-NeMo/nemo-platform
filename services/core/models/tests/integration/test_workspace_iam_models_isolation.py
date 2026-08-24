@@ -5,7 +5,7 @@
 
 In-process tests mirror a live e2e flow: four workspaces, direct membership on A/B, a
 shared group on C, a single owner on D, then model/adapter create checks across those
-workspaces. The first class uses the NeMoPlatform SDK; the second issues hand-built
+workspaces. The first class uses the NemoClient SDK; the second issues hand-built
 HTTP to the same routes using a ``requests`` Session (see
 :class:`_TestClientToRequestsAdapter`) that forwards to the Starlette ``TestClient``,
 since CPython ``requests`` cannot open an in-process ASGI app directly.
@@ -24,7 +24,7 @@ from uuid import uuid4
 import pytest
 import requests
 from fastapi.testclient import TestClient
-from nemo_platform import NeMoPlatform, PermissionDeniedError
+from nemo_platform_plugin.client.client import NemoClient, PermissionDeniedError
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
@@ -112,16 +112,16 @@ def models_auth_context() -> Generator[ClientContext, None, None]:
 
 
 @pytest.fixture(scope="module")
-def sdk(models_auth_context: ClientContext) -> NeMoPlatform:
+def sdk(models_auth_context: ClientContext) -> NemoClient:
     return models_auth_context.sdk
 
 
 @pytest.mark.integration
 class TestWorkspaceIamIsolationSDK:
-    """End-to-end style IAM check using the NeMoPlatform ``models`` / ``adapters`` SDK."""
+    """End-to-end style IAM check using the NemoClient ``models`` / ``adapters`` SDK."""
 
     @pytest.mark.usefixtures("models_auth_context")
-    def test_model_and_adapter_iam(self, sdk: NeMoPlatform) -> None:
+    def test_model_and_adapter_iam(self, sdk: NemoClient) -> None:
         user_a = unique_email("user-a")
         user_b = unique_email("user-b")
         owner_d = unique_email("owner-d")
@@ -131,7 +131,7 @@ class TestWorkspaceIamIsolationSDK:
         ws_d = short_unique_name("wks-d")
         shared_group = f"team-{uuid4().hex[:12]}"
 
-        admin: NeMoPlatform = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin: NemoClient = as_user(sdk, TEST_ADMIN_EMAIL)
 
         admin.workspaces.create(name=ws_a, description="user-a only", wait_role_propagation=True)
         admin.workspaces.create(name=ws_b, description="user-b only", wait_role_propagation=True)
@@ -147,10 +147,10 @@ class TestWorkspaceIamIsolationSDK:
 
         model_a = short_unique_name("mdl-a")
         model_b = short_unique_name("mdl-b")
-        ua: NeMoPlatform = as_user(sdk, user_a)
-        ub: NeMoPlatform = as_user(sdk, user_b)
-        uac: NeMoPlatform = as_user(sdk, user_a, groups=[shared_group])
-        ubc: NeMoPlatform = as_user(sdk, user_b, groups=[shared_group])
+        ua: NemoClient = as_user(sdk, user_a)
+        ub: NemoClient = as_user(sdk, user_b)
+        uac: NemoClient = as_user(sdk, user_a, groups=[shared_group])
+        ubc: NemoClient = as_user(sdk, user_b, groups=[shared_group])
 
         ua.models.create(name=model_a, workspace=ws_a)
         ub.models.create(name=model_b, workspace=ws_b)
@@ -158,7 +158,7 @@ class TestWorkspaceIamIsolationSDK:
         model_c_b = short_unique_name("mdl-c-b")
         ubc.models.create(name=model_c_b, workspace=ws_c)
 
-        od: NeMoPlatform = as_user(sdk, owner_d)
+        od: NemoClient = as_user(sdk, owner_d)
         model_d = short_unique_name("mdl-d")
         od.models.create(name=model_d, workspace=ws_d)
 

@@ -22,8 +22,8 @@ from pathlib import Path
 
 import fsspec.asyn
 from nemo_agents_plugin.container.template import DOCKERIGNORE_TEMPLATE
-from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
+from nemo_platform_plugin.client.client import NemoClient
+from filesets.filesystem import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 
@@ -46,7 +46,7 @@ def _is_absolute_member(name: str) -> bool:
     return name.startswith(("/", "\\")) or (len(name) >= 2 and name[1] == ":")
 
 
-def download_fileset(sdk: NeMoPlatform, ref: str, dest: Path) -> Path:
+def download_fileset(sdk: NemoClient, ref: str, dest: Path) -> Path:
     """Download an entire fileset (all files) into *dest* using the sync platform SDK.
 
     Whole-fileset download only — Iron Swarm stores the project as one zip, so there is no
@@ -59,13 +59,13 @@ def download_fileset(sdk: NeMoPlatform, ref: str, dest: Path) -> Path:
     return dest
 
 
-def upload_file_to_fileset(sdk: NeMoPlatform, local_path: Path, *, workspace: str) -> str:
+def upload_file_to_fileset(sdk: NemoClient, local_path: Path, *, workspace: str) -> str:
     """Upload a single file into a freshly-created fileset and return its ``workspace/name`` ref.
 
     Used to persist a war-game's produced garak hitlog so a later run can replay it: platform
     persistent job storage is per-job, so the hitlog must live in a fileset to survive across runs.
     """
-    fileset = sdk.files.upload(
+    fileset = sdk.files.upload_file(
         local_path=str(local_path),
         workspace=workspace,
         fileset_auto_create=True,  # generates a unique fileset name
@@ -85,7 +85,7 @@ def _is_excluded(relative_path: Path) -> bool:
     return False
 
 
-def delete_fileset(sdk: NeMoPlatform, ref: str) -> None:
+def delete_fileset(sdk: NemoClient, ref: str) -> None:
     """Delete a fileset by ``workspace/name`` ref; never raises.
 
     Called when a manifest is deleted so its victim bundle doesn't outlive it. Best-effort by
@@ -95,7 +95,7 @@ def delete_fileset(sdk: NeMoPlatform, ref: str) -> None:
     if not workspace or not name:
         return
     try:
-        sdk.files.filesets.delete(name, workspace=workspace)
+        sdk.files.delete_fileset(name, workspace=workspace)
     except Exception:  # already deleted, or storage unavailable — the manifest still goes
         logger.warning("failed to delete fileset %s", ref, exc_info=True)
 
@@ -122,7 +122,7 @@ def _git_listed_files(root: Path) -> list[Path] | None:
     return [root / name for name in proc.stdout.decode(errors="replace").split("\0") if name]
 
 
-def upload_project_dir(sdk: NeMoPlatform, project_dir: Path, *, workspace: str) -> str:
+def upload_project_dir(sdk: NemoClient, project_dir: Path, *, workspace: str) -> str:
     """Zip a local NAT project and upload it as a fileset; return its ``workspace/name`` ref.
 
     The counterpart to :func:`download_and_extract_project`: the manifest API and the war-game both
@@ -187,7 +187,7 @@ def extract_zip_safely(zip_path: Path, dest: Path) -> Path:
     return dest
 
 
-def download_and_extract_project(sdk: NeMoPlatform, ref: str, workdir: Path) -> Path:
+def download_and_extract_project(sdk: NemoClient, ref: str, workdir: Path) -> Path:
     """Download the project fileset into *workdir*, expand its zip, and return the project root.
 
     Collapses a single wrapping top-level directory (the common ``repo-name/…`` zip layout) so the

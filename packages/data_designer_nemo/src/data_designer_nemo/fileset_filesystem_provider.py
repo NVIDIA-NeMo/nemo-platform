@@ -14,8 +14,8 @@ from data_designer.engine.resources.seed_reader import (
 )
 from data_designer_nemo.filesystem import make_filesystem
 from fsspec.implementations.dirfs import DirFileSystem
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem, FilesetPathError, build_fileset_ref, parse_fileset_ref
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from filesets.filesystem import FilesetFileSystem, FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
 
@@ -69,7 +69,7 @@ class FilesetFileSystemProvider:
 
     def __init__(
         self,
-        sdk: NeMoPlatform | AsyncNeMoPlatform,
+        sdk: NemoClient | AsyncNemoClient,
         *,
         workspace: str,
         validated_roots: set[str] | None = None,
@@ -135,7 +135,7 @@ class HybridFileSystemProvider:
 
     def __init__(
         self,
-        sdk: NeMoPlatform | AsyncNeMoPlatform,
+        sdk: NemoClient | AsyncNemoClient,
         *,
         workspace: str,
         validated_roots: set[str] | None = None,

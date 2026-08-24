@@ -59,7 +59,7 @@ def _agent(name: str = "calc", workspace: str = "default", config_format: str = 
 
 def _sdk_with_files(data: list[object] | None = None) -> MagicMock:
     sdk = MagicMock()
-    sdk.files.list = AsyncMock(return_value=SimpleNamespace(data=data if data is not None else [object()]))
+    sdk.files.list_files = AsyncMock(return_value=SimpleNamespace(data=data if data is not None else [object()]))
     return sdk
 
 
@@ -212,7 +212,7 @@ async def test_to_spec_validates_and_canonicalizes_base_workdir() -> None:
     step_config = ExecuteAgentStepConfig.model_validate(spec)
     assert step_config.workdir is not None
     assert step_config.workdir.base_workdir == "default/source#project/"
-    sdk.files.list.assert_awaited_once_with(remote_path="default/source#project/")
+    sdk.files.list_files.assert_awaited_once_with(remote_path="default/source#project/")
 
 
 @pytest.mark.asyncio
@@ -545,7 +545,7 @@ def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
         else:
             local.write_text("mounted artifact\n")
 
-    sdk.files.download.side_effect = _download
+    sdk.files.download_file.side_effect = _download
 
     async def _invoke(request: Any) -> FabricRuntimeResult:
         (request.base_dir / "workspace" / "answer.txt").write_text("done\n")
@@ -589,7 +589,7 @@ def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext) ->
         local.mkdir(parents=True, exist_ok=True)
         (local / "config.yaml").write_text("name: calc\n")
 
-    sdk.files.download.side_effect = _download
+    sdk.files.download_file.side_effect = _download
 
     async def _invoke(request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(status="succeeded")
@@ -638,7 +638,7 @@ def test_run_failed_download_does_not_register_partial_result(ctx: JobContext) -
         workdir=AgentWorkdir(base_workdir="default/source#project/"),
     )
     sdk = MagicMock()
-    sdk.files.download.side_effect = RuntimeError("download failed")
+    sdk.files.download_file.side_effect = RuntimeError("download failed")
 
     with pytest.raises(RuntimeError, match="download failed"):
         ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)

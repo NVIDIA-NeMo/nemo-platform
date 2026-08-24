@@ -21,7 +21,7 @@ from nemo_anonymizer_plugin.app.input import (
     prepare_anonymizer_input_async,
     validate_anonymizer_input_source,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 
 class AnonymizerContext(Protocol):
@@ -38,7 +38,7 @@ class AnonymizerContext(Protocol):
 
 
 class LocalAnonymizerContext:
-    def __init__(self, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str):
+    def __init__(self, sdk: AsyncNemoClient | NemoClient, workspace: str):
         self._sdk = sdk
         self._workspace = workspace
 
@@ -74,7 +74,7 @@ class LocalAnonymizerContext:
 
 
 class RemoteAnonymizerContext:
-    def __init__(self, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str):
+    def __init__(self, sdk: AsyncNemoClient | NemoClient, workspace: str):
         self._sdk = sdk
         self._workspace = workspace
 
@@ -91,7 +91,7 @@ class RemoteAnonymizerContext:
                     "Inference Gateway instead of Anonymizer library defaults."
                 )
             return None
-        async_sdk = sync_to_async_sdk(self._sdk) if isinstance(self._sdk, NeMoPlatform) else self._sdk
+        async_sdk = sync_to_async_sdk(self._sdk) if isinstance(self._sdk, NemoClient) else self._sdk
         registry = await make_model_provider_registry(
             model_configs,
             sdk=async_sdk,
@@ -115,7 +115,7 @@ class RemoteAnonymizerContext:
 
 def create_anonymizer_context(
     is_local: bool,
-    sdk: AsyncNeMoPlatform | NeMoPlatform,
+    sdk: AsyncNemoClient | NemoClient,
     workspace: str,
 ) -> AnonymizerContext:
     if is_local:

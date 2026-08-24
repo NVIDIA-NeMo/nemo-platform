@@ -19,9 +19,9 @@ so this helper is the one place that branch lives.
 
 from urllib.parse import urlparse
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.auth.helpers import discover_nmp_config
-from nemo_platform.config.config import Config
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.oidc import discover_nmp_config
+from nemo_platform_plugin.client.config.config import Config
 
 # Loopback hosts are served by an unauthenticated local platform; attaching
 # (and refreshing) OAuth tokens there is both unnecessary and a failure mode
@@ -29,8 +29,8 @@ from nemo_platform.config.config import Config
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
 
 
-def make_client(base_url: str | None) -> AsyncNeMoPlatform:
-    """Construct an :class:`AsyncNeMoPlatform` honoring an optional ``base_url``.
+def make_client(base_url: str | None) -> AsyncNemoClient:
+    """Construct an :class:`AsyncNemoClient` honoring an optional ``base_url``.
 
     - No ``base_url``: use the active nmp context for both URL and auth.
     - Loopback ``base_url``: direct mode (local platform is unauthenticated).
@@ -42,14 +42,14 @@ def make_client(base_url: str | None) -> AsyncNeMoPlatform:
       use; the request will surface a clear auth error).
     """
     if not base_url:
-        return AsyncNeMoPlatform()
+        return AsyncNemoClient()
 
     host = (urlparse(base_url).hostname or "").lower()
     config_path = Config.get_default_config_path()
     if host in LOOPBACK_HOSTS or not config_path.exists():
-        return AsyncNeMoPlatform(base_url=base_url)
+        return AsyncNemoClient(base_url=base_url)
 
     if not discover_nmp_config(base_url).auth_enabled:
-        return AsyncNeMoPlatform(base_url=base_url)
+        return AsyncNemoClient(base_url=base_url)
 
-    return AsyncNeMoPlatform(base_url=base_url, config_path=config_path)
+    return AsyncNemoClient(base_url=base_url, config_path=config_path)

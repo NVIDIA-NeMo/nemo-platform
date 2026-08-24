@@ -7,7 +7,7 @@ import time
 import traceback
 from typing import cast
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoClientError, NemoHTTPError
 from nemo_platform_plugin.jobs.client import JobsClient
@@ -38,7 +38,7 @@ class JobScheduler(HeartbeatMixin, Controller):
     def __init__(
         self,
         backend_registry: BackendRegistry,
-        nmp_sdk: NeMoPlatform,
+        nmp_sdk: NemoClient,
         stop_signal: threading.Event | None = None,
     ) -> None:
         self._backend_registry = backend_registry

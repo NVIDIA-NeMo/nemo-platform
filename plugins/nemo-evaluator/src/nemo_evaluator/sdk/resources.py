@@ -55,14 +55,14 @@ from nemo_evaluator_sdk.values import (
     Model,
     ModelRef,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 
 class Evaluator:
     """Sync SDK namespace mounted as ``client.evaluator``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         """Store the platform client used for evaluator plugin HTTP calls."""
         self._platform = platform
         self._http_client = platform._client
@@ -227,7 +227,7 @@ class Evaluator:
 class AsyncEvaluator:
     """Async SDK namespace mounted as ``client.evaluator``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         """Store the async platform client used for evaluator plugin HTTP calls."""
         self._platform = platform
         self._http_client = platform._client

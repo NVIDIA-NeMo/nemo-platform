@@ -19,13 +19,13 @@ from nmp.rl.schemas import OutputResponse, RlJobOutput
 from nemo_rl_plugin.schema import OutputRequest, RlJobInput
 
 if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 async def transform_input_to_output(
     input_spec: RlJobInput,
     workspace: str,
-    sdk: "AsyncNeMoPlatform",
+    sdk: "AsyncNemoClient",
 ) -> RlJobOutput:
     """Enrich submitter input into a canonical :class:`RlJobOutput`.
 

@@ -5,7 +5,7 @@
 
 import logging
 
-from nemo_platform.types.jobs import PlatformJobSpecParam
+from nemo_platform_plugin.jobs.schemas import PlatformJobSpecParam
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.config import Configuration, NemoPlatformConfig, Runtime
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError

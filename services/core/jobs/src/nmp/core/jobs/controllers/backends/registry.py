@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Self, Sequence
 
 from docker.errors import DockerException
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.capabilities import (
     CapabilityUnavailableError,
     probe_docker,
@@ -107,7 +107,7 @@ class BackendRegistry:
     @classmethod
     def from_config(
         cls,
-        nmp_sdk: NeMoPlatform,
+        nmp_sdk: NemoClient,
         profiles: Sequence[ExecutionProfileT],
         backends: BackendRegistryT = backend_registry,
     ) -> Self:

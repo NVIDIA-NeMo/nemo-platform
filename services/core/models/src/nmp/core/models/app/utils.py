@@ -9,10 +9,10 @@ from enum import Enum
 from logging import getLogger
 from typing import Generic, List, Optional, TypeVar
 
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.inference.model_provider import ModelProvider
-from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.models.types.model_deployment import ModelDeployment
+from nemo_platform_plugin.models.types.model_deployment_config import ModelDeploymentConfig
+from nemo_platform_plugin.models.types.model_provider import ModelProvider
+from nemo_platform_plugin.models.types import ModelEntity
 from nemo_platform_plugin.k8s_naming import (
     DNS_LABEL_MAX_LENGTH,
     DNS_SUBDOMAIN_MAX_LENGTH,

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import click
-import nemo_platform
+from importlib.metadata import version as _get_version; nemo_platform = type("nemo_platform", (), {"__version__": _get_version("nemo-platform-ext", "unknown")})()
 import pytest
 import typer
 from click.testing import CliRunner as ClickCliRunner

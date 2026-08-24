@@ -31,7 +31,7 @@ def mock_connection():
 
 @pytest.fixture
 def mock_nmp_sdk():
-    """Mock sync NeMoPlatform SDK for jobs operations."""
+    """Mock sync NemoClient SDK for jobs operations."""
     m = MagicMock()
 
     def _create(**kwargs):
@@ -43,7 +43,7 @@ def mock_nmp_sdk():
 
 @pytest.fixture
 def mock_async_nmp_sdk():
-    """Mock async NeMoPlatform SDK for jobs operations."""
+    """Mock async NemoClient SDK for jobs operations."""
     m = AsyncMock()
 
     async def _create(**kwargs):
@@ -70,28 +70,28 @@ def mock_fileset_fs():
 
 @pytest.fixture
 def mock_sdk():
-    """Mock NeMoPlatform SDK for FilesetFileManager.
+    """Mock NemoClient SDK for FilesetFileManager.
 
     FilesetFileManager uses the FilesetFileSystem exposed by the SDK files resource.
     """
 
-    from nemo_platform import NeMoPlatform
+    from nemo_platform_plugin.client.client import NemoClient
 
-    sdk = MagicMock(spec=NeMoPlatform)
+    sdk = MagicMock(spec=NemoClient)
     sdk.base_url = "http://localhost:8080"
     sdk._custom_headers = None
     sdk._client = MagicMock()
     sdk.files = MagicMock()
     sdk.files.fsspec = MagicMock()
-    sdk.files.upload_content = MagicMock()
+    sdk.files.upload_file = MagicMock()
 
     # Mock list to return ListFilesResponse with empty data by default
     mock_list_response = MagicMock()
     mock_list_response.data = []
-    sdk.files.list = MagicMock(return_value=mock_list_response)
+    sdk.files.list_files = MagicMock(return_value=mock_list_response)
 
     # Mock download_content to return bytes
-    sdk.files.download_content = MagicMock(return_value=b"test content")
+    sdk.files.download_file = MagicMock(return_value=b"test content")
 
     return sdk
 

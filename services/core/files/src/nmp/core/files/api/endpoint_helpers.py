@@ -9,9 +9,7 @@ from typing import AsyncIterator
 
 from fastapi import BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from nemo_platform import (
-    AsyncNeMoPlatform,
-)
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
@@ -275,7 +273,7 @@ async def download_with_cache(
         yield chunk
 
 
-async def resolve_storage_secrets(storage: StorageConfig, workspace: str, sdk: AsyncNeMoPlatform) -> dict[str, str]:
+async def resolve_storage_secrets(storage: StorageConfig, workspace: str, sdk: AsyncNemoClient) -> dict[str, str]:
     """Resolve all secret references in a storage config."""
     secrets: dict[str, str] = {}
     secrets_client = client_from_platform(sdk, AsyncSecretsClient)
@@ -298,7 +296,7 @@ async def resolve_storage_secrets(storage: StorageConfig, workspace: str, sdk: A
 async def resolve_storage_secrets_for_user(
     storage: StorageConfig,
     workspace: str,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     auth_client: AuthClient,
 ) -> dict[str, str]:
     """Resolve storage secrets using delegated headers on request-scoped SDK."""

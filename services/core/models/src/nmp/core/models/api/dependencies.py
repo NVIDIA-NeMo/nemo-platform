@@ -4,7 +4,7 @@
 """FastAPI dependencies for the Models API."""
 
 from fastapi import Depends
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client, get_sdk_client
 from nmp.core.models.api.service.adapter_entity_service import AdapterEntityService
@@ -52,7 +52,7 @@ def get_model_deployment_config_service(
 
 def get_model_deployment_service(
     entity_client: EntityClient = Depends(get_entity_client),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> ModelDeploymentService:
     """Dependency to get ModelDeploymentService instance."""
     return ModelDeploymentService(entity_client, nmp_sdk=nmp_sdk)

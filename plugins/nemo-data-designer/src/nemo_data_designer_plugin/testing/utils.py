@@ -28,7 +28,7 @@ from nemo_data_designer_plugin.jobs.create import CreateJob
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
 from nemo_data_designer_plugin.sdk.resources import DataDesignerResource
 from nemo_data_designer_plugin.service import DataDesignerService
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.commands import add_function_commands, add_job_commands
 from nemo_platform_plugin.files.client import FilesClient
@@ -177,7 +177,7 @@ def setup_mock_file(
     )
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
         SEED_DATA.to_parquet(tmpfile.name, index=False)
-        client_context.sdk.files.upload(
+        client_context.sdk.files.upload_file(
             fileset=FILESET_NAME,
             workspace=client_context.sdk.workspace or WORKSPACE_NAME,
             local_path=tmpfile.name,
@@ -206,13 +206,13 @@ def setup_mock_nemotron_personas_data(
     yield
 
 
-def _create_nemotron_personas_fileset(sdk: NeMoPlatform, persona_data: pd.DataFrame) -> None:
+def _create_nemotron_personas_fileset(sdk: NemoClient, persona_data: pd.DataFrame) -> None:
     fileset_name = get_resource_name_for_locale("en_US")
     files = client_from_platform(sdk, FilesClient)
     files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace="system")
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
         persona_data.to_parquet(tmpfile.name, index=False)
-        sdk.files.upload(
+        sdk.files.upload_file(
             workspace="system",
             fileset=fileset_name,
             local_path=tmpfile.name,
@@ -223,9 +223,9 @@ def _create_nemotron_personas_fileset(sdk: NeMoPlatform, persona_data: pd.DataFr
 async def compile_create_job(
     original_spec: DataDesignerJobConfig,
     workspace: str = WORKSPACE_NAME,
-    sdk: AsyncNeMoPlatform | None = None,
+    sdk: AsyncNemoClient | None = None,
 ) -> PlatformJobSpec:
-    sdk = sdk or AsyncMock(spec=AsyncNeMoPlatform)
+    sdk = sdk or AsyncMock(spec=AsyncNemoClient)
     entity_client = Mock()
     job = CreateJob()
     # This helper exercises the plugin-service compilation path, where
@@ -260,14 +260,14 @@ def _make_data_designer_cli_app() -> typer.Typer:
 
 @dataclass
 class DataDesignerCLIState:
-    sdk: NeMoPlatform
-    async_sdk: AsyncNeMoPlatform
+    sdk: NemoClient
+    async_sdk: AsyncNemoClient
     overrides: dict[str, Any]
 
-    def get_client(self) -> NeMoPlatform:
+    def get_client(self) -> NemoClient:
         return self.sdk
 
-    def get_async_client(self) -> AsyncNeMoPlatform:
+    def get_async_client(self) -> AsyncNemoClient:
         return self.async_sdk
 
 
@@ -344,8 +344,8 @@ def _normalize_job_config(job_config: Any) -> dict[str, Any]:
 
 @dataclass
 class CreateJobTestContext:
-    sdk: NeMoPlatform
-    async_sdk: AsyncNeMoPlatform
+    sdk: NemoClient
+    async_sdk: AsyncNemoClient
     config: dict[str, Any]
     job_ctx: JobContext
 

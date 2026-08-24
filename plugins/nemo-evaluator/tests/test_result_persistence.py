@@ -33,7 +33,7 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entities import EntityBase, EntityClient
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -55,7 +55,7 @@ class _FakeAsyncSdk:
 
 
 _ASYNC_SDK_FAKE = _FakeAsyncSdk()
-_ASYNC_SDK = cast(AsyncNeMoPlatform, _ASYNC_SDK_FAKE)
+_ASYNC_SDK = cast(AsyncNemoClient, _ASYNC_SDK_FAKE)
 
 
 def test_entity_client_adapts_async_sdk(mocker: MockerFixture) -> None:

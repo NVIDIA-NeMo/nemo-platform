@@ -372,8 +372,8 @@ async def test_trace_handle_exposes_typed_tool_evidence_and_retains_modeled_fiel
 def test_observation_models_are_exported_from_source_and_vendored_values_packages() -> None:
     from nemo_evaluator_sdk.values import Observation as SourceObservation
     from nemo_evaluator_sdk.values import ObservationResult as SourceObservationResult
-    from nemo_platform.beta.evaluator.values import Observation as VendoredObservation
-    from nemo_platform.beta.evaluator.values import ObservationResult as VendoredObservationResult
+    from nemo_evaluator_sdk.values import Observation as VendoredObservation
+    from nemo_evaluator_sdk.values import ObservationResult as VendoredObservationResult
 
     assert SourceObservation.__name__ == VendoredObservation.__name__ == "Observation"
     assert SourceObservationResult.__name__ == VendoredObservationResult.__name__ == "ObservationResult"

@@ -61,7 +61,7 @@ from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.testing import add_mock_provider
 from nmp.testing.e2e import wait_for_platform_job
@@ -177,8 +177,8 @@ def _unique(prefix: str) -> str:
 def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) -> None:
     # dim 1 (Model endpoint target): generate a trial against an IGW mock provider that returns
     # "DONE" (no real model/key), then score the trial output with the inline metric.
-    sdk = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
-    sdk.workspaces.create(name=WORKSPACE, exist_ok=True)
+    sdk = NemoClient(base_url=subprocess_platform, max_retries=2)
+    sdk.workspaces.create_workspace(name=WORKSPACE, exist_ok=True)
     model_name = _unique("model-judge")
     add_mock_provider(sdk, workspace=WORKSPACE, name=model_name, mock_response_body=_chat_completion("DONE"))
 
@@ -214,8 +214,8 @@ def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) ->
 def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) -> None:
     # dim 1 (Agent endpoint target): a generic-HTTP agent posts to an IGW mock provider returning
     # "DONE"; response_path extracts the assistant content, then the inline metric scores it.
-    sdk = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
-    sdk.workspaces.create(name=WORKSPACE, exist_ok=True)
+    sdk = NemoClient(base_url=subprocess_platform, max_retries=2)
+    sdk.workspaces.create_workspace(name=WORKSPACE, exist_ok=True)
     agent_name = _unique("agent-judge")
     add_mock_provider(sdk, workspace=WORKSPACE, name=agent_name, mock_response_body=_chat_completion("DONE"))
 
@@ -341,7 +341,7 @@ def test_mixed_job_types_list_endpoints_do_not_cross_render(subprocess_platform:
     which would otherwise still cross-render into the row list.
     """
     workspace = _unique("mixed-list")
-    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client = NemoClient(base_url=subprocess_platform, max_retries=2)
     client.workspaces.create(name=workspace, exist_ok=True)
 
     row_resp = NemoJobScheduler().submit_remote(
@@ -395,7 +395,7 @@ def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -
     # an agent eval whose `tasks` is a TasksetRef (no inline tasks). Server-side to_spec must load the
     # taskset, expand BOTH member tasks, and resolve each task's stored MetricRef — all against the
     # live entity store — before the job runs. A Model target -> IGW mock provider keeps it hermetic.
-    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client = NemoClient(base_url=subprocess_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 
     model_name = _unique("taskset-model")
@@ -472,8 +472,8 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
     # inference client (AgentEvalJob._build_evaluator) — otherwise the IGW returns 401 and the job
     # fails. A clean completion proves the forwarded service-principal headers authenticate online
     # inference under auth, with no bearer. (Probed directly too: service headers -> 200, none -> 401.)
-    sdk = NeMoPlatform(base_url=auth_subprocess_platform, default_headers=SERVICE_PRINCIPAL_HEADERS, max_retries=2)
-    sdk.workspaces.create(name=WORKSPACE, exist_ok=True)
+    sdk = NemoClient(base_url=auth_subprocess_platform, default_headers=SERVICE_PRINCIPAL_HEADERS, max_retries=2)
+    sdk.workspaces.create_workspace(name=WORKSPACE, exist_ok=True)
     model_name = _unique("auth-model")
     add_mock_provider(sdk, workspace=WORKSPACE, name=model_name, mock_response_body=_chat_completion("DONE"))
 
@@ -522,7 +522,7 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
 @pytest.mark.timeout(300)
 def test_submit_harbor_target_to_docker_backend_fails_fast(docker_platform: str) -> None:
     workspace = _unique("harbor-docker-guard")
-    client = NeMoPlatform(base_url=docker_platform, max_retries=2)
+    client = NemoClient(base_url=docker_platform, max_retries=2)
     client.workspaces.create(name=workspace, exist_ok=True)
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
@@ -566,7 +566,7 @@ def test_submit_to_docker_backend_runs_agent_eval(docker_platform: str) -> None:
     # from the cpu-tasks image); it fails today because that image predates this work — hence xfail.
     # An offline trials spec keeps the task self-contained in-container, so this isolates the
     # backend-wiring + entrypoint condition rather than also depending on a live model endpoint.
-    client = NeMoPlatform(base_url=docker_platform, max_retries=2)
+    client = NemoClient(base_url=docker_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 
     response = NemoJobScheduler().submit_remote(

@@ -9,14 +9,14 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient
+from nemo_platform_plugin.client.client import AsyncNemoClient, DefaultAsyncHttpxClient
 
 T = TypeVar("T")
 
 
 def run_with_isolated_async_sdk(
-    async_sdk: AsyncNeMoPlatform,
-    fn: Callable[[AsyncNeMoPlatform], Awaitable[T]],
+    async_sdk: AsyncNemoClient,
+    fn: Callable[[AsyncNemoClient], Awaitable[T]],
 ) -> T:
     """Run ``fn(cloned_sdk)`` via ``run_sync`` without binding ``async_sdk``'s httpx client.
 

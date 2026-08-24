@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fsspec.spec import AbstractBufferedFile, AbstractFileSystem
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetOutput
@@ -107,7 +107,7 @@ def test_fileset_name() -> str:
 
 @contextmanager
 def create_fileset(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     name: str | None = None,
     workspace: str = DEFAULT_WORKSPACE_ID,
     **kwargs,

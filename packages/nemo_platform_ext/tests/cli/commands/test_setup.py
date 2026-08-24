@@ -18,7 +18,7 @@ import pytest
 import typer
 from click.core import ParameterSource
 from click.exceptions import Exit as ClickExit
-from nemo_platform.resources.inference.providers import ProvidersResource
+from nemo_platform_plugin.models.client import ModelsClient as ProvidersResource
 from nemo_platform_ext.cli.commands.setup import (
     _AGENT_API_READINESS_POLL_INTERVAL,
     _AGENT_DEPLOY_POLL_INTERVAL,
@@ -343,7 +343,7 @@ def _make_mock_secrets_client(*, secret_exists: bool = False) -> MagicMock:
 
 
 def _make_mock_client(*, provider_exists: bool = False, secret_exists: bool = False) -> MagicMock:
-    """Build a mock NeMoPlatform client with configurable provider/secret state.
+    """Build a mock NemoClient client with configurable provider/secret state.
 
     The typed secrets client returned by ``client_from_platform`` (patched via
     the ``_patch_secrets_client`` fixture) is stashed on ``client.mock_secrets``

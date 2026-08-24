@@ -8,7 +8,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-from nemo_platform.beta.evaluator.agent_eval.runtimes.sandbox.providers.compose import (
+from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers.compose import (
     ComposeCleanupError,
     ComposeCommandResult,
     ComposeServiceTopology,

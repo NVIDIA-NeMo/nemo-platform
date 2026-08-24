@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint, VolumeStatus
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.capabilities import CapabilityUnavailableError
 from pydantic import BaseModel, Field
 
@@ -54,7 +54,7 @@ class LogResult:
 class DeploymentBackend(abc.ABC):
     """Abstract substrate backend for deployment and volume lifecycle."""
 
-    def __init__(self, sdk: AsyncNeMoPlatform, config: dict[str, Any]) -> None:
+    def __init__(self, sdk: AsyncNemoClient, config: dict[str, Any]) -> None:
         self._sdk = sdk
         self._config = config
         self.init()

@@ -16,7 +16,7 @@ import uuid
 from typing import Any, cast
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 from e2e.utils import collect_sse_chunks
@@ -31,7 +31,7 @@ def _unique_name(prefix: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_provider_create_and_list(sdk: NeMoPlatform, workspace: str):
+def test_provider_create_and_list(sdk: NemoClient, workspace: str):
     """Create a mock provider and verify it appears in the provider list."""
     provider = add_mock_provider(
         sdk,
@@ -40,12 +40,12 @@ def test_provider_create_and_list(sdk: NeMoPlatform, workspace: str):
         mock_response_body={"id": "chatcmpl-test", "choices": []},
     )
 
-    providers = sdk.inference.providers.list(workspace=workspace)
+    providers = sdk.inference.providers.list_providers(workspace=workspace)
     names = [p.name for p in providers.data]
     assert provider.name in names
 
 
-def test_provider_create_and_delete(sdk: NeMoPlatform, workspace: str):
+def test_provider_create_and_delete(sdk: NemoClient, workspace: str):
     """Create then delete a mock provider."""
     provider = add_mock_provider(
         sdk,
@@ -54,9 +54,9 @@ def test_provider_create_and_delete(sdk: NeMoPlatform, workspace: str):
         mock_response_body={"id": "chatcmpl-test", "choices": []},
     )
 
-    sdk.inference.providers.delete(workspace=workspace, name=provider.name)
+    sdk.inference.providers.delete_provider(workspace=workspace, name=provider.name)
 
-    providers = sdk.inference.providers.list(workspace=workspace)
+    providers = sdk.inference.providers.list_providers(workspace=workspace)
     names = [p.name for p in providers.data]
     assert provider.name not in names
 
@@ -66,7 +66,7 @@ def test_provider_create_and_delete(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_chat_completion_via_provider_route(sdk: NeMoPlatform, workspace: str):
+def test_chat_completion_via_provider_route(sdk: NemoClient, workspace: str):
     """Send a chat completion request routed by provider name."""
     chat_response = {
         "id": "chatcmpl-provider",
@@ -106,7 +106,7 @@ def test_chat_completion_via_provider_route(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_chat_completion_via_model_entity_route(sdk: NeMoPlatform, workspace: str):
+def test_chat_completion_via_model_entity_route(sdk: NemoClient, workspace: str):
     """Send a chat completion request routed by model entity name."""
     entity_name = _unique_name("model-entity")
     chat_response = {
@@ -145,7 +145,7 @@ def test_chat_completion_via_model_entity_route(sdk: NeMoPlatform, workspace: st
 # ---------------------------------------------------------------------------
 
 
-def test_chat_completion_via_openai_route(sdk: NeMoPlatform, workspace: str):
+def test_chat_completion_via_openai_route(sdk: NemoClient, workspace: str):
     """Send a chat completion request via the OpenAI-compatible route."""
     entity_name = _unique_name("openai-model")
     chat_response = {
@@ -186,7 +186,7 @@ def test_chat_completion_via_openai_route(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_streaming_chat_completion(sdk: NeMoPlatform, workspace: str):
+def test_streaming_chat_completion(sdk: NemoClient, workspace: str):
     """Streaming chat completion returns SSE chunks with content."""
     chat_response = {
         "id": "chatcmpl-stream",
@@ -233,7 +233,7 @@ def test_streaming_chat_completion(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_model_list_via_openai_route(sdk: NeMoPlatform, workspace: str):
+def test_model_list_via_openai_route(sdk: NemoClient, workspace: str):
     """The OpenAI /v1/models endpoint lists routable VirtualModels.
 
     Adding a mock provider creates a model entity, for which the reconciler
@@ -259,9 +259,9 @@ def test_model_list_via_openai_route(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_mock_provider_error_simulation(sdk: NeMoPlatform, workspace: str):
+def test_mock_provider_error_simulation(sdk: NemoClient, workspace: str):
     """Mock providers can simulate HTTP error responses."""
-    from nemo_platform import InternalServerError
+    from nemo_platform_plugin.client.errors import InternalServerError
 
     provider = add_mock_provider(
         sdk,
@@ -287,7 +287,7 @@ def test_mock_provider_error_simulation(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_per_model_sequential_responses(sdk: NeMoPlatform, workspace: str):
+def test_per_model_sequential_responses(sdk: NemoClient, workspace: str):
     """Mock providers support different sequential responses per model."""
     entity_main = _unique_name("main-llm")
     entity_safety = _unique_name("safety-llm")
@@ -367,7 +367,7 @@ def test_per_model_sequential_responses(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-def test_virtual_model_created_by_mock_provider(sdk: NeMoPlatform, workspace: str):
+def test_virtual_model_created_by_mock_provider(sdk: NemoClient, workspace: str):
     """add_mock_provider creates a passthrough VirtualModel for each served entity."""
     entity_name = _unique_name("vm-check")
     add_mock_provider(
@@ -377,7 +377,7 @@ def test_virtual_model_created_by_mock_provider(sdk: NeMoPlatform, workspace: st
         mock_response_body={"id": "chatcmpl-test", "choices": []},
     )
 
-    vm = sdk.inference.virtual_models.retrieve(workspace=workspace, name=entity_name)
+    vm = sdk.inference.virtual_models.get_virtual_model(workspace=workspace, name=entity_name)
     assert vm.name == entity_name
     assert vm.autoprovisioned is True
     assert vm.default_model_entity == f"{workspace}/{entity_name}"

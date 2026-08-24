@@ -12,7 +12,7 @@ from typing import ClassVar
 
 from nemo_insights_plugin.analyst.run import run_analyst
 from nemo_insights_plugin.entities import AnalysisConfigStatus
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
@@ -123,7 +123,7 @@ class AnalyzeJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None = None,
+        sdk: NemoClient | None = None,
     ) -> dict:
         """Run analysis and persist a small report artifact."""
         spec = AnalyzeSpec.model_validate(config)
@@ -197,7 +197,7 @@ class AnalyzeJob(NemoJob):
     def _record_analysis_run_status(
         self,
         *,
-        sdk: NeMoPlatform | None,
+        sdk: NemoClient | None,
         ctx: JobContext,
         spec: AnalyzeSpec,
         status: AnalysisConfigStatus,

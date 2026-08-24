@@ -13,9 +13,9 @@ import threading
 import urllib.error
 import urllib.request
 
-from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types.models import ModelEntity
-from nemo_platform.types.models.adapter import Adapter
+from nemo_platform_plugin.client.client import NemoClient, NotFoundError
+from nemo_platform_plugin.models.types import ModelEntity
+from nemo_platform_plugin.models.types.adapter import Adapter
 from nmp.common.config import get_platform_config
 from nmp.common.controller import (
     Controller,
@@ -88,7 +88,7 @@ class AdaptersController(HeartbeatMixin, Controller):
 
         self.platform_config = get_platform_config()
 
-        self._sdk: NeMoPlatform = get_platform_sdk(
+        self._sdk: NemoClient = get_platform_sdk(
             as_service="models",
             internal=True,
         )

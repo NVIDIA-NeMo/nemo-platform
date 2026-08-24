@@ -19,7 +19,7 @@ from collections.abc import Iterator
 from contextlib import suppress
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.testing import add_mock_provider, short_unique_name
 
 from e2e.auditor.utils import minimal_audit_config, unique_name
@@ -44,10 +44,10 @@ def _chat_completion(content: str = "I'm happy to help!") -> dict:
     }
 
 
-def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str:
+def _wait_for_audit_job(sdk: NemoClient, job_name: str, workspace: str) -> str:
     deadline = time.monotonic() + AUDIT_JOB_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        status_resp = sdk.jobs.get_status(name=job_name, workspace=workspace)
+        status_resp = sdk.jobs.get_job_status(name=job_name, workspace=workspace)
         status = str(status_resp.status)
         if status in TERMINAL_STATUSES:
             return status
@@ -55,14 +55,14 @@ def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str
     raise TimeoutError(f"Audit job {job_name!r} did not complete within {AUDIT_JOB_TIMEOUT_SECONDS}s")
 
 
-def _cleanup_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> None:
+def _cleanup_audit_job(sdk: NemoClient, job_name: str, workspace: str) -> None:
     with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=workspace)
+        sdk.jobs.cancel_job(name=job_name, workspace=workspace)
     with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=workspace)
+        sdk.jobs.delete_job(name=job_name, workspace=workspace)
 
 
-def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> str:
+def _add_mock_provider_or_skip(sdk: NemoClient, workspace: str, name: str) -> str:
     """Create a mock inference provider, skipping the test if the deployment doesn't support one."""
     try:
         provider = add_mock_provider(
@@ -86,27 +86,27 @@ def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> 
 
 
 @pytest.fixture(scope="module")
-def audit_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+def audit_workspace(sdk: NemoClient) -> Iterator[str]:
     name = short_unique_name("e2e-audit")
-    sdk.workspaces.create(name=name)
+    sdk.workspaces.create_workspace(name=name)
     try:
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            sdk.workspaces.delete_workspace(name)
 
 
 @pytest.fixture(scope="module")
-def mock_provider_name(sdk: NeMoPlatform, audit_workspace: str) -> str:
+def mock_provider_name(sdk: NemoClient, audit_workspace: str) -> str:
     """Create a canned-response mock provider for the module; workspace deletion cascades cleanup."""
     provider_name = short_unique_name("audit-mock")
     return _add_mock_provider_or_skip(sdk, audit_workspace, provider_name)
 
 
 @pytest.fixture(scope="module")
-def audit_config_name(sdk: NeMoPlatform, audit_workspace: str) -> Iterator[str]:
+def audit_config_name(sdk: NemoClient, audit_workspace: str) -> Iterator[str]:
     name = short_unique_name("e2e-audit-cfg")
-    sdk.auditor.configs.create(
+    sdk.auditor.create_audit_config(
         workspace=audit_workspace,
         name=name,
         **minimal_audit_config(plugins={"probe_spec": "test.Test", "detector_spec": "auto"}),
@@ -115,13 +115,13 @@ def audit_config_name(sdk: NeMoPlatform, audit_workspace: str) -> Iterator[str]:
         yield name
     finally:
         with suppress(Exception):
-            sdk.auditor.configs.delete(workspace=audit_workspace, name=name)
+            sdk.auditor.delete_audit_config(workspace=audit_workspace, name=name)
 
 
 @pytest.fixture(scope="module")
-def audit_target_name(sdk: NeMoPlatform, audit_workspace: str, mock_provider_name: str) -> Iterator[str]:
+def audit_target_name(sdk: NemoClient, audit_workspace: str, mock_provider_name: str) -> Iterator[str]:
     name = short_unique_name("e2e-audit-tgt")
-    sdk.auditor.targets.create(
+    sdk.auditor.create_audit_target(
         workspace=audit_workspace,
         name=name,
         type="openai",
@@ -143,7 +143,7 @@ def audit_target_name(sdk: NeMoPlatform, audit_workspace: str, mock_provider_nam
         yield name
     finally:
         with suppress(Exception):
-            sdk.auditor.targets.delete(workspace=audit_workspace, name=name)
+            sdk.auditor.delete_audit_target(workspace=audit_workspace, name=name)
 
 
 # ---- Tests ----
@@ -151,7 +151,7 @@ def audit_target_name(sdk: NeMoPlatform, audit_workspace: str, mock_provider_nam
 
 @pytest.mark.skip("re-enable after auditor image rebuilt")
 def test_audit_job_submit_blank_probe(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     audit_workspace: str,
     mock_provider_name: str,
 ) -> None:
@@ -180,7 +180,7 @@ def test_audit_job_submit_blank_probe(
         },
     }
 
-    job = sdk.auditor.submit(config=config, target=target, workspace=audit_workspace)
+    job = sdk.auditor.submit_audit(config=config, target=target, workspace=audit_workspace)
     job_name = job.name
     try:
         final_status = _wait_for_audit_job(sdk, job_name, audit_workspace)
@@ -194,13 +194,13 @@ def test_audit_job_submit_blank_probe(
 
 @pytest.mark.skip("re-enable after auditor image rebuilt")
 def test_audit_job_submit_with_entity_refs(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     audit_workspace: str,
     audit_config_name: str,
     audit_target_name: str,
 ) -> None:
     """Submit an audit job using stored entity name references and verify completion."""
-    job = sdk.auditor.submit(
+    job = sdk.auditor.submit_audit(
         config=f"{audit_workspace}/{audit_config_name}",
         target=f"{audit_workspace}/{audit_target_name}",
         workspace=audit_workspace,
@@ -216,13 +216,13 @@ def test_audit_job_submit_with_entity_refs(
 
 
 def test_audit_job_appears_in_list(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     audit_workspace: str,
     audit_config_name: str,
     audit_target_name: str,
 ) -> None:
     """Submitted audit job appears in list_jobs() with its name."""
-    job = sdk.auditor.submit(
+    job = sdk.auditor.submit_audit(
         config=f"{audit_workspace}/{audit_config_name}",
         target=f"{audit_workspace}/{audit_target_name}",
         workspace=audit_workspace,

@@ -48,7 +48,7 @@ from nemo_experimentalist_plugin.experimentalist.experiment_mirror import Experi
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id, spans_to_protobuf
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_insights_plugin.entities import Insight
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 async def _upload_trace_otlp(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     workspace: str,
     ref: ResourceRef,
     *,
@@ -85,7 +85,7 @@ async def _upload_trace_otlp(
 
 
 async def _upload_trace_atif(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     workspace: str,
     ref: ResourceRef,
     *,
@@ -135,7 +135,7 @@ class ExperimentalistBackend(ABC):
 
     def __init__(
         self,
-        client: AsyncNeMoPlatform | None = None,
+        client: AsyncNemoClient | None = None,
         path: Path | None = None,
         storage: CandidateStorageConfig | None = None,
     ) -> None:
@@ -381,7 +381,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     def __init__(
         self,
         *,
-        client: AsyncNeMoPlatform | None = None,
+        client: AsyncNemoClient | None = None,
         path: Path,
         storage: CandidateStorageConfig | None = None,
     ) -> None:
@@ -803,7 +803,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         Intake indexing after OTLP upload can take several seconds. Uses exponential
         backoff: 1s, 2s, 4s, 8s, 16s (up to 31s total) by default.
         """
-        from nemo_platform import NotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError
 
         assert self.client is not None
         last_exc: Exception = RuntimeError(f"trace {trace_id!r} not found after {retries} retries")
@@ -855,7 +855,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
 
 def make_experimentalist_backend(
     *,
-    client: AsyncNeMoPlatform | None,
+    client: AsyncNemoClient | None,
     experiments_output: str,
     storage: CandidateStorageConfig | None = None,
 ) -> ExperimentalistBackend:
@@ -866,7 +866,7 @@ def make_experimentalist_backend(
     projected to native Experiments on a best-effort basis.
 
     Args:
-        client(AsyncNeMoPlatform | None): Optional platform API client.
+        client(AsyncNemoClient | None): Optional platform API client.
         experiments_output(str): Local output directory.
         storage(CandidateStorageConfig | None): Candidate-archival / winner-PR settings.
     Returns:

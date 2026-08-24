@@ -9,7 +9,7 @@ from typing import Any, cast
 from urllib.parse import quote
 
 import httpx
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
@@ -21,7 +21,7 @@ from nemo_safe_synthesizer_plugin.sdk import http_utils
 class SafeSynthesizerJobsResource:
     """Sync SDK namespace mounted as ``client.safe_synthesizer.jobs``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 
@@ -110,7 +110,7 @@ class SafeSynthesizerJobsResource:
 class SafeSynthesizerResource:
     """Sync SDK namespace mounted as ``client.safe_synthesizer``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         self.jobs = SafeSynthesizerJobsResource(platform)
 
@@ -118,7 +118,7 @@ class SafeSynthesizerResource:
 class AsyncSafeSynthesizerJobsResource:
     """Async SDK namespace mounted as ``client.safe_synthesizer.jobs``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 
@@ -205,7 +205,7 @@ class AsyncSafeSynthesizerJobsResource:
 class AsyncSafeSynthesizerResource:
     """Async SDK namespace mounted as ``client.safe_synthesizer``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
         self.jobs = AsyncSafeSynthesizerJobsResource(platform)
 

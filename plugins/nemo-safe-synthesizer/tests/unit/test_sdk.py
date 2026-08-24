@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pandas as pd
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.errors import NemoTransportError
 from nemo_platform_plugin.discovery import discover, discover_entry_points
 from nemo_safe_synthesizer_plugin.sdk.job import SafeSynthesizerJob
@@ -51,7 +51,7 @@ def _paginated_resp(items, *, total: int, next_page: str | None, prev_page: str 
     return response
 
 
-def _mock_platform(requests: list[httpx.Request]) -> NeMoPlatform:
+def _mock_platform(requests: list[httpx.Request]) -> NemoClient:
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         return httpx.Response(
@@ -60,7 +60,7 @@ def _mock_platform(requests: list[httpx.Request]) -> NeMoPlatform:
         )
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    return NeMoPlatform(base_url="http://nmp.test", http_client=http_client, workspace="default")
+    return NemoClient(base_url="http://nmp.test", http_client=http_client, workspace="default")
 
 
 def test_safe_synthesizer_resource_creates_job_through_plugin_route() -> None:
@@ -104,7 +104,7 @@ def test_safe_synthesizer_resource_includes_response_detail_in_errors() -> None:
         return httpx.Response(422, json={"detail": "Failed to compile safe-synthesizer job spec"})
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    platform = NeMoPlatform(base_url="http://nmp.test", http_client=http_client, workspace="default")
+    platform = NemoClient(base_url="http://nmp.test", http_client=http_client, workspace="default")
     resource = SafeSynthesizerResource(platform)
 
     try:

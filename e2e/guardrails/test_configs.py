@@ -9,9 +9,9 @@ of validation errors; this file keeps e2e coverage focused on the user-facing
 create, retrieve, list, update, and delete workflow.
 """
 
-import nemo_platform
+from nemo_platform_plugin.client import errors as nemo_platform
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from e2e.guardrails.utils import CONTENT_SAFETY_INPUT_FLOW, RailType, content_safety_config, unique_name
 
@@ -24,10 +24,10 @@ def _config_data(workspace: str, *, rail_types: tuple[RailType, ...] = ("input",
     )
 
 
-def test_guardrail_config_create_and_retrieve(sdk: NeMoPlatform, workspace: str) -> None:
+def test_guardrail_config_create_and_retrieve(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("crud-config")
 
-    created = sdk.guardrail.configs.create(
+    created = sdk.guardrail.create_guardrail_config(
         workspace=workspace,
         name=name,
         description="Initial CRUD config",
@@ -42,7 +42,7 @@ def test_guardrail_config_create_and_retrieve(sdk: NeMoPlatform, workspace: str)
     assert created.created_at is not None
     assert created.updated_at is not None
 
-    retrieved = sdk.guardrail.configs.retrieve(workspace=workspace, name=name)
+    retrieved = sdk.guardrail.get_guardrail_config(workspace=workspace, name=name)
     assert retrieved.id == created.id
     assert retrieved.name == name
     assert retrieved.data is not None
@@ -51,36 +51,36 @@ def test_guardrail_config_create_and_retrieve(sdk: NeMoPlatform, workspace: str)
     assert retrieved.data.rails.input.flows == [CONTENT_SAFETY_INPUT_FLOW]
 
 
-def test_guardrail_config_create_and_list(sdk: NeMoPlatform, workspace: str) -> None:
+def test_guardrail_config_create_and_list(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("list-config")
-    created = sdk.guardrail.configs.create(
+    created = sdk.guardrail.create_guardrail_config(
         workspace=workspace,
         name=name,
         description="List CRUD config",
         data=_config_data(workspace),
     )
 
-    listed_names = {config.name for config in sdk.guardrail.configs.list(workspace=workspace, page_size=100)}
+    listed_names = {config.name for config in sdk.guardrail.list_guardrail_configs(workspace=workspace, page_size=100)}
     assert name in listed_names
 
     listed_config = next(
-        config for config in sdk.guardrail.configs.list(workspace=workspace, page_size=100) if config.name == name
+        config for config in sdk.guardrail.list_guardrail_configs(workspace=workspace, page_size=100) if config.name == name
     )
     assert listed_config.id == created.id
     assert listed_config.created_at is not None
     assert listed_config.updated_at is not None
 
 
-def test_guardrail_config_update(sdk: NeMoPlatform, workspace: str) -> None:
+def test_guardrail_config_update(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("update-config")
-    created = sdk.guardrail.configs.create(
+    created = sdk.guardrail.create_guardrail_config(
         workspace=workspace,
         name=name,
         description="Initial update config",
         data=_config_data(workspace),
     )
 
-    updated = sdk.guardrail.configs.update(
+    updated = sdk.guardrail.update_guardrail_config(
         name,
         workspace=workspace,
         description="Updated CRUD config",
@@ -95,32 +95,32 @@ def test_guardrail_config_update(sdk: NeMoPlatform, workspace: str) -> None:
     assert updated.data.rails.output is not None
 
 
-def test_guardrail_config_delete(sdk: NeMoPlatform, workspace: str) -> None:
+def test_guardrail_config_delete(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("delete-config")
-    sdk.guardrail.configs.create(
+    sdk.guardrail.create_guardrail_config(
         workspace=workspace,
         name=name,
         description="Delete CRUD config",
         data=_config_data(workspace),
     )
 
-    listed_names = {config.name for config in sdk.guardrail.configs.list(workspace=workspace, page_size=100)}
+    listed_names = {config.name for config in sdk.guardrail.list_guardrail_configs(workspace=workspace, page_size=100)}
     assert name in listed_names
 
-    sdk.guardrail.configs.delete(workspace=workspace, name=name)
+    sdk.guardrail.delete_guardrail_config(workspace=workspace, name=name)
 
     with pytest.raises(nemo_platform.NotFoundError):
-        sdk.guardrail.configs.retrieve(workspace=workspace, name=name)
+        sdk.guardrail.get_guardrail_config(workspace=workspace, name=name)
 
 
 def test_guardrail_config_create_duplicate_name_returns_conflict(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
 ) -> None:
     name = unique_name("duplicate-config")
     config_data = _config_data(workspace)
 
-    sdk.guardrail.configs.create(
+    sdk.guardrail.create_guardrail_config(
         workspace=workspace,
         name=name,
         description="Duplicate config",
@@ -128,7 +128,7 @@ def test_guardrail_config_create_duplicate_name_returns_conflict(
     )
 
     with pytest.raises(nemo_platform.ConflictError):
-        sdk.guardrail.configs.create(
+        sdk.guardrail.create_guardrail_config(
             workspace=workspace,
             name=name,
             description="Duplicate config",

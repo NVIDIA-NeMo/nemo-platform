@@ -56,8 +56,8 @@ from nemo_evaluator_sdk.values import Model, RunConfigOnline, RunConfigOnlineMod
 from nemo_evaluator_sdk.values.agents import NemoAgentToolkitAgent
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult  # noqa: F401
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult, RowScore
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import APIConnectionError, NotFoundError
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -146,7 +146,7 @@ class _FakeIngest:
 
 
 class _FakeClient:
-    """Minimal stand-in for the bits of ``AsyncNeMoPlatform`` publication touches."""
+    """Minimal stand-in for the bits of ``AsyncNemoClient`` publication touches."""
 
     def __init__(
         self,
@@ -175,8 +175,8 @@ class _FakeClient:
         return self
 
 
-def _client(**kwargs: Any) -> AsyncNeMoPlatform:
-    return cast(AsyncNeMoPlatform, _FakeClient(**kwargs))
+def _client(**kwargs: Any) -> AsyncNemoClient:
+    return cast(AsyncNemoClient, _FakeClient(**kwargs))
 
 
 def _result() -> AgentEvalResult:
@@ -207,7 +207,7 @@ def _result() -> AgentEvalResult:
     )
 
 
-def _publish(client: AsyncNeMoPlatform | None, *, required: bool = True, agent_name: str | None = "a") -> Any:
+def _publish(client: AsyncNemoClient | None, *, required: bool = True, agent_name: str | None = "a") -> Any:
     return publish_agent_eval_result(
         _result(),
         spec=IntakePublicationSpec(evaluation_id="eval-1", agent_name=agent_name, required=required),
@@ -328,7 +328,7 @@ def test_explicit_agent_name_satisfies_undeducible_targets(target: Target | None
 
 def test_publishes_and_reports_what_landed() -> None:
     client = _FakeClient()
-    outcome = _publish(cast(AsyncNeMoPlatform, client))
+    outcome = _publish(cast(AsyncNemoClient, client))
 
     assert client.copy_calls == 1
     assert outcome.status == PlatformJobStatus.COMPLETED
@@ -341,7 +341,7 @@ def test_publishes_and_reports_what_landed() -> None:
 
 def test_durations_are_stamped_without_dropping_existing_metadata() -> None:
     client = _FakeClient()
-    _publish(cast(AsyncNeMoPlatform, client))
+    _publish(cast(AsyncNemoClient, client))
 
     (patched,) = client.evaluations.patched
     metadata = patched["metadata"]
@@ -365,7 +365,7 @@ def test_a_started_at_only_result_does_not_count_publish_time_as_run_time() -> N
         spec=IntakePublicationSpec(evaluation_id="eval-1", agent_name="a", required=True),
         target=None,
         workspace="default",
-        async_sdk=cast(AsyncNeMoPlatform, client),
+        async_sdk=cast(AsyncNemoClient, client),
     )
 
     (patched,) = client.evaluations.patched
@@ -375,8 +375,8 @@ def test_a_started_at_only_result_does_not_count_publish_time_as_run_time() -> N
 
 
 def test_a_failed_duration_stamp_does_not_fail_the_publish() -> None:
-    client = _FakeClient(patch_error=APIConnectionError(request=httpx.Request("PATCH", "http://x")))
-    outcome = _publish(cast(AsyncNeMoPlatform, client), required=True)
+    client = _FakeClient(patch_error=NemoTransportError(request=httpx.Request("PATCH", "http://x")))
+    outcome = _publish(cast(AsyncNemoClient, client), required=True)
 
     # The durations are informational and the trials already landed, so losing them must not turn a
     # successful publish into a failed job — which is what every caller-side handler would do.
@@ -392,14 +392,14 @@ def test_outcome_does_not_leak_experiment_id() -> None:
 
 def test_stamps_the_run_start_time_so_republish_is_idempotent() -> None:
     client = _FakeClient()
-    _publish(cast(AsyncNeMoPlatform, client))
+    _publish(cast(AsyncNemoClient, client))
     assert client.atif_calls[0]["steps"][0]["timestamp"] == STARTED_AT
 
 
 def test_missing_evaluation_fails_before_any_ingest() -> None:
     client = _FakeClient(missing_evaluation=True)
     with pytest.raises(PublicationFailedError) as excinfo:
-        _publish(cast(AsyncNeMoPlatform, client))
+        _publish(cast(AsyncNemoClient, client))
 
     assert client.atif_calls == []
     outcome = excinfo.value.outcome
@@ -408,9 +408,9 @@ def test_missing_evaluation_fails_before_any_ingest() -> None:
 
 
 def test_required_failure_raises_with_partial_outcome() -> None:
-    client = _FakeClient(ingest_error=APIConnectionError(request=httpx.Request("POST", "http://platform/intake")))
+    client = _FakeClient(ingest_error=NemoTransportError(request=httpx.Request("POST", "http://platform/intake")))
     with pytest.raises(PublicationFailedError) as excinfo:
-        _publish(cast(AsyncNeMoPlatform, client))
+        _publish(cast(AsyncNemoClient, client))
 
     outcome = excinfo.value.outcome
     assert outcome.status == PlatformJobStatus.ERROR
@@ -418,8 +418,8 @@ def test_required_failure_raises_with_partial_outcome() -> None:
 
 
 def test_optional_failure_returns_outcome_instead_of_raising() -> None:
-    client = _FakeClient(ingest_error=APIConnectionError(request=httpx.Request("POST", "http://platform/intake")))
-    outcome = _publish(cast(AsyncNeMoPlatform, client), required=False)
+    client = _FakeClient(ingest_error=NemoTransportError(request=httpx.Request("POST", "http://platform/intake")))
+    outcome = _publish(cast(AsyncNemoClient, client), required=False)
 
     assert outcome.status == PlatformJobStatus.ERROR
     assert outcome.error
@@ -430,7 +430,7 @@ def test_unexpected_failure_still_honours_required_false() -> None:
     # taxonomy — a bug, a transport quirk, anything unforeseen — must not be the one case that
     # escapes and fails the job anyway.
     client = _FakeClient(preflight_error=ValueError("something nobody planned for"))
-    outcome = _publish(cast(AsyncNeMoPlatform, client), required=False)
+    outcome = _publish(cast(AsyncNemoClient, client), required=False)
 
     assert outcome.status == PlatformJobStatus.ERROR
     assert "ValueError" in (outcome.error or "")
@@ -440,7 +440,7 @@ def test_unexpected_failure_still_honours_required_false() -> None:
 def test_unexpected_failure_fails_the_job_when_required() -> None:
     client = _FakeClient(preflight_error=ValueError("something nobody planned for"))
     with pytest.raises(PublicationFailedError) as excinfo:
-        _publish(cast(AsyncNeMoPlatform, client))
+        _publish(cast(AsyncNemoClient, client))
 
     assert excinfo.value.outcome.status == PlatformJobStatus.ERROR
 
@@ -519,7 +519,7 @@ def test_job_does_not_publish_without_a_publication_spec(tmp_path: Path, mocker:
 
     spec = AgentEvalSpec(tasks=[AgentEvalTaskSpec(id="task-1", intent="Answer.")], target=FabricRunnerTarget(config={}))
     result = AgentEvalJob().run(
-        spec.model_dump(), ctx=_job_context(tmp_path), async_sdk=cast(AsyncNeMoPlatform, client)
+        spec.model_dump(), ctx=_job_context(tmp_path), async_sdk=cast(AsyncNemoClient, client)
     )
 
     assert "publication" not in result
@@ -532,7 +532,7 @@ def test_job_publishes_through_the_real_sync_bridge(tmp_path: Path, mocker: Mock
     client = _FakeClient()
     ctx = _job_context(tmp_path)
 
-    result = AgentEvalJob().run(_job_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNeMoPlatform, client))
+    result = AgentEvalJob().run(_job_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNemoClient, client))
 
     # The evaluator drove a loop to completion first; publication then ran on a different one,
     # reusing the same injected SDK. That crossing is what raises "Event loop is closed" when the
@@ -563,7 +563,7 @@ def test_job_keeps_the_bundle_when_required_publication_fails(tmp_path: Path, mo
     ctx = _job_context(tmp_path)
 
     with pytest.raises(PublicationFailedError):
-        AgentEvalJob().run(_job_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNeMoPlatform, client))
+        AgentEvalJob().run(_job_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNemoClient, client))
 
     assert (ctx.storage.persistent / "agent-eval" / "trials.jsonl").exists()
     assert (ctx.storage.persistent / "results" / "agent-eval-results").exists()
@@ -576,7 +576,7 @@ def test_job_completes_when_optional_publication_fails(tmp_path: Path, mocker: M
     result = AgentEvalJob().run(
         _job_spec(required=False).model_dump(),
         ctx=_job_context(tmp_path),
-        async_sdk=cast(AsyncNeMoPlatform, client),
+        async_sdk=cast(AsyncNemoClient, client),
     )
 
     assert result["status"] == PlatformJobStatus.COMPLETED
@@ -593,7 +593,7 @@ def test_job_publication_requires_a_run_start_time(tmp_path: Path, mocker: Mocke
     result = AgentEvalJob().run(
         _job_spec(required=False).model_dump(),
         ctx=_job_context(tmp_path),
-        async_sdk=cast(AsyncNeMoPlatform, _FakeClient()),
+        async_sdk=cast(AsyncNemoClient, _FakeClient()),
     )
 
     assert result["publication"]["status"] == PlatformJobStatus.ERROR
@@ -648,7 +648,7 @@ def test_evaluate_job_does_not_publish_without_a_publication_spec(tmp_path: Path
 
     spec = EvaluateSpec(metrics=[_INLINE_METRIC], dataset=[{"question": "2+2?"}])
     result = EvaluateJob().run(
-        spec.model_dump(), ctx=_job_context(tmp_path, job_id="job-1"), async_sdk=cast(AsyncNeMoPlatform, client)
+        spec.model_dump(), ctx=_job_context(tmp_path, job_id="job-1"), async_sdk=cast(AsyncNemoClient, client)
     )
 
     assert "publication" not in result
@@ -663,7 +663,7 @@ def test_evaluate_job_persists_the_run_identity_it_published_under(tmp_path: Pat
     client = _FakeClient()
     ctx = _job_context(tmp_path, job_id="job-1")
 
-    EvaluateJob().run(_evaluate_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNeMoPlatform, client))
+    EvaluateJob().run(_evaluate_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNemoClient, client))
 
     # Registered as its own artifact, like the sibling score files — a re-publish should not have to
     # unpack the artifacts directory to recover the identity it must reuse.
@@ -685,7 +685,7 @@ def test_evaluate_job_publishes_rows_through_the_real_sync_bridge(tmp_path: Path
     result = EvaluateJob().run(
         _evaluate_spec().model_dump(),
         ctx=_job_context(tmp_path, job_id="job-1"),
-        async_sdk=cast(AsyncNeMoPlatform, client),
+        async_sdk=cast(AsyncNemoClient, client),
     )
 
     # The evaluator drove a loop to completion first; publication then ran on a different one,
@@ -715,7 +715,7 @@ def test_evaluate_job_uses_the_configured_test_case_id_column(tmp_path: Path, mo
     EvaluateJob().run(
         _evaluate_spec(test_case_id_field="qid").model_dump(),
         ctx=_job_context(tmp_path, job_id="job-1"),
-        async_sdk=cast(AsyncNeMoPlatform, client),
+        async_sdk=cast(AsyncNemoClient, client),
     )
 
     assert client.atif_calls[0]["session_id"] == "job-1:q-1"
@@ -731,7 +731,7 @@ def test_evaluate_job_without_a_job_id_cannot_publish(tmp_path: Path, mocker: Mo
     result = EvaluateJob().run(
         _evaluate_spec(required=False).model_dump(),
         ctx=_job_context(tmp_path, job_id=None),
-        async_sdk=cast(AsyncNeMoPlatform, client),
+        async_sdk=cast(AsyncNemoClient, client),
     )
 
     assert result["publication"]["status"] == PlatformJobStatus.ERROR
@@ -746,7 +746,7 @@ def test_evaluate_job_reports_a_bad_test_case_id_column(tmp_path: Path, mocker: 
     result = EvaluateJob().run(
         _evaluate_spec(required=False, test_case_id_field="missing").model_dump(),
         ctx=_job_context(tmp_path, job_id="job-1"),
-        async_sdk=cast(AsyncNeMoPlatform, client),
+        async_sdk=cast(AsyncNemoClient, client),
     )
 
     assert result["publication"]["status"] == PlatformJobStatus.ERROR

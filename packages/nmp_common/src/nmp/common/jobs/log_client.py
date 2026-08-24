@@ -10,7 +10,7 @@ OTLP query endpoint using the typed FilesClient.
 
 import logging
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.files.client import AsyncFilesClient
@@ -28,11 +28,11 @@ class JobLogsClient:
     endpoint, which runs DuckDB queries with direct storage access.
     """
 
-    def __init__(self, sdk: AsyncNeMoPlatform | None = None):
+    def __init__(self, sdk: AsyncNemoClient | None = None):
         """Initialize the log client.
 
         Args:
-            sdk: AsyncNeMoPlatform SDK instance. If not provided,
+            sdk: AsyncNemoClient SDK instance. If not provided,
                  creates one using platform config.
         """
         self._sdk = sdk or get_async_platform_sdk()

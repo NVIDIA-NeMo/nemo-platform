@@ -8,7 +8,7 @@ import logging
 import re
 from collections import defaultdict
 
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform_plugin.client.client import AsyncNemoClient, NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, NGCStorageConfig
 from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput
 from nmp.common.api.common import Page, PaginationData
@@ -58,7 +58,7 @@ def _repo_id_matches_trusted(repo_id: str, patterns: list[str]) -> bool:
 
 
 async def get_fileset_and_files_list(
-    sdk: AsyncNeMoPlatform, workspace: str, fileset_ref: str | None
+    sdk: AsyncNemoClient, workspace: str, fileset_ref: str | None
 ) -> tuple[FilesetOutput, list[FilesetFileOutput]]:
     """Validate that the fileset exists and the user has access."""
     if not fileset_ref:
@@ -66,7 +66,7 @@ async def get_fileset_and_files_list(
 
     try:
         fileset = await check_fileset_access(sdk, fileset_ref, workspace)
-        files = await sdk.files.list(workspace=fileset.workspace, fileset=fileset.name)
+        files = await sdk.files.list_files(workspace=fileset.workspace, fileset=fileset.name)
     except PermissionDeniedError:
         raise PermissionError(f"Access denied to fileset '{fileset_ref}'") from None
     except NotFoundError as err:
@@ -78,7 +78,7 @@ async def get_fileset_and_files_list(
     return fileset, files.data
 
 
-async def is_trusted_repo_id(sdk: AsyncNeMoPlatform, workspace: str, fileset_ref: str) -> bool:
+async def is_trusted_repo_id(sdk: AsyncNemoClient, workspace: str, fileset_ref: str) -> bool:
     if not config.trust_remote_code.enabled:
         return False
 
@@ -235,7 +235,7 @@ async def validate_tool_call_plugin_allowed(auth_client: AuthClient, workspace: 
 class ModelEntityService:
     """Service layer for Model Entity operations."""
 
-    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform | None = None):
+    def __init__(self, entity_client: EntityClient, sdk: AsyncNemoClient | None = None):
         self.entity_client = entity_client
         self.sdk = sdk or get_async_platform_sdk()
 

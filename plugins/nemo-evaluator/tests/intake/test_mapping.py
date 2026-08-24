@@ -31,7 +31,8 @@ from nemo_evaluator_sdk.metrics.protocol import (
     Label,
     MetricOutput,
 )
-from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
+# TODO: intake type EvaluatorResultCreateParams — define in nemo_platform_plugin or use dict[str, Any]
+from typing import Any
 
 STARTED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 

@@ -11,8 +11,8 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
-from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
+from nemo_platform_plugin.client.client import AsyncNemoClient, NotFoundError, PermissionDeniedError
+from filesets.filesystem import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
@@ -115,7 +115,7 @@ async def job_config_compiler(
     transformed_spec: SafeSynthesizerJobConfig,
     entity_client: EntityClient,
     job_name: str | None,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> PlatformJobSpec:
     """Compile Safe Synthesizer job config into a platform job."""
     del original_spec, entity_client, job_name
@@ -151,7 +151,7 @@ async def job_config_compiler(
             )
         provider_workspace, provider_name = parts
         try:
-            provider = await sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+            provider = await sdk.inference.providers.get_provider(provider_name, workspace=provider_workspace)
         except NotFoundError as e:
             raise PlatformJobCompilationError(
                 f"Could not find model provider {provider_name!r} in workspace {provider_workspace!r}"

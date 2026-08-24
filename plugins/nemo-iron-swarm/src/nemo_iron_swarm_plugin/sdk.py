@@ -3,7 +3,7 @@
 
 """SDK resources for the Iron Swarm plugin.
 
-Mounted on :class:`~nemo_platform.NeMoPlatform` as ``client.iron_swarm`` via the ``nemo.sdk``
+Mounted on :class:`~nemo_platform.NemoClient` as ``client.iron_swarm`` via the ``nemo.sdk``
 entry-point. Exposes ``run(config=..., env_file=..., workspace=...)`` which executes the
 ``iron-swarm.war-game`` job locally, in-process, via
 :meth:`~nemo_platform_plugin.scheduler.NemoJobScheduler.run_local` — mirroring the auditor
@@ -24,7 +24,7 @@ from nemo_iron_swarm_plugin.filesets import upload_file_to_fileset
 from nemo_iron_swarm_plugin.jobs.defenses import compose_defense
 from nemo_iron_swarm_plugin.jobs.run import IronSwarmRunJob
 from nemo_iron_swarm_plugin.jobs.synth_benign import IronSwarmSynthBenignJob
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
@@ -101,7 +101,7 @@ def _run_synth_benign(sync_sdk: Any, *, manifest_id: str, env_file: str | None, 
     return NemoJobScheduler().run_local(IronSwarmSynthBenignJob, spec, workspace=workspace, sdk=sync_sdk)
 
 
-def _list_newest(platform: NeMoPlatform, entity_type: str, *, workspace: str, limit: int) -> list[dict[str, Any]]:
+def _list_newest(platform: NemoClient, entity_type: str, *, workspace: str, limit: int) -> list[dict[str, Any]]:
     """Return at most *limit* records of *entity_type*, newest first.
 
     ``entities.list`` returns a ``SyncDefaultPagination`` whose ``__iter__`` auto-paginates, so
@@ -115,7 +115,7 @@ def _list_newest(platform: NeMoPlatform, entity_type: str, *, workspace: str, li
 class _RunsResource:
     """``client.iron_swarm.runs`` — read IronSwarmRun records from the entity store."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
 
     def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[dict[str, Any]]:
@@ -133,7 +133,7 @@ class _ManifestsResource:
     share one implementation of manifest creation (resolution, persistence, validation).
     """
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
 
     @staticmethod
@@ -177,7 +177,7 @@ class _ManifestsResource:
 class IronSwarmPluginResource:
     """Sync SDK namespace mounted as ``client.iron_swarm``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         self._runs: _RunsResource | None = None
         self._manifests: _ManifestsResource | None = None
@@ -310,7 +310,7 @@ class IronSwarmPluginResource:
 class AsyncIronSwarmPluginResource:
     """Async SDK namespace mounted as ``client.iron_swarm``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
 
     async def run(

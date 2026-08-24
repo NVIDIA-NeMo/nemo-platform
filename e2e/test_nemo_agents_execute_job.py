@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 from nmp.testing.e2e import wait_for_platform_job
 
@@ -26,18 +26,18 @@ from e2e.agents_deploy_helpers import (
 pytestmark = [pytest.mark.timeout(600)]
 
 
-def _agents_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
+def _agents_url(sdk: NemoClient, workspace: str, path: str) -> str:
     return f"{str(sdk.base_url).rstrip('/')}/apis/agents/v2/workspaces/{workspace}/{path.lstrip('/')}"
 
 
-def _job_diagnostic_message(sdk: NeMoPlatform, job: Any, workspace: str, prefix: str) -> str:
+def _job_diagnostic_message(sdk: NemoClient, job: Any, workspace: str, prefix: str) -> str:
     parts = [prefix]
     if job.status_details:
         parts.append(f"Status details: {job.status_details}")
     if job.error_details:
         parts.append(f"Error details: {job.error_details}")
     try:
-        logs = sdk.jobs.get_logs(workspace=workspace, name=job.name)
+        logs = sdk.jobs.list_job_logs(workspace=workspace, name=job.name)
         if logs.data:
             parts.append(f"Job logs ({len(logs.data)} entries):")
             for entry in logs.data:
@@ -47,13 +47,13 @@ def _job_diagnostic_message(sdk: NeMoPlatform, job: Any, workspace: str, prefix:
     return "\n".join(parts)
 
 
-def _list_execute_job_results(sdk: NeMoPlatform, workspace: str, job_name: str) -> dict[str, Any]:
+def _list_execute_job_results(sdk: NemoClient, workspace: str, job_name: str) -> dict[str, Any]:
     response = sdk._client.get(_agents_url(sdk, workspace, f"jobs/execute/{job_name}/results"))
     assert response.status_code == 200, f"Failed to list execute job results for {job_name}: {response.text}"
     return response.json()
 
 
-def _download_execute_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str) -> bytes:
+def _download_execute_job_result(sdk: NemoClient, workspace: str, job_name: str, result_name: str) -> bytes:
     response = sdk._client.get(_agents_url(sdk, workspace, f"jobs/execute/{job_name}/results/{result_name}/download"))
     assert response.status_code == 200, f"Failed to download result {result_name!r} for {job_name}: {response.text}"
     return response.content
@@ -150,7 +150,7 @@ def _mock_backed_workspace_agent_config(agent_name: str, model_name: str) -> dic
     return config
 
 
-def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, workspace: str) -> None:
+def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NemoClient, workspace: str) -> None:
     agent_name = unique_name("execute-agent")
     job_name = unique_name("execute-job")
     model_name = unique_name("invoke-model")
@@ -176,7 +176,7 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         served_models={model_name: model_name},
     )
 
-    sdk.files.upload_content(
+    sdk.files.upload_file(
         fileset=fileset_name,
         workspace=workspace,
         remote_path="project/context.txt",
@@ -184,7 +184,7 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         fileset_auto_create=True,
     )
 
-    sdk.agents.create(
+    sdk.agents.create_agent(
         workspace=workspace,
         name=agent_name,
         config=_mock_backed_workspace_agent_config(agent_name, f"{workspace}/{model_name}"),
@@ -259,7 +259,7 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
 
 
 def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
 ) -> None:
     agent_name = unique_name("execute-agent")
@@ -291,7 +291,7 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         served_models={model_name: model_name},
     )
 
-    sdk.files.upload_content(
+    sdk.files.upload_file(
         fileset=fileset_name,
         workspace=workspace,
         remote_path="project/context.txt",
@@ -299,7 +299,7 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         fileset_auto_create=True,
     )
 
-    sdk.agents.create(
+    sdk.agents.create_agent(
         workspace=workspace,
         name=agent_name,
         config=_mock_backed_workspace_agent_config(agent_name, f"{workspace}/{model_name}"),

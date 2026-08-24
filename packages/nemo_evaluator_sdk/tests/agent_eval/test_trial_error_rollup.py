@@ -134,14 +134,14 @@ def test_summary_round_trips_the_rollup_through_json() -> None:
 def test_vendored_module_exposes_the_error_rollup_surface() -> None:
     # The byte-copy pin proves file parity, not that these names are importable through the shipped
     # package — which is the path a nemo-platform consumer actually uses.
-    from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalSummary as VendoredSummary
-    from nemo_platform.beta.evaluator.agent_eval.trials import (
+    from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary as VendoredSummary
+    from nemo_evaluator_sdk.agent_eval.trials import (
         AgentEvalTrial as VendoredTrial,
     )
-    from nemo_platform.beta.evaluator.agent_eval.trials import (
+    from nemo_evaluator_sdk.agent_eval.trials import (
         AgentEvalTrialStatus as VendoredStatus,
     )
-    from nemo_platform.beta.evaluator.agent_eval.trials import (
+    from nemo_evaluator_sdk.agent_eval.trials import (
         TrialError as VendoredError,
     )
 

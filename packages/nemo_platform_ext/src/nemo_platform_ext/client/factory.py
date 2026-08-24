@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Factory for creating NeMoPlatform SDK clients from nmp config.
+"""Factory for creating NemoClient SDK clients from nmp config.
 
 This module bridges the nmp CLI config file (~/.config/nmp/config.yaml) and the
-NeMoPlatform SDK client.  When the active user is an OAuthUser, the factory
+NemoClient SDK client.  When the active user is an OAuthUser, the factory
 wires up **transparent token refresh** so that every HTTP request made through the
 SDK automatically carries a valid Bearer token — no manual token management needed.
 
 High-level flow
 ===============
 
-    NeMoPlatform()  (enhanced.py)
+    NemoClient()  (enhanced.py)
            │
            ▼
     build_client_init_kwargs()
@@ -59,13 +59,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
 import httpx
-from nemo_platform import (
-    DefaultAsyncHttpxClient,
-    DefaultHttpxClient,
-    NeMoPlatform,
-    NotGiven,
-    not_given,
-)
+from nemo_platform_plugin.client.client import NemoClient
+from httpx import AsyncClient, Client
+# TODO: remove Stainless sentinel(s) NotGiven, not_given
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 
 from nemo_platform_ext.auth.helpers import NMPOIDCConfig, build_effective_scope, discover_nmp_config
@@ -139,7 +135,7 @@ class _ProviderCacheKey:
 
 # Process-wide cache: (config_path, context) → shared OIDCTokenProvider.
 # This avoids redundant refresh-token grants when the user creates multiple
-# NeMoPlatform() instances pointing at the same context.
+# NemoClient() instances pointing at the same context.
 _TOKEN_PROVIDER_CACHE: dict[_ProviderCacheKey, OIDCTokenProvider] = {}
 
 
@@ -266,7 +262,7 @@ def _make_auth_event_hook(provider: _AccessTokenProvider):
 
 
 def _make_async_auth_event_hook(provider: _AccessTokenProvider):
-    """Create an **async** httpx request event hook for AsyncNeMoPlatform.
+    """Create an **async** httpx request event hook for AsyncNemoClient.
 
     The actual refresh still runs in a worker thread (via
     ``provider.get_access_token_async``) so it doesn't block the event loop.
@@ -604,7 +600,7 @@ def build_client_init_kwargs(
     access_token: str | None = None,
     extra_headers: Mapping[str, str] | None = None,
 ) -> ClientInitConfig:
-    """Build constructor kwargs for a **sync** NeMoPlatform client.
+    """Build constructor kwargs for a **sync** NemoClient client.
 
     For OAuth users, returns a ``ClientInitConfig`` whose ``http_client``
     has a request event hook that transparently injects and refreshes the
@@ -652,7 +648,7 @@ def build_async_client_init_kwargs(
     access_token: str | None = None,
     extra_headers: Mapping[str, str] | None = None,
 ) -> ClientInitConfig:
-    """Build constructor kwargs for an **async** AsyncNeMoPlatform client.
+    """Build constructor kwargs for an **async** AsyncNemoClient client.
 
     Same as ``build_client_init_kwargs`` but returns an async httpx client
     whose event hook calls ``provider.get_access_token_async()`` (runs
@@ -696,8 +692,8 @@ def create_client(
     timeout: float | httpx.Timeout | None | NotGiven = not_given,
     max_retries: int = 2,
     extra_headers: Mapping[str, str] | None = None,
-) -> NeMoPlatform:
-    """Create a NeMoPlatform client from the nmp config.
+) -> NemoClient:
+    """Create a NemoClient client from the nmp config.
 
     This is a convenience wrapper that calls ``build_client_init_kwargs``
     and passes the result to the SDK constructor.
@@ -713,7 +709,7 @@ def create_client(
     if http_client is not None and not isinstance(http_client, httpx.Client):
         raise TypeError("build_client_init_kwargs returned a non-sync HTTP client")
 
-    return NeMoPlatform(
+    return NemoClient(
         config_path=config_path,
         context_name=context_name,
         access_token=access_token,

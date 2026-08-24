@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 from _pytest.reports import TestReport
-from nemo_platform import DefaultHttpxClient, NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
+from httpx import Client
 
 from e2e.services_pool import E2EServicesPool, RunningServices, admin_headers
 
@@ -119,12 +120,12 @@ def _services(_services_instance: RunningServices) -> Iterator[str]:
 
 
 @pytest.fixture(scope="module", name="services_pool_sdk")
-def services_pool_sdk(_services: str, _services_instance: RunningServices) -> NeMoPlatform:
+def services_pool_sdk(_services: str, _services_instance: RunningServices) -> NemoClient:
     access_token = os.environ.get("NMP_ACCESS_TOKEN")
     context_name = os.environ.get("NMP_CONTEXT_NAME")
     headers = admin_headers() if _services_instance.auth_enabled else {}
     http_client = DefaultHttpxClient(base_url=_services, verify=True) if _services_instance.proc is not None else None
-    return NeMoPlatform(
+    return NemoClient(
         base_url=_services,
         access_token=access_token,
         context_name=context_name,

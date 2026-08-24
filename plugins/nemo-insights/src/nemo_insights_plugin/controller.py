@@ -16,7 +16,7 @@ from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_nemo_config
 from nemo_platform_plugin.controller import NemoController
@@ -64,12 +64,12 @@ class InsightsAnalysisController(NemoController):
     dependencies: ClassVar[list[str]] = ["entities", "jobs"]
 
     def __init__(self) -> None:
-        self._sdk: AsyncNeMoPlatform | None = None
+        self._sdk: AsyncNemoClient | None = None
         self._entities: NemoEntitiesClient | None = None
         self._config: InsightsConfig | None = None
 
     @property
-    def sdk(self) -> AsyncNeMoPlatform:
+    def sdk(self) -> AsyncNemoClient:
         return _require(self._sdk, "sdk")
 
     @property
@@ -193,7 +193,7 @@ class InsightsAnalysisController(NemoController):
 
     async def _has_active_job(self, config: AnalysisConfig) -> bool:
         try:
-            jobs = self.sdk.jobs.list(
+            jobs = self.sdk.jobs.list_jobs(
                 workspace=config.workspace,
                 filter=cast(Any, {"source": "insights", "status": _ACTIVE_JOB_STATUSES}),
                 page_size=100,
@@ -251,7 +251,7 @@ class InsightsAnalysisController(NemoController):
             spec=spec,
             job_name=job_name,
         )
-        await self.sdk.jobs.create(
+        await self.sdk.jobs.create_job(
             workspace=config.workspace,
             source="insights",
             name=job_name,

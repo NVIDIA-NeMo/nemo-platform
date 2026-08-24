@@ -21,7 +21,7 @@ import json
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from trace_reader import get_session
 
 WORKSPACE = "default"
@@ -44,13 +44,13 @@ def _make_unsigned_jwt() -> str:
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE, access_token=_make_unsigned_jwt())
+    return NemoClient(base_url=nmp_base_url, workspace=WORKSPACE, access_token=_make_unsigned_jwt())
 
 
 @pytest.fixture
-def config(client: NeMoPlatform):
+def config(client: NemoClient):
     """Retrieve the agent-created guardrail config."""
     return client.guardrail.configs.retrieve(name=CONFIG_NAME)
 
@@ -140,7 +140,7 @@ def test_config_has_output_prompt_about_bread(config) -> None:
 # --- Functional inference checks ---
 
 
-def test_input_rail_blocks_fruit_mention(client: NeMoPlatform) -> None:
+def test_input_rail_blocks_fruit_mention(client: NemoClient) -> None:
     """Test that a message mentioning fruit is blocked by the input rail.
 
     The self_check_input prompt tells the LLM to block messages mentioning fruit.
@@ -158,7 +158,7 @@ def test_input_rail_blocks_fruit_mention(client: NeMoPlatform) -> None:
     print(f"Input rail correctly blocked fruit mention: {response.status}")
 
 
-def test_normal_message_passes_through(client: NeMoPlatform) -> None:
+def test_normal_message_passes_through(client: NemoClient) -> None:
     """Test that a normal message (no fruit, no bread) passes through both rails.
 
     A geography question doesn't mention fruit (passes input rail) and the response
@@ -175,7 +175,7 @@ def test_normal_message_passes_through(client: NeMoPlatform) -> None:
     print(f"Normal message passed through: {response.status}")
 
 
-def test_output_rail_blocks_bread_content(client: NeMoPlatform) -> None:
+def test_output_rail_blocks_bread_content(client: NemoClient) -> None:
     """Test that a response about baking bread is blocked by the output rail.
 
     The message doesn't mention fruit (passes input rail), but asking about bread

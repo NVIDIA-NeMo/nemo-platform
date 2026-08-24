@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from docker.errors import APIError, NotFound
-from nemo_platform.types.shared import AuthContext as SdkAuthContext
+from nemo_platform_plugin.schema import AuthContext as SdkAuthContext
 from nmp.common.auth import NMP_PRINCIPAL_ENVVAR, AuthContext, Principal
 from nmp.common.config import PlatformConfig
 from nmp.common.docker.gpu_pool import DockerGPUPool

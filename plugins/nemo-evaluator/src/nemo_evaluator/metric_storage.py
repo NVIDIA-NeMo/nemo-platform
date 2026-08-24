@@ -21,7 +21,7 @@ import uuid
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
@@ -65,7 +65,7 @@ def parse_bundle_ref(bundle_ref: str) -> tuple[str, str, str]:
     return workspace, fileset, path
 
 
-async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle: MetricBundle) -> str:
+async def store_bundle(sdk: AsyncNemoClient, workspace: str, name: str, bundle: MetricBundle) -> str:
     """Serialize and upload a metric bundle to a fresh fileset, returning its reference.
 
     Each call creates a new, uniquely-named fileset, so callers can safely roll
@@ -110,7 +110,7 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
     return f"{workspace}/{fileset}#{BUNDLE_FILENAME}"
 
 
-async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_digest: str | None = None) -> MetricBundle:
+async def load_bundle(sdk: AsyncNemoClient, bundle_ref: str, *, expected_digest: str | None = None) -> MetricBundle:
     """Download and reconstruct a stored metric bundle from its Files reference.
 
     When ``expected_digest`` is provided, the reconstructed payload digest is
@@ -136,7 +136,7 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
     return bundle
 
 
-async def delete_bundle_by_ref(sdk: AsyncNeMoPlatform, bundle_ref: str) -> None:
+async def delete_bundle_by_ref(sdk: AsyncNemoClient, bundle_ref: str) -> None:
     """Delete the specific fileset a bundle reference points at."""
     workspace, fileset, _ = parse_bundle_ref(bundle_ref)
     files = client_from_platform(sdk, AsyncFilesClient)

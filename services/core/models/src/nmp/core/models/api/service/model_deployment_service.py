@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import FilterOperation
 from nmp.common.auth import AuthContext
@@ -96,7 +96,7 @@ def _entity_to_schema(entity: ModelDeploymentEntity) -> ModelDeployment:
 class ModelDeploymentService:
     """Service layer for ModelDeployment operations."""
 
-    def __init__(self, entity_client: EntityClient, nmp_sdk: AsyncNeMoPlatform):
+    def __init__(self, entity_client: EntityClient, nmp_sdk: AsyncNemoClient):
         self.entity_client = entity_client
         self.nmp_sdk = nmp_sdk
 

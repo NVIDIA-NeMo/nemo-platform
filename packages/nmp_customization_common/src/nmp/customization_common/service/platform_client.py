@@ -8,7 +8,7 @@ handler / ``to_spec`` flow) to validate that the submitter's ``model`` and
 ``dataset`` references exist before the job moves on to compile / run.
 """
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.client import AsyncFilesClient
@@ -18,7 +18,7 @@ from nmp.common.entities.utils import parse_entity_ref
 from nmp.customization_common.schemas.file_io import FileSetRef
 
 
-async def check_dataset_access(sdk: AsyncNeMoPlatform, dataset_uri: str, default_workspace: str) -> None:
+async def check_dataset_access(sdk: AsyncNemoClient, dataset_uri: str, default_workspace: str) -> None:
     """Verify the caller can access the dataset fileset.
 
     Raises:
@@ -41,7 +41,7 @@ async def check_dataset_access(sdk: AsyncNeMoPlatform, dataset_uri: str, default
 async def fetch_model_entity(
     model_ref: str,
     default_workspace: str,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> ModelEntity:
     """Retrieve a model entity by reference string."""
     resolved_ref = parse_entity_ref(model_ref, default_workspace)

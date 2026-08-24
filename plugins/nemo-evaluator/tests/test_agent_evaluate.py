@@ -51,9 +51,9 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types.jobs import SubprocessExecutionProvider
-from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.jobs.schemas import SubprocessExecutionProvider
+from nemo_platform_plugin.jobs.schemas.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -379,7 +379,7 @@ def test_agent_eval_job_source_is_distinct_from_evaluate_job() -> None:
     assert AGENT_EVAL_JOB_SOURCE != _derive_service_name(EvaluateJob)
 
 
-def _sdk_with_identity(sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform]) -> NeMoPlatform | AsyncNeMoPlatform:
+def _sdk_with_identity(sdk_cls: type[NemoClient | AsyncNemoClient]) -> NemoClient | AsyncNemoClient:
     return sdk_cls(
         base_url="http://platform",
         default_headers={
@@ -397,9 +397,9 @@ def _model_target(url: str) -> ModelTarget:
     return ModelTarget(model=Model(url=url, name="m"))
 
 
-@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
+@pytest.mark.parametrize("sdk_cls", [NemoClient, AsyncNemoClient])
 def test_build_evaluator_forwards_identity_headers_to_platform_routed_target(
-    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
+    sdk_cls: type[NemoClient | AsyncNemoClient],
 ) -> None:
     """A platform-routed target (same host as the SDK base URL, e.g. an IGW route) must act as the
     job's principal, so identity headers are forwarded. Forwarding is an explicit allowlist: the
@@ -418,9 +418,9 @@ def test_build_evaluator_forwards_identity_headers_to_platform_routed_target(
     }
 
 
-@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
+@pytest.mark.parametrize("sdk_cls", [NemoClient, AsyncNemoClient])
 def test_build_evaluator_sends_no_identity_to_third_party_target(
-    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
+    sdk_cls: type[NemoClient | AsyncNemoClient],
 ) -> None:
     """A third-party target the user configured must receive no on-behalf-of identity — that would
     leak the delegated user's id/email/groups PII to an external host (it authenticates via its own
@@ -433,7 +433,7 @@ def test_build_evaluator_sends_no_identity_to_third_party_target(
 
 def test_build_evaluator_runner_target_forwards_no_headers() -> None:
     # A runner has no platform HTTP endpoint of its own, so there's no identity to forward.
-    sdk = _sdk_with_identity(NeMoPlatform)
+    sdk = _sdk_with_identity(NemoClient)
     assert AgentEvalJob._build_evaluator(sdk, _runner_target("openai/gpt-5.4")).default_headers is None
 
 
@@ -549,7 +549,7 @@ def _patch_execution_profiles(mocker: MockerFixture, profiles: list[BaseExecutio
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
 
-async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str | None = None) -> PlatformJobSpec:
+async def _compile_harbor(*, async_sdk: AsyncNemoClient | None, profile: str | None = None) -> PlatformJobSpec:
     """Compile the minimal Harbor submission every backend-guard test makes."""
     compiled = await AgentEvalJob.compile(
         workspace="default",
@@ -654,7 +654,7 @@ async def test_compile_rejects_harbor_target_for_docker_profile(mocker: MockerFi
     )
 
     with pytest.raises(PlatformJobCompilationError) as exc_info:
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
     message = str(exc_info.value)
     assert "profile 'default'" in message
@@ -683,7 +683,7 @@ async def test_compile_rejects_harbor_target_for_containerized_profile(
     _patch_execution_profiles(mocker, [execution_profile])
 
     with pytest.raises(PlatformJobCompilationError, match=rf"backend '{backend}'"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
 
 async def test_compile_routes_harbor_directly_to_advertised_subprocess_profile(mocker: MockerFixture) -> None:
@@ -696,7 +696,7 @@ async def test_compile_routes_harbor_directly_to_advertised_subprocess_profile(m
         ],
     )
 
-    job_spec = await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+    job_spec = await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
     executor = job_spec.steps[0].executor
     assert isinstance(executor, SubprocessExecutionProvider)
@@ -709,7 +709,7 @@ async def test_compile_rejects_harbor_when_profile_is_missing(mocker: MockerFixt
     _patch_execution_profiles(mocker, [SubprocessJobExecutionProfile.model_validate({"profile": "other"})])
 
     with pytest.raises(PlatformJobCompilationError, match="profile 'default'.*does not resolve"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
 
 async def test_compile_marks_missing_platform_sdk_as_dependency_unavailable() -> None:
@@ -726,7 +726,7 @@ async def test_compile_marks_profile_transport_failure_as_retryable(mocker: Mock
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
     with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
 
 @pytest.mark.parametrize("failure_kind", ["invalid-response", "server-error"])
@@ -743,7 +743,7 @@ async def test_compile_marks_profile_dependency_failure_as_retryable(failure_kin
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
     with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
 
 async def test_compile_does_not_classify_unexpected_profile_failure_as_invalid(mocker: MockerFixture) -> None:
@@ -752,7 +752,7 @@ async def test_compile_does_not_classify_unexpected_profile_failure_as_invalid(m
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
     with pytest.raises(RuntimeError, match="unexpected lookup bug"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNemoClient))
 
 
 async def test_compile_non_harbor_target_does_not_resolve_execution_profiles(mocker: MockerFixture) -> None:

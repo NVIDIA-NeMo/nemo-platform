@@ -45,7 +45,7 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
@@ -86,7 +86,7 @@ def _submit_params(
 
 
 def _resolve_submit_target(
-    platform: NeMoPlatform,
+    platform: NemoClient,
     target: SubmitTargetSpec | None,
 ) -> Model | Agent | None:
     if isinstance(target, ModelRef):
@@ -95,7 +95,7 @@ def _resolve_submit_target(
 
 
 async def _resolve_submit_target_async(
-    platform: AsyncNeMoPlatform,
+    platform: AsyncNemoClient,
     target: SubmitTargetSpec | None,
 ) -> Model | Agent | None:
     if isinstance(target, ModelRef):
@@ -151,7 +151,7 @@ class _SyncEvaluatorPluginExecutor:
     def __init__(
         self,
         *,
-        platform: NeMoPlatform,
+        platform: NemoClient,
         workspace: str | None = None,
         poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
         job_timeout_seconds: float = _DEFAULT_JOB_TIMEOUT_SECONDS,
@@ -297,7 +297,7 @@ class _AsyncEvaluatorPluginExecutor:
     def __init__(
         self,
         *,
-        platform: AsyncNeMoPlatform,
+        platform: AsyncNemoClient,
         workspace: str | None = None,
         poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
         job_timeout_seconds: float = _DEFAULT_JOB_TIMEOUT_SECONDS,

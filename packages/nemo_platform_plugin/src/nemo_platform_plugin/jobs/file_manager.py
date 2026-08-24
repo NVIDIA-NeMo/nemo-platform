@@ -11,8 +11,8 @@ from typing import Protocol
 
 import anyio
 import fsspec.asyn
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem, build_fileset_ref, parse_fileset_ref
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from filesets.filesystem import FilesetFileSystem, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.jobs.schemas import FileStorageType
 
@@ -134,7 +134,7 @@ class BaseFilesetFileManager:
 
     workspace: str
     fileset_name: str
-    sdk: NeMoPlatform | AsyncNeMoPlatform
+    sdk: NemoClient | AsyncNemoClient
     ensure_fileset_exists: bool = True
 
     _fs: FilesetFileSystem = field(init=False)

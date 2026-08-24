@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from nemo_experimentalist_plugin.eval_author import traces
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 DISCOVERY_SPAN_BUDGET = 200
 
@@ -46,7 +46,7 @@ class Report:
         print(f"\n=== {title} ===")
 
 
-async def discover(client: AsyncNeMoPlatform) -> tuple[str, str] | None:
+async def discover(client: AsyncNemoClient) -> tuple[str, str] | None:
     """Find the workspace with the most agent-scoped spans, and its busiest agent."""
     best: tuple[int, str, str] | None = None
     async for workspace in client.workspaces.list():
@@ -72,7 +72,7 @@ async def discover(client: AsyncNeMoPlatform) -> tuple[str, str] | None:
     return best[1], best[2]
 
 
-async def check_raw_span_queries(client: AsyncNeMoPlatform, report: Report, workspace: str, agent: str) -> None:
+async def check_raw_span_queries(client: AsyncNemoClient, report: Report, workspace: str, agent: str) -> None:
     report.section("query_spans: rows, order, and plain dicts")
     result = await traces.query_spans(client, workspace=workspace, limit=5)
     report.check("returns rows", result["count"] > 0, f"count={result['count']} truncated={result['truncated']}")
@@ -109,7 +109,7 @@ async def check_raw_span_queries(client: AsyncNeMoPlatform, report: Report, work
         report.check("only trace_id and session_id group", True, str(exc)[:110])
 
 
-async def check_raw_trace_queries(client: AsyncNeMoPlatform, report: Report, workspace: str) -> None:
+async def check_raw_trace_queries(client: AsyncNemoClient, report: Report, workspace: str) -> None:
     report.section("query_traces: rollups and the $in filter")
     result = await traces.query_traces(client, workspace=workspace, limit=5)
     report.check("returns rows", result["count"] > 0, f"count={result['count']}")
@@ -144,7 +144,7 @@ async def check_raw_trace_queries(client: AsyncNeMoPlatform, report: Report, wor
 
 
 async def check_find_agent_traces(
-    client: AsyncNeMoPlatform, report: Report, workspace: str, agent: str
+    client: AsyncNemoClient, report: Report, workspace: str, agent: str
 ) -> dict[str, Any] | None:
     report.section("find_agent_traces")
     found = await traces.find_agent_traces(client, agent=agent, workspace=workspace, limit=5)
@@ -204,7 +204,7 @@ async def check_find_agent_traces(
     return target
 
 
-async def check_read_trace(client: AsyncNeMoPlatform, report: Report, workspace: str, trace_id: str) -> None:
+async def check_read_trace(client: AsyncNemoClient, report: Report, workspace: str, trace_id: str) -> None:
     report.section("read_trace: all three ref spellings")
     explorer = None
     for ref in (trace_id, f"intake://{trace_id}", f"intake://traces/{trace_id}"):
@@ -216,7 +216,7 @@ async def check_read_trace(client: AsyncNeMoPlatform, report: Report, workspace:
             report.note(line)
 
 
-async def check_errors(client: AsyncNeMoPlatform, report: Report, workspace: str, agent: str) -> None:
+async def check_errors(client: AsyncNemoClient, report: Report, workspace: str, agent: str) -> None:
     report.section("errors name a corrective action")
     cases = (
         ("an unknown filter field", traces.query_spans(client, workspace=workspace, filter={"not_a_field": "x"})),
@@ -246,7 +246,7 @@ async def main() -> int:
     if bool(args.workspace) != bool(args.agent):
         parser.error("--workspace and --agent must be given together, or neither.")
 
-    async with AsyncNeMoPlatform(base_url=args.base_url) as client:
+    async with AsyncNemoClient(base_url=args.base_url) as client:
         if args.workspace and args.agent:
             workspace, agent = args.workspace, args.agent
         else:

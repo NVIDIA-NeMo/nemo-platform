@@ -27,9 +27,11 @@ from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
-from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
+from nemo_platform_plugin.client.client import AsyncNemoClient
+# TODO: intake type AtifFinalMetricsParam — define in nemo_platform_plugin or use dict[str, Any]
+from typing import Any
+# TODO: intake type TraceFilterParam — define in nemo_platform_plugin or use dict[str, Any]
+from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 #: Default ceiling on concurrent per-trial publishes.
@@ -117,7 +119,7 @@ def _token_final_metrics(measurements: TrialMeasurements) -> AtifFinalMetricsPar
 async def publish_to_intake(
     result: AgentEvalResult,
     *,
-    platform: AsyncNeMoPlatform,
+    platform: AsyncNemoClient,
     experiment_id: str,
     workspace: str | None = None,
     agent_name: str = "agent",
@@ -260,7 +262,7 @@ def _publish_failure_message(
     )
 
 
-async def _resolve_root_span_id(platform: AsyncNeMoPlatform, *, workspace: str, session_id: str) -> str:
+async def _resolve_root_span_id(platform: AsyncNemoClient, *, workspace: str, session_id: str) -> str:
     """Return the root AGENT span id for a freshly-ingested trajectory (design §3.5, option 1)."""
     trace_filter: TraceFilterParam = {"session_id": session_id}
     async for trace in platform.intake.traces.list(workspace=workspace, filter=trace_filter):

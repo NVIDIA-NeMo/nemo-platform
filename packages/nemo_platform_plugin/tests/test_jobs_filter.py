@@ -343,7 +343,7 @@ class TestPluginJobsFilterValueValidation:
 
 class TestForwardedFilterSurvivesSdkSerialization:
     """Codex adversarial-review concern: the kwargs-capturing tests above prove
-    *what* the factory hands to ``sdk.jobs.list``, but not whether the SDK's
+    *what* the factory hands to ``sdk.jobs.list_jobs``, but not whether the SDK's
     querystring serializer can encode it onto the wire without mangling.
 
     The typed client forwards ``filter`` as a single JSON-string query param

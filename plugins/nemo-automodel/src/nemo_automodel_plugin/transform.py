@@ -17,7 +17,7 @@ from nemo_automodel_plugin.schema import (
 )
 
 if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 def _infer_output_type(input_spec: AutomodelJobInput, is_embedding_model: bool) -> str:
@@ -32,7 +32,7 @@ def _infer_output_type(input_spec: AutomodelJobInput, is_embedding_model: bool) 
 async def transform_input_to_output(
     input_spec: AutomodelJobInput,
     workspace: str,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> AutomodelJobOutput:
     """Enrich submitter input into canonical AutomodelJobOutput."""
     model_entity = await fetch_model_entity(input_spec.model, workspace, sdk)

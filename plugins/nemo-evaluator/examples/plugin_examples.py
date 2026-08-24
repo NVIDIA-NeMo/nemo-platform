@@ -39,7 +39,8 @@ from nemo_evaluator_sdk.values import (
     SecretRef,
 )
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import APIError, AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.client import errors as files_errors
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
@@ -108,9 +109,9 @@ def configure_example_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
 
-async def _new_client() -> AsyncNeMoPlatform:
+async def _new_client() -> AsyncNemoClient:
     """Create a platform client and verify the evaluator plugin is reachable."""
-    client = AsyncNeMoPlatform(
+    client = AsyncNemoClient(
         base_url=os.getenv("NMP_BASE_URL", DEFAULT_BASE_URL),
         workspace=DEFAULT_WORKSPACE,
         timeout=30000.0,
@@ -126,9 +127,9 @@ async def _new_client() -> AsyncNeMoPlatform:
     return client
 
 
-def _new_sync_client() -> NeMoPlatform:
+def _new_sync_client() -> NemoClient:
     """Create a sync platform client and verify the evaluator plugin is reachable."""
-    client = NeMoPlatform(
+    client = NemoClient(
         base_url=os.getenv("NMP_BASE_URL", DEFAULT_BASE_URL),
         workspace=DEFAULT_WORKSPACE,
         timeout=30000.0,
@@ -144,7 +145,7 @@ def _new_sync_client() -> NeMoPlatform:
     return client
 
 
-async def _close_client(client: AsyncNeMoPlatform) -> None:
+async def _close_client(client: AsyncNemoClient) -> None:
     """Close the platform client while tolerating local-run loop shutdown."""
     try:
         await client.close()
@@ -182,7 +183,7 @@ def write_local_helpsteer2_dataset(dataset_path: Path, *, row_count: int) -> Non
     dataset_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
-async def ensure_example_fileset(client: AsyncNeMoPlatform) -> FilesetRef:
+async def ensure_example_fileset(client: AsyncNemoClient) -> FilesetRef:
     """Create or reuse the HelpSteer2 fileset, then verify the selected split downloads."""
     workspace = client.workspace or DEFAULT_WORKSPACE
     files = client_from_platform(client, AsyncFilesClient)
@@ -218,7 +219,7 @@ async def ensure_example_fileset(client: AsyncNeMoPlatform) -> FilesetRef:
     return FilesetRef(root=f"{fileset.workspace}/{fileset.name}").with_fragment(HELPSTEER2_REMOTE_PATH)
 
 
-def ensure_example_fileset_sync(client: NeMoPlatform) -> FilesetRef:
+def ensure_example_fileset_sync(client: NemoClient) -> FilesetRef:
     """Create or reuse the HelpSteer2 fileset with a sync client, then verify the selected split downloads."""
     workspace = client.workspace or DEFAULT_WORKSPACE
     files = client_from_platform(client, FilesClient)
@@ -251,7 +252,7 @@ def ensure_example_fileset_sync(client: NeMoPlatform) -> FilesetRef:
     return FilesetRef(root=f"{fileset.workspace}/{fileset.name}").with_fragment(HELPSTEER2_REMOTE_PATH)
 
 
-async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNeMoPlatform) -> str:
+async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNemoClient) -> str:
     """Resolve an API key secret name and ensure it exists on the platform."""
     secret_name = DEFAULT_API_KEY_SECRET.lower().replace("_", "-")
     secrets = client_from_platform(client, AsyncSecretsClient)
@@ -280,14 +281,14 @@ async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNe
 async def model_with_valid_secret(
     *,
     workspace: str,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
 ) -> Model:
     """Return a model carrying the API-key secret that a submitted platform job needs."""
     secret_name = await ensure_submit_evaluator_api_key_secret(workspace, client)
     return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
 
 
-def ensure_submit_evaluator_api_key_secret_sync(workspace: str, client: NeMoPlatform) -> str:
+def ensure_submit_evaluator_api_key_secret_sync(workspace: str, client: NemoClient) -> str:
     """Sync mirror of :func:`ensure_submit_evaluator_api_key_secret`."""
     secret_name = DEFAULT_API_KEY_SECRET.lower().replace("_", "-")
     secrets = client_from_platform(client, SecretsClient)
@@ -313,7 +314,7 @@ def ensure_submit_evaluator_api_key_secret_sync(workspace: str, client: NeMoPlat
     return secret_name
 
 
-def model_with_valid_secret_sync(*, workspace: str, client: NeMoPlatform) -> Model:
+def model_with_valid_secret_sync(*, workspace: str, client: NemoClient) -> Model:
     """Sync mirror of :func:`model_with_valid_secret`.
 
     The module-level ``model`` names an environment variable, which was correct while the plugin
@@ -483,7 +484,7 @@ def extract_helpfulness_scores(
 
 async def _run_online_metric_example_body(
     *,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     dataset: PluginDatasetInput,
     workflow_label: str,
     is_online: bool,

@@ -9,9 +9,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
-from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoHTTPError
+from nemo_platform_plugin.models.types import ModelProvider, ServedModelMapping
+from nemo_platform_plugin.models.types.model_entity import ModelEntity
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 from nmp.core.inference_gateway.api.proxy import retrieve_secret_value
@@ -179,7 +180,7 @@ def _to_plugin_backend_format(value: object | None) -> BackendFormat | None:
     return None
 
 
-def model_provider_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[], Awaitable[list[ModelProvider]]]:
+def model_provider_getter_from_sdk(models_sdk: AsyncNemoClient) -> Callable[[], Awaitable[list[ModelProvider]]]:
     async def _model_provider_getter() -> list[ModelProvider]:
         try:
             # SDK returns AsyncPaginator - iterate through all pages to get all providers
@@ -190,9 +191,9 @@ def model_provider_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[]
             )
             providers = [provider async for provider in resp]
             return providers
-        except APIConnectionError as exc:
+        except NemoTransportError as exc:
             raise ModelProviderRefreshError(f"Error connecting to models service: {exc.body}") from exc
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             raise ModelProviderRefreshError(
                 f"Error refreshing from models service: {exc.status_code}, {exc.body}"
             ) from exc
@@ -200,7 +201,7 @@ def model_provider_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[]
     return _model_provider_getter
 
 
-def model_entity_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[], Awaitable[list[ModelEntity]]]:
+def model_entity_getter_from_sdk(models_sdk: AsyncNemoClient) -> Callable[[], Awaitable[list[ModelEntity]]]:
     async def _model_entity_getter() -> list[ModelEntity]:
         try:
             # SDK returns AsyncPaginator - iterate through all pages to get all model entities.
@@ -212,9 +213,9 @@ def model_entity_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[], 
             )
             models = [model async for model in resp]
             return models
-        except APIConnectionError as exc:
+        except NemoTransportError as exc:
             raise ModelProviderRefreshError(f"Error connecting to models service: {exc.body}") from exc
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             raise ModelProviderRefreshError(
                 f"Error refreshing model entities from models service: {exc.status_code}, {exc.body}"
             ) from exc
@@ -247,7 +248,7 @@ def debug_model_provider_getter(
 async def refresh_model_cache(
     model_cache: ModelCache,
     model_provider_getter: Callable[[], Awaitable[list[ModelProvider]]],
-    secrets_sdk: AsyncNeMoPlatform,
+    secrets_sdk: AsyncNemoClient,
     model_entity_getter: Callable[[], Awaitable[list[ModelEntity]]] | None = None,
     virtual_model_cache: VirtualModelCache | None = None,
     middleware_registry: MiddlewareRegistry | None = None,
@@ -306,7 +307,7 @@ async def refresh_model_cache(
 async def refresh_model_provider_info(
     model_cache: ModelCache,
     model_info: ModelProviderInfo,
-    secrets_sdk: AsyncNeMoPlatform,
+    secrets_sdk: AsyncNemoClient,
 ):
     now = datetime.now()
     model_provider = model_info.model_provider
@@ -321,7 +322,7 @@ async def refresh_model_provider_info(
 
 
 async def _refresh_secret_value(
-    model_info: ModelProviderInfo, secrets_sdk: AsyncNeMoPlatform, api_key_secret_name: str
+    model_info: ModelProviderInfo, secrets_sdk: AsyncNemoClient, api_key_secret_name: str
 ):
     """
     For a given model provider, update the cached secret value. This function
@@ -348,7 +349,7 @@ async def _async_pause(delay: float) -> None:
 async def refresh_model_cache_task(
     model_cache: ModelCache,
     model_provider_getter: Callable[[], Awaitable[list[ModelProvider]]],
-    secrets_sdk: AsyncNeMoPlatform,
+    secrets_sdk: AsyncNemoClient,
     sleep_duration_s: int,
     max_consecutive_failures: int = 10,
     model_entity_getter: Callable[[], Awaitable[list[ModelEntity]]] | None = None,

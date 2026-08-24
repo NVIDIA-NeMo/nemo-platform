@@ -25,8 +25,8 @@ from typing import cast
 
 import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
-from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import parse_fileset_ref
+from nemo_platform_plugin.client.client import NemoClient
+from filesets.filesystem import parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.client import JobsClient
@@ -211,7 +211,7 @@ def write_results_local(result: SafeSynthesizerResults, output_dir: Path, adapte
             shutil.copytree(adapter_path, adapter_target)
 
 
-def _create_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str, artifact_url: str):
+def _create_job_result(sdk: NemoClient, workspace: str, job_name: str, result_name: str, artifact_url: str):
     """Create a job result record."""
     client_from_platform(sdk, JobsClient).create_job_result(
         name=result_name,
@@ -226,7 +226,7 @@ def _resolve_pretrained_model(
     job_config: SafeSynthesizerJobConfig,
     *,
     workspace: str,
-    sdk: NeMoPlatform | None = None,
+    sdk: NemoClient | None = None,
 ) -> tuple[object | None, Path | None]:
     """Download a prior job's adapter artifact from Files when ``pretrained_model_job`` is set."""
     if not job_config.pretrained_model_job:

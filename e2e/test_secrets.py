@@ -9,10 +9,10 @@ work correctly when running against a fully deployed NMP platform.
 
 import uuid
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 
-def test_secret_create_and_list(sdk: NeMoPlatform, workspace: str):
+def test_secret_create_and_list(sdk: NemoClient, workspace: str):
     """Test creating a secret and listing it in the workspace.
 
     This test verifies the secrets system works end-to-end:
@@ -24,7 +24,7 @@ def test_secret_create_and_list(sdk: NeMoPlatform, workspace: str):
     secret_value = "e2e-test-secret-value"
 
     # Create a secret
-    secret = sdk.secrets.create(
+    secret = sdk.secrets.create_secret(
         workspace=workspace,
         name=secret_name,
         value=secret_value,
@@ -33,17 +33,17 @@ def test_secret_create_and_list(sdk: NeMoPlatform, workspace: str):
     assert secret.workspace == workspace
 
     # List secrets and verify the new secret appears
-    list_response = sdk.secrets.list(workspace=workspace)
+    list_response = sdk.secrets.list_secrets(workspace=workspace)
     secret_names = [s.name for s in list_response.data]
     assert secret_name in secret_names
 
     # Retrieve the secret to verify it was created correctly
-    retrieved_secret = sdk.secrets.retrieve(secret_name, workspace=workspace)
+    retrieved_secret = sdk.secrets.get_secret(secret_name, workspace=workspace)
     assert retrieved_secret.name == secret_name
     assert retrieved_secret.workspace == workspace
 
 
-def test_secret_create_duplicate_fails(sdk: NeMoPlatform, workspace: str):
+def test_secret_create_duplicate_fails(sdk: NemoClient, workspace: str):
     """Test that creating a secret with a duplicate name fails.
 
     This test verifies that the secrets system enforces unique
@@ -53,7 +53,7 @@ def test_secret_create_duplicate_fails(sdk: NeMoPlatform, workspace: str):
     secret_value = "e2e-duplicate-test-secret-value"
 
     # Create the initial secret
-    sdk.secrets.create(
+    sdk.secrets.create_secret(
         workspace=workspace,
         name=secret_name,
         value=secret_value,
@@ -61,7 +61,7 @@ def test_secret_create_duplicate_fails(sdk: NeMoPlatform, workspace: str):
 
     # Attempt to create a duplicate secret and expect failure
     try:
-        sdk.secrets.create(
+        sdk.secrets.create_secret(
             workspace=workspace,
             name=secret_name,
             value="some-other-value",
@@ -72,7 +72,7 @@ def test_secret_create_duplicate_fails(sdk: NeMoPlatform, workspace: str):
         assert "already exists" in str(e) or "duplicate" in str(e)
 
 
-def test_secret_create_and_delete(sdk: NeMoPlatform, workspace: str):
+def test_secret_create_and_delete(sdk: NemoClient, workspace: str):
     """Test creating and deleting a secret.
 
     This test verifies that a secret can be created and then deleted,
@@ -82,30 +82,30 @@ def test_secret_create_and_delete(sdk: NeMoPlatform, workspace: str):
     secret_value = "e2e-delete-test-secret-value"
 
     # Create a secret
-    sdk.secrets.create(
+    sdk.secrets.create_secret(
         workspace=workspace,
         name=secret_name,
         value=secret_value,
     )
 
     # Verify the secret appears in the list
-    list_response = sdk.secrets.list(workspace=workspace)
+    list_response = sdk.secrets.list_secrets(workspace=workspace)
     secret_names = [s.name for s in list_response.data]
     assert secret_name in secret_names
 
     # Delete the secret
-    sdk.secrets.delete(
+    sdk.secrets.delete_secret(
         workspace=workspace,
         name=secret_name,
     )
 
     # Verify the secret no longer appears in the list
-    list_response = sdk.secrets.list(workspace=workspace)
+    list_response = sdk.secrets.list_secrets(workspace=workspace)
     secret_names = [s.name for s in list_response.data]
     assert secret_name not in secret_names
 
 
-def test_secret_data_not_in_create_response(sdk: NeMoPlatform, workspace: str):
+def test_secret_data_not_in_create_response(sdk: NemoClient, workspace: str):
     """Test that secret data is not exposed in the create response.
 
     This test verifies that when creating a secret, the response does not
@@ -114,7 +114,7 @@ def test_secret_data_not_in_create_response(sdk: NeMoPlatform, workspace: str):
     secret_name = f"e2e-no-data-create-{uuid.uuid4().hex[:8]}"
     secret_value = "this-should-not-appear-in-response"
 
-    secret = sdk.secrets.create(
+    secret = sdk.secrets.create_secret(
         workspace=workspace,
         name=secret_name,
         value=secret_value,
@@ -131,7 +131,7 @@ def test_secret_data_not_in_create_response(sdk: NeMoPlatform, workspace: str):
     assert "_data" not in secret_dict
 
 
-def test_secret_data_not_in_retrieve_response(sdk: NeMoPlatform, workspace: str):
+def test_secret_data_not_in_retrieve_response(sdk: NemoClient, workspace: str):
     """Test that secret data is not exposed in the retrieve response.
 
     This test verifies that when retrieving a secret by name, the response
@@ -140,14 +140,14 @@ def test_secret_data_not_in_retrieve_response(sdk: NeMoPlatform, workspace: str)
     secret_name = f"e2e-no-data-retrieve-{uuid.uuid4().hex[:8]}"
     secret_value = "this-should-not-appear-in-retrieve"
 
-    sdk.secrets.create(
+    sdk.secrets.create_secret(
         workspace=workspace,
         name=secret_name,
         value=secret_value,
     )
 
     # Retrieve the secret
-    retrieved = sdk.secrets.retrieve(secret_name, workspace=workspace)
+    retrieved = sdk.secrets.get_secret(secret_name, workspace=workspace)
 
     # Verify name and workspace are present
     assert retrieved.name == secret_name
@@ -159,7 +159,7 @@ def test_secret_data_not_in_retrieve_response(sdk: NeMoPlatform, workspace: str)
     assert "_data" not in secret_dict
 
 
-def test_secret_data_not_in_list_response(sdk: NeMoPlatform, workspace: str):
+def test_secret_data_not_in_list_response(sdk: NemoClient, workspace: str):
     """Test that secret data is not exposed in the list response.
 
     This test verifies that when listing secrets, none of the secrets
@@ -168,14 +168,14 @@ def test_secret_data_not_in_list_response(sdk: NeMoPlatform, workspace: str):
     secret_name = f"e2e-no-data-list-{uuid.uuid4().hex[:8]}"
     secret_value = "this-should-not-appear-in-list"
 
-    sdk.secrets.create(
+    sdk.secrets.create_secret(
         workspace=workspace,
         name=secret_name,
         value=secret_value,
     )
 
     # List secrets
-    list_response = sdk.secrets.list(workspace=workspace)
+    list_response = sdk.secrets.list_secrets(workspace=workspace)
 
     # Find our secret in the list
     our_secret = next((s for s in list_response.data if s.name == secret_name), None)

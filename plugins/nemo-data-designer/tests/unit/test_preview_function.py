@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from nemo_data_designer_plugin.functions import preview as preview_module
 from nemo_data_designer_plugin.functions._types import LogFrame, PreviewSpec
 from nemo_data_designer_plugin.functions.preview import PreviewFunction
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.dependencies import get_sdk_client
 from nemo_platform_plugin.function_context import FunctionContext
 from nemo_platform_plugin.functions.routes import NDJSON_MEDIA_TYPE, add_function_routes
@@ -52,7 +52,7 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
         async for frame in PreviewFunction().run(
             PreviewSpec(config=_config(), num_records=2),
             ctx=FunctionContext(workspace="team-a"),
-            async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
+            async_sdk=AsyncNemoClient(base_url="http://testserver", workspace="default"),
             is_local=True,
         )
     ]
@@ -84,7 +84,7 @@ async def test_preview_function_runs_model_health_check_off_event_loop(monkeypat
         async for frame in PreviewFunction().run(
             PreviewSpec(config=_config(), num_records=2),
             ctx=FunctionContext(workspace="team-a"),
-            async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
+            async_sdk=AsyncNemoClient(base_url="http://testserver", workspace="default"),
             is_local=True,
         )
     ]
@@ -107,7 +107,7 @@ def test_preview_route_streams_ndjson_and_heartbeats(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(preview_module, "_make_preview_dataset", slow_worker)
 
     app = FastAPI()
-    app.dependency_overrides[get_sdk_client] = lambda: AsyncNeMoPlatform(
+    app.dependency_overrides[get_sdk_client] = lambda: AsyncNemoClient(
         base_url="http://testserver", workspace="default"
     )
     app.include_router(

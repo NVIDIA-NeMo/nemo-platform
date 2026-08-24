@@ -4,7 +4,7 @@
 """Tests for the data -> value field rename in secret request/response models.
 
 AIRCORE-552: Users intuitively reach for `value=` or `secret=` when calling
-sdk.secrets.create(), but the field was named `data`. This verifies the rename
+sdk.secrets.create_secret(), but the field was named `data`. This verifies the rename
 is complete and consistent.
 """
 

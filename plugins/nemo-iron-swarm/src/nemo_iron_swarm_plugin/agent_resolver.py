@@ -293,7 +293,7 @@ def scaffold_project(project_path: Path, agent_name: str) -> None:
 def _fetch_agent_config(sdk: Any, workspace: str, name: str) -> dict[str, Any]:
     """Fetch the agent's stored NAT workflow config, raising a clean error if unusable."""
     try:
-        agent = sdk.agents.get(name, workspace=workspace)
+        agent = sdk.agents.get_agent(name, workspace=workspace)
     except Exception as exc:  # any SDK/transport failure → one clean, actionable error
         raise AgentResolutionError(
             f"agent {workspace}/{name!r} not found. Deploy it first (nemo agents create + nemo agents deploy)."
@@ -307,7 +307,7 @@ def _fetch_agent_config(sdk: Any, workspace: str, name: str) -> dict[str, Any]:
 def _resolve_victim_port(sdk: Any, workspace: str, name: str) -> tuple[int, list[str]]:
     """Return the running deployment's port (else iron-swarm's default 8000) plus any warnings."""
     try:
-        resp = sdk.agents.deployments.list(workspace=workspace)
+        resp = sdk.agents.list_deployments(workspace=workspace)
     except Exception:  # transport error → fall back to the default port, but surface why (not a silent miss)
         logger.warning(
             "could not list deployments for %s/%s; defaulting victim port to 8000", workspace, name, exc_info=True

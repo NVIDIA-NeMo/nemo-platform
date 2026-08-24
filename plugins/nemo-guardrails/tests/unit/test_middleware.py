@@ -21,7 +21,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
-import nemo_platform
+from nemo_platform_plugin.client import errors as nemo_platform
 import openai
 import pytest
 import pytest_asyncio
@@ -43,8 +43,8 @@ from nemo_guardrails_plugin.middleware import (
 )
 from nemo_guardrails_plugin.requests import parse_guardrails_request
 from nemo_guardrails_plugin.streaming import close_async_iterator
-from nemo_platform.types.guardrail import GuardrailConfig
-from nemo_platform.types.guardrail import RailsConfig as SDKRailsConfig
+from nemo_platform_plugin.guardrail.types import GuardrailConfig
+from nemo_platform_plugin.guardrail.types import RailsConfig as SDKRailsConfig
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareContext,
@@ -2523,7 +2523,7 @@ class TestProcessRequestErrorSurfacing:
         )
 
     async def test_openai_status_error_status_code_preserved(self, middleware: GuardrailsMiddleware) -> None:
-        """An ``openai.APIStatusError`` subclass (``BadRequestError`` here) has
+        """An ``openai.NemoHTTPError`` subclass (``BadRequestError`` here) has
         a genuine ``status_code`` attribute, so it's picked up directly with
         no message parsing needed."""
         request_body = {

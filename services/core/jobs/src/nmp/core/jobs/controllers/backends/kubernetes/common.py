@@ -11,7 +11,7 @@ from typing import Any
 from kubernetes import client, config
 from kubernetes.client.models import V1Pod
 from kubernetes.client.rest import ApiException
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.execution_profiles import (
@@ -1234,7 +1234,7 @@ def create_pod_template_spec(
 
 
 def update_all_tasks(
-    nmp_sdk: NeMoPlatform,
+    nmp_sdk: NemoClient,
     core_v1: client.CoreV1Api,
     namespace: str,
     step: PlatformJobStepWithContext,

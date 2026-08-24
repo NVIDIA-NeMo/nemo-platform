@@ -11,9 +11,9 @@ from collections.abc import Awaitable
 from typing import Protocol, TypeVar, cast, runtime_checkable
 
 from nemo_evaluator_sdk.values.models import Model, ModelRef
-from nemo_platform import NotFoundError
-from nemo_platform.types.inference import ModelProvider as PlatformModelProvider
-from nemo_platform.types.models import ModelEntity as PlatformModelEntity
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.types import ModelProvider as PlatformModelProvider
+from nemo_platform_plugin.models.types import ModelEntity as PlatformModelEntity
 
 _logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
@@ -90,7 +90,7 @@ async def _resolve_provider_host_url(
         return None
 
     try:
-        provider = await _maybe_await(sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace))
+        provider = await _maybe_await(sdk.inference.providers.get_provider(provider_name, workspace=provider_workspace))
         return provider.host_url
     except NotFoundError:
         _logger.warning("Provider not found during host_url resolution", extra={"provider_ref": provider_ref})

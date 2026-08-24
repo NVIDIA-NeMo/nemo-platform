@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from nemo_evaluator.api.schemas import Revision, Taskset, TasksetInput
 from nemo_evaluator.sdk import http_utils
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.schema import Page
 
 
@@ -28,7 +28,7 @@ def _list_params(page: int, page_size: int, sort: str | None) -> dict[str, str |
 class EvaluatorTasksetsResource:
     """Sync resource mounted as ``client.evaluator.tasksets``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 
@@ -146,7 +146,7 @@ class EvaluatorTasksetsResource:
 class AsyncEvaluatorTasksetsResource:
     """Async resource mounted as ``client.evaluator.tasksets``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 

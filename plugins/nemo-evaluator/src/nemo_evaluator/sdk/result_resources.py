@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 from nemo_evaluator.api.schemas import AgentEvalResult, EvaluateResult
 from nemo_evaluator.sdk import http_utils
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.schema import Page, PaginationData
 
 _ResultT = TypeVar("_ResultT", AgentEvalResult, EvaluateResult)
@@ -61,7 +61,7 @@ class _SyncResultsResource(Generic[_ResultT]):
     _collection: ClassVar[str]
     _model: type[_ResultT]
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 
@@ -110,7 +110,7 @@ class _AsyncResultsResource(Generic[_ResultT]):
     _collection: ClassVar[str]
     _model: type[_ResultT]
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 

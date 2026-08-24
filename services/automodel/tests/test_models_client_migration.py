@@ -3,7 +3,7 @@
 
 """Deployment-config resolution through the typed Models client, over a mocked httpx transport.
 
-Driving a real ``AsyncNeMoPlatform`` -> ``client_from_platform`` ->
+Driving a real ``AsyncNemoClient`` -> ``client_from_platform`` ->
 ``AsyncModelsClient`` chain asserts the wire contract (method, path, parsed
 model and error mapping) rather than restating the call the implementation
 happens to make.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.models.types import ModelDeploymentConfig
 from nmp.automodel.app.jobs.compiler import _resolve_deployment_config_ref
@@ -49,8 +49,8 @@ def _recording_transport(
     return httpx.MockTransport(handler), seen
 
 
-def _sdk(transport: httpx.MockTransport) -> AsyncNeMoPlatform:
-    return AsyncNeMoPlatform(base_url=BASE, workspace="default", http_client=httpx.AsyncClient(transport=transport))
+def _sdk(transport: httpx.MockTransport) -> AsyncNemoClient:
+    return AsyncNemoClient(base_url=BASE, workspace="default", http_client=httpx.AsyncClient(transport=transport))
 
 
 @pytest.mark.asyncio

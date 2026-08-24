@@ -37,8 +37,9 @@ from nemo_insights_plugin.entities import (
 )
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due, previous_scheduled
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types.intake.spans.span_group import SpanGroup
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+# TODO: intake type SpanGroup — define in nemo_platform_plugin or use dict[str, Any]
+from typing import Any
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import JobResults
@@ -92,7 +93,7 @@ class _MissingInsights:
 @pytest.mark.asyncio
 async def test_remote_persist_validates_updates_without_trace_refs() -> None:
     client = SimpleNamespace(insights=SimpleNamespace(insights=_MissingInsights()))
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, client))
+    backend = RemoteAnalystBackend(cast(AsyncNemoClient, client))
     result = AnalystResult(
         summary="Nothing new.",
         updated_insights=[InsightUpdate(id="missing-insight")],
@@ -153,7 +154,7 @@ class _RecordingInsights:
 def _remote_backend_with_mirror(path: Path) -> tuple[RemoteAnalystBackend, _RecordingInsights]:
     insights = _RecordingInsights()
     client = SimpleNamespace(insights=SimpleNamespace(insights=insights))
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, client), mirror=InsightsFileStore(path))
+    backend = RemoteAnalystBackend(cast(AsyncNemoClient, client), mirror=InsightsFileStore(path))
     return backend, insights
 
 
@@ -223,7 +224,7 @@ def test_make_analyst_backend_always_writes_to_the_platform(tmp_path: Path) -> N
     """An output path adds a mirror; it never diverts writes off the platform."""
     client = SimpleNamespace()
 
-    platform_client = cast(AsyncNeMoPlatform, client)
+    platform_client = cast(AsyncNemoClient, client)
     plain = make_analyst_backend(client=platform_client, insights_output=None)
     mirrored = make_analyst_backend(client=platform_client, insights_output=str(tmp_path / "insights.yaml"))
 
@@ -236,7 +237,7 @@ def test_local_only_is_evaluation_plumbing_and_requires_a_path(tmp_path: Path) -
     """``local_only`` stays reachable for the evaluation, which no CLI flag sets."""
     client = SimpleNamespace()
 
-    platform_client = cast(AsyncNeMoPlatform, client)
+    platform_client = cast(AsyncNemoClient, client)
     local = make_analyst_backend(
         client=platform_client,
         insights_output=str(tmp_path / "insights.yaml"),
@@ -274,7 +275,7 @@ def test_local_backend_reads_and_writes_insights_file_with_explicit_utf8(
     monkeypatch.setattr(Path, "write_text", spy_write_text)
 
     backend = LocalAnalystBackend(
-        client=cast(AsyncNeMoPlatform, SimpleNamespace()),
+        client=cast(AsyncNemoClient, SimpleNamespace()),
         path=tmp_path / "insights.yaml",
     )
     backend.store.write_records([])
@@ -287,7 +288,7 @@ def test_local_backend_reads_and_writes_insights_file_with_explicit_utf8(
 def test_local_backend_write_preserves_other_top_level_keys(tmp_path: Path) -> None:
     path = tmp_path / "insights.yaml"
     path.write_text("metadata: retained\ninsights:\n- id: stale\n", encoding="utf-8")
-    backend = LocalAnalystBackend(client=cast(AsyncNeMoPlatform, SimpleNamespace()), path=path)
+    backend = LocalAnalystBackend(client=cast(AsyncNemoClient, SimpleNamespace()), path=path)
 
     backend.store.write_records([{"id": "insight-1"}])
 
@@ -300,7 +301,7 @@ def test_local_backend_write_preserves_other_top_level_keys(tmp_path: Path) -> N
 @pytest.mark.asyncio
 async def test_local_backend_list_preserves_entity_metadata(tmp_path: Path) -> None:
     backend = LocalAnalystBackend(
-        client=cast(AsyncNeMoPlatform, SimpleNamespace()),
+        client=cast(AsyncNemoClient, SimpleNamespace()),
         path=tmp_path / "insights.yaml",
     )
     backend.store.write_records(
@@ -374,7 +375,7 @@ class _SpanGroupClient:
 async def test_count_agent_sessions_uses_server_side_session_groups() -> None:
     since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
     client = _SpanGroupClient()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, client))
+    backend = RemoteAnalystBackend(cast(AsyncNemoClient, client))
 
     count = await backend.count_agent_sessions(
         agent="research-agent",
@@ -422,7 +423,7 @@ class _GroupsBackendClient:
 async def test_list_span_groups_fans_out_over_sessions() -> None:
     since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
     groups = _SpanGroupsPaged()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, _GroupsBackendClient(groups)))
+    backend = RemoteAnalystBackend(cast(AsyncNemoClient, _GroupsBackendClient(groups)))
 
     result = await backend.list_span_groups(
         workspace="default",
@@ -461,7 +462,7 @@ async def test_list_span_groups_fans_out_over_sessions() -> None:
 @pytest.mark.asyncio
 async def test_count_agent_sessions_pins_evaluation_id() -> None:
     client = _SpanGroupClient()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, client))
+    backend = RemoteAnalystBackend(cast(AsyncNemoClient, client))
 
     await backend.count_agent_sessions(
         agent="research-agent",
@@ -484,7 +485,7 @@ async def test_count_agent_sessions_pins_evaluation_id() -> None:
 @pytest.mark.asyncio
 async def test_list_span_groups_pins_evaluation_id() -> None:
     groups = _SpanGroupsPaged()
-    backend = RemoteAnalystBackend(cast(AsyncNeMoPlatform, _GroupsBackendClient(groups)))
+    backend = RemoteAnalystBackend(cast(AsyncNemoClient, _GroupsBackendClient(groups)))
 
     await backend.list_span_groups(
         workspace="default",
@@ -707,7 +708,7 @@ def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     result = AnalyzeJob().run(
         _analyze_spec().model_dump(mode="json"),
         ctx=_ctx(tmp_path),
-        sdk=cast(NeMoPlatform, sdk),
+        sdk=cast(NemoClient, sdk),
     )
 
     assert result["status"] == "completed"
@@ -812,7 +813,7 @@ def _controller(
     )
     sdk = _AsyncSdk(jobs=jobs)
     entities = _Entities(run_status=run_status)
-    controller._sdk = cast(AsyncNeMoPlatform, sdk)
+    controller._sdk = cast(AsyncNemoClient, sdk)
     controller._entities = cast(NemoEntitiesClient, entities)
     return controller, sdk, entities
 

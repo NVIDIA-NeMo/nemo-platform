@@ -18,11 +18,11 @@ by string.
 from typing import Any, ClassVar
 from urllib.parse import quote, urljoin
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
 from pydantic import BaseModel
 
-PlatformClient = NeMoPlatform | AsyncNeMoPlatform
+PlatformClient = NemoClient | AsyncNemoClient
 
 _API_PREFIX = "/apis/customization"
 

@@ -6,7 +6,7 @@
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.repository.annotations import AnnotationsRepository
@@ -26,11 +26,11 @@ from nmp.intake.spans.service import IntakeSpansService
 
 async def require_workspace_access(
     workspace: str,
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> None:
     """Validate that the request principal can access the path workspace."""
 
-    await sdk.workspaces.retrieve(workspace)
+    await sdk.workspaces.get_workspace(workspace)
 
 
 def validate_list_query_params(request: Request, additional_params: set[str] | None = None) -> None:

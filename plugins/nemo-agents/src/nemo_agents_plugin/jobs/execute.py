@@ -27,7 +27,7 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -137,7 +137,7 @@ class ExecuteAgentJob(NemoJob):
 
         workdir = None
         if request.workdir is not None:
-            sdk = cast(AsyncNeMoPlatform, async_sdk)
+            sdk = cast(AsyncNemoClient, async_sdk)
             workdir = await validate_agent_workdir(request.workdir, sdk.files, default_workspace=workspace)
 
         return ExecuteAgentStepConfig(
@@ -184,7 +184,7 @@ class ExecuteAgentJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NemoClient | None = None) -> dict:
         step_config = ExecuteAgentStepConfig.model_validate(config)
         _validate_agent_config_format(step_config.agent.config_format)
         agent_config = _validate_agent_config(step_config.agent.config)

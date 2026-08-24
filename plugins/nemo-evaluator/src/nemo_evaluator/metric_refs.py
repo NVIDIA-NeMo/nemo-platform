@@ -20,7 +20,7 @@ from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import load_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entity_client import NemoEntityGetterProtocol, NemoEntityNotFoundError
 from nemo_platform_plugin.refs import parse_entity_ref
 
@@ -42,7 +42,7 @@ async def resolve_metric_ref(
     *,
     workspace: str,
     entity_client: NemoEntityGetterProtocol[MetricBundleEntity] | None,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNemoClient | None,
 ) -> MetricBundle:
     """Load and reconstruct the stored metric a reference points at."""
     if entity_client is None or async_sdk is None:
@@ -67,7 +67,7 @@ async def resolve_metric_specs(
     *,
     workspace: str,
     entity_client: NemoEntityGetterProtocol[MetricBundleEntity] | None,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNemoClient | None,
 ) -> list[MetricBundle]:
     """Resolve a wire metric list into runtime bundles.
 

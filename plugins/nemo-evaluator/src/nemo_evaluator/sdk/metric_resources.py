@@ -22,7 +22,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 )
 from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
 from nemo_evaluator_sdk.metrics.protocol import Metric as RuntimeMetric
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.schema import Page
 
 
@@ -59,7 +59,7 @@ def _metric_inline(
 class EvaluatorMetricsResource:
     """Sync resource mounted as ``client.evaluator.metrics``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
+    def __init__(self, platform: NemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 
@@ -139,7 +139,7 @@ class EvaluatorMetricsResource:
 class AsyncEvaluatorMetricsResource:
     """Async resource mounted as ``client.evaluator.metrics``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
+    def __init__(self, platform: AsyncNemoClient) -> None:
         self._platform = platform
         self._http_client = platform._client
 

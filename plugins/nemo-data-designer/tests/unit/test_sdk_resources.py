@@ -44,28 +44,28 @@ from nemo_data_designer_plugin.sdk.resources import (
     DataDesignerResource,
     _decode_preview_frame,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
 from pydantic import BaseModel
 
 
 @pytest.fixture
-def platform() -> NeMoPlatform:
-    return NeMoPlatform(base_url="http://testserver", workspace="default", access_token="token")
+def platform() -> NemoClient:
+    return NemoClient(base_url="http://testserver", workspace="default", access_token="token")
 
 
 @pytest.fixture
-def async_platform() -> AsyncNeMoPlatform:
-    return AsyncNeMoPlatform(base_url="http://testserver", workspace="default", access_token="token")
+def async_platform() -> AsyncNemoClient:
+    return AsyncNemoClient(base_url="http://testserver", workspace="default", access_token="token")
 
 
 @pytest.fixture
-def resource(platform: NeMoPlatform) -> DataDesignerResource:
+def resource(platform: NemoClient) -> DataDesignerResource:
     return DataDesignerResource(platform)
 
 
 @pytest.fixture
-def async_resource(async_platform: AsyncNeMoPlatform) -> AsyncDataDesignerResource:
+def async_resource(async_platform: AsyncNemoClient) -> AsyncDataDesignerResource:
     return AsyncDataDesignerResource(async_platform)
 
 
@@ -129,11 +129,11 @@ def _make_successful_preview_frames() -> list[BaseModel]:
 
 
 @pytest.mark.parametrize("path", ["preview", "/preview", "///preview"])
-def test_http_url_normalizes_leading_slashes(platform: NeMoPlatform, path: str) -> None:
+def test_http_url_normalizes_leading_slashes(platform: NemoClient, path: str) -> None:
     assert sdk_http.url(platform, None, path) == "http://testserver/apis/data-designer/v2/workspaces/default/preview"
 
 
-def test_http_url_normalizes_empty_path(platform: NeMoPlatform) -> None:
+def test_http_url_normalizes_empty_path(platform: NemoClient) -> None:
     assert sdk_http.url(platform, None, "") == "http://testserver/apis/data-designer/v2/workspaces/default/"
 
 

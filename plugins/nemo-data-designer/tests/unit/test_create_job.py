@@ -11,7 +11,7 @@ from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from nemo_data_designer_plugin.jobs.create import CreateJob
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 def test_create_job_runs_step_config() -> None:
@@ -61,7 +61,7 @@ async def test_to_spec_local_does_not_reject_tool_configs() -> None:
         dd_job_config,
         workspace="workspace",
         entity_client=Mock(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+        async_sdk=AsyncMock(spec=AsyncNemoClient),
         is_local=True,
     )
 

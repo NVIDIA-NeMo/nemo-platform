@@ -14,7 +14,7 @@ from nemo_insights_plugin.analyst.cli import AnalystCLI
 from nemo_insights_plugin.contracts.checks import CheckResult
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
 from nemo_insights_plugin.preflight import AnalysisProbes
-from nemo_platform import NeMoPlatformError
+from nemo_platform_plugin.client.client import NemoClientError
 from nooa import GenerationError
 from typer.testing import CliRunner
 
@@ -526,7 +526,7 @@ def test_analyze_runs_only_the_model_configuration_check(
 @pytest.mark.parametrize(
     "error",
     [
-        NeMoPlatformError("Intake SDK failed"),
+        NemoClientError("Intake SDK failed"),
         httpx.ConnectError("Intake unavailable", request=httpx.Request("GET", "https://platform.example")),
     ],
 )

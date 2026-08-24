@@ -33,7 +33,7 @@ from nemo_evaluator.api.schemas import (
     TaskInput,
     TasksetInput,
 )
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 pytestmark = [
     pytest.mark.integration,
@@ -57,8 +57,8 @@ def _task_input(intent: str = "Answer the question.", *, tags: list[str] | None 
     )
 
 
-def _client(base_url: str) -> NeMoPlatform:
-    client = NeMoPlatform(base_url=base_url, max_retries=2)
+def _client(base_url: str) -> NemoClient:
+    client = NemoClient(base_url=base_url, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
     return client
 

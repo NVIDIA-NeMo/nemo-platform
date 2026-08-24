@@ -15,7 +15,7 @@ from nemo_iron_swarm_plugin.authz import scope
 from nemo_iron_swarm_plugin.jobs.run import IronSwarmRunJob
 from nemo_iron_swarm_plugin.jobs.spec import WarGameSpec
 from nemo_iron_swarm_plugin.jobs.synth_benign import IronSwarmSynthBenignJob, SynthBenignSpec
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, job_route_factory
 
@@ -26,7 +26,7 @@ async def _compile_war_game(
     transformed_spec: WarGameSpec,
     entity_client: EntityClient,
     job_name: str | None,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> PlatformJobSpec:
     """Compile a war-game submission into a platform job (delegates to the job's own compile)."""
     del original_spec
@@ -54,7 +54,7 @@ async def _compile_synth_benign(
     transformed_spec: SynthBenignSpec,
     entity_client: EntityClient,
     job_name: str | None,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> PlatformJobSpec:
     """Compile a benign-suite synthesis submission into a platform job (delegates to the job's own compile)."""
     del original_spec

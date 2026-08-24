@@ -45,7 +45,7 @@ How it runs, and where:
 from __future__ import annotations
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from e2e.deployments_helpers import (
     run_job_deployment_lifecycle,
@@ -99,7 +99,7 @@ def _skip_without_docker() -> None:
         pytest.skip(f"Docker daemon not reachable: {exc}")
 
 
-def test_docker_service_deployment_reaches_ready(sdk: NeMoPlatform, workspace: str) -> None:
+def test_docker_service_deployment_reaches_ready(sdk: NemoClient, workspace: str) -> None:
     """A restart_policy=Always nginx service reconciles to READY with an endpoint."""
     _skip_without_docker()
     run_service_deployment_lifecycle(
@@ -110,7 +110,7 @@ def test_docker_service_deployment_reaches_ready(sdk: NeMoPlatform, workspace: s
     )
 
 
-def test_docker_job_deployment_reaches_succeeded(sdk: NeMoPlatform, workspace: str) -> None:
+def test_docker_job_deployment_reaches_succeeded(sdk: NemoClient, workspace: str) -> None:
     """A restart_policy=Never alpine job runs to completion (SUCCEEDED, exit 0)."""
     _skip_without_docker()
     run_job_deployment_lifecycle(
@@ -121,7 +121,7 @@ def test_docker_job_deployment_reaches_succeeded(sdk: NeMoPlatform, workspace: s
     )
 
 
-def test_docker_volume_is_provisioned_mounted_and_readable(sdk: NeMoPlatform, workspace: str) -> None:
+def test_docker_volume_is_provisioned_mounted_and_readable(sdk: NemoClient, workspace: str) -> None:
     """A named volume is provisioned, mounted into a job, written to, and read back."""
     _skip_without_docker()
     run_volume_deployment_round_trip(

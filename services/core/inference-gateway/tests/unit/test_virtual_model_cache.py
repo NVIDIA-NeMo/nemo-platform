@@ -9,9 +9,10 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
-from nemo_platform.types.inference.middleware_call import MiddlewareCall
-from nemo_platform.types.inference.virtual_model import VirtualModel
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoHTTPError
+from nemo_platform_plugin.models.types.middleware_call import MiddlewareCall
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel
 from nmp.core.inference_gateway.api.middleware_registry import (
     MiddlewareConfigRef,
     MiddlewareRegistry,
@@ -43,9 +44,9 @@ def _make_vm(workspace: str, name: str, default_model_entity: str | None = None)
     )
 
 
-def _make_sdk_with_vms(vms: list[VirtualModel]) -> AsyncNeMoPlatform:
+def _make_sdk_with_vms(vms: list[VirtualModel]) -> AsyncNemoClient:
     """Return a mock SDK whose inference.virtual_models.list() yields *vms* as an async iterator."""
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
+    sdk = MagicMock(spec=AsyncNemoClient)
 
     async def _async_iter(_self=None):
         for vm in vms:
@@ -114,7 +115,7 @@ async def test_refresh_populates_cache():
 
     assert cache.get("ws", "model-a") is not None
     assert cache.get("ws", "model-b") is not None
-    sdk.inference.virtual_models.list.assert_called_once_with(workspace="-", page_size=200)  # type: ignore[attr-defined]
+    sdk.inference.virtual_models.list_virtual_models.assert_called_once_with(workspace="-", page_size=200)  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -146,12 +147,12 @@ async def test_refresh_replaces_stale_entries():
 
 @pytest.mark.asyncio
 async def test_refresh_raises_on_api_connection_error():
-    """APIConnectionError is wrapped in VirtualModelCacheRefreshError."""
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
+    """NemoTransportError is wrapped in VirtualModelCacheRefreshError."""
+    sdk = MagicMock(spec=AsyncNemoClient)
     paginator = MagicMock()
 
     async def _raise():
-        raise APIConnectionError.__new__(APIConnectionError)
+        raise NemoTransportError.__new__(NemoTransportError)
         yield  # make it an async generator
 
     paginator.__aiter__ = lambda self: _raise()
@@ -163,14 +164,14 @@ async def test_refresh_raises_on_api_connection_error():
 
 @pytest.mark.asyncio
 async def test_refresh_raises_on_api_status_error():
-    """APIStatusError is wrapped in VirtualModelCacheRefreshError."""
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
+    """NemoHTTPError is wrapped in VirtualModelCacheRefreshError."""
+    sdk = MagicMock(spec=AsyncNemoClient)
     mock_response = MagicMock()
     mock_response.status_code = 503
     paginator = MagicMock()
 
     async def _raise():
-        raise APIStatusError("service unavailable", response=mock_response, body={})
+        raise NemoHTTPError("service unavailable", response=mock_response, body={})
         yield
 
     paginator.__aiter__ = lambda self: _raise()
@@ -183,7 +184,7 @@ async def test_refresh_raises_on_api_status_error():
 @pytest.mark.asyncio
 async def test_refresh_raises_on_unexpected_error():
     """Any unexpected exception is wrapped in VirtualModelCacheRefreshError."""
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
+    sdk = MagicMock(spec=AsyncNemoClient)
     paginator = MagicMock()
 
     async def _raise():
@@ -205,7 +206,7 @@ async def test_refresh_does_not_mutate_cache_on_error():
     await refresh_virtual_model_cache(cache, sdk_good)
 
     # Now simulate a failure on the second refresh
-    sdk_bad = MagicMock(spec=AsyncNeMoPlatform)
+    sdk_bad = MagicMock(spec=AsyncNemoClient)
     paginator = MagicMock()
 
     async def _raise():

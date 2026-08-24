@@ -3,7 +3,7 @@
 
 """NeMo Agent Toolkit telemetry exporter that writes traces via the Nemo Files API.
 
-Uses :meth:`nemo_platform.AsyncNeMoPlatform.files.upload_content` (core Files service)
+Uses :meth:`nemo_platform.AsyncNemoClient.files.upload_content` (core Files service)
 to store serialized :class:`~nat.data_models.intermediate_step.IntermediateStep` records
 as JSONL under the shared fileset **nemo-telemetry**, scoped by workspace in the API
 URL and by **project** (and optional ``path_prefix`` / ``{agent}``) in object paths.
@@ -41,7 +41,7 @@ from nat.observability.processor.intermediate_step_serializer import (  # type: 
     IntermediateStepSerializer,
 )
 from nemo_agents_plugin.utils import get_base_url
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from pydantic import Field
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class NemoFilesServiceRawExporter(RawExporter[IntermediateStep, str]):
     def __init__(
         self,
         *,
-        sdk: AsyncNeMoPlatform,
+        sdk: AsyncNemoClient,
         workspace: str,
         agent_name: str,
         batch_size: int,
@@ -174,7 +174,7 @@ async def nemo_files_telemetry_exporter(config: NemoFilesTelemetryExporterConfig
     """Build an exporter that uploads telemetry to the Nemo Files service."""
     del builder  # unused; required by NAT registration signature
 
-    sdk = AsyncNeMoPlatform(base_url=get_base_url())
+    sdk = AsyncNemoClient(base_url=get_base_url())
     exporter = NemoFilesServiceRawExporter(
         sdk=sdk,
         workspace=config.workspace,

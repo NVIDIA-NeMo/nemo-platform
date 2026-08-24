@@ -51,7 +51,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.entities import EntityClient
@@ -154,7 +154,7 @@ class AgentEvalJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | None,
+        async_sdk: AsyncNemoClient | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve each task's metric references into inline metrics for the canonical spec."""
@@ -208,7 +208,7 @@ class AgentEvalJob(NemoJob):
         spec: BaseModel,
         entity_client: object,
         job_name: str | None,
-        async_sdk: AsyncNeMoPlatform | None,
+        async_sdk: AsyncNemoClient | None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
@@ -227,7 +227,7 @@ class AgentEvalJob(NemoJob):
 
     @staticmethod
     async def _resolve_harbor_subprocess_executor(
-        *, executor: dict[str, Any], async_sdk: AsyncNeMoPlatform | None
+        *, executor: dict[str, Any], async_sdk: AsyncNemoClient | None
     ) -> SubprocessExecutionProviderSpec:
         """Resolve Harbor's selected profile to an explicit host subprocess executor."""
         profile = cast(str, executor["profile"])
@@ -278,7 +278,7 @@ class AgentEvalJob(NemoJob):
         return None
 
     @staticmethod
-    def _is_platform_routed(url: str, platform: NeMoPlatform | AsyncNeMoPlatform) -> bool:
+    def _is_platform_routed(url: str, platform: NemoClient | AsyncNemoClient) -> bool:
         """True when *url* points at the platform itself (e.g. an IGW route under its base URL).
 
         Compared by origin (host + port): the platform serves IGW under its own base URL, so a target
@@ -289,7 +289,7 @@ class AgentEvalJob(NemoJob):
         return (target.hostname, target.port) == (base.hostname, base.port)
 
     @staticmethod
-    def _build_evaluator(platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None) -> AgentEvaluator:
+    def _build_evaluator(platform: NemoClient | AsyncNemoClient | None, target: Target | None) -> AgentEvaluator:
         """Construct the evaluator, forwarding the job's platform identity to online inference.
 
         Online generation against a *platform-routed* Model/Agent target must act as the job's
@@ -302,7 +302,7 @@ class AgentEvalJob(NemoJob):
         External providers authenticate via their own api key and don't need it anyway. Isolated so
         tests can inject a fake inference seam.
 
-        ``platform`` is the SDK handle injected into ``run`` — a real ``NeMoPlatform`` in a submitted
+        ``platform`` is the SDK handle injected into ``run`` — a real ``NemoClient`` in a submitted
         job (built by ``get_task_sdk``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
         only for a platformless local run (e.g. offline ``run_local``), which has no identity to
         forward.
@@ -394,8 +394,8 @@ class AgentEvalJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None = None,
-        async_sdk: AsyncNeMoPlatform | None = None,
+        sdk: NemoClient | None = None,
+        async_sdk: AsyncNemoClient | None = None,
     ) -> dict:
         """Run the agent evaluation locally and persist its result bundle as artifacts."""
         spec = AgentEvalSpec.model_validate(config)

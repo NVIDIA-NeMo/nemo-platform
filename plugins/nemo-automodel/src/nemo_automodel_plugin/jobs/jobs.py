@@ -17,7 +17,7 @@ from typing import ClassVar, cast
 from nemo_automodel_plugin.config import get_config
 from nemo_automodel_plugin.schema import AutomodelJobInput, AutomodelJobOutput, ValidationError
 from nemo_automodel_plugin.transform import transform_input_to_output
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -37,7 +37,7 @@ class AutomodelJob(BaseSubmitJob):
     runtime_label: ClassVar[str] = "Automodel"
 
     @classmethod
-    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> AutomodelJobOutput:
+    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNemoClient) -> AutomodelJobOutput:
         return await transform_input_to_output(cast(AutomodelJobInput, job_input), workspace, async_sdk)
 
     @classmethod
@@ -52,8 +52,8 @@ class AutomodelJob(BaseSubmitJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         del entity_client, options
-        if not isinstance(async_sdk, AsyncNeMoPlatform):
-            raise TypeError(f"async_sdk must be AsyncNeMoPlatform, got {type(async_sdk).__name__}")
+        if not isinstance(async_sdk, AsyncNemoClient):
+            raise TypeError(f"async_sdk must be AsyncNemoClient, got {type(async_sdk).__name__}")
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
         )

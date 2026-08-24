@@ -19,7 +19,7 @@ from nemo_agents_plugin.runner.fabric_artifact_staging import (
     validate_referenced_skill_paths,
 )
 from nemo_deployments_plugin.entities import ConfigFile
-from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 

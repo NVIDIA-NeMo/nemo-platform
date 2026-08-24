@@ -21,7 +21,7 @@ from nemo_insights_plugin.analyst.observability import (
     setup_analyst_observability,
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.nooa_model_client import (
     ConfiguredModelClients,
     ConfiguredModelRefs,
@@ -46,7 +46,7 @@ async def run_analyst(
     agent_spec: str | None,
     workspace: str,
     base_url: str | None,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     insights_output: str | Path | None = None,
     local_only: bool = False,
     verbose: bool = False,

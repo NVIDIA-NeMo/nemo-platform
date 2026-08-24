@@ -17,7 +17,7 @@ import uuid
 import pytest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 pytestmark = [
     pytest.mark.integration,
@@ -36,7 +36,7 @@ def _unique(prefix: str) -> str:
 
 @pytest.mark.timeout(300)
 def test_metric_type_filter_narrows_listing(subprocess_platform: str) -> None:
-    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client = NemoClient(base_url=subprocess_platform, max_retries=2)
     client.workspaces.create(name=WORKSPACE, exist_ok=True)
 
     exact = _unique("exact")

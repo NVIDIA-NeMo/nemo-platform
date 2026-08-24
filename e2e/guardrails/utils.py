@@ -8,8 +8,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from nemo_platform import APIStatusError, NeMoPlatform
-from nemo_platform.types.inference import MiddlewareCallParam
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.models.types import MiddlewareCallParam
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 from e2e.utils import collect_sse_chunks
@@ -113,7 +114,7 @@ CONTENT_SAFETY_OUTPUT_PROMPT = {
 
 @dataclass(frozen=True)
 class GuardrailsChatTestCase:
-    sdk: NeMoPlatform  # SDK client connected to the e2e platform instance.
+    sdk: NemoClient  # SDK client connected to the e2e platform instance.
     workspace: str  # Per-test workspace that owns all created entities.
     virtual_model_name: str  # Guarded VirtualModel name hit by chat completions.
     backend_model_name: str  # Mock model entity that represents the app LLM.
@@ -177,7 +178,7 @@ def content_safety_config(
     }
 
 
-def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) -> None:
+def setup_mock_provider(sdk: NemoClient, test_case: GuardrailsChatTestCase) -> None:
     add_mock_provider(
         sdk,
         workspace=test_case.workspace,
@@ -206,12 +207,12 @@ def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) ->
 
 def create_guarded_virtual_model(
     *,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     test_case: GuardrailsChatTestCase,
     config_data: dict[str, Any],
 ) -> None:
     if test_case.config_mode == "referenced":
-        sdk.guardrail.configs.create(
+        sdk.guardrail.create_guardrail_config(
             workspace=test_case.workspace,
             name=test_case.config_name,
             description="E2E content-safety Guardrails config",
@@ -224,7 +225,7 @@ def create_guarded_virtual_model(
         config_name=test_case.config_name,
         config_data=config_data,
     )
-    sdk.inference.virtual_models.create(
+    sdk.inference.virtual_models.create_virtual_model(
         workspace=test_case.workspace,
         name=test_case.virtual_model_name,
         default_model_entity=test_case.backend_model_ref,
@@ -351,7 +352,7 @@ def _content_safety_responses(test_case: GuardrailsChatTestCase) -> list[MockPro
 
 
 def _wait_for_guarded_virtual_model(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     test_case: GuardrailsChatTestCase,
     timeout: float = 60,
     poll_interval: float = 0.5,
@@ -382,7 +383,7 @@ def _wait_for_guarded_virtual_model(
                 workspace=test_case.workspace,
                 body=probe_body,
             )
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             last_error = exc
             if exc.status_code == 422:
                 return

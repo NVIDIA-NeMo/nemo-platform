@@ -32,9 +32,9 @@ from nemo_evaluator_sdk.values import Model
 from nemo_evaluator_sdk.values.agents import AgentBase
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import NeMoPlatformError, NotFoundError
-from nemo_platform.types.evaluations import EvaluationResponse
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoClientError, NotFoundError
+from nemo_platform_plugin.evaluator.types import EvaluationResponse
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -121,7 +121,7 @@ def _eval_duration_sec(result: AgentEvalResult) -> float | None:
 
 
 async def _record_durations(
-    platform: AsyncNeMoPlatform,
+    platform: AsyncNemoClient,
     *,
     evaluation: EvaluationResponse,
     spec: IntakePublicationSpec,
@@ -144,7 +144,7 @@ async def _record_durations(
 async def _publish(
     result: AgentEvalResult,
     *,
-    platform: AsyncNeMoPlatform,
+    platform: AsyncNemoClient,
     spec: IntakePublicationSpec,
     workspace: str,
     agent_name: str,
@@ -197,7 +197,7 @@ def publish_agent_eval_result(
     spec: IntakePublicationSpec,
     target: Target | Model | AgentBase | None,
     workspace: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNemoClient | None,
 ) -> PublicationOutcome:
     """Publish a finished run to Intake and describe what happened.
 
@@ -248,7 +248,7 @@ def publish_agent_eval_result(
             f"Evaluation {spec.evaluation_id!r} does not exist in workspace {workspace!r}. "
             "Create it before submitting the job; the evaluation does not create it."
         )
-    except NeMoPlatformError as error:
+    except NemoClientError as error:
         return fail(f"{type(error).__name__}: {error}")
     except Exception as error:
         # `required=False` promises the evaluation survives a failed publish. Letting an unforeseen
@@ -275,7 +275,7 @@ def publish_row_eval_result(
     run_id: str | None,
     started_at: datetime,
     workspace: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNemoClient | None,
 ) -> PublicationOutcome:
     """Publish a finished dataset-driven run to Intake and describe what happened.
 

@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Any
 
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.client import NemoClient, NotFoundError
 from nemo_platform_plugin.entities.base import parse_qualified_name
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def preflight_validate_llm_models(
     optimize_config: dict[str, Any],
     *,
     workspace: str,
-    sdk: NeMoPlatform | None,
+    sdk: NemoClient | None,
     agent_config: dict[str, Any] | None = None,
 ) -> None:
     """Validate IGW-routed model names against workspace VirtualModels.
@@ -43,7 +43,7 @@ def preflight_validate_llm_models(
     missing: list[tuple[str, str]] = []
     for (target_ws, target_name), location in to_check.items():
         try:
-            sdk.inference.virtual_models.retrieve(name=target_name, workspace=target_ws)
+            sdk.inference.virtual_models.get_virtual_model(name=target_name, workspace=target_ws)
         except NotFoundError:
             missing.append((f"{target_ws}/{target_name}", location))
         except Exception as exc:  # pragma: no cover

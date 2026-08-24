@@ -22,8 +22,8 @@ import duckdb
 import fsspec
 import pandas as pd
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import (
+from nemo_platform_plugin.client.client import NemoClient
+from filesets.filesystem import (
     FilesetFileSystem,
     FilesetPathError,
     build_fileset_ref,
@@ -296,7 +296,7 @@ class TestFilesetFileSystem:
     """Test fsspec operations via FilesetFileSystem."""
 
     @pytest.fixture
-    def fs(self, sdk: NeMoPlatform, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
+    def fs(self, sdk: NemoClient, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
         return FilesetFileSystem(
             client=client_from_platform(sdk, FilesClient),
@@ -532,7 +532,7 @@ class TestFilesetFileSystem:
 
     def test_fsspec_filesystem_registration(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         async_files_client: AsyncFilesClient,
         fileset: FilesetOutput,
     ):
@@ -1832,7 +1832,7 @@ class TestDuckDBIntegration:
 
     def test_duckdb_parquet_query(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         async_files_client: AsyncFilesClient,
         fileset: FilesetOutput,
     ):
@@ -1882,7 +1882,7 @@ class TestDuckDBIntegration:
 
     def test_duckdb_parquet_range_read(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         async_files_client: AsyncFilesClient,
         fileset: FilesetOutput,
     ):
@@ -1927,7 +1927,7 @@ class TestDuckDBIntegration:
 
     def test_duckdb_legacy_path_format(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         async_files_client: AsyncFilesClient,
         fileset: FilesetOutput,
     ):
@@ -1973,7 +1973,7 @@ class TestDirCache:
     """
 
     @pytest.fixture
-    def fs(self, sdk: NeMoPlatform, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
+    def fs(self, sdk: NemoClient, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
         return FilesetFileSystem(
             client=client_from_platform(sdk, FilesClient),
@@ -2186,7 +2186,7 @@ class TestDirCache:
 
     def test_cache_disabled(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         async_files_client: AsyncFilesClient,
         fileset: FilesetOutput,
     ):

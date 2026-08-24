@@ -13,8 +13,8 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types.inference.model_provider import ModelProvider
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.models.types.model_provider import ModelProvider
 from nmp.core.inference_gateway.api.dependencies import global_model_cache, global_virtual_model_cache
 from nmp.core.inference_gateway.api.model_cache import ModelCache, model_provider_getter_from_sdk, refresh_model_cache
 from nmp.core.inference_gateway.api.virtual_model_cache import VirtualModelCache, refresh_virtual_model_cache
@@ -24,12 +24,12 @@ DEFAULT_WORKSPACE = "default"
 
 
 def _create_provider(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     provider_name: str,
     host_url: str,
 ) -> ModelProvider:
     """Create a provider via the SDK."""
-    return sdk.inference.providers.create(
+    return sdk.inference.providers.create_provider(
         workspace=DEFAULT_WORKSPACE,
         name=provider_name,
         host_url=host_url,
@@ -38,7 +38,7 @@ def _create_provider(
 
 def _run_cache_refresh(
     model_cache: ModelCache,
-    async_sdk: AsyncNeMoPlatform,
+    async_sdk: AsyncNemoClient,
 ) -> None:
     """Run cache refresh synchronously."""
 
@@ -101,7 +101,7 @@ def test_cache_includes_served_models_mapping(test_clients: ClientContext):
     assert provider.name == provider_name
 
     # Update provider with served_models
-    test_clients.sdk.inference.providers.update_status(
+    test_clients.sdk.inference.providers.update_provider_status(
         provider_name,
         workspace=DEFAULT_WORKSPACE,
         served_models=[
@@ -152,7 +152,7 @@ def test_cache_invalidates_deleted_providers(test_clients: ClientContext):
     assert model_cache.get_from_provider(DEFAULT_WORKSPACE, provider_name) is not None
 
     # Delete the provider
-    test_clients.sdk.inference.providers.delete(provider_name, workspace=DEFAULT_WORKSPACE)
+    test_clients.sdk.inference.providers.delete_provider(provider_name, workspace=DEFAULT_WORKSPACE)
 
     # Refresh cache again
     _run_cache_refresh(model_cache, test_clients.async_sdk)
@@ -183,7 +183,7 @@ def test_cache_updates_provider_host_url_on_refresh(test_clients: ClientContext)
     assert cached.model_provider.host_url == "http://localhost:9003"
 
     # Update provider host_url using update (PUT)
-    test_clients.sdk.inference.providers.update(
+    test_clients.sdk.inference.providers.update_provider(
         provider_name,
         workspace=DEFAULT_WORKSPACE,
         host_url="http://localhost:9999",
@@ -199,7 +199,7 @@ def test_cache_updates_provider_host_url_on_refresh(test_clients: ClientContext)
 
 def _run_vm_cache_refresh(
     vm_cache: VirtualModelCache,
-    async_sdk: AsyncNeMoPlatform,
+    async_sdk: AsyncNemoClient,
 ) -> None:
     """Run VirtualModel cache refresh synchronously."""
 
@@ -227,7 +227,7 @@ def test_virtual_model_cache_syncs_from_entity_store(test_clients: ClientContext
     assert vm_cache.get(DEFAULT_WORKSPACE, vm_name) is None
 
     # Create a VirtualModel via the IGW CRUD API
-    test_clients.sdk.inference.virtual_models.create(
+    test_clients.sdk.inference.virtual_models.create_virtual_model(
         workspace=DEFAULT_WORKSPACE,
         name=vm_name,
         default_model_entity=f"{DEFAULT_WORKSPACE}/some-model",

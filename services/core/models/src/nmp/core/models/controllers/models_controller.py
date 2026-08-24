@@ -6,12 +6,12 @@ import threading
 from logging import getLogger
 from typing import Optional
 
-from nemo_platform import DefaultAsyncHttpxClient
-from nemo_platform._exceptions import NotFoundError
-from nemo_platform.types.inference import ModelDeploymentStatus
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from httpx import AsyncClient
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.types import ModelDeploymentStatus
+from nemo_platform_plugin.models.types.model_deployment import ModelDeployment
+from nemo_platform_plugin.models.types.model_deployment_config import ModelDeploymentConfig
+from nemo_platform_plugin.models.types.model_entity import ModelEntity
 from nmp.common.controller import Controller, HeartbeatMixin
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.sdk_factory import get_async_platform_sdk

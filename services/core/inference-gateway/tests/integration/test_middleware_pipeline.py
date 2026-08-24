@@ -33,8 +33,8 @@ from typing import Any
 import pytest
 from nemo_deployments_plugin.backends.labels import container_name as plugin_container_name
 from nemo_deployments_plugin.backends.labels import docker_volume_name
-from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.client.client import NemoClient, NotFoundError
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareContext,
@@ -61,7 +61,7 @@ DEFAULT_WORKSPACE = "default"
 
 def _wait_for_deployment_deleted(
     controller: ModelsController,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     deployment_name: str,
     max_wait: float = 30,
     poll_interval: float = 0.1,
@@ -79,7 +79,7 @@ def _wait_for_deployment_deleted(
     def _poll() -> None:
         controller.step()
         try:
-            deployment = sdk.inference.deployments.retrieve(
+            deployment = sdk.inference.deployments.get_deployment(
                 deployment_name,
                 workspace=DEFAULT_WORKSPACE,
             )
@@ -440,14 +440,14 @@ def test_middleware_request_and_response_mutation_through_backend(
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
         engine="nim",
         model_spec={},
         executor_config={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
     )
-    sdk.inference.deployments.create(
+    sdk.inference.deployments.create_deployment(
         workspace=DEFAULT_WORKSPACE,
         name=deployment_name,
         config=config_name,
@@ -456,13 +456,13 @@ def test_middleware_request_and_response_mutation_through_backend(
     @retry(stop=stop_after_delay(30), wait=wait_fixed(0.1), reraise=True)
     def _wait_ready():
         controller.step()
-        dep = sdk.inference.deployments.retrieve(deployment_name, workspace=DEFAULT_WORKSPACE)
+        dep = sdk.inference.deployments.get_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
         assert dep.status == "READY", f"Not READY: {dep.status}"
 
     _wait_ready()
 
     # ---- Phase 2: Wire up served_models and populate the model cache ------
-    sdk.inference.providers.update_status(
+    sdk.inference.providers.update_provider_status(
         deployment_name,
         workspace=DEFAULT_WORKSPACE,
         served_models=[
@@ -473,7 +473,7 @@ def test_middleware_request_and_response_mutation_through_backend(
         ],
     )
 
-    provider = sdk.inference.providers.retrieve(deployment_name, workspace=DEFAULT_WORKSPACE)
+    provider = sdk.inference.providers.get_provider(deployment_name, workspace=DEFAULT_WORKSPACE)
     model_cache.workspace_name_provider_map[(DEFAULT_WORKSPACE, deployment_name)] = ModelProviderInfo(
         model_provider=provider
     )
@@ -524,9 +524,9 @@ def test_middleware_request_and_response_mutation_through_backend(
         _cleanup(registry, vm_cache, DEFAULT_WORKSPACE, vm_name, [router_key, marker_key])
 
         # ---- Phase 5: Cleanup --------------------------------------------
-        sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
+        sdk.inference.deployments.delete_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
         _wait_for_deployment_deleted(controller, sdk, deployment_name)
-        sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
+        sdk.inference.deployment_configs.delete_deployment_config(config_name, workspace=DEFAULT_WORKSPACE)
 
 
 # ---------------------------------------------------------------------------
@@ -564,25 +564,25 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
         engine="nim",
         model_spec={},
         executor_config={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
     )
-    sdk.inference.deployments.create(workspace=DEFAULT_WORKSPACE, name=deployment_name, config=config_name)
+    sdk.inference.deployments.create_deployment(workspace=DEFAULT_WORKSPACE, name=deployment_name, config=config_name)
 
     @retry(stop=stop_after_delay(30), wait=wait_fixed(0.1), reraise=True)
     def _wait_ready():
         controller.step()
-        dep = sdk.inference.deployments.retrieve(deployment_name, workspace=DEFAULT_WORKSPACE)
+        dep = sdk.inference.deployments.get_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
         assert dep.status == "READY", f"Not READY: {dep.status}"
 
     _wait_ready()
 
     # ---- Phase 2: Wire up served_models and populate the model cache ------
-    sdk.inference.providers.update_status(
+    sdk.inference.providers.update_provider_status(
         deployment_name,
         workspace=DEFAULT_WORKSPACE,
         served_models=[
@@ -592,7 +592,7 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
             }
         ],
     )
-    provider = sdk.inference.providers.retrieve(deployment_name, workspace=DEFAULT_WORKSPACE)
+    provider = sdk.inference.providers.get_provider(deployment_name, workspace=DEFAULT_WORKSPACE)
     model_cache.workspace_name_provider_map[(DEFAULT_WORKSPACE, deployment_name)] = ModelProviderInfo(
         model_provider=provider
     )
@@ -635,9 +635,9 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
 
     finally:
         _cleanup(registry, vm_cache, DEFAULT_WORKSPACE, vm_name, [router_key, marker_key])
-        sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
+        sdk.inference.deployments.delete_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
         _wait_for_deployment_deleted(controller, sdk, deployment_name)
-        sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
+        sdk.inference.deployment_configs.delete_deployment_config(config_name, workspace=DEFAULT_WORKSPACE)
 
 
 # ---------------------------------------------------------------------------
@@ -685,25 +685,25 @@ def test_model_endpoint_non_model_body_mutation_regression(
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
         engine="nim",
         model_spec={},
         executor_config={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
     )
-    sdk.inference.deployments.create(workspace=DEFAULT_WORKSPACE, name=deployment_name, config=config_name)
+    sdk.inference.deployments.create_deployment(workspace=DEFAULT_WORKSPACE, name=deployment_name, config=config_name)
 
     @retry(stop=stop_after_delay(30), wait=wait_fixed(0.1), reraise=True)
     def _wait_ready():
         controller.step()
-        dep = sdk.inference.deployments.retrieve(deployment_name, workspace=DEFAULT_WORKSPACE)
+        dep = sdk.inference.deployments.get_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
         assert dep.status == "READY", f"Not READY: {dep.status}"
 
     _wait_ready()
 
     # ---- Phase 2: Wire up served_models and populate the model cache ------
-    sdk.inference.providers.update_status(
+    sdk.inference.providers.update_provider_status(
         deployment_name,
         workspace=DEFAULT_WORKSPACE,
         served_models=[
@@ -713,7 +713,7 @@ def test_model_endpoint_non_model_body_mutation_regression(
             }
         ],
     )
-    provider = sdk.inference.providers.retrieve(deployment_name, workspace=DEFAULT_WORKSPACE)
+    provider = sdk.inference.providers.get_provider(deployment_name, workspace=DEFAULT_WORKSPACE)
     model_cache.workspace_name_provider_map[(DEFAULT_WORKSPACE, deployment_name)] = ModelProviderInfo(
         model_provider=provider
     )
@@ -778,6 +778,6 @@ def test_model_endpoint_non_model_body_mutation_regression(
 
     finally:
         _cleanup(registry, vm_cache, DEFAULT_WORKSPACE, vm_name, [router_key, echo_key])
-        sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
+        sdk.inference.deployments.delete_deployment(deployment_name, workspace=DEFAULT_WORKSPACE)
         _wait_for_deployment_deleted(controller, sdk, deployment_name)
-        sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
+        sdk.inference.deployment_configs.delete_deployment_config(config_name, workspace=DEFAULT_WORKSPACE)

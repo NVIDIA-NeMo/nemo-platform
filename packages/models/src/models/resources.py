@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Extended ModelsResource with high-level helper methods."""
+"""Extended ModelsClient with high-level helper methods."""
 
 import asyncio
 import time
@@ -9,12 +9,12 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import TypeVar
 
-from nemo_platform import APIConnectionError, APIStatusError, NotFoundError
-from nemo_platform.resources.models import AsyncModelsResource as BaseAsyncModelsResource
-from nemo_platform.resources.models import ModelsResource as BaseModelsResource
-from nemo_platform.types.inference import ModelDeployment, ModelProvider
-from nemo_platform.types.inference.gateway.openai.v1 import OpenAIModelResp
-from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoHTTPError, NotFoundError
+from nemo_platform_plugin.models.client import AsyncModelsClient as BaseAsyncModelsClient
+from nemo_platform_plugin.models.client import ModelsClient as BaseModelsClient
+from nemo_platform_plugin.models.types import ModelDeployment, ModelProvider
+from nemo_platform_plugin.models.types.gateway.openai.v1 import OpenAIModelResp
+from nemo_platform_plugin.models.types import ModelEntity
 
 _T = TypeVar("_T")
 _TRANSIENT_GATEWAY_STATUS_CODES = {429, 502, 503, 504}
@@ -72,9 +72,9 @@ def _poll_until_ready(
             last_error = exc.reason
         except NotFoundError as exc:
             last_error = exc
-        except APIConnectionError as exc:
+        except NemoTransportError as exc:
             last_error = exc
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             if exc.status_code not in _TRANSIENT_GATEWAY_STATUS_CODES:
                 raise
             last_error = exc
@@ -108,9 +108,9 @@ async def _async_poll_until_ready(
             last_error = exc.reason
         except NotFoundError as exc:
             last_error = exc
-        except APIConnectionError as exc:
+        except NemoTransportError as exc:
             last_error = exc
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             if exc.status_code not in _TRANSIENT_GATEWAY_STATUS_CODES:
                 raise
             last_error = exc
@@ -133,14 +133,14 @@ def _require_openai_model_id(model: OpenAIModelResp, expected_model_id: str) -> 
     return model
 
 
-class ModelsResource(BaseModelsResource):
-    """Extended ModelsResource with high-level helper methods.
+class ModelsClient(BaseModelsClient):
+    """Extended ModelsClient with high-level helper methods.
 
     All existing methods (create, retrieve, list, etc.) work unchanged.
     Adds convenience methods for OpenAI integration and deployment management.
 
     Example:
-        >>> sdk = NeMoPlatform(base_url="http://nmp-host", workspace="default")
+        >>> sdk = NemoClient(base_url="http://nmp-host", workspace="default")
         >>> sdk.models.get_openai_route_base_url()
         >>> sdk.models.wait_for_status("my-deployment", "READY")
     """
@@ -225,7 +225,7 @@ class ModelsResource(BaseModelsResource):
             A URL string suitable for use as OpenAI client's base_url
 
         Example:
-            >>> provider = sdk.inference.providers.retrieve("my-provider", workspace="default")
+            >>> provider = sdk.inference.providers.get_provider("my-provider", workspace="default")
             >>> base_url = sdk.models.get_provider_route_openai_url(provider)
             >>> # Returns: {base_url}/apis/inference-gateway/v2/workspaces/default/provider/my-provider/-/v1
             >>> openai_client = OpenAI(base_url=base_url)
@@ -256,7 +256,7 @@ class ModelsResource(BaseModelsResource):
             ValueError: If the deployment has no associated model_provider_id
 
         Example:
-            >>> deployment = sdk.inference.deployments.retrieve("my-deployment", workspace="default")
+            >>> deployment = sdk.inference.deployments.get_deployment("my-deployment", workspace="default")
             >>> base_url = sdk.models.get_provider_route_openai_url_for_deployment(deployment)
             >>> openai_client = OpenAI(base_url=base_url)
         """
@@ -282,7 +282,7 @@ class ModelsResource(BaseModelsResource):
             A URL string suitable for use as OpenAI client's base_url
 
         Example:
-            >>> entity = sdk.models.retrieve("my-model", workspace="default")
+            >>> entity = sdk.models.get_model("my-model", workspace="default")
             >>> base_url = sdk.models.get_model_entity_route_openai_url(entity)
             >>> # Returns: {base_url}/apis/inference-gateway/v2/workspaces/default/model/my-model/-/v1
             >>> openai_client = OpenAI(base_url=base_url)
@@ -591,8 +591,8 @@ class ModelsResource(BaseModelsResource):
         return False
 
 
-class AsyncModelsResource(BaseAsyncModelsResource):
-    """Extended AsyncModelsResource with high-level helper methods.
+class AsyncModelsClient(BaseAsyncModelsClient):
+    """Extended AsyncModelsClient with high-level helper methods.
 
     All existing async methods (create, retrieve, list, etc.) work unchanged.
     Adds convenience methods for OpenAI integration and deployment management.
@@ -601,7 +601,7 @@ class AsyncModelsResource(BaseAsyncModelsResource):
     Methods that perform I/O are properly async.
 
     Example:
-        >>> sdk = AsyncNeMoPlatform(base_url="http://nmp-host", workspace="default")
+        >>> sdk = AsyncNemoClient(base_url="http://nmp-host", workspace="default")
         >>> sdk.models.get_openai_route_base_url()
         >>> await sdk.models.wait_for_status("my-deployment", "READY")
     """
@@ -702,7 +702,7 @@ class AsyncModelsResource(BaseAsyncModelsResource):
             ValueError: If the deployment has no associated model_provider_id
 
         Example:
-            >>> deployment = await sdk.inference.deployments.retrieve("my-deployment", workspace="default")
+            >>> deployment = await sdk.inference.deployments.get_deployment("my-deployment", workspace="default")
             >>> base_url = await sdk.models.get_provider_route_openai_url_for_deployment(deployment)
             >>> openai_client = AsyncOpenAI(base_url=base_url)
         """

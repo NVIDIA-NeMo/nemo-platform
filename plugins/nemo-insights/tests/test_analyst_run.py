@@ -9,7 +9,7 @@ import pytest
 from nemo_insights_plugin.analyst import run as run_module
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.observability import AnalystEvaluationContext
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients
 from nooa.context_blocks import ResultStatus
 from nooa.events import LLMComplete, PythonOutput
@@ -85,7 +85,7 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
         agent_spec=None,
         workspace="workspace",
         base_url="https://platform",
-        client=cast(AsyncNeMoPlatform, client),
+        client=cast(AsyncNemoClient, client),
     )
 
     assert report == "REPORT"
@@ -122,7 +122,7 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
             agent_spec=None,
             workspace="workspace",
             base_url="https://platform",
-            client=cast(AsyncNeMoPlatform, client),
+            client=cast(AsyncNemoClient, client),
         )
 
     assert model.closed
@@ -143,7 +143,7 @@ async def test_client_closed_when_model_resolution_raises(monkeypatch: pytest.Mo
             agent_spec=None,
             workspace="workspace",
             base_url="https://platform",
-            client=cast(AsyncNeMoPlatform, client),
+            client=cast(AsyncNemoClient, client),
         )
 
     assert client.closed
@@ -200,7 +200,7 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
             agent_spec=None,
             workspace="workspace",
             base_url="https://platform",
-            client=cast(AsyncNeMoPlatform, client),
+            client=cast(AsyncNemoClient, client),
         )
 
     assert client.closed
@@ -230,7 +230,7 @@ async def test_evaluation_context_is_forwarded_to_default_on_observability(monke
         agent_spec=None,
         workspace="default",
         base_url="http://localhost:8080",
-        client=cast(AsyncNeMoPlatform, client),
+        client=cast(AsyncNemoClient, client),
         analyst_evaluation=evaluation_context,
     )
 
@@ -258,7 +258,7 @@ async def test_per_run_observability_opt_out_skips_setup(monkeypatch: pytest.Mon
         agent_spec=None,
         workspace="default",
         base_url="https://remote.example",
-        client=cast(AsyncNeMoPlatform, client),
+        client=cast(AsyncNemoClient, client),
         enable_observability=False,
     )
 

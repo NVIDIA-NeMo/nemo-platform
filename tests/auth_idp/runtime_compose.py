@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Callable
 
 import httpx
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_ext.client.tls import client_verify_from_env
 
 from tests.auth_idp.common import jwt_claims
@@ -97,25 +97,25 @@ class ComposeAuthIdpRuntime:
         assert token_response.get("token_type", "").lower() == "bearer"
         return TokenSet(access_token=access_token, claims=jwt_claims(access_token))
 
-    def e2e_setup_sdk(self) -> NeMoPlatform:
+    def e2e_setup_sdk(self) -> NemoClient:
         token = self.e2e_setup_token().access_token
-        return NeMoPlatform(
+        return NemoClient(
             base_url=self.gateway_base_url,
             default_headers={"Authorization": f"Bearer {token}"},
             max_retries=0,
         )
 
-    def interactive_user_sdk(self) -> NeMoPlatform:
+    def interactive_user_sdk(self) -> NemoClient:
         token = self.interactive_user_token().access_token
-        return NeMoPlatform(
+        return NemoClient(
             base_url=self.gateway_base_url,
             default_headers={"Authorization": f"Bearer {token}"},
             max_retries=0,
         )
 
-    def workload_provider_sdk(self) -> NeMoPlatform:
+    def workload_provider_sdk(self) -> NemoClient:
         token = self.workload_provider_token().access_token
-        return NeMoPlatform(
+        return NemoClient(
             base_url=self.gateway_base_url,
             default_headers={"Authorization": f"Bearer {token}"},
             max_retries=0,

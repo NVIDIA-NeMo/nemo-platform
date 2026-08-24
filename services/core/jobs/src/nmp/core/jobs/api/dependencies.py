@@ -4,14 +4,14 @@
 """FastAPI dependencies for the Jobs API."""
 
 from fastapi import Depends, Request
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.entities.client import EntityClient
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.common.service.dependencies import get_entity_client
 from nmp.core.jobs.app.dispatcher import JobDispatcher
 
 
-async def get_sdk_with_auth(request: Request) -> AsyncNeMoPlatform:
+async def get_sdk_with_auth(request: Request) -> AsyncNemoClient:
     """Get SDK client with current request's auth headers.
 
     This dependency creates a new SDK instance with the current user's
@@ -28,7 +28,7 @@ async def get_sdk_with_auth(request: Request) -> AsyncNeMoPlatform:
 
 async def dep_dispatcher(
     entity_client: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_with_auth),
+    sdk: AsyncNemoClient = Depends(get_sdk_with_auth),
 ) -> JobDispatcher:
     """Dependency to get the job dispatcher with EntityClient and SDK client."""
     return JobDispatcher(

@@ -47,8 +47,8 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, AsyncGenerator
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._client import NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.auth import NMP_PRINCIPAL_ENVVAR, Principal
 from nmp.common.service import Service
 from nmp.testing.access_log import AccessLog
@@ -69,8 +69,8 @@ class TaskResult:
 class TaskContext:
     """Context for running a task with access to the test SDK."""
 
-    sdk: NeMoPlatform
-    async_sdk: AsyncNeMoPlatform
+    sdk: NemoClient
+    async_sdk: AsyncNemoClient
     _module: ModuleType
     access_log: AccessLog | None = None
     auth_enabled: bool = False
@@ -96,12 +96,12 @@ class TaskContext:
         sdk_param = sig.parameters.get("sdk")
 
         # Determine the right SDK type to inject
-        injected_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None
+        injected_sdk: NemoClient | AsyncNemoClient | None = None
         if sdk_param is not None:
             # Check the type annotation to determine sync vs async SDK
             if sdk_param.annotation is not inspect.Parameter.empty:
                 annotation_str = str(sdk_param.annotation)
-                if "AsyncNeMoPlatform" in annotation_str:
+                if "AsyncNemoClient" in annotation_str:
                     injected_sdk = self.async_sdk
                 else:
                     injected_sdk = self.sdk

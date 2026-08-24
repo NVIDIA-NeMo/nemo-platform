@@ -21,7 +21,7 @@ import logging
 import os
 import sys
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError, NotFoundError
 from nemo_platform_plugin.files.client import FilesClient
@@ -78,7 +78,7 @@ DEFAULT_WORKSPACE = "default"
 
 
 def create_filesets(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     dry_run: bool = False,
 ) -> list[str]:
@@ -156,7 +156,7 @@ def main() -> int:
     if args.dry_run:
         logger.info("DRY RUN - no filesets will be created")
 
-    sdk = NeMoPlatform(base_url=args.files_api_url)
+    sdk = NemoClient(base_url=args.files_api_url)
     created = create_filesets(sdk, args.workspace, dry_run=args.dry_run)
 
     if created:

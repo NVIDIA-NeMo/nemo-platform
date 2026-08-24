@@ -30,11 +30,11 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from fastapi.testclient import TestClient
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, omit
-from nemo_platform.types.inference import ModelProvider
-from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
-from nemo_platform.types.inference.virtual_model_inference_config_param import VirtualModelInferenceConfigParam
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient, omit
+from nemo_platform_plugin.models.types import ModelProvider
+from nemo_platform_plugin.models.types.middleware_call_param import MiddlewareCallParam
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.models.types.virtual_model_inference_config_param import VirtualModelInferenceConfigParam
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.discovery import discover_inference_middleware
 from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
@@ -92,8 +92,8 @@ class IGWPluginHarness:
     Construct via the :func:`igw_plugin_harness` pytest fixture.
     """
 
-    sdk: NeMoPlatform
-    async_sdk: AsyncNeMoPlatform
+    sdk: NemoClient
+    async_sdk: AsyncNemoClient
     test_client: TestClient
     entity_client: EntityClient
 
@@ -205,7 +205,7 @@ class IGWPluginHarness:
         """
         for workspace, name in reversed(self._virtual_models):
             try:
-                self.sdk.inference.virtual_models.delete(name=name, workspace=workspace)
+                self.sdk.inference.virtual_models.delete_virtual_model(name=name, workspace=workspace)
             except Exception:  # noqa: BLE001  # see _cleanup docstring
                 logger.warning(
                     "Failed to delete VirtualModel %r in workspace %r during harness cleanup",
@@ -216,7 +216,7 @@ class IGWPluginHarness:
 
         for workspace, name in reversed(self._providers):
             try:
-                self.sdk.inference.providers.delete(name=name, workspace=workspace)
+                self.sdk.inference.providers.delete_provider(name=name, workspace=workspace)
             except Exception:  # noqa: BLE001  # see _cleanup docstring
                 logger.warning(
                     "Failed to delete ModelProvider %r in workspace %r during harness cleanup",
@@ -498,7 +498,7 @@ class IGWPluginHarness:
         provider_name = name or short_unique_name("provider")
         host = host_url or self.nim_host_url
 
-        self.sdk.inference.providers.create(
+        self.sdk.inference.providers.create_provider(
             workspace=workspace,
             name=provider_name,
             host_url=host,
@@ -510,7 +510,7 @@ class IGWPluginHarness:
         self._providers.append((workspace, provider_name))
 
         # served_models has to go through update_status — the create path doesn't accept it.
-        self.sdk.inference.providers.update_status(
+        self.sdk.inference.providers.update_provider_status(
             name=provider_name,
             workspace=workspace,
             served_models=[
@@ -525,7 +525,7 @@ class IGWPluginHarness:
         # Read authoritative state back so the cache stays in sync with
         # whatever id / served_models shape / timestamps the entity store
         # actually assigned.
-        provider = self.sdk.inference.providers.retrieve(name=provider_name, workspace=workspace)
+        provider = self.sdk.inference.providers.get_provider(name=provider_name, workspace=workspace)
 
         if api_key_secret_name is not None:
             # Full refresh resolves the secret via the secrets SDK.
@@ -656,7 +656,7 @@ class IGWPluginHarness:
             # (TypedDict). Skip when empty so we don't send an empty list
             # that some validators treat as "explicitly clear models".
             create_kwargs["models"] = list(models)
-        vm = self.sdk.inference.virtual_models.create(**create_kwargs)
+        vm = self.sdk.inference.virtual_models.create_virtual_model(**create_kwargs)
         self._virtual_models.append((workspace, name))
         return vm
 

@@ -175,7 +175,7 @@ def _create_provider(sdk: Any, workspace: str, spec: ProviderSpec) -> None:
     pre-existing provider with a stale host_url or secret_name is kept.
     """
     try:
-        sdk.inference.providers.create(
+        sdk.inference.providers.create_provider(
             name=spec.name,
             host_url=spec.host_url,
             api_key_secret_name=spec.secret_name,
@@ -199,7 +199,7 @@ def _wait_for_provider_discovery(sdk: Any, workspace: str, spec: ProviderSpec) -
     )
     while time.monotonic() < deadline:
         try:
-            provider = sdk.inference.providers.retrieve(name=spec.name, workspace=workspace)
+            provider = sdk.inference.providers.get_provider(name=spec.name, workspace=workspace)
             served = getattr(provider, "served_models", None) or []
             if served:
                 model_ids = [getattr(m, "model_entity_id", str(m)) for m in served]
@@ -215,7 +215,7 @@ def _wait_for_provider_discovery(sdk: Any, workspace: str, spec: ProviderSpec) -
 def _create_virtual_model(base_url: str, workspace: str, spec: VirtualModelSpec) -> None:
     """Create a VirtualModel via the entities REST API, ignoring conflicts.
 
-    Uses urllib (stdlib) rather than the NeMoPlatform SDK since the SDK's
+    Uses urllib (stdlib) rather than the NemoClient SDK since the SDK's
     virtual-models endpoint may not be exposed on all platform versions.
     Auth is omitted intentionally — local benchmark platforms run with auth
     disabled (NMP_SECRETS_ALLOW_KEY_CREATION=1, no auth service in the
@@ -268,11 +268,11 @@ def seed_all(
 
     Returns a :class:`SeedResult` with per-provider and per-vm status.
     """
-    from nemo_platform import NeMoPlatform
+    from nemo_platform_plugin.client.client import NemoClient
 
     provider_specs = load_manifest(manifest_path)
     vm_specs = _load_virtual_model_specs(manifest_path)
-    sdk = NeMoPlatform(base_url=base_url, workspace=workspace)
+    sdk = NemoClient(base_url=base_url, workspace=workspace)
     result = SeedResult()
 
     # Track which providers succeeded so VMs can gate on their dependency.

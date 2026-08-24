@@ -6,7 +6,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.files.metadata import FilesetMetadata
 from nemo_platform_plugin.files.storage_config import LocalStorageConfig
 from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput, ListFilesetFilesResponse
@@ -66,7 +66,7 @@ def _mock_files_client():
 @pytest.fixture
 def model_entity_service(entity_client, _mock_files_client):
     """Create a ModelEntityService with MockEntityClient for integration testing."""
-    async_sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    async_sdk = AsyncMock(spec=AsyncNemoClient)
     async_sdk.files.list = AsyncMock(
         return_value=ListFilesetFilesResponse(
             data=[

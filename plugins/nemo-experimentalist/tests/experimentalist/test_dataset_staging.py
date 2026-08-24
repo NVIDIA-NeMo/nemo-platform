@@ -14,7 +14,7 @@ from nemo_experimentalist_plugin.experimentalist.components.dataset_staging impo
     stage_task_template,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 def _write_tree(root: Path, content: str) -> None:
@@ -113,7 +113,7 @@ async def test_stage_eval_author_inputs_isolates_all_mutable_sources(tmp_path: P
         train_dataset=DatasetRef(uri=str(train), metadata={"id": "train"}),
         validation_dataset=DatasetRef(uri=str(validation), metadata={"id": "validation"}),
         task_template=DatasetRef(uri=template.as_uri(), metadata={"id": "template"}),
-        client=cast(AsyncNeMoPlatform, object()),
+        client=cast(AsyncNemoClient, object()),
         workspace="default",
     )
 
@@ -151,7 +151,7 @@ async def test_stage_eval_author_inputs_keeps_train_and_validation_isolated_when
         train_dataset=shared_ref,
         validation_dataset=shared_ref,
         task_template=DatasetRef(uri=str(template)),
-        client=cast(AsyncNeMoPlatform, object()),
+        client=cast(AsyncNemoClient, object()),
         workspace="default",
     )
     staged_train_test = Path(staged.train_dataset.uri) / "task-1" / "tests" / "test.sh"
@@ -174,7 +174,7 @@ async def test_stage_eval_author_inputs_reuses_dataset_destinations_but_refreshe
         train_dataset=DatasetRef(uri=str(source)),
         validation_dataset=DatasetRef(uri=str(source)),
         task_template=DatasetRef(uri=str(template)),
-        client=cast(AsyncNeMoPlatform, object()),
+        client=cast(AsyncNemoClient, object()),
         workspace="default",
     )
     (Path(staged.train_dataset.uri) / "task-1" / "tests" / "test.sh").write_text("curated", encoding="utf-8")
@@ -185,7 +185,7 @@ async def test_stage_eval_author_inputs_reuses_dataset_destinations_but_refreshe
         train_dataset=DatasetRef(uri=str(source)),
         validation_dataset=DatasetRef(uri=str(source)),
         task_template=DatasetRef(uri=str(template)),
-        client=cast(AsyncNeMoPlatform, object()),
+        client=cast(AsyncNemoClient, object()),
         workspace="default",
     )
 
@@ -206,7 +206,7 @@ async def test_stage_task_template_hydrates_and_refreshes_fileset_reference(tmp_
             calls.append({"remote_path": remote_path, "local_path": local_path, "workspace": workspace})
             _write_tree(Path(local_path), content)
 
-    client = cast(AsyncNeMoPlatform, SimpleNamespace(files=FakeFiles()))
+    client = cast(AsyncNemoClient, SimpleNamespace(files=FakeFiles()))
     ref = DatasetRef(uri="fileset://workspace-a/task-template", metadata={"id": "template-fileset"})
 
     first = await stage_task_template(tmp_path / "experiment", ref, client=client, workspace="workspace-a")

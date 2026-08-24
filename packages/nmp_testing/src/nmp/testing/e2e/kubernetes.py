@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from testcontainers.k3s import K3SContainer
 
 from .base import E2EBackend
@@ -134,14 +134,14 @@ class Kubernetes(E2EBackend):
         """
         self._base_url = url
 
-    def get_sdk(self, principal_id: str | None = None) -> NeMoPlatform:
+    def get_sdk(self, principal_id: str | None = None) -> NemoClient:
         """Get SDK client. Must call set_base_url() after Helm deploy.
 
         Args:
             principal_id: Optional principal ID for authentication (X-NMP-Principal-Id header).
 
         Returns:
-            Configured NeMoPlatform SDK client.
+            Configured NemoClient SDK client.
 
         Raises:
             RuntimeError: If base URL is not set (NeMo Platform not deployed).
@@ -149,7 +149,7 @@ class Kubernetes(E2EBackend):
         if self._base_url is None:
             raise RuntimeError("Base URL not set. Deploy NeMo Platform via Helm first, then call set_base_url()")
         headers = {"X-NMP-Principal-Id": principal_id} if principal_id else None
-        return NeMoPlatform(base_url=self._base_url, default_headers=headers)
+        return NemoClient(base_url=self._base_url, default_headers=headers)
 
     @property
     def base_url(self) -> str | None:

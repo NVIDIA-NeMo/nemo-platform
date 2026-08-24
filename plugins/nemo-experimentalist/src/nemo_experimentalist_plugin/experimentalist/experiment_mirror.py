@@ -21,7 +21,7 @@ import re
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
-from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
+from nemo_platform_plugin.client.client import AsyncNemoClient, ConflictError, NotFoundError, omit
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class ExperimentMirror:
     """Best-effort, one-way projection to native Experiments. Callers wrap each method
     so failures don't propagate (spec F)."""
 
-    def __init__(self, client: AsyncNeMoPlatform, workspace: str) -> None:
+    def __init__(self, client: AsyncNemoClient, workspace: str) -> None:
         self._client = client
         self._workspace = workspace
         self._group_ids: dict[str, str] = {}  # run_id -> ExperimentGroup id

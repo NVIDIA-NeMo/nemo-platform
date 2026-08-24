@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from nemo_experimentalist_plugin.entities import ResourceRef
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -1066,7 +1066,7 @@ def _load_span_models(path: str | Path) -> list[TraceSpan]:
 
 async def _fetch_intake_eval_contexts(
     *,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     workspace: str,
     session_ids: set[str],
     page_size: int,
@@ -1538,7 +1538,7 @@ class TraceExplorer:
 
     @classmethod
     async def from_ref(
-        cls, ref: ResourceRef, client: AsyncNeMoPlatform | None = None, workspace: str | None = None
+        cls, ref: ResourceRef, client: AsyncNemoClient | None = None, workspace: str | None = None
     ) -> TraceExplorer:
         """Load a trace from a resource reference."""
         if ref.uri.startswith("file://"):
@@ -1562,7 +1562,7 @@ class TraceExplorer:
     @classmethod
     async def from_intake(
         cls,
-        client: AsyncNeMoPlatform,
+        client: AsyncNemoClient,
         trace_id: str,
         *,
         workspace: str,

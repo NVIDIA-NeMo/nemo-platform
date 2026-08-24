@@ -10,7 +10,7 @@ from data_designer.engine.model_provider import ModelProvider as NDDModelProvide
 from data_designer.engine.model_provider import ModelProviderRegistry, resolve_model_provider_registry
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.sdk_translation import sync_to_async_sdk
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoTransportError, NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
@@ -63,7 +63,7 @@ def _make_local_model_provider_registry() -> ModelProviderRegistry | None:
 async def make_local_first_model_provider_registry(
     model_configs: list[dd.ModelConfig],
     *,
-    sdk: AsyncNeMoPlatform | NeMoPlatform,
+    sdk: AsyncNemoClient | NemoClient,
     default_workspace: str,
 ) -> ModelProviderRegistry | None:
     if len(model_configs) == 0:
@@ -111,11 +111,11 @@ async def make_local_first_model_provider_registry(
 
 
 async def _get_igw_model_provider_registry(
-    sdk: AsyncNeMoPlatform | NeMoPlatform,
+    sdk: AsyncNemoClient | NemoClient,
     model_configs: list[dd.ModelConfig],
     default_workspace: str,
 ) -> ModelProviderRegistry | None:
-    if isinstance(sdk, NeMoPlatform):
+    if isinstance(sdk, NemoClient):
         async_sdk = sync_to_async_sdk(sdk)
     else:
         async_sdk = sdk
@@ -132,7 +132,7 @@ async def _get_igw_model_provider_registry(
 
 @dataclass
 class ModelProviderCollection:
-    sdk: AsyncNeMoPlatform
+    sdk: AsyncNemoClient
     default_workspace: str
 
     # key = user-supplied provider name
@@ -242,7 +242,7 @@ class ModelProviderCollection:
 async def make_model_provider_registry(
     model_configs: list[dd.ModelConfig],
     *,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     default_workspace: str,
 ) -> ModelProviderRegistry | None:
     """Creates a ModelProviderRegistry that can be passed to the Data Designer library
@@ -261,12 +261,12 @@ async def make_model_provider_registry(
     return collection.get_model_provider_registry()
 
 
-def get_nmp_provider(sdk: NeMoPlatform, workspace: str, provider_name: str) -> NMPModelProvider:
+def get_nmp_provider(sdk: NemoClient, workspace: str, provider_name: str) -> NMPModelProvider:
     models = client_from_platform(sdk, ModelsClient)
     return models.get_provider(workspace=workspace, name=provider_name).data()
 
 
-async def get_nmp_provider_async(sdk: AsyncNeMoPlatform, workspace: str, provider_name: str) -> NMPModelProvider:
+async def get_nmp_provider_async(sdk: AsyncNemoClient, workspace: str, provider_name: str) -> NMPModelProvider:
     models = client_from_platform(sdk, AsyncModelsClient)
     response = await models.get_provider(workspace=workspace, name=provider_name)
     return response.data()

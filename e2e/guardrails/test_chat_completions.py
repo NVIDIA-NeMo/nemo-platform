@@ -18,7 +18,7 @@ inference backend.
 from collections.abc import Callable
 from typing import Any
 
-import nemo_platform
+from nemo_platform_plugin.client import errors as nemo_platform
 import pytest
 
 from e2e.guardrails.utils import (
@@ -226,7 +226,7 @@ def test_chat_completions_rejects_unsupported_body_guardrails_config(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe", rail_types=("input",))
 
-    with pytest.raises(nemo_platform.APIStatusError) as exc_info:
+    with pytest.raises(nemo_platform.NemoHTTPError) as exc_info:
         post_chat_completion(
             test_case,
             extra_body={"guardrails": {"config_id": test_case.config_ref}},

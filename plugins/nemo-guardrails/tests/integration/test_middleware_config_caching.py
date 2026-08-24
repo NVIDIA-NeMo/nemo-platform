@@ -11,10 +11,10 @@ from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any, cast
 
-import nemo_platform
+from nemo_platform_plugin.client import errors as nemo_platform
 import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
-from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
+from nemo_platform_plugin.models.types.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness, IGWPluginHarness
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
@@ -105,7 +105,7 @@ class TestMiddlewareConfigCaching:
     @staticmethod
     def _delete_config_if_present(harness: IGWPluginHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
+            harness.sdk.guardrail.delete_guardrail_config(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -122,7 +122,7 @@ class TestMiddlewareConfigCaching:
         *,
         model: str,
     ) -> None:
-        with pytest.raises(nemo_platform.APIStatusError) as exc_info:
+        with pytest.raises(nemo_platform.NemoHTTPError) as exc_info:
             harness.chat_completions(
                 workspace=harness.workspace,
                 body={
@@ -162,7 +162,7 @@ class TestMiddlewareConfigCaching:
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
 
-        harness.sdk.guardrail.configs.create(
+        harness.sdk.guardrail.create_guardrail_config(
             workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Entity-backed self-check config for middleware cache tests",
@@ -247,7 +247,7 @@ class TestMiddlewareConfigCaching:
                 )
 
                 # Update the config referenced by the VirtualModel
-                harness.sdk.guardrail.configs.update(
+                harness.sdk.guardrail.update_guardrail_config(
                     name=test_data_names.guardrail_config_name,
                     workspace=harness.workspace,
                     data=self._config_data(version="v2", main_base_url=harness.nim_base_url),
@@ -292,7 +292,7 @@ class TestMiddlewareConfigCaching:
                 )
 
                 # Delete the config referenced by the VirtualModel.
-                harness.sdk.guardrail.configs.delete(
+                harness.sdk.guardrail.delete_guardrail_config(
                     name=test_data_names.guardrail_config_name,
                     workspace=harness.workspace,
                 )
@@ -318,7 +318,7 @@ class TestMiddlewareConfigCaching:
             test_data_names = self._setup_entity_backed_vm(harness, config_version="v1")
             try:
                 # Delete the config referenced by the VirtualModel.
-                harness.sdk.guardrail.configs.delete(
+                harness.sdk.guardrail.delete_guardrail_config(
                     name=test_data_names.guardrail_config_name,
                     workspace=harness.workspace,
                 )
@@ -332,7 +332,7 @@ class TestMiddlewareConfigCaching:
                 )
 
                 # Recreate the config referenced by the VirtualModel.
-                harness.sdk.guardrail.configs.create(
+                harness.sdk.guardrail.create_guardrail_config(
                     workspace=harness.workspace,
                     name=test_data_names.guardrail_config_name,
                     description="Recreated self-check config for middleware cache tests",

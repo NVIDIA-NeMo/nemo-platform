@@ -13,7 +13,7 @@ from contextlib import ExitStack
 from uuid import uuid4
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_ext.auth.helpers import generate_unsigned_jwt
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
@@ -42,12 +42,12 @@ pytestmark = [
 
 
 def _as_bearer_user(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     email: str,
     *,
     principal_id: str | None = None,
     groups: list[str] | None = None,
-) -> NeMoPlatform:
+) -> NemoClient:
     token = generate_unsigned_jwt(
         principal_id=principal_id or email,
         email=email,
@@ -62,7 +62,7 @@ def _oidc_subject() -> str:
 
 
 def _log_auth_job_diagnostics(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     job_name: str,
@@ -87,7 +87,7 @@ def _log_auth_job_diagnostics(
     )
 
 
-def test_job_principal_propagation(services_pool_sdk: NeMoPlatform):
+def test_job_principal_propagation(services_pool_sdk: NemoClient):
     admin_sdk = _as_bearer_user(services_pool_sdk, TEST_ADMIN_EMAIL, groups=["admin"])
     user_email = unique_email("job-creator")
     workspace_name = short_unique_name("job-auth-test")
@@ -134,7 +134,7 @@ def test_job_principal_propagation(services_pool_sdk: NeMoPlatform):
         assert file_content == b"auth propagation test"
 
 
-def test_job_cannot_access_unauthorized_workspace(services_pool_sdk: NeMoPlatform):
+def test_job_cannot_access_unauthorized_workspace(services_pool_sdk: NemoClient):
     admin_sdk = _as_bearer_user(services_pool_sdk, TEST_ADMIN_EMAIL, groups=["admin"])
     owner_email = unique_email("owner")
     other_email = unique_email("other")
@@ -213,7 +213,7 @@ def test_job_cannot_access_unauthorized_workspace(services_pool_sdk: NeMoPlatfor
         assert "403" in task.error_stack and "Forbidden" in task.error_stack
 
 
-def test_job_admin_can_list_jobs_in_all_workspaces(services_pool_sdk: NeMoPlatform):
+def test_job_admin_can_list_jobs_in_all_workspaces(services_pool_sdk: NemoClient):
     admin_sdk = _as_bearer_user(services_pool_sdk, TEST_ADMIN_EMAIL, groups=["admin"])
     user_email = unique_email("member")
     workspace_name = short_unique_name("admin-list-jobs")

@@ -16,7 +16,7 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import FileResponse
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.common import GenericSortField, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -159,7 +159,7 @@ async def create_fileset(
     create_request: CreateFilesetRequest,
     background_tasks: BackgroundTasks,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> FilesetOutput:
@@ -357,7 +357,7 @@ async def delete_fileset(
     workspace: str,
     name: str,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> FilesetOutput:
     """
@@ -461,7 +461,7 @@ async def list_fileset_files(
     ),
     entity_store: EntityClient = Depends(get_entity_client),
     config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> ListFilesetFilesResponse:
     """
@@ -512,7 +512,7 @@ async def head_file(
     path: str,
     entity_store: EntityClient = Depends(get_entity_client),
     config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> Response:
     """
@@ -571,7 +571,7 @@ async def download_file(
     background_tasks: BackgroundTasks,
     entity_store: EntityClient = Depends(get_entity_client),
     config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> Response:
     """
@@ -640,7 +640,7 @@ async def upload_file(
     path: str,
     request: Request,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> FilesetFileOutput:
     """Upload file content to a fileset."""
@@ -713,7 +713,7 @@ async def delete_file(
     name: str,
     path: str,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> FilesetFileOutput:
     """

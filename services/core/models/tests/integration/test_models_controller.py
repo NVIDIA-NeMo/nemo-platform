@@ -13,7 +13,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 
 # =============================================================================
@@ -56,7 +56,7 @@ def test_controller_reconciles_created_deployment(controller_with_mock_backend):
     )
 
     # Create deployment config first
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name,
         workspace="default",
         engine="nim",
@@ -65,14 +65,14 @@ def test_controller_reconciles_created_deployment(controller_with_mock_backend):
     )
 
     # Create deployment - starts in CREATED status
-    sdk.inference.deployments.create(
+    sdk.inference.deployments.create_deployment(
         name=deployment_name,
         workspace="default",
         config=config_name,
     )
 
     # Verify deployment is in CREATED status
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "CREATED"
 
     # Run controller step - should call backend.create_model_deployment
@@ -88,7 +88,7 @@ def test_controller_reconciles_created_deployment(controller_with_mock_backend):
     assert called_config.name == config_name
 
     # Verify deployment status was updated to PENDING
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "PENDING"
 
 
@@ -100,10 +100,10 @@ def test_controller_polls_pending_deployment(controller_with_mock_backend):
     deployment_name = f"test-deployment-poll-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # Configure status to PENDING so first step doesn't immediately go to READY
     mock_backend.status_responses[deployment_name] = DeploymentStatusUpdate(
@@ -134,7 +134,7 @@ def test_controller_polls_pending_deployment(controller_with_mock_backend):
     assert len(deployment_status_calls) == 1
 
     # Verify deployment was updated to READY
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "READY"
 
 
@@ -146,10 +146,10 @@ def test_controller_handles_backend_error(controller_with_mock_backend):
     deployment_name = f"test-deployment-err-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # Configure backend to return ERROR
     mock_backend.create_response = DeploymentStatusUpdate(
@@ -162,7 +162,7 @@ def test_controller_handles_backend_error(controller_with_mock_backend):
     controller.step()
 
     # Verify deployment status was updated to ERROR
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "ERROR"
     assert "Failed to create container" in (deployment.status_message or "")
 
@@ -175,10 +175,10 @@ def test_controller_deletes_when_deleting(controller_with_mock_backend):
     deployment_name = f"test-deployment-del-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # Move to READY state
     mock_backend.create_response = DeploymentStatusUpdate(status="PENDING", status_message="Starting")
@@ -187,7 +187,7 @@ def test_controller_deletes_when_deleting(controller_with_mock_backend):
     controller.step()
 
     # Delete the deployment (moves to DELETING)
-    sdk.inference.deployments.delete(deployment_name, workspace="default")
+    sdk.inference.deployments.delete_deployment(deployment_name, workspace="default")
 
     # Clear call history
     mock_backend.delete_calls.clear()
@@ -214,10 +214,10 @@ def test_controller_garbage_collects_deleted_deployment(controller_with_mock_bac
     deployment_name = f"test-deployment-gc-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # Progress through lifecycle: CREATED → PENDING → READY → DELETING → DELETED
     mock_backend.create_response = DeploymentStatusUpdate(status="PENDING", status_message="Starting")
@@ -229,13 +229,13 @@ def test_controller_garbage_collects_deleted_deployment(controller_with_mock_bac
     controller.step()
 
     # Delete deployment (moves to DELETING)
-    sdk.inference.deployments.delete(deployment_name, workspace="default")
+    sdk.inference.deployments.delete_deployment(deployment_name, workspace="default")
 
     mock_backend.delete_response = DeploymentStatusUpdate(status="DELETED", status_message="Deleted")
     controller.step()  # DELETING → DELETED
 
     # Verify deployment is in DELETED state (soft-deleted, still exists)
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "DELETED"
 
     # Patch the controller's reconciler to have 0 second grace period
@@ -246,7 +246,7 @@ def test_controller_garbage_collects_deleted_deployment(controller_with_mock_bac
 
     # Verify deployment is gone (hard-deleted)
     with pytest.raises(NotFoundError):
-        sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+        sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
 
 
 def test_controller_orphan_cleanup_after_deleted(controller_with_mock_backend):
@@ -262,10 +262,10 @@ def test_controller_orphan_cleanup_after_deleted(controller_with_mock_backend):
     deployment_name = f"test-deployment-orphan-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # CREATED → PENDING → READY
     mock_backend.create_response = DeploymentStatusUpdate(status="PENDING", status_message="Starting")
@@ -277,12 +277,12 @@ def test_controller_orphan_cleanup_after_deleted(controller_with_mock_backend):
     controller.step()
 
     # Delete via API (moves to DELETING)
-    sdk.inference.deployments.delete(deployment_name, workspace="default")
+    sdk.inference.deployments.delete_deployment(deployment_name, workspace="default")
 
     mock_backend.delete_response = DeploymentStatusUpdate(status="DELETED", status_message="Deleted")
     controller.step()  # DELETING → DELETED
 
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "DELETED"
 
     # Hard-delete after grace period so deployment is no longer in API
@@ -290,7 +290,7 @@ def test_controller_orphan_cleanup_after_deleted(controller_with_mock_backend):
     controller.step()
 
     with pytest.raises(NotFoundError):
-        sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+        sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
 
     # Simulate backend still reporting this deployment (orphan)
     deployment_id = f"default/{deployment_name}"
@@ -315,10 +315,10 @@ def test_controller_creates_model_provider_when_ready(controller_with_mock_backe
     deployment_name = f"test-deployment-prov-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # Move to READY state with host_url - this should trigger provider creation
     mock_backend.create_response = DeploymentStatusUpdate(
@@ -327,14 +327,14 @@ def test_controller_creates_model_provider_when_ready(controller_with_mock_backe
     controller.step()
 
     # Verify deployment has model_provider_id set
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     assert deployment.status == "READY"
     assert deployment.model_provider_id is not None
 
     # Verify provider was created with correct host_url and status
     provider_id = deployment.model_provider_id
     provider_workspace, provider_name = provider_id.split("/")
-    provider = sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+    provider = sdk.inference.providers.get_provider(provider_name, workspace=provider_workspace)
     assert provider.host_url == "http://localhost:9000"
     assert provider.status == "READY", "Provider should be READY when deployment is READY"
 
@@ -347,10 +347,10 @@ def test_controller_deletes_model_provider_on_delete(controller_with_mock_backen
     deployment_name = f"test-deployment-delprov-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(
+    sdk.inference.deployment_configs.create_deployment_config(
         name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
     )
-    sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
+    sdk.inference.deployments.create_deployment(name=deployment_name, workspace="default", config=config_name)
 
     # Move to READY state (creates provider)
     mock_backend.create_response = DeploymentStatusUpdate(
@@ -359,15 +359,15 @@ def test_controller_deletes_model_provider_on_delete(controller_with_mock_backen
     controller.step()
 
     # Get provider info before deletion
-    deployment = sdk.inference.deployments.retrieve(deployment_name, workspace="default")
+    deployment = sdk.inference.deployments.get_deployment(deployment_name, workspace="default")
     provider_id = deployment.model_provider_id
     provider_workspace, provider_name = provider_id.split("/")
 
     # Verify provider exists
-    sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+    sdk.inference.providers.get_provider(provider_name, workspace=provider_workspace)
 
     # Delete deployment (moves to DELETING)
-    sdk.inference.deployments.delete(deployment_name, workspace="default")
+    sdk.inference.deployments.delete_deployment(deployment_name, workspace="default")
 
     # Configure delete response and run controller
     mock_backend.delete_response = DeploymentStatusUpdate(status="DELETED", status_message="Deleted")
@@ -375,4 +375,4 @@ def test_controller_deletes_model_provider_on_delete(controller_with_mock_backen
 
     # Verify provider was deleted
     with pytest.raises(NotFoundError):
-        sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+        sdk.inference.providers.get_provider(provider_name, workspace=provider_workspace)

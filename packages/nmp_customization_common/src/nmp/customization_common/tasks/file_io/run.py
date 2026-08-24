@@ -23,10 +23,8 @@ import logging
 from pathlib import Path
 
 import httpx
-from nemo_platform import (
-    NeMoPlatform,
-    NotFoundError,
-)
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import (
     ConflictError,
@@ -108,7 +106,7 @@ class FileIORunner:
 
     def __init__(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         progress_reporter: ProgressReporter,
         job_ctx: NMPJobContext,
         *,
@@ -421,7 +419,7 @@ class FileIORunner:
 
 
 def run(
-    sdk: NeMoPlatform | None = None,
+    sdk: NemoClient | None = None,
     job_ctx: NMPJobContext | None = None,
     *,
     service_source: str,

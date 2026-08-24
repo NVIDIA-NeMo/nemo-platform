@@ -47,7 +47,7 @@ import yaml
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_insights_plugin.entities import Insight, InsightStatus
 from nemo_insights_plugin.schema import InsightListItem, InsightPage
-from nemo_platform import AsyncNeMoPlatform, omit
+from nemo_platform_plugin.client.client import AsyncNemoClient, omit
 from nemo_platform_plugin.schema import PaginationData
 
 
@@ -164,7 +164,7 @@ class AnalystBackend(ABC):
     in local insights mode.
     """
 
-    def __init__(self, client: AsyncNeMoPlatform) -> None:
+    def __init__(self, client: AsyncNemoClient) -> None:
         self.client = client
 
     # -- reads: always against the live platform -------------------------- #
@@ -430,7 +430,7 @@ class RemoteAnalystBackend(AnalystBackend):
     semantics.
     """
 
-    def __init__(self, client: AsyncNeMoPlatform, mirror: InsightsFileStore | None = None) -> None:
+    def __init__(self, client: AsyncNemoClient, mirror: InsightsFileStore | None = None) -> None:
         super().__init__(client)
         self.mirror = mirror
 
@@ -581,7 +581,7 @@ class LocalAnalystBackend(AnalystBackend):
     stored entity.
     """
 
-    def __init__(self, *, client: AsyncNeMoPlatform, path: Path) -> None:
+    def __init__(self, *, client: AsyncNemoClient, path: Path) -> None:
         super().__init__(client)
         self.store = InsightsFileStore(path)
 
@@ -661,7 +661,7 @@ class LocalAnalystBackend(AnalystBackend):
 
 def make_analyst_backend(
     *,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     insights_output: str | None,
     local_only: bool = False,
 ) -> AnalystBackend:

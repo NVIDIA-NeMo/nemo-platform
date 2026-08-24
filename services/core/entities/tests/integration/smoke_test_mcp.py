@@ -15,7 +15,7 @@ from typing import Any, Generator
 import pytest
 from fastmcp import FastMCP
 from mcp.types import TextContent
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.entities.mcp.server import create_server
 
@@ -27,7 +27,7 @@ def nmp_base_url() -> str:
 
 
 @pytest.fixture(scope="module")
-def nemo_sdk(nmp_base_url: str) -> Generator[NeMoPlatform, None, None]:
+def nemo_sdk(nmp_base_url: str) -> Generator[NemoClient, None, None]:
     """Create NeMo SDK client for direct API validation."""
     os.environ.setdefault("NMP_BASE_URL", nmp_base_url)
     client = get_platform_sdk()
@@ -50,7 +50,7 @@ def _text_content(tool_result: Any) -> str:
 class TestEntitiesMCPServerSmoke:
     """Smoke tests for entities MCP server basic functionality."""
 
-    def test_nmp_connection(self, nemo_sdk: NeMoPlatform) -> None:
+    def test_nmp_connection(self, nemo_sdk: NemoClient) -> None:
         """Verify we can connect to NeMo Platform instance."""
         response = nemo_sdk.workspaces.list()
         assert response is not None
@@ -70,7 +70,7 @@ class TestEntitiesMCPServerSmoke:
         assert "delete_workspace" in tool_names
 
     @pytest.mark.asyncio
-    async def test_list_workspaces_matches_sdk(self, mcp_server: FastMCP, nemo_sdk: NeMoPlatform) -> None:
+    async def test_list_workspaces_matches_sdk(self, mcp_server: FastMCP, nemo_sdk: NemoClient) -> None:
         """
         Verify list_workspaces MCP tool returns consistent data with SDK.
 

@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig, ExecutorConfigEntry
 from nemo_deployments_plugin.controller import DeploymentsController
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.models.types.model_deployment import ModelDeployment
+from nemo_platform_plugin.models.types.model_deployment_config import ModelDeploymentConfig
+from nemo_platform_plugin.models.types.model_entity import ModelEntity
 from nmp.common.config import Runtime
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
 from nmp.core.files.app.backends.base import FileInfo
@@ -116,7 +116,7 @@ class MockServiceBackend(ServiceBackend):
 
     def __init__(
         self,
-        nmp_sdk: AsyncNeMoPlatform,
+        nmp_sdk: AsyncNemoClient,
         config: dict[str, Any],
     ) -> None:
         """Initialize mock backend without calling parent init."""
@@ -232,7 +232,7 @@ def mock_backend_registry(mock_backend: MockServiceBackend) -> BackendRegistry:
 @pytest.fixture
 def controller_with_mock_backend(
     test_clients: ClientContext, mock_backend_registry: BackendRegistry
-) -> Generator[tuple[ModelsController, MockServiceBackend, NeMoPlatform], None, None]:
+) -> Generator[tuple[ModelsController, MockServiceBackend, NemoClient], None, None]:
     """Create a ModelsController wired to use the test SDK and mock backend.
 
     Note: The ProviderReconciler's autodiscovery is mocked to avoid issues when

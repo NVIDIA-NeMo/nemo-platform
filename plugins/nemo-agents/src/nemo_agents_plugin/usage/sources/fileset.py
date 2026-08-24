@@ -19,7 +19,7 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.refs import FilesetRef
 
 logger = logging.getLogger(__name__)
@@ -37,12 +37,12 @@ class FilesetDownloadError(RuntimeError):
 def fileset_path(
     ref: FilesetRef,
     *,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
 ) -> Iterator[Path]:
     """Download *ref* to a tempdir and yield the path.
 
-    *sdk* is a ``NeMoPlatform`` SDK instance.  Cleanup happens when the
+    *sdk* is a ``NemoClient`` SDK instance.  Cleanup happens when the
     context exits.
 
     The accepted shapes are ``name`` (uses *workspace* as the workspace) or
@@ -82,7 +82,7 @@ def fileset_path(
         tmp_path = Path(tmp)
         logger.debug("downloading fileset %s/%s to %s", ws, name, tmp_path)
         try:
-            sdk.files.download(
+            sdk.files.download_file(
                 remote_path="",
                 local_path=str(tmp_path),
                 fileset=name,

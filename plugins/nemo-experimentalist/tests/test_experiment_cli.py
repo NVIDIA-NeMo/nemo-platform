@@ -11,7 +11,7 @@ from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nooa import GenerationError
 from typer.testing import CliRunner
 
@@ -51,7 +51,7 @@ class FakePlatformClient:
 @pytest.fixture(autouse=True)
 def platform_client(monkeypatch: pytest.MonkeyPatch) -> FakePlatformClient:
     client = FakePlatformClient()
-    monkeypatch.setattr(cli, "make_client", lambda _base_url: cast(AsyncNeMoPlatform, client))
+    monkeypatch.setattr(cli, "make_client", lambda _base_url: cast(AsyncNemoClient, client))
     return client
 
 
@@ -63,7 +63,7 @@ class CapturedExperimentRun:
     task_template: DatasetRef | None
     experiment_dir: Path
     workspace: str
-    client: AsyncNeMoPlatform | None
+    client: AsyncNemoClient | None
     config: EvolutionaryOptimizerConfig
     insight: Path | str | None
     agent_spec: str | None
@@ -106,7 +106,7 @@ class ExperimentRunRecorder:
         validation_dataset: DatasetRef,
         experiment_dir: Path,
         workspace: str,
-        client: AsyncNeMoPlatform | None,
+        client: AsyncNemoClient | None,
         config: EvolutionaryOptimizerConfig,
         task_template: DatasetRef | None = None,
         insight: Path | str | None = None,

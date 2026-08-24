@@ -8,7 +8,7 @@ from typing import Generator
 from unittest.mock import patch
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.files.client import FilesClient
@@ -65,7 +65,7 @@ def patched_authz_data(build_fn):
 
 
 @pytest.fixture(scope="module")
-def sdk() -> Generator[NeMoPlatform, None, None]:
+def sdk() -> Generator[NemoClient, None, None]:
     """Auth-enabled test stack with Files + Secrets services."""
     with create_test_client(
         FilesService,
@@ -94,7 +94,7 @@ def no_hf_network(monkeypatch):
 class TestFilesetCreateWithSecretAuth:
     def test_editor_can_create_hf_fileset_with_token_secret(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         no_hf_network,
     ):
         workspace = short_unique_name("hf-ok")
@@ -136,7 +136,7 @@ class TestFilesetCreateWithSecretAuth:
 
     def test_custom_role_without_secrets_read_denied_with_token_secret(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         no_hf_network,
     ):
         with patched_authz_data(_build_authorization_data_without_secrets_read):
@@ -179,7 +179,7 @@ class TestFilesetCreateWithSecretAuth:
 
     def test_missing_secret_returns_secret_not_found_error(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         no_hf_network,
     ):
         workspace = short_unique_name("hf-miss")
@@ -216,7 +216,7 @@ class TestFilesetCreateWithSecretAuth:
 
     def test_public_hf_without_token_secret_succeeds(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         no_hf_network,
     ):
         workspace = short_unique_name("hf-public")
@@ -253,7 +253,7 @@ class TestFilesetCreateWithSecretAuth:
 
     def test_editor_can_list_files_from_hf_fileset_with_token_secret(
         self,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         no_hf_network,
         monkeypatch,
     ):

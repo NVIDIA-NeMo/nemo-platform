@@ -15,7 +15,7 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
 from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.nooa_model_client import (
     ConfiguredModelClients,
     ConfiguredModelRefs,
@@ -50,7 +50,7 @@ async def run_experimentalist(
     validation_dataset: DatasetRef,
     experiment_dir: Path,
     workspace: str,
-    client: AsyncNeMoPlatform | None,
+    client: AsyncNemoClient | None,
     model_refs: ConfiguredModelRefs | None = None,
     config: EvolutionaryOptimizerConfig,
     task_template: DatasetRef | None = None,
@@ -105,7 +105,7 @@ async def run_experimentalist(
     )
     # Every component resolves its models through the platform (#1159), so the resolved
     # clients have to stay active for the whole run, not just while the runner is built.
-    model_platform_client = client or AsyncNeMoPlatform()
+    model_platform_client = client or AsyncNemoClient()
     owns_model_platform_client = client is None
     model_clients: ConfiguredModelClients | None = None
     try:

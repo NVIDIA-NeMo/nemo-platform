@@ -11,16 +11,10 @@ from typing import Any, Mapping
 
 import httpx
 from httpx import Timeout
-from nemo_platform import (
-    DEFAULT_MAX_RETRIES,
-    AsyncStream,
-    DefaultAsyncHttpxClient,
-    DefaultHttpxClient,
-    NotGiven,
-    __version__,
-    not_given,
-)
-from nemo_platform._base_client import AsyncAPIClient, SyncAPIClient
+from httpx import AsyncClient, Client
+# TODO: remove Stainless sentinel(s) NotGiven, not_given
+# TODO: migrate DEFAULT_MAX_RETRIES, AsyncStream, __version__ from nemo_platform
+from nemo_platform_plugin.client.client import AsyncNemoClient as AsyncAPIClient, NemoClient as SyncAPIClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 
 from nemo_platform_ext.client.tls import client_verify_from_env
@@ -49,7 +43,7 @@ def _should_bootstrap_config(
     )
 
 
-class NeMoPlatform(SyncAPIClient):
+class NemoClient(SyncAPIClient):
     def __init__(
         self,
         *,
@@ -77,7 +71,7 @@ class NeMoPlatform(SyncAPIClient):
         # part of our public interface in the future.
         _strict_response_validation: bool = False,
     ) -> None:
-        """Construct a new synchronous NeMoPlatform client instance.
+        """Construct a new synchronous NemoClient client instance.
 
         Calling with no arguments reads configuration from the active context in
         ``~/.config/nmp/config.yaml`` and wires up transparent OIDC token refresh.
@@ -90,16 +84,16 @@ class NeMoPlatform(SyncAPIClient):
 
         .. code-block:: python
 
-            from nemo_platform import NeMoPlatform
-            client = NeMoPlatform()
+            from nemo_platform_plugin.client.client import NemoClient
+            client = NemoClient()
 
         Example — explicit token for automation:
 
         .. code-block:: python
 
             import os
-            from nemo_platform import NeMoPlatform
-            client = NeMoPlatform(
+            from nemo_platform_plugin.client.client import NemoClient
+            client = NemoClient(
                 base_url=os.environ["NMP_BASE_URL"],
                 access_token=os.environ["NMP_ACCESS_TOKEN"],
                 workspace="default",
@@ -157,7 +151,7 @@ class NeMoPlatform(SyncAPIClient):
                 default_headers = client_init_kwargs.default_headers
                 http_client = client_init_kwargs.http_client
             except Exception as e:
-                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
+                raise RuntimeError(f"NemoClient client initialization failed: {e}")
 
         client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
@@ -195,7 +189,7 @@ class NeMoPlatform(SyncAPIClient):
         return instance
 
 
-class AsyncNeMoPlatform(AsyncAPIClient):
+class AsyncNemoClient(AsyncAPIClient):
     # client options
     workspace: str | None
 
@@ -226,7 +220,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         # part of our public interface in the future.
         _strict_response_validation: bool = False,
     ) -> None:
-        """Construct a new asynchronous AsyncNeMoPlatform client instance.
+        """Construct a new asynchronous AsyncNemoClient client instance.
 
         Calling with no arguments reads configuration from the active context in
         ``~/.config/nmp/config.yaml`` and wires up transparent OIDC token refresh.
@@ -240,10 +234,10 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         .. code-block:: python
 
             import asyncio
-            from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.client import AsyncNemoClient
 
             async def main() -> None:
-                client = AsyncNeMoPlatform()
+                client = AsyncNemoClient()
                 page = await client.workspaces.list()
                 print(page.data)
 
@@ -254,10 +248,10 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         .. code-block:: python
 
             import asyncio, os
-            from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.client import AsyncNemoClient
 
             async def main() -> None:
-                client = AsyncNeMoPlatform(
+                client = AsyncNemoClient(
                     base_url=os.environ["NMP_BASE_URL"],
                     access_token=os.environ["NMP_ACCESS_TOKEN"],
                     workspace="default",
@@ -319,7 +313,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 default_headers = client_init_kwargs.default_headers
                 http_client = client_init_kwargs.http_client
             except Exception as e:
-                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
+                raise RuntimeError(f"NemoClient client initialization failed: {e}")
 
         client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:

@@ -4,11 +4,11 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 
 @contextmanager
-def managed_admin_workspace(admin_sdk: NeMoPlatform, workspace_name: str) -> Iterator[str]:
+def managed_admin_workspace(admin_sdk: NemoClient, workspace_name: str) -> Iterator[str]:
     admin_sdk.workspaces.create(name=workspace_name)
     try:
         yield workspace_name

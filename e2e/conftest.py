@@ -73,7 +73,7 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 
@@ -122,13 +122,13 @@ def ngc_api_key() -> str:
 
 
 @pytest.fixture
-def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[str]:
+def ngc_secret(sdk: NemoClient, workspace: str, ngc_api_key: str) -> Iterator[str]:
     """Create a secret containing the NGC API key, cleaned up after test."""
     secret_name = f"e2e-ngc-key-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(workspace=workspace, name=secret_name, value=ngc_api_key)
+    sdk.secrets.create_secret(workspace=workspace, name=secret_name, value=ngc_api_key)
     yield secret_name
     try:
-        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        sdk.secrets.delete_secret(workspace=workspace, name=secret_name)
     except Exception:
         pass  # Best-effort cleanup; the workspace is deleted anyway
 
@@ -150,21 +150,21 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
 
 
 @pytest.fixture(scope="module", name="sdk")
-def e2e_sdk(request: pytest.FixtureRequest) -> NeMoPlatform:
+def e2e_sdk(request: pytest.FixtureRequest) -> NemoClient:
     """Provide the conventional e2e SDK fixture name."""
     return request.getfixturevalue("services_pool_sdk")
 
 
 @pytest.fixture(scope="module")
-def files_client(sdk: NeMoPlatform) -> FilesClient:
+def files_client(sdk: NemoClient) -> FilesClient:
     """Provide a FilesClient derived from the SDK."""
     return client_from_platform(sdk, FilesClient)
 
 
 @pytest.fixture(scope="function")
-def workspace(sdk: NeMoPlatform) -> Iterator[str]:
+def workspace(sdk: NemoClient) -> Iterator[str]:
     """Create a unique workspace for each test, deleted on teardown."""
     name = f"e2e-{uuid.uuid4().hex[:8]}"
-    sdk.workspaces.create(name=name)
+    sdk.workspaces.create_workspace(name=name)
     yield name
-    sdk.workspaces.delete(name)
+    sdk.workspaces.delete_workspace(name)

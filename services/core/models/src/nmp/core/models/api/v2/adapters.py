@@ -6,7 +6,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -40,7 +40,7 @@ async def create_adapter(
     workspace: str,
     adapter_create: CreateAdapterRequest,
     service: AdapterEntityService = Depends(get_adapter_entity_service),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> Adapter:
     """Create an adapter under a base model specified by the "model" field in the body."""
     logger.info(f"Creating adapter entity: {workspace} for model {adapter_create.model!r}")
@@ -189,7 +189,7 @@ async def update_adapter(
     name: str,
     adapter_update: UpdateAdapterRequest,
     service: AdapterEntityService = Depends(get_adapter_entity_service),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> Adapter:
     try:
         if adapter_update.fileset:

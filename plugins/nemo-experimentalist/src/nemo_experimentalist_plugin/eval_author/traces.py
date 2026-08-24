@@ -30,7 +30,8 @@ from typing import Any, cast
 from nemo_experimentalist_plugin.entities import ResourceRef, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic, TraceAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
-from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
+# TODO: migrate APIConnectionError, APIStatusError from nemo_platform
 
 DEFAULT_ROW_LIMIT = 100
 MAX_ROW_LIMIT = 1000
@@ -107,7 +108,7 @@ def _with_trace_ref(row: dict[str, Any]) -> dict[str, Any]:
 
 
 async def query_spans(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     *,
     workspace: str,
     filter: dict[str, Any] | None = None,
@@ -188,7 +189,7 @@ async def query_spans(
 
 
 async def query_traces(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     *,
     workspace: str,
     filter: dict[str, Any] | None = None,
@@ -246,7 +247,7 @@ async def query_traces(
 
 
 async def find_agent_traces(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     *,
     agent: str,
     workspace: str,
@@ -346,7 +347,7 @@ def _trace_entry(trace_id: str, summary: dict[str, Any] | None) -> dict[str, Any
     }
 
 
-async def read_trace(client: AsyncNeMoPlatform, ref: str, *, workspace: str) -> TraceExplorer:
+async def read_trace(client: AsyncNemoClient, ref: str, *, workspace: str) -> TraceExplorer:
     """Read one production trace in full.
 
     Args:
@@ -369,7 +370,7 @@ async def read_trace(client: AsyncNeMoPlatform, ref: str, *, workspace: str) -> 
 
 
 async def analyze_trace(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     ref: str,
     *,
     workspace: str,

@@ -4,7 +4,7 @@
 """Job API endpoints for hello world service."""
 
 from fastapi import APIRouter
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -23,7 +23,7 @@ def compile_hello_world_job(
     transformed_spec: HelloWorldJobConfig,
     entity_client: EntityClient,
     job_name: str | None,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> PlatformJobSpec:
     """Compile a hello world job config into a platform job spec.
 

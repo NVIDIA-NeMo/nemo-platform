@@ -32,9 +32,9 @@ from nemo_guardrails_plugin.benchmarks.constants import (
     VM_NAME,
     WORKSPACE,
 )
-from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
-from nemo_platform.types.inference.virtual_model_inference_config_param import (
+from nemo_platform_plugin.client.client import NemoClient, NotFoundError
+from nemo_platform_plugin.models.types.middleware_call_param import MiddlewareCallParam
+from nemo_platform_plugin.models.types.virtual_model_inference_config_param import (
     VirtualModelInferenceConfigParam,
 )
 
@@ -70,7 +70,7 @@ class SeededResources:
 
 
 def seed_benchmark(
-    client: NeMoPlatform,
+    client: NemoClient,
     *,
     nemoguardrails_repo_root: Path,
     generated_dir: Path,
@@ -205,7 +205,7 @@ def seed_benchmark(
 
 
 def _wait_for_served_model(
-    client: NeMoPlatform,
+    client: NemoClient,
     *,
     provider_name: str,
     served_model_name: str,

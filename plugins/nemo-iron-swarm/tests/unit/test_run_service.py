@@ -19,7 +19,7 @@ from nemo_iron_swarm_plugin.jobs import artifacts, benign_suite, execution
 from nemo_iron_swarm_plugin.jobs import manifest as manifest_mod
 from nemo_iron_swarm_plugin.jobs import run as run_module
 from nemo_iron_swarm_plugin.jobs.errors import IronSwarmRunError
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext
 
 
@@ -330,7 +330,7 @@ def test_materialize_project_manifest_requires_fileset_and_yaml(tmp_path: Path) 
         manifest_mod._materialize_manifest(sdk, "research-hardening", ctx)
 
 
-def _capturing_sdk() -> tuple[NeMoPlatform, list[dict[str, Any]]]:
+def _capturing_sdk() -> tuple[NemoClient, list[dict[str, Any]]]:
     """A fake SDK whose entity create/update calls capture the recorded run data."""
     captured: list[dict[str, Any]] = []
     entities = SimpleNamespace(

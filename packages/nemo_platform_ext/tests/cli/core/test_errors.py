@@ -9,11 +9,11 @@ import click
 import httpx
 import pytest
 import typer
-from nemo_platform._exceptions import (
-    APIConnectionError,
+from nemo_platform_plugin.client.errors import (
+    NemoTransportError,
     APIError,
-    APIStatusError,
-    APITimeoutError,
+    NemoHTTPError,
+    NemoTransportError,
     AuthenticationError,
     BadRequestError,
     ConflictError,
@@ -101,7 +101,7 @@ def test_handle_api_status_errors(capsys, error_class, status_code, expected_pre
 
 def test_handle_api_connection_error(capsys):
     request = Mock()
-    error = APIConnectionError(message="Could not connect", request=request)
+    error = NemoTransportError(message="Could not connect", request=request)
 
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
@@ -170,7 +170,7 @@ def test_handle_plugin_unprocessable_entity_error(capsys):
 
 def test_handle_api_timeout_error(capsys):
     request = Mock()
-    error = APITimeoutError(request=request)
+    error = NemoTransportError(request=request)
 
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
@@ -184,7 +184,7 @@ def test_handle_api_timeout_error(capsys):
 def test_handle_api_status_error(capsys):
     response = Mock()
     response.status_code = 418
-    error = APIStatusError("I'm a teapot", response=response, body=None)
+    error = NemoHTTPError("I'm a teapot", response=response, body=None)
 
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
@@ -198,7 +198,7 @@ def test_handle_api_status_error(capsys):
 def test_handle_api_status_error_prints_request_context(capsys):
     request = httpx.Request("POST", "http://test/apis/models/v2/workspaces/default/models")
     response = httpx.Response(418, request=request, json={"detail": "short and stout"})
-    error = APIStatusError("I'm a teapot", response=response, body={"detail": "short and stout"})
+    error = NemoHTTPError("I'm a teapot", response=response, body={"detail": "short and stout"})
 
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)

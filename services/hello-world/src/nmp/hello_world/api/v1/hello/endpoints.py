@@ -12,7 +12,7 @@ from nmp.hello_world.api.v1.hello.schemas import ConfigInfoResponse, HelloRespon
 from nmp.hello_world.config import HelloWorldConfig
 
 if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
 router = APIRouter()
 
@@ -26,10 +26,10 @@ API_TAG = "Hello"
 )
 async def hello(
     workspace: str,
-    sdk: "AsyncNeMoPlatform" = Depends(get_sdk_client),
+    sdk: "AsyncNemoClient" = Depends(get_sdk_client),
 ) -> HelloResponse:
     """Return a hello world message with workspace info from the SDK."""
-    workspace_info = await sdk.workspaces.retrieve(workspace)
+    workspace_info = await sdk.workspaces.get_workspace(workspace)
     return HelloResponse(message=f"Hello World from workspace '{workspace_info.name}'")
 
 

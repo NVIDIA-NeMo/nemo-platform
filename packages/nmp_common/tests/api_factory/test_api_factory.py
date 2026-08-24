@@ -14,8 +14,8 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from nemo_platform.types.jobs import PlatformJobResponse as PlatformJob
-from nemo_platform.types.shared.platform_job_status import PlatformJobStatus
+from nemo_platform_plugin.jobs.schemas import PlatformJobResponse as PlatformJob
+from nemo_platform_plugin.schema.platform_job_status import PlatformJobStatus
 from nemo_platform_plugin.client.errors import (
     ConflictError as ClientConflictError,
 )

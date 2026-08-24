@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import httpx
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.jobs import endpoints
@@ -13,7 +13,7 @@ from nemo_platform_plugin.jobs.client import JobsClient
 
 def test_client_from_platform_preserves_stainless_retry_policy() -> None:
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
-    platform = NeMoPlatform(
+    platform = NemoClient(
         base_url="http://test",
         workspace="default",
         max_retries=4,
@@ -34,7 +34,7 @@ def test_client_from_platform_preserves_stainless_retry_policy() -> None:
 
 def test_client_from_platform_prefers_platform_request_router() -> None:
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
-    platform = NeMoPlatform(
+    platform = NemoClient(
         base_url="http://gateway",
         workspace="default",
         http_client=http_client,
@@ -54,7 +54,7 @@ def test_client_from_platform_prefers_platform_request_router() -> None:
 
 def test_client_from_platform_falls_back_to_sdk_prepare_url() -> None:
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
-    platform = NeMoPlatform(
+    platform = NemoClient(
         base_url="http://gateway",
         workspace="default",
         http_client=http_client,
@@ -98,7 +98,7 @@ def test_client_from_platform_propagates_timeout() -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
         timeout=httpx.Timeout(60.0),
     )
-    platform = NeMoPlatform(base_url="http://test", workspace="default", http_client=http_client)
+    platform = NemoClient(base_url="http://test", workspace="default", http_client=http_client)
 
     scoped = platform.with_options(timeout=upload_timeout)
     client = client_from_platform(scoped, JobsClient)
@@ -113,7 +113,7 @@ def test_client_from_platform_carries_default_timeout() -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
         timeout=httpx.Timeout(60.0),
     )
-    platform = NeMoPlatform(base_url="http://test", workspace="default", http_client=http_client)
+    platform = NemoClient(base_url="http://test", workspace="default", http_client=http_client)
 
     client = client_from_platform(platform, JobsClient)
 
@@ -126,7 +126,7 @@ def test_client_from_platform_carries_disabled_timeout() -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
         timeout=httpx.Timeout(60.0),
     )
-    platform = NeMoPlatform(base_url="http://test", workspace="default", http_client=http_client)
+    platform = NemoClient(base_url="http://test", workspace="default", http_client=http_client)
 
     client = client_from_platform(platform.with_options(timeout=None), JobsClient)
 

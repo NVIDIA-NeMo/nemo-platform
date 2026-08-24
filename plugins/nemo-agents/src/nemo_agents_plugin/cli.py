@@ -71,7 +71,7 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
-from nemo_platform.cli.core.formatters import Column, format_output
+from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
@@ -1571,12 +1571,12 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
 
 def _platform_sdk(base_url: str) -> Any:
     """Return an auth-aware platform SDK client for fileset upload/delete."""
-    from nemo_platform import NeMoPlatform
+    from nemo_platform_plugin.client.client import NemoClient
 
     headers = _resolve_context_headers()
     if headers:
-        return NeMoPlatform(base_url=base_url, default_headers=headers)
-    return NeMoPlatform(base_url=base_url)
+        return NemoClient(base_url=base_url, default_headers=headers)
+    return NemoClient(base_url=base_url)
 
 
 def _check_agent_root_bounds(agent_root: Path) -> None:

@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, Volume
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
@@ -38,7 +38,7 @@ _MODELS_ROLE_LABEL = "nmp.nvidia.com/models-role"
 class DeploymentsPluginServiceBackend(ServiceBackend):
     """Compile model deployments into Volume and Deployment plugin entities."""
 
-    def __init__(self, nmp_sdk: AsyncNeMoPlatform, config: dict[str, Any], huggingface_model_puller: str) -> None:
+    def __init__(self, nmp_sdk: AsyncNemoClient, config: dict[str, Any], huggingface_model_puller: str) -> None:
         self._backend_config: DeploymentsPluginConfig | None = None
         self._entities: NemoEntitiesClient | None = None
         self._huggingface_model_puller = huggingface_model_puller

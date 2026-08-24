@@ -27,8 +27,8 @@ from nemo_deployments_plugin.entities import (
     Toleration,
     VolumeMount,
 )
-from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types.k8s_nim_operator_config import K8sNIMOperatorConfig
+from nemo_platform_plugin.models.types.model_entity import ModelEntity
 from nmp.common.config import Runtime
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.controllers.backends.common import DeploymentConfigView

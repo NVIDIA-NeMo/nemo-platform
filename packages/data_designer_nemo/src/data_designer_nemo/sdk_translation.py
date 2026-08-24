@@ -7,8 +7,8 @@
 resolution are async-first: they call platform services to validate filesets,
 secrets, personas, and model providers before handing work to the upstream
 Data Designer engine, and in the case of preview this work happens within the
-FastAPI process with an injected ``AsyncNeMoPlatform``. However, some legitimate
-callers still start with a sync ``NeMoPlatform`` instance, notably sync SDK/CLI
+FastAPI process with an injected ``AsyncNemoClient``. However, some legitimate
+callers still start with a sync ``NemoClient`` instance, notably sync SDK/CLI
 validation and job-container runtime code, so those paths need an async sibling
 that preserves the same base URL, workspace, headers, query defaults, timeout,
 and retry settings.
@@ -17,16 +17,16 @@ and retry settings.
 filesystem integration. DuckDB and upstream Data Designer seed/person readers
 call fsspec synchronously, so the fileset filesystem must be constructed in
 sync fsspec mode even when the API process starts with an injected
-``AsyncNeMoPlatform``.
+``AsyncNemoClient``.
 """
 
 import httpx
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 
-def async_to_sync_sdk(async_sdk: AsyncNeMoPlatform) -> NeMoPlatform:
-    """Build a sync :class:`NeMoPlatform` mirroring an async SDK's config."""
-    sdk = NeMoPlatform(
+def async_to_sync_sdk(async_sdk: AsyncNemoClient) -> NemoClient:
+    """Build a sync :class:`NemoClient` mirroring an async SDK's config."""
+    sdk = NemoClient(
         base_url=async_sdk.base_url,
         default_headers=dict(async_sdk._custom_headers) if async_sdk._custom_headers else None,
         default_query=dict(async_sdk._custom_query) if async_sdk._custom_query else None,
@@ -38,9 +38,9 @@ def async_to_sync_sdk(async_sdk: AsyncNeMoPlatform) -> NeMoPlatform:
     return sdk
 
 
-def sync_to_async_sdk(sdk: NeMoPlatform) -> AsyncNeMoPlatform:
-    """Build an async :class:`AsyncNeMoPlatform` mirroring the sync SDK's config."""
-    async_sdk = AsyncNeMoPlatform(
+def sync_to_async_sdk(sdk: NemoClient) -> AsyncNemoClient:
+    """Build an async :class:`AsyncNemoClient` mirroring the sync SDK's config."""
+    async_sdk = AsyncNemoClient(
         base_url=sdk.base_url,
         default_headers=dict(sdk._custom_headers) if sdk._custom_headers else None,
         default_query=dict(sdk._custom_query) if sdk._custom_query else None,
@@ -53,7 +53,7 @@ def sync_to_async_sdk(sdk: NeMoPlatform) -> AsyncNeMoPlatform:
 
 
 def _attach_transport_and_router(
-    *, clone: NeMoPlatform | AsyncNeMoPlatform, original: NeMoPlatform | AsyncNeMoPlatform
+    *, clone: NemoClient | AsyncNemoClient, original: NemoClient | AsyncNemoClient
 ) -> None:
     transport = getattr(original._client, "_transport", None)
     if isinstance(transport, httpx.ASGITransport):

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig, ExecutorConfigEntry
 from nemo_deployments_plugin.controller import DeploymentsController
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nmp.common.config import Runtime
 from nmp.core.inference_gateway.api.dependencies import global_model_cache
 from nmp.core.inference_gateway.api.model_cache import ModelCache, model_provider_getter_from_sdk, refresh_model_cache
@@ -55,7 +55,7 @@ class MockServiceBackend(ServiceBackend):
 
     def __init__(
         self,
-        nmp_sdk: AsyncNeMoPlatform,
+        nmp_sdk: AsyncNemoClient,
         config: dict[str, Any],
     ) -> None:
         """Initialize mock backend without calling parent init."""
@@ -138,7 +138,7 @@ def test_clients() -> Generator[ClientContext, None, None]:
 @pytest.fixture
 def controller_with_mock_backend(
     test_clients: ClientContext,
-) -> Generator[tuple[ModelsController, MockServiceBackend, NeMoPlatform, ModelCache, AsyncNeMoPlatform], None, None]:
+) -> Generator[tuple[ModelsController, MockServiceBackend, NemoClient, ModelCache, AsyncNemoClient], None, None]:
     """Create ModelsController with mock backend and access to IGW cache.
 
     Note: The ProviderReconciler's autodiscovery is mocked to avoid event loop
@@ -288,7 +288,7 @@ def controller_with_docker_and_igw(
     deployments_plugin_backend_config,
     worker_id: str,
 ) -> Generator[
-    tuple[ModelsController, ModelCache, NeMoPlatform, str, DockerTestContext, AsyncNeMoPlatform], None, None
+    tuple[ModelsController, ModelCache, NemoClient, str, DockerTestContext, AsyncNemoClient], None, None
 ]:
     """Create ModelsController with Docker backend and IGW with shared SDK.
 
@@ -394,7 +394,7 @@ def controller_with_docker_and_igw(
 
 async def trigger_cache_refresh(
     model_cache: ModelCache,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> None:
     """Trigger a manual cache refresh from the Models Service.
 

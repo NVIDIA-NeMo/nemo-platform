@@ -10,14 +10,14 @@ quickstart environment does not include the job execution worker.
 
 import os
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 WORKSPACE = "benchmark-eval-workspace"
 
 
-def _get_client() -> NeMoPlatform:
+def _get_client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url)
+    return NemoClient(base_url=nmp_base_url)
 
 
 def test_workspace_exists():

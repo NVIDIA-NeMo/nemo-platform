@@ -4,7 +4,7 @@
 from unittest.mock import MagicMock, patch
 
 from nemo_insights_plugin.client import make_client
-from nemo_platform.auth.helpers import NMPOIDCConfig
+from nemo_platform_plugin.client.oidc import NMPOIDCConfig
 
 REMOTE_URL = "https://nemo-platform.example.com"
 
@@ -19,7 +19,7 @@ def test_remote_no_auth_ignores_unrelated_local_oauth_context() -> None:
             "nemo_insights_plugin.client.discover_nmp_config",
             return_value=NMPOIDCConfig(auth_enabled=False),
         ),
-        patch("nemo_insights_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_insights_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(REMOTE_URL)
 
@@ -41,7 +41,7 @@ def test_remote_auth_uses_local_oauth_context() -> None:
                 token_endpoint="https://auth.example.com/token",
             ),
         ),
-        patch("nemo_insights_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_insights_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(REMOTE_URL)
 

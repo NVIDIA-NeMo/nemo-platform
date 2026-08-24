@@ -6,7 +6,7 @@
 from typing import Generator
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.config import PlatformConfig
 from nmp.common.service.dependencies import get_platform_config
 from nmp.hello_world.config import HelloWorldConfig
@@ -28,7 +28,7 @@ class TestConfigInfoEndpoint:
         return HelloWorldConfig(greeting_prefix="Howdy", max_message_length=200)
 
     @pytest.fixture
-    def sdk(self, mock_platform_config, mock_service_config) -> Generator[NeMoPlatform, None, None]:
+    def sdk(self, mock_platform_config, mock_service_config) -> Generator[NemoClient, None, None]:
         """Create SDK client with mocked configs."""
         with create_test_client(
             HelloWorldService,
@@ -39,7 +39,7 @@ class TestConfigInfoEndpoint:
         ) as client:
             yield client
 
-    def test_config_info_returns_both_configs(self, sdk: NeMoPlatform):
+    def test_config_info_returns_both_configs(self, sdk: NemoClient):
         """Test GET /config-info returns both platform and service config values."""
         response = sdk._client.get("/apis/hello-world/v2/workspaces/default/config-info")
 

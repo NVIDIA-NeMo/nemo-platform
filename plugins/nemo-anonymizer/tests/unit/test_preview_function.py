@@ -17,7 +17,7 @@ from nemo_anonymizer_plugin.app.model_configs import SelectedModelsOverrides
 from nemo_anonymizer_plugin.functions import _preview_worker as worker_module
 from nemo_anonymizer_plugin.functions._preview_logs import request_callback_cvar
 from nemo_anonymizer_plugin.functions.preview import LogFrame, PreviewFunction, PreviewSpec, TraceDatasetFrame
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.function_context import FunctionContext
 from pydantic import BaseModel
 
@@ -84,7 +84,7 @@ async def test_preview_function_resets_request_log_callback(
         async for frame in PreviewFunction().run(
             _preview_spec(tmp_path),
             ctx=FunctionContext(workspace="team-a"),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            async_sdk=AsyncMock(spec=AsyncNemoClient),
             is_local=True,
         )
     ]
@@ -105,7 +105,7 @@ async def test_preview_function_rejects_selected_models_without_model_configs(tm
             async for frame in PreviewFunction().run(
                 spec,
                 ctx=FunctionContext(workspace="team-a"),
-                async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+                async_sdk=AsyncMock(spec=AsyncNemoClient),
                 is_local=True,
             )
         ]
@@ -121,7 +121,7 @@ async def test_preview_submit_requires_model_configs(tmp_path: Path) -> None:
                     update={"data": AnonymizerInputSpec(source="https://example.com/input.csv")}
                 ),
                 ctx=FunctionContext(workspace="team-a"),
-                async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+                async_sdk=AsyncMock(spec=AsyncNemoClient),
                 is_local=False,
             )
         ]

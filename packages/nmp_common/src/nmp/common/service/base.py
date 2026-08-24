@@ -16,7 +16,7 @@ from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar,
 import httpx
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import get_openapi
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.utils import register_query_param_schemas
 from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
@@ -72,7 +72,7 @@ class DependencyProvider:
     def __init__(self) -> None:
         self._client_lock = RLock()
         self._http_client: Optional[httpx.AsyncClient] = None
-        self._sdk_client: Optional[AsyncNeMoPlatform] = None
+        self._sdk_client: Optional[AsyncNemoClient] = None
         self._platform_config: Optional[PlatformConfig] = None
         self._service_name: str = "platform"
 
@@ -95,7 +95,7 @@ class DependencyProvider:
                 self._http_client = resolve_platform_endpoint().async_sdk_http_client()
             return self._http_client
 
-    def get_sdk_client(self, as_service: str | None = None) -> AsyncNeMoPlatform:
+    def get_sdk_client(self, as_service: str | None = None) -> AsyncNemoClient:
         """Return the async platform SDK client.
 
         Args:
@@ -151,7 +151,7 @@ class DependencyProvider:
         sdk = self._get_entity_sdk_on_behalf_of()
         return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
-    def _get_entity_sdk_on_behalf_of(self) -> AsyncNeMoPlatform:
+    def _get_entity_sdk_on_behalf_of(self) -> AsyncNemoClient:
         """Create a per-request SDK for entity operations using service principal + on-behalf-of.
 
         Uses the cached base SDK and applies per-request headers via .with_options()
@@ -171,7 +171,7 @@ class DependencyProvider:
             self._platform_config = Configuration.get_platform_config()
         return self._platform_config
 
-    def get_request_scoped_sdk(self) -> AsyncNeMoPlatform:
+    def get_request_scoped_sdk(self) -> AsyncNemoClient:
         """Return a request-scoped SDK with current auth and OTEL headers.
 
         This wraps the cached base SDK with per-request headers via .with_options().

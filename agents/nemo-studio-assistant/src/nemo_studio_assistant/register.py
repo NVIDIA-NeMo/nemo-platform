@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from pydantic import BaseModel
 
 DEFAULT_WORKSPACE = "default"
@@ -18,14 +18,14 @@ STUDIO_CALLBACK_PATH = "/studio/api/assistant/mcp/{session_id}"
 STUDIO_CALLBACK_TIMEOUT_SECONDS = 3600.0
 _READ_ONLY_SDK_ACTIONS = frozenset({"get", "get_logs", "get_status", "list", "read", "retrieve", "search"})
 
-_clients: dict[str, NeMoPlatform] = {}
+_clients: dict[str, NemoClient] = {}
 
 
 def _active_workspace() -> str:
     return os.environ.get("NMP_WORKSPACE") or DEFAULT_WORKSPACE
 
 
-def _get_client(workspace: str) -> NeMoPlatform:
+def _get_client(workspace: str) -> NemoClient:
     request_workspace = workspace.strip()
     if not request_workspace:
         raise ValueError("workspace is required")
@@ -34,7 +34,7 @@ def _get_client(workspace: str) -> NeMoPlatform:
         kwargs: dict[str, Any] = {"workspace": request_workspace}
         if base_url:
             kwargs["base_url"] = base_url
-        _clients[request_workspace] = NeMoPlatform(**kwargs)
+        _clients[request_workspace] = NemoClient(**kwargs)
     return _clients[request_workspace]
 
 
@@ -50,7 +50,7 @@ def _serialize(obj: Any) -> Any:
     return str(obj)
 
 
-def _resolve_resource(client: NeMoPlatform, resource_path: str) -> Any:
+def _resolve_resource(client: NemoClient, resource_path: str) -> Any:
     current = client
     for part in resource_path.split("."):
         if not part or part.startswith("_"):

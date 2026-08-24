@@ -10,7 +10,7 @@ import time
 import traceback
 import types
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.common.jobs.config import get_job_id, get_task_config, get_workspace
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.hello_world.api.v2.jobs.schemas import HelloWorldJobConfig
@@ -75,7 +75,7 @@ def busy_loop(duration_seconds: float) -> bool:
     return True
 
 
-def run(*, sdk: NeMoPlatform | None = None) -> int:
+def run(*, sdk: NemoClient | None = None) -> int:
     """Execute the task to write the configured message to the file API.
 
     Args:
@@ -105,7 +105,7 @@ def run(*, sdk: NeMoPlatform | None = None) -> int:
             return 0
 
         # Upload the message (creates fileset if it doesn't exist)
-        sdk.files.upload_content(
+        sdk.files.upload_file(
             content=config.message,
             remote_path=DEFAULT_FILE_PATH,
             fileset=fileset_name,

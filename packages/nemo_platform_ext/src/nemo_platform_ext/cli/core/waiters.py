@@ -22,7 +22,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError
+# TODO: migrate APIConnectionError, APIStatusError, APITimeoutError from nemo_platform
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text

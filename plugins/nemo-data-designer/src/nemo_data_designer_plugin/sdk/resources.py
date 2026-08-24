@@ -41,17 +41,17 @@ from nemo_data_designer_plugin.sdk.validation import (
     validate_config,
     validate_config_sync,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.models.resources import AsyncModelsResource, ModelsResource
-from nemo_platform.types.inference import ModelProvider as NMPModelProvider
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.models.client import AsyncModelsClient as AsyncModelsResource, ModelsClient as ModelsResource
+from nemo_platform_plugin.models.types import ModelProvider as NMPModelProvider
 from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from pydantic import BaseModel, TypeAdapter
 
 logger = logging.getLogger(__name__)
 
-PlatformResourceClient = NeMoPlatform | AsyncNeMoPlatform
-PlatformResourceClientT = TypeVar("PlatformResourceClientT", NeMoPlatform, AsyncNeMoPlatform)
+PlatformResourceClient = NemoClient | AsyncNemoClient
+PlatformResourceClientT = TypeVar("PlatformResourceClientT", NemoClient, AsyncNemoClient)
 
 _PREVIEW_FRAME_ADAPTER = TypeAdapter(PreviewFrame)
 _KNOWN_PREVIEW_FRAME_KINDS = {
@@ -220,7 +220,7 @@ class _BaseDataDesignerResource(Generic[PlatformResourceClientT]):
 
 
 @with_logging
-class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
+class DataDesignerResource(_BaseDataDesignerResource[NemoClient]):
     """High-level sync client for the Data Designer plugin service."""
 
     def preview(
@@ -239,7 +239,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
             num_records: The number of records to generate. Must be less than or equal to the
                 service-side configured max number of preview records.
             workspace: The workspace to run the request in. If not supplied, uses the workspace
-                of the base NeMoPlatform object.
+                of the base NemoClient object.
             timeout: The timeout for the preview call in seconds.
 
         Returns:
@@ -296,7 +296,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
             config_builder: Data Designer configuration builder.
             num_records: The number of records to generate.
             workspace: The workspace in which to run the job. If not supplied, uses
-                the workspace of the base NeMoPlatform object.
+                the workspace of the base NemoClient object.
             wait_until_done: Set to True to poll the job status and block until the
                 job reaches a terminal state.
 
@@ -392,7 +392,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
 
 
 @with_logging
-class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
+class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNemoClient]):
     """High-level async client for the Data Designer plugin service."""
 
     async def preview(
@@ -411,7 +411,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
             num_records: The number of records to generate. Must be less than or equal to the
                 service-side configured max number of preview records.
             workspace: The workspace to run the request in. If not supplied, uses the workspace
-                of the base NeMoPlatform object.
+                of the base NemoClient object.
             timeout: The timeout for the preview call in seconds.
 
         Returns:
@@ -468,7 +468,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
             config_builder: Data Designer configuration builder.
             num_records: The number of records to generate.
             workspace: The workspace in which to run the job. If not supplied, uses
-                the workspace of the base NeMoPlatform object.
+                the workspace of the base NemoClient object.
             wait_until_done: Set to True to poll the job status and block until the
                 job reaches a terminal state.
 

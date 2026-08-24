@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pytest
 from nemo_automodel_plugin.jobs.jobs import AutomodelJob
 from nemo_automodel_plugin.schema import AutomodelJobOutput
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 
 
@@ -44,7 +44,7 @@ def _compile(canonical: AutomodelJobOutput) -> Any:
             spec=canonical,
             entity_client=object(),
             job_name=None,
-            async_sdk=object.__new__(AsyncNeMoPlatform),
+            async_sdk=object.__new__(AsyncNemoClient),
         ),
     )
 

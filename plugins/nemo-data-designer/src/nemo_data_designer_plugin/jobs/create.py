@@ -12,7 +12,7 @@ from data_designer_nemo.errors import raise_if_errors
 from data_designer_nemo.runnable import resolve_runnable_config
 from nemo_data_designer_plugin.jobs.run import run_step_config_result
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
@@ -44,7 +44,7 @@ class CreateJob(NemoJob):
         async_sdk: object,
         is_local: bool,
     ) -> BaseModel:  # DataDesignerStepConfig
-        async_sdk = cast(AsyncNeMoPlatform, async_sdk)
+        async_sdk = cast(AsyncNemoClient, async_sdk)
         input_spec = cast(DataDesignerJobConfig, input_spec)
 
         dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
@@ -88,6 +88,6 @@ class CreateJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform, is_local: bool = False) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NemoClient, is_local: bool = False) -> dict:
         step_config = DataDesignerStepConfig.model_validate(config)
         return run_step_config_result(step_config, ctx, sdk, is_local)

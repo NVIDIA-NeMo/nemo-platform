@@ -16,8 +16,8 @@ from fastapi import status as http_status
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment as JinjaEnvironment
 from multidict import CIMultiDict, CIMultiDictProxy
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.inference_middleware import (
@@ -1077,14 +1077,14 @@ async def virtual_model_proxy(
     return final_response
 
 
-async def retrieve_secret_value(workspace: str, secret_name: str, secrets_sdk: AsyncNeMoPlatform) -> str:
+async def retrieve_secret_value(workspace: str, secret_name: str, secrets_sdk: AsyncNemoClient) -> str:
     """
     Retrieve a raw API key from the Platform Secrets service.
 
     Args:
         workspace: The workspace containing the secret
         secret_name: The name of the secret to retrieve
-        secrets_sdk: The async NeMoPlatform SDK client configured for secrets service
+        secrets_sdk: The async NemoClient SDK client configured for secrets service
 
     Returns:
         The raw secret string (e.g., "sk-ant-...")

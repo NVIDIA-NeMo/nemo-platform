@@ -7,7 +7,7 @@ This task is used for E2E testing of auth propagation. It attempts to
 retrieve a fileset and reports whether access was granted or denied.
 """
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.files.client import FilesClient
@@ -23,7 +23,7 @@ class AccessFilesetConfig(BaseModel):
     fileset: str
 
 
-def run(*, sdk: NeMoPlatform | None = None) -> int:
+def run(*, sdk: NemoClient | None = None) -> int:
     """Attempt to access a fileset in the specified workspace.
 
     Args:

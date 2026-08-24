@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import ClassVar, cast
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_rl_plugin.schema import RlJobInput
@@ -39,7 +39,7 @@ class RlJob(BaseSubmitJob):
     runtime_label: ClassVar[str] = "NeMo-RL"
 
     @classmethod
-    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> RlJobOutput:
+    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNemoClient) -> RlJobOutput:
         return await transform_input_to_output(cast(RlJobInput, job_input), workspace, async_sdk)
 
     @classmethod
@@ -75,7 +75,7 @@ class RlJob(BaseSubmitJob):
         return await platform_job_config_compiler(
             workspace=workspace,
             spec=canonical,
-            sdk=cast(AsyncNeMoPlatform, async_sdk),
+            sdk=cast(AsyncNemoClient, async_sdk),
             job_name=job_name,
             profile=execution_profile,
         )

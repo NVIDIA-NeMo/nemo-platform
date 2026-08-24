@@ -282,7 +282,7 @@ def test_example_simulate_rate_limit_error(mock_provider_test_clients: ClientCon
     - 500: Server errors
     - 503: Service unavailable
     """
-    from nemo_platform import RateLimitError
+    from nemo_platform_plugin.client.errors import RateLimitError
 
     provider = add_mock_provider(
         mock_provider_test_clients.sdk,
@@ -311,7 +311,7 @@ def test_example_simulate_rate_limit_error(mock_provider_test_clients: ClientCon
 
 def test_example_simulate_server_error(mock_provider_test_clients: ClientContext):
     """Example: Simulate a 500 Internal Server Error."""
-    from nemo_platform import InternalServerError
+    from nemo_platform_plugin.client.errors import InternalServerError
 
     provider = add_mock_provider(
         mock_provider_test_clients.sdk,
@@ -1219,7 +1219,7 @@ def test_fixture_add_provider_with_error_status(mock_provider_test_clients: Clie
     Use mock_status to configure the HTTP status code returned by the mock.
     This is useful for testing error handling in your service.
     """
-    from nemo_platform import RateLimitError
+    from nemo_platform_plugin.client.errors import RateLimitError
 
     provider = add_mock_provider(
         mock_provider_test_clients.sdk,
@@ -1271,7 +1271,7 @@ def test_fixture_remove_provider(mock_provider_test_clients: ClientContext):
     Note: SDK delete removes from database, but we also need to clear from
     the IGW model cache for immediate effect.
     """
-    from nemo_platform import NotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError
     from nmp.core.inference_gateway.api.dependencies import global_model_cache
 
     provider = add_mock_provider(
@@ -1291,7 +1291,7 @@ def test_fixture_remove_provider(mock_provider_test_clients: ClientContext):
     assert response == {"temporary": True}
 
     # Delete the provider via SDK (removes from database)
-    mock_provider_test_clients.sdk.inference.providers.delete(
+    mock_provider_test_clients.sdk.inference.providers.delete_provider(
         workspace=DEFAULT_WORKSPACE,
         name=provider.name,
     )
@@ -1316,7 +1316,7 @@ def test_fixture_remove_provider(mock_provider_test_clients: ClientContext):
 def test_fixture_sdk_access(mock_provider_test_clients: ClientContext):
     """Test that ClientContext provides SDK access.
 
-    The sdk property gives you direct access to the NeMoPlatform client.
+    The sdk property gives you direct access to the NemoClient client.
     """
     assert mock_provider_test_clients.sdk is not None
     assert mock_provider_test_clients.test_client is not None
@@ -1379,7 +1379,7 @@ def test_fixture_isolation(mock_provider_test_clients: ClientContext):
     Each test using mock_provider_test_clients gets a fresh context. Providers added in
     one test won't be visible in another test.
     """
-    from nemo_platform import NotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError
 
     # Add a provider in this test
     provider = add_mock_provider(

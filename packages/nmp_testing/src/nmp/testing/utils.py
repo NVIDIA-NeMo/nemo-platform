@@ -17,9 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nemo_platform import ConflictError, NeMoPlatform, NotFoundError, omit
-from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.workspaces import WorkspaceMember
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+# TODO: remove Stainless sentinel(s) omit
+from nemo_platform_plugin.models.types import ModelProvider, ServedModelMapping
+from nemo_platform_plugin.workspaces.types import WorkspaceMember
 from nmp.common.entities.constants import NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from nmp.common.entities.utils import get_random_id
 
@@ -137,7 +139,7 @@ def _serialize_mock_response_map(
 
 
 def wait_for_model_entity(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     model_name: str,
     timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
@@ -156,7 +158,7 @@ def wait_for_model_entity(
     Useful in E2E tests that create a mock provider to wait for the model cache to refresh.
 
     Args:
-        sdk: The NeMoPlatform SDK client.
+        sdk: The NemoClient SDK client.
         workspace: The workspace containing the model entity.
         model_name: The model entity name (without workspace prefix).
         timeout: Maximum time to wait in seconds (default: 60).
@@ -202,7 +204,7 @@ def wait_for_model_entity(
 
 
 def wait_for_virtual_model(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     name: str,
     timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
@@ -216,7 +218,7 @@ def wait_for_virtual_model(
     inference proxy routes.
 
     Args:
-        sdk: The NeMoPlatform SDK client.
+        sdk: The NemoClient SDK client.
         workspace: The workspace containing the VirtualModel.
         name: The VirtualModel name (without workspace prefix). For an
             autoprovisioned passthrough VM, this is the served model entity name.
@@ -231,7 +233,7 @@ def wait_for_virtual_model(
 
     while time.time() - start < timeout:
         try:
-            sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
+            sdk.inference.virtual_models.get_virtual_model(name=name, workspace=workspace)
             return
         except NotFoundError as e:
             last_error = e
@@ -244,14 +246,14 @@ def wait_for_virtual_model(
 
 
 def _create_passthrough_virtual_model_once(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     name: str,
     *,
     autoprovisioned: bool = True,
 ) -> None:
     try:
-        sdk.inference.virtual_models.create(
+        sdk.inference.virtual_models.create_virtual_model(
             workspace=workspace,
             name=name,
             default_model_entity=f"{workspace}/{name}",
@@ -262,7 +264,7 @@ def _create_passthrough_virtual_model_once(
 
 
 def ensure_passthrough_virtual_model(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     name: str,
     timeout: float = 20,
@@ -291,7 +293,7 @@ def ensure_passthrough_virtual_model(
             raise
 
         try:
-            sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
+            sdk.inference.virtual_models.get_virtual_model(name=name, workspace=workspace)
             return
         except NotFoundError as e:
             last_error = e
@@ -340,10 +342,10 @@ def unique_email(prefix: str = "user") -> str:
 
 
 def as_user(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     email: str,
     groups: list[str] | None = None,
-) -> NeMoPlatform:
+) -> NemoClient:
     """Create a new SDK client authenticated as a specific user.
 
     The SDK uses immutable default_headers set at construction time.
@@ -368,10 +370,10 @@ def as_user(
 
 
 def as_service_for(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     on_behalf_of: str,
     service_name: str = "platform",
-) -> NeMoPlatform:
+) -> NemoClient:
     """Create a new SDK client authenticated as a service principal acting on behalf of a user.
 
     Mirrors the production pattern where services call internal APIs (e.g., the
@@ -396,7 +398,7 @@ def as_service_for(
 
 
 def grant_workspace_role(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     principal: str,
@@ -404,7 +406,7 @@ def grant_workspace_role(
     wait_role_propagation: bool = True,
 ) -> WorkspaceMember:
     """Grant workspace roles to a principal in auth-enabled tests."""
-    return sdk.workspaces.members.create(
+    return sdk.workspaces.create_workspace_member(
         workspace=workspace,
         principal=principal,
         roles=list(roles),
@@ -439,7 +441,7 @@ def igw_mock_provider_mode(prefix: str = "igw-mock-") -> Iterator[None]:
 
 
 def add_mock_provider(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str | None = None,
@@ -466,7 +468,7 @@ def add_mock_provider(
     To return dynamic responses based on the model name, set the `mock_response_body_by_model` parameter.
 
     Args:
-        sdk: The NeMoPlatform SDK client.
+        sdk: The NemoClient SDK client.
         workspace: Provider workspace. Must be a valid entity name (see NAME_PATTERN).
         name: Provider name (will be auto-prefixed with "igw-mock-"). Must be a valid
             entity name so that the prefixed name matches NAME_PATTERN. If omitted, a
@@ -613,7 +615,7 @@ def add_mock_provider(
     # delete it first so each test starts with a clean mock provider.
 
     try:
-        provider = sdk.inference.providers.create(
+        provider = sdk.inference.providers.create_provider(
             workspace=workspace,
             name=prefixed_name,
             host_url=host_url,
@@ -621,8 +623,8 @@ def add_mock_provider(
             enabled_models=enabled_models or omit,
         )
     except ConflictError:
-        sdk.inference.providers.delete(workspace=workspace, name=prefixed_name)
-        provider = sdk.inference.providers.create(
+        sdk.inference.providers.delete_provider(workspace=workspace, name=prefixed_name)
+        provider = sdk.inference.providers.create_provider(
             workspace=workspace,
             name=prefixed_name,
             host_url=host_url,
@@ -661,7 +663,7 @@ def add_mock_provider(
     # sees the correct mapping. Without this, refresh_model_cache overwrites the local cache
     # with providers from the API (which have empty served_models from create), causing 404
     # for model entity and OpenAI routes.
-    sdk.inference.providers.update_status(
+    sdk.inference.providers.update_provider_status(
         name=prefixed_name,
         workspace=workspace,
         served_models=[
@@ -697,7 +699,7 @@ def add_mock_provider(
         # background refresh tick. This in-place seed is purely a latency optimization.
         from datetime import datetime as _datetime
 
-        from nemo_platform.types.inference.virtual_model import VirtualModel as _SDKVirtualModel
+        from nemo_platform_plugin.models.types.virtual_model import VirtualModel as _SDKVirtualModel
 
         virtual_model_cache = global_virtual_model_cache()
         now = _datetime.now()

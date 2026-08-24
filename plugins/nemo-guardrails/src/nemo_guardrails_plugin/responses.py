@@ -10,7 +10,7 @@ from typing import Any
 
 from nemo_guardrails_plugin.constants import GUARDRAILS_DATA_MESSAGE_ROLE
 from nemo_guardrails_plugin.rails import build_guardrails_data
-from nemo_platform.types.guardrail import GenerationLogOptionsParam
+from nemo_platform_plugin.guardrail.types import GenerationLogOptionsParam
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareError,
@@ -72,7 +72,7 @@ def extract_upstream_error(exc: BaseException) -> InferenceMiddlewareError | Non
         if isinstance(exc.inner_exception, BaseException):
             candidate = exc.inner_exception
 
-    # Signal 1: a genuine `status_code` attribute, e.g. set by `openai.APIStatusError`.
+    # Signal 1: a genuine `status_code` attribute, e.g. set by `openai.NemoHTTPError`.
     status_code = getattr(candidate, "status_code", None)
     if isinstance(status_code, int) and status_code in _HTTP_ERROR_STATUS_RANGE:
         detail = getattr(candidate, "message", None) or str(candidate)

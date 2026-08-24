@@ -44,7 +44,7 @@ from nemo_insights_plugin.contracts.profile import (
     load_env_file,
     resolve_base_url,
 )
-from nemo_platform import NeMoPlatformError
+from nemo_platform_plugin.client.client import NemoClientError
 from nemo_platform_plugin.cli import NemoCLI
 from nooa import GenerationError
 
@@ -54,7 +54,7 @@ _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 
 run_experimentalist = None  # lazily imported by the run command; tests monkeypatch it
 
-_PLATFORM_CLIENT_ERRORS = (NeMoPlatformError, httpx.HTTPError, OSError, RuntimeError, ValueError)
+_PLATFORM_CLIENT_ERRORS = (NemoClientError, httpx.HTTPError, OSError, RuntimeError, ValueError)
 
 # TODO: Add remote train/validation dataset support when remote experiment mode is implemented.
 

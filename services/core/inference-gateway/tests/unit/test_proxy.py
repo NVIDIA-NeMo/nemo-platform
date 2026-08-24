@@ -20,8 +20,8 @@ from aiohttp import ClientError
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from multidict import CIMultiDict, CIMultiDictProxy
-from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.models.types import ModelProvider, ServedModelMapping
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.inference_middleware import (
     BackendFormat,
     ImmediateResponse,

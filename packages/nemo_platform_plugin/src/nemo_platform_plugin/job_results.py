@@ -29,7 +29,7 @@ import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.jobs.result_manager import result_manager_factory
 from pydantic import BaseModel
 
@@ -154,10 +154,10 @@ class PlatformJobResults(JobResults):
     Args:
         job_name: Platform job name this sink publishes results for.
         workspace: Workspace the job lives in.
-        sdk: :class:`NeMoPlatform` handle used for both file uploads and
+        sdk: :class:`NemoClient` handle used for both file uploads and
             the jobs-results registration.
         attempt_id: Optional override for the job attempt id; when
-            omitted, looked up lazily via ``sdk.jobs.retrieve(...)``.
+            omitted, looked up lazily via ``sdk.jobs.get_job(...)``.
     """
 
     def __init__(
@@ -165,7 +165,7 @@ class PlatformJobResults(JobResults):
         *,
         job_name: str,
         workspace: str,
-        sdk: NeMoPlatform,
+        sdk: NemoClient,
         attempt_id: str | None = None,
     ) -> None:
         self._manager = result_manager_factory(

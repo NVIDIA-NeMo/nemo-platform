@@ -15,7 +15,7 @@ import json
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from trace_reader import get_session
@@ -30,13 +30,13 @@ EXPECTED_FILES = {
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
+    return NemoClient(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
 @pytest.fixture
-def files_client(client: NeMoPlatform) -> FilesClient:
+def files_client(client: NemoClient) -> FilesClient:
     return client_from_platform(client, FilesClient)
 
 
@@ -49,7 +49,7 @@ def test_fileset_exists(files_client: FilesClient) -> None:
     )
 
 
-def test_all_files_uploaded(client: NeMoPlatform) -> None:
+def test_all_files_uploaded(client: NemoClient) -> None:
     """Test that all three JSONL files are present in the fileset."""
     files = client.files.list(fileset=FILESET_NAME)
     file_paths = [f.path for f in files.data]
@@ -61,7 +61,7 @@ def test_all_files_uploaded(client: NeMoPlatform) -> None:
 
 
 @pytest.mark.parametrize("filename,min_rows", list(EXPECTED_FILES.items()))
-def test_file_content_valid_jsonl(client: NeMoPlatform, filename: str, min_rows: int) -> None:
+def test_file_content_valid_jsonl(client: NemoClient, filename: str, min_rows: int) -> None:
     """Test that each uploaded file contains valid JSONL with prompt/completion format."""
     content_bytes = client.files.download_content(remote_path=filename, fileset=FILESET_NAME)
     content = content_bytes.decode("utf-8").strip()

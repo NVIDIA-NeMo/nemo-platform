@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
-from nemo_platform.filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
+from filesets.filesystem import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 

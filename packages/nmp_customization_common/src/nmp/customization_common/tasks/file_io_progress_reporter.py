@@ -6,7 +6,7 @@
 import logging
 from typing import Any, Protocol
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.jobs.client import JobsClient
@@ -48,7 +48,7 @@ class NoOpProgressReporter:
 class JobsServiceProgressReporter:
     """Reports progress to the Jobs service via SDK."""
 
-    def __init__(self, sdk: NeMoPlatform, workspace: str, job_id: str, step_name: str, task_id: str):
+    def __init__(self, sdk: NemoClient, workspace: str, job_id: str, step_name: str, task_id: str):
         self.sdk = sdk
         self.workspace = workspace
         self.job_id = job_id
@@ -94,7 +94,7 @@ class JobsServiceProgressReporter:
             )
 
     @staticmethod
-    def create_progress_reporter(sdk: NeMoPlatform, job_ctx: NMPJobContext) -> ProgressReporter:
+    def create_progress_reporter(sdk: NemoClient, job_ctx: NMPJobContext) -> ProgressReporter:
         """Build a JobsServiceProgressReporter when jobs_url is set, else NoOpProgressReporter."""
         if job_ctx.jobs_url:
             logger.info(f"Progress reporting enabled: {job_ctx.jobs_url}")

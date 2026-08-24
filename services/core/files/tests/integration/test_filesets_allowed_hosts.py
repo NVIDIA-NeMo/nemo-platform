@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.files.client import FilesClient
@@ -53,7 +53,7 @@ def files_config_restrictive_allowed_hosts() -> Iterator[None]:
 @pytest.fixture
 def sdk_with_restrictive_hosts(
     files_config_restrictive_allowed_hosts: None,
-) -> Iterator[NeMoPlatform]:
+) -> Iterator[NemoClient]:
     """SDK client with Files config override so NGC/HF default hosts are disallowed."""
     with create_test_client(
         FilesService,
@@ -68,7 +68,7 @@ class TestAllowedExternalHostsRejection:
 
     def test_create_ngc_fileset_with_disallowed_host_rejected(
         self,
-        sdk_with_restrictive_hosts: NeMoPlatform,
+        sdk_with_restrictive_hosts: NemoClient,
     ) -> None:
         """Creating an NGC fileset with host outside allowed_external_hosts returns 400."""
         sdk = sdk_with_restrictive_hosts
@@ -108,7 +108,7 @@ class TestAllowedExternalHostsRejection:
 
     def test_create_huggingface_fileset_with_disallowed_endpoint_rejected(
         self,
-        sdk_with_restrictive_hosts: NeMoPlatform,
+        sdk_with_restrictive_hosts: NemoClient,
     ) -> None:
         """Creating a HuggingFace fileset with endpoint outside allowed_external_hosts returns 400."""
         sdk = sdk_with_restrictive_hosts

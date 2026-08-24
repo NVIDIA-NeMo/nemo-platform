@@ -6,7 +6,7 @@
 import json
 import logging
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.entities import ALL_WORKSPACES, ListResponse
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class AdapterEntityService:
     """Service for adapter CRUD, scoped to a workspace, with model reference from path or body."""
 
-    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform | None = None) -> None:
+    def __init__(self, entity_client: EntityClient, sdk: AsyncNemoClient | None = None) -> None:
         self.entity_client = entity_client
         self.sdk = sdk or get_async_platform_sdk()
 

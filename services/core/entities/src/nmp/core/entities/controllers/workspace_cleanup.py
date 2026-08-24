@@ -5,7 +5,7 @@ import asyncio
 import logging
 import threading
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
@@ -31,7 +31,7 @@ _TERMINAL_JOB_STATUSES: frozenset[PlatformJobStatus] = frozenset(
 class WorkspaceCleanup(HeartbeatMixin, Controller):
     def __init__(
         self,
-        nmp_sdk: AsyncNeMoPlatform,
+        nmp_sdk: AsyncNemoClient,
         workspace_repository: WorkspaceRepositoryInterface,
         stop_signal: threading.Event | None = None,
         loop: asyncio.AbstractEventLoop | None = None,

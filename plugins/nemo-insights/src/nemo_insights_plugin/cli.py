@@ -39,7 +39,7 @@ from nemo_insights_plugin.preflight import (
     read_agent_spec,
 )
 from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
-from nemo_platform import NeMoPlatformError
+from nemo_platform_plugin.client.client import NemoClientError
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from nooa import GenerationError
@@ -196,7 +196,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             err=True,
         )
         raise typer.Exit(1) from None
-    except (ClientConstructionError, NeMoPlatformError, httpx.HTTPError) as exc:
+    except (ClientConstructionError, NemoClientError, httpx.HTTPError) as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(
             f"Error: analysis failed: {detail}. Check --base-url/NMP_BASE_URL, "

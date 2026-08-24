@@ -6,8 +6,8 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import ConflictError, NotFoundError
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
 from nmp.core.models.controllers.entity_cache import ModelEntityCache, UnflushedMutationsError
 
 from .conftest import AsyncPaginator, make_entity, seed_entity_cache
@@ -19,11 +19,11 @@ def _entity(workspace="ws", name="model", model_providers=None, **attrs):
 
 @pytest.fixture
 def mock_models_sdk():
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
-    sdk.models.list = MagicMock(return_value=AsyncPaginator([]))
-    sdk.models.create = AsyncMock(return_value=None)
-    sdk.models.update = AsyncMock(return_value=None)
-    sdk.models.retrieve = AsyncMock()
+    sdk = MagicMock(spec=AsyncNemoClient)
+    sdk.models.list_models = MagicMock(return_value=AsyncPaginator([]))
+    sdk.models.create_model = AsyncMock(return_value=None)
+    sdk.models.update_model = AsyncMock(return_value=None)
+    sdk.models.get_model = AsyncMock()
     return sdk
 
 

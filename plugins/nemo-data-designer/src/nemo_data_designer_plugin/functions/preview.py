@@ -32,7 +32,7 @@ from nemo_data_designer_plugin.functions._types import (
     PreviewSpec,
     ProcessorOutputFrame,
 )
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
 from nemo_platform_plugin.functions.frames import Done, Error
@@ -52,7 +52,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         spec: PreviewSpec,
         *,
         ctx: FunctionContext,
-        async_sdk: AsyncNeMoPlatform,
+        async_sdk: AsyncNemoClient,
         is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
         # Fail fast on request shape (``num_records``) before doing any config-validation work.

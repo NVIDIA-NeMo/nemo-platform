@@ -15,7 +15,7 @@ Uses the create_test_client pattern for fast in-memory testing.
 import uuid
 from unittest.mock import AsyncMock, patch
 
-from nemo_platform import ConflictError
+from nemo_platform_plugin.client.errors import ConflictError
 from nmp.core.models.config import ControllerConfig, ModelsConfig
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.testing import ClientContext
@@ -32,7 +32,7 @@ def ensure_workspace_exists(test_clients: ClientContext, workspace_id: str) -> N
         workspace_id: The workspace ID to ensure exists
     """
     try:
-        test_clients.sdk.workspaces.create(name=workspace_id, description=f"Test workspace: {workspace_id}")
+        test_clients.sdk.workspaces.create_workspace(name=workspace_id, description=f"Test workspace: {workspace_id}")
     except ConflictError:
         # Workspace already exists
         pass

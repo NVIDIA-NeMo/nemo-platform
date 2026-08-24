@@ -5,17 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from nemo_platform import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AsyncNeMoPlatform,
-    NeMoPlatform,
-    NotFoundError,
-)
-from nemo_platform.types.inference import ModelDeployment, ModelProvider
-from nemo_platform.types.inference.gateway.openai.v1 import OpenAIModelResp
-from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoHTTPError, NemoTransportError, NotFoundError
+from nemo_platform_plugin.models.types import ModelDeployment, ModelProvider
+from nemo_platform_plugin.models.types.gateway.openai.v1 import OpenAIModelResp
+from nemo_platform_plugin.models.types import ModelEntity
 
 # ============================================================================
 # Fixtures
@@ -24,32 +18,32 @@ from nemo_platform.types.models import ModelEntity
 
 @pytest.fixture
 def sdk():
-    """Create a real NeMoPlatform SDK instance for testing."""
-    return NeMoPlatform(base_url="https://nmp.example.com/")
+    """Create a real NemoClient SDK instance for testing."""
+    return NemoClient(base_url="https://nmp.example.com/")
 
 
 @pytest.fixture
 def sdk_with_workspace():
     """Create SDK with client-level workspace set."""
-    return NeMoPlatform(base_url="https://nmp.example.com/", workspace="client-ws")
+    return NemoClient(base_url="https://nmp.example.com/", workspace="client-ws")
 
 
 @pytest.fixture
 def sdk_no_trailing_slash():
     """Create SDK with base_url without trailing slash."""
-    return NeMoPlatform(base_url="https://nmp.example.com")
+    return NemoClient(base_url="https://nmp.example.com")
 
 
 @pytest.fixture
 def async_sdk():
-    """Create a real AsyncNeMoPlatform SDK instance for testing."""
-    return AsyncNeMoPlatform(base_url="https://nmp.example.com/")
+    """Create a real AsyncNemoClient SDK instance for testing."""
+    return AsyncNemoClient(base_url="https://nmp.example.com/")
 
 
 @pytest.fixture
 def async_sdk_with_workspace():
     """Create async SDK with client-level workspace set."""
-    return AsyncNeMoPlatform(base_url="https://nmp.example.com/", workspace="client-ws")
+    return AsyncNemoClient(base_url="https://nmp.example.com/", workspace="client-ws")
 
 
 def _not_found_error() -> NotFoundError:
@@ -58,10 +52,10 @@ def _not_found_error() -> NotFoundError:
     return NotFoundError("not found", response=response, body={"detail": "not found"})
 
 
-def _api_status_error(status_code: int) -> APIStatusError:
+def _api_status_error(status_code: int) -> NemoHTTPError:
     request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
     response = httpx.Response(status_code, request=request)
-    return APIStatusError("gateway not ready", response=response, body={"detail": "gateway not ready"})
+    return NemoHTTPError("gateway not ready", response=response, body={"detail": "gateway not ready"})
 
 
 class _FakeClock:
@@ -329,7 +323,7 @@ def test_get_openai_client_custom_workspace(sdk):
 
 def test_get_openai_client_includes_auth_headers():
     """Test that auth headers from the SDK are propagated to OpenAI client."""
-    sdk_with_auth = NeMoPlatform(
+    sdk_with_auth = NemoClient(
         base_url="https://nmp.example.com/",
         default_headers={"Authorization": "Bearer token-123", "X-NMP-Principal-Id": "user@example.com"},
     )
@@ -406,7 +400,7 @@ def test_wait_for_openai_model_retries_transient_gateway_errors(sdk, status_code
         sdk.inference.gateway.openai.v1.models,
         "get",
         side_effect=[
-            APIConnectionError(request=request),
+            NemoTransportError(request=request),
             _api_status_error(status_code),
             model_response,
         ],
@@ -424,7 +418,7 @@ def test_wait_for_openai_model_reraises_non_transient_status_error(sdk):
         "get",
         side_effect=_api_status_error(401),
     ):
-        with pytest.raises(APIStatusError):
+        with pytest.raises(NemoHTTPError):
             sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
 
 
@@ -449,8 +443,8 @@ def test_wait_for_openai_model_bounds_sleep_to_remaining_timeout(sdk):
             "get",
             side_effect=_not_found_error(),
         ),
-        patch("nemo_platform.models.resources.time.time", side_effect=clock.time),
-        patch("nemo_platform.models.resources.time.sleep", side_effect=clock.sleep),
+        patch("nemo_platform_plugin.models.client.time.time", side_effect=clock.time),
+        patch("nemo_platform_plugin.models.client.time.sleep", side_effect=clock.sleep),
     ):
         with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
             sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1.25, poll_interval=5)
@@ -538,7 +532,7 @@ def test_get_async_openai_client_custom_workspace(async_sdk):
 
 def test_get_async_openai_client_includes_auth_headers():
     """Test that auth headers from the async SDK are propagated to AsyncOpenAI client."""
-    sdk_with_auth = AsyncNeMoPlatform(
+    sdk_with_auth = AsyncNemoClient(
         base_url="https://nmp.example.com/",
         default_headers={"Authorization": "Bearer token-abc", "X-NMP-Principal-Id": "async-user@example.com"},
     )
@@ -610,7 +604,7 @@ async def test_async_wait_for_openai_model_retries_transient_gateway_errors(asyn
     request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
     mock_get = AsyncMock(
         side_effect=[
-            APITimeoutError(request=request),
+            NemoTransportError(request=request),
             _api_status_error(status_code),
             model_response,
         ]
@@ -631,8 +625,8 @@ async def test_async_wait_for_openai_model_bounds_sleep_to_remaining_timeout(asy
 
     with (
         patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get),
-        patch("nemo_platform.models.resources.time.time", side_effect=clock.time),
-        patch("nemo_platform.models.resources.asyncio.sleep", side_effect=clock.async_sleep),
+        patch("nemo_platform_plugin.models.client.time.time", side_effect=clock.time),
+        patch("nemo_platform_plugin.models.client.asyncio.sleep", side_effect=clock.async_sleep),
     ):
         with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
             await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1.25, poll_interval=5)

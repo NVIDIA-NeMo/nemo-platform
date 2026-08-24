@@ -8,7 +8,7 @@ import logging
 import sys
 from dataclasses import dataclass, field
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError
 from nemo_platform_plugin.discovery import discover_seed_jobs
@@ -59,7 +59,7 @@ async def seed_auth(entity_client: EntityClient, config: PlatformSeedConfig) -> 
     logger.info("Auth role bindings seeded")
 
 
-async def seed_model_provider(sdk: AsyncNeMoPlatform) -> None:
+async def seed_model_provider(sdk: AsyncNemoClient) -> None:
     """Seed the default nvidia-build model provider. Idempotent."""
     models = client_from_platform(sdk, AsyncModelsClient)
     try:
@@ -77,7 +77,7 @@ async def seed_model_provider(sdk: AsyncNeMoPlatform) -> None:
 
 
 async def run_plugin_seed_jobs(
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     entity_client: EntityClient,
     config: PlatformSeedConfig,
     result: PlatformSeedResult,
@@ -113,7 +113,7 @@ async def run_plugin_seed_jobs(
 
 async def run_platform_seed(
     entity_client: EntityClient,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     config: PlatformSeedConfig,
 ) -> PlatformSeedResult:
     """

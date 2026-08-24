@@ -30,7 +30,7 @@ def resolve_inference_key(config: IronSwarmConfig) -> tuple[str | None, str]:
     """
     try:
         sdk = make_sdk(base_url())
-        secret = sdk.secrets.access(config.inference_secret_name, workspace=config.default_workspace)
+        secret = sdk.secrets.access_secret(config.inference_secret_name, workspace=config.default_workspace)
         if secret and secret.value:
             return secret.value, f"secret '{config.inference_secret_name}'"
     except Exception:  # Secrets store unreachable/absent → fall back to env

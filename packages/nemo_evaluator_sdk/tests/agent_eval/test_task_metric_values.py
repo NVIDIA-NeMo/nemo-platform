@@ -543,7 +543,7 @@ def test_summary_without_task_metric_values_loads_as_empty() -> None:
 
 
 def test_vendored_summary_accepts_task_metric_values() -> None:
-    from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalSummary as VendoredAgentEvalSummary
+    from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary as VendoredAgentEvalSummary
 
     payload = {
         "task_metric_values": {
@@ -559,16 +559,16 @@ def test_vendored_summary_accepts_task_metric_values() -> None:
 def test_vendored_module_exposes_the_public_value_api() -> None:
     # The byte-copy test below proves file parity, not that the names are usable through the shipped
     # package. These are the surface a consumer of nemo-platform actually imports.
-    from nemo_platform.beta.evaluator.agent_eval.results import (
+    from nemo_evaluator_sdk.agent_eval.results import (
         AgentEvalSummary as VendoredSummary,
     )
-    from nemo_platform.beta.evaluator.agent_eval.results import (
+    from nemo_evaluator_sdk.agent_eval.results import (
         TrialMetricValue as VendoredValue,
     )
-    from nemo_platform.beta.evaluator.agent_eval.results import (
+    from nemo_evaluator_sdk.agent_eval.results import (
         TrialMetricValueType as VendoredType,
     )
-    from nemo_platform.beta.evaluator.agent_eval.results import (
+    from nemo_evaluator_sdk.agent_eval.results import (
         numeric_metric_values as vendored_numeric,
     )
 
@@ -586,12 +586,12 @@ def test_vendored_results_module_is_a_verbatim_copy_of_this_one() -> None:
     # field shape (above) would still pass against a stale copy carrying older filtering or docs, so
     # pin the whole file: any edit here that is not mirrored is drift between two live code paths.
     import nemo_evaluator_sdk.agent_eval.results as source
-    import nemo_platform.beta.evaluator.agent_eval.results as vendored
+    import nemo_evaluator_sdk.agent_eval.results as vendored
 
     expected = (
         Path(source.__file__)
         .read_text(encoding="utf-8")
-        .replace("from nemo_evaluator_sdk.", "from nemo_platform.beta.evaluator.")
+        .replace("from nemo_evaluator_sdk.", "from nemo_evaluator_sdk.")
     )
 
     assert Path(vendored.__file__).read_text(encoding="utf-8") == expected, (

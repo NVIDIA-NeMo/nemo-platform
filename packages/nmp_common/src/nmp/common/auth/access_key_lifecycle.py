@@ -9,14 +9,9 @@ import time
 
 import httpx
 import jwt
-from nemo_platform import (
-    APIConnectionError,
-    APIResponseValidationError,
-    APIStatusError,
-    APITimeoutError,
-    AsyncNeMoPlatform,
-    AuthenticationError,
-)
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import AuthenticationError
+# TODO: migrate APIConnectionError, APIResponseValidationError, APIStatusError, APITimeoutError from nemo_platform
 from nmp.common.config import AuthConfig
 
 from .jwt import TokenClaims
@@ -43,11 +38,11 @@ class AccessKeyLifecycleAuthenticator:
     def __init__(self, config: AuthConfig, http_client: httpx.AsyncClient | None = None) -> None:
         self._config = config
         self._http_client = http_client
-        self._sdk: AsyncNeMoPlatform | None = None
+        self._sdk: AsyncNemoClient | None = None
         self._failure_count = 0
         self._circuit_open_until = 0.0
 
-    def _get_sdk(self) -> AsyncNeMoPlatform:
+    def _get_sdk(self) -> AsyncNemoClient:
         if self._sdk is None:
             # Import lazily to avoid an auth -> SDK factory import cycle. The
             # factory attaches PlatformRequestRouter, which owns service

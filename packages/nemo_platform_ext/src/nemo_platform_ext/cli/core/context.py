@@ -16,7 +16,7 @@ from nemo_platform_ext.cli.core.types import ListOutputFormat as OutputFormat
 from nemo_platform_ext.cli.core.types import TimestampFormat
 
 if typing.TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
     from nemo_platform_ext.config.config import ConfigParams, Context
     from nemo_platform_ext.quickstart import QuickstartConfig
@@ -46,10 +46,10 @@ class CLIContext:
     _sdk_context: Context | None = field(default=None, repr=False)
 
     # Lazy-created client
-    _client: NeMoPlatform | None = field(default=None, repr=False)
+    _client: NemoClient | None = field(default=None, repr=False)
 
     # Lazy-created async client
-    _async_client: AsyncNeMoPlatform | None = field(default=None, repr=False)
+    _async_client: AsyncNemoClient | None = field(default=None, repr=False)
 
     # Additional settings loaded at startup
     quickstart_config: QuickstartConfig | None = None
@@ -101,7 +101,7 @@ class CLIContext:
 
         return ctx.user.get_client_config() if ctx.user else {}
 
-    def get_client(self, timeout: float = 60.0) -> NeMoPlatform:
+    def get_client(self, timeout: float = 60.0) -> NemoClient:
         """
         Get or create the NeMo Platform client.
 
@@ -109,19 +109,19 @@ class CLIContext:
             timeout: Request timeout in seconds (default: 60.0)
 
         Returns:
-            Initialized NeMoPlatform client
+            Initialized NemoClient client
         """
-        from nemo_platform import NeMoPlatform
+        from nemo_platform_plugin.client.client import NemoClient
 
         if self._client is None:
             ctx = self.get_sdk_context()
             base_url = str(ctx.cluster.base_url)
             logger.debug(
-                f"Creating NeMoPlatform client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
+                f"Creating NemoClient client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
             )
 
             auth_config = self._client_auth_config(ctx)
-            self._client = NeMoPlatform(
+            self._client = NemoClient(
                 base_url=base_url,
                 timeout=timeout,
                 workspace=ctx.workspace,
@@ -129,7 +129,7 @@ class CLIContext:
             )
         return self._client
 
-    def get_async_client(self, timeout: float = 60.0) -> AsyncNeMoPlatform:
+    def get_async_client(self, timeout: float = 60.0) -> AsyncNemoClient:
         """
         Get or create the async NeMo Platform client.
 
@@ -137,19 +137,19 @@ class CLIContext:
             timeout: Request timeout in seconds (default: 60.0)
 
         Returns:
-            Initialized AsyncNeMoPlatform client
+            Initialized AsyncNemoClient client
         """
-        from nemo_platform import AsyncNeMoPlatform
+        from nemo_platform_plugin.client.client import AsyncNemoClient
 
         if self._async_client is None:
             ctx = self.get_sdk_context()
             base_url = str(ctx.cluster.base_url)
             logger.debug(
-                f"Creating AsyncNeMoPlatform client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
+                f"Creating AsyncNemoClient client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
             )
 
             auth_config = self._client_auth_config(ctx)
-            self._async_client = AsyncNeMoPlatform(
+            self._async_client = AsyncNemoClient(
                 base_url=base_url,
                 timeout=timeout,
                 workspace=ctx.workspace,

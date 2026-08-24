@@ -132,13 +132,13 @@ class TestCreateProvider:
         sdk = MagicMock()
         spec = ProviderSpec(name="p", host_url="https://x.com", secret_name="s", from_env="E")
         _create_provider(sdk, "ws", spec)
-        sdk.inference.providers.create.assert_called_once_with(
+        sdk.inference.providers.create_provider.assert_called_once_with(
             name="p", host_url="https://x.com", api_key_secret_name="s", workspace="ws"
         )
 
     def test_ignores_conflict(self) -> None:
         sdk = MagicMock()
-        sdk.inference.providers.create.side_effect = Exception("409 conflict")
+        sdk.inference.providers.create_provider.side_effect = Exception("409 conflict")
         spec = ProviderSpec(name="p", host_url="https://x.com", secret_name="s", from_env="E")
         _create_provider(sdk, "ws", spec)
 
@@ -148,7 +148,7 @@ class TestWaitForDiscovery:
         sdk = MagicMock()
         provider_obj = MagicMock()
         provider_obj.served_models = [MagicMock(model_entity_id="ns/my-model")]
-        sdk.inference.providers.retrieve.return_value = provider_obj
+        sdk.inference.providers.get_provider.return_value = provider_obj
 
         spec = ProviderSpec(
             name="p",
@@ -164,7 +164,7 @@ class TestWaitForDiscovery:
         sdk = MagicMock()
         provider_obj = MagicMock()
         provider_obj.served_models = []
-        sdk.inference.providers.retrieve.return_value = provider_obj
+        sdk.inference.providers.get_provider.return_value = provider_obj
 
         spec = ProviderSpec(
             name="p",
@@ -281,7 +281,7 @@ class TestSeedAll:
         mock_secrets = mock_client_from_platform.return_value
         provider_obj = MagicMock()
         provider_obj.served_models = [MagicMock(model_entity_id="ns/m")]
-        sdk.inference.providers.retrieve.return_value = provider_obj
+        sdk.inference.providers.get_provider.return_value = provider_obj
 
         result = seed_all(manifest_path, base_url="http://localhost:8080")
         assert result.ok
@@ -289,7 +289,7 @@ class TestSeedAll:
         assert result.providers[0].status == "ok"
         assert result.providers[1].status == "ok"
         assert mock_secrets.create_secret.call_count == 2
-        assert sdk.inference.providers.create.call_count == 2
+        assert sdk.inference.providers.create_provider.call_count == 2
 
     @patch("nemo_platform_plugin.client.adapter.client_from_platform")
     @patch("nemo_platform.NeMoPlatform")

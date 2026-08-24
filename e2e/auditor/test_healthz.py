@@ -8,10 +8,10 @@ that its healthz response contains the expected keys. A 404 here means the
 plugin failed to initialize.
 """
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 
-def test_auditor_plugin_status(sdk: NeMoPlatform) -> None:
+def test_auditor_plugin_status(sdk: NemoClient) -> None:
     status = sdk.auditor.plugin_status()
 
     assert status["plugin"] == "auditor"

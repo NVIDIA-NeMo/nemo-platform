@@ -8,7 +8,7 @@ from typing import cast
 import httpx
 import pytest
 import respx
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.jobs.constants import TASK_CONFIG_ENVVAR
@@ -52,9 +52,9 @@ def test_workload_workspace_get_uses_task_sdk_factory(monkeypatch):
     sdk = _StubSDK()
     sdk_factory_calls: list[str] = []
 
-    def get_task_sdk(*, as_service: str) -> NeMoPlatform:
+    def get_task_sdk(*, as_service: str) -> NemoClient:
         sdk_factory_calls.append(as_service)
-        return cast(NeMoPlatform, sdk)
+        return cast(NemoClient, sdk)
 
     monkeypatch.setenv(TASK_CONFIG_ENVVAR, '{"workspace":"workload-read-target"}')
     monkeypatch.setattr("nmp.hello_world.tasks.workload_workspace_get.run.get_task_sdk", get_task_sdk)
@@ -73,7 +73,7 @@ def test_workload_workspace_get_uses_injected_sdk_without_workload_token(monkeyp
     monkeypatch.delenv("NEMO_WORKLOAD_TOKEN", raising=False)
     monkeypatch.delenv("NEMO_WORKLOAD_TOKEN_FILE", raising=False)
 
-    exit_code = task_run(sdk=cast(NeMoPlatform, sdk))
+    exit_code = task_run(sdk=cast(NemoClient, sdk))
 
     assert exit_code == 0
     assert sdk.workspaces.requested == ["workload-read-target"]

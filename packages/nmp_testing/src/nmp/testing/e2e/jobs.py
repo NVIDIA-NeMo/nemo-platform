@@ -11,7 +11,7 @@ import logging
 import time
 from collections.abc import Callable
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
@@ -86,7 +86,7 @@ TERMINAL_STATUSES = {"completed", "error", "cancelled"}
 
 
 def wait_for_platform_job(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     job_name: str,
     workspace: str,
     timeout: float = 120.0,
@@ -158,7 +158,7 @@ def wait_for_platform_job(
 
 
 def wait_for_job_completion(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     service: str,
     workspace: str,
     job_name: str,
@@ -230,7 +230,7 @@ def wait_for_job_completion(
 
 
 def wait_for_job_logs(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     job_name: str,
     workspace: str,
     min_log_count: int = 1,

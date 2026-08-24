@@ -15,8 +15,8 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform.types.inference import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.models.types import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ def log_status_details(status_details: dict | None, prefix: str = "status_detail
     logger.info(json.dumps(status_details, indent=2))
 
 
-def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> tuple[Path | None, list | None]:
+def save_job_logs_to_file(sdk: NemoClient, job_name: str, workspace: str) -> tuple[Path | None, list | None]:
     """Save complete job logs to a file for CI artifact collection.
 
     Returns:
@@ -187,7 +187,7 @@ def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> t
     return None, None
 
 
-def get_job_failure_details(sdk: NeMoPlatform, job_name: str, workspace: str) -> str:
+def get_job_failure_details(sdk: NemoClient, job_name: str, workspace: str) -> str:
     """Get detailed failure information for a failed job.
 
     Fetches job logs and status to help diagnose failures.
@@ -234,7 +234,7 @@ def _log_training_progress(status) -> None:
 
 
 def wait_for_customization_job(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     job_name: str,
     workspace: str,
     timeout: float = 2700,
@@ -307,7 +307,7 @@ def wait_for_customization_job(
 
 
 def wait_for_model_spec(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     model_entity_name: str,
     timeout: int = 600,
@@ -322,7 +322,7 @@ def wait_for_model_spec(
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        me = sdk.models.retrieve(model_entity_name, workspace=workspace, verbose=True)
+        me = sdk.models.get_model(model_entity_name, workspace=workspace, verbose=True)
         if me.spec is not None:
             logger.info(
                 f"✓ Model spec populated for {model_entity_name}: checkpoint_model_name={me.spec.checkpoint_model_name}"
@@ -380,7 +380,7 @@ def _build_inference_messages(training_type: str, data_format: str) -> list[dict
 
 
 def run_inference_test(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     deployment_name: str,
     model_identifier: str,
@@ -423,7 +423,7 @@ def run_inference_test(
 
 
 def deploy_and_test_model(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     model_name: str,
     nim_image_name: str | None = None,
@@ -463,7 +463,7 @@ def deploy_and_test_model(
         if nim_image_tag:
             executor_config_params["image_tag"] = nim_image_tag
 
-        deployment_config = sdk.inference.deployment_configs.create(
+        deployment_config = sdk.inference.deployment_configs.create_deployment_config(
             workspace=workspace,
             name=deployment_config_name,
             description=f"E2E test deployment config for {model_name}",
@@ -475,7 +475,7 @@ def deploy_and_test_model(
         logger.info(f"✓ Deployment config created: {deployment_config.name}")
 
         logger.info(f"Creating deployment: {deployment_name}")
-        deployment = sdk.inference.deployments.create(
+        deployment = sdk.inference.deployments.create_deployment(
             workspace=workspace,
             name=deployment_name,
             config=deployment_config_name,
@@ -502,14 +502,14 @@ def deploy_and_test_model(
 
         logger.info(f"Cleaning up deployment config: {deployment_config_name}")
         try:
-            sdk.inference.deployment_configs.delete(deployment_config_name, workspace=workspace)
+            sdk.inference.deployment_configs.delete_deployment_config(deployment_config_name, workspace=workspace)
             logger.info(f"✓ Deployment config deleted: {deployment_config_name}")
         except Exception as e:
             logger.warning(f"Failed to delete deployment config {deployment_config_name}: {e}")
 
 
 def wait_and_test_auto_deployment(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     deployment_name: str,
     output_model_name: str,
@@ -534,7 +534,7 @@ def wait_and_test_auto_deployment(
 
 
 def _wait_for_gateway_ready(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     deployment_name: str,
     timeout: int = 60,
@@ -557,7 +557,7 @@ def _wait_for_gateway_ready(
 
 
 def _wait_for_deployment_ready(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     deployment_name: str,
     timeout: int = 3600,
@@ -572,7 +572,7 @@ def _wait_for_deployment_ready(
 
     while True:
         try:
-            deployment_status = sdk.inference.deployments.retrieve(deployment_name, workspace=workspace)
+            deployment_status = sdk.inference.deployments.get_deployment(deployment_name, workspace=workspace)
             consecutive_errors = 0
         except (httpx.TimeoutException, httpx.ConnectError, ConnectionError, OSError) as exc:
             consecutive_errors += 1
@@ -606,10 +606,10 @@ def _wait_for_deployment_ready(
     logger.info("✓ Deployment is ready")
 
 
-def _cleanup_deployment(sdk: NeMoPlatform, workspace: str, deployment_name: str) -> None:
+def _cleanup_deployment(sdk: NemoClient, workspace: str, deployment_name: str) -> None:
     """Delete a deployment unless it is in an error state (left for log collection)."""
     try:
-        dep_status = sdk.inference.deployments.retrieve(deployment_name, workspace=workspace)
+        dep_status = sdk.inference.deployments.get_deployment(deployment_name, workspace=workspace)
         if dep_status.status in ("ERROR", "LOST"):
             logger.warning(
                 f"Skipping cleanup of deployment {deployment_name} "
@@ -617,7 +617,7 @@ def _cleanup_deployment(sdk: NeMoPlatform, workspace: str, deployment_name: str)
             )
         else:
             logger.info(f"Cleaning up deployment: {deployment_name}")
-            sdk.inference.deployments.delete(deployment_name, workspace=workspace)
+            sdk.inference.deployments.delete_deployment(deployment_name, workspace=workspace)
             logger.info(f"✓ Deployment deleted: {deployment_name}")
             logger.info("Waiting 60s for deployment deletion")
             time.sleep(60)

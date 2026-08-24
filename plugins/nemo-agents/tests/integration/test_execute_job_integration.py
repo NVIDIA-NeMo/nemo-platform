@@ -67,27 +67,27 @@ def test_execute_job_materializes_layered_input_workspace(tmp_path: Path) -> Non
         )
         assert agent_response.status_code == 201, agent_response.text
 
-        ctx.sdk.files.upload_content(
+        ctx.sdk.files.upload_file(
             workspace="default",
             fileset="base-workdir",
             remote_path="README.md",
             content="base readme\n",
             fileset_auto_create=True,
         )
-        ctx.sdk.files.upload_content(
+        ctx.sdk.files.upload_file(
             workspace="default",
             fileset="base-workdir",
             remote_path="app/config.yaml",
             content="source: base\n",
         )
-        ctx.sdk.files.upload_content(
+        ctx.sdk.files.upload_file(
             workspace="default",
             fileset="config-artifact",
             remote_path="config.yaml",
             content="source: artifact\n",
             fileset_auto_create=True,
         )
-        ctx.sdk.files.upload_content(
+        ctx.sdk.files.upload_file(
             workspace="default",
             fileset="notes-artifact",
             remote_path="notes.txt",
@@ -208,7 +208,7 @@ def test_execute_job_saves_error_results_when_fabric_raises(tmp_path: Path) -> N
         )
         assert agent_response.status_code == 201, agent_response.text
 
-        ctx.sdk.files.upload_content(
+        ctx.sdk.files.upload_file(
             workspace="default",
             fileset="base-workdir",
             remote_path="README.md",

@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.models.types import ModelProvider, ServedModelMapping
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareError,

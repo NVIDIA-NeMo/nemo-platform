@@ -330,7 +330,11 @@ attach_lazy_entries(main, _build_top_level_lazy_entries())
 def _version_callback(value: bool) -> None:
     """Print version information and exit."""
     if value:
-        import nemo_platform
+        try:
+            from importlib.metadata import version as _np_version
+            nemo_platform = type("nemo_platform", (), {"__version__": _np_version("nemo-platform-ext", "unknown")})()
+        except Exception:
+            nemo_platform = type("nemo_platform", (), {"__version__": "unknown"})()
 
         typer.echo(f"nemo version {nemo_platform.__version__}")
         raise typer.Exit()

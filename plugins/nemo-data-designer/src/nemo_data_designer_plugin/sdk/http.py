@@ -3,9 +3,9 @@
 
 """Shared helpers for composing HTTP requests against the platform client."""
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
-PlatformClient = NeMoPlatform | AsyncNeMoPlatform
+PlatformClient = NemoClient | AsyncNemoClient
 
 _API_PREFIX = "/apis/data-designer/v2/workspaces"
 

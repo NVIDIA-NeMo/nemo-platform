@@ -19,7 +19,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Protocol, Self, runtime_checkable
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_ext.local import process
 from nemo_platform_ext.local.install import services_extra_install_command
 from nemo_platform_ext.local.transport import (
@@ -120,9 +120,9 @@ class LocalServiceHandle(Protocol):
 
     async def wait_until_ready_async(self, timeout: float | None = None) -> None: ...
 
-    def client(self, **kwargs: Any) -> NeMoPlatform: ...
+    def client(self, **kwargs: Any) -> NemoClient: ...
 
-    def async_client(self, **kwargs: Any) -> AsyncNeMoPlatform: ...
+    def async_client(self, **kwargs: Any) -> AsyncNemoClient: ...
 
     def start_services(self, service_names: Sequence[str]) -> StartServicesResult: ...
 
@@ -351,21 +351,21 @@ class DaemonServiceHandle:
     async def start_services_async(self, service_names: Sequence[str]) -> StartServicesResult:
         return await asyncio.to_thread(self.start_services, service_names)
 
-    def client(self, **kwargs: Any) -> NeMoPlatform:
+    def client(self, **kwargs: Any) -> NemoClient:
         if self.transport == "uds":
             if self.socket_path is None:
                 raise ServicesError("UDS service handle is missing socket_path")
             kwargs.setdefault("http_client", build_sync_http_client(self.socket_path))
         kwargs.setdefault("base_url", self.base_url)
-        return NeMoPlatform(**kwargs)
+        return NemoClient(**kwargs)
 
-    def async_client(self, **kwargs: Any) -> AsyncNeMoPlatform:
+    def async_client(self, **kwargs: Any) -> AsyncNemoClient:
         if self.transport == "uds":
             if self.socket_path is None:
                 raise ServicesError("UDS service handle is missing socket_path")
             kwargs.setdefault("http_client", build_async_http_client(self.socket_path))
         kwargs.setdefault("base_url", self.base_url)
-        return AsyncNeMoPlatform(**kwargs)
+        return AsyncNemoClient(**kwargs)
 
 
 @dataclass(frozen=True)
@@ -382,15 +382,15 @@ class EmbeddedServiceHandle:
     async def wait_until_ready_async(self, timeout: float | None = None) -> None:
         return None
 
-    def client(self, **kwargs: Any) -> NeMoPlatform:
+    def client(self, **kwargs: Any) -> NemoClient:
         kwargs.setdefault("http_client", build_sync_asgi_http_client(self.app))
         kwargs.setdefault("base_url", EMBEDDED_BASE_URL)
-        return NeMoPlatform(**kwargs)
+        return NemoClient(**kwargs)
 
-    def async_client(self, **kwargs: Any) -> AsyncNeMoPlatform:
+    def async_client(self, **kwargs: Any) -> AsyncNemoClient:
         kwargs.setdefault("http_client", build_async_asgi_http_client(self.app))
         kwargs.setdefault("base_url", EMBEDDED_BASE_URL)
-        return AsyncNeMoPlatform(**kwargs)
+        return AsyncNemoClient(**kwargs)
 
     def start_services(self, service_names: Sequence[str]) -> StartServicesResult:
         raise ServicesError("Staged service start is not implemented for embedded mode yet")
@@ -703,7 +703,7 @@ def connect_services(
     daemonize: bool | None = None,
     start_if_needed: bool = True,
     **client_kwargs: Any,
-) -> NeMoPlatform:
+) -> NemoClient:
     cfg = config or ServiceRunConfig()
     if not start_if_needed and cfg.mode is ServiceMode.DAEMON and get_service_handle(cfg) is None:
         raise ServicesNotRunningError(f"Instance {cfg.scope!r} is not running")
@@ -717,7 +717,7 @@ async def connect_services_async(
     daemonize: bool | None = None,
     start_if_needed: bool = True,
     **client_kwargs: Any,
-) -> AsyncNeMoPlatform:
+) -> AsyncNemoClient:
     cfg = config or ServiceRunConfig()
     if not start_if_needed and cfg.mode is ServiceMode.DAEMON and get_service_handle(cfg) is None:
         raise ServicesNotRunningError(f"Instance {cfg.scope!r} is not running")

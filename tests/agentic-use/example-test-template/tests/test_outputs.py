@@ -12,7 +12,7 @@ TODO: Replace the example test below with your actual verification logic.
 
 import os
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 
 # TODO: Rename this test function to describe what it verifies
@@ -26,7 +26,7 @@ def test_todo_replace_with_descriptive_name():
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 
     # TODO: Create SDK client and perform verification
-    client = NeMoPlatform(base_url=nmp_base_url)  # noqa: F841
+    client = NemoClient(base_url=nmp_base_url)  # noqa: F841
 
     # TODO: Replace with actual verification logic
     # Example: Check that a resource was created

@@ -20,7 +20,7 @@ Substitute:
 """
 
 import data_designer.config as dd
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 AGENT_DESCRIPTION = "<one-sentence role from spec>"
 CATEGORIES: list[str | int | float] = ["<category-1>", "<category-2>", "<category-3>"]
@@ -74,7 +74,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
 
 
 if __name__ == "__main__":
-    client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
+    client = NemoClient(base_url="http://localhost:8080", workspace="default")
     builder = load_config_builder()
     results = client.data_designer.preview(builder, num_records=10)
     results.display_sample_record()

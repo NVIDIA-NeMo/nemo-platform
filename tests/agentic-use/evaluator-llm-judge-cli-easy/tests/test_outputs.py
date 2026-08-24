@@ -22,7 +22,7 @@ import sys
 from urllib.parse import urlparse
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 
@@ -48,10 +48,10 @@ def _make_unsigned_jwt() -> str:
     return f"{header}.{payload}."
 
 
-def _get_nmp_client() -> NeMoPlatform:
-    """Get NeMoPlatform client for the eval workspace."""
+def _get_nmp_client() -> NemoClient:
+    """Get NemoClient client for the eval workspace."""
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE, access_token=_make_unsigned_jwt())
+    return NemoClient(base_url=nmp_base_url, workspace=WORKSPACE, access_token=_make_unsigned_jwt())
 
 
 def _get_files_client() -> FilesClient:

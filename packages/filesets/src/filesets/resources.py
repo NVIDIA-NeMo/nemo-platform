@@ -16,8 +16,8 @@ from typing import Protocol, runtime_checkable
 
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.core import has_magic
-from nemo_platform.resources.files.filesets import AsyncFilesetsResource, FilesetsResource
-from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource, OtlpResource
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import (
     CacheStatus,
@@ -164,14 +164,14 @@ class FilesResource:
         return self._client
 
     @cached_property
-    def filesets(self) -> FilesetsResource:
+    def filesets(self) -> FilesClient:
         """Fileset entity CRUD (create/list/get/update/delete) via the generated SDK resource."""
-        return FilesetsResource(self._platform_client)
+        return FilesClient(self._platform_client)
 
     @cached_property
-    def otlp(self) -> OtlpResource:
+    def otlp(self) -> FilesClient:
         """OTLP telemetry logs sub-resource via the generated SDK resource."""
-        return OtlpResource(self._platform_client)
+        return FilesClient(self._platform_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
@@ -214,7 +214,7 @@ class FilesResource:
 
         Examples:
             # Explicit fileset/workspace
-            >>> sdk.files.download(
+            >>> sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     workspace="default",
             ...     remote_path="data/",
@@ -222,42 +222,42 @@ class FilesResource:
             ... )
 
             # Inferred from path (with workspace)
-            >>> sdk.files.download(
+            >>> sdk.files.download_file(
             ...     remote_path="default/my-fileset#data/",
             ...     local_path="./downloads/"
             ... )
 
             # Inferred from path (workspace from SDK default)
-            >>> sdk.files.download(
+            >>> sdk.files.download_file(
             ...     remote_path="my-fileset#data/",
             ...     local_path="./downloads/"
             ... )
 
             # Download files matching a glob pattern
-            >>> sdk.files.download(
+            >>> sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     remote_path="*.json",
             ...     local_path="./downloads/"
             ... )
 
             # Download files matching a pattern in a subdirectory
-            >>> sdk.files.download(
+            >>> sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     remote_path="data/*.jsonl",
             ...     local_path="./downloads/"
             ... )
 
             # Download a list of specific files
-            >>> sdk.files.download(
+            >>> sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     remote_path=["config.json", "tokenizer.json", "vocab.txt"],
             ...     local_path="./downloads/"
             ... )
 
             # With progress callback
-            >>> from nemo_platform.filesets import RichProgressCallback
+            >>> from filesets.filesystem.callbacks import RichProgressCallback
             >>> with RichProgressCallback(description="Downloading") as cb:
-            ...     sdk.files.download(
+            ...     sdk.files.download_file(
             ...         remote_path="my-fileset#",
             ...         local_path="./",
             ...         callback=cb
@@ -344,7 +344,7 @@ class FilesResource:
 
         Examples:
             # Explicit fileset/workspace
-            >>> sdk.files.upload(
+            >>> sdk.files.upload_file(
             ...     fileset="my-fileset",
             ...     workspace="default",
             ...     local_path="./data/",
@@ -352,19 +352,19 @@ class FilesResource:
             ... )
 
             # Inferred from path
-            >>> sdk.files.upload(
+            >>> sdk.files.upload_file(
             ...     local_path="./file.txt",
             ...     remote_path="default/my-fileset#file.txt"
             ... )
 
             # With workspace from SDK default
-            >>> sdk.files.upload(
+            >>> sdk.files.upload_file(
             ...     local_path="./file.txt",
             ...     remote_path="my-fileset#file.txt"
             ... )
 
             # Auto-create fileset with specified name
-            >>> fileset = sdk.files.upload(
+            >>> fileset = sdk.files.upload_file(
             ...     local_path="./data/",
             ...     fileset="new-fileset",
             ...     fileset_auto_create=True
@@ -372,7 +372,7 @@ class FilesResource:
             >>> print(f"Uploaded to: {fileset.name}")
 
             # Auto-create fileset with generated name
-            >>> fileset = sdk.files.upload(
+            >>> fileset = sdk.files.upload_file(
             ...     local_path="./data/",
             ...     fileset_auto_create=True
             ... )
@@ -434,14 +434,14 @@ class FilesResource:
 
         Examples:
             # Upload bytes
-            >>> sdk.files.upload_content(
+            >>> sdk.files.upload_file(
             ...     content=b"Hello, World!",
             ...     remote_path="message.txt",
             ...     fileset="my-fileset",
             ... )
 
             # Upload string (auto UTF-8 encoded)
-            >>> sdk.files.upload_content(
+            >>> sdk.files.upload_file(
             ...     content='{"key": "value"}',
             ...     remote_path="config.json",
             ...     fileset="my-fileset",
@@ -449,14 +449,14 @@ class FilesResource:
 
             # Upload from BytesIO
             >>> from io import BytesIO
-            >>> sdk.files.upload_content(
+            >>> sdk.files.upload_file(
             ...     content=BytesIO(b"content"),
             ...     remote_path="data.bin",
             ...     fileset="my-fileset",
             ... )
 
             # Auto-create fileset with specified name
-            >>> fileset = sdk.files.upload_content(
+            >>> fileset = sdk.files.upload_file(
             ...     content=b"content",
             ...     remote_path="file.txt",
             ...     fileset="new-fileset",
@@ -465,7 +465,7 @@ class FilesResource:
             >>> print(f"Uploaded to: {fileset.name}")
 
             # Auto-create fileset with generated name
-            >>> fileset = sdk.files.upload_content(
+            >>> fileset = sdk.files.upload_file(
             ...     content=b"content",
             ...     remote_path="file.txt",
             ...     fileset_auto_create=True,
@@ -523,19 +523,19 @@ class FilesResource:
 
         Examples:
             # Load JSON (most common use case)
-            >>> data = json.loads(sdk.files.download_content(
+            >>> data = json.loads(sdk.files.download_file(
             ...     remote_path="config.json",
             ...     fileset="my-fileset",
             ... ))
 
             # Get text content
-            >>> text = sdk.files.download_content(
+            >>> text = sdk.files.download_file(
             ...     remote_path="readme.txt",
             ...     fileset="my-fileset",
             ... ).decode("utf-8")
 
             # Get binary content
-            >>> content = sdk.files.download_content(
+            >>> content = sdk.files.download_file(
             ...     remote_path="model.bin",
             ...     fileset="my-fileset",
             ... )
@@ -579,33 +579,33 @@ class FilesResource:
 
         Examples:
             # List all files in a fileset
-            >>> response = sdk.files.list(fileset="my-fileset")
+            >>> response = sdk.files.list_files(fileset="my-fileset")
             >>> for f in response.data:
             ...     print(f"{f.path}: {f.size} bytes")
 
             # List files in a subdirectory
-            >>> sdk.files.list(
+            >>> sdk.files.list_files(
             ...     fileset="my-fileset",
             ...     remote_path="data/"
             ... )
 
             # List files matching a glob pattern
-            >>> sdk.files.list(
+            >>> sdk.files.list_files(
             ...     fileset="my-fileset",
             ...     remote_path="*.json"
             ... )
 
             # List files matching a pattern in a subdirectory
-            >>> sdk.files.list(
+            >>> sdk.files.list_files(
             ...     fileset="my-fileset",
             ...     remote_path="data/*.jsonl"
             ... )
 
             # Inferred from path
-            >>> sdk.files.list(remote_path="my-fileset#data/")
+            >>> sdk.files.list_files(remote_path="my-fileset#data/")
 
             # Check cache status for external storage
-            >>> response = sdk.files.list(fileset="my-fileset", include_cache_status=True)
+            >>> response = sdk.files.list_files(fileset="my-fileset", include_cache_status=True)
             >>> print(f"Cache status: {response.cache_status}")
             >>> for f in response.data:
             ...     print(f"{f.path}: {f.cache_status}")
@@ -661,13 +661,13 @@ class FilesResource:
 
         Examples:
             # Delete a file with explicit fileset
-            >>> sdk.files.delete(
+            >>> sdk.files.delete_file(
             ...     fileset="my-fileset",
             ...     remote_path="data/old-file.txt"
             ... )
 
             # Delete using full path
-            >>> sdk.files.delete(remote_path="my-fileset#data/old-file.txt")
+            >>> sdk.files.delete_file(remote_path="my-fileset#data/old-file.txt")
         """
         ws, path_fileset, path = parse_fileset_path(
             remote_path,
@@ -706,14 +706,14 @@ class AsyncFilesResource:
         return self._client
 
     @cached_property
-    def filesets(self) -> AsyncFilesetsResource:
+    def filesets(self) -> AsyncFilesClient:
         """Fileset entity CRUD (create/list/get/update/delete) via the generated SDK resource."""
-        return AsyncFilesetsResource(self._platform_client)
+        return AsyncFilesClient(self._platform_client)
 
     @cached_property
-    def otlp(self) -> AsyncOtlpResource:
+    def otlp(self) -> AsyncFilesClient:
         """OTLP telemetry logs sub-resource via the generated SDK resource."""
-        return AsyncOtlpResource(self._platform_client)
+        return AsyncFilesClient(self._platform_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
@@ -756,7 +756,7 @@ class AsyncFilesResource:
 
         Examples:
             # Explicit fileset/workspace
-            >>> await sdk.files.download(
+            >>> await sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     workspace="default",
             ...     remote_path="data/",
@@ -764,27 +764,27 @@ class AsyncFilesResource:
             ... )
 
             # Inferred from path
-            >>> await sdk.files.download(
+            >>> await sdk.files.download_file(
             ...     remote_path="default/my-fileset#data/",
             ...     local_path="./downloads/"
             ... )
 
             # Download files matching a glob pattern
-            >>> await sdk.files.download(
+            >>> await sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     remote_path="*.json",
             ...     local_path="./downloads/"
             ... )
 
             # Download files matching a pattern in a subdirectory
-            >>> await sdk.files.download(
+            >>> await sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     remote_path="data/*.jsonl",
             ...     local_path="./downloads/"
             ... )
 
             # Download a list of specific files
-            >>> await sdk.files.download(
+            >>> await sdk.files.download_file(
             ...     fileset="my-fileset",
             ...     remote_path=["config.json", "tokenizer.json", "vocab.txt"],
             ...     local_path="./downloads/"
@@ -868,7 +868,7 @@ class AsyncFilesResource:
 
         Examples:
             # Explicit fileset/workspace
-            >>> await sdk.files.upload(
+            >>> await sdk.files.upload_file(
             ...     fileset="my-fileset",
             ...     workspace="default",
             ...     local_path="./data/",
@@ -876,13 +876,13 @@ class AsyncFilesResource:
             ... )
 
             # Inferred from path
-            >>> await sdk.files.upload(
+            >>> await sdk.files.upload_file(
             ...     local_path="./file.txt",
             ...     remote_path="default/my-fileset#file.txt"
             ... )
 
             # Auto-create fileset with specified name
-            >>> fileset = await sdk.files.upload(
+            >>> fileset = await sdk.files.upload_file(
             ...     local_path="./data/",
             ...     fileset="new-fileset",
             ...     fileset_auto_create=True
@@ -890,7 +890,7 @@ class AsyncFilesResource:
             >>> print(f"Uploaded to: {fileset.name}")
 
             # Auto-create fileset with generated name
-            >>> fileset = await sdk.files.upload(
+            >>> fileset = await sdk.files.upload_file(
             ...     local_path="./data/",
             ...     fileset_auto_create=True
             ... )
@@ -952,14 +952,14 @@ class AsyncFilesResource:
 
         Examples:
             # Upload bytes
-            >>> await sdk.files.upload_content(
+            >>> await sdk.files.upload_file(
             ...     content=b"Hello, World!",
             ...     remote_path="message.txt",
             ...     fileset="my-fileset",
             ... )
 
             # Upload string (auto UTF-8 encoded)
-            >>> await sdk.files.upload_content(
+            >>> await sdk.files.upload_file(
             ...     content='{"key": "value"}',
             ...     remote_path="config.json",
             ...     fileset="my-fileset",
@@ -967,14 +967,14 @@ class AsyncFilesResource:
 
             # Upload from async file (anyio/aiofiles)
             >>> async with await anyio.open_file("data.bin", "rb") as f:
-            ...     await sdk.files.upload_content(
+            ...     await sdk.files.upload_file(
             ...         content=f,
             ...         remote_path="data.bin",
             ...         fileset="my-fileset",
             ...     )
 
             # Auto-create fileset with specified name
-            >>> fileset = await sdk.files.upload_content(
+            >>> fileset = await sdk.files.upload_file(
             ...     content=b"content",
             ...     remote_path="file.txt",
             ...     fileset="new-fileset",
@@ -983,7 +983,7 @@ class AsyncFilesResource:
             >>> print(f"Uploaded to: {fileset.name}")
 
             # Auto-create fileset with generated name
-            >>> fileset = await sdk.files.upload_content(
+            >>> fileset = await sdk.files.upload_file(
             ...     content=b"content",
             ...     remote_path="file.txt",
             ...     fileset_auto_create=True,
@@ -1045,14 +1045,14 @@ class AsyncFilesResource:
 
         Examples:
             # Load JSON
-            >>> content = await sdk.files.download_content(
+            >>> content = await sdk.files.download_file(
             ...     remote_path="config.json",
             ...     fileset="my-fileset",
             ... )
             >>> data = json.loads(content)
 
             # Get text content
-            >>> text = (await sdk.files.download_content(
+            >>> text = (await sdk.files.download_file(
             ...     remote_path="readme.txt",
             ...     fileset="my-fileset",
             ... )).decode("utf-8")
@@ -1093,33 +1093,33 @@ class AsyncFilesResource:
 
         Examples:
             # List all files in a fileset
-            >>> response = await sdk.files.list(fileset="my-fileset")
+            >>> response = await sdk.files.list_files(fileset="my-fileset")
             >>> for f in response.data:
             ...     print(f"{f.path}: {f.size} bytes")
 
             # List files in a subdirectory
-            >>> await sdk.files.list(
+            >>> await sdk.files.list_files(
             ...     fileset="my-fileset",
             ...     remote_path="data/"
             ... )
 
             # List files matching a glob pattern
-            >>> await sdk.files.list(
+            >>> await sdk.files.list_files(
             ...     fileset="my-fileset",
             ...     remote_path="*.json"
             ... )
 
             # List files matching a pattern in a subdirectory
-            >>> await sdk.files.list(
+            >>> await sdk.files.list_files(
             ...     fileset="my-fileset",
             ...     remote_path="data/*.jsonl"
             ... )
 
             # Inferred from path
-            >>> await sdk.files.list(remote_path="my-fileset#data/")
+            >>> await sdk.files.list_files(remote_path="my-fileset#data/")
 
             # Check cache status for external storage
-            >>> response = await sdk.files.list(fileset="my-fileset", include_cache_status=True)
+            >>> response = await sdk.files.list_files(fileset="my-fileset", include_cache_status=True)
             >>> print(f"Cache status: {response.cache_status}")
             >>> for f in response.data:
             ...     print(f"{f.path}: {f.cache_status}")
@@ -1172,13 +1172,13 @@ class AsyncFilesResource:
 
         Examples:
             # Delete a file with explicit fileset
-            >>> await sdk.files.delete(
+            >>> await sdk.files.delete_file(
             ...     fileset="my-fileset",
             ...     remote_path="data/old-file.txt"
             ... )
 
             # Delete using full path
-            >>> await sdk.files.delete(remote_path="my-fileset#data/old-file.txt")
+            >>> await sdk.files.delete_file(remote_path="my-fileset#data/old-file.txt")
         """
         ws, path_fileset, path = parse_fileset_path(remote_path, workspace_fallback=workspace or self._client.workspace)
         fileset = fileset or path_fileset

@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from typing import ClassVar, cast
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_unsloth_plugin.schema import UnslothJobInput
@@ -39,7 +39,7 @@ class UnslothJob(BaseSubmitJob):
     runtime_label: ClassVar[str] = "Unsloth"
 
     @classmethod
-    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> UnslothJobOutput:
+    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNemoClient) -> UnslothJobOutput:
         return await transform_input_to_output(cast(UnslothJobInput, job_input), workspace, async_sdk)
 
     @classmethod
@@ -69,7 +69,7 @@ class UnslothJob(BaseSubmitJob):
         platform_spec = await platform_job_config_compiler(
             workspace=workspace,
             spec=canonical,
-            sdk=cast(AsyncNeMoPlatform, async_sdk),
+            sdk=cast(AsyncNemoClient, async_sdk),
             job_name=job_name,
             profile=execution_profile,
         )

@@ -139,7 +139,7 @@ async def test_validate_remote_only_rejects_empty_fileset_root_seed() -> None:
     builder.add_column(column_config=dd.ExpressionColumnConfig(name="full_name", expr=u.FULL_NAME_EXPR))
 
     with u.make_mock_client_context() as client_context:
-        client_context.sdk.files.filesets.create(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
+        client_context.sdk.files.create_fileset(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
         report = await dd_client.validate(builder, execution_context="remote")
 

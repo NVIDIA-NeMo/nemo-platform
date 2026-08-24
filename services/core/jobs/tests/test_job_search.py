@@ -3,7 +3,7 @@
 
 import pytest
 from httpx import AsyncClient
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.entities import DEFAULT_WORKSPACE
 
 # Skip all substring search tests until entity store supports LIKE queries (nmp-oq7)
@@ -12,7 +12,7 @@ SUBSTRING_SEARCH_SKIP = pytest.mark.skip(reason="Requires substring search suppo
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_jobs_by_name(test_sdk: AsyncNeMoPlatform):
+async def test_search_jobs_by_name(test_sdk: AsyncNemoClient):
     await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
         name="training-job-v1",
@@ -43,7 +43,7 @@ async def test_search_jobs_by_name(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_jobs_by_project(test_sdk: AsyncNeMoPlatform):
+async def test_search_jobs_by_project(test_sdk: AsyncNemoClient):
     # TODO: Once SDK is regenerated, pass project= directly instead of extra_body
     await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
@@ -77,7 +77,7 @@ async def test_search_jobs_by_project(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_jobs_multiple_values_or_logic(test_sdk: AsyncNeMoPlatform):
+async def test_search_jobs_multiple_values_or_logic(test_sdk: AsyncNemoClient):
     await test_sdk.jobs.create(
         name="training-job",
         workspace=DEFAULT_WORKSPACE,
@@ -123,7 +123,7 @@ async def test_search_jobs_multiple_values_or_logic(test_sdk: AsyncNeMoPlatform)
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_jobs_multiple_fields_and_logic(test_sdk: AsyncNeMoPlatform):
+async def test_search_jobs_multiple_fields_and_logic(test_sdk: AsyncNemoClient):
     # TODO: Once SDK is regenerated, pass project= directly instead of extra_body
     await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
@@ -173,7 +173,7 @@ async def test_search_jobs_multiple_fields_and_logic(test_sdk: AsyncNeMoPlatform
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_jobs_case_insensitive(test_sdk: AsyncNeMoPlatform):
+async def test_search_jobs_case_insensitive(test_sdk: AsyncNemoClient):
     await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
         name="Training-Job-V1",
@@ -196,7 +196,7 @@ async def test_search_jobs_case_insensitive(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_jobs_partial_match(test_sdk: AsyncNeMoPlatform):
+async def test_search_jobs_partial_match(test_sdk: AsyncNemoClient):
     await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
         name="my-training-job-v1",
@@ -216,7 +216,7 @@ async def test_search_jobs_partial_match(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_combined_with_filter(test_sdk: AsyncNeMoPlatform):
+async def test_search_combined_with_filter(test_sdk: AsyncNemoClient):
     job1 = await test_sdk.jobs.create(
         name="training-job-1",
         workspace=DEFAULT_WORKSPACE,
@@ -251,7 +251,7 @@ async def test_search_combined_with_filter(test_sdk: AsyncNeMoPlatform):
 
 @pytest.mark.asyncio
 @SUBSTRING_SEARCH_SKIP
-async def test_search_no_results(test_sdk: AsyncNeMoPlatform):
+async def test_search_no_results(test_sdk: AsyncNemoClient):
     await test_sdk.jobs.create(
         name="training-job",
         workspace=DEFAULT_WORKSPACE,
@@ -270,7 +270,7 @@ async def test_search_no_results(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_empty_string(test_sdk: AsyncNeMoPlatform):
+async def test_search_empty_string(test_sdk: AsyncNemoClient):
     await test_sdk.jobs.create(
         name="job1",
         workspace=DEFAULT_WORKSPACE,
@@ -319,7 +319,7 @@ async def test_search_via_http_client(test_client: AsyncClient):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_pagination(test_sdk: AsyncNeMoPlatform):
+async def test_search_pagination(test_sdk: AsyncNemoClient):
     for i in range(15):
         await test_sdk.jobs.create(
             name=f"training-job-{i}",
@@ -350,7 +350,7 @@ async def test_search_pagination(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_underscore_behavior(test_sdk: AsyncNeMoPlatform):
+async def test_search_underscore_behavior(test_sdk: AsyncNemoClient):
     """Test that underscore is treated as a literal character in search (substring matching)."""
     await test_sdk.jobs.create(
         name="test_job_with_underscore",
@@ -400,7 +400,7 @@ async def test_search_underscore_behavior(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_long_string(test_sdk: AsyncNeMoPlatform):
+async def test_search_long_string(test_sdk: AsyncNemoClient):
     # Use a name within the 255 character limit
     long_name = "job-" + "a" * 200  # Total 204 chars, within 255 limit
     await test_sdk.jobs.create(
@@ -423,7 +423,7 @@ async def test_search_long_string(test_sdk: AsyncNeMoPlatform):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_result_limit(test_sdk: AsyncNeMoPlatform):
+async def test_search_result_limit(test_sdk: AsyncNemoClient):
     for i in range(150):
         await test_sdk.jobs.create(
             name=f"batch-job-{i:03d}",
@@ -464,7 +464,7 @@ async def test_search_invalid_field(test_client: AsyncClient):
 
 @SUBSTRING_SEARCH_SKIP
 @pytest.mark.asyncio
-async def test_search_special_characters(test_sdk: AsyncNeMoPlatform):
+async def test_search_special_characters(test_sdk: AsyncNemoClient):
     # Use only valid special characters per the pattern ^[\w\-\+.@:]*$
     await test_sdk.jobs.create(
         name="job-with-special-chars@example.com:8080",

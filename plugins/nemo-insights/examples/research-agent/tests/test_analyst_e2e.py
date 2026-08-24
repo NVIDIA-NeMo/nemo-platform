@@ -134,7 +134,7 @@ def _subprocess_env() -> dict[str, str]:
 # entry-point callables are always importable. Invoke those directly so the
 # test does not depend on the script wrappers existing on disk.
 _CLI_CALLABLES = {
-    "nemo": ("nemo_platform.cli.app", "cli"),
+    "nemo": ("nemo_platform_ext.cli.app", "cli"),
     "nat": ("nat.cli.main", "run_cli"),
 }
 

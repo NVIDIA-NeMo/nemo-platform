@@ -27,7 +27,7 @@ from typing import Any
 import httpx
 import pytest
 from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 # The mocked completion the deployed agent must round-trip back to the caller.
@@ -116,23 +116,23 @@ def _page_data(page: Any) -> list[dict[str, Any]]:
     return data
 
 
-def delete_agent_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> None:
+def delete_agent_if_exists(sdk: NemoClient, *, workspace: str, name: str) -> None:
     try:
-        sdk.agents.delete(name, workspace=workspace)
+        sdk.agents.delete_agent(name, workspace=workspace)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 404:
             raise
 
 
-def delete_deployment_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> None:
+def delete_deployment_if_exists(sdk: NemoClient, *, workspace: str, name: str) -> None:
     try:
-        sdk.agents.deployments.delete(name, workspace=workspace)
+        sdk.agents.delete_deployment(name, workspace=workspace)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 404:
             raise
 
 
-def get_deployment_log_text(sdk: NeMoPlatform, *, workspace: str, name: str) -> str:
+def get_deployment_log_text(sdk: NemoClient, *, workspace: str, name: str) -> str:
     try:
         response = sdk._client.get(
             f"/apis/agents/v2/workspaces/{workspace}/deployments/{name}/logs",
@@ -148,7 +148,7 @@ def get_deployment_log_text(sdk: NeMoPlatform, *, workspace: str, name: str) -> 
 
 
 def wait_for_deployment_deleted(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -158,7 +158,7 @@ def wait_for_deployment_deleted(
     last_status: str | None = None
     while time.monotonic() < deadline:
         try:
-            deployment = sdk.agents.deployments.get(name, workspace=workspace)
+            deployment = sdk.agents.get_deployment(name, workspace=workspace)
             last_status = deployment.get("status")
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
@@ -169,7 +169,7 @@ def wait_for_deployment_deleted(
 
 
 def wait_for_deployment_running(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -178,7 +178,7 @@ def wait_for_deployment_running(
     deadline = time.monotonic() + timeout_seconds
     last_deployment: dict[str, Any] | None = None
     while time.monotonic() < deadline:
-        deployment = sdk.agents.deployments.get(name, workspace=workspace)
+        deployment = sdk.agents.get_deployment(name, workspace=workspace)
         last_deployment = deployment
         status = deployment["status"]
         if status == "running":
@@ -191,7 +191,7 @@ def wait_for_deployment_running(
 
 
 def run_agent_deploy_and_invoke(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     deployment_mode: str,
@@ -233,7 +233,7 @@ def run_agent_deploy_and_invoke(
         served_models={model_name: model_name},
     )
 
-    sdk.agents.create(
+    sdk.agents.create_agent(
         workspace=workspace,
         name=agent_name,
         config=_mock_backed_agent_config(
@@ -245,7 +245,7 @@ def run_agent_deploy_and_invoke(
     )
 
     try:
-        created = sdk.agents.deployments.create(
+        created = sdk.agents.create_deployment(
             workspace=workspace,
             agent=agent_name,
             name=deployment_name,
@@ -276,7 +276,7 @@ def run_agent_deploy_and_invoke(
 
         sdk.models.wait_for_openai_model(model_name, workspace=workspace)
 
-        response = sdk.agents.invoke(
+        response = sdk.agents.invoke_agent(
             workspace=workspace,
             agent=agent_name,
             input="What is 12 multiplied by 8?",
@@ -294,7 +294,7 @@ def run_agent_deploy_and_invoke(
 
 
 def run_container_agent_deploy_and_invoke(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     deployment_mode: str,

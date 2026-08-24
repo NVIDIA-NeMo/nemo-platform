@@ -14,7 +14,7 @@ import re
 import time
 from pathlib import Path
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import (
     ConflictError,
@@ -88,7 +88,7 @@ def sanitize_name(prefix: str, name: str) -> str:
 class ModelEntityRunner:
     """Runner for creating (and optionally deploying) model entities."""
 
-    def __init__(self, sdk: NeMoPlatform, job_ctx: NMPJobContext):
+    def __init__(self, sdk: NemoClient, job_ctx: NMPJobContext):
         self.sdk = sdk
         self.models = client_from_platform(sdk, ModelsClient)
         self.job_ctx = job_ctx
@@ -432,7 +432,7 @@ class ModelEntityRunner:
 
 
 def run(
-    sdk: NeMoPlatform | None = None,
+    sdk: NemoClient | None = None,
     job_ctx: NMPJobContext | None = None,
     *,
     service_name: str,

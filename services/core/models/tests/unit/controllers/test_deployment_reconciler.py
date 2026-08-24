@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import ConflictError, NotFoundError
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
 from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.registry import BackendRegistry
@@ -30,9 +30,9 @@ def _entity(workspace, name, model_providers):
 
 @pytest.fixture
 def mock_models_sdk():
-    """Create a mock AsyncNeMoPlatform SDK."""
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
-    sdk.models.list = MagicMock(return_value=_AsyncPaginator([]))
+    """Create a mock AsyncNemoClient SDK."""
+    sdk = MagicMock(spec=AsyncNemoClient)
+    sdk.models.list_models = MagicMock(return_value=_AsyncPaginator([]))
     return sdk
 
 

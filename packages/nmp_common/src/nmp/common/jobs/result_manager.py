@@ -5,7 +5,7 @@ import os
 import tarfile
 from typing import Literal, overload
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.jobs.constants import NEMO_JOB_WORKSPACE_ENVVAR
 from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager as AsyncFilesetFileManager
 from nemo_platform_plugin.jobs.file_manager import FilesetFileManager as FilesetFileManager
@@ -21,8 +21,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform | None = None,
-    jobs_sdk: AsyncNeMoPlatform | None = None,
+    files_sdk: AsyncNemoClient | None = None,
+    jobs_sdk: AsyncNemoClient | None = None,
     is_async: Literal[True] = True,
 ) -> AsyncResultManager: ...
 
@@ -33,8 +33,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: NeMoPlatform | None = None,
-    jobs_sdk: NeMoPlatform | None = None,
+    files_sdk: NemoClient | None = None,
+    jobs_sdk: NemoClient | None = None,
     is_async: Literal[False],
 ) -> ResultManager: ...
 
@@ -44,8 +44,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
-    jobs_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
+    files_sdk: NemoClient | AsyncNemoClient | None = None,
+    jobs_sdk: NemoClient | AsyncNemoClient | None = None,
     is_async: bool = True,
 ) -> ResultManager | AsyncResultManager:
     """Create a ResultManager for uploading job results.
@@ -84,7 +84,7 @@ async def download_from_result_info(
     *,
     artifact_url: str,
     workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform | None = None,
+    files_sdk: AsyncNemoClient | None = None,
 ) -> tuple[str, TmpDirPath]:
     """Backward-compatible wrapper that uses the local result_manager_factory.
 

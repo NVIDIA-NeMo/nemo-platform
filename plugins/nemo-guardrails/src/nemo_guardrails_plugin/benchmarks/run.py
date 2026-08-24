@@ -60,7 +60,8 @@ from nemo_guardrails_plugin.benchmarks.processes import (
     wait_http,
 )
 from nemo_guardrails_plugin.benchmarks.seeding import SeededResources, seed_benchmark
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
+# TODO: migrate APIStatusError from nemo_platform
 
 log = logging.getLogger("nemo_guardrails_plugin.benchmarks")
 
@@ -189,7 +190,7 @@ def _build_aiperf_shim_process(paths: RunPaths) -> SupervisedProcess:
     )
 
 
-def _smoke_test(client: NeMoPlatform, seeded: SeededResources) -> None:
+def _smoke_test(client: NemoClient, seeded: SeededResources) -> None:
     """Verify the VirtualModel is reachable and returns a chat completion,
     before running the AIPerf sweep.
     """
@@ -441,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
 
         log.info(f"All services are ready. Seeding benchmark resources in workspace {WORKSPACE}...")
 
-        client = NeMoPlatform(base_url=NMP_BASE_URL)
+        client = NemoClient(base_url=NMP_BASE_URL)
         seeded = seed_benchmark(
             client,
             nemoguardrails_repo_root=paths.nemoguardrails_repo_root,

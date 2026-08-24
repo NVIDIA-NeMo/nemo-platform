@@ -52,7 +52,7 @@ from nemo_deployments_plugin.entities import (
     TCPSocketAction,
 )
 from nemo_deployments_plugin.secrets import SecretResolutionError
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 pytest.importorskip("openshell")  # platform-restricted extra; skip where not installed (e.g. CI)
@@ -209,7 +209,7 @@ async def test_load_deployment_config_wraps_an_entities_client_that_accepts_quer
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"detail": "not found"}, request=request)
 
-    sdk = AsyncNeMoPlatform(
+    sdk = AsyncNemoClient(
         base_url="http://entities.test",
         workspace="default",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 from nemo_optimization.preflight import preflight_validate_llm_models
-from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError
 
 
 class _StubResponse:

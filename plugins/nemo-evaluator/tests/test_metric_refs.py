@@ -18,7 +18,7 @@ from nemo_evaluator.metric_storage import store_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from pydantic import ValidationError
@@ -79,8 +79,8 @@ def _metric_inline() -> MetricInline:
     return MetricInline.model_validate_json(_bundle().model_dump_json())
 
 
-def _fake_platform() -> AsyncNeMoPlatform:
-    return AsyncMock(spec=AsyncNeMoPlatform)
+def _fake_platform() -> AsyncNemoClient:
+    return AsyncMock(spec=AsyncNemoClient)
 
 
 async def _stored(

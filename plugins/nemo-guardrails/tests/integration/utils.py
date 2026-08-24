@@ -10,8 +10,8 @@ from enum import Enum
 from typing import Any
 
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
-from nemo_platform.types.guardrail import GuardrailConfig
-from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
+from nemo_platform_plugin.guardrail.types import GuardrailConfig
+from nemo_platform_plugin.models.types.middleware_call_param import MiddlewareCallParam
 from nmp.testing.utils import short_unique_name
 
 DEFAULT_WORKSPACE = "default"

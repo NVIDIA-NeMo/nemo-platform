@@ -4,7 +4,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.jobs.api_factory import (
@@ -100,7 +100,7 @@ async def create_model(
     workspace: str,
     model_input: CreateModelEntityRequest,
     service: ModelEntityService = Depends(get_model_entity_service),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> ModelEntity:
     """
@@ -346,7 +346,7 @@ async def update_model(
         description="Whether to include full spec details",
     ),
     service: ModelEntityService = Depends(get_model_entity_service),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> ModelEntity:
     """
@@ -481,7 +481,7 @@ async def create_model_adapter(
     model_name: str,
     adapter_create: CreateModelAdapterRequest,
     adapter_service: AdapterEntityService = Depends(get_adapter_entity_service),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> Adapter:
     """
     Adds an Adapter to the Model
@@ -596,7 +596,7 @@ async def update_model_adapter(
     adapter: str,
     adapter_update: UpdateAdapterRequest,
     adapter_service: AdapterEntityService = Depends(get_adapter_entity_service),
-    nmp_sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    nmp_sdk: AsyncNemoClient = Depends(get_sdk_client),
 ) -> Adapter:
     """
     Update Adapter deployment or description.
@@ -650,7 +650,7 @@ async def update_model_adapter(
 
 
 async def set_trust_remote_code(
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     desired_trust_remote_code: bool | None,
     fileset: str | None,
     auth_client: AuthClient,

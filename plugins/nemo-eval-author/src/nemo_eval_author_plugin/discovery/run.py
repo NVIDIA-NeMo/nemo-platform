@@ -10,8 +10,8 @@ from pathlib import Path
 import yaml
 from nemo_eval_author_plugin.discovery import report, scan, validate
 from nemo_experimentalist_plugin.client import make_client
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.config.config import Config
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.config.config import Config
 
 FILESET_NAME = "nemo-eval-author"
 REPORT_FILENAME = "discovery.md"
@@ -56,7 +56,7 @@ async def discover(options: DiscoverOptions) -> DiscoverResult:
 
 
 async def _discover(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     options: DiscoverOptions,
     *,
     repo_root: Path,

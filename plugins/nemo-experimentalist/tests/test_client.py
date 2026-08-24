@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from nemo_experimentalist_plugin.client import make_client
-from nemo_platform.auth.helpers import NMPOIDCConfig
+from nemo_platform_plugin.client.oidc import NMPOIDCConfig
 
 REMOTE_URL = "https://nemo-platform.example.com"
 
@@ -13,7 +13,7 @@ REMOTE_URL = "https://nemo-platform.example.com"
 def test_no_base_url_uses_active_context() -> None:
     with (
         patch("nemo_experimentalist_plugin.client.discover_nmp_config") as discover,
-        patch("nemo_experimentalist_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_experimentalist_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(None)
 
@@ -31,7 +31,7 @@ def test_loopback_uses_direct_mode_without_auth_discovery(host: str) -> None:
     with (
         patch("nemo_experimentalist_plugin.client.Config.get_default_config_path", return_value=config_path),
         patch("nemo_experimentalist_plugin.client.discover_nmp_config") as discover,
-        patch("nemo_experimentalist_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_experimentalist_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(base_url)
 
@@ -47,7 +47,7 @@ def test_remote_without_local_config_uses_direct_mode_without_auth_discovery() -
     with (
         patch("nemo_experimentalist_plugin.client.Config.get_default_config_path", return_value=config_path),
         patch("nemo_experimentalist_plugin.client.discover_nmp_config") as discover,
-        patch("nemo_experimentalist_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_experimentalist_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(REMOTE_URL)
 
@@ -66,7 +66,7 @@ def test_remote_no_auth_ignores_unrelated_local_oauth_context() -> None:
             "nemo_experimentalist_plugin.client.discover_nmp_config",
             return_value=NMPOIDCConfig(auth_enabled=False),
         ) as discover,
-        patch("nemo_experimentalist_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_experimentalist_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(REMOTE_URL)
 
@@ -89,7 +89,7 @@ def test_remote_auth_uses_local_oauth_context() -> None:
                 token_endpoint="https://auth.example.com/token",
             ),
         ) as discover,
-        patch("nemo_experimentalist_plugin.client.AsyncNeMoPlatform") as client_cls,
+        patch("nemo_experimentalist_plugin.client.AsyncNemoClient") as client_cls,
     ):
         client = make_client(REMOTE_URL)
 

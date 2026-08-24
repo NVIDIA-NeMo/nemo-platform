@@ -20,7 +20,8 @@ from typing import TypeVar
 
 import httpx
 import pytest
-from nemo_platform import DefaultHttpxClient, NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
+from httpx import Client
 from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 from tests.auth_idp.common import jwt_claims
@@ -814,13 +815,13 @@ class KubernetesAuthIdpRuntime:
         assert token_response.get("token_type", "").lower() == "bearer"
         return TokenSet(access_token=access_token, claims=jwt_claims(access_token))
 
-    def e2e_setup_sdk(self) -> NeMoPlatform:
+    def e2e_setup_sdk(self) -> NemoClient:
         return self._sdk_for_token(self.e2e_setup_token().access_token)
 
-    def interactive_user_sdk(self) -> NeMoPlatform:
+    def interactive_user_sdk(self) -> NemoClient:
         return self._sdk_for_token(self.interactive_user_token().access_token)
 
-    def workload_provider_sdk(self) -> NeMoPlatform:
+    def workload_provider_sdk(self) -> NemoClient:
         return self._sdk_for_token(self.exchange_workload_token(self.workload_subject_token()).access_token)
 
     def workload_role_principals(self) -> list[str]:
@@ -910,8 +911,8 @@ class KubernetesAuthIdpRuntime:
 
         return _exchange_token_with_retries(token_endpoint, grant, verify=self.verify)
 
-    def _sdk_for_token(self, token: str) -> NeMoPlatform:
-        return NeMoPlatform(
+    def _sdk_for_token(self, token: str) -> NemoClient:
+        return NemoClient(
             base_url=self.gateway_base_url,
             default_headers={"Authorization": f"Bearer {token}"},
             max_retries=0,

@@ -17,7 +17,7 @@ from data_designer_nemo.nemotron_personas import (
     get_resource_name_for_locale,
     sync_nemotron_personas_fileset,
 )
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -135,7 +135,7 @@ def make_fileset_command(
     api_key = _get_api_key_from_env(api_key_env_var)
 
     print_header("Nemotron Personas Fileset")
-    sdk = NeMoPlatform()
+    sdk = NemoClient()
 
     if api_key is not None:
         try:

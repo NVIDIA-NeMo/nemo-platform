@@ -26,7 +26,7 @@ from nmp.unsloth.schemas import OutputResponse, UnslothJobOutput
 from nemo_unsloth_plugin.schema import OutputRequest, UnslothJobInput
 
 if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 def _infer_output_type(output_request: OutputRequest) -> str:
@@ -39,7 +39,7 @@ def _infer_output_type(output_request: OutputRequest) -> str:
 async def transform_input_to_output(
     input_spec: UnslothJobInput,
     workspace: str,
-    sdk: "AsyncNeMoPlatform",
+    sdk: "AsyncNemoClient",
 ) -> UnslothJobOutput:
     """Enrich submitter input into a canonical :class:`UnslothJobOutput`.
 

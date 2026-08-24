@@ -9,8 +9,8 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 import fsspec.asyn
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from filesets.filesystem import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from pydantic import Field, RootModel
@@ -89,7 +89,7 @@ def _safe_child_path(base: Path, child: str) -> Path:
 
 
 async def download_dataset(
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     dataset: FilesetRef,
     destination: str,
     recursive: bool = True,
@@ -99,7 +99,7 @@ async def download_dataset(
 
 
 def download_dataset_sync(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     dataset: FilesetRef,
     destination: str,
     recursive: bool = True,
@@ -125,7 +125,7 @@ def _match_path_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...
 
 
 async def _download_fileset_ref(
-    sdk: AsyncNeMoPlatform | NeMoPlatform,
+    sdk: AsyncNemoClient | NemoClient,
     dataset: FilesetRef,
     destination: str,
     recursive: bool = True,
@@ -179,7 +179,7 @@ async def _download_fileset_ref(
 
 
 def _download_fileset_ref_sync(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     dataset: FilesetRef,
     destination: str,
     recursive: bool = True,

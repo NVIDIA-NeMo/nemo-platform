@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from data_designer.config.utils.constants import NEMOTRON_PERSONAS_DATASET_SIZES
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError
 from nemo_platform_plugin.files.client import FilesClient
@@ -67,7 +67,7 @@ def get_locale_fileset_file_ref(locale: str) -> str:
 
 def sync_nemotron_personas_fileset(
     *,
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     locale: str,
     api_key_secret: str,
 ) -> NemotronPersonasFilesetSyncResult:
@@ -75,7 +75,7 @@ def sync_nemotron_personas_fileset(
     Sync the NGC-backed fileset for a single Nemotron personas locale.
 
     Args:
-        sdk: NeMoPlatform client.
+        sdk: NemoClient client.
         locale: Locale identifier (e.g. 'en_US').
         api_key_secret: Fully qualified secret reference for the NGC API key.
 
@@ -93,7 +93,7 @@ def sync_nemotron_personas_fileset(
         return _EXISTS
 
 
-def _create_fileset(sdk: NeMoPlatform, locale: str, api_key_secret: str) -> None:
+def _create_fileset(sdk: NemoClient, locale: str, api_key_secret: str) -> None:
     files = client_from_platform(sdk, FilesClient)
     files.create_fileset(
         workspace=WORKSPACE,

@@ -56,8 +56,8 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import NotFoundError
-from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.jobs.schemas.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults

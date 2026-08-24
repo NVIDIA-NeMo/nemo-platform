@@ -46,8 +46,9 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
-from nemo_platform.types.inference import ModelProvider
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoHTTPError
+from nemo_platform_plugin.models.types import ModelProvider
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
@@ -99,7 +100,7 @@ def _chat_completion(content: str) -> dict[str, object]:
 
 
 def _add_mock_provider_or_skip(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -122,7 +123,7 @@ def _add_mock_provider_or_skip(
                 "Configure NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX=igw-mock- to run this test."
             )
         raise
-    except APIStatusError as exc:
+    except NemoHTTPError as exc:
         error_body = None if exc.body is None else json.dumps(exc.body, default=str)
         mock_mode_unavailable = (
             exc.status_code == 502 and error_body is not None and "Cannot connect to host mock.local" in error_body
@@ -135,8 +136,8 @@ def _add_mock_provider_or_skip(
         raise
 
 
-def _assert_http_status(exc: APIStatusError | httpx.HTTPStatusError, status_code: int) -> None:
-    actual = exc.status_code if isinstance(exc, APIStatusError) else exc.response.status_code
+def _assert_http_status(exc: NemoHTTPError | httpx.HTTPStatusError, status_code: int) -> None:
+    actual = exc.status_code if isinstance(exc, NemoHTTPError) else exc.response.status_code
     assert actual == status_code
 
 
@@ -180,7 +181,7 @@ def _internal_model_route(workspace: str, model_name: str) -> str:
 
 
 def _post_evaluator_payload(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     path: str,
     payload: Mapping[str, object],
@@ -192,7 +193,7 @@ def _post_evaluator_payload(
     )
 
 
-def _wait_for_stable_model_chat_route(sdk: NeMoPlatform, workspace: str, model_name: str) -> None:
+def _wait_for_stable_model_chat_route(sdk: NemoClient, workspace: str, model_name: str) -> None:
     """Require stable successful chat completions through the model-entity route."""
     deadline = time.monotonic() + IGW_ROUTE_TIMEOUT_SECONDS
     stable_since: float | None = None
@@ -211,10 +212,10 @@ def _wait_for_stable_model_chat_route(sdk: NeMoPlatform, workspace: str, model_n
                 body={"model": model_name, "messages": [{"role": "user", "content": "ping"}]},
                 timeout=min(10.0, remaining),
             )
-        except APIConnectionError as exc:
+        except NemoTransportError as exc:
             stable_since = None
             last_error = repr(exc)
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             stable_since = None
             last_status = exc.status_code
             last_body = str(exc)
@@ -247,7 +248,7 @@ def _wait_for_stable_model_chat_route(sdk: NeMoPlatform, workspace: str, model_n
 
 
 def _create_ready_mock_model(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -261,7 +262,7 @@ def _create_ready_mock_model(
         mock_response_body=mock_response_body,
         should_autoprovision_virtual_model=False,
     )
-    sdk.models.create(
+    sdk.models.create_model(
         workspace=workspace,
         name=name,
         backend_format="OPENAI_CHAT",
@@ -285,11 +286,11 @@ def _create_ready_mock_model(
     _wait_for_stable_model_chat_route(sdk, workspace, name)
 
 
-def _cleanup_evaluator_job(sdk: NeMoPlatform, job_name: str) -> None:
+def _cleanup_evaluator_job(sdk: NemoClient, job_name: str) -> None:
     with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=sdk.workspace)
+        sdk.jobs.cancel_job(name=job_name, workspace=sdk.workspace)
     with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=sdk.workspace)
+        sdk.jobs.delete_job(name=job_name, workspace=sdk.workspace)
 
 
 def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:
@@ -321,7 +322,7 @@ def _require_job_name(payload: object) -> str:
     return job_name
 
 
-def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJobResource:
+def _submit_input_spec(sdk: NemoClient, spec: EvaluateInputSpec) -> EvaluatorJobResource:
     payload = _post_evaluator_payload(
         sdk,
         str(sdk.workspace),
@@ -342,18 +343,18 @@ def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
 
 
 @pytest.fixture(scope="module")
-def evaluator_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+def evaluator_workspace(sdk: NemoClient) -> Iterator[str]:
     name = short_unique_name("e2e-eval")
     try:
-        sdk.workspaces.create(name=name)
+        sdk.workspaces.create_workspace(name=name)
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            sdk.workspaces.delete_workspace(name)
 
 
 @pytest.fixture(scope="module")
-def evaluator_sdk(sdk: NeMoPlatform, evaluator_workspace: str) -> Iterator[NeMoPlatform]:
+def evaluator_sdk(sdk: NemoClient, evaluator_workspace: str) -> Iterator[NemoClient]:
     yield sdk.copy(
         workspace=evaluator_workspace,
         max_retries=2,
@@ -362,7 +363,7 @@ def evaluator_sdk(sdk: NeMoPlatform, evaluator_workspace: str) -> Iterator[NeMoP
 
 
 @pytest.fixture(scope="module")
-def completed_offline_job(evaluator_sdk: NeMoPlatform) -> Iterator[EvaluatorJobResource]:
+def completed_offline_job(evaluator_sdk: NemoClient) -> Iterator[EvaluatorJobResource]:
     job = evaluator_sdk.evaluator.submit(
         metric=_exact_match_metric(),
         dataset=_offline_rows(),
@@ -375,7 +376,7 @@ def completed_offline_job(evaluator_sdk: NeMoPlatform) -> Iterator[EvaluatorJobR
         _cleanup_evaluator_job(evaluator_sdk, job.name)
 
 
-def test_health_check(sdk: NeMoPlatform) -> None:
+def test_health_check(sdk: NemoClient) -> None:
     status = sdk.evaluator.plugin_status()
 
     assert status["plugin"] == "evaluator"
@@ -383,7 +384,7 @@ def test_health_check(sdk: NeMoPlatform) -> None:
     assert "evaluator.evaluate" in status["jobs"]
 
 
-def test_stored_metric_lifecycle(evaluator_sdk: NeMoPlatform) -> None:
+def test_stored_metric_lifecycle(evaluator_sdk: NemoClient) -> None:
     name = short_unique_name("exact")
     try:
         created = evaluator_sdk.evaluator.metrics.create(name, metric=_exact_match_metric())
@@ -402,12 +403,12 @@ def test_stored_metric_lifecycle(evaluator_sdk: NeMoPlatform) -> None:
         listing = evaluator_sdk.evaluator.metrics.list(sort="-created_at")
         assert any(metric.name == name for metric in listing.data)
 
-        with pytest.raises((httpx.HTTPStatusError, APIStatusError)) as exc_info:
+        with pytest.raises((httpx.HTTPStatusError, NemoHTTPError)) as exc_info:
             evaluator_sdk.evaluator.metrics.create(name, metric=_exact_match_metric())
         _assert_http_status(exc_info.value, 409)
 
         evaluator_sdk.evaluator.metrics.delete(name)
-        with pytest.raises((httpx.HTTPStatusError, APIStatusError)) as exc_info:
+        with pytest.raises((httpx.HTTPStatusError, NemoHTTPError)) as exc_info:
             evaluator_sdk.evaluator.metrics.retrieve(name)
         _assert_http_status(exc_info.value, 404)
     finally:
@@ -442,7 +443,7 @@ def test_offline_evaluate_job_lifecycle(
 
 
 def test_offline_evaluate_job_persists_queryable_eval_result(
-    evaluator_sdk: NeMoPlatform,
+    evaluator_sdk: NemoClient,
     completed_offline_job: EvaluatorJobResource,
 ) -> None:
     result = evaluator_sdk.evaluator.eval_results.retrieve(completed_offline_job.name)
@@ -454,12 +455,12 @@ def test_offline_evaluate_job_persists_queryable_eval_result(
     assert any(item.job_id == completed_offline_job.name for item in by_job.data)
 
 
-def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None:
+def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NemoClient) -> None:
     """Durable plugin jobs can read selected and globbed files from Files."""
     fileset_name = short_unique_name("eval-data")
     workspace = str(evaluator_sdk.workspace)
     submitted_jobs: list[tuple[str, list[float], EvaluatorJobResource]] = []
-    evaluator_sdk.files.filesets.create(name=fileset_name, workspace=workspace)
+    evaluator_sdk.files.create_fileset(name=fileset_name, workspace=workspace)
     try:
         evaluator_sdk.files.upload_content(
             content=json.dumps(
@@ -506,10 +507,10 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
         for _, _, job in submitted_jobs:
             _cleanup_evaluator_job(evaluator_sdk, job.name)
         with suppress(Exception):
-            evaluator_sdk.files.filesets.delete(fileset_name, workspace=workspace)
+            evaluator_sdk.files.delete_fileset(fileset_name, workspace=workspace)
 
 
-def test_run_config_limits_samples(evaluator_sdk: NeMoPlatform) -> None:
+def test_run_config_limits_samples(evaluator_sdk: NemoClient) -> None:
     rows = [{"expected": str(index), "output": str(index)} for index in range(8)]
     job = evaluator_sdk.evaluator.submit(
         metric=_exact_match_metric(),
@@ -526,7 +527,7 @@ def test_run_config_limits_samples(evaluator_sdk: NeMoPlatform) -> None:
         _cleanup_evaluator_job(evaluator_sdk, job.name)
 
 
-def test_multi_metric_durable_evaluation(evaluator_sdk: NeMoPlatform) -> None:
+def test_multi_metric_durable_evaluation(evaluator_sdk: NemoClient) -> None:
     """The unified plugin job supports benchmark-style metric sets."""
     metrics = [
         _exact_match_metric(),
@@ -567,7 +568,7 @@ def test_multi_metric_durable_evaluation(evaluator_sdk: NeMoPlatform) -> None:
         _cleanup_evaluator_job(evaluator_sdk, job.name)
 
 
-def test_stored_metric_ref_executes_in_durable_job(evaluator_sdk: NeMoPlatform) -> None:
+def test_stored_metric_ref_executes_in_durable_job(evaluator_sdk: NemoClient) -> None:
     metric_name = short_unique_name("stored-exact")
     job: EvaluatorJobResource | None = None
     try:
@@ -588,7 +589,7 @@ def test_stored_metric_ref_executes_in_durable_job(evaluator_sdk: NeMoPlatform) 
             evaluator_sdk.evaluator.metrics.delete(metric_name)
 
 
-def test_tool_calling_metric_preserves_structured_references(evaluator_sdk: NeMoPlatform) -> None:
+def test_tool_calling_metric_preserves_structured_references(evaluator_sdk: NemoClient) -> None:
     rows = [
         {
             "expected_tool_calls": [{"function": {"name": "weather", "arguments": {"city": "Paris"}}}],
@@ -623,8 +624,8 @@ def test_tool_calling_metric_preserves_structured_references(evaluator_sdk: NeMo
 
 
 def test_online_evaluate_job_uses_mock_provider(
-    sdk: NeMoPlatform,
-    evaluator_sdk: NeMoPlatform,
+    sdk: NemoClient,
+    evaluator_sdk: NemoClient,
     evaluator_workspace: str,
 ) -> None:
     model_name = short_unique_name("eval-model")
@@ -666,8 +667,8 @@ def test_online_evaluate_job_uses_mock_provider(
 
 
 def test_llm_judge_metric_resolves_model_ref(
-    sdk: NeMoPlatform,
-    evaluator_sdk: NeMoPlatform,
+    sdk: NemoClient,
+    evaluator_sdk: NemoClient,
     evaluator_workspace: str,
 ) -> None:
     model_name = short_unique_name("eval-judge")
@@ -708,7 +709,7 @@ def test_llm_judge_metric_resolves_model_ref(
 
 
 def _assert_runtime_input_failure(
-    evaluator_sdk: NeMoPlatform,
+    evaluator_sdk: NemoClient,
     metric: StringCheckMetric | ExactMatchMetric,
     dataset: list[dict[str, object]] | FilesetRef,
 ) -> None:
@@ -725,7 +726,7 @@ def _assert_runtime_input_failure(
         _cleanup_evaluator_job(evaluator_sdk, job.name)
 
 
-def test_invalid_template_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> None:
+def test_invalid_template_reaches_terminal_error(evaluator_sdk: NemoClient) -> None:
     metric = StringCheckMetric(
         operation="equals",
         left_template="{{item.missing}}",
@@ -738,7 +739,7 @@ def test_invalid_template_reaches_terminal_error(evaluator_sdk: NeMoPlatform) ->
     )
 
 
-def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> None:
+def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NemoClient) -> None:
     dataset = FilesetRef(root=f"{evaluator_sdk.workspace}/missing-fileset#dataset.json")
     _assert_runtime_input_failure(evaluator_sdk, _exact_match_metric(), dataset)
 
@@ -775,8 +776,8 @@ def _gym_task_payloads(limit: int) -> list[dict[str, object]]:
 
 @pytest.mark.gym_e2e
 def test_gym_agent_evaluate_job_completes(
-    sdk: NeMoPlatform,
-    evaluator_sdk: NeMoPlatform,
+    sdk: NemoClient,
+    evaluator_sdk: NemoClient,
     evaluator_workspace: str,
     tmp_path: Path,
 ) -> None:
@@ -842,7 +843,7 @@ def test_gym_agent_evaluate_job_completes(
 
 @pytest.mark.gym_e2e
 def test_gym_agent_evaluate_job_invalid_config_fails(
-    evaluator_sdk: NeMoPlatform,
+    evaluator_sdk: NemoClient,
     evaluator_workspace: str,
 ) -> None:
     """Rejects an invalid Gym selection before starting its environment servers."""

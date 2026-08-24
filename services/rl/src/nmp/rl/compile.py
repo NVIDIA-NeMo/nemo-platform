@@ -10,7 +10,7 @@ to turn a validated :class:`~nmp.rl.schemas.RlJobOutput` into a 4-step
 
 from __future__ import annotations
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.rl.app.jobs.compiler import platform_job_config_compiler as _compile_canonical
 from nmp.rl.schemas import RlJobOutput
@@ -20,7 +20,7 @@ async def platform_job_config_compiler(
     *,
     workspace: str,
     spec: RlJobOutput,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     job_name: str | None = None,
     profile: str | None = None,
 ) -> PlatformJobSpec:

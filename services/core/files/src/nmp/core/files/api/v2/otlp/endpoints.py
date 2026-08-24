@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import (
     EntityClient,
@@ -76,7 +76,7 @@ async def query_otlp_logs(
     request: LogQueryRequest,
     entity_store: EntityClient = Depends(get_entity_client),
     log_storage: LogStorage = Depends(dep_log_storage),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> PlatformJobLogPage:
     """Query logs from parquet files in a fileset.
@@ -126,7 +126,7 @@ async def upload_otlp_logs(
     artifact_base_path: str | None = Query(default=None, description="Folder inside the fileset to nest logs under"),
     entity_store: EntityClient = Depends(get_entity_client),
     log_storage: LogStorage = Depends(dep_log_storage),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> OtelExportLogsServiceResponse:
     """

@@ -7,7 +7,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-import nemo_platform
+from nemo_platform_plugin.client import client as nemo_platform
 from nemo_guardrails_plugin.constants import (
     GUARDRAILS_PLUGIN_CONFIG_TYPE,
     PROCESS_REQUEST_RAIL_TYPES,
@@ -62,8 +62,8 @@ from nemo_guardrails_plugin.streaming import (
     strings_to_chunks,
 )
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
-from nemo_platform.types.guardrail import GenerationLogOptionsParam
-from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
+from nemo_platform_plugin.guardrail.types import GenerationLogOptionsParam
+from nemo_platform_plugin.guardrail.types import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.config import get_common_service_config
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
@@ -165,7 +165,7 @@ def handle_streaming_output_check(
 class GuardrailsMiddleware(NemoInferenceMiddleware):
     # Class-level ``None`` defaults let the per-request checks raise a clean
     # RuntimeError if a request arrives before on_startup ran.
-    _sdk: nemo_platform.AsyncNeMoPlatform | None = None
+    _sdk: nemo_platform.AsyncNemoClient | None = None
     # Cache of ``LLMRails`` instances keyed by stabilized content hash.
     _rails_cache: LLMRailsCache | None = None
     # Memoization of ``PlatformRailsConfig`` → ``StableRailsConfig``
@@ -267,7 +267,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
 
         ref = parse_entity_ref(config_id)
         try:
-            entity = await sdk.guardrail.configs.retrieve(name=ref.name, workspace=ref.workspace)
+            entity = await sdk.guardrail.get_guardrail_config(name=ref.name, workspace=ref.workspace)
         except nemo_platform.NotFoundError as exc:
             raise MiddlewareConfigNotFoundError(config_id) from exc
         # (workspace, name, updated_at) form the ``StabilizedRailsConfigCache`` key,
@@ -606,7 +606,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         if config_type != GUARDRAILS_PLUGIN_CONFIG_TYPE:
             raise ValueError(f"Unsupported config_type {config_type!r}.")
 
-    def _ensure_sdk(self) -> nemo_platform.AsyncNeMoPlatform:
+    def _ensure_sdk(self) -> nemo_platform.AsyncNemoClient:
         """Narrow ``self._sdk`` to non-``None``, raising a clean error otherwise.
 
         A request arriving before ``on_startup`` ran (or after ``on_shutdown``
@@ -733,7 +733,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         request_body: dict[str, Any],
         request_headers: dict[str, str],
         error_msg: str,
-    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel, nemo_platform.AsyncNeMoPlatform]:
+    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel, nemo_platform.AsyncNemoClient]:
         """Run :meth:`_prepare_lease` with the plugin's error-mapping policy.
 
         Single source of truth for "lease setup → HTTP status" so non-streaming

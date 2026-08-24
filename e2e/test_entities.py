@@ -20,7 +20,8 @@ import time
 import uuid
 
 import pytest
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
+# TODO: migrate APIStatusError from nemo_platform
 from nmp.testing import as_service_for
 
 ENTITY_TYPE = "e2e-test-entity"
@@ -34,7 +35,7 @@ def _unique_name(prefix: str = "entity") -> str:
 
 
 @pytest.fixture(scope="module")
-def entity_store_sdk(sdk: NeMoPlatform) -> NeMoPlatform:
+def entity_store_sdk(sdk: NemoClient) -> NemoClient:
     return as_service_for(
         sdk,
         on_behalf_of=E2E_ON_BEHALF_OF,
@@ -42,7 +43,7 @@ def entity_store_sdk(sdk: NeMoPlatform) -> NeMoPlatform:
     )
 
 
-def test_cluster_info_endpoint_returns_json_with_platform_version_and_revision(sdk: NeMoPlatform):
+def test_cluster_info_endpoint_returns_json_with_platform_version_and_revision(sdk: NemoClient):
     """Test GET /cluster-info returns JSON with platform_version and revision keys.
 
     Verifies the platform cluster-info endpoint returns a json-encoded response
@@ -56,7 +57,7 @@ def test_cluster_info_endpoint_returns_json_with_platform_version_and_revision(s
     assert "revision" in data, "Response should include a 'revision' key"
 
 
-def test_entity_crud_lifecycle(entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_crud_lifecycle(entity_store_sdk: NemoClient, workspace: str):
     """Test basic entity create, retrieve, update, delete operations.
 
     This test verifies the complete entity lifecycle:
@@ -132,7 +133,7 @@ def test_entity_crud_lifecycle(entity_store_sdk: NeMoPlatform, workspace: str):
     assert exc_info.value.status_code == 404
 
 
-def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_with_project(sdk: NemoClient, entity_store_sdk: NemoClient, workspace: str):
     """Test entity creation within a project.
 
     Project setup and cleanup use the caller-facing SDK, while internal entity
@@ -182,7 +183,7 @@ def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, 
         sdk.projects.delete(name=project_name, workspace=workspace)
 
 
-def test_entity_without_project(entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_without_project(entity_store_sdk: NemoClient, workspace: str):
     """Test entity creation without a project association.
 
     Verifies that entities can exist at the workspace level without
@@ -216,7 +217,7 @@ def test_entity_without_project(entity_store_sdk: NeMoPlatform, workspace: str):
         )
 
 
-def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_list_and_sorting(entity_store_sdk: NemoClient, workspace: str):
     """Test listing entities with sorting.
 
     Creates multiple entities and verifies:
@@ -288,7 +289,7 @@ def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str)
                 pass
 
 
-def test_entity_search_filter(entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_search_filter(entity_store_sdk: NemoClient, workspace: str):
     """Test filtering entities with search queries.
 
     Verifies that the search parameter correctly filters entities
@@ -356,7 +357,7 @@ def test_entity_search_filter(entity_store_sdk: NeMoPlatform, workspace: str):
                 pass
 
 
-def test_entity_rename(entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_rename(entity_store_sdk: NemoClient, workspace: str):
     """Test renaming an entity via update.
 
     Verifies that entities can be renamed and the old name
@@ -413,7 +414,7 @@ def test_entity_rename(entity_store_sdk: NeMoPlatform, workspace: str):
             pass
 
 
-def test_entity_auto_generated_name(entity_store_sdk: NeMoPlatform, workspace: str):
+def test_entity_auto_generated_name(entity_store_sdk: NemoClient, workspace: str):
     """Test that entities can be created without specifying a name.
 
     When no name is provided, the API should auto-generate a unique name.

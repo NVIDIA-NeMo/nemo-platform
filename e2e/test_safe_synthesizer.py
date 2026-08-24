@@ -34,7 +34,7 @@ from types import ModuleType
 from typing import Any, cast
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
@@ -114,19 +114,19 @@ def test_safe_synthesizer_pii_replacement_config_validates() -> None:
     assert {rule.name for rule in updates} == {"email", "phone_number", "review"}
 
 
-def _string_headers(sdk: NeMoPlatform) -> dict[str, str]:
+def _string_headers(sdk: NemoClient) -> dict[str, str]:
     return {key: value for key, value in sdk.default_headers.items() if isinstance(value, str)}
 
 
-def _nss_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
+def _nss_url(sdk: NemoClient, workspace: str, path: str) -> str:
     return f"{str(sdk.base_url).rstrip('/')}/apis/safe-synthesizer/v2/workspaces/{workspace}/{path.lstrip('/')}"
 
 
-def _files_client(sdk: NeMoPlatform) -> FilesClient:
+def _files_client(sdk: NemoClient) -> FilesClient:
     return client_from_platform(sdk, FilesClient)
 
 
-def _create_fileset(sdk: NeMoPlatform, workspace: str, name: str) -> None:
+def _create_fileset(sdk: NemoClient, workspace: str, name: str) -> None:
     _files_client(sdk).create_fileset(
         workspace=workspace,
         body=CreateFilesetRequest(
@@ -136,7 +136,7 @@ def _create_fileset(sdk: NeMoPlatform, workspace: str, name: str) -> None:
     )
 
 
-def _delete_fileset(sdk: NeMoPlatform, workspace: str, name: str) -> None:
+def _delete_fileset(sdk: NemoClient, workspace: str, name: str) -> None:
     with suppress(Exception):
         _files_client(sdk).delete_fileset(name=name, workspace=workspace)
 
@@ -177,10 +177,10 @@ def _dataset_csv(rows: int = DEFAULT_INPUT_ROWS) -> str:
     return output.getvalue()
 
 
-def _upload_dataset(sdk: NeMoPlatform, workspace: str, *, rows: int = DEFAULT_INPUT_ROWS) -> tuple[str, str]:
+def _upload_dataset(sdk: NemoClient, workspace: str, *, rows: int = DEFAULT_INPUT_ROWS) -> tuple[str, str]:
     fileset = _unique_name("nss-inputs")
     _create_fileset(sdk, workspace, fileset)
-    sdk.files.upload_content(
+    sdk.files.upload_file(
         fileset=fileset,
         workspace=workspace,
         remote_path=INPUT_REMOTE_PATH,
@@ -209,7 +209,7 @@ def _job_payload(
 
 
 def _create_nss_job(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     *,
     name: str,
@@ -226,7 +226,7 @@ def _create_nss_job(
     return response.json()
 
 
-def _list_nss_jobs(sdk: NeMoPlatform, workspace: str) -> dict[str, Any]:
+def _list_nss_jobs(sdk: NemoClient, workspace: str) -> dict[str, Any]:
     response = sdk._client.get(
         _nss_url(sdk, workspace, "jobs"),
         headers=_string_headers(sdk),
@@ -240,7 +240,7 @@ def _job_names(jobs: dict[str, Any]) -> set[str]:
     return {str(entry["name"]) for entry in jobs.get("data", [])}
 
 
-def _retrieve_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str, Any]:
+def _retrieve_nss_job(sdk: NemoClient, workspace: str, name: str) -> dict[str, Any]:
     response = sdk._client.get(
         _nss_url(sdk, workspace, f"jobs/{name}"),
         headers=_string_headers(sdk),
@@ -251,7 +251,7 @@ def _retrieve_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str,
 
 
 def _wait_for_job_absent(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     name: str,
     *,
@@ -268,7 +268,7 @@ def _wait_for_job_absent(
     pytest.fail(f"Safe Synthesizer job {name!r} still exists after delete; visible jobs: {sorted(last_names)}")
 
 
-def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str, *, verify: bool = True) -> None:
+def _delete_nss_job(sdk: NemoClient, workspace: str, name: str, *, verify: bool = True) -> None:
     response = sdk._client.delete(
         _nss_url(sdk, workspace, f"jobs/{name}"),
         headers=_string_headers(sdk),
@@ -280,7 +280,7 @@ def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str, *, verify: boo
         _wait_for_job_absent(sdk, workspace, name)
 
 
-def _cancel_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str, Any] | None:
+def _cancel_nss_job(sdk: NemoClient, workspace: str, name: str) -> dict[str, Any] | None:
     response = sdk._client.post(
         _nss_url(sdk, workspace, f"jobs/{name}/cancel"),
         headers=_string_headers(sdk),
@@ -292,7 +292,7 @@ def _cancel_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str, A
     return response.json()
 
 
-def _list_nss_results(sdk: NeMoPlatform, workspace: str, job_name: str) -> dict[str, Any]:
+def _list_nss_results(sdk: NemoClient, workspace: str, job_name: str) -> dict[str, Any]:
     response = sdk._client.get(
         _nss_url(sdk, workspace, f"jobs/{job_name}/results"),
         headers=_string_headers(sdk),
@@ -302,7 +302,7 @@ def _list_nss_results(sdk: NeMoPlatform, workspace: str, job_name: str) -> dict[
     return response.json()
 
 
-def _download_nss_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str) -> bytes:
+def _download_nss_result(sdk: NemoClient, workspace: str, job_name: str, result_name: str) -> bytes:
     response = sdk._client.get(
         _nss_url(sdk, workspace, f"jobs/{job_name}/results/{result_name}/download"),
         headers=_string_headers(sdk),
@@ -318,16 +318,16 @@ def _result_names(results: dict[str, Any]) -> set[str]:
     return {str(result["name"]) for result in results.get("data", [])}
 
 
-def _status_details(sdk: NeMoPlatform, workspace: str, job_name: str) -> str:
+def _status_details(sdk: NemoClient, workspace: str, job_name: str) -> str:
     details = [f"Safe Synthesizer job {job_name} did not complete successfully."]
     with suppress(Exception):
-        job = sdk.jobs.retrieve(job_name, workspace=workspace)
+        job = sdk.jobs.get_job(job_name, workspace=workspace)
         details.append(f"Job: {job.model_dump_json(indent=2)}")
     with suppress(Exception):
-        status = sdk.jobs.get_status(job_name, workspace=workspace)
+        status = sdk.jobs.get_job_status(job_name, workspace=workspace)
         details.append(f"Status: {status.model_dump_json(indent=2)}")
     with suppress(Exception):
-        logs = sdk.jobs.get_logs(job_name, workspace=workspace)
+        logs = sdk.jobs.list_job_logs(job_name, workspace=workspace)
         tail = logs.data[-30:] if logs.data else []
         details.append("Recent logs:")
         details.extend(f"[{entry.job_step}] {entry.message}" for entry in tail)
@@ -335,7 +335,7 @@ def _status_details(sdk: NeMoPlatform, workspace: str, job_name: str) -> str:
 
 
 def _wait_for_status(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     job_name: str,
     *,
@@ -350,7 +350,7 @@ def _wait_for_status(
 
     while time.monotonic() < deadline:
         try:
-            status_info = sdk.jobs.get_status(job_name, workspace=workspace)
+            status_info = sdk.jobs.get_job_status(job_name, workspace=workspace)
             status = str(status_info.status)
             if not history or history[-1] != status:
                 history.append(status)
@@ -368,7 +368,7 @@ def _wait_for_status(
     )
 
 
-def _assert_job_completed(sdk: NeMoPlatform, workspace: str, job_name: str) -> list[str]:
+def _assert_job_completed(sdk: NemoClient, workspace: str, job_name: str) -> list[str]:
     status, history = _wait_for_status(
         sdk,
         workspace,
@@ -414,14 +414,14 @@ def _platform_root() -> Path:
 
 
 @pytest.fixture(scope="module")
-def nss_model_filesets(sdk: NeMoPlatform) -> None:
+def nss_model_filesets(sdk: NemoClient) -> None:
     if os.environ.get("NSS_E2E_SKIP_MODEL_FILESETS") == "1":
         return
 
     platform_root = _platform_root()
     setup_module = _load_model_filesets_setup_module(platform_root)
     create_filesets = cast(
-        Callable[[NeMoPlatform, str, bool], list[str]],
+        Callable[[NemoClient, str, bool], list[str]],
         getattr(setup_module, "create_filesets"),
     )
     model_filesets = cast(list[dict[str, object]], getattr(setup_module, "MODEL_FILESETS"))
@@ -445,7 +445,7 @@ def _load_model_filesets_setup_module(platform_root: Path) -> ModuleType:
 
 
 @pytest.fixture
-def nss_dataset(sdk: NeMoPlatform, workspace: str) -> Iterator[tuple[str, str]]:
+def nss_dataset(sdk: NemoClient, workspace: str) -> Iterator[tuple[str, str]]:
     fileset, data_source = _upload_dataset(sdk, workspace)
     try:
         yield fileset, data_source
@@ -454,7 +454,7 @@ def nss_dataset(sdk: NeMoPlatform, workspace: str) -> Iterator[tuple[str, str]]:
 
 
 @pytest.fixture
-def nss_job(sdk: NeMoPlatform, workspace: str) -> Iterator[NssJobFactory]:
+def nss_job(sdk: NemoClient, workspace: str) -> Iterator[NssJobFactory]:
     job_names: list[str] = []
 
     def create(prefix: str, data_source: str, config: dict[str, Any]) -> dict[str, Any]:
@@ -471,7 +471,7 @@ def nss_job(sdk: NeMoPlatform, workspace: str) -> Iterator[NssJobFactory]:
             _delete_nss_job(sdk, workspace, job_name)
 
 
-def test_safe_synthesizer_api_health(sdk: NeMoPlatform, workspace: str) -> None:
+def test_safe_synthesizer_api_health(sdk: NemoClient, workspace: str) -> None:
     response = sdk._client.get(
         f"{str(sdk.base_url).rstrip('/')}/status",
         headers=_string_headers(sdk),
@@ -486,12 +486,12 @@ def test_safe_synthesizer_api_health(sdk: NeMoPlatform, workspace: str) -> None:
 
 
 def test_safe_synthesizer_fileset_upload_download_round_trips(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     nss_dataset: tuple[str, str],
 ) -> None:
     fileset, _ = nss_dataset
-    downloaded = sdk.files.download_content(
+    downloaded = sdk.files.download_file(
         fileset=fileset,
         workspace=workspace,
         remote_path=INPUT_REMOTE_PATH,
@@ -501,7 +501,7 @@ def test_safe_synthesizer_fileset_upload_download_round_trips(
 
 
 def test_safe_synthesizer_job_create_list_retrieve_cancel_delete(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     nss_dataset: tuple[str, str],
     nss_job: NssJobFactory,
@@ -544,7 +544,7 @@ def test_safe_synthesizer_job_create_list_retrieve_cancel_delete(
 @pytest.mark.slow
 @pytest.mark.timeout(7200)
 def test_safe_synthesizer_k8s_job_cancel_transitions(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     nss_dataset: tuple[str, str],
     nss_job: NssJobFactory,
@@ -590,7 +590,7 @@ def test_safe_synthesizer_k8s_job_cancel_transitions(
 @pytest.mark.slow
 @pytest.mark.timeout(7200)
 def test_safe_synthesizer_pii_replacement_job_completes(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     nss_dataset: tuple[str, str],
     nss_job: NssJobFactory,
@@ -622,7 +622,7 @@ def test_safe_synthesizer_pii_replacement_job_completes(
 @pytest.mark.slow
 @pytest.mark.timeout(7200)
 def test_safe_synthesizer_full_workflow_downloads_artifacts(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     nss_dataset: tuple[str, str],
     nss_job: NssJobFactory,

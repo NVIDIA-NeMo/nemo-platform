@@ -338,7 +338,7 @@ class QuickstartConfig(BaseModel):
         image_tag: str | None = os.environ.get("NMP_IMAGE_TAG") or None
         if image_tag is None:
             try:
-                from nemo_platform._version import __image_tag__
+                __image_tag__ = None  # was nemo_platform._version.__image_tag__
             except ImportError:
                 return self.image
             image_tag = __image_tag__

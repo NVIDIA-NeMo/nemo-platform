@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 import httpx
 import typer
 import yaml as _yaml
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -551,7 +551,7 @@ def _verify_platform_health(base_url: str) -> bool:
     return False
 
 
-def _provider_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
+def _provider_exists(client: NemoClient, name: str, workspace: str) -> bool:
     """Return True if a provider with *name* already exists."""
     try:
         client.inference.providers.retrieve(name, workspace=workspace)
@@ -560,7 +560,7 @@ def _provider_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
         return False
 
 
-def _secret_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
+def _secret_exists(client: NemoClient, name: str, workspace: str) -> bool:
     """Return True if a secret with *name* already exists."""
     secrets = client_from_platform(client, SecretsClient)
     try:
@@ -570,18 +570,18 @@ def _secret_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
         return False
 
 
-def _create_secret(client: NeMoPlatform, name: str, value: str, workspace: str) -> None:
+def _create_secret(client: NemoClient, name: str, value: str, workspace: str) -> None:
     secrets = client_from_platform(client, SecretsClient)
     secrets.create_secret(body=PlatformSecretCreateRequest(name=name, value=SecretStr(value)), workspace=workspace)
 
 
-def _update_secret(client: NeMoPlatform, name: str, value: str, workspace: str) -> None:
+def _update_secret(client: NemoClient, name: str, value: str, workspace: str) -> None:
     secrets = client_from_platform(client, SecretsClient)
     secrets.update_secret(name=name, body=PlatformSecretUpdateRequest(value=SecretStr(value)), workspace=workspace)
 
 
 def _create_provider(
-    client: NeMoPlatform,
+    client: NemoClient,
     *,
     name: str,
     host_url: str,
@@ -619,7 +619,7 @@ def _create_provider(
 
 
 def _update_provider(
-    client: NeMoPlatform,
+    client: NemoClient,
     *,
     name: str,
     host_url: str,
@@ -681,7 +681,7 @@ def _bucket_model_count(count: int) -> str:
 
 
 def _wait_for_models(
-    client: NeMoPlatform,
+    client: NemoClient,
     provider_name: str,
     workspace: str,
     host_url: str = "",
@@ -709,7 +709,7 @@ def _wait_for_models(
 
 
 def _wait_for_models_impl(
-    client: NeMoPlatform,
+    client: NemoClient,
     provider_name: str,
     workspace: str,
     host_url: str = "",
@@ -771,7 +771,7 @@ def _wait_for_models_impl(
 
 
 def _get_all_model_entity_ids(
-    client: NeMoPlatform,
+    client: NemoClient,
     workspace: str,
     *,
     provider_name: str | None = None,
@@ -792,7 +792,7 @@ def _get_all_model_entity_ids(
 
 
 def _get_all_model_choices(
-    client: NeMoPlatform,
+    client: NemoClient,
     workspace: str,
     *,
     provider_name: str | None = None,
@@ -1821,7 +1821,7 @@ def _collect_credential(provider: KnownProvider) -> str:
 
 
 def _register_provider_interactive(
-    client: NeMoPlatform,
+    client: NemoClient,
     *,
     provider_name: str,
     host_url: str,
@@ -1928,7 +1928,7 @@ def _validate_api_key(
 
 
 def _select_model_pair(
-    client: NeMoPlatform,
+    client: NemoClient,
     workspace: str,
     *,
     provider_name: str | None = None,
@@ -1979,7 +1979,7 @@ def _check_ollama_running(host_url: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _auto_setup(client: NeMoPlatform, workspace: str) -> str | None:
+def _auto_setup(client: NemoClient, workspace: str) -> str | None:
     """Register a provider from environment variables and return its name."""
     for key_var, url_var in _AUTO_ENV_VARS:
         api_key = os.environ.get(key_var)
@@ -2279,7 +2279,7 @@ def setup_command(
 
 def _run_auto_mode(
     cli_context: CLIContext,
-    client: NeMoPlatform,
+    client: NemoClient,
     workspace: str,
     base_url: str,
     install_skills: bool | None,
@@ -2368,7 +2368,7 @@ def _run_auto_mode(
 
 def _run_interactive_mode(
     cli_context: CLIContext,
-    client: NeMoPlatform,
+    client: NemoClient,
     workspace: str,
     base_url: str,
     install_skills: bool | None,

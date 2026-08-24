@@ -20,7 +20,7 @@ import os
 import time
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from trace_reader import get_session
 
 WORKSPACE = "job-test-workspace"
@@ -40,16 +40,16 @@ def _make_unsigned_jwt() -> str:
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(
+    return NemoClient(
         base_url=nmp_base_url,
         workspace=WORKSPACE,
         access_token=_make_unsigned_jwt(),
     )
 
 
-def _wait_for_terminal(client: NeMoPlatform, job_name: str, max_wait: int = 30) -> str:
+def _wait_for_terminal(client: NemoClient, job_name: str, max_wait: int = 30) -> str:
     """Wait for a job to reach a terminal status, with a safety timeout."""
     for _ in range(max_wait // 5):
         try:
@@ -68,7 +68,7 @@ def _wait_for_terminal(client: NeMoPlatform, job_name: str, max_wait: int = 30) 
         return "unknown"
 
 
-def _find_job_by_name(client: NeMoPlatform, name: str):
+def _find_job_by_name(client: NemoClient, name: str):
     """Find a specific job by name."""
     jobs = client.jobs.list(workspace=WORKSPACE)
     for job in jobs.data:
@@ -80,7 +80,7 @@ def _find_job_by_name(client: NeMoPlatform, name: str):
 # --- Job existence checks ---
 
 
-def test_multiple_jobs_created(client: NeMoPlatform) -> None:
+def test_multiple_jobs_created(client: NemoClient) -> None:
     """Verify that at least 3 jobs were created."""
     jobs = client.jobs.list(workspace=WORKSPACE)
     assert len(jobs.data) >= 3, (
@@ -88,7 +88,7 @@ def test_multiple_jobs_created(client: NeMoPlatform) -> None:
     )
 
 
-def test_success_job_completed(client: NeMoPlatform) -> None:
+def test_success_job_completed(client: NemoClient) -> None:
     """Verify success-job reached completed status."""
     job = _find_job_by_name(client, "success-job")
     assert job is not None, (
@@ -99,7 +99,7 @@ def test_success_job_completed(client: NeMoPlatform) -> None:
     assert status == "completed", f"Job 'success-job' has status '{status}', expected 'completed'."
 
 
-def test_fail_job_errored(client: NeMoPlatform) -> None:
+def test_fail_job_errored(client: NemoClient) -> None:
     """Verify fail-job reached error status (exit code 1)."""
     job = _find_job_by_name(client, "fail-job")
     assert job is not None, (
@@ -111,7 +111,7 @@ def test_fail_job_errored(client: NeMoPlatform) -> None:
     )
 
 
-def test_recovery_job_completed(client: NeMoPlatform) -> None:
+def test_recovery_job_completed(client: NemoClient) -> None:
     """Verify recovery-job reached completed status after the failure."""
     job = _find_job_by_name(client, "recovery-job")
     assert job is not None, (

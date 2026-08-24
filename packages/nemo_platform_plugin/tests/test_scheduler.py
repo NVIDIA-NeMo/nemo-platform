@@ -26,7 +26,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -724,7 +724,7 @@ class TestCompileMarker:
                     spec=_DummySpec(),
                     entity_client=None,
                     job_name=None,
-                    async_sdk=cast(AsyncNeMoPlatform, None),
+                    async_sdk=cast(AsyncNemoClient, None),
                 )
             )
 

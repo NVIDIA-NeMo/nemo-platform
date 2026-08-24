@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 import yaml
-from nemo_platform import AsyncNeMoPlatform, DefaultHttpxClient, NeMoPlatform, not_given
+from nemo_platform_plugin.client.client import AsyncNemoClient, DefaultHttpxClient, NemoClient, not_given
 from nemo_platform_ext.auth.helpers import NMPOIDCConfig, decode_jwt_claims
 from nemo_platform_ext.client.factory import create_client
 from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
@@ -311,7 +311,7 @@ class TestCreateClientWorkloadIdentity:
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
         monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
 
-        client = AsyncNeMoPlatform()
+        client = AsyncNemoClient()
 
         try:
             assert str(client.base_url).rstrip("/") == "https://api.example.com"
@@ -388,7 +388,7 @@ class TestCreateClientNoAuth:
 
 
 class TestCreateClientTimeout:
-    @patch("nemo_platform_ext.client.factory.NeMoPlatform")
+    @patch("nemo_platform_ext.client.factory.NemoClient")
     def test_default_timeout_preserves_sdk_constructor_default(self, mock_client_ctor, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 
@@ -396,7 +396,7 @@ class TestCreateClientTimeout:
 
         assert mock_client_ctor.call_args.kwargs["timeout"] is not_given
 
-    @patch("nemo_platform_ext.client.factory.NeMoPlatform")
+    @patch("nemo_platform_ext.client.factory.NemoClient")
     def test_explicit_timeout_is_forwarded(self, mock_client_ctor, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 
@@ -544,7 +544,7 @@ class TestClientConstructorBootstrapBypass:
     def test_sync_constructor_with_base_url_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
-        client = NeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
+        client = NemoClient(base_url="http://override-host:8081", workspace="test-workspace")
         try:
             assert str(client.base_url).rstrip("/") == "http://override-host:8081"
             assert client.workspace == "test-workspace"
@@ -562,7 +562,7 @@ class TestClientConstructorBootstrapBypass:
         mock_default_httpx_client.return_value = httpx.Client()
         monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
 
-        client = NeMoPlatform(base_url="https://override-host:8081", workspace="test-workspace")
+        client = NemoClient(base_url="https://override-host:8081", workspace="test-workspace")
         try:
             assert str(client.base_url).rstrip("/") == "https://override-host:8081"
         finally:
@@ -581,7 +581,7 @@ class TestClientConstructorBootstrapBypass:
             http_client=None,
         )
 
-        client = NeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
+        client = NemoClient(base_url="http://override-host:8081", workspace="test-workspace")
         try:
             assert str(client.base_url).rstrip("/") == "http://override-host:8081"
         finally:
@@ -598,7 +598,7 @@ class TestClientConstructorBootstrapBypass:
             http_client=None,
         )
 
-        client = NeMoPlatform(config_path=Path("/tmp/config.yaml"), context_name="target-context")
+        client = NemoClient(config_path=Path("/tmp/config.yaml"), context_name="target-context")
         try:
             assert str(client.base_url).rstrip("/") == "http://override-host:8081"
             assert client.workspace == "test-workspace"
@@ -609,14 +609,14 @@ class TestClientConstructorBootstrapBypass:
 
     def test_sync_constructor_rejects_legacy_context_argument(self):
         with pytest.raises(TypeError, match="unexpected keyword argument 'context'"):
-            NeMoPlatform(context="ctx-b")
+            NemoClient(context="ctx-b")
 
     @patch("nemo_platform.client.factory.build_client_init_kwargs")
     def test_sync_constructor_with_http_client_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
         http_client = httpx.Client(base_url="http://override-host:8081")
-        client = NeMoPlatform(
+        client = NemoClient(
             base_url="http://override-host:8081",
             workspace="test-workspace",
             http_client=http_client,
@@ -634,7 +634,7 @@ class TestClientConstructorBootstrapBypass:
     async def test_async_constructor_with_base_url_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
-        client = AsyncNeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
+        client = AsyncNemoClient(base_url="http://override-host:8081", workspace="test-workspace")
         try:
             assert str(client.base_url).rstrip("/") == "http://override-host:8081"
             assert client.workspace == "test-workspace"
@@ -653,7 +653,7 @@ class TestClientConstructorBootstrapBypass:
         mock_default_httpx_client.return_value = httpx.AsyncClient()
         monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
 
-        client = AsyncNeMoPlatform(base_url="https://override-host:8081", workspace="test-workspace")
+        client = AsyncNemoClient(base_url="https://override-host:8081", workspace="test-workspace")
         try:
             assert str(client.base_url).rstrip("/") == "https://override-host:8081"
         finally:
@@ -675,7 +675,7 @@ class TestClientConstructorBootstrapBypass:
             http_client=None,
         )
 
-        client = AsyncNeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
+        client = AsyncNemoClient(base_url="http://override-host:8081", workspace="test-workspace")
         try:
             assert str(client.base_url).rstrip("/") == "http://override-host:8081"
         finally:
@@ -689,7 +689,7 @@ class TestClientConstructorBootstrapBypass:
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
         http_client = httpx.AsyncClient(base_url="http://override-host:8081")
-        client = AsyncNeMoPlatform(
+        client = AsyncNemoClient(
             base_url="http://override-host:8081",
             workspace="test-workspace",
             http_client=http_client,
@@ -712,7 +712,7 @@ class TestClientConstructorBootstrapBypass:
             http_client=None,
         )
 
-        client = AsyncNeMoPlatform(config_path=Path("/tmp/config.yaml"), context_name="target-context")
+        client = AsyncNemoClient(config_path=Path("/tmp/config.yaml"), context_name="target-context")
         try:
             assert str(client.base_url).rstrip("/") == "http://override-host:8081"
             assert client.workspace == "test-workspace"
@@ -722,13 +722,13 @@ class TestClientConstructorBootstrapBypass:
         assert mock_build_client_kwargs.call_args.kwargs["context_name"] == "target-context"
 
 
-class TestAsyncNeMoPlatformInit:
+class TestAsyncNemoClientInit:
     @pytest.mark.asyncio
     @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
     async def test_async_client_uses_config_for_api_key(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 
-        client = AsyncNeMoPlatform(config_path=config_path)
+        client = AsyncNemoClient(config_path=config_path)
         try:
             assert str(client.base_url).rstrip("/") == "http://localhost:8080"
             assert client.workspace == "test-workspace"
@@ -745,7 +745,7 @@ class TestPluginSDKMounting:
         plugin_discovery = SimpleNamespace(discover_sdk=MagicMock(return_value={"example": plugin_container}))
 
         with patch.dict(sys.modules, {"nemo_platform_plugin.discovery": plugin_discovery}):
-            client = NeMoPlatform(base_url="http://localhost:8080", workspace="test-workspace")
+            client = NemoClient(base_url="http://localhost:8080", workspace="test-workspace")
 
             assert client.example is plugin_resource
             assert client.example is plugin_resource
@@ -761,7 +761,7 @@ class TestPluginSDKMounting:
         plugin_discovery = SimpleNamespace(discover_sdk=MagicMock(return_value={"example": plugin_container}))
 
         with patch.dict(sys.modules, {"nemo_platform_plugin.discovery": plugin_discovery}):
-            client = AsyncNeMoPlatform(base_url="http://localhost:8080", workspace="test-workspace")
+            client = AsyncNemoClient(base_url="http://localhost:8080", workspace="test-workspace")
 
             assert client.example is plugin_resource
             assert client.example is plugin_resource
@@ -774,7 +774,7 @@ class TestPluginSDKMounting:
         plugin_discovery = SimpleNamespace(discover_sdk=MagicMock(return_value={"example": plugin_container}))
 
         with patch.dict(sys.modules, {"nemo_platform_plugin.discovery": plugin_discovery}):
-            client = NeMoPlatform(base_url="http://localhost:8080", workspace="test-workspace")
+            client = NemoClient(base_url="http://localhost:8080", workspace="test-workspace")
 
             with pytest.raises(AttributeError, match="example"):
                 _ = client.example
@@ -787,7 +787,7 @@ class TestPluginSDKMounting:
         plugin_discovery = SimpleNamespace(discover_sdk=MagicMock(return_value={"example": plugin_container}))
 
         with patch.dict(sys.modules, {"nemo_platform_plugin.discovery": plugin_discovery}):
-            client = AsyncNeMoPlatform(base_url="http://localhost:8080", workspace="test-workspace")
+            client = AsyncNemoClient(base_url="http://localhost:8080", workspace="test-workspace")
 
             with pytest.raises(AttributeError, match="example"):
                 _ = client.example
@@ -805,7 +805,7 @@ class TestPluginSDKMounting:
             refresh_token="refresh_abc",
         )
 
-        client = AsyncNeMoPlatform(config_path=config_path)
+        client = AsyncNemoClient(config_path=config_path)
         try:
             httpx_client = client._client
             assert len(httpx_client._event_hooks["request"]) == 1

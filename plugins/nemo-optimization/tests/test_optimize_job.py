@@ -11,7 +11,7 @@ import pytest
 import yaml
 from nemo_optimization.jobs.optimize import OptimizeJob
 from nemo_optimization.schemas.optimize import OptimizeSpec
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.run_dependencies import LocalRunError
@@ -130,7 +130,7 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
                 "agent": "react-agent",
             },
             ctx=ctx,
-            sdk=cast(NeMoPlatform, _StubSDK()),
+            sdk=cast(NemoClient, _StubSDK()),
         )
 
     agent_config = dispatch.call_args.kwargs["agent_config"]

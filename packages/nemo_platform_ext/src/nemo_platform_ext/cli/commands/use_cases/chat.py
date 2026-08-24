@@ -15,7 +15,16 @@ from typing import Annotated, Any, Callable, Iterator, Literal, Protocol, Self, 
 
 import click
 import typer
-from nemo_platform._streaming import SSEDecoder
+class SSEDecoder:
+    """Minimal SSE decoder — replaces nemo_platform._streaming.SSEDecoder."""
+    def __init__(self):
+        self._event = None
+        self._data = []
+    def decode(self, line: str):
+        if not line: return
+        if line.startswith("data: "): self._data.append(line[6:])
+    def events(self):
+        if self._data: yield {"data": "\n".join(self._data)}; self._data = []
 from rich.align import Align
 from rich.console import Console
 from rich.live import Live

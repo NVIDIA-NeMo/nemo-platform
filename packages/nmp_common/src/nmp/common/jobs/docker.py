@@ -3,7 +3,7 @@
 
 """Docker-specific job validation compatibility wrapper."""
 
-from nemo_platform.types.jobs import PlatformJobSpecParam
+from nemo_platform_plugin.jobs.schemas import PlatformJobSpecParam
 from nemo_platform_plugin.jobs.docker import spec_has_gpu_step as spec_has_gpu_step
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker as _plugin_validate
 

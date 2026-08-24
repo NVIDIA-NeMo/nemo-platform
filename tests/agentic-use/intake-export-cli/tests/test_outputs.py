@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from trace_reader import get_session
 
 WORKSPACE = "intake-export-workspace"
@@ -35,8 +35,8 @@ def _intake_url(path: str) -> str:
 
 
 @pytest.fixture
-def nmp_client() -> NeMoPlatform:
-    return NeMoPlatform(base_url=_base_url(), workspace=WORKSPACE)
+def nmp_client() -> NemoClient:
+    return NemoClient(base_url=_base_url(), workspace=WORKSPACE)
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def http() -> httpx.Client:
     return httpx.Client(base_url=_base_url(), timeout=30)
 
 
-def test_workspace_exists(nmp_client: NeMoPlatform) -> None:
+def test_workspace_exists(nmp_client: NemoClient) -> None:
     """Test that the intake-export-workspace was created."""
     response = nmp_client.workspaces.list()
     workspace_names = [ws.name for ws in response.data]

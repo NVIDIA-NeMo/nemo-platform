@@ -4,7 +4,7 @@
 """In-memory cache for VirtualModel entities.
 
 VirtualModels are fetched from the IGW's own VirtualModel API via the platform SDK
-(``sdk.inference.virtual_models.list(workspace="-")``), following the same pattern used by
+(``sdk.inference.virtual_models.list_virtual_models(workspace="-")``), following the same pattern used by
 :mod:`model_cache` for ``ModelProvider``\\ s.
 
 The cache is refreshed by :func:`refresh_virtual_model_cache`, which is called from
@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
-from nemo_platform.types.inference.virtual_model import VirtualModel
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoTransportError, NemoHTTPError
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel
 from nmp.core.inference_gateway.api.middleware_registry import (
     MiddlewareConfigRef,
     PrefetchResult,
@@ -117,12 +118,12 @@ class VirtualModelCache:
 
 async def refresh_virtual_model_cache(
     cache: VirtualModelCache,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     registry: MiddlewareRegistry | None = None,
 ) -> None:
     """Fetch all VirtualModels from the IGW's own API, rebuild *cache*, and notify *registry*.
 
-    Calls ``sdk.inference.virtual_models.list(workspace="-")`` (cross-workspace) and iterates
+    Calls ``sdk.inference.virtual_models.list_virtual_models(workspace="-")`` (cross-workspace) and iterates
     all pages.  On any error a :class:`VirtualModelCacheRefreshError` is raised;
     callers are responsible for logging and deciding whether to retry.
 
@@ -147,12 +148,12 @@ async def refresh_virtual_model_cache(
     """
     try:
         virtual_models: list[VirtualModel] = []
-        paginator = sdk.inference.virtual_models.list(workspace="-", page_size=200)
+        paginator = sdk.inference.virtual_models.list_virtual_models(workspace="-", page_size=200)
         async for vm in paginator:
             # Skip VMs with missing workspace/name — they cannot be keyed in the map
             if vm.workspace and vm.name:
                 virtual_models.append(vm)
-    except (APIConnectionError, APIStatusError) as exc:
+    except (NemoTransportError, NemoHTTPError) as exc:
         raise VirtualModelCacheRefreshError(f"Error refreshing VirtualModel cache from API: {exc}") from exc
     except Exception as exc:
         raise VirtualModelCacheRefreshError(f"Unexpected error refreshing VirtualModel cache: {exc}") from exc

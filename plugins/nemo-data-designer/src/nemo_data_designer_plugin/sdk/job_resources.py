@@ -19,8 +19,8 @@ from nemo_data_designer_plugin.sdk import http
 from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError, extract_http_error_info
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.models.types import PlatformJobStatus
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
 from typing_extensions import Self
 
@@ -101,7 +101,7 @@ class _WaitLogCollector:
 
 @with_logging
 class DataDesignerJobResource(WithRecordSamplerMixin):
-    def __init__(self, *, job_name: str, platform: NeMoPlatform, workspace: str | None):
+    def __init__(self, *, job_name: str, platform: NemoClient, workspace: str | None):
         self._job_name = job_name
         self._platform = platform
         self._workspace = workspace
@@ -317,7 +317,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
 
 @with_logging
 class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
-    def __init__(self, *, job_name: str, platform: AsyncNeMoPlatform, workspace: str | None):
+    def __init__(self, *, job_name: str, platform: AsyncNemoClient, workspace: str | None):
         self._job_name = job_name
         self._platform = platform
         self._workspace = workspace

@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, local_path_from_uri
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ async def stage_task_template(
     experiment_dir: Path,
     task_template: DatasetRef,
     *,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     workspace: str,
 ) -> DatasetRef:
     """Refresh a local or Fileset-backed task template in experiment-local staging."""
@@ -102,7 +102,7 @@ async def stage_eval_author_inputs(
     train_dataset: DatasetRef,
     validation_dataset: DatasetRef,
     task_template: DatasetRef,
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     workspace: str,
 ) -> _StagedEvalAuthorInputs:
     """Stage mutable Eval Author inputs beneath the experiment directory."""

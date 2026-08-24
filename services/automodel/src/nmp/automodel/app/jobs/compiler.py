@@ -5,7 +5,7 @@
 
 import logging
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.jobs.api_factory import (
@@ -268,7 +268,7 @@ def _build_model_entity_config(
 async def _resolve_deployment_config_ref(
     config_ref: str,
     workspace: str,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> ModelDeploymentConfig:
     """Resolve a ``name`` or ``workspace/name`` string to a ModelDeploymentConfig."""
     ref = parse_entity_ref(config_ref, default_workspace=workspace)
@@ -287,7 +287,7 @@ async def _resolve_deployment_config_ref(
 async def _validate_deployment_config(
     workspace: str,
     transformed_spec: CustomizationJobOutput,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     auth_client: AuthClient,
 ) -> None:
     """Validate deployment_config consistency before training starts.
@@ -361,7 +361,7 @@ async def _validate_deployment_config(
 async def platform_job_config_compiler(
     workspace: str,
     job_spec: CustomizationJobOutput,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
 ) -> PlatformJobSpec:
     """Compile canonical job spec into a four-step PlatformJobSpec."""
     transformed_spec = job_spec

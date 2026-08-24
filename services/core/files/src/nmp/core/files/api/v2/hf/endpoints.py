@@ -12,7 +12,7 @@ All endpoints assume model repo type (the default in huggingface_hub).
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import (
@@ -77,7 +77,7 @@ async def head_file(
     path: str,
     entity_store: EntityClient = Depends(get_entity_client),
     config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> Response:
     """Get file metadata without downloading content."""
@@ -121,7 +121,7 @@ async def download_file(
     background_tasks: BackgroundTasks,
     entity_store: EntityClient = Depends(get_entity_client),
     config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> Response:
     """Download file content with Range support."""
@@ -163,7 +163,7 @@ async def get_repo_info(
     workspace: str,
     name: str,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> HfRepoInfo:
     """Get repository metadata including file list."""
@@ -194,7 +194,7 @@ async def get_repo_info_at_revision(
     name: str,
     revision: str,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> HfRepoInfo:
     """Get repository metadata including file list (revision is ignored)."""
@@ -225,7 +225,7 @@ async def get_tree(
     name: str,
     revision: str,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> list[HfTreeEntry]:
     """List files in repository."""
@@ -256,7 +256,7 @@ async def get_paths_info(
     revision: str,
     request_body: PathsInfoRequest,
     entity_store: EntityClient = Depends(get_entity_client),
-    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    sdk: AsyncNemoClient = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> list[PathInfo]:
     """Get info for specific file paths."""

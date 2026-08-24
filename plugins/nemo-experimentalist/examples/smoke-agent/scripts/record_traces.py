@@ -26,7 +26,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
     HarborNativeOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
-from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.client import AsyncNemoClient, NotFoundError
 
 AGENT_NAME = "smoke-agent"
 AGENT_VERSION = "1.0.0"
@@ -36,7 +36,7 @@ POLL_DELAY_SECONDS = 2.0
 
 
 async def _upload_trials(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     trials: list[TrialResult],
     *,
     workspace: str,
@@ -78,7 +78,7 @@ async def _upload_trials(
     return trace_ids
 
 
-async def _wait_retrievable(client: AsyncNeMoPlatform, workspace: str, trace_ids: set[str]) -> None:
+async def _wait_retrievable(client: AsyncNemoClient, workspace: str, trace_ids: set[str]) -> None:
     """Block until every trace id resolves, or raise once the budget is spent."""
     pending = set(trace_ids)
     for _ in range(POLL_ATTEMPTS):

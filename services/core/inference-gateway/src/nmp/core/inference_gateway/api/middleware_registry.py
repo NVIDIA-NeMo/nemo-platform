@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from fastapi import HTTPException
-from nemo_platform.types.inference.middleware_call import MiddlewareCall as SDKMiddlewareCall
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.models.types.middleware_call import MiddlewareCall as SDKMiddlewareCall
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.discovery import discover_inference_middleware
 from nemo_platform_plugin.inference_middleware import (
     BackendFormat,

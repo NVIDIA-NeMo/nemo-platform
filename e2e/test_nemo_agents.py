@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
@@ -112,7 +112,7 @@ def _assert_deployment_status(status: str) -> None:
 
 
 def _get_agents_page(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     workspace: str,
     *,
     params: dict[str, Any] | None = None,
@@ -125,30 +125,30 @@ def _get_agents_page(
     return response.json()
 
 
-def _delete_agent_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> None:
+def _delete_agent_if_exists(sdk: NemoClient, *, workspace: str, name: str) -> None:
     try:
-        sdk.agents.delete(name, workspace=workspace)
+        sdk.agents.delete_agent(name, workspace=workspace)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 404:
             raise
 
 
-def _delete_deployment_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> None:
+def _delete_deployment_if_exists(sdk: NemoClient, *, workspace: str, name: str) -> None:
     try:
-        sdk.agents.deployments.delete(name, workspace=workspace)
+        sdk.agents.delete_deployment(name, workspace=workspace)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             return
         if exc.response.status_code in {409, 500}:
             try:
-                sdk.agents.deployments.get(name, workspace=workspace)
+                sdk.agents.get_deployment(name, workspace=workspace)
             except httpx.HTTPStatusError as get_exc:
                 if get_exc.response.status_code == 404:
                     return
         raise
 
 
-def _get_deployment_log_text(sdk: NeMoPlatform, *, workspace: str, name: str) -> str:
+def _get_deployment_log_text(sdk: NemoClient, *, workspace: str, name: str) -> str:
     try:
         response = sdk._client.get(
             f"/apis/agents/v2/workspaces/{workspace}/deployments/{name}/logs",
@@ -164,7 +164,7 @@ def _get_deployment_log_text(sdk: NeMoPlatform, *, workspace: str, name: str) ->
 
 
 def _wait_for_deployment_deleted(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -175,7 +175,7 @@ def _wait_for_deployment_deleted(
 
     while time.monotonic() < deadline:
         try:
-            deployment = sdk.agents.deployments.get(name, workspace=workspace)
+            deployment = sdk.agents.get_deployment(name, workspace=workspace)
             last_status = deployment.get("status")
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
@@ -188,7 +188,7 @@ def _wait_for_deployment_deleted(
 
 
 def _wait_for_deployment_running(
-    sdk: NeMoPlatform,
+    sdk: NemoClient,
     *,
     workspace: str,
     name: str,
@@ -198,7 +198,7 @@ def _wait_for_deployment_running(
     last_deployment: dict[str, Any] | None = None
 
     while time.monotonic() < deadline:
-        deployment = sdk.agents.deployments.get(name, workspace=workspace)
+        deployment = sdk.agents.get_deployment(name, workspace=workspace)
         last_deployment = deployment
         status = deployment["status"]
 
@@ -214,12 +214,12 @@ def _wait_for_deployment_running(
     pytest.fail(f"Deployment {name!r} did not reach running within {timeout_seconds}s: {last_deployment}")
 
 
-def test_agent_create_list_get_delete_lifecycle(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_create_list_get_delete_lifecycle(sdk: NemoClient, workspace: str) -> None:
     """Create, list, get, and delete an agent through the plugin SDK."""
     name = _unique_name("agent")
     config = _agent_config(name)
 
-    created = sdk.agents.create(
+    created = sdk.agents.create_agent(
         workspace=workspace,
         name=name,
         description="E2E agent lifecycle test",
@@ -232,54 +232,54 @@ def test_agent_create_list_get_delete_lifecycle(sdk: NeMoPlatform, workspace: st
     assert created["config_format"] == "nat-workflow-v1"
 
     try:
-        retrieved = sdk.agents.get(name, workspace=workspace)
+        retrieved = sdk.agents.get_agent(name, workspace=workspace)
         assert retrieved["name"] == name
         assert retrieved["config"] == config
 
-        listed = sdk.agents.list(workspace=workspace)
+        listed = sdk.agents.list_agents(workspace=workspace)
         listed_names = {agent["name"] for agent in _page_data(listed)}
         assert name in listed_names
     finally:
         _delete_agent_if_exists(sdk, workspace=workspace, name=name)
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        sdk.agents.get(name, workspace=workspace)
+        sdk.agents.get_agent(name, workspace=workspace)
     _assert_http_status(exc_info, 404)
 
 
-def test_agent_duplicate_create_returns_conflict(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_duplicate_create_returns_conflict(sdk: NemoClient, workspace: str) -> None:
     name = _unique_name("duplicate")
-    sdk.agents.create(workspace=workspace, name=name, config=_agent_config(name))
+    sdk.agents.create_agent(workspace=workspace, name=name, config=_agent_config(name))
 
     try:
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
-            sdk.agents.create(workspace=workspace, name=name, config=_agent_config(f"{name}-again"))
+            sdk.agents.create_agent(workspace=workspace, name=name, config=_agent_config(f"{name}-again"))
         _assert_http_status(exc_info, 409)
     finally:
         _delete_agent_if_exists(sdk, workspace=workspace, name=name)
 
 
-def test_agent_missing_get_and_delete_return_not_found(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_missing_get_and_delete_return_not_found(sdk: NemoClient, workspace: str) -> None:
     missing_name = _unique_name("missing")
 
     with pytest.raises(httpx.HTTPStatusError) as get_exc_info:
-        sdk.agents.get(missing_name, workspace=workspace)
+        sdk.agents.get_agent(missing_name, workspace=workspace)
     _assert_http_status(get_exc_info, 404)
 
     with pytest.raises(httpx.HTTPStatusError) as delete_exc_info:
-        sdk.agents.delete(missing_name, workspace=workspace)
+        sdk.agents.delete_agent(missing_name, workspace=workspace)
     _assert_http_status(delete_exc_info, 404)
 
 
-def test_agent_list_pagination_sorting_and_filtering(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_list_pagination_sorting_and_filtering(sdk: NemoClient, workspace: str) -> None:
     agent_names = [_unique_name(f"list-{i}") for i in range(3)]
     alternate_name = _unique_name("alternate-format")
 
     try:
         for name in agent_names:
-            sdk.agents.create(workspace=workspace, name=name, config=_agent_config(name))
+            sdk.agents.create_agent(workspace=workspace, name=name, config=_agent_config(name))
 
-        sdk.agents.create(
+        sdk.agents.create_agent(
             workspace=workspace,
             name=alternate_name,
             config=_platform_agent_config(alternate_name),
@@ -309,14 +309,14 @@ def test_agent_list_pagination_sorting_and_filtering(sdk: NeMoPlatform, workspac
             _delete_agent_if_exists(sdk, workspace=workspace, name=name)
 
 
-def test_agents_are_isolated_by_workspace(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agents_are_isolated_by_workspace(sdk: NemoClient, workspace: str) -> None:
     """Agents with the same name can exist independently in two workspaces."""
     other_workspace = _unique_name("workspace")
     agent_name = _unique_name("shared")
-    sdk.workspaces.create(name=other_workspace)
+    sdk.workspaces.create_workspace(name=other_workspace)
 
     try:
-        sdk.agents.create(
+        sdk.agents.create_agent(
             workspace=workspace,
             name=agent_name,
             description="Primary workspace agent",
@@ -324,13 +324,13 @@ def test_agents_are_isolated_by_workspace(sdk: NeMoPlatform, workspace: str) -> 
         )
 
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
-            sdk.agents.get(agent_name, workspace=other_workspace)
+            sdk.agents.get_agent(agent_name, workspace=other_workspace)
         _assert_http_status(exc_info, 404)
 
-        other_list = sdk.agents.list(workspace=other_workspace)
+        other_list = sdk.agents.list_agents(workspace=other_workspace)
         assert agent_name not in {agent["name"] for agent in _page_data(other_list)}
 
-        other_agent = sdk.agents.create(
+        other_agent = sdk.agents.create_agent(
             workspace=other_workspace,
             name=agent_name,
             description="Secondary workspace agent",
@@ -339,22 +339,22 @@ def test_agents_are_isolated_by_workspace(sdk: NeMoPlatform, workspace: str) -> 
         assert other_agent["workspace"] == other_workspace
         assert other_agent["name"] == agent_name
 
-        primary_agent = sdk.agents.get(agent_name, workspace=workspace)
+        primary_agent = sdk.agents.get_agent(agent_name, workspace=workspace)
         assert primary_agent["workspace"] == workspace
         assert primary_agent["description"] == "Primary workspace agent"
 
-        sdk.agents.delete(agent_name, workspace=workspace)
+        sdk.agents.delete_agent(agent_name, workspace=workspace)
 
-        other_agent_after_primary_delete = sdk.agents.get(agent_name, workspace=other_workspace)
+        other_agent_after_primary_delete = sdk.agents.get_agent(agent_name, workspace=other_workspace)
         assert other_agent_after_primary_delete["workspace"] == other_workspace
         assert other_agent_after_primary_delete["description"] == "Secondary workspace agent"
     finally:
         _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
         _delete_agent_if_exists(sdk, workspace=other_workspace, name=agent_name)
-        sdk.workspaces.delete(other_workspace)
+        sdk.workspaces.delete_workspace(other_workspace)
 
 
-def test_agents_sdk_resource_methods_are_available(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agents_sdk_resource_methods_are_available(sdk: NemoClient, workspace: str) -> None:
     """Verify the agents SDK resource exposes the expected subprocess-safe methods."""
     agents = sdk.agents
     for method_name in ("create", "list", "get", "delete"):
@@ -369,16 +369,16 @@ def test_agents_sdk_resource_methods_are_available(sdk: NeMoPlatform, workspace:
     assert isinstance(_page_data(deployments), list)
 
 
-def test_agents_sdk_missing_get_raises_not_found(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agents_sdk_missing_get_raises_not_found(sdk: NemoClient, workspace: str) -> None:
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        sdk.agents.get(_unique_name("sdk-missing"), workspace=workspace)
+        sdk.agents.get_agent(_unique_name("sdk-missing"), workspace=workspace)
     _assert_http_status(exc_info, 404)
 
 
 @pytest.mark.container_only
-def test_agent_deployment_missing_agent_returns_not_found(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_deployment_missing_agent_returns_not_found(sdk: NemoClient, workspace: str) -> None:
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        sdk.agents.deployments.create(
+        sdk.agents.create_deployment(
             workspace=workspace,
             agent=_unique_name("missing-agent"),
             name=_unique_name("missing-agent-deployment"),
@@ -387,13 +387,13 @@ def test_agent_deployment_missing_agent_returns_not_found(sdk: NeMoPlatform, wor
 
 
 @pytest.mark.container_only
-def test_agent_deployment_create_list_get_delete_lifecycle(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_deployment_create_list_get_delete_lifecycle(sdk: NemoClient, workspace: str) -> None:
     agent_name = _unique_name("deployment-agent")
     deployment_name = _unique_name("deployment")
-    sdk.agents.create(workspace=workspace, name=agent_name, config=_agent_config(agent_name))
+    sdk.agents.create_agent(workspace=workspace, name=agent_name, config=_agent_config(agent_name))
 
     try:
-        created = sdk.agents.deployments.create(
+        created = sdk.agents.create_deployment(
             workspace=workspace,
             agent=agent_name,
             name=deployment_name,
@@ -403,11 +403,11 @@ def test_agent_deployment_create_list_get_delete_lifecycle(sdk: NeMoPlatform, wo
         assert created["agent"] == agent_name
         _assert_deployment_status(created["status"])
 
-        deployments = sdk.agents.deployments.list(workspace=workspace)
+        deployments = sdk.agents.list_deployments(workspace=workspace)
         deployment_names = {deployment["name"] for deployment in _page_data(deployments)}
         assert deployment_name in deployment_names
 
-        retrieved = sdk.agents.deployments.get(deployment_name, workspace=workspace)
+        retrieved = sdk.agents.get_deployment(deployment_name, workspace=workspace)
         assert retrieved["name"] == deployment_name
         assert retrieved["workspace"] == workspace
         assert retrieved["agent"] == agent_name
@@ -419,18 +419,18 @@ def test_agent_deployment_create_list_get_delete_lifecycle(sdk: NeMoPlatform, wo
         _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        sdk.agents.deployments.get(deployment_name, workspace=workspace)
+        sdk.agents.get_deployment(deployment_name, workspace=workspace)
     _assert_http_status(exc_info, 404)
 
 
 @pytest.mark.container_only
-def test_agent_delete_is_blocked_while_deployment_is_active(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_delete_is_blocked_while_deployment_is_active(sdk: NemoClient, workspace: str) -> None:
     agent_name = _unique_name("blocked-delete-agent")
     deployment_name = _unique_name("blocked-delete-deployment")
-    sdk.agents.create(workspace=workspace, name=agent_name, config=_agent_config(agent_name))
+    sdk.agents.create_agent(workspace=workspace, name=agent_name, config=_agent_config(agent_name))
 
     try:
-        deployment = sdk.agents.deployments.create(
+        deployment = sdk.agents.create_deployment(
             workspace=workspace,
             agent=agent_name,
             name=deployment_name,
@@ -438,10 +438,10 @@ def test_agent_delete_is_blocked_while_deployment_is_active(sdk: NeMoPlatform, w
         _assert_deployment_status(deployment["status"])
 
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
-            sdk.agents.delete(agent_name, workspace=workspace)
+            sdk.agents.delete_agent(agent_name, workspace=workspace)
         _assert_http_status(exc_info, 409)
 
-        agent = sdk.agents.get(agent_name, workspace=workspace)
+        agent = sdk.agents.get_agent(agent_name, workspace=workspace)
         assert agent["name"] == agent_name
     finally:
         _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name)
@@ -450,9 +450,9 @@ def test_agent_delete_is_blocked_while_deployment_is_active(sdk: NeMoPlatform, w
 
 
 @pytest.mark.container_only
-def test_agent_gateway_missing_deployment_returns_not_found(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_gateway_missing_deployment_returns_not_found(sdk: NemoClient, workspace: str) -> None:
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        sdk.agents.invoke(
+        sdk.agents.invoke_agent(
             workspace=workspace,
             deployment=_unique_name("missing-deployment"),
             input="hello",
@@ -461,7 +461,7 @@ def test_agent_gateway_missing_deployment_returns_not_found(sdk: NeMoPlatform, w
 
 
 @pytest.mark.container_only
-def test_agent_deployment_reaches_running(sdk: NeMoPlatform, workspace: str) -> None:
+def test_agent_deployment_reaches_running(sdk: NemoClient, workspace: str) -> None:
     agent_name = _unique_name("running-agent")
     deployment_name = _unique_name("running-deployment")
     model_name = _unique_name("agent-model")
@@ -476,14 +476,14 @@ def test_agent_deployment_reaches_running(sdk: NeMoPlatform, workspace: str) -> 
         },
         served_models={model_name: model_name},
     )
-    sdk.agents.create(
+    sdk.agents.create_agent(
         workspace=workspace,
         name=agent_name,
         config=_mock_backed_agent_config(f"{workspace}/{model_name}"),
     )
 
     try:
-        sdk.agents.deployments.create(
+        sdk.agents.create_deployment(
             workspace=workspace,
             agent=agent_name,
             name=deployment_name,

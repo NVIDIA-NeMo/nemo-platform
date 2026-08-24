@@ -24,7 +24,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
     HarborNativeOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
-from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.client import AsyncNemoClient, NotFoundError
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parents[1]
@@ -129,7 +129,7 @@ def _write_upload_summary(
 
 
 async def _upload_trials(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     trials: list[TrialResult],
     *,
     workspace: str,
@@ -173,7 +173,7 @@ async def _upload_trials(
 
 
 async def _wait_for_traces(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     trace_ids: set[str],
     *,
     workspace: str,

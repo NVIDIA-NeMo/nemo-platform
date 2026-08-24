@@ -6,7 +6,7 @@
 from logging import getLogger
 from typing import Dict, Self
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.core.models.controllers.backends.backends import ServiceBackend
 
 # NOTE: import the config model from the plugin-free `config` module (not the
@@ -82,7 +82,7 @@ class BackendRegistry:
     @classmethod
     def from_config(
         cls,
-        nmp_sdk: AsyncNeMoPlatform,
+        nmp_sdk: AsyncNemoClient,
         backend_configs: Dict[BackendName, BackendConfig],
         huggingface_model_puller: str,
         available_backends: Dict[BackendName, type[ServiceBackend]] | None = None,

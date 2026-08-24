@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -317,7 +317,7 @@ def _build_training_step(
 async def platform_job_config_compiler(
     workspace: str,
     job_spec: RlJobOutput,
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNemoClient,
     *,
     job_name: str | None = None,
     profile: str | None = None,

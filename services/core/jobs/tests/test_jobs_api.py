@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.entities import ALL_WORKSPACES, DEFAULT_WORKSPACE
 from nmp.common.entities.client import EntityValidationError
 from nmp.common.jobs.schemas import PlatformJobStatus
@@ -84,7 +84,7 @@ def expected_translated_executor_dump() -> Dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_create_job_using_sdk(test_sdk: AsyncNeMoPlatform):
+async def test_create_job_using_sdk(test_sdk: AsyncNemoClient):
     job = await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
         name="test-job",
@@ -185,7 +185,7 @@ def test_step_name_validation(step_name: str, should_pass: bool):
 
 @pytest.mark.asyncio
 @pytest.mark.skip("This is an integration test that requires secrets service.")
-async def test_create_job_with_secrets(test_sdk: AsyncNeMoPlatform):
+async def test_create_job_with_secrets(test_sdk: AsyncNemoClient):
     job = await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE,
         name="test-job",
@@ -1013,7 +1013,7 @@ async def test_job_paging(test_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_job_result_crud(test_sdk: AsyncNeMoPlatform, sample_platform_job_request: CreatePlatformJobRequest):
+async def test_job_result_crud(test_sdk: AsyncNemoClient, sample_platform_job_request: CreatePlatformJobRequest):
     sdk_job_resp = await test_sdk.jobs.create(
         workspace=DEFAULT_WORKSPACE, **to_sdk_create_params(sample_platform_job_request)
     )  # type: ignore
@@ -1051,7 +1051,7 @@ async def test_job_result_crud(test_sdk: AsyncNeMoPlatform, sample_platform_job_
 
 @pytest.mark.asyncio
 async def test_job_result_download(
-    test_sdk: AsyncNeMoPlatform,
+    test_sdk: AsyncNemoClient,
     sample_platform_job_request: CreatePlatformJobRequest,
     mock_result_manager,
     tmp_path: Path,
@@ -1110,7 +1110,7 @@ async def test_job_result_download(
 @pytest.mark.asyncio
 async def test_job_status_details_crud(
     test_client: AsyncClient,
-    test_sdk: AsyncNeMoPlatform,
+    test_sdk: AsyncNemoClient,
     sample_platform_job_request: CreatePlatformJobRequest,
 ):
     original_details = {"progress": 50, "metadata": {"key": "value"}}
@@ -1531,7 +1531,7 @@ async def test_job_steps_list_global_vs_workspaced(sample_platform_job_request: 
 @pytest.mark.asyncio
 async def test_job_status_timestamps(
     test_client: AsyncClient,
-    test_sdk: AsyncNeMoPlatform,
+    test_sdk: AsyncNemoClient,
     sample_platform_job_request: CreatePlatformJobRequest,
 ):
     """Test that created_at and updated_at are present at job, step, and task levels in status response."""

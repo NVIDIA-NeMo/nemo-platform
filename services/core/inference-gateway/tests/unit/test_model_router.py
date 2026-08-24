@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.models.types import ModelProvider, ServedModelMapping
+from nemo_platform_plugin.models.types.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.inference_middleware import ImmediateResponse, InferenceRequest, NemoInferenceMiddleware
 from nmp.core.inference_gateway.api.dependencies import (
     global_middleware_registry,

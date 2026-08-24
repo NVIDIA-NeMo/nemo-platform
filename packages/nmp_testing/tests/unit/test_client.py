@@ -95,11 +95,11 @@ def test_mock_provider_response_defaults():
 
 
 def test_create_test_client_returns_sdk_by_default():
-    """Test that create_test_client returns NeMoPlatform SDK by default."""
-    from nemo_platform import NeMoPlatform
+    """Test that create_test_client returns NemoClient SDK by default."""
+    from nemo_platform_plugin.client.client import NemoClient
 
     with create_test_client(EntitiesService) as client:
-        assert isinstance(client, NeMoPlatform)
+        assert isinstance(client, NemoClient)
 
 
 def test_create_test_client_returns_client_context():
@@ -114,7 +114,7 @@ def test_create_test_client_creates_default_workspace():
     """Test that create_test_client creates default workspace."""
     with create_test_client(EntitiesService, client_type=ClientContext) as ctx:
         # Default workspace should exist
-        workspace = ctx.sdk.workspaces.retrieve(name="default")
+        workspace = ctx.sdk.workspaces.get_workspace(name="default")
         assert workspace.name == "default"
 
 

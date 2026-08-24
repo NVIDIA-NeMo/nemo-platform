@@ -22,7 +22,7 @@ from nemo_anonymizer_plugin.app.model_configs import SelectedModelsOverrides
 from nemo_anonymizer_plugin.app.task_config import AnonymizerRequest, AnonymizerStepConfig
 from nemo_anonymizer_plugin.jobs import run as run_module
 from nemo_anonymizer_plugin.jobs.run import RunJob
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -71,7 +71,7 @@ async def test_run_job_rejects_selected_models_without_model_configs(
             request,
             workspace="team-a",
             entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            async_sdk=AsyncMock(spec=AsyncNemoClient),
             is_local=False,
         )
 
@@ -97,7 +97,7 @@ async def test_run_job_wraps_shared_provider_config_errors(
             request,
             workspace="team-a",
             entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            async_sdk=AsyncMock(spec=AsyncNemoClient),
             is_local=False,
         )
 
@@ -117,7 +117,7 @@ async def test_run_submit_requires_model_configs(
             request,
             workspace="team-a",
             entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            async_sdk=AsyncMock(spec=AsyncNemoClient),
             is_local=False,
         )
 
@@ -139,7 +139,7 @@ async def test_run_local_allows_missing_model_configs(
         request,
         workspace="team-a",
         entity_client=object(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+        async_sdk=AsyncMock(spec=AsyncNemoClient),
         is_local=True,
     )
 
@@ -168,7 +168,7 @@ async def test_run_local_model_configs_uses_injected_async_sdk(
     )
     monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
     monkeypatch.setattr(context_module, "make_local_first_model_provider_registry", local_first_lookup)
-    async_sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    async_sdk = AsyncMock(spec=AsyncNemoClient)
 
     step_config = await RunJob.to_spec(
         request,
@@ -204,7 +204,7 @@ async def test_run_local_serialized_step_config_can_be_revalidated(
         request,
         workspace="team-a",
         entity_client=object(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+        async_sdk=AsyncMock(spec=AsyncNemoClient),
         is_local=True,
     )
 
@@ -212,7 +212,7 @@ async def test_run_local_serialized_step_config_can_be_revalidated(
     assert RunJob().run(
         step_config.model_dump(),
         ctx=ctx,
-        sdk=Mock(spec=NeMoPlatform),
+        sdk=Mock(spec=NemoClient),
         is_local=True,
     ) == {"exit_code": 0}
 
@@ -333,6 +333,6 @@ async def test_run_submit_rejects_local_file(
             request,
             workspace="team-a",
             entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            async_sdk=AsyncMock(spec=AsyncNemoClient),
             is_local=False,
         )

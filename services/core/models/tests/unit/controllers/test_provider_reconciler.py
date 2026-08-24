@@ -8,10 +8,10 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import APIStatusError, ConflictError, NotFoundError
-from nemo_platform.types.inference import ServedModelMapping
-from nemo_platform.types.inference.model_provider import ModelProvider
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.errors import NemoHTTPError, ConflictError, NotFoundError
+from nemo_platform_plugin.models.types import ServedModelMapping
+from nemo_platform_plugin.models.types.model_provider import ModelProvider
 from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.entity_cache import ModelEntityCache
@@ -96,14 +96,14 @@ def controller_config():
 
 @pytest.fixture
 def mock_models_sdk():
-    """Create a mock AsyncNeMoPlatform SDK."""
-    sdk = MagicMock(spec=AsyncNeMoPlatform)
+    """Create a mock AsyncNemoClient SDK."""
+    sdk = MagicMock(spec=AsyncNemoClient)
     # virtual_models.create must be an AsyncMock so tests that exercise the full
     # reconcile path don't fail when _ensure_passthrough_virtual_model awaits it.
     sdk.inference.virtual_models.create = AsyncMock(return_value=None)
     sdk.inference.virtual_models.delete = AsyncMock(return_value=None)
     sdk.inference.virtual_models.list = MagicMock(return_value=_AsyncPaginator([]))
-    sdk.models.list = MagicMock(return_value=_AsyncPaginator([]))
+    sdk.models.list_models = MagicMock(return_value=_AsyncPaginator([]))
     sdk.inference.gateway.provider.get = AsyncMock()
     sdk.with_options = MagicMock(return_value=sdk)
     return sdk
@@ -243,7 +243,7 @@ async def test_discover_models_uses_discovery_sdk_with_configured_retries(
     "discovery_side_effect",
     [
         pytest.param(
-            APIStatusError(
+            NemoHTTPError(
                 "Error code: 502 - {'detail': 'Backend networking error: Connection refused'}",
                 response=MagicMock(status_code=502),
                 body={"detail": "Backend networking error: Connection refused"},
@@ -376,7 +376,7 @@ async def test_query_available_models_gateway_404_provider_not_in_cache_is_trans
     mock_response = MagicMock()
     mock_response.status_code = 404
     mock_models_sdk.inference.gateway.provider.get = AsyncMock(
-        side_effect=APIStatusError(
+        side_effect=NemoHTTPError(
             "Error code: 404 - {'detail': 'Model provider not found for test-ns/test-provider'}",
             response=mock_response,
             body={"detail": "Model provider not found for test-ns/test-provider"},
@@ -401,7 +401,7 @@ async def test_query_available_models_502_backend_404_is_non_compliant(reconcile
     mock_response = MagicMock()
     mock_response.status_code = 502
     mock_models_sdk.inference.gateway.provider.get = AsyncMock(
-        side_effect=APIStatusError(
+        side_effect=NemoHTTPError(
             "Error code: 502 - {'detail': 'Backend returned 404: Not Found'}",
             response=mock_response,
             body={"detail": "Backend returned 404: Not Found"},
@@ -426,7 +426,7 @@ async def test_query_available_models_502_other_detail_is_transient(reconciler, 
     mock_response = MagicMock()
     mock_response.status_code = 502
     mock_models_sdk.inference.gateway.provider.get = AsyncMock(
-        side_effect=APIStatusError(
+        side_effect=NemoHTTPError(
             "Error code: 502 - {'detail': 'Backend networking error: Connection refused'}",
             response=mock_response,
             body={"detail": "Backend networking error: Connection refused"},
@@ -979,7 +979,7 @@ async def test_entity_cache_load_failure_propagates_and_stages_nothing(reconcile
     mock_response = MagicMock()
     mock_response.status_code = 503
     mock_models_sdk.models.list = MagicMock(
-        side_effect=APIStatusError(
+        side_effect=NemoHTTPError(
             "Service unavailable",
             response=mock_response,
             body={"detail": "upstream error"},
@@ -988,7 +988,7 @@ async def test_entity_cache_load_failure_propagates_and_stages_nothing(reconcile
     mock_models_sdk.models.create = AsyncMock()
     mock_models_sdk.models.update = AsyncMock()
 
-    with pytest.raises(APIStatusError):
+    with pytest.raises(NemoHTTPError):
         await reconciler._entity_cache.refresh()
 
     await reconciler._entity_cache.flush()

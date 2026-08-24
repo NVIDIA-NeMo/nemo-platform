@@ -14,10 +14,10 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.config import get_context
-from nemo_platform.types.inference import ModelProvider
-from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.client.config.config import get_context
+from nemo_platform_plugin.models.types import ModelProvider
+from nemo_platform_plugin.models.types import ModelEntity
 from nooa.unifiedllm import CompletionClient, UnifiedLLM
 
 _PLACEHOLDER_API_KEY = "not-needed"
@@ -85,7 +85,7 @@ def _parse_model_ref(model_ref: str) -> tuple[str, str]:
 
 
 def _completion_client(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     model_entity: ModelEntity,
     served_model_name: str,
 ) -> CompletionClient:
@@ -135,7 +135,7 @@ def _completion_client(
 
 
 async def _served_model_name(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     model_entity: ModelEntity,
     provider_cache: dict[str, ModelProvider],
 ) -> str:
@@ -157,7 +157,7 @@ async def _served_model_name(
 
 
 async def resolve_model_clients(
-    client: AsyncNeMoPlatform,
+    client: AsyncNemoClient,
     refs: ConfiguredModelRefs | None = None,
 ) -> ConfiguredModelClients:
     """Resolve configured Model Entities and construct each distinct client once."""

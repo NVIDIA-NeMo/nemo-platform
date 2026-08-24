@@ -67,13 +67,13 @@ def test_ensure_async_preserves_workspace_and_retry() -> None:
 
 def test_upload_timeout_survives_the_whole_client_chain() -> None:
     """End to end: an SDK-level timeout override reaches the client that transfers."""
-    from nemo_platform import NeMoPlatform
+    from nemo_platform_plugin.client.client import NemoClient
 
     http_client = httpx.Client(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
         timeout=httpx.Timeout(60.0),
     )
-    platform = NeMoPlatform(base_url=BASE, workspace="default", http_client=http_client)
+    platform = NemoClient(base_url=BASE, workspace="default", http_client=http_client)
 
     fs = platform.with_options(timeout=UPLOAD_TIMEOUT).files.fsspec
 

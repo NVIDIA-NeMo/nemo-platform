@@ -9,7 +9,7 @@ import json
 from unittest.mock import patch
 
 import pytest
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.sdk_provider import (
     DefaultSDKProvider,
@@ -104,7 +104,7 @@ class TestDefaultSDKProvider:
         provider = DefaultSDKProvider()
         sdk = provider.get_task_sdk("evaluator")
 
-        assert isinstance(sdk, NeMoPlatform)
+        assert isinstance(sdk, NemoClient)
         assert sdk.base_url == "http://test:9090"
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
         assert sdk.default_headers["X-NMP-Internal"] == "true"
@@ -182,7 +182,7 @@ class TestAsyncTaskSdk:
 
         sdk = DefaultSDKProvider().get_async_task_sdk("evaluator")
 
-        assert isinstance(sdk, AsyncNeMoPlatform)
+        assert isinstance(sdk, AsyncNemoClient)
         assert sdk.base_url == "http://test:9090"
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
         assert sdk.default_headers["X-NMP-Internal"] == "true"
@@ -243,11 +243,11 @@ class TestAsyncTaskSdk:
 
 
 class _CustomProvider:
-    def get_task_sdk(self, service_name: str) -> NeMoPlatform:
-        return NeMoPlatform(base_url="http://custom:1234")
+    def get_task_sdk(self, service_name: str) -> NemoClient:
+        return NemoClient(base_url="http://custom:1234")
 
-    def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
-        return NeMoPlatform(base_url="http://custom:1234")
+    def get_platform_sdk(self, **kwargs) -> NemoClient:
+        return NemoClient(base_url="http://custom:1234")
 
 
 class _FakeEntryPoint:

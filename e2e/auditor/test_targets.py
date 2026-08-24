@@ -5,12 +5,12 @@
 
 import httpx
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 
 from e2e.auditor.utils import minimal_audit_target, unique_name
 
 
-def _list_raw(sdk: NeMoPlatform, workspace: str, auditor_url: str, **params) -> dict:
+def _list_raw(sdk: NemoClient, workspace: str, auditor_url: str, **params) -> dict:
     resp = sdk.auditor._http_client.get(
         f"{auditor_url}/v2/workspaces/{workspace}/targets",
         params=params,
@@ -19,11 +19,11 @@ def _list_raw(sdk: NeMoPlatform, workspace: str, auditor_url: str, **params) -> 
     return resp.json()
 
 
-def test_target_create_and_get(sdk: NeMoPlatform, workspace: str) -> None:
+def test_target_create_and_get(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("tgt-cg")
     body = minimal_audit_target(description="create-and-get target", type="nim", model="meta/llama-3.1-8b-instruct")
 
-    created = sdk.auditor.targets.create(workspace=workspace, name=name, **body)
+    created = sdk.auditor.create_audit_target(workspace=workspace, name=name, **body)
 
     assert created.name == name
     assert created.workspace == workspace
@@ -33,32 +33,32 @@ def test_target_create_and_get(sdk: NeMoPlatform, workspace: str) -> None:
 
     # Note: id/created_at are not populated by the auditor SDK (raw httpx + model_validate
     # cannot set the private _id PrivateAttr). Use name for cross-call identity checks.
-    retrieved = sdk.auditor.targets.get(workspace=workspace, name=name)
+    retrieved = sdk.auditor.get_audit_target(workspace=workspace, name=name)
     assert retrieved.name == name
     assert retrieved.type == "nim"
     assert retrieved.model == "meta/llama-3.1-8b-instruct"
 
 
-def test_target_list_contains_created(sdk: NeMoPlatform, workspace: str) -> None:
+def test_target_list_contains_created(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("tgt-list")
 
-    sdk.auditor.targets.create(workspace=workspace, name=name, **minimal_audit_target())
+    sdk.auditor.create_audit_target(workspace=workspace, name=name, **minimal_audit_target())
 
-    page = sdk.auditor.targets.list(workspace=workspace, page_size=100)
+    page = sdk.auditor.list_audit_targets(workspace=workspace, page_size=100)
     names = [item["name"] for item in page["data"]]
     assert name in names
 
 
-def test_target_update(sdk: NeMoPlatform, workspace: str) -> None:
+def test_target_update(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("tgt-upd")
 
-    sdk.auditor.targets.create(
+    sdk.auditor.create_audit_target(
         workspace=workspace,
         name=name,
         **minimal_audit_target(description="original", model="gpt-4o-mini"),
     )
 
-    updated = sdk.auditor.targets.update(
+    updated = sdk.auditor.update_audit_target(
         workspace=workspace,
         name=name,
         **minimal_audit_target(description="updated", model="gpt-4o"),
@@ -69,28 +69,28 @@ def test_target_update(sdk: NeMoPlatform, workspace: str) -> None:
     assert updated.model == "gpt-4o"
 
 
-def test_target_delete(sdk: NeMoPlatform, workspace: str) -> None:
+def test_target_delete(sdk: NemoClient, workspace: str) -> None:
     name = unique_name("tgt-del")
-    sdk.auditor.targets.create(workspace=workspace, name=name, **minimal_audit_target())
+    sdk.auditor.create_audit_target(workspace=workspace, name=name, **minimal_audit_target())
 
-    sdk.auditor.targets.delete(workspace=workspace, name=name)
+    sdk.auditor.delete_audit_target(workspace=workspace, name=name)
 
     # Auditor SDK uses raw httpx, so errors surface as httpx.HTTPStatusError.
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        sdk.auditor.targets.get(workspace=workspace, name=name)
+        sdk.auditor.get_audit_target(workspace=workspace, name=name)
     assert exc_info.value.response.status_code == 404
 
 
-def test_target_filter_by_type(sdk: NeMoPlatform, workspace: str, auditor_url: str) -> None:
+def test_target_filter_by_type(sdk: NemoClient, workspace: str, auditor_url: str) -> None:
     nim_name = unique_name("tgt-nim")
     openai_name = unique_name("tgt-oai")
 
-    sdk.auditor.targets.create(
+    sdk.auditor.create_audit_target(
         workspace=workspace,
         name=nim_name,
         **minimal_audit_target(type="nim", model="meta/llama-3.1-8b-instruct"),
     )
-    sdk.auditor.targets.create(
+    sdk.auditor.create_audit_target(
         workspace=workspace,
         name=openai_name,
         **minimal_audit_target(type="openai", model="gpt-4o-mini"),

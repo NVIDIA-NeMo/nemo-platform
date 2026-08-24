@@ -14,7 +14,7 @@ def base_url() -> str:
 
 
 def make_sdk(base: str):
-    """Construct a NeMoPlatform SDK client against *base*."""
-    from nemo_platform import NeMoPlatform  # lazy: keeps `doctor`/`setup` import light
+    """Construct a NemoClient SDK client against *base*."""
+    from nemo_platform_plugin.client.client import NemoClient  # lazy: keeps `doctor`/`setup` import light
 
-    return NeMoPlatform(base_url=base)
+    return NemoClient(base_url=base)

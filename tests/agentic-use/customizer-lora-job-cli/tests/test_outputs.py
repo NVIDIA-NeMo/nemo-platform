@@ -13,7 +13,7 @@ import os
 from typing import Any
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 
@@ -35,9 +35,9 @@ def _make_unsigned_jwt() -> str:
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> NemoClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(
+    return NemoClient(
         base_url=nmp_base_url,
         workspace=WORKSPACE,
         access_token=_make_unsigned_jwt(),
@@ -45,11 +45,11 @@ def client() -> NeMoPlatform:
 
 
 @pytest.fixture
-def files_client(client: NeMoPlatform) -> FilesClient:
+def files_client(client: NemoClient) -> FilesClient:
     return client_from_platform(client, FilesClient)
 
 
-def _list_automodel_jobs(client: NeMoPlatform) -> list[dict[str, Any]]:
+def _list_automodel_jobs(client: NemoClient) -> list[dict[str, Any]]:
     """List automodel customization jobs in the eval workspace."""
     url = f"{str(client.base_url).rstrip('/')}/apis/customization/v2/workspaces/{WORKSPACE}/automodel/jobs"
     response = client._client.get(url)
@@ -59,7 +59,7 @@ def _list_automodel_jobs(client: NeMoPlatform) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else []
 
 
-def test_workspace_exists(client: NeMoPlatform):
+def test_workspace_exists(client: NemoClient):
     """Verify the lora-training-workspace exists."""
     response = client.workspaces.list()
     workspace_names = [ws.name for ws in response.data]
@@ -72,19 +72,19 @@ def test_fileset_exists(files_client: FilesClient):
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 
-def test_fileset_has_data(client: NeMoPlatform):
+def test_fileset_has_data(client: NemoClient):
     """Verify the training dataset was uploaded."""
     files = client.files.list(fileset=FILESET, workspace=WORKSPACE)
     assert len(files.data) > 0, f"Fileset '{FILESET}' has no files uploaded"
 
 
-def test_customization_job_created(client: NeMoPlatform):
+def test_customization_job_created(client: NemoClient):
     """Verify that an automodel customization job was submitted."""
     jobs = _list_automodel_jobs(client)
     assert len(jobs) > 0, "No automodel customization jobs found in workspace"
 
 
-def test_customization_job_has_spec(client: NeMoPlatform):
+def test_customization_job_has_spec(client: NemoClient):
     """Verify the automodel job has a valid training spec."""
     jobs = _list_automodel_jobs(client)
     assert len(jobs) > 0, "No automodel customization jobs found"
@@ -92,7 +92,7 @@ def test_customization_job_has_spec(client: NeMoPlatform):
     assert job.get("spec") is not None, "Automodel job has no spec"
 
 
-def test_customization_job_dispatched(client: NeMoPlatform):
+def test_customization_job_dispatched(client: NemoClient):
     """Verify the job was dispatched by the jobs controller (progressed beyond 'created').
 
     With the Docker socket mounted and GPU available, the jobs controller should

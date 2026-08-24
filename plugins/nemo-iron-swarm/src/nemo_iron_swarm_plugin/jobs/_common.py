@@ -81,7 +81,7 @@ def _resolve_secret(sdk: Any, name: str, workspace: str) -> str | None:
     """Fetch a Secret's plaintext value via the platform SDK; None if unavailable (caller warns/fails)."""
     if sdk is None:
         return None
-    secret = sdk.secrets.access(name, workspace=workspace)
+    secret = sdk.secrets.access_secret(name, workspace=workspace)
     value = getattr(secret, "value", None)
     return str(value) if value else None
 

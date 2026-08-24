@@ -12,7 +12,7 @@ from typing import Literal
 
 import httpx
 from httpx._types import TimeoutTypes
-from nemo_platform import DefaultAsyncHttpxClient, DefaultHttpxClient
+from httpx import AsyncClient, Client
 from nmp.common.config import PlatformConfig
 
 UDS_BASE_URL = "http://nemo-platform.local"

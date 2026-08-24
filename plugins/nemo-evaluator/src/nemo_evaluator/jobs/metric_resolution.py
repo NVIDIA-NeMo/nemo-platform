@@ -24,7 +24,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     unbundle_metric,
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.entities import EntityClient
 
 
@@ -60,7 +60,7 @@ async def resolve_metrics_to_inline(
     *,
     workspace: str,
     entity_client: EntityClient | None,
-    async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+    async_sdk: AsyncNemoClient | NemoClient | None,
 ) -> list[MetricInline]:
     """Resolve a wire metric list (inline + stored refs) into canonical inline metrics.
 
@@ -69,18 +69,18 @@ async def resolve_metrics_to_inline(
     reference is present without a usable ``async_sdk`` connection.
 
     ``async_sdk`` accepts either client because the call sites differ: submit forwards a real
-    ``AsyncNeMoPlatform``, while local execution forwards the *sync* ``NeMoPlatform``. The two
+    ``AsyncNemoClient``, while local execution forwards the *sync* ``NemoClient``. The two
     resolution concerns then have *different* client requirements:
 
     * **Stored-ref loading** awaits real platform file I/O (``resolve_metric_ref`` → ``load_bundle``
-      → ``await sdk.files.download_content(...)``), so it needs a genuine ``AsyncNeMoPlatform``. Anything
+      → ``await sdk.files.download_file(...)``), so it needs a genuine ``AsyncNemoClient``. Anything
       else (``None`` or the sync client) is narrowed to ``None`` and rejected with a clear error when
       a stored ``MetricRef`` is actually present — never awaited blindly.
     * **Model-ref resolution** duck-types the client (``PlatformModelResolver`` tolerates sync or
       async via ``_maybe_await``), so it accepts anything conforming to ``ModelResolverSDK``; a
       non-conforming or absent client is rejected up front rather than failing deep in resolution.
     """
-    files_sdk = async_sdk if isinstance(async_sdk, AsyncNeMoPlatform) else None
+    files_sdk = async_sdk if isinstance(async_sdk, AsyncNemoClient) else None
     resolved_bundles = await resolve_metric_specs(
         metrics,
         workspace=workspace,

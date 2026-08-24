@@ -6,13 +6,8 @@ from typing import Optional
 
 import httpx
 from fastapi import HTTPException, status
-from nemo_platform import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AuthenticationError,
-    PermissionDeniedError,
-)
+from nemo_platform_plugin.client.errors import AuthenticationError, PermissionDeniedError
+# TODO: migrate APIConnectionError, APIStatusError, APITimeoutError from nemo_platform
 from nmp.guardrails.app.constants import X_MODEL_AUTHORIZATION_HEADER
 
 logger = logging.getLogger(__name__)
