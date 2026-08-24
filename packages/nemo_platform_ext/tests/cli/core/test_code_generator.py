@@ -18,7 +18,7 @@ def test_generate_python_code_simple_list():
 
     assert "from nemo_platform import NeMoPlatform" in code
     assert "client = NeMoPlatform()" in code
-    assert "response = client.models.list()" in code
+    assert "response = client_from_platform(client, ModelsClient).list_models()" in code
     assert "print(response)" in code
 
 

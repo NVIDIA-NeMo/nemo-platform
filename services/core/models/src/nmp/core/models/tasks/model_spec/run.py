@@ -18,19 +18,29 @@ import logging
 import os
 from pathlib import Path
 
-from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
+from nemo_platform import NeMoPlatform, NeMoPlatformError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
     InternalServerError,
-    NeMoPlatform,
-    NeMoPlatformError,
     NotFoundError,
 )
-from nemo_platform.types.models import ModelEntity
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
+    NemoTransportError as APIConnectionError,
+)
+from nemo_platform_plugin.client.errors import (
+    NemoTransportError as APITimeoutError,
+)
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
 from nemo_platform_plugin.files.types import FilesetOutput
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import (
+    ModelEntity,
+    UpdateModelEntityRequest,
+)
+from nemo_platform_plugin.models.types import (
+    ModelSpec as PluginModelSpec,
+)
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.model_utils import is_embedding_model
 from nmp.common.sdk_factory import get_platform_sdk
@@ -76,13 +86,15 @@ class ModelSpecRunner:
     def __init__(self, sdk: NeMoPlatform, job_ctx: NMPJobContext):
         self.sdk = sdk
         self.job_ctx = job_ctx
+        self._models = client_from_platform(sdk, ModelsClient)
+        self._files = client_from_platform(sdk, FilesClient)
 
     @staticmethod
     def _merge_fileset_metadata(fs: FilesetOutput, model_spec: ModelSpec) -> None:
         """Merge tool calling metadata from fileset into model spec.
 
         Users can set these values on the fileset at creation time via metadata:
-            files = client_from_platform(sdk, FilesClient)
+            files = self._files
             files.create_fileset(
                 body=CreateFilesetRequest(
                     ...,
@@ -178,7 +190,7 @@ class ModelSpecRunner:
         logger.info(f"Fetching model entity: {config.workspace}/{config.name}")
 
         try:
-            me = self.sdk.models.retrieve(config.name, workspace=config.workspace, verbose=True)
+            me = self._models.get_model(name=config.name, workspace=config.workspace).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} does not exist"
@@ -206,7 +218,7 @@ class ModelSpecRunner:
         # Validate that the fileset exists before creating the model entity
         logger.info(f"Validating fileset exists: {fileset_workspace}/{fileset_name}")
         try:
-            files = client_from_platform(self.sdk, FilesClient)
+            files = self._files
             fs = files.get_fileset(workspace=fileset_workspace, name=fileset_name).data()
             logger.info(f"Fileset validation successful: {fileset_workspace}/{fileset_name}")
         except Exception as e:
@@ -286,9 +298,11 @@ class ModelSpecRunner:
         self._merge_existing_spec(me, model_spec)
 
         try:
-            me: ModelEntity = self.sdk.models.update(
-                name=config.name, workspace=config.workspace, spec=model_spec, verbose=True
-            )
+            me: ModelEntity = self._models.update_model(
+                name=config.name,
+                workspace=config.workspace,
+                body=UpdateModelEntityRequest(spec=PluginModelSpec.model_validate(model_spec)),
+            ).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} does not exist"

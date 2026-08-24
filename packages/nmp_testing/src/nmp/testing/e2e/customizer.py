@@ -19,6 +19,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.models.client import ModelsClient
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +327,7 @@ def wait_for_model_spec(
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        me = sdk.models.retrieve(model_entity_name, workspace=workspace, verbose=True)
+        me = client_from_platform(sdk, ModelsClient).get_model(name=model_entity_name, workspace=workspace).data()
         if me.spec is not None:
             logger.info(
                 f"✓ Model spec populated for {model_entity_name}: checkpoint_model_name={me.spec.checkpoint_model_name}"
@@ -551,7 +552,9 @@ def _wait_for_gateway_ready(
     until it confirms the provider is routable.
     """
     logger.info("Waiting for inference gateway to sync...")
-    if not sdk.models.wait_for_gateway(deployment_name, workspace=workspace, timeout=timeout):
+    if not client_from_platform(sdk, ModelsClient).wait_for_gateway(
+        deployment_name, workspace=workspace, timeout=timeout
+    ):
         pytest.fail(
             f"Inference gateway did not become ready for deployment '{deployment_name}' "
             f"within {timeout}s. The deployment's model provider may not have been created. "

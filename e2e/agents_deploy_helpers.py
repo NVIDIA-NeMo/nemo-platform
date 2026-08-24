@@ -28,6 +28,8 @@ import httpx
 import pytest
 from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.models.client import ModelsClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 # The mocked completion the deployed agent must round-trip back to the caller.
@@ -274,7 +276,7 @@ def run_agent_deploy_and_invoke(
             endpoints = deployment.get("endpoints") or []
             assert endpoints and endpoints[0]["url"], deployment
 
-        sdk.models.wait_for_openai_model(model_name, workspace=workspace)
+        client_from_platform(sdk, ModelsClient).wait_for_openai_model(model_name, workspace=workspace)
 
         response = sdk.agents.invoke(
             workspace=workspace,

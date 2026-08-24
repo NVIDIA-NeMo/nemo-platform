@@ -17,12 +17,15 @@ import time
 from nemo_platform import (
     APIConnectionError,
     APITimeoutError,
-    ConflictError,
     InternalServerError,
     NeMoPlatform,
     NotFoundError,
     UnprocessableEntityError,
 )
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import CreateModelEntityRequest
 
 # Exceptions we treat as transient readiness errors during setup polling.
 # Anything outside this set (auth errors, bad-request, schema validation
@@ -114,10 +117,12 @@ def wait_for_model_with_reregistration(
 def ensure_model_entity(sdk: NeMoPlatform, workspace: str, model_name: str) -> None:
     """Create model entity if missing; ignore already-exists conflicts."""
     try:
-        sdk.models.create(
+        client_from_platform(sdk, ModelsClient).create_model(
             workspace=workspace,
-            name=model_name,
-            description="Mock model entity for chat completions agentic test",
+            body=CreateModelEntityRequest(
+                name=model_name,
+                description="Mock model entity for chat completions agentic test",
+            ),
         )
     except ConflictError:
         pass

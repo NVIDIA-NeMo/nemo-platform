@@ -46,10 +46,15 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError
+from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import CreateModelEntityRequest
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
@@ -263,13 +268,15 @@ def _create_ready_mock_model(
         mock_response_body=mock_response_body,
         should_autoprovision_virtual_model=False,
     )
-    sdk.models.create(
+    client_from_platform(sdk, ModelsClient).create_model(
         workspace=workspace,
-        name=name,
-        backend_format="OPENAI_CHAT",
-        model_providers=[f"{workspace}/{provider.name}"],
+        body=CreateModelEntityRequest(
+            name=name,
+            backend_format=BackendFormat.OPENAI_CHAT,
+            model_providers=[f"{workspace}/{provider.name}"],
+        ),
         exist_ok=True,
-    )
+    ).data()
     wait_for_model_entity(
         sdk,
         workspace,

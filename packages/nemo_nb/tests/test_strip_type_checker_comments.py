@@ -16,7 +16,7 @@ def test_strip_ty_ignore_comments():
                 "metadata": {"language": "python"},
                 "source": [
                     "# This is a regular comment\n",
-                    "sdk.models.get_openai_route_base_url()\n",
+                    "client_from_platform(sdk, ModelsClient).get_openai_route_base_url()\n",
                     "sdk.models.get_model_entity_route_openai_url(entity) # ty: ignore[unresolved-reference]\n",
                     "sdk.models.get_provider_route_openai_url(provider) # ty: ignore[unresolved-reference]\n",
                 ],
@@ -35,8 +35,8 @@ def test_strip_ty_ignore_comments():
     assert "# This is a regular comment" in result
 
     # Verify that the code lines are still there (without the ty: comments)
-    assert "sdk.models.get_model_entity_route_openai_url(entity)" in result
-    assert "sdk.models.get_provider_route_openai_url(provider)" in result
+    assert "client_from_platform(sdk, ModelsClient).get_model_entity_route_openai_url(entity)" in result
+    assert "client_from_platform(sdk, ModelsClient).get_provider_route_openai_url(provider)" in result
 
 
 def test_strip_type_ignore_comments():

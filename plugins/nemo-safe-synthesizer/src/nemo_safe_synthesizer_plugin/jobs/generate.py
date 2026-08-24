@@ -33,6 +33,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
 from nemo_safe_synthesizer_plugin.config import config as plugin_config
 from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig, parse_pretrained_model_job_ref
@@ -124,7 +125,9 @@ class GenerateJob(NemoJob):
                 raise PlatformJobCompilationError(
                     f"Failed to retrieve model provider {classify_model_provider!r}: Access denied to workspace {provider_workspace!r}"
                 ) from e
-            nim_endpoint_url = async_sdk.models.get_provider_route_openai_url(provider)
+            nim_endpoint_url = client_from_platform(async_sdk, AsyncModelsClient).get_provider_route_openai_url(
+                provider
+            )
             parsed_url = urlparse(nim_endpoint_url)
             environment.append(EnvironmentVariable(name="CLASSIFY_LLM_ENDPOINT_PATH", value=parsed_url.path))
             logger.info("Configured NIM endpoint URL: %s (provider: %s)", nim_endpoint_url, classify_model_provider)
