@@ -12,6 +12,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     resolve_trial_status,
     standard_evidence_descriptors,
 )
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from pydantic import ValidationError
 
 
@@ -57,6 +58,20 @@ def test_trial_accepts_mapping_shaped_evidence_and_serializes_descriptors() -> N
 def test_completed_trial_requires_output() -> None:
     with pytest.raises(ValueError, match="completed trial requires output"):
         AgentEvalTrial(id="trial-1", task_id="task-1", status=AgentEvalTrialStatus.COMPLETED)
+
+
+def test_trial_get_evidence_is_named_and_null_safe() -> None:
+    descriptor = EvidenceDescriptor(kind="json", format="json", ref="/tmp/result.json")
+    trial = AgentEvalTrial(
+        id="trial-1",
+        task_id="task-1",
+        status=AgentEvalTrialStatus.PARTIAL,
+        evidence=CandidateEvidence(descriptors={"result": descriptor}),
+    )
+
+    assert trial.get_evidence("result") is descriptor
+    assert trial.get_evidence("missing") is None
+    assert trial.model_copy(update={"evidence": None}).get_evidence("result") is None
 
 
 def test_resolve_trial_status_maps_ran_but_failed_to_partial() -> None:

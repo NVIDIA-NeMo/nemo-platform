@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_OTLP,
     CandidateEvidence,
     EvidenceDescriptor,
     LocalFilesystemEvidence,
@@ -328,6 +330,30 @@ async def test_trace_handle_reads_atif(tmp_path: Path) -> None:
     )
     with pytest.raises(ValidationError):
         await (await bad.trace("trace")).trace()
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_atif_when_optional_format_is_absent() -> None:
+    evidence = CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", data=_ATIF_TRAJECTORY)})
+
+    trajectory = await (await evidence.trace("trace")).trace()
+
+    assert trajectory.schema_version == "ATIF-v1.7"
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_rejects_raw_otlp_with_named_lookup_guidance(tmp_path: Path) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_OTLP, ref=str(trace_path))}
+    )
+
+    assert EVIDENCE_FORMAT_ATIF == "atif"
+    assert EVIDENCE_FORMAT_OTLP == "otlp"
+    assert evidence.get("trace") is not None
+    with pytest.raises(ValueError, match=r"TraceHandle supports ATIF only.*get\(name\)"):
+        await evidence.trace("trace")
 
 
 @pytest.mark.asyncio

@@ -172,6 +172,20 @@ class AgentEvalTrial(BaseModel):
             raise ValueError("completed trial requires output")
         return self
 
+    def get_evidence(self, name: str) -> EvidenceDescriptor | None:
+        """Look up a named evidence descriptor for this trial.
+
+        Args:
+            name: Evidence key to retrieve.
+
+        Returns:
+            The matching descriptor, or ``None`` when the trial has no evidence or
+            the key is not present.
+        """
+        if self.evidence is None:
+            return None
+        return self.evidence.get(name)
+
 
 @runtime_checkable
 class AgentTaskRunner(Protocol):

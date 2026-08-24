@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.execution.samples import build_metric_input
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, CandidateEvidence, EvidenceDescriptor
 
 _MODULE_PATH = Path(__file__).resolve().parents[2] / "examples" / "run_agent_eval" / "example_metrics.py"
 _spec = importlib.util.spec_from_file_location("example_metrics", _MODULE_PATH)
@@ -79,13 +79,19 @@ async def test_inefficient_retry_loop(tmp_path: Path) -> None:
 
     loop_result = await metric.compute_scores(
         _input_with_evidence(
-            CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", ref=str(looping))})
+            CandidateEvidence(
+                descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_ATIF, ref=str(looping))}
+            )
         )
     )
     assert loop_result.outputs[0].value is False
     assert loop_result.outputs[1].value == 5
 
     clean_result = await metric.compute_scores(
-        _input_with_evidence(CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", ref=str(clean))}))
+        _input_with_evidence(
+            CandidateEvidence(
+                descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_ATIF, ref=str(clean))}
+            )
+        )
     )
     assert clean_result.outputs[0].value is True

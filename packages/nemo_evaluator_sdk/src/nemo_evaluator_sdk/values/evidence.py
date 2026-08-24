@@ -38,6 +38,7 @@ EVIDENCE_TRANSLATION_ERROR = "translation_error"
 
 EVIDENCE_FORMAT_ATIF = "atif"
 EVIDENCE_FORMAT_JSON = "json"
+EVIDENCE_FORMAT_OTLP = "otlp"
 EVIDENCE_FORMAT_TEXT = "text"
 
 # Well-known evidence keys used by the core agent-eval artifact contract.
@@ -484,7 +485,13 @@ class CandidateEvidence(BaseModel):
         cached = self._trace_cache.get(name)
         if cached is not None:
             return cached
-        handle = TraceHandle(self.require(name, kind="trace"))
+        descriptor = self.require(name, kind="trace")
+        if descriptor.format is not None and descriptor.format != EVIDENCE_FORMAT_ATIF:
+            raise ValueError(
+                f"trace evidence descriptor {name!r} has format {descriptor.format!r}; "
+                "TraceHandle supports ATIF only. Use get(name) for raw trace evidence."
+            )
+        handle = TraceHandle(descriptor)
         self._trace_cache[name] = handle
         return handle
 

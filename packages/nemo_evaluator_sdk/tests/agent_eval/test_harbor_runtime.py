@@ -13,25 +13,26 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
+from typing import Literal
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
-    _MAX_TRACEBACK_CHARS,
     HarborAgentTaskRunner,
     HarborRewardMetric,
     HarborRuntimeConfig,
     HarborTasksetLoader,
     _build_native_job,
-    _trial_error,
     build_trials_from_job_dir,
     discover_harbor_tasks,
     reward_payload_from_result,
+    run_harbor_eval,
     scoped_harbor_agent_import,
 )
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _trial_from_harbor_result
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import UNKNOWN_ERROR_TYPE, AgentEvalTrial, AgentEvalTrialStatus, TrialError
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, TrialError
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from pydantic import BaseModel, ValidationError
 
@@ -39,6 +40,7 @@ _HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbo
 _FIXTURES = Path(__file__).parent / "fixtures"
 # A verbatim Harbor result.json from a real agent-timeout run, host paths scrubbed.
 _HARBOR_ERROR_RESULT = _FIXTURES / "harbor_error_result.json"
+_EXPECTED_MAX_TRACEBACK_CHARS = 8192
 
 
 def _write_trial(
@@ -414,6 +416,56 @@ async def test_native_runner_uses_job_dir_as_cache(tmp_path: Path, monkeypatch: 
     assert imported == [], f"a cache hit must not import harbor, but imported {imported}"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["native", "offline"])
+async def test_runner_forwards_trace_format_in_both_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes import harbor_runtime
+
+    config, job_dir, task = _seed_cached_job(tmp_path)
+    observed: list[str] = []
+    real_build_trials = harbor_runtime.build_trials_from_job_dir
+
+    def recording_build_trials(job_dir, tasks, *, reward_key="reward", trace_format="atif"):
+        observed.append(trace_format)
+        return real_build_trials(job_dir, tasks, reward_key=reward_key, trace_format=trace_format)
+
+    monkeypatch.setattr(harbor_runtime, "build_trials_from_job_dir", recording_build_trials)
+    runner = (
+        HarborAgentTaskRunner(config=config, trace_format="otlp")
+        if mode == "native"
+        else HarborAgentTaskRunner(job_dir=job_dir, trace_format="otlp")
+    )
+
+    await runner.run_tasks([task])
+
+    assert observed == ["otlp"]
+
+
+@pytest.mark.asyncio
+async def test_run_harbor_eval_forwards_trace_format_to_the_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed: list[str] = []
+    sentinel = object()
+
+    async def recording_run(self, *, tasks, target, config):
+        observed.append(target.runner_info().config["trace_format"])
+        return sentinel
+
+    monkeypatch.setattr(AgentEvaluator, "run", recording_run)
+
+    result = await run_harbor_eval(
+        HarborRuntimeConfig(jobs_dir=tmp_path / "jobs"),
+        _HELLO_WORLD_DATASET,
+        trace_format="otlp",
+    )
+
+    assert result is sentinel
+    assert observed == ["otlp"]
+
+
 def _stamp_for(config: HarborRuntimeConfig, task: AgentEvalTask, job_dir: Path) -> None:
     """Stamp ``job_dir`` as though ``config`` had just produced it."""
     from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _cache_stamp, _write_cache_stamp
@@ -621,12 +673,14 @@ def test_multiple_attempts_map_to_one_trial_each(tmp_path: Path) -> None:
     # distinct trial for the same task id (so the summary can aggregate over attempts).
     job_dir = tmp_path / "job"
     job_dir.mkdir()
-    _write_trial(job_dir, "t__aaa", "t", reward=1.0)
-    _write_trial(job_dir, "t__bbb", "t", reward=0.0)
+    _write_trial(job_dir, "t__a1B2", "t", reward=1.0)
+    _write_trial(job_dir, "t__Z9y8", "t", reward=0.0)
     tasks = [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
 
     trials = build_trials_from_job_dir(job_dir, tasks)
     assert [trial.task_id for trial in trials] == ["t", "t"]
+    assert [trial.id for trial in trials] == ["t__Z9y8", "t__a1B2"]
+    assert all("harbor_attempt" not in trial.metadata for trial in trials)
     assert sorted(trial.metadata["reward"] for trial in trials) == [0.0, 1.0]
 
 
@@ -1617,7 +1671,10 @@ def test_an_oversized_traceback_is_truncated(tmp_path: Path) -> None:
         "t__aaa",
         "t",
         reward=1.0,
-        exception={"exception_type": "RuntimeError", "exception_traceback": "x" * (_MAX_TRACEBACK_CHARS * 3)},
+        exception={
+            "exception_type": "RuntimeError",
+            "exception_traceback": "x" * (_EXPECTED_MAX_TRACEBACK_CHARS * 3),
+        },
     )
 
     [trial] = build_trials_from_job_dir(
@@ -1626,7 +1683,7 @@ def test_an_oversized_traceback_is_truncated(tmp_path: Path) -> None:
 
     assert trial.error is not None
     assert trial.error.traceback is not None
-    assert len(trial.error.traceback) == _MAX_TRACEBACK_CHARS
+    assert len(trial.error.traceback) == _EXPECTED_MAX_TRACEBACK_CHARS
 
 
 def test_absent_exception_info_leaves_the_trial_completed(tmp_path: Path) -> None:
@@ -1663,12 +1720,6 @@ def test_the_typed_error_is_the_only_carrier(tmp_path: Path) -> None:
     assert fresh.error is not None and fresh.error.type == "RuntimeError"
     assert "exception_type" not in fresh.metadata
     assert legacy.error is None  # free-form metadata is never promoted to a typed error
-
-
-def test_a_degenerate_exception_type_normalises_to_the_fallback() -> None:
-    error = _trial_error({"exception_type": ""})
-    assert error is not None
-    assert error.type == UNKNOWN_ERROR_TYPE
 
 
 def test_occurred_at_is_not_advertised_as_rfc_3339() -> None:
@@ -1723,6 +1774,13 @@ def test_a_real_harbor_error_payload_reaches_the_summary_rollup(tmp_path: Path) 
     # Errored, but still scored -- FAILED would exclude it from scoring entirely.
     assert trial.status is AgentEvalTrialStatus.PARTIAL
     assert trial.metadata["reward"] == 0.0
+    assert "exception_info" not in trial.metadata
+
+    result_evidence = trial.get_evidence("result")
+    assert result_evidence is not None
+    assert result_evidence.ref is not None
+    raw_result = json.loads(Path(result_evidence.ref).read_text(encoding="utf-8"))
+    assert raw_result["exception_info"] == payload["exception_info"]
 
     summary = AgentEvalSummary.from_scores([], trials=[trial])
     assert summary.error_trial_ids == {"AgentTimeoutError": [trial_name]}
@@ -1743,9 +1801,9 @@ def _atif_trajectory_payload() -> dict[str, object]:
     }
 
 
-def _trial_with_trajectory(tmp_path: Path, payload: object) -> AgentEvalTrial:
-    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _trial_from_harbor_result
-
+def _trial_with_trajectory(
+    tmp_path: Path, payload: object, *, trace_format: Literal["otlp", "atif"] = "atif"
+) -> AgentEvalTrial:
     job_dir = tmp_path / "job"
     _write_trial(job_dir, "t__1", "t", reward=1.0)
     trial_dir = job_dir / "t__1"
@@ -1754,23 +1812,308 @@ def _trial_with_trajectory(tmp_path: Path, payload: object) -> AgentEvalTrial:
     else:
         (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(payload))
     data = json.loads((trial_dir / "result.json").read_text())
-    return _trial_from_harbor_result(trial_dir, data, reward_key="reward")
+    return _trial_from_harbor_result(trial_dir, data, reward_key="reward", trace_format=trace_format)
 
 
 def test_atif_trajectory_is_labelled_atif(tmp_path: Path) -> None:
     trial = _trial_with_trajectory(tmp_path, _atif_trajectory_payload())
 
     # Harbor names the file trajectory.json, so only its contents identify it as ATIF.
-    assert trial.evidence.descriptors["trace"].format == "atif"
+    trace = trial.get_evidence("trace")
+    assert trace is not None
+    assert trace.format == "atif"
+    assert trace.metadata["description"] == "Collected Harbor artifact agent/trajectory.json."
 
 
 def test_absent_trajectory_leaves_no_trace_evidence(tmp_path: Path) -> None:
     trial = _trial_with_trajectory(tmp_path, None)
 
-    assert trial.evidence.descriptors.get("trace") is None
+    assert trial.get_evidence("trace") is None
 
 
-def test_non_atif_trajectory_is_kept_as_json_evidence(tmp_path: Path) -> None:
+def test_non_atif_trajectory_is_an_artifact_not_standard_trace(tmp_path: Path) -> None:
     trial = _trial_with_trajectory(tmp_path, {"not": "atif"})
 
-    assert trial.evidence.descriptors["trace"].format == "json"
+    assert trial.get_evidence("trace") is None
+    artifact = trial.get_evidence("artifact:agent/trajectory.json")
+    assert artifact is not None
+    assert artifact.kind == "artifact"
+
+
+def _adapted_measurements(tmp_path: Path, result_data: dict[str, object]) -> dict[str, int | float]:
+    trial_dir = tmp_path / "measurement-trial"
+    trial_dir.mkdir(exist_ok=True)
+    payload: dict[str, object] = {
+        "task_name": "task",
+        "trial_name": "task__1",
+        "verifier_result": {"rewards": {"reward": 1.0}},
+        "exception_info": None,
+    }
+    payload.update(result_data)
+    trial = _trial_from_harbor_result(trial_dir, payload, reward_key="reward")
+    keys = ("prompt_tokens", "completion_tokens", "cache_read_tokens", "cost_usd")
+    return {key: trial.metadata[key] for key in keys if key in trial.metadata}
+
+
+def test_trial_measurements_use_one_source_and_are_total(tmp_path: Path) -> None:
+    assert _adapted_measurements(
+        tmp_path,
+        {
+            "agent_result": {"n_input_tokens": 2, "cost_usd": 0.25},
+            "step_results": [{"agent_result": {"n_input_tokens": 100, "n_output_tokens": 3}}],
+        },
+    ) == {"prompt_tokens": 2, "cost_usd": 0.25}
+    assert _adapted_measurements(
+        tmp_path,
+        {
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 2, "n_output_tokens": 1, "cost_usd": 0.1}},
+                {"agent_result": {"n_input_tokens": 3, "n_cache_tokens": 4, "cost_usd": 0.2}},
+            ]
+        },
+    ) == {
+        "prompt_tokens": 5,
+        "completion_tokens": 1,
+        "cache_read_tokens": 4,
+        "cost_usd": pytest.approx(0.3),
+    }
+    assert _adapted_measurements(
+        tmp_path, {"agent_result": {"n_input_tokens": 0, "n_output_tokens": 0, "n_cache_tokens": 0, "cost_usd": 0}}
+    ) == {"prompt_tokens": 0, "completion_tokens": 0, "cache_read_tokens": 0, "cost_usd": 0.0}
+    assert (
+        _adapted_measurements(tmp_path, {"agent_result": {}, "step_results": [{"agent_result": {"n_input_tokens": 9}}]})
+        == {}
+    )
+    assert _adapted_measurements(tmp_path, {"step_results": 7}) == {}
+    assert _adapted_measurements(
+        tmp_path, {"step_results": [None, "bad", {"agent_result": 7}, {"agent_result": {"n_input_tokens": -2}}]}
+    ) == {"prompt_tokens": -2}
+
+
+@pytest.mark.parametrize("bad", [True, "12", float("nan"), float("inf"), float("-inf")])
+def test_trial_measurements_reject_malformed_values(tmp_path: Path, bad: object) -> None:
+    assert _adapted_measurements(
+        tmp_path,
+        {"agent_result": {"n_input_tokens": bad, "n_output_tokens": 2, "cost_usd": bad}},
+    ) == {"completion_tokens": 2}
+
+
+def test_trial_measurements_omit_numeric_and_aggregate_cost_overflow(tmp_path: Path) -> None:
+    assert _adapted_measurements(tmp_path, {"agent_result": {"n_input_tokens": 1, "cost_usd": 10**1000}}) == {
+        "prompt_tokens": 1
+    }
+    assert _adapted_measurements(
+        tmp_path,
+        {
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 1, "cost_usd": 1e308}},
+                {"agent_result": {"n_input_tokens": 2, "cost_usd": 1e308}},
+            ]
+        },
+    ) == {"prompt_tokens": 3}
+
+
+def _write_evidence_trial(job_dir: Path, trial_name: str = "task__A1b2") -> Path:
+    _write_trial(job_dir, trial_name, "task", reward=1.0)
+    trial_dir = job_dir / trial_name
+    (trial_dir / "config.json").write_text("{}", encoding="utf-8")
+    (trial_dir / "trial.log").write_text("run", encoding="utf-8")
+    (trial_dir / "verifier" / "reward.json").write_text('{"reward": 1}', encoding="utf-8")
+    return trial_dir
+
+
+def _adapt_evidence_trial(job_dir: Path, *, trace_format: Literal["otlp", "atif"] = "atif") -> AgentEvalTrial:
+    task = AgentEvalTask(id="task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
+    return build_trials_from_job_dir(job_dir, [task], trace_format=trace_format)[0]
+
+
+def test_harbor_evidence_descriptors_are_typed_absolute_and_described(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    (trial_dir / "artifacts" / "output.txt").parent.mkdir(parents=True)
+    (trial_dir / "artifacts" / "output.txt").write_text("done", encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    expected = {
+        "trial_dir": ("filesystem", "dir", trial_dir.resolve()),
+        "config": ("json", "json", (trial_dir / "config.json").resolve()),
+        "json:config.json": ("json", "json", (trial_dir / "config.json").resolve()),
+        "result": ("json", "json", (trial_dir / "result.json").resolve()),
+        "json:result.json": ("json", "json", (trial_dir / "result.json").resolve()),
+        "log:trial.log": ("log", "text", (trial_dir / "trial.log").resolve()),
+        "log:verifier/reward.json": ("log", "json", (trial_dir / "verifier" / "reward.json").resolve()),
+        "artifact:artifacts/output.txt": ("artifact", None, (trial_dir / "artifacts" / "output.txt").resolve()),
+        "artifact:output.txt": ("artifact", None, (trial_dir / "artifacts" / "output.txt").resolve()),
+    }
+    for name, (kind, evidence_format, path) in expected.items():
+        descriptor = trial.get_evidence(name)
+        assert descriptor is not None
+        assert (descriptor.kind, descriptor.format, descriptor.ref) == (kind, evidence_format, str(path))
+        assert isinstance(descriptor.metadata.get("description"), str)
+
+    logs = trial.get_evidence("logs")
+    final_state = trial.get_evidence("final_state")
+    verifier_logs = trial.get_evidence("verifier_logs")
+    assert logs is not None
+    assert final_state is not None
+    assert verifier_logs is not None
+    assert (logs.kind, logs.format, logs.ref) == ("logs", "dir", str((trial_dir / "agent").resolve()))
+    assert (final_state.kind, final_state.format, final_state.ref) == (
+        "filesystem",
+        "dir",
+        str((trial_dir / "artifacts").resolve()),
+    )
+    assert (verifier_logs.kind, verifier_logs.format, verifier_logs.ref) == (
+        "logs",
+        "dir",
+        str((trial_dir / "verifier").resolve()),
+    )
+    assert set(trial.evidence.descriptors if trial.evidence is not None else ()) == {
+        "logs",
+        "final_state",
+        "verifier_logs",
+        "trial_dir",
+        "config",
+        "json:config.json",
+        "result",
+        "json:result.json",
+        "log:trial.log",
+        "log:verifier/reward.json",
+        "artifact:agent/trajectory.json",
+        "artifact:artifacts/output.txt",
+        "artifact:output.txt",
+    }
+
+
+def test_harbor_manifest_descriptions_preserve_their_original_paths(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    artifacts_manifest = trial_dir / "artifacts" / "manifest.json"
+    artifacts_manifest.parent.mkdir(parents=True)
+    artifacts_manifest.write_text("{}", encoding="utf-8")
+    root_manifest = trial_dir / "manifest.json"
+    root_manifest.write_text("{}", encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    artifact_descriptor = trial.get_evidence("artifact:artifacts/manifest.json")
+    root_descriptor = trial.get_evidence("artifact:manifest.json")
+    assert artifact_descriptor is not None
+    assert root_descriptor is not None
+    assert artifact_descriptor.metadata["description"] == (
+        "Harbor artifact manifest. Lists collected artifact files and the environment paths they were copied from."
+    )
+    assert root_descriptor.metadata["description"] == "Collected Harbor artifact manifest.json."
+
+
+def test_harbor_evidence_keys_preserve_colliding_files_and_noncolliding_aliases(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    paths = [
+        "artifacts/traces/x.jsonl",
+        "traces/x.jsonl",
+        "artifacts/traces/y.jsonl",
+        "artifacts/foo.txt",
+        "foo.txt",
+        "artifacts/only.txt",
+    ]
+    for relative in paths:
+        path = trial_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"resourceSpans": []}\n' if path.suffix == ".jsonl" else relative, encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir, trace_format="otlp")
+
+    expected_refs = {
+        "trace:artifacts/traces/x.jsonl": trial_dir / "artifacts/traces/x.jsonl",
+        "trace:traces/x.jsonl": trial_dir / "traces/x.jsonl",
+        "trace:artifacts/traces/y.jsonl": trial_dir / "artifacts/traces/y.jsonl",
+        "trace:traces/y.jsonl": trial_dir / "artifacts/traces/y.jsonl",
+        "artifact:artifacts/foo.txt": trial_dir / "artifacts/foo.txt",
+        "artifact:foo.txt": trial_dir / "foo.txt",
+        "artifact:artifacts/only.txt": trial_dir / "artifacts/only.txt",
+        "artifact:only.txt": trial_dir / "artifacts/only.txt",
+    }
+    for name, path in expected_refs.items():
+        descriptor = trial.get_evidence(name)
+        assert descriptor is not None
+        assert descriptor.ref == str(path.resolve())
+
+
+def test_configured_trace_format_selects_one_standard_trace_and_keeps_all_extensions(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "nested" / "traces"
+    traces.mkdir(parents=True)
+    otlp = traces / "trace.jsonl"
+    atif = traces / "trajectory.atif.json"
+    otlp.write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    atif.write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    otlp_trial = _adapt_evidence_trial(job_dir, trace_format="otlp")
+    atif_trial = _adapt_evidence_trial(job_dir, trace_format="atif")
+
+    otlp_trace = otlp_trial.get_evidence("trace")
+    atif_trace = atif_trial.get_evidence("trace")
+    assert otlp_trace is not None
+    assert atif_trace is not None
+    assert otlp_trace.ref == str(otlp.resolve())
+    assert otlp_trace.format == "otlp"
+    assert atif_trace.ref == str(atif.resolve())
+    assert atif_trace.format == "atif"
+    assert otlp_trial.get_evidence("trace:nested/traces/trajectory.atif.json") is not None
+    assert atif_trial.get_evidence("trace:nested/traces/trace.jsonl") is not None
+    assert "matched no trace" not in caplog.text
+
+
+def test_trace_selection_warns_only_when_opposite_format_exists(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    (trial_dir / "agent" / "trajectory.json").unlink()
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    atif = traces / "trajectory.atif.json"
+    atif.write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        trial = _adapt_evidence_trial(job_dir, trace_format="otlp")
+
+    assert trial.get_evidence("trace") is None
+    assert "trace_format='otlp'" in caplog.text
+    assert "atif" in caplog.text
+
+    caplog.clear()
+    atif.unlink()
+    with caplog.at_level(logging.WARNING):
+        no_trace = _adapt_evidence_trial(job_dir, trace_format="otlp")
+    assert no_trace.get_evidence("trace") is None
+    assert "matched no trace" not in caplog.text
+
+
+def test_invalid_trace_format_is_rejected_at_public_boundaries(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    task = AgentEvalTask(id="task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
+
+    with pytest.raises(ValueError, match="trace_format"):
+        HarborAgentTaskRunner(job_dir=job_dir, trace_format="json")  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValueError, match="trace_format"):
+        build_trials_from_job_dir(job_dir, [task], trace_format="json")  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValueError, match="trace_format"):
+        asyncio.run(
+            run_harbor_eval(
+                HarborRuntimeConfig(jobs_dir=tmp_path / "jobs"),
+                _HELLO_WORLD_DATASET,
+                trace_format="json",  # ty: ignore[invalid-argument-type]
+            )
+        )

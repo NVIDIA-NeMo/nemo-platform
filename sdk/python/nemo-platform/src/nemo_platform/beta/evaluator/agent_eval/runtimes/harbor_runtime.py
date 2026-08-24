@@ -51,32 +51,23 @@ from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalResult
+from nemo_platform.beta.evaluator.agent_eval.runtimes.harbor_trial_adapter import _trial_from_harbor_result
 from nemo_platform.beta.evaluator.agent_eval.scores import AgentEvalScoreStatus
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask, AgentEvalTaskset
-from nemo_platform.beta.evaluator.agent_eval.trials import (
-    UNKNOWN_ERROR_TYPE,
-    AgentEvalTrial,
-    AgentEvalTrialStatus,
-    AgentOutput,
-    RunnerInfo,
-    TrialError,
-    standard_evidence_descriptors,
-)
+from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_platform.beta.evaluator.metrics.protocol import Metric
-from nemo_platform.beta.evaluator.values.evidence import (
-    EVIDENCE_FORMAT_ATIF,
-    CandidateEvidence,
-    read_atif,
-)
+from nemo_platform.beta.evaluator.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_OTLP
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
 # Default reward key inside Harbor's ``verifier_result.rewards`` mapping.
 DEFAULT_REWARD_KEY = "reward"
+# Harbor trace format selected as the trial's standard trace evidence.
+_TRACE_FORMATS = frozenset({EVIDENCE_FORMAT_OTLP, EVIDENCE_FORMAT_ATIF})
 # Filename that marks a directory as a Harbor task, and the template dir to skip.
 _TASK_CONFIG_FILENAME = "task.toml"
 _TASK_TEMPLATE_DIRNAME = "task_template"
@@ -123,8 +114,6 @@ _SPDX_HTML_COMMENT_RE = re.compile(r"<!--\s*SPDX-(?:FileCopyrightText|License-Id
 # deliverable — the Harbor wrapper does not upload them into the task container.
 _DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", ".mypy_cache", ".pytest_cache"})
 _DIGEST_CHUNK_BYTES = 1 << 20
-
-_MAX_TRACEBACK_CHARS = 8192
 
 RunJob = Callable[[], Awaitable[None]]
 
@@ -229,15 +218,18 @@ class HarborAgentTaskRunner:
         job_dir: str | Path | None = None,
         run_job: RunJob | None = None,
         reward_key: str = DEFAULT_REWARD_KEY,
+        trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
     ) -> None:
         if config is None and job_dir is None:
             raise ValueError("provide either a HarborRuntimeConfig or an explicit job_dir")
+        _validate_trace_format(trace_format)
         self._config = config
         self._dataset_path = Path(dataset_path) if dataset_path is not None else None
         self._task_names = task_names
         self._job_dir = Path(job_dir) if job_dir is not None else None
         self._run_job = run_job
         self._reward_key = config.reward_key if config is not None else reward_key
+        self._trace_format: Literal["otlp", "atif"] = trace_format
 
     def runner_info(self) -> RunnerInfo:
         """Identify this runner and the Harbor settings that shape its results.
@@ -262,6 +254,7 @@ class HarborAgentTaskRunner:
                 "jobs_dir": str(config.jobs_dir) if config is not None else None,
                 "job_name": config.job_name if config is not None else None,
                 "reward_key": self._reward_key,
+                "trace_format": self._trace_format,
             },
         )
 
@@ -352,13 +345,23 @@ class HarborAgentTaskRunner:
                             "so the next run re-executes rather than trusting these results.",
                             job_dir,
                         )
-            return build_trials_from_job_dir(job_dir, tasks, reward_key=self._reward_key)
+            return build_trials_from_job_dir(
+                job_dir,
+                tasks,
+                reward_key=self._reward_key,
+                trace_format=self._trace_format,
+            )
 
         if self._job_dir is None:  # unreachable: __init__ guarantees config or job_dir
             raise ValueError("no job_dir configured")
         if self._run_job is not None:
             await self._run_job()
-        return build_trials_from_job_dir(self._job_dir, tasks, reward_key=self._reward_key)
+        return build_trials_from_job_dir(
+            self._job_dir,
+            tasks,
+            reward_key=self._reward_key,
+            trace_format=self._trace_format,
+        )
 
 
 def _dataset_path_from_tasks(tasks: Sequence[AgentEvalTask]) -> Path:
@@ -1099,6 +1102,7 @@ def build_trials_from_job_dir(
     tasks: Sequence[AgentEvalTask],
     *,
     reward_key: str = DEFAULT_REWARD_KEY,
+    trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
 ) -> list[AgentEvalTrial]:
     """Adapt Harbor's per-trial ``result.json`` files into :class:`AgentEvalTrial` objects.
 
@@ -1109,6 +1113,7 @@ def build_trials_from_job_dir(
     ``metadata`` and standard evidence descriptors pointing at the trial's
     on-disk artifacts.
     """
+    _validate_trace_format(trace_format)
     job_path = Path(job_dir)
     known_task_ids = {task.id for task in tasks}
     trials: list[AgentEvalTrial] = []
@@ -1122,7 +1127,14 @@ def build_trials_from_job_dir(
         if task_id not in known_task_ids:
             # Trial for a task we weren't asked to score (e.g. a wider dataset run).
             continue
-        trials.append(_trial_from_harbor_result(result_path.parent, data, reward_key=reward_key))
+        trials.append(
+            _trial_from_harbor_result(
+                result_path.parent,
+                data,
+                reward_key=reward_key,
+                trace_format=trace_format,
+            )
+        )
 
     # Surface tasks that produced no trial loudly: a mis-pointed job_dir or a
     # crashed run would otherwise silently score fewer tasks than requested.
@@ -1136,162 +1148,20 @@ def build_trials_from_job_dir(
     return trials
 
 
-def _trial_from_harbor_result(trial_dir: Path, data: Mapping[str, Any], *, reward_key: str) -> AgentEvalTrial:
-    task_id = str(data["task_name"])
-    trial_id = str(data.get("trial_name") or trial_dir.name)
-    rewards = _rewards_mapping(data)
-    reward = _primary_reward(rewards, reward_key)
-    error = _trial_error(data.get("exception_info"))
+def _validate_trace_format(trace_format: str) -> None:
+    """Validate the trace format accepted by Harbor trial adaptation.
 
-    metadata: dict[str, Any] = {
-        "reward": reward,
-        "reward_details": dict(rewards),
-        "harbor_trial_dir": str(trial_dir),
-    }
-    metadata.update(_token_measurements(data.get("agent_result")))
+    Args:
+        trace_format: Requested standard trace encoding.
 
-    # An errored trial (or one with no reward) stays PARTIAL so it is still scored
-    # as 0 and counted in the summary; FAILED would exclude it from scoring.
-    status = AgentEvalTrialStatus.COMPLETED if error is None and reward is not None else AgentEvalTrialStatus.PARTIAL
+    Returns:
+        None when ``trace_format`` is supported.
 
-    trace_path = trial_dir / "agent" / "trajectory.json"
-    # Only agents with SUPPORTS_ATIF write this file, so its absence is normal: oracle and nop
-    # never produce one.
-    trajectory = read_atif(trace_path)
-    descriptors = standard_evidence_descriptors(
-        logs_dir=trial_dir / "agent",
-        final_state_dir=trial_dir / "artifacts",
-        trace_path=trace_path if trace_path.exists() else None,
-        trace_format=EVIDENCE_FORMAT_ATIF if trajectory is not None else None,
-        verifier_logs_dir=trial_dir / "verifier",
-    )
-
-    return AgentEvalTrial(
-        id=trial_id,
-        task_id=task_id,
-        status=status,
-        output=AgentOutput(metadata={"harbor_trial_dir": str(trial_dir)}),
-        evidence=CandidateEvidence(descriptors=descriptors),
-        error=error,
-        metadata=metadata,
-    )
-
-
-def _rewards_mapping(data: Mapping[str, Any]) -> dict[str, float]:
-    verifier_result = data.get("verifier_result")
-    if not isinstance(verifier_result, Mapping):
-        return {}
-    rewards = verifier_result.get("rewards")
-    if not isinstance(rewards, Mapping):
-        return {}
-    out: dict[str, float] = {}
-    for key, value in rewards.items():
-        try:
-            out[str(key)] = float(value)
-        except (TypeError, ValueError):
-            continue
-    return out
-
-
-def _primary_reward(rewards: Mapping[str, float], reward_key: str) -> float | None:
-    """Return the single reward a trial is scored on.
-
-    Returns the reward named by ``reward_key`` when the verifier emitted it.
-    Returns ``None`` otherwise (the trial is treated as having no reward, so it
-    stays PARTIAL rather than scoring a misleading 0.0): if the verifier emitted
-    rewards but none matches ``reward_key`` a warning is logged, since we do not
-    guess among the emitted rewards (point ``reward_key`` at the intended one, or
-    score the others with additional metrics over ``reward_details``).
+    Raises:
+        ValueError: If ``trace_format`` is not one of the supported encodings.
     """
-    if reward_key in rewards:
-        return rewards[reward_key]
-    if rewards:
-        logger.warning(
-            "Harbor trial emitted rewards %s but none matches reward_key=%r; treating the trial as having no reward",
-            sorted(rewards),
-            reward_key,
-        )
-    return None
-
-
-def _trial_error(exception_info: Any) -> TrialError | None:
-    """Harbor's ``exception_info`` as a :class:`TrialError`, for any shape it can arrive in.
-
-    **Total by construction.** :func:`_trial_from_harbor_result` is called outside the only
-    ``try``/``except`` in :func:`build_trials_from_job_dir` (which guards ``json.loads`` alone), so a
-    ``ValidationError`` raised here would abort adaptation of the *whole job dir* over one malformed
-    trial. Every field is therefore normalised rather than trusted:
-
-    - ``type`` -- first non-empty string of ``exception_type``/``type``/``name``/``class``; for a
-      non-mapping, ``str(value)``; anything left empty becomes :data:`UNKNOWN_ERROR_TYPE`
-    - ``message``/``traceback`` -- kept only when actually strings; the traceback is truncated
-    - ``occurred_at`` -- kept only when it parses; never raises
-
-    Returns ``None`` only for a genuinely absent ``exception_info``, which is what marks a trial as
-    not having errored.
-    """
-    if exception_info is None:
-        return None
-    if not isinstance(exception_info, Mapping):
-        return TrialError(type=str(exception_info).strip() or UNKNOWN_ERROR_TYPE)
-
-    error_type = ""
-    for key in ("exception_type", "type", "name", "class"):
-        value = exception_info.get(key)
-        if isinstance(value, str) and value.strip():
-            error_type = value
-            break
-
-    traceback = _first_string(exception_info, ("exception_traceback", "traceback"))
-    return TrialError(
-        type=error_type or UNKNOWN_ERROR_TYPE,
-        message=_first_string(exception_info, ("exception_message", "message")),
-        traceback=traceback[:_MAX_TRACEBACK_CHARS] if traceback is not None else None,
-        occurred_at=_error_timestamp(exception_info.get("occurred_at")),
-    )
-
-
-def _first_string(payload: Mapping[str, Any], keys: tuple[str, ...]) -> str | None:
-    """The first value under ``keys`` that is actually a string. Harbor's spelling is tried first."""
-    for key in keys:
-        value = payload.get(key)
-        if isinstance(value, str):
-            return value
-    return None
-
-
-def _error_timestamp(value: Any) -> datetime | None:
-    """``value`` as a datetime when it plausibly is one, else ``None`` -- never raising.
-
-    Deliberately not normalized to UTC: Harbor writes a naive local wall-clock time here while
-    stamping trial start/finish in UTC, and inventing an offset would fabricate precision.
-    """
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        with contextlib.suppress(ValueError):
-            return datetime.fromisoformat(value)
-    return None
-
-
-def _token_measurements(agent_result: Any) -> dict[str, int | float]:
-    """Map Harbor's ``agent_result`` token counts onto SDK ``TrialMeasurements`` keys."""
-    if not isinstance(agent_result, Mapping):
-        return {}
-    mapping = {
-        "prompt_tokens": "n_input_tokens",
-        "completion_tokens": "n_output_tokens",
-        "cache_read_tokens": "n_cache_tokens",
-    }
-    out: dict[str, int | float] = {}
-    for sdk_key, harbor_key in mapping.items():
-        value = agent_result.get(harbor_key)
-        if isinstance(value, int) and not isinstance(value, bool):
-            out[sdk_key] = value
-    cost = agent_result.get("cost_usd")
-    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
-        out["cost_usd"] = float(cost)
-    return out
+    if trace_format not in _TRACE_FORMATS:
+        raise ValueError(f"trace_format must be one of {sorted(_TRACE_FORMATS)}, got {trace_format!r}")
 
 
 def _harbor_task_dirs(dataset_path: Path) -> list[Path]:
@@ -1396,6 +1266,7 @@ async def run_harbor_eval(
     task_names: Sequence[str] | None = None,
     metrics: Sequence[Metric] | None = None,
     run_config: AgentEvalRunConfig | None = None,
+    trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
 ) -> AgentEvalResult:
     """Run a Harbor dataset natively and score it — the minimal-plumbing entry point.
 
@@ -1413,7 +1284,7 @@ async def run_harbor_eval(
     if metrics is not None:
         tasks = [task.model_copy(update={"metrics": list(metrics)}) for task in tasks]
 
-    runner = HarborAgentTaskRunner(config=config, task_names=task_names)
+    runner = HarborAgentTaskRunner(config=config, task_names=task_names, trace_format=trace_format)
     return await AgentEvaluator().run(
         tasks=tasks,
         target=runner,
