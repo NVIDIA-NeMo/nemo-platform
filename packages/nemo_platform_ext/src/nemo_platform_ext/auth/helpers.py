@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 DEFAULT_OAUTH_SCOPES = "openid profile email offline_access"
 
@@ -152,12 +152,17 @@ class NMPOIDCConfig:
     workload_scope: str | None = None
 
 
-def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
+def discover_nmp_config(
+    base_url: str,
+    timeout: float = 10.0,
+    *,
+    certificate_authority: str | None = None,
+) -> NMPOIDCConfig:
     """Fetch OIDC configuration from the NeMo Platform auth discovery endpoint."""
     response = httpx.get(
         f"{base_url.rstrip('/')}/apis/auth/discovery",
         timeout=timeout,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(certificate_authority),
     )
     response.raise_for_status()
     data = response.json()

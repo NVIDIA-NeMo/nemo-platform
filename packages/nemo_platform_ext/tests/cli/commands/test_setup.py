@@ -36,6 +36,8 @@ from nemo_platform_ext.cli.commands.setup import (
     KeyValidationResult,
     ModelPair,
     _agent_config_path,
+    _agent_exists,
+    _agents_api_ready,
     _agents_plugin_available,
     _auto_setup,
     _bootstrap_config_if_missing,
@@ -198,7 +200,7 @@ class TestCheckPlatformReachable:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         with (
-            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx_tls_config_from_env", return_value={"verify": "/tmp/custom-ca.pem"}),
             patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
         ):
             assert _check_platform_reachable("http://localhost:8080") is True
@@ -206,6 +208,48 @@ class TestCheckPlatformReachable:
             "http://localhost:8080/status",
             timeout=5.0,
             verify="/tmp/custom-ca.pem",
+        )
+
+    def test_uses_context_certificate_authority_when_env_unset(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
+        ):
+            assert (
+                _check_platform_reachable(
+                    "https://nemo.example.com",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_env_certificate_authority_overrides_context_certificate_authority(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        with (
+            patch.dict("os.environ", {"NMP_CLIENT_SSL_CERT_FILE": "/env/ca.pem"}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
+        ):
+            assert (
+                _check_platform_reachable(
+                    "https://nemo.example.com",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/env/ca.pem",
         )
 
     def test_reachable_via_cluster_info_when_status_missing(self):
@@ -224,7 +268,7 @@ class TestCheckPlatformReachable:
             raise AssertionError(f"unexpected url: {url}")
 
         with (
-            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx_tls_config_from_env", return_value={"verify": "/tmp/custom-ca.pem"}),
             patch(f"{SETUP_MOD}.httpx.get", side_effect=_get),
         ):
             assert _check_platform_reachable("https://nemo-platform-freeplay.dev.aire.nvidia.com") is True
@@ -296,6 +340,21 @@ class TestCheckPlatformReachableWithRetries:
     def test_defaults_match_constants(self):
         assert _POST_START_REACHABLE_RETRIES == 6
         assert _POST_START_REACHABLE_DELAY == 2.0
+
+    def test_passes_certificate_authority_to_single_probe(self):
+        with patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True) as mock_reachable:
+            assert (
+                _check_platform_reachable_with_retries(
+                    "https://nemo.example.com",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_reachable.assert_called_once_with(
+            "https://nemo.example.com",
+            certificate_authority="/ctx/ca.pem",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2935,6 +2994,98 @@ class TestWaitForModelsEarlyExit:
 
 
 # ---------------------------------------------------------------------------
+# Direct agent API helper TLS
+# ---------------------------------------------------------------------------
+
+
+class TestAgentApiTLS:
+    _MOD = "nemo_platform_ext.cli.commands.setup"
+
+    def test_agent_exists_uses_context_certificate_authority_when_env_unset(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{self._MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            assert (
+                _agent_exists(
+                    "https://nemo.example.com",
+                    "default",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/agents/v2/workspaces/default/agents/calculator-agent",
+            headers=None,
+            timeout=10.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_agents_api_ready_uses_context_certificate_authority_when_env_unset(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{self._MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            assert (
+                _agents_api_ready(
+                    "https://nemo.example.com",
+                    "default",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/agents/v2/workspaces/default/agents",
+            headers=None,
+            timeout=3.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_deploy_demo_agent_uses_context_certificate_authority_for_httpx_calls(self, tmp_path, spinner_console):
+        config = tmp_path / "calculator-agent.yml"
+        config.write_text("llms: {}\n", encoding="utf-8")
+        exists_resp = MagicMock()
+        exists_resp.status_code = 404
+        create_resp = MagicMock()
+        create_resp.status_code = 200
+        create_resp.raise_for_status = MagicMock()
+        deploy_resp = MagicMock()
+        deploy_resp.status_code = 200
+        deploy_resp.raise_for_status = MagicMock()
+        deploy_resp.json.return_value = {"name": "calculator-agent-abc12345"}
+        status_resp = MagicMock()
+        status_resp.status_code = 200
+        status_resp.json.return_value = {"status": "running"}
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{self._MOD}.httpx.get", side_effect=[exists_resp, status_resp]) as mock_get,
+            patch(f"{self._MOD}.httpx.post", side_effect=[create_resp, deploy_resp]) as mock_post,
+            patch(f"{self._MOD}._pause"),
+            patch(f"{self._MOD}.time.monotonic", side_effect=[0, 0, 1, 2]),
+        ):
+            assert (
+                _deploy_demo_agent(
+                    "https://nemo.example.com",
+                    "default",
+                    config,
+                    default_model="m",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        assert [call.kwargs.get("verify") for call in mock_get.call_args_list] == ["/ctx/ca.pem", "/ctx/ca.pem"]
+        assert [call.kwargs.get("verify") for call in mock_post.call_args_list] == ["/ctx/ca.pem", "/ctx/ca.pem"]
+
+
+# ---------------------------------------------------------------------------
 # Progress spinner tests — _deploy_demo_agent
 # ---------------------------------------------------------------------------
 
@@ -3259,6 +3410,7 @@ def _make_setup_command_ctx(
     *,
     base_url: str = "http://localhost:8080",
     workspace: str = "default",
+    certificate_authority: str | None = None,
     workspace_source: ParameterSource = ParameterSource.DEFAULT,
 ) -> tuple[MagicMock, MagicMock]:
     """Build a typer Context + CLIContext pair for invoking ``setup_command``."""
@@ -3269,7 +3421,7 @@ def _make_setup_command_ctx(
     cli_context.get_base_url.return_value = base_url
     cli_context.get_sdk_context.return_value = Context(
         context_name="default",
-        cluster=Cluster(name="default-cluster", base_url=base_url),
+        cluster=Cluster(name="default-cluster", base_url=base_url, certificate_authority=certificate_authority),
         user=NoAuthUser(name="default-user"),
         workspace=workspace,
         preferences={},
@@ -3386,10 +3538,34 @@ class TestSetupCommandRemoteFlow:
         with _patch_setup_command(remote_url="https://remote.example.com") as mocks:
             setup_command(ctx)
 
-        mocks.prompt_remote.assert_called_once_with(default_url="http://localhost:8080")
+        mocks.prompt_remote.assert_called_once_with(
+            default_url="http://localhost:8080",
+            certificate_authority=None,
+        )
         mocks.configure_remote.assert_called_once_with(cli_context, "https://remote.example.com", "default")
         mocks.ensure_auth.assert_called_once_with(cli_context)
         assert mocks.run_interactive.call_args.args[3] == "https://remote.example.com"
+
+    def test_saved_certificate_authority_flows_through_setup_probes(self):
+        ctx, _cli_context = _make_setup_command_ctx(
+            base_url="https://nemo.example.com",
+            certificate_authority="/ctx/ca.pem",
+        )
+        with _patch_setup_command(maybe_start_services="ready") as mocks:
+            setup_command(ctx)
+
+        mocks.maybe_start_services.assert_called_once_with(
+            "https://nemo.example.com",
+            False,
+            None,
+            timeout=_SERVICE_STARTUP_TIMEOUT_SECONDS,
+            certificate_authority="/ctx/ca.pem",
+        )
+        mocks.check_reachable.assert_called_once_with(
+            "https://nemo.example.com",
+            certificate_authority="/ctx/ca.pem",
+        )
+        assert mocks.run_interactive.call_args.kwargs["certificate_authority"] == "/ctx/ca.pem"
 
     def test_remote_choice_preserves_active_workspace_when_flag_omitted(self):
         ctx, cli_context = _make_setup_command_ctx(workspace="team-a")
@@ -3427,6 +3603,7 @@ class TestSetupCommandRemoteFlow:
             False,
             start_services=True,
             timeout=_SERVICE_STARTUP_TIMEOUT_SECONDS,
+            certificate_authority=None,
         )
         mocks.configure_local.assert_called_once_with(cli_context, "default")
         assert mocks.run_interactive.call_args.args[3] == DEFAULT_BASE_URL
@@ -3460,6 +3637,44 @@ class TestCheckControllerHealth:
             ok, msg = _check_controller_health("http://localhost:8080")
         assert ok is True
         assert msg == ""
+
+    def test_uses_context_certificate_authority_when_env_unset(self):
+        resp = _status_response(healthy=True, controller_status={"models_controller": True})
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            ok, msg = _check_controller_health(
+                "https://nemo.example.com",
+                certificate_authority="/ctx/ca.pem",
+            )
+
+        assert ok is True
+        assert msg == ""
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_env_certificate_authority_overrides_context_certificate_authority(self):
+        resp = _status_response(healthy=True, controller_status={"models_controller": True})
+        with (
+            patch.dict("os.environ", {"NMP_CLIENT_SSL_CERT_FILE": "/env/ca.pem"}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            ok, msg = _check_controller_health(
+                "https://nemo.example.com",
+                certificate_authority="/ctx/ca.pem",
+            )
+
+        assert ok is True
+        assert msg == ""
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/env/ca.pem",
+        )
 
     def test_unhealthy_controller(self):
         resp = _status_response(healthy=False, controller_status={"models_controller": False})
@@ -3572,9 +3787,17 @@ class TestCheckControllerHealth:
 
 class TestVerifyPlatformHealth:
     def test_healthy_returns_true(self):
-        with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")):
+        with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")) as mock_health:
             result = _verify_platform_health("http://localhost:8080")
         assert result is True
+        mock_health.assert_called_once_with("http://localhost:8080", certificate_authority=None)
+
+    def test_passes_certificate_authority_to_controller_health(self):
+        with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")) as mock_health:
+            result = _verify_platform_health("https://nemo.example.com", certificate_authority="/ctx/ca.pem")
+
+        assert result is True
+        mock_health.assert_called_once_with("https://nemo.example.com", certificate_authority="/ctx/ca.pem")
 
     def test_missing_status_endpoint_returns_true_with_info(self):
         with (
