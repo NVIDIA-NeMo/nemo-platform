@@ -59,7 +59,7 @@ class DataDesignerCLI(NemoCLI):
         self,
         fn_cls: type[NemoFunction],
         *,
-        verb: Literal["run", "submit"],
+        verb: Literal["submit"],
     ) -> type[CLIRenderer] | None:
         if fn_cls is PreviewFunction:
             return PreviewRenderer
@@ -69,7 +69,7 @@ class DataDesignerCLI(NemoCLI):
         self,
         job_cls: type[NemoJob],
         *,
-        verb: Literal["run", "submit"],
+        verb: Literal["submit"],
     ) -> type[CLIRenderer] | None:
         if job_cls is CreateJob:
             return CreateRenderer

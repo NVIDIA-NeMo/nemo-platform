@@ -86,17 +86,15 @@ class BaseContributor:
         ]
 
     def get_cli(self) -> typer.Typer:
-        """Compose run/submit/explain verbs, then apply backend-specific overrides."""
+        """Compose submit/explain verbs, then apply backend-specific overrides."""
         from nemo_platform_plugin.commands import (
             _add_explain_command,
-            _add_run_command,
             _add_submit_command,
         )
         from nemo_platform_plugin.scheduler import NemoJobScheduler
 
         app = typer.Typer(name=self.name, help=self.cli_help, no_args_is_help=True)
         scheduler = NemoJobScheduler()
-        _add_run_command(app, self.job_cls, scheduler)
         _add_submit_command(app, self.job_cls, scheduler)
         _add_explain_command(app, self.job_cls, scheduler)
         self.apply_cli_overrides(app)

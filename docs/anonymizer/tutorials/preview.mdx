@@ -38,7 +38,6 @@ Available preview surfaces:
 | Surface                          | Where it runs                       | Local paths | `model_configs` required |
 |----------------------------------|--------------------------------------|-------------|--------------------------|
 | `sdk.anonymizer.preview(...)`    | Anonymizer plugin service (remote)  | Rejected    | Required                 |
-| `nemo anonymizer preview run`    | Local CLI process                   | Allowed     | Optional                 |
 | `nemo anonymizer preview submit` | Anonymizer plugin service (remote)  | Rejected    | Required                 |
 
 ## Step 1: Build a `PreviewRequest`
@@ -87,7 +86,7 @@ Field reference:
 | `data.text_column`| string                                | Column containing text to anonymize. Defaults to `text`.                                                               |
 | `data.id_column`  | string                                | Optional record identifier column.                                                                                     |
 | `data.data_summary`| string                               | Optional short description passed to Anonymizer library prompts.                                                       |
-| `model_configs`   | list                                  | Data Designer `ModelConfig` entries. `provider` must reference an Inference Gateway provider name (or `workspace/provider`). Omit to use Anonymizer library defaults (CLI local execution only). |
+| `model_configs`   | list                                  | Data Designer `ModelConfig` entries. `provider` must reference an Inference Gateway provider name (or `workspace/provider`). Required for SDK and CLI preview. |
 | `selected_models` | object                                | Optional `detection` / `replace` / `rewrite` overrides on top of the bundled defaults. Requires `model_configs`.       |
 | `num_records`     | int (≥ 1)                             | Number of records to preview. Defaults to 10.                                                                          |
 
@@ -143,7 +142,7 @@ preview.dataset.to_parquet("anonymized-preview.parquet", index=False)
 </Accordion>
 ## Step 4: Run from the CLI (Alternative)
 
-The CLI accepts the same request shape as a YAML spec file. Use `preview run` for local execution (allows local paths, model configs optional) or `preview submit` for the plugin service path (same as `sdk.anonymizer.preview`).
+The CLI accepts the same request shape as a YAML spec file. `preview submit` uses the plugin service path, the same as `sdk.anonymizer.preview`.
 
 Write the spec to YAML:
 
@@ -155,15 +154,7 @@ spec_path = Path("/tmp/anonymizer-preview.yaml")
 spec_path.write_text(yaml.safe_dump(request.model_dump(mode="json", exclude_none=True)))
 ```
 
-Run preview locally:
-
-```bash
-nemo anonymizer preview run \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}"
-```
-
-Or submit to the plugin service:
+Submit to the plugin service:
 
 ```bash
 nemo anonymizer preview submit \
@@ -172,10 +163,10 @@ nemo anonymizer preview submit \
   --base-url "${NMP_BASE_URL:-http://localhost:8080}"
 ```
 
-Both commands stream NDJSON frames to stdout. Filter with `jq`:
+The CLI command streams NDJSON frames to stdout. Filter with `jq`:
 
 ```bash
-nemo anonymizer preview run \
+nemo anonymizer preview submit \
   --spec-file /tmp/anonymizer-preview.yaml \
   --workspace "${NMP_WORKSPACE:-default}" \
   > /tmp/anonymizer-preview.ndjson
@@ -188,13 +179,12 @@ If `preview submit` returns 404 against the gateway, the plugin service isn't mo
 
 ## Input Source Forms
 
-The plugin accepts three forms for `data.source`:
+The plugin accepts two forms for `data.source`:
 
-| Form                                  | `sdk.anonymizer.preview` / `preview submit` | `preview run` |
-|---------------------------------------|-----------------------------------|---------------|
-| Local path (`/tmp/input.csv`)         | No                                | Yes           |
-| HTTP(S) URL (`https://.../input.csv`) | Yes                               | Yes           |
-| Fileset reference                     | Yes                               | Yes           |
+| Form                                  | Supported |
+|---------------------------------------|-----------|
+| HTTP(S) URL (`https://.../input.csv`) | Yes       |
+| Fileset reference                     | Yes       |
 
 Fileset references take any of these forms; the workspace and fileset must already exist:
 

@@ -6,10 +6,9 @@
 Plugin authors subclass :class:`NemoFunction` and register the class
 under the ``nemo.functions`` entry-point group. The platform mounts a
 ``POST`` route per function on the plugin service (auto-derived path),
-and the CLI exposes ``nemo <plugin> <fn> run`` (in-process) and
-``nemo <plugin> <fn> submit`` (HTTP POST) for each. Functions never
-dispatch through a backend — they run in the plugin service's event
-loop, in the same request that triggered them.
+and the CLI exposes ``nemo <plugin> <fn> submit`` (HTTP POST) for each.
+Functions never dispatch through a backend — they run in the plugin
+service's event loop, in the same request that triggered them.
 
 Mental model — *Function = spec → response | stream[frame]*:
 
@@ -86,7 +85,7 @@ class NemoFunction(_NamedPlugin, Generic[SpecT]):
     Subclasses declare their identity via class variables and implement
     :meth:`run`. The platform auto-derives:
 
-    - A CLI subcommand tree: ``nemo <plugin> <fn> run|submit``.
+    - A CLI subcommand tree: ``nemo <plugin> <fn> submit``.
     - A FastAPI route on the plugin service:
       ``POST /apis/<plugin>/v2/workspaces/{workspace}/<name>``
       (override per-class via :attr:`endpoint`).
@@ -113,8 +112,8 @@ class NemoFunction(_NamedPlugin, Generic[SpecT]):
 
         Pydantic model for the function's inputs. The route adapter
         validates the request body against it before invocation; the
-        local ``run`` verb validates the CLI-supplied spec the same
-        way. **Required** — the route factory and the CLI both need it
+        ``submit`` CLI validates the CLI-supplied spec the same way.
+        **Required** — the route factory and the CLI both need it
         to generate a working surface. Tied to :data:`SpecT` so a
         subclass like ``NemoFunction[GreetSpec]`` constrains
         ``spec_schema`` to ``type[GreetSpec]`` for type-checkers (and

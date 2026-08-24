@@ -4,9 +4,9 @@
 """Plugin job interface — what plugin authors implement for schedulable jobs.
 
 Plugin authors subclass :class:`NemoJob` and register the class under the
-``nemo.jobs`` entry-point group. The platform (or SDK) instantiates each class
-and invokes it through the :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler`
-for local execution, or POSTs it to the plugin service for remote submission.
+``nemo.jobs`` entry-point group. The API service compiles and submits jobs.
+Platform workers instantiate the job class and invoke :meth:`NemoJob.run`
+through :func:`nemo_platform_plugin.tasks.dispatcher.run_task`.
 
 Mental model — *Job = spec + profile + options*:
 
@@ -27,9 +27,9 @@ it executes — plugin authors never make a class-level sync/async choice:
   ``def``. They run in the task container, where there is no event loop
   and most work calls into sync library protocols.
 
-The scheduler runs the async lifecycle methods through a single
-``asyncio.run`` at the top of :meth:`NemoJobScheduler.run_local`; the
-sync ``run`` is invoked directly from the resulting canonical spec.
+The API process runs async lifecycle methods such as :meth:`to_spec` and
+:meth:`compile`. Task containers receive the canonical step config and call
+sync :meth:`run` through the task dispatcher.
 
 Example::
 
@@ -60,8 +60,7 @@ Example::
 Entry-point key convention: ``<plugin-name>.<job-name>``, e.g.
 ``example.say-hello``. This lets
 :func:`~nemo_platform_plugin.discovery.discover_jobs` resolve jobs unambiguously
-across plugins; programmatic execution goes through
-:meth:`nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`.
+across plugins.
 """
 
 from __future__ import annotations
@@ -107,7 +106,7 @@ class NemoJob(_NamedPlugin):
 
         Container image key for remote execution (e.g. ``"gpu-tasks"``,
         ``"cpu-tasks"``). Used by the Jobs service to pick the right
-        container image for each step. Ignored for local execution.
+        container image for each step.
 
     .. attribute:: execution_provider
         :type: str

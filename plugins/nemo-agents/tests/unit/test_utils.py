@@ -40,7 +40,7 @@ from nemo_agents_plugin.utils import (
 )
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.refs import EndpointURL, FilesetRef, LocalDir
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 
 # ---------------------------------------------------------------------------
 # inject_gateway_url
@@ -863,7 +863,7 @@ class TestResolveOutput:
         evaluation artifacts on the floor.
         """
         job = EvaluateAgentJob()
-        with pytest.raises(LocalRunError, match="sdk: NeMoPlatform"):
+        with pytest.raises(RunDependencyError, match="sdk: NeMoPlatform"):
             with job._resolve_output(FilesetRef("eval-results"), workspace="default", sdk=None, ctx=ctx):
                 pass
 

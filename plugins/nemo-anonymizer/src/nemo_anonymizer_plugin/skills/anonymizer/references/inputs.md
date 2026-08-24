@@ -7,7 +7,7 @@ The anonymizer reads a **single CSV or Parquet file**. Configure it via the `dat
 
 ```yaml
 data:
-  source: <local-path | http(s)-url | fileset-ref>
+  source: <http(s)-url | fileset-ref>
   text_column: text                # optional; defaults to "text"
   id_column: id                    # optional, stable record identifier
   data_summary: "Short free-text records; English."   # optional, helps LLMs
@@ -17,11 +17,10 @@ data:
 
 | Kind     | Example                                          | Supported by                                                                              |
 |----------|--------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Local    | `/tmp/input.csv` or `./data/input.parquet` | **Local execution only** (`preview run`, `run run`). |
-| HTTP(S)  | `https://example.com/input.csv`            | Local (`preview run`, `run run`) and plugin-service / Jobs execution (`preview submit`, `run submit`). |
-| Fileset  | `<workspace>/<fileset>#<path>`                   | Local (`preview run`, `run run`) and plugin-service / Jobs execution (`preview submit`, `run submit`). |
+| HTTP(S)  | `https://example.com/input.csv`            | Plugin-service / Jobs execution (`preview submit`, `run submit`). |
+| Fileset  | `<workspace>/<fileset>#<path>`             | Plugin-service / Jobs execution (`preview submit`, `run submit`). |
 
-Plugin-service / Jobs execution runs outside the caller's filesystem — use HTTP(S) URLs or fileset refs for those surfaces.
+Plugin-service / Jobs execution runs outside the caller's filesystem, so use HTTP(S) URLs or fileset refs.
 
 ## Fileset references
 
@@ -45,15 +44,9 @@ For upload commands, use the platform files CLI docs or `nemo-files` skill. Then
 
 Run jobs save a working artifacts directory; the anonymized dataset is one file inside that directory.
 
-### Where artifacts land for `run run`
+### Where artifacts land for `run submit`
 
-`nemo anonymizer run run` prints `{"exit_code": 0}` on success. The local job results manager logs the artifact directory to **stderr** in the form:
-
-```text
-Saved result 'artifacts' to file:///.../persistent/results/artifacts
-```
-
-Layout under that `artifacts/` directory:
+`nemo anonymizer run submit` creates a platform job. After it completes, download the `artifacts` result and extract it. Layout under that `artifacts/` directory:
 
 | File                  | Description                                                                |
 |-----------------------|----------------------------------------------------------------------------|
@@ -62,7 +55,7 @@ Layout under that `artifacts/` directory:
 | `metadata.json`       | Run metadata (includes the original text column name).                     |
 | `failed_records.json` | Per-record failures with reasons. Only written when at least one record failed. |
 
-### Loading the local artifacts
+### Loading extracted artifacts
 
 Read the parquet files directly from the artifacts directory:
 

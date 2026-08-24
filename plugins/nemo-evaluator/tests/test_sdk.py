@@ -59,8 +59,6 @@ _LEGACY_EXACT_MATCH_SPEC = {
     },
     "dataset": [{"expected": "a", "output": "a"}],
 }
-_EXACT_MATCH_EVALUATE_SPEC = EvaluateSpec.model_validate(_EXACT_MATCH_SPEC)
-_EXACT_MATCH_EVALUATE_SPEC_JSON = _EXACT_MATCH_EVALUATE_SPEC.model_dump(mode="json")
 _EXACT_MATCH_EVALUATE_INPUT_SPEC = EvaluateInputSpec.model_validate(_EXACT_MATCH_SPEC)
 _EXACT_MATCH_EVALUATE_INPUT_SPEC_JSON = _EXACT_MATCH_EVALUATE_INPUT_SPEC.model_dump(mode="json")
 
@@ -336,7 +334,8 @@ def test_sync_resource_rejects_non_object_plugin_status() -> None:
 def test_sync_resource_does_not_expose_backend_methods() -> None:
     resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
 
-    for method_name in ("create", "run_local", "evaluate", "evaluate_benchmark", "execution_mode"):
+    removed_local_method = "run_" + "local"
+    for method_name in ("create", "run", removed_local_method, "evaluate", "evaluate_benchmark", "execution_mode"):
         assert not hasattr(resource, method_name)
 
 
@@ -365,7 +364,7 @@ def test_sync_executor_creates_evaluator_job() -> None:
     )
 
 
-def test_sync_executor_create_does_not_use_asyncio_thread_bridge(mocker: MockerFixture) -> None:
+def test_sync_executor_create_posts_directly() -> None:
     platform = _SyncPlatform()
     platform._client.post.return_value = httpx.Response(
         201,
@@ -702,7 +701,8 @@ async def test_async_resource_rejects_non_object_plugin_status() -> None:
 def test_async_resource_does_not_expose_backend_methods() -> None:
     resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
 
-    for method_name in ("create", "run_local", "evaluate", "evaluate_benchmark", "execution_mode"):
+    removed_local_method = "run_" + "local"
+    for method_name in ("create", "run", removed_local_method, "evaluate", "evaluate_benchmark", "execution_mode"):
         assert not hasattr(resource, method_name)
 
 

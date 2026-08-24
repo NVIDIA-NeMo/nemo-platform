@@ -97,14 +97,13 @@ from nemo_platform_plugin.discovery import discover_jobs
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 job_cls = discover_jobs()["example.say-hello"]
-NemoJobScheduler().run_local(job_cls, {"name": "Alice"})
+NemoJobScheduler().submit_remote(job_cls, {"name": "Alice"})
 ```
 
-## Auto-generated three-verb CLI for jobs
+## Auto-generated CLI for jobs
 
-At startup, for every plugin that registers both `nemo.cli` and `nemo.jobs`, the platform injects three CLI subcommands per job into the plugin's Typer group: `run`, `submit`, `explain`. Plugin authors write no CLI code for their jobs.
+At startup, for every plugin that registers both `nemo.cli` and `nemo.jobs`, the platform injects two CLI subcommands per job into the plugin's Typer group: `submit`, `explain`. Plugin authors write no CLI code for their jobs.
 
-- `run` delegates to `NemoJobScheduler.run_local` — in-process, no platform.
 - `submit` delegates to `NemoJobScheduler.submit_remote` — POSTs to the plugin service's per-job endpoint; the cluster executes.
 - `explain` delegates to `NemoJobScheduler.explain` — reads schemas locally from the `NemoJob` class.
 

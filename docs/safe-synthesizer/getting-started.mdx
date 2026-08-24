@@ -7,7 +7,7 @@ description: ""
 ---
 <a id="nss-getting-started"></a>
 
-Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets on a host GPU.
+Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets through platform jobs.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Before using NeMo Safe Synthesizer, complete [Setup](/documentation/get-started)
 
 NeMo Safe Synthesizer has the following additional requirements:
 
-- An NVIDIA GPU **on the host machine** with 80GB+ VRAM (check with `nvidia-smi`). This is separate from any GPU inside a NIM container; Safe Synthesizer training runs directly on the host.
+- A GPU-capable Jobs backend with enough VRAM for the selected model and dataset.
 - Sufficient disk space for generated datasets (50GB+ recommended)
 
 For general platform troubleshooting (port conflicts, health checks, and so on), refer to [Setup](/documentation/get-started).
@@ -23,20 +23,32 @@ For general platform troubleshooting (port conflicts, health checks, and so on),
 <Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 ---
 
-## Host-local CLI
+## Submit Jobs
 
-For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution)):
+Use the Safe Synthesizer SDK builder or Jobs API to submit workloads through the platform. The builder can upload local datasets to Files before submission:
 
-```shell
-BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
-uv run nemo safe-synthesizer runtime setup
-uv run nemo safe-synthesizer run-local \
-  --spec-file ./nss-job.json \
-  --data-source ./input.csv \
-  --output-dir ./nss-output
+```python
+import os
+import pandas as pd
+
+from nemo_platform import NeMoPlatform
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+df = pd.DataFrame({"text": ["sample record"]})
+
+job = (
+    SafeSynthesizerJobBuilder(client, workspace="default")
+    .with_data_source(df)
+    .synthesize()
+    .create_job(name="safe-synth-job", project="default-project")
+)
 ```
 
-The `run-local` command launches the Safe Synthesizer task in a separate runtime Python subprocess. The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only; platform job submission uses the Jobs API or SDK.
+The `nemo safe-synthesizer` CLI exposes runtime setup and inspection utilities; workload execution goes through platform jobs.
 
 ---
 
@@ -45,7 +57,7 @@ The `run-local` command launches the Safe Synthesizer task in a separate runtime
 Create your first synthetic dataset:
 
 - [Safe Synthesizer 101 Tutorial](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - a beginner-friendly introduction
-- [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution) - local CLI and runtime task details
+- [Runtime Environment](/documentation/synthesize-safe-data/about/local-and-subprocess-execution) - runtime setup and inspection commands
 - [SDK Resources](/documentation/synthesize-safe-data/sdk-resources) - Python SDK methods for jobs, builders, logs, and results
 
 ---

@@ -3,9 +3,8 @@
 
 """Audit job — runs garak against a target using inline config + target.
 
-``nemo auditor audit run --spec-file spec.yaml`` shells out to a pre-installed
-garak interpreter (default ``/app/.garak_venv/bin/python``, overridable via
-``NEMO_AUDITOR_GARAK_PYTHON``).
+Submitted audit jobs shell out to a pre-installed garak interpreter (default
+``/app/.garak_venv/bin/python``, overridable via ``NEMO_AUDITOR_GARAK_PYTHON``).
 
 The probe spec is expanded into individual per-probe YAML configs tracked
 through ``todo/``, ``running/``, ``complete/``, and ``failed/`` directories
@@ -384,9 +383,9 @@ class AuditJob(NemoJob):
         """Return a ``NemoEntitiesClient`` from whatever the scheduler handed us.
 
         Order of preference: existing client → adapt ``async_sdk``.
-        Raises ``RuntimeError`` if neither is available, which is the case
-        when ``run`` is invoked locally with no SDK and the input spec
-        contains a name reference (no way to resolve it).
+        Raises ``RuntimeError`` if neither is available, which can happen
+        in direct task tests when the input spec contains a name reference
+        but no platform client was injected.
         """
         if entity_client is not None:
             return cast(NemoEntitiesClient, entity_client)

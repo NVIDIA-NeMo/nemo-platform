@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: safe-synthesizer
-description: "Use NeMo Safe Synthesizer from the NMP plugin through task-specific routing: host-local GPU runs, platform job submission, configuration, troubleshooting, artifacts, privacy settings, PII replacement, and evaluation reports. Use when the user asks about safe-synthesizer, NeMo Safe Synthesizer, synthetic tabular data, DP settings, generation failures, plugin-local runs, filesets, model filesets, or `nemo safe-synthesizer` CLI commands."
+description: "Use NeMo Safe Synthesizer from the NMP plugin through task-specific routing: platform job submission, configuration, troubleshooting, artifacts, privacy settings, PII replacement, runtime setup, and evaluation reports. Use when the user asks about safe-synthesizer, NeMo Safe Synthesizer, synthetic tabular data, DP settings, generation failures, filesets, model filesets, or `nemo safe-synthesizer` CLI commands."
 license: Apache-2.0
 ---
 
@@ -17,12 +17,11 @@ Task router for agents helping a person use the NeMo Safe Synthesizer NMP plugin
 - The `nemo safe-synthesizer` CLI is available, or repo development can use `uv run nemo safe-synthesizer`.
 - Platform jobs require workspace access to the input fileset and any `hf_token_secret` or PII classification provider.
 - Container jobs require a GPU-capable Jobs backend and access to the configured Safe Synthesizer task image.
-- Host-local generation requires a Linux host with a CUDA-capable NVIDIA GPU, compatible drivers, and a runtime created by `nemo safe-synthesizer runtime setup`.
 - Fileset references use `<workspace>/<fileset>#<path>` unless a workflow states otherwise.
 
 ## Route
 
-- Submit platform container jobs or run host-local development tasks: read `workflows/run.md`.
+- Submit platform container jobs: read `workflows/run.md`.
 - Set or override job parameters: read `workflows/config.md`.
 - Diagnose runtime, install, generation, OOM, validation, or fileset failures: read `workflows/diagnose.md`.
 - Retrieve job result artifacts: read `workflows/results.md`.
@@ -31,13 +30,11 @@ Task router for agents helping a person use the NeMo Safe Synthesizer NMP plugin
 ## Plugin-Specific Rules
 
 - Prefer platform container jobs for normal Safe Synthesizer usage.
-- Use the Jobs API or SDK for platform jobs. The `nemo safe-synthesizer` CLI exposes `run-local` and `runtime` only.
+- Use the Jobs API or SDK for platform jobs. The `nemo safe-synthesizer` CLI exposes runtime setup and inspection utilities only.
 - Configure released container jobs with `NMP_IMAGE_REGISTRY=nvcr.io/nvidia/nemo-platform`, `NMP_IMAGE_TAG=<tag>`, `NEMO_SAFE_SYNTHESIZER_JOB_MODE=container`, and `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE=safe-synthesizer-tasks`.
 - Override local task images with `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF=<image-ref>`; this bypasses platform registry/tag qualification.
-- Use `nemo safe-synthesizer run-local` only for host-local CUDA/GPU development or debugging.
-- Use `nemo safe-synthesizer runtime setup` only for host-local runs that need the separate runtime venv.
+- Use `nemo safe-synthesizer runtime setup` only when the separate runtime venv is needed for development or job debugging.
 - Treat `data_source` as a fileset URL for platform jobs, usually `<workspace>/<fileset>#<path>`.
-- For local runs, prefer `--data-source <local-file-or-dir>` when the input is already on disk.
 - If the job uses PII classification, `config.replace_pii.globals.classify.classify_model_provider` must be `<workspace>/<provider_name>`.
 - Keep usage guidance separate from plugin source development internals unless the user asks to change the plugin.
 

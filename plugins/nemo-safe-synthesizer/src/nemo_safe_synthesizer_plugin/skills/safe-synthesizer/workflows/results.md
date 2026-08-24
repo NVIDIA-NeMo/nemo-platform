@@ -6,18 +6,7 @@
 ## Prerequisites
 
 - Resolve the CLI with the command in `workflows/run.md`.
-- For host-local runs, know the `--output-dir` passed to `nemo safe-synthesizer run-local`.
 - For platform jobs, know the job name and workspace.
-
-## Host-Local Runs
-
-`nemo safe-synthesizer run-local --output-dir ./nss-output` writes artifacts under the output directory.
-
-Start answers with the exact output directory when it is known:
-
-```bash
-ls ./nss-output
-```
 
 ## Platform Jobs
 
