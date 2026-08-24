@@ -15,7 +15,17 @@ from typing import Any, ClassVar, cast
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.agent_config_formats import resolve_agent_config_for_deployment
 from nemo_agents_plugin.config import AgentsConfig
-from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT, Agent
+from nemo_agents_plugin.entities import (
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    Agent,
+    AgentEnvironmentInline,
+    ComputeSpecInline,
+)
+from nemo_agents_plugin.environment_resolution import (
+    EnvironmentResolutionError,
+    merge_environment_spec_into_agent_config,
+    resolve_environment,
+)
 from nemo_agents_plugin.fabric.invocation import (
     AgentConfigInvocationRequest,
     FabricDirectories,
@@ -35,8 +45,26 @@ from nemo_platform_plugin.job_results import ResultRef
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
+    EnvironmentVariable,
+    EnvironmentVariableFromSecret,
     PlatformJobSpec,
     PlatformJobStep,
+    ResourcesLimitsSpec,
+    ResourcesSpec,
+)
+from nemo_platform_plugin.jobs.constants import (
+    CONFIG_TASK_STORAGE_PATH_ENVVAR,
+    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+    NEMO_JOB_ATTEMPT_ID_ENVVAR,
+    NEMO_JOB_FILESET_ENVVAR,
+    NEMO_JOB_ID_ENVVAR,
+    NEMO_JOB_SECRETS_ENVVAR,
+    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+    NEMO_JOB_STEP_ENVVAR,
+    NEMO_JOB_TASK_ENVVAR,
+    NEMO_JOB_WORKSPACE_ENVVAR,
+    PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+    TASK_CONFIG_ENVVAR,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
@@ -57,12 +85,62 @@ SUCCESSFUL_FABRIC_STATUSES = {"succeeded"}
 DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS = 60 * 60
 DEFAULT_AGENT_EXECUTION_IMAGE_NAME = "nmp-api"
 
+# k8s resource key carrying the GPU count. The agents ``ComputeResources`` maps
+# express GPUs the Kubernetes way (a ``nvidia.com/gpu`` entry in ``limits``);
+# the jobs executor's ``ResourcesSpec`` instead carries a top-level integer
+# ``num_gpus``. We translate that one key and pass ``cpu``/``memory`` through.
+_GPU_RESOURCE_KEY = "nvidia.com/gpu"
+# Resource keys we know how to translate onto the jobs ``ResourcesSpec``. Any
+# other k8s resource key would be silently dropped (it has no home on the
+# executor spec), so we reject it up front instead.
+_SUPPORTED_RESOURCE_KEYS = frozenset({"cpu", "memory", _GPU_RESOURCE_KEY})
+
+# Env var names a secret-backed env var must never shadow. Splitting a secret's
+# resolved value over one of these would clobber platform-injected job state (the
+# jobs substrate sets the ``NEMO_JOB_*``/``NMP_TASK_CONFIG`` family on every
+# step) or the agent-container env the execute task relies on to reach the
+# platform SDK (mirrors the deployment container's reserved set). Reject the
+# collision at compile time so it can never reach the running step.
+_RESERVED_ENV_VAR_NAMES = frozenset(
+    {
+        # Jobs substrate (nemo_platform_plugin.jobs.constants).
+        EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+        PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+        CONFIG_TASK_STORAGE_PATH_ENVVAR,
+        TASK_CONFIG_ENVVAR,
+        NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+        NEMO_JOB_ID_ENVVAR,
+        NEMO_JOB_ATTEMPT_ID_ENVVAR,
+        NEMO_JOB_STEP_ENVVAR,
+        NEMO_JOB_TASK_ENVVAR,
+        NEMO_JOB_WORKSPACE_ENVVAR,
+        NEMO_JOB_FILESET_ENVVAR,
+        NEMO_JOB_SECRETS_ENVVAR,
+        # Agent execution env (mirrors the deployment container's reserved set).
+        "NMP_WORKSPACE",
+        "NMP_AGENT_NAME",
+        "NMP_BASE_URL",
+        "PYTHONPATH",
+        "AGENT_CONFIG_PATH",
+        "NAT_CONFIG_PATH",
+    }
+)
+
 
 class ExecuteAgentJobConfig(BaseModel):
     model_config = {"json_schema_mode_override": "validation"}
 
     agent: str = Field(pattern=ENTITY_REF_PATTERN, description="Agent entity name or workspace/name ref.")
     input: str = Field(description="Prompt to pass to the agent.")
+    environment: str | AgentEnvironmentInline | None = Field(
+        default=None,
+        description=(
+            'AgentEnvironment to run under: a "workspace/name" ref to a stored '
+            "AgentEnvironment, an inline environment, or None. Its EnvironmentSpec "
+            "is merged into the agent config and its ComputeSpec/secret refs are "
+            "snapshotted onto the job step at creation time."
+        ),
+    )
     workdir: AgentWorkdir | None = Field(
         default=None,
         description="Optional working directory configuration for the execution.",
@@ -85,6 +163,14 @@ class ExecuteAgentStepConfig(BaseModel):
     request: ExecuteAgentJobConfig
     agent: ResolvedAgentConfig
     workdir: AgentWorkdir | None = None
+    # Immutable snapshot of the resolved AgentEnvironment, mirroring
+    # AgentDeployment. ``agent.config`` already holds the merged config;
+    # ``compute`` and ``secrets`` are snapshotted for the executor. ``environment``
+    # retains the raw request value for provenance. Once created, the job is not
+    # kept in sync with the underlying environment entities.
+    environment: str | AgentEnvironmentInline | None = None
+    compute: ComputeSpecInline | None = None
+    secrets: dict[str, str] = Field(default_factory=dict)
 
 
 class ExecuteAgentJob(NemoJob):
@@ -133,7 +219,27 @@ class ExecuteAgentJob(NemoJob):
             workspace=agent.workspace,
             agent_name=agent.name,
         )
-        _validate_agent_config(resolved_agent_config)
+
+        # Resolve and merge the referenced AgentEnvironment. The EnvironmentSpec is
+        # merged into the resolved config (EnvironmentSpec-wins precedence); the
+        # ComputeSpec and secret-env references are snapshotted onto the step for
+        # the executor. This mirrors ``create_deployment`` so environment errors
+        # surface on the create request and the referenced entities are captured
+        # as an immutable snapshot. ``EnvironmentResolutionError`` is surfaced as a
+        # ``ValueError`` (matching the "Agent not found" pattern) so the jobs
+        # create path reports it to the caller.
+        try:
+            resolved_env = await resolve_environment(
+                request.environment, workspace=workspace, entity_client=typed_entity_client
+            )
+            merged = merge_environment_spec_into_agent_config(resolved_agent_config, resolved_env.environment_spec)
+        except EnvironmentResolutionError as exc:
+            raise ValueError(str(exc)) from exc
+
+        # Validate the merged config: an EnvironmentSpec can override the harness
+        # provider, so validation must run after the merge to reject e.g. a spec
+        # that selects a non-local Fabric environment.
+        _validate_agent_config(merged.config)
 
         workdir = None
         if request.workdir is not None:
@@ -145,10 +251,13 @@ class ExecuteAgentJob(NemoJob):
             agent=ResolvedAgentConfig(
                 name=agent.name,
                 workspace=agent.workspace,
-                config=resolved_agent_config,
+                config=merged.config,
                 config_format=agent.config_format,
             ),
             workdir=workdir,
+            environment=request.environment,
+            compute=resolved_env.compute_spec,
+            secrets=merged.secrets,
         )
 
     @classmethod
@@ -165,21 +274,34 @@ class ExecuteAgentJob(NemoJob):
     ) -> PlatformJobSpec:
         del workspace, entity_client, job_name, async_sdk, options
         step_config = ExecuteAgentStepConfig.model_validate(spec)
+
+        executor = CPUExecutionProviderSpec(
+            profile=profile or "default",
+            provider="cpu",
+            container=ContainerSpec(
+                image=cls._execution_image(),
+                entrypoint=["python", "-m"],
+                command=["nemo_agents_plugin.tasks.execute"],
+            ),
+        )
+        # Snapshotted compute -> executor resources. Injected only when the
+        # environment supplied a compute spec, so the default CPU sizing is left
+        # to the jobs backend otherwise.
+        resources = _compute_to_resources(step_config.compute)
+        if resources is not None:
+            executor["resources"] = resources
+
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
                     name="execute-agent",
-                    executor=CPUExecutionProviderSpec(
-                        profile=profile or "default",
-                        provider="cpu",
-                        container=ContainerSpec(
-                            image=cls._execution_image(),
-                            entrypoint=["python", "-m"],
-                            command=["nemo_agents_plugin.tasks.execute"],
-                        ),
-                    ),
+                    executor=executor,
                     config=step_config.model_dump(mode="json"),
-                    environment=[],
+                    # Snapshotted secret-env refs -> secret-backed step env vars.
+                    # The jobs substrate materializes each value into the process
+                    # env under ENV_NAME; Fabric and its MCP servers read it by
+                    # name (env-var-name indirection - see environment_resolution).
+                    environment=_secret_environment(step_config.secrets),
                 )
             ],
         )
@@ -277,6 +399,95 @@ class ExecuteAgentJob(NemoJob):
 
 def _has_workdir_inputs(workdir: AgentWorkdir) -> bool:
     return workdir.base_workdir is not None or bool(workdir.artifact_mounts)
+
+
+def _secret_environment(secrets: dict[str, str]) -> list[EnvironmentVariable]:
+    """Compile snapshotted secret-env refs into secret-backed step env vars.
+
+    Each ``ENV_NAME -> "workspace/secret"`` entry becomes an
+    ``EnvironmentVariable`` whose value is populated from the referenced Secret.
+    A secret env name must never shadow a platform-injected env var (the jobs
+    substrate or agent-execution env - see ``_RESERVED_ENV_VAR_NAMES``): the
+    resolved value would clobber platform state, so reject the collision here.
+    """
+    if not secrets:
+        return []
+
+    reserved = sorted(name for name in secrets if name in _RESERVED_ENV_VAR_NAMES)
+    if reserved:
+        raise ValueError(
+            f"Secret env var(s) {', '.join(reserved)} collide with reserved job env var name(s). "
+            f"Reserved names: {', '.join(sorted(_RESERVED_ENV_VAR_NAMES))}."
+        )
+
+    return [
+        EnvironmentVariable(name=env_name, from_secret=EnvironmentVariableFromSecret(name=ref))
+        for env_name, ref in secrets.items()
+    ]
+
+
+def _compute_to_resources(compute: ComputeSpecInline | None) -> ResourcesSpec | None:
+    """Map a snapshotted agents ComputeSpec onto the jobs executor ResourcesSpec.
+
+    Agents ``ComputeResources`` express requests/limits the Kubernetes way -
+    ``cpu``/``memory`` scalars plus a ``nvidia.com/gpu`` GPU count. The jobs
+    executor's ``ResourcesSpec`` instead carries ``cpu``/``memory`` under
+    ``limits``/``requests`` and a top-level integer ``num_gpus``. We translate
+    ``cpu``/``memory`` through and lift ``nvidia.com/gpu`` into ``num_gpus``,
+    preferring the limits count and falling back to requests. Any other k8s
+    resource key has no home on ``ResourcesSpec`` and would be silently dropped,
+    so it is rejected instead.
+    """
+    if compute is None:
+        return None
+
+    resources = compute.resources
+    _reject_unsupported_resource_keys(resources.limits, "limits")
+    _reject_unsupported_resource_keys(resources.requests, "requests")
+
+    spec: ResourcesSpec = {}
+    limits = _cpu_memory_spec(resources.limits)
+    if limits:
+        spec["limits"] = limits
+    requests = _cpu_memory_spec(resources.requests)
+    if requests:
+        spec["requests"] = requests
+
+    num_gpus = _gpu_count(resources.limits, resources.requests)
+    if num_gpus is not None:
+        spec["num_gpus"] = num_gpus
+
+    return spec or None
+
+
+def _reject_unsupported_resource_keys(resource_map: dict[str, str], where: str) -> None:
+    unsupported = sorted(key for key in resource_map if key not in _SUPPORTED_RESOURCE_KEYS)
+    if unsupported:
+        raise ValueError(
+            f"Unsupported compute resource key(s) in {where}: {', '.join(unsupported)}. "
+            f"agents.execute jobs support only {', '.join(sorted(_SUPPORTED_RESOURCE_KEYS))}."
+        )
+
+
+def _cpu_memory_spec(resource_map: dict[str, str]) -> ResourcesLimitsSpec:
+    # ``ResourcesLimitsSpec`` and ``ResourcesRequestsSpec`` are the same TypedDict
+    # (``ComputeResourceSpecParam``); one builder covers both sides.
+    spec: ResourcesLimitsSpec = {}
+    if "cpu" in resource_map:
+        spec["cpu"] = resource_map["cpu"]
+    if "memory" in resource_map:
+        spec["memory"] = resource_map["memory"]
+    return spec
+
+
+def _gpu_count(limits: dict[str, str], requests: dict[str, str]) -> int | None:
+    raw = limits.get(_GPU_RESOURCE_KEY, requests.get(_GPU_RESOURCE_KEY))
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {_GPU_RESOURCE_KEY!r} value {raw!r}; expected an integer GPU count.") from exc
 
 
 def _save_json_result(ctx: JobContext, name: str, path: Path, payload: dict[str, Any]) -> ResultRef:

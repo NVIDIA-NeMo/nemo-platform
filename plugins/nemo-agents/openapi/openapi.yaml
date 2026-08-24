@@ -5452,6 +5452,17 @@ components:
           type: string
           title: Input
           description: Prompt to pass to the agent.
+        environment:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentEnvironmentInline.
+          - $ref: '#/components/schemas/AgentEnvironmentInline'
+          title: Environment
+          description: 'AgentEnvironment to run under: a "workspace/name" ref to a
+            stored AgentEnvironment, an inline environment, or None. Its EnvironmentSpec
+            is merged into the agent config and its ComputeSpec/secret refs are snapshotted
+            onto the job step at creation time.'
         workdir:
           allOf:
           - $ref: '#/components/schemas/AgentWorkdir'
@@ -5475,6 +5486,20 @@ components:
           $ref: '#/components/schemas/ResolvedAgentConfig'
         workdir:
           $ref: '#/components/schemas/AgentWorkdir'
+        environment:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentEnvironmentInline.
+          - $ref: '#/components/schemas/AgentEnvironmentInline'
+          title: Environment
+        compute:
+          $ref: '#/components/schemas/ComputeSpecInline'
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
       type: object
       required:
       - request

@@ -12,7 +12,17 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nemo_agents_plugin.entities import Agent
+from nemo_agents_plugin.entities import (
+    Agent,
+    AgentComputeSpec,
+    AgentEnvironment,
+    AgentEnvironmentInline,
+    AgentEnvironmentSpec,
+    ComputeResources,
+    ComputeSpecInline,
+    EnvironmentSpecInline,
+    McpFulfillment,
+)
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
 from nemo_agents_plugin.jobs.execute import (
     DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
@@ -450,6 +460,314 @@ async def test_compile_falls_back_to_qualified_api_image() -> None:
     assert step["executor"]["container"]["image"] == "qualified/nmp-api:dev"
 
 
+# --- environment / compute / secrets wiring ------------------------------------
+
+
+def _env_ref_entity_client() -> AsyncMock:
+    """Entity client that dereferences an AgentEnvironment ref chain.
+
+    Dispatches ``entity_client.get`` by entity type: the Agent, then the
+    AgentEnvironment and its EnvironmentSpec/ComputeSpec, all resolved by name.
+    """
+    entity_client = AsyncMock()
+
+    env = AgentEnvironment(
+        name="prod",
+        workspace="default",
+        environment_spec="default/prod-spec",
+        compute_spec="default/prod-compute",
+    )
+    env_spec = AgentEnvironmentSpec(
+        name="prod-spec",
+        workspace="default",
+        secrets={"OPENAI_API_KEY": "default/openai-key"},
+    )
+    compute_spec = AgentComputeSpec(
+        name="prod-compute",
+        workspace="default",
+        resources=ComputeResources(limits={"cpu": "2", "memory": "4Gi", "nvidia.com/gpu": "1"}),
+    )
+
+    async def _get(entity_type: type, *, name: str, workspace: str) -> object:
+        if entity_type is Agent:
+            return _agent()
+        if entity_type is AgentEnvironment:
+            return env
+        if entity_type is AgentEnvironmentSpec:
+            return env_spec
+        if entity_type is AgentComputeSpec:
+            return compute_spec
+        raise AssertionError(f"unexpected entity type {entity_type!r}")
+
+    entity_client.get.side_effect = _get
+    return entity_client
+
+
+@pytest.mark.asyncio
+async def test_to_spec_snapshots_resolved_environment_ref() -> None:
+    entity_client = _env_ref_entity_client()
+
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="calc", input="hello", environment="default/prod"),
+        workspace="default",
+        entity_client=entity_client,
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    # Raw environment retained for provenance.
+    assert step_config.environment == "default/prod"
+    # Secret refs collected from the EnvironmentSpec top-level secrets.
+    assert step_config.secrets == {"OPENAI_API_KEY": "default/openai-key"}
+    # Compute spec snapshotted (k8s-style resource maps preserved as-is).
+    assert step_config.compute is not None
+    assert step_config.compute.resources.limits == {"cpu": "2", "memory": "4Gi", "nvidia.com/gpu": "1"}
+
+
+@pytest.mark.asyncio
+async def test_to_spec_merges_inline_environment_into_config() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    environment = AgentEnvironmentInline(
+        environment_spec=EnvironmentSpecInline(
+            env={"MY_FLAG": "on"},
+            secrets={"OPENAI_API_KEY": "default/openai-key"},
+        ),
+        compute_spec=ComputeSpecInline(resources=ComputeResources(limits={"cpu": "500m"})),
+    )
+
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="calc", input="hello", environment=environment),
+        workspace="default",
+        entity_client=entity_client,
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    # Inline env resolution never touches the entity store beyond the Agent.
+    entity_client.get.assert_awaited_once_with(Agent, name="calc", workspace="default")
+    # Plaintext env merged into the config's environment block.
+    assert step_config.agent.config["environment"]["env"] == {"MY_FLAG": "on"}
+    assert step_config.secrets == {"OPENAI_API_KEY": "default/openai-key"}
+    assert step_config.compute is not None
+    assert step_config.compute.resources.limits == {"cpu": "500m"}
+
+
+@pytest.mark.asyncio
+async def test_to_spec_mcp_secret_indirection_through_environment() -> None:
+    """An Agent-declared MCP server is fulfilled with a secret ref via env-name
+    indirection: the ref is collected into ``secrets`` (never written into the
+    config), and the server's env references the value by name so the running
+    step reads it from the process env the substrate populates.
+    """
+    mcp_agent_config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "calc",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+        "mcp": {"servers": {"search": {"transport": "streamable-http", "url": "http://agent-url"}}},
+    }
+    entity_client = AsyncMock()
+    entity_client.get.return_value = Agent(
+        name="calc",
+        workspace="default",
+        config=mcp_agent_config,
+        config_format="nemo-agents-spec-v1",
+    )
+
+    environment = AgentEnvironmentInline(
+        environment_spec=EnvironmentSpecInline(
+            mcp={
+                "search": McpFulfillment(
+                    url="http://env-url",
+                    env={"SEARCH_MODE": "fast"},
+                    secrets={"SEARCH_TOKEN": "default/search-token"},
+                ),
+            },
+        ),
+    )
+
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="calc", input="hello", environment=environment),
+        workspace="default",
+        entity_client=entity_client,
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    server = step_config.agent.config["mcp"]["servers"]["search"]
+    # Fulfillment url wins; non-secret env merged into the server config.
+    assert server["url"] == "http://env-url"
+    assert server["env"] == {"SEARCH_MODE": "fast"}
+    # Secret ref collected for injection, NOT written into the server config.
+    assert step_config.secrets == {"SEARCH_TOKEN": "default/search-token"}
+    assert "SEARCH_TOKEN" not in server.get("env", {})
+
+
+@pytest.mark.asyncio
+async def test_to_spec_with_no_environment_leaves_snapshot_empty() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(agent="calc", input="hello"),
+        workspace="default",
+        entity_client=entity_client,
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert step_config.environment is None
+    assert step_config.compute is None
+    assert step_config.secrets == {}
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_missing_environment_ref() -> None:
+    entity_client = AsyncMock()
+
+    async def _get(entity_type: type, *, name: str, workspace: str) -> object:
+        if entity_type is Agent:
+            return _agent()
+        raise NemoEntityNotFoundError("missing")
+
+    entity_client.get.side_effect = _get
+
+    with pytest.raises(ValueError, match="AgentEnvironment 'prod' not found"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="calc", input="hello", environment="default/prod"),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_environment_spec_selecting_non_local_provider() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    environment = AgentEnvironmentInline(
+        environment_spec=EnvironmentSpecInline(provider="docker"),
+    )
+
+    with pytest.raises(ValueError, match="only support local Fabric environments"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(agent="calc", input="hello", environment=environment),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_compile_injects_secret_env_and_compute_resources() -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        compute=ComputeSpecInline(
+            resources=ComputeResources(
+                limits={"cpu": "2", "memory": "4Gi", "nvidia.com/gpu": "2"},
+                requests={"cpu": "1", "memory": "2Gi"},
+            )
+        ),
+        secrets={"OPENAI_API_KEY": "default/openai-key"},
+    )
+
+    with patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config:
+        get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
+        platform_spec = await ExecuteAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+    step = list(platform_spec["steps"])[0]
+    # Secret ref -> secret-backed env var.
+    assert step["environment"] == [{"name": "OPENAI_API_KEY", "from_secret": {"name": "default/openai-key"}}]
+    # Compute -> executor resources: cpu/memory pass through, gpu -> num_gpus.
+    resources = step["executor"]["resources"]
+    assert resources["limits"] == {"cpu": "2", "memory": "4Gi"}
+    assert resources["requests"] == {"cpu": "1", "memory": "2Gi"}
+    assert resources["num_gpus"] == 2
+
+
+@pytest.mark.asyncio
+async def test_compile_without_compute_omits_executor_resources() -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    with patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config:
+        get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
+        platform_spec = await ExecuteAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+    step = list(platform_spec["steps"])[0]
+    assert "resources" not in step["executor"]
+    assert step["environment"] == []
+
+
+@pytest.mark.asyncio
+async def test_compile_rejects_unsupported_compute_resource_key() -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        compute=ComputeSpecInline(resources=ComputeResources(limits={"cpu": "1", "ephemeral-storage": "1Gi"})),
+    )
+
+    with (
+        patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config,
+        pytest.raises(ValueError, match="Unsupported compute resource key"),
+    ):
+        get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
+        await ExecuteAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_compile_rejects_secret_env_colliding_with_reserved_name() -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        secrets={"NMP_BASE_URL": "default/some-secret"},
+    )
+
+    with (
+        patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config,
+        pytest.raises(ValueError, match="reserved job env var name"),
+    ):
+        get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
+        await ExecuteAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
 def test_run_without_input_workdir_saves_empty_input_snapshot(ctx: JobContext) -> None:
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(agent="calc", input="hello"),
@@ -776,6 +1094,9 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
         "provider": "local",
         "workspace": "./workspace",
         "artifacts": "./artifacts",
+        "connection": {},
+        "env": {},
+        "metadata": {},
         "settings": {},
     }
     assert (
@@ -785,6 +1106,7 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
     assert body.spec["request"] == {
         "agent": "calc",
         "input": "hello",
+        "environment": None,
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
         "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
     }
