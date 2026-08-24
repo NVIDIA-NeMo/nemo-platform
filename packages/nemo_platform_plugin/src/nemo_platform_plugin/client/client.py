@@ -333,6 +333,21 @@ class BaseNemoClient:
         return self._base_url
 
     @property
+    def _client(self) -> httpx.Client | httpx.AsyncClient:
+        """Underlying httpx transport.
+
+        Plugin SDK resources access ``platform._client`` to make raw HTTP
+        calls. Exposing it here lets them work with NemoClient after the
+        Stainless SDK is retired.
+        """
+        return self._http
+
+    @property
+    def default_headers(self) -> dict[str, str]:
+        """Default headers sent with every request."""
+        return self._default_headers or {}
+
+    @property
     def workspace(self) -> str | None:
         return self._workspace
 
