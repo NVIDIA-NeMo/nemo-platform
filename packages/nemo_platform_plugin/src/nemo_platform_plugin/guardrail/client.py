@@ -8,6 +8,7 @@ using the ``method()`` descriptor, following the files/models pattern.
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import GuardrailCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.guardrail import endpoints
 
@@ -21,9 +22,9 @@ class _GuardrailMethods:
     check_guardrail = method(endpoints.check_guardrail)
 
 
-class GuardrailClient(_GuardrailMethods, NemoClient):
+class GuardrailClient(_GuardrailMethods, GuardrailCompat, NemoClient):
     """Sync client for the Guardrails service API."""
 
 
-class AsyncGuardrailClient(_GuardrailMethods, AsyncNemoClient):
+class AsyncGuardrailClient(_GuardrailMethods, GuardrailCompat, AsyncNemoClient):
     """Async client for the Guardrails service API."""

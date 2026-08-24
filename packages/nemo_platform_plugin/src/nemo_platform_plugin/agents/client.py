@@ -9,6 +9,7 @@ using the ``method()`` descriptor, following the files/models pattern.
 
 from nemo_platform_plugin.agents import endpoints
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import AgentsCompat
 from nemo_platform_plugin.client.method import method
 
 
@@ -25,9 +26,9 @@ class _AgentsMethods:
     invoke_deployment = method(endpoints.invoke_deployment)
 
 
-class AgentsClient(_AgentsMethods, NemoClient):
+class AgentsClient(_AgentsMethods, AgentsCompat, NemoClient):
     """Sync client for the Agents service API."""
 
 
-class AsyncAgentsClient(_AgentsMethods, AsyncNemoClient):
+class AsyncAgentsClient(_AgentsMethods, AgentsCompat, AsyncNemoClient):
     """Async client for the Agents service API."""

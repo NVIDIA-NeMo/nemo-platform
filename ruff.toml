@@ -63,6 +63,12 @@ unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[lint.per-file-ignores]
+# Temporary compat layer: imports are intentionally colocated with each
+# area's wrapper functions for readability. Removed when the compat layer
+# is deleted (PR 9 of the Stainless purge).
+"**/nemo_platform_plugin/client/compat.py" = ["E402"]
+
 [format]
 # Like Black, use double quotes for strings.
 quote-style = "double"

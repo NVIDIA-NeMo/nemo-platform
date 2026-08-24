@@ -9,6 +9,7 @@ using the ``method()`` descriptor, following the files/models pattern.
 
 from nemo_platform_plugin.auditor import endpoints
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import AuditorCompat
 from nemo_platform_plugin.client.method import method
 
 
@@ -28,9 +29,9 @@ class _AuditorMethods:
     get_audit_job = method(endpoints.get_audit_job)
 
 
-class AuditorClient(_AuditorMethods, NemoClient):
+class AuditorClient(_AuditorMethods, AuditorCompat, NemoClient):
     """Sync client for the Auditor service API."""
 
 
-class AsyncAuditorClient(_AuditorMethods, AsyncNemoClient):
+class AsyncAuditorClient(_AuditorMethods, AuditorCompat, AsyncNemoClient):
     """Async client for the Auditor service API."""

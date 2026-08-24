@@ -16,6 +16,7 @@ Usage::
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import FilesCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.files import endpoints
 
@@ -34,9 +35,9 @@ class _FilesMethods:
     query_otlp_logs = method(endpoints.query_otlp_logs)
 
 
-class FilesClient(_FilesMethods, NemoClient):
+class FilesClient(_FilesMethods, FilesCompat, NemoClient):
     """Sync client for the Files service API."""
 
 
-class AsyncFilesClient(_FilesMethods, AsyncNemoClient):
+class AsyncFilesClient(_FilesMethods, FilesCompat, AsyncNemoClient):
     """Async client for the Files service API."""

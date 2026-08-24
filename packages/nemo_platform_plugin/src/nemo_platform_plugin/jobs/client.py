@@ -24,6 +24,7 @@ Usage::
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import JobsCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.jobs import endpoints
 
@@ -65,9 +66,9 @@ class _JobsMethods:
     get_job_step_task = method(endpoints.get_job_step_task)
 
 
-class JobsClient(_JobsMethods, NemoClient):
+class JobsClient(_JobsMethods, JobsCompat, NemoClient):
     """Sync client for the Jobs service API."""
 
 
-class AsyncJobsClient(_JobsMethods, AsyncNemoClient):
+class AsyncJobsClient(_JobsMethods, JobsCompat, AsyncNemoClient):
     """Async client for the Jobs service API."""

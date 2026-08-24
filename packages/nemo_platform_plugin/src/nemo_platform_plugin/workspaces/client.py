@@ -14,6 +14,7 @@ Usage::
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import WorkspacesCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.workspaces import endpoints
 
@@ -30,9 +31,9 @@ class _WorkspacesMethods:
     delete_workspace_member = method(endpoints.delete_workspace_member)
 
 
-class WorkspacesClient(_WorkspacesMethods, NemoClient):
+class WorkspacesClient(_WorkspacesMethods, WorkspacesCompat, NemoClient):
     """Sync client for the Workspaces API."""
 
 
-class AsyncWorkspacesClient(_WorkspacesMethods, AsyncNemoClient):
+class AsyncWorkspacesClient(_WorkspacesMethods, WorkspacesCompat, AsyncNemoClient):
     """Async client for the Workspaces API."""

@@ -8,6 +8,7 @@ using the ``method()`` descriptor, following the files/models pattern.
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import IronSwarmCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.iron_swarm import endpoints
 
@@ -26,9 +27,9 @@ class _IronSwarmMethods:
     validate_model = method(endpoints.validate_model)
 
 
-class IronSwarmClient(_IronSwarmMethods, NemoClient):
+class IronSwarmClient(_IronSwarmMethods, IronSwarmCompat, NemoClient):
     """Sync client for the Iron Swarm service API."""
 
 
-class AsyncIronSwarmClient(_IronSwarmMethods, AsyncNemoClient):
+class AsyncIronSwarmClient(_IronSwarmMethods, IronSwarmCompat, AsyncNemoClient):
     """Async client for the Iron Swarm service API."""

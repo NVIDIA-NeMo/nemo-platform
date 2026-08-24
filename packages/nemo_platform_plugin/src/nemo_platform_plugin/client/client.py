@@ -43,6 +43,7 @@ from nemo_platform_plugin.client.errors import (
     NemoTransportError,
     raise_for_status,
 )
+from nemo_platform_plugin.client.platform_compat import PlatformCompat
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
@@ -279,30 +280,41 @@ class _InferenceNamespace:
 
     @property
     def providers(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
+        from nemo_platform_plugin.client.compat import _AsyncInferenceProvidersCompat, _InferenceProvidersCompat
 
-        return ModelsClient.from_client(self._client)
+        if isinstance(self._client, AsyncNemoClient):
+            return _AsyncInferenceProvidersCompat.from_client(self._client)
+        return _InferenceProvidersCompat.from_client(self._client)
 
     @property
     def deployments(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
+        from nemo_platform_plugin.client.compat import _AsyncInferenceDeploymentsCompat, _InferenceDeploymentsCompat
 
-        return ModelsClient.from_client(self._client)
+        if isinstance(self._client, AsyncNemoClient):
+            return _AsyncInferenceDeploymentsCompat.from_client(self._client)
+        return _InferenceDeploymentsCompat.from_client(self._client)
 
     @property
     def deployment_configs(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
+        from nemo_platform_plugin.client.compat import (
+            _AsyncInferenceDeploymentConfigsCompat,
+            _InferenceDeploymentConfigsCompat,
+        )
 
-        return ModelsClient.from_client(self._client)
+        if isinstance(self._client, AsyncNemoClient):
+            return _AsyncInferenceDeploymentConfigsCompat.from_client(self._client)
+        return _InferenceDeploymentConfigsCompat.from_client(self._client)
 
     @property
     def virtual_models(self) -> NemoClient:
-        from nemo_platform_plugin.virtual_models.client import VirtualModelsClient
+        from nemo_platform_plugin.client.compat import _AsyncInferenceVirtualModelsCompat, _InferenceVirtualModelsCompat
 
-        return VirtualModelsClient.from_client(self._client)
+        if isinstance(self._client, AsyncNemoClient):
+            return _AsyncInferenceVirtualModelsCompat.from_client(self._client)
+        return _InferenceVirtualModelsCompat.from_client(self._client)
 
 
-class BaseNemoClient:
+class BaseNemoClient(PlatformCompat):
     """Shared logic for sync and async NeMo clients.
 
     Handles URL construction and request serialisation.

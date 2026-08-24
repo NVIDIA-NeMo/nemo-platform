@@ -14,6 +14,7 @@ Usage::
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import SecretsCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.secrets import endpoints
 
@@ -28,9 +29,9 @@ class _SecretsMethods:
     rotate_encryption_keys = method(endpoints.rotate_encryption_keys)
 
 
-class SecretsClient(_SecretsMethods, NemoClient):
+class SecretsClient(_SecretsMethods, SecretsCompat, NemoClient):
     """Sync client for the Secrets service API."""
 
 
-class AsyncSecretsClient(_SecretsMethods, AsyncNemoClient):
+class AsyncSecretsClient(_SecretsMethods, SecretsCompat, AsyncNemoClient):
     """Async client for the Secrets service API."""

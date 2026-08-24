@@ -12,6 +12,7 @@ job spec and calls ``submit_evaluate_job`` / ``submit_agent_eval_job`` here.
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import EvaluatorCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.evaluator import endpoints
 
@@ -30,9 +31,9 @@ class _EvaluatorMethods:
     delete_metric = method(endpoints.delete_metric)
 
 
-class EvaluatorClient(_EvaluatorMethods, NemoClient):
+class EvaluatorClient(_EvaluatorMethods, EvaluatorCompat, NemoClient):
     """Sync client for the Evaluator service API."""
 
 
-class AsyncEvaluatorClient(_EvaluatorMethods, AsyncNemoClient):
+class AsyncEvaluatorClient(_EvaluatorMethods, EvaluatorCompat, AsyncNemoClient):
     """Async client for the Evaluator service API."""

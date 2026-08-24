@@ -15,6 +15,7 @@ typed clients internally.
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import DataDesignerCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.data_designer import endpoints
 
@@ -29,9 +30,9 @@ class _DataDesignerMethods:
     get_job_logs = method(endpoints.get_job_logs)
 
 
-class DataDesignerClient(_DataDesignerMethods, NemoClient):
+class DataDesignerClient(_DataDesignerMethods, DataDesignerCompat, NemoClient):
     """Sync client for the Data Designer service API."""
 
 
-class AsyncDataDesignerClient(_DataDesignerMethods, AsyncNemoClient):
+class AsyncDataDesignerClient(_DataDesignerMethods, DataDesignerCompat, AsyncNemoClient):
     """Async client for the Data Designer service API."""

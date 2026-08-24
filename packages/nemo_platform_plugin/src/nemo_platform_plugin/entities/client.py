@@ -16,6 +16,7 @@ Usage::
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import EntitiesCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.entities import endpoints
 
@@ -29,9 +30,9 @@ class _EntitiesMethods:
     get_entity_by_id = method(endpoints.get_entity_by_id)
 
 
-class EntitiesClient(_EntitiesMethods, NemoClient):
+class EntitiesClient(_EntitiesMethods, EntitiesCompat, NemoClient):
     """Sync client for the Entities service API."""
 
 
-class AsyncEntitiesClient(_EntitiesMethods, AsyncNemoClient):
+class AsyncEntitiesClient(_EntitiesMethods, EntitiesCompat, AsyncNemoClient):
     """Async client for the Entities service API."""

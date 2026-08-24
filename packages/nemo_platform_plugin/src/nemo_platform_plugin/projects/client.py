@@ -8,6 +8,7 @@ using the ``method()`` descriptor, following the files/models pattern.
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.compat import ProjectsCompat
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.projects import endpoints
 
@@ -20,9 +21,9 @@ class _ProjectsMethods:
     delete_project = method(endpoints.delete_project)
 
 
-class ProjectsClient(_ProjectsMethods, NemoClient):
+class ProjectsClient(_ProjectsMethods, ProjectsCompat, NemoClient):
     """Sync client for the Projects API."""
 
 
-class AsyncProjectsClient(_ProjectsMethods, AsyncNemoClient):
+class AsyncProjectsClient(_ProjectsMethods, ProjectsCompat, AsyncNemoClient):
     """Async client for the Projects API."""
