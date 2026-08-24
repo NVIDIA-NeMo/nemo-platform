@@ -25,7 +25,7 @@ import {
   useListEvaluations,
   useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
-import { Button, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import { Anchor, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
@@ -56,7 +56,6 @@ import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, File } from 'lucide-react';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -542,25 +541,20 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       <FormProvider {...methods}>
         <Stack gap="density-xl">
           {agentProp ? (
-            <Stack gap="density-md">
-              <Text kind="body/regular/md">
-                Run evaluation via NeMo evaluator&apos;s built in runner. Evaluator supports Harbor
-                and Gym runners as well.
-              </Text>
-              <Button
-                asChild
-                color="neutral"
-                kind="tertiary"
-                size="small"
-                className="w-full justify-start"
+            <Text kind="body/regular/md">
+              Run evaluation via NeMo Evaluator&apos;s built in runner. Evaluator also supports
+              Harbor and Gym as runners.{' '}
+              <Anchor
+                kind="inline"
+                textKind="body/regular/md"
+                href={LINK_EVAL_DOCS_NEMO_EVALUATOR}
+                target="_blank"
+                rel="noreferrer"
               >
-                <a href={LINK_EVAL_DOCS_NEMO_EVALUATOR} target="_blank" rel="noreferrer">
-                  <File className="!text-brand" />
-                  <Text className="flex-1">NeMo Evaluator docs — learn more</Text>
-                  <ChevronRight />
-                </a>
-              </Button>
-            </Stack>
+                Learn more
+              </Anchor>
+              .
+            </Text>
           ) : (
             <ControlledSelect
               useControllerProps={{ control, name: 'agent' }}
