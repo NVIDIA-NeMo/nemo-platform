@@ -35,6 +35,11 @@ authz:
           description: "Run the profiler on a fileset (re-runnable as its data changes)"
         read:
           description: "Read a fileset's stored profile"
+        # Deliberately granted to no workspace role below: the profile is derived data that only
+        # the profiler task produces, so the write path stays reachable by service principals
+        # alone. Users ask for a profile with filesets.profile.exec instead.
+        write:
+          description: "Store a computed profile on a fileset (service principals only)"
       read:
         description: "Read filesets"
       update:
@@ -728,6 +733,12 @@ authz:
       post:
         permissions:
         - filesets.profile.exec
+        scopes:
+        - files:write
+        - platform:write
+      put:
+        permissions:
+        - filesets.profile.write
         scopes:
         - files:write
         - platform:write

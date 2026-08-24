@@ -6,12 +6,13 @@
 from datetime import datetime
 from typing import Any, ClassVar, Dict
 
+from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 from nemo_platform_plugin.files.types import FilesetPurpose as FilesetPurpose
 from nmp.common.entities import constants
 from nmp.common.entities.client import EntityBase
 from nmp.common.files.metadata import FilesetMetadata
 from nmp.core.files.app.backends.factory import StorageConfig
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Fileset(EntityBase):
@@ -33,6 +34,36 @@ class Fileset(EntityBase):
     )
 
     custom_fields: Dict[str, Any] = Field(default_factory=dict, description="Custom fields for the fileset.")
+
+
+class FilesetProfile(EntityBase):
+    """The machine-computed dataset profile for one fileset.
+
+    Its own entity rather than a field on ``Fileset``, for three reasons: the profile is
+    server-managed (only the profiler task writes it, so it must not sit in a client-writable
+    request body), it is large enough that loading it on every ``GET /filesets`` page would be
+    waste, and its lifecycle is independent — a fileset can exist unprofiled, and re-profiling
+    replaces the profile without touching the fileset.
+
+    Parent-scoped: unique within (workspace, entity_type, parent=fileset), and since there is
+    exactly one profile per fileset the name is always :data:`FILESET_PROFILE_ENTITY_NAME`.
+    """
+
+    __entity_type__: ClassVar[str] = "fileset_profile"
+
+    fileset: str = Field(description="Parent fileset ID.")
+    profile: DatasetProfile = Field(description="The computed dataset profile.")
+
+    @model_validator(mode="after")
+    def set_parent_from_fileset(self) -> "FilesetProfile":
+        """Scope uniqueness to the parent fileset, mirroring PlatformJobResult."""
+        self._parent = self.fileset
+        return self
+
+
+# One profile per fileset, so the child entity's name is a constant rather than something to
+# generate: the (workspace, type, parent, name) key is already unique on the parent alone.
+FILESET_PROFILE_ENTITY_NAME = "profile"
 
 
 class FileLock(EntityBase):

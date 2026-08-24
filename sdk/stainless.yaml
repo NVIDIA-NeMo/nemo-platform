@@ -256,15 +256,34 @@ resources:
     subresources:
       filesets:
         models:
+          categorical_stats: CategoricalStats
+          column_stats: ColumnStats
+          dataset_profile: DatasetProfile
+          evidence: Evidence
+          feature_schema: FeatureSchema
+          file_error: FileError
           fileset_filter: FilesetFilter
           fileset_profile_response: FilesetProfileResponse
+          message_stats: MessageStats
+          numeric_stats: NumericStats
+          partition_classification: PartitionClassification
+          partition_profile: PartitionProfile
+          profile_fileset_request: ProfileFilesetRequest
+          quantiles: Quantiles
+          sampling_info: SamplingInfo
+          split_profile: SplitProfile
           submit_profile_job_response: SubmitProfileJobResponse
+          text_stats: TextStats
+          verifiability: Verifiability
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
           retrieve: get /apis/files/v2/workspaces/{workspace}/filesets/{name}
           delete: delete /apis/files/v2/workspaces/{workspace}/filesets/{name}
           update: patch /apis/files/v2/workspaces/{workspace}/filesets/{name}
+          # No `put_profile`: the profile write path is hidden from the OpenAPI spec
+          # (include_in_schema=False) because only the profiler task calls it. Keeping it out is
+          # also what keeps DatasetProfile out of every generated request-body type.
           profile: post /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile
           get_profile: get /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile
       otlp:
@@ -740,28 +759,7 @@ resources:
       # FilesetMetadata`` imports downstream (models service tests).
       fileset_metadata: FilesetMetadata
       environment_metadata_content: EnvironmentMetadataContent
-      # DatasetMetadataContent and the DatasetProfile tree it now carries are pinned here for the
-      # same reason as FilesetMetadata above: DatasetMetadataContent is already published as
-      # ``nemo_platform.types.shared.DatasetMetadataContent``, and letting sync-models re-home it
-      # under `files` would break that import for existing consumers. The profile models come with
-      # it -- they are reachable from DatasetMetadataContent.profile, so splitting them across
-      # $shared and a resource would leave a shared model referencing a resource-scoped one.
       dataset_metadata_content: DatasetMetadataContent
-      dataset_profile: DatasetProfile
-      partition_profile: PartitionProfile
-      partition_classification: PartitionClassification
-      column_stats: ColumnStats
-      feature_schema: FeatureSchema
-      categorical_stats: CategoricalStats
-      evidence: Evidence
-      file_error: FileError
-      message_stats: MessageStats
-      numeric_stats: NumericStats
-      quantiles: Quantiles
-      sampling_info: SamplingInfo
-      split_profile: SplitProfile
-      text_stats: TextStats
-      verifiability: Verifiability
       # Every FilesetMetadata member has to live in $shared alongside it. Left under
       # `files`, sync-models homes this one there and FilesetMetadata's import of it
       # becomes shared -> files -> shared, which fails at import time.

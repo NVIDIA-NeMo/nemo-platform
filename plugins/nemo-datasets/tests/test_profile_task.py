@@ -5,7 +5,6 @@
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import cast
 
 import nemo_datasets_plugin.tasks.profile.run as run_mod
@@ -14,7 +13,6 @@ import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import LocalFileSource
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.files.metadata import FilesetMetadata
 from nemo_platform_plugin.job_results import ResultRef
 from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_FILESET_ENVVAR,
@@ -59,11 +57,8 @@ def _install(monkeypatch, tmp_path: Path, config: dict, data: Path | None = None
             return ResultRef(name=name, artifact_url=f"file://{local_path}")
 
     class _FilesClient:
-        def get_fileset(self, *, workspace, name):
-            return SimpleNamespace(data=lambda: SimpleNamespace(metadata=FilesetMetadata(dataset=None)))
-
-        def update_fileset(self, *, workspace, name, body):
-            published["persisted"] = (workspace, name, body)
+        def put_fileset_profile(self, *, workspace, name, body):
+            published["stored"] = (workspace, name, body)
 
     config_path = tmp_path / "step-config.json"
     config_path.write_text(json.dumps(config))
@@ -92,7 +87,9 @@ def test_task_profiles_a_fileset_and_publishes_the_profile(tmp_path, monkeypatch
     assert profile["coverage"]["files_read"] == 1
 
 
-def test_task_persists_the_profile_onto_the_fileset(tmp_path, monkeypatch):
+def test_task_stores_the_profile_against_the_fileset(tmp_path, monkeypatch):
+    # A single PUT of just the profile: nothing else on the fileset is read, so an unrelated metadata
+    # edit landing mid-run cannot be clobbered by it.
     data = _dataset(tmp_path / "data")
     published = _install(
         monkeypatch, tmp_path, {"fileset": "fs1", "column_roles": {"q": "prompt", "a": "completion"}}, data
@@ -100,9 +97,9 @@ def test_task_persists_the_profile_onto_the_fileset(tmp_path, monkeypatch):
 
     assert run_mod.run(_SDK) == 0
 
-    workspace, name, body = published["persisted"]
+    workspace, name, body = published["stored"]
     assert (workspace, name) == ("ws1", "fs1")
-    assert body.metadata.dataset.profile.partitions[0].classification.dataset_type == "prompt_completion"
+    assert body.profile.partitions[0].classification.dataset_type == "prompt_completion"
 
 
 def test_task_reads_the_fileset_in_place(tmp_path, monkeypatch):

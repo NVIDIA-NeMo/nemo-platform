@@ -33,8 +33,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
-from nemo_platform_plugin.files.metadata import DatasetMetadataContent, FilesetMetadata
-from nemo_platform_plugin.files.types import UpdateFilesetRequest
+from nemo_platform_plugin.files.types import PutFilesetProfileRequest
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
@@ -106,9 +105,10 @@ def _profile_and_publish(
     logger.info("Profiling with a row budget of %s per partition", row_budget if row_budget else "unbounded")
     dataset_profile = profile(source, row_budget=row_budget, column_roles=column_roles)
 
-    # Persisted onto the fileset first, so the profile is discoverable via
-    # GET .../filesets/{name}/profile, then published as a job artifact as well.
-    _persist_profile_to_fileset(sdk, workspace=workspace, fileset=fileset, dataset_profile=dataset_profile)
+    # Stored against the fileset first, so the profile is discoverable via
+    # GET .../filesets/{name}/profile, then published as a job artifact as well. Storing first means
+    # a failure to publish still leaves a readable profile rather than losing the whole run.
+    _store_profile(sdk, workspace=workspace, fileset=fileset, dataset_profile=dataset_profile)
 
     # Scoped to the job's ephemeral storage when the platform provided one, and cleaned up either
     # way: under the local subprocess backend this runs on a developer's machine, where an abandoned
@@ -127,22 +127,26 @@ def _profile_and_publish(
     return 0
 
 
-def _persist_profile_to_fileset(
+def _store_profile(
     sdk: NeMoPlatform,
     *,
     workspace: str,
     fileset: str,
     dataset_profile: DatasetProfile,
 ) -> None:
-    """Write ``dataset_profile`` onto the fileset's dataset metadata, preserving other metadata."""
+    """Store ``dataset_profile`` for the fileset through the Files service.
+
+    A single PUT of just the profile, rather than the read-modify-write of the whole metadata
+    document this used to do: nothing else on the fileset is read, so nothing else can be clobbered
+    by an edit that lands between the read and the write.
+    """
     files_client = client_from_platform(sdk, FilesClient)
-    current = files_client.get_fileset(workspace=workspace, name=fileset).data()
-    metadata = current.metadata or FilesetMetadata()
-    dataset_meta = metadata.dataset or DatasetMetadataContent()
-    dataset_meta = dataset_meta.model_copy(update={"profile": dataset_profile})
-    metadata = metadata.model_copy(update={"dataset": dataset_meta})
-    files_client.update_fileset(workspace=workspace, name=fileset, body=UpdateFilesetRequest(metadata=metadata))
-    logger.info("Persisted profile to fileset %s/%s metadata", workspace, fileset)
+    files_client.put_fileset_profile(
+        workspace=workspace,
+        name=fileset,
+        body=PutFilesetProfileRequest(profile=dataset_profile),
+    )
+    logger.info("Stored profile for fileset %s/%s", workspace, fileset)
 
 
 def _resolve_row_budget(config: dict) -> int | None:
@@ -189,6 +193,13 @@ def _load_step_config() -> dict:
         raise RuntimeError(f"{NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR} not set; running outside the platform?")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _required_config(config: dict, key: str) -> str:
+    value = config.get(key)
+    if not value:
+        raise RuntimeError(f"Step config is missing '{key}'; nothing says which fileset to profile.")
+    return str(value)
 
 
 def _required_env(name: str) -> str:
