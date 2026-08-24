@@ -14,7 +14,7 @@ from threading import RLock
 from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar, cast, get_args, get_origin
 
 import httpx
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient
@@ -188,9 +188,16 @@ class DependencyProvider:
 
         return get_async_nemo_client(http_client=self.get_http_client())
 
+    def get_effective_principal_id(self, request: Request) -> str:
+        """Return the effective principal ID from the current request auth context."""
+        from nmp.common.auth import get_auth_client
+
+        return get_auth_client(request).principal.effective_id
+
     def setup_dependencies(self, app: FastAPI, service: "Service") -> None:
         """Configure FastAPI dependency overrides."""
         from nmp.common.service.dependencies import (
+            get_effective_principal_id,
             get_entity_client,
             get_nemo_client,
             get_platform_config,
@@ -201,6 +208,7 @@ class DependencyProvider:
         app.dependency_overrides[get_sdk_client] = self.get_request_scoped_sdk
         app.dependency_overrides[get_nemo_client] = self.get_request_scoped_nemo_client
         app.dependency_overrides[get_entity_client] = self.get_entity_client
+        app.dependency_overrides[get_effective_principal_id] = self.get_effective_principal_id
         app.dependency_overrides[get_platform_config] = self.get_platform_config
         if service._service_config is not None:
             app.dependency_overrides[get_service_config] = lambda: service._service_config
