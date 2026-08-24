@@ -10,10 +10,12 @@ import from here — one source of truth, no Stainless-generated duplicates.
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, NotRequired, TypedDict
 
 from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN, NAME_PATTERN_DESCRIPTION
+from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 from nemo_platform_plugin.files.metadata import FilesetMetadata
 from nemo_platform_plugin.files.storage_config import StorageConfig
 from nemo_platform_plugin.schema import Page
@@ -140,6 +142,33 @@ class UpdateFilesetRequest(BaseModel):
     custom_fields: dict[str, Any] | None = Field(
         default=None,
         description="Custom fields for the fileset.",
+    )
+
+
+class PutFilesetProfileRequest(BaseModel):
+    """Body for the internal profile write path.
+
+    Only the profiler task uses this: the endpoint behind it is hidden from the public schema and
+    gated on ``filesets.profile.write``, which no workspace role holds.
+    """
+
+    profile: DatasetProfile = Field(description="The computed dataset profile to store.")
+
+
+class PutFilesetProfileResponse(BaseModel):
+    """Acknowledgement that a profile was stored.
+
+    Deliberately does not echo the profile back — it can be large, and the writer already has it.
+    """
+
+    workspace: str = Field(description="Workspace of the profiled fileset.")
+    fileset: str = Field(description="Name of the profiled fileset.")
+    created_at: datetime = Field(
+        description=(
+            "`created_at` of the stored profile, to confirm what landed. The profile carries no "
+            "content digest -- see `DatasetProfile` for why it deliberately has no staleness marker "
+            "-- so the timestamp is what distinguishes one stored run from the next."
+        )
     )
 
 

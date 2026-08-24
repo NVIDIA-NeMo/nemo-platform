@@ -19,6 +19,8 @@ from nemo_platform_plugin.files.types import CreateFilesetRequest as CreateFiles
 from nemo_platform_plugin.files.types import FilesetFileOutput as FilesetFileOutput
 from nemo_platform_plugin.files.types import FilesetOutput as FilesetOutput
 from nemo_platform_plugin.files.types import ListFilesetFilesResponse as ListFilesetFilesResponse
+from nemo_platform_plugin.files.types import PutFilesetProfileRequest as PutFilesetProfileRequest
+from nemo_platform_plugin.files.types import PutFilesetProfileResponse as PutFilesetProfileResponse
 from nemo_platform_plugin.files.types import UpdateFilesetRequest as UpdateFilesetRequest
 from nmp.common.api.common import Page
 from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
@@ -44,12 +46,27 @@ class SubmitProfileJobResponse(BaseModel):
     )
 
 
+class ProfileFilesetRequest(BaseModel):
+    """Options for a profiling run. Every field is optional; an empty body profiles with defaults."""
+
+    rows_per_file: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Rows to read per file. Omit for the profiler's default cap; 0 reads every row, which "
+            "makes the run transfer and hold the whole dataset — use it only when a proven value "
+            "enumeration matters more than the cost."
+        ),
+    )
+
+
 class FilesetProfileResponse(BaseModel):
     """The stored dataset profile plus the status of profiling for this fileset."""
 
-    state: Literal["ready", "running", "cancelled", "failed", "absent"] = Field(
+    state: Literal["ready", "running", "paused", "cancelled", "failed", "absent"] = Field(
         description=(
             "ready (a profile exists) | running (a job is in flight) | "
+            "paused (a job exists but is suspended and will produce nothing until resumed) | "
             "cancelled (the last job was stopped deliberately and no profile exists; just re-run) | "
             "failed (the last job errored and no profile exists; worth investigating) | "
             "absent (never profiled). `cancelled` is kept apart from `failed` because nothing is "
@@ -59,8 +76,8 @@ class FilesetProfileResponse(BaseModel):
     job_name: Optional[str] = Field(
         default=None,
         description=(
-            "Name of the profiling job behind the state: the in-flight job when running, and the "
-            "job that ended when cancelled or failed."
+            "Name of the profiling job behind the state: the in-flight job when running or paused, "
+            "and the job that ended when cancelled or failed."
         ),
     )
     profile: Optional[DatasetProfile] = Field(default=None, description="The stored profile, present when ready.")
@@ -74,10 +91,10 @@ class FilesetProfileResponse(BaseModel):
 def fileset_output_from_entity(entity: Fileset) -> FilesetOutput:
     """Convert a Fileset domain entity to a FilesetOutput response DTO.
 
-    The dataset ``profile`` can be large, so it is stripped from the DTO and exposed only via
-    ``GET .../filesets/{name}/profile``; fileset list/get payloads stay bounded.
+    Nothing is stripped here: the dataset profile is a separate entity, so it is never loaded into
+    a fileset in the first place and these payloads stay bounded by construction.
     """
-    output = FilesetOutput(
+    return FilesetOutput(
         id=entity.id,
         name=entity.name,
         workspace=entity.workspace,
@@ -92,11 +109,6 @@ def fileset_output_from_entity(entity: Fileset) -> FilesetOutput:
         created_at=entity.created_at.isoformat() if entity.created_at else "",
         updated_at=entity.updated_at.isoformat() if entity.updated_at else "",
     )
-    dataset = output.metadata.dataset
-    if dataset is not None and dataset.profile is not None:
-        stripped = output.metadata.model_copy(update={"dataset": dataset.model_copy(update={"profile": None})})
-        output = output.model_copy(update={"metadata": stripped})
-    return output
 
 
 def fileset_file_output_from_info(

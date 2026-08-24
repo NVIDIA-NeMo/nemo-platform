@@ -114,6 +114,25 @@ def test_a_server_ignoring_range_still_reads_correctly():
     assert ranged.read(10) == body[100:110]
 
 
+def test_a_truncated_range_reply_raises_instead_of_reading_short():
+    # A short block cannot be placed. Caching it would make the next read return zero bytes, which
+    # the BufferedReader reads as EOF — so the profile would come out quietly wrong rather than
+    # not at all.
+    body = bytes(range(256))
+    ranged = _RangedFile(lambda start, end: body[start : end + 1][:5], len(body), block_size=32)
+    with pytest.raises(OSError, match="expected 32"):
+        ranged.read(64)
+
+
+def test_an_over_long_reply_that_is_not_the_whole_body_raises():
+    # Neither a valid range nor a recognisable whole-body reply, so there is no way to know which
+    # window these bytes are; guessing an offset would silently corrupt every read after it.
+    body = bytes(range(256))
+    ranged = _RangedFile(lambda start, end: body[:40], len(body), block_size=32)
+    with pytest.raises(OSError):
+        ranged.read(10)
+
+
 def test_empty_file_reads_empty_without_a_request():
     ranged = _ranged(b"")
     assert ranged.read() == b""

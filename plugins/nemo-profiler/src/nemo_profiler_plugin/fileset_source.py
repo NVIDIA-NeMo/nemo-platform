@@ -116,9 +116,8 @@ class _RangedFile(io.RawIOBase):
             block = self._block(index)
             offset = self._pos - index * self._block_size
             take = min(remaining - written, len(block) - offset)
-            if take <= 0:
-                # A short block would otherwise spin forever; stop at what we actually got.
-                break
+            if take <= 0:  # pragma: no cover - _block guarantees full blocks, so this cannot happen
+                raise OSError(f"block {index} is short at offset {self._pos}; cannot make progress")
             view[written : written + take] = block[offset : offset + take]
             written += take
             self._pos += take
@@ -143,10 +142,18 @@ class _RangedFile(io.RawIOBase):
         self.bytes_fetched += len(data)
 
         expected = end - start + 1
-        if len(data) > expected:
+        if len(data) == self._size and expected != self._size:
             # A server (or proxy) that ignores Range answers with the whole body instead of a 206.
-            # Slice our window out of it rather than mis-aligning every subsequent read.
-            data = data[start : end + 1] if len(data) >= self._size else data[:expected]
+            # Slice our window out of it rather than mis-aligning every subsequent read. Only a
+            # whole-body reply is recoverable: `expected == self._size` implies `start == 0`, so
+            # this branch is unambiguous about where our window sits.
+            data = data[start : end + 1]
+        elif len(data) != expected:
+            # Anything else — a truncated reply, or a file that shrank since it was listed — cannot
+            # be placed. Fail rather than cache a short block: a short block makes the next read
+            # return zero bytes, which the BufferedReader above reads as EOF, and the profile comes
+            # out quietly wrong instead of not at all.
+            raise OSError(f"ranged read of bytes={start}-{end} returned {len(data)} bytes, expected {expected}")
 
         self._blocks[index] = data
         self._blocks.move_to_end(index)
