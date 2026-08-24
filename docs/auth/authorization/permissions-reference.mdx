@@ -22,6 +22,13 @@ PlatformAdmin is omitted — it bypasses permission checks entirely at the polic
 | ------------ | ------------- | :------: | :------: | :------: | :------: |
 | <code>entities.(read &#124; create &#124; update &#124; delete)</code> | Read, create, update, delete entities |  |  |  |  |
 
+## Files
+
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| `files.filesets.read` | Read a fileset's stored profile | ✓ | ✓ | ✓ |  |
+| `files.filesets.create` | Profile a fileset (submit a profiling job) |  | ✓ | ✓ |  |
+
 ## Files API
 
 | Permission | Description | Viewer | Editor | Admin | JobRunner |
