@@ -410,7 +410,7 @@ async def profile_fileset(
         sdk,
         workspace=workspace,
         fileset_name=name,
-        rows_per_file=request.rows_per_file if request else None,
+        row_budget=request.row_budget if request else None,
     )
     return SubmitProfileJobResponse(
         job_name=job.name,

@@ -170,13 +170,20 @@ async def find_running_profile_job(
     return (await scan_profile_jobs(sdk, workspace=workspace, fileset_name=fileset_name)).running
 
 
-def _build_platform_spec(workspace: str, fileset_name: str, rows_per_file: int | None) -> PlatformJobSpecParam:
-    """Build the platform job spec for profiling ``workspace/fileset_name``."""
+def _build_platform_spec(workspace: str, fileset_name: str, row_budget: int | None) -> PlatformJobSpecParam:
+    """Build the platform job spec for profiling ``workspace/fileset_name``.
+
+    The config keys here are the task's input contract: it reads ``workspace``, ``fileset`` and
+    ``row_budget`` off this dict and nothing else. A key spelled differently on the two sides is
+    silently ignored rather than rejected -- which is exactly what happened when this wrote
+    ``rows_per_file`` at a task reading ``row_budget``, so every budgeted request profiled
+    uncapped. ``test_the_step_config_keys_are_the_ones_the_task_reads`` pins them together.
+    """
     config: dict[str, object] = {"workspace": workspace, "fileset": fileset_name}
     # Left out entirely when unset, so the task applies the profiler's own default rather than
     # having this layer restate it.
-    if rows_per_file is not None:
-        config["rows_per_file"] = rows_per_file
+    if row_budget is not None:
+        config["row_budget"] = row_budget
     return PlatformJobSpecParam(
         steps=[
             PlatformJobStepSpecParam(
@@ -214,11 +221,11 @@ async def submit_profile_job(
     *,
     workspace: str,
     fileset_name: str,
-    rows_per_file: int | None = None,
+    row_budget: int | None = None,
 ) -> PlatformJobResponse:
     """Submit a profiling job for ``workspace/fileset_name`` and return it."""
     job_name = _job_name_for_fileset(fileset_name)
-    platform_spec = _build_platform_spec(workspace, fileset_name, rows_per_file)
+    platform_spec = _build_platform_spec(workspace, fileset_name, row_budget)
     logger.info("Submitting profile job %s for fileset %s/%s", job_name, workspace, fileset_name)
     return await sdk.jobs.create(
         source=_PROFILE_JOB_SOURCE,

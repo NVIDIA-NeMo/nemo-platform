@@ -49,13 +49,17 @@ class SubmitProfileJobResponse(BaseModel):
 class ProfileFilesetRequest(BaseModel):
     """Options for a profiling run. Every field is optional; an empty body profiles with defaults."""
 
-    rows_per_file: Optional[int] = Field(
+    row_budget: Optional[int] = Field(
         default=None,
         ge=0,
         description=(
-            "Rows to read per file. Omit for the profiler's default cap; 0 reads every row, which "
-            "makes the run transfer and hold the whole dataset — use it only when a proven value "
-            "enumeration matters more than the cost."
+            "Rows the profiler may read per *partition*, divided across that partition's files "
+            "rather than applied to each one. Omit (or pass 0) to read every row, which is the "
+            "default: the profiler folds, so memory is flat in rows and an exhaustive read buys "
+            "exact row counts, proven value enumerations, and `rows_complete`. Set a budget when "
+            "the fileset is large enough that the transfer is the cost worth bounding — files are "
+            "read over the network, so an uncapped run pulls every row group over the wire. "
+            "Named to match the profiler's own `row_budget`, which is the value this becomes."
         ),
     )
 
@@ -65,7 +69,7 @@ class FilesetProfileResponse(BaseModel):
 
     state: Literal["ready", "running", "paused", "cancelled", "failed", "absent"] = Field(
         description=(
-            "ready (a profile exists and matches the current files) | "
+            "ready (a profile exists) | "
             "running (a job is in flight) | "
             "paused (a job exists but is suspended and will produce nothing until resumed) | "
             "cancelled (the last job was stopped deliberately and no profile exists; just re-run) | "
@@ -73,7 +77,8 @@ class FilesetProfileResponse(BaseModel):
             "absent (never profiled). `cancelled` is kept apart from `failed` because nothing is "
             "broken and the remedy differs; callers that do not care can treat the two alike. "
             "There is no `stale`: a profile carries no content digest to check a fresh listing "
-            "profile that exists always reads `ready`, since checking costs a storage listing."
+            "against, so a profile that exists always reads `ready` and describes the fileset "
+            "as of its `created_at`."
         )
     )
     job_name: Optional[str] = Field(
