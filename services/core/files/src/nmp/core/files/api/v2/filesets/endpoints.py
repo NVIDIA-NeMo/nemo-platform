@@ -431,16 +431,22 @@ async def get_fileset_profile(
     name: str,
     entity_store: EntityClient = Depends(get_entity_client),
     sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    auth_client: AuthClient = Depends(get_auth_client),
 ) -> FilesetProfileResponse:
     """
-    Get the stored dataset profile for a fileset, with the current profiling state.
+    Get the stored profile for a fileset, with the current profiling state.
 
     ``state`` is ``ready`` (a profile is available), ``running`` (a job is in flight), ``paused``
     (a job exists but is suspended and will produce nothing until resumed), ``cancelled`` (the last
     job was stopped deliberately and no profile exists), ``failed`` (the last job errored and no
-    profile exists), or ``absent`` (never profiled). A stored profile short-circuits to ``ready``
-    without querying the Jobs service, so a re-profile running over an existing profile still reads
+    profile exists), or ``absent`` (never profiled). A stored profile short-circuits without
+    querying the Jobs service, so a re-profile running over an existing profile still reads
     ``ready`` (with the current profile) and GET stays resilient to a Jobs-service outage.
+
+    There is no ``stale``. A profile carries no content digest to compare a fresh listing against —
+    see ``DatasetProfile`` for why it deliberately holds no staleness marker — so a stored profile
+    describes the fileset as of its ``created_at``, and whether that is still good enough is the
+    caller's call.
     """
     logger.info(f"GET /filesets/{name}/profile - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)

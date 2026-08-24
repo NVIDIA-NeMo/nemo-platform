@@ -432,6 +432,27 @@ async def test_get_fileset_profile_ready_wins_over_a_cancelled_rerun():
     assert resp.profile is not None
 
 
+# --- profile kind --------------------------------------------------------
+
+
+def test_profile_kind_defaults_to_dataset():
+    assert _minimal_profile().kind == "dataset"
+
+
+def test_a_profile_written_before_kind_existed_still_validates():
+    # `kind` has a default precisely so already-stored profiles keep loading — the reason it is
+    # cheap to add now and expensive once a discriminated union is in the wire format.
+    stored = _minimal_profile().model_dump(mode="json")
+    del stored["kind"]
+
+    assert DatasetProfile.model_validate(stored).kind == "dataset"
+
+
+def test_profile_kind_is_pinned_not_free_text():
+    with pytest.raises(ValueError):
+        DatasetProfile.model_validate(_minimal_profile().model_dump(mode="json") | {"kind": "model"})
+
+
 # --- PUT /profile (internal write path) --------------------------------------
 
 

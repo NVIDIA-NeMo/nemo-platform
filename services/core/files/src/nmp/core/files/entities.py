@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import Any, ClassVar, Dict
 
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile
+from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
 from nemo_platform_plugin.files.types import FilesetPurpose as FilesetPurpose
 from nmp.common.entities import constants
 from nmp.common.entities.client import EntityBase
@@ -52,7 +52,7 @@ class FilesetProfile(EntityBase):
     __entity_type__: ClassVar[str] = "fileset_profile"
 
     fileset: str = Field(description="Parent fileset ID.")
-    profile: DatasetProfile = Field(description="The computed dataset profile.")
+    profile: AnyFilesetProfile = Field(description="The computed profile, discriminated by its `kind`.")
 
     @model_validator(mode="after")
     def set_parent_from_fileset(self) -> "FilesetProfile":

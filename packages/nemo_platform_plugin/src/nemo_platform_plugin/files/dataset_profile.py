@@ -28,6 +28,7 @@ metadata, so writing one cannot clobber an unrelated metadata edit."""
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -36,6 +37,9 @@ from pydantic import BaseModel, Field, model_validator
 # yet — the fields have moved a great deal, but pre-release churn is not a break for anyone, and the
 # first number that means something is the one shipped alongside the first consumer.
 PROFILE_SCHEMA_VERSION = "1.0"
+
+# The ``kind`` discriminator's vocabulary. One member today; a model profiler adds "model".
+PROFILE_KIND_DATASET = "dataset"
 
 
 # ---- classification: an objective description of what the data is (computed, stored) -----------
@@ -496,6 +500,20 @@ class DatasetProfile(BaseModel):
     consume freshness, the cheap primitive is a fileset version token from the storage backend.
     """
 
+    kind: Literal["dataset"] = Field(
+        default=PROFILE_KIND_DATASET,
+        description=(
+            "What this profile describes. Pinned rather than an open vocabulary, unlike the value "
+            "vocabularies above: a discriminator has to be exact, and a `DatasetProfile` whose kind "
+            "says anything else is malformed, not forward-compatible. Today `dataset` is the only "
+            "member, so "
+            "a consumer sees `DatasetProfile` directly; when a second profiler lands, the stored and "
+            "returned type widens to a discriminated union and this is what tells them apart. It "
+            "carries a default, so profiles written before it existed validate cleanly — which is "
+            "precisely why it is cheap to add now and expensive to add once a union is in the wire "
+            "format."
+        ),
+    )
     profile_schema_version: str = Field(
         default=PROFILE_SCHEMA_VERSION,
         description='Semver of THIS contract (e.g. "1.0") — gates consumer compatibility.',
@@ -520,6 +538,12 @@ class DatasetProfile(BaseModel):
             "whose read fell short of its end."
         ),
     )
+
+
+# What the Files service stores and serves. A single member today; when a model profiler lands this
+# becomes ``Annotated[DatasetProfile | ModelProfile, Field(discriminator="kind")]`` and nothing that
+# binds to this name has to change.
+AnyFilesetProfile: TypeAlias = DatasetProfile
 
 
 # Resolve the recursive FeatureSchema self-reference (deferred by `from __future__ import annotations`).

@@ -13,7 +13,7 @@ entities to response DTOs, the FilesetFilter schema, and the FilesetPage alias.
 
 from typing import Annotated, Literal, Optional
 
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile
+from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
 from nemo_platform_plugin.files.types import CacheStatus
 from nemo_platform_plugin.files.types import CreateFilesetRequest as CreateFilesetRequest
 from nemo_platform_plugin.files.types import FilesetFileOutput as FilesetFileOutput
@@ -61,16 +61,19 @@ class ProfileFilesetRequest(BaseModel):
 
 
 class FilesetProfileResponse(BaseModel):
-    """The stored dataset profile plus the status of profiling for this fileset."""
+    """The stored profile plus the status of profiling for this fileset."""
 
     state: Literal["ready", "running", "paused", "cancelled", "failed", "absent"] = Field(
         description=(
-            "ready (a profile exists) | running (a job is in flight) | "
+            "ready (a profile exists and matches the current files) | "
+            "running (a job is in flight) | "
             "paused (a job exists but is suspended and will produce nothing until resumed) | "
             "cancelled (the last job was stopped deliberately and no profile exists; just re-run) | "
             "failed (the last job errored and no profile exists; worth investigating) | "
             "absent (never profiled). `cancelled` is kept apart from `failed` because nothing is "
-            "broken and the remedy differs; callers that do not care can treat the two alike."
+            "broken and the remedy differs; callers that do not care can treat the two alike. "
+            "There is no `stale`: a profile carries no content digest to check a fresh listing "
+            "profile that exists always reads `ready`, since checking costs a storage listing."
         )
     )
     job_name: Optional[str] = Field(
@@ -80,7 +83,12 @@ class FilesetProfileResponse(BaseModel):
             "and the job that ended when cancelled or failed."
         ),
     )
-    profile: Optional[DatasetProfile] = Field(default=None, description="The stored profile, present when ready.")
+    profile: Optional[AnyFilesetProfile] = Field(
+        default=None,
+        description=(
+            "The stored profile, present when ready. It describes the fileset as of its `created_at`, not as of now."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
