@@ -51,7 +51,7 @@ import {
   MODE_EXPERIMENT,
   parseEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
-import { LINK_NEMO_EVALUATOR_DOCS } from '@studio/constants/links';
+import { LINK_EVAL_DOCS_NEMO_EVALUATOR } from '@studio/constants/links';
 import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
@@ -554,7 +554,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                 size="small"
                 className="w-full justify-start"
               >
-                <a href={LINK_NEMO_EVALUATOR_DOCS} target="_blank" rel="noreferrer">
+                <a href={LINK_EVAL_DOCS_NEMO_EVALUATOR} target="_blank" rel="noreferrer">
                   <File className="!text-brand" />
                   <Text className="flex-1">NeMo Evaluator docs — learn more</Text>
                   <ChevronRight />
