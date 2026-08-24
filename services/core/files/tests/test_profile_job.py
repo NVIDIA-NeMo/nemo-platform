@@ -126,20 +126,20 @@ def test_build_platform_spec_targets_profiler_task():
     assert "nmp-cpu-tasks" in container["image"]
 
 
-def test_build_platform_spec_omits_an_unset_row_cap():
+def test_build_platform_spec_omits_an_unset_row_budget():
     # Left out entirely rather than restated here, so the task applies the profiler's own default.
-    assert "rows_per_file" not in _build_platform_spec("ws1", "fs1", None)["steps"][0]["config"]
+    assert "row_budget" not in _build_platform_spec("ws1", "fs1", None)["steps"][0]["config"]
 
 
-def test_build_platform_spec_passes_a_requested_row_cap():
+def test_build_platform_spec_passes_a_requested_row_budget():
     config = _build_platform_spec("ws1", "fs1", 25)["steps"][0]["config"]
-    assert config["rows_per_file"] == 25
+    assert config["row_budget"] == 25
 
 
-def test_build_platform_spec_passes_a_zero_row_cap():
+def test_build_platform_spec_passes_a_zero_row_budget():
     # 0 means "read every row" and must survive as 0, not be dropped as falsey.
     config = _build_platform_spec("ws1", "fs1", 0)["steps"][0]["config"]
-    assert config["rows_per_file"] == 0
+    assert config["row_budget"] == 0
 
 
 @pytest.mark.asyncio
@@ -185,22 +185,42 @@ async def test_profile_fileset_submits_when_no_active_job():
     sdk.jobs.create.assert_awaited_once()
 
 
+def test_the_step_config_keys_are_the_ones_the_task_reads():
+    """The step config is a contract between two files that never import each other.
+
+    A key spelled differently on the two sides is silently ignored rather than rejected: this wrote
+    `rows_per_file` while the task read `row_budget`, so every request that asked for a bounded
+    profile got an uncapped full scan instead -- over ranged reads, the whole fileset pulled over
+    the wire. Reading the task's own resolver is what keeps the two spellings from drifting again.
+    """
+    from nemo_datasets_plugin.tasks.profile import run as profile_task
+
+    config = _build_platform_spec("ws1", "fs1", 25)["steps"][0]["config"]
+
+    assert profile_task._resolve_row_budget(config) == 25
+    # ...and the keys the task requires to know what to profile at all.
+    assert config["workspace"] == "ws1"
+    assert config["fileset"] == "fs1"
+    # An unset budget must leave the task on its own default rather than a restated one.
+    assert profile_task._resolve_row_budget(_build_platform_spec("ws1", "fs1", None)["steps"][0]["config"]) is None
+
+
 @pytest.mark.asyncio
-async def test_profile_fileset_forwards_a_requested_row_cap():
+async def test_profile_fileset_forwards_a_requested_row_budget():
     entity_store = _entity_store()
     sdk = _sdk(create_returns=SimpleNamespace(name="j", id="i", status="created"))
 
     await profile_fileset(
-        "ws1", "fs1", request=ProfileFilesetRequest(rows_per_file=25), entity_store=entity_store, sdk=sdk
+        "ws1", "fs1", request=ProfileFilesetRequest(row_budget=25), entity_store=entity_store, sdk=sdk
     )
 
     config = sdk.jobs.create.await_args.kwargs["platform_spec"]["steps"][0]["config"]
-    assert config["rows_per_file"] == 25
+    assert config["row_budget"] == 25
 
 
-def test_profile_request_rejects_a_negative_row_cap():
+def test_profile_request_rejects_a_negative_row_budget():
     with pytest.raises(ValueError):
-        ProfileFilesetRequest(rows_per_file=-1)
+        ProfileFilesetRequest(row_budget=-1)
 
 
 @pytest.mark.asyncio
