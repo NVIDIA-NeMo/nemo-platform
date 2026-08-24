@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Read, write, and delete the stored :class:`DatasetProfile` for a fileset.
+"""Read, write, and delete a fileset's stored profile.
 
 The profile lives in its own ``fileset_profile`` entity parented to the fileset (see
-:class:`~nmp.core.files.entities.FilesetProfile`). These three helpers are the only places that
-know that, so the endpoints stay about HTTP and the storage shape can move without touching them.
+:class:`~nmp.core.files.entities.FilesetProfile`). These helpers are the only places that know
+that, so the endpoints stay about HTTP and the storage shape can move without touching them.
 """
 
 import logging
 
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile
+from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
 from nmp.common.entities.client import EntityClient, EntityNotFoundError
 from nmp.core.files.entities import FILESET_PROFILE_ENTITY_NAME, Fileset, FilesetProfile
 
@@ -29,13 +29,13 @@ async def _get_entity(entity_store: EntityClient, fileset: Fileset) -> FilesetPr
         return None
 
 
-async def get_profile(entity_store: EntityClient, fileset: Fileset) -> DatasetProfile | None:
+async def get_profile(entity_store: EntityClient, fileset: Fileset) -> AnyFilesetProfile | None:
     """The stored profile for ``fileset``, or None if it has never been profiled."""
     stored = await _get_entity(entity_store, fileset)
     return stored.profile if stored is not None else None
 
 
-async def put_profile(entity_store: EntityClient, fileset: Fileset, profile: DatasetProfile) -> None:
+async def put_profile(entity_store: EntityClient, fileset: Fileset, profile: AnyFilesetProfile) -> None:
     """Store ``profile`` for ``fileset``, replacing any previous one.
 
     Create-or-replace rather than create-only: profiling is re-runnable by design, so the second
@@ -53,7 +53,7 @@ async def put_profile(entity_store: EntityClient, fileset: Fileset, profile: Dat
         )
     else:
         await entity_store.update(existing.model_copy(update={"profile": profile}))
-    logger.info("Stored dataset profile for fileset %s/%s", fileset.workspace, fileset.name)
+    logger.info("Stored %s profile for fileset %s/%s", profile.kind, fileset.workspace, fileset.name)
 
 
 async def delete_profile(entity_store: EntityClient, fileset: Fileset) -> None:
@@ -66,4 +66,4 @@ async def delete_profile(entity_store: EntityClient, fileset: Fileset) -> None:
     if stored is None:
         return
     await entity_store.delete_by_id(FilesetProfile, stored.id)
-    logger.info("Deleted dataset profile for fileset %s/%s", fileset.workspace, fileset.name)
+    logger.info("Deleted profile for fileset %s/%s", fileset.workspace, fileset.name)
