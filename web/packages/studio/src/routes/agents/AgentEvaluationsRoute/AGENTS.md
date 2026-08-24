@@ -12,7 +12,7 @@ How Studio runs agent evaluations.
   nemo-evaluator team — it is purpose-built for agent tasks with extensive artifact + trace
   collection. (A legacy row-based `evaluate/jobs` endpoint also exists — see the bottom.)
 - **Sample agents:** `public/sample-agents/<agent>/` is the seed repository (agent config +
-  an `eval-config.json`). Studio reads these for the "use example" flow.
+  an `eval-config.json`). Studio reads these for the "Create experiment" flow.
 - **Metrics:** Studio creates metrics **only** as `InlineMetricPayload` — a built-in metric
   serialized to JSON, reconstructed at runtime. No `CloudPickleMetricPayload` (no Python, no
   pickled code).
@@ -66,7 +66,7 @@ Persisted `eval-config.json` shape (the yardstick):
 }
 ```
 
-**Create ("Use Example"):** Studio reads the example template, **fans the shared `metric` onto
+**Create ("Create experiment" mode):** Studio reads the example template, **fans the shared `metric` onto
 each task** and **injects the chosen judge model** (`buildPersistedSpec`), then writes that
 persisted spec into a new Fileset. The judge is now part of the stored yardstick.
 
