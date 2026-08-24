@@ -23,6 +23,18 @@ export const bucketParamForRange = (range: TraceStatisticsRange): TraceMetricBuc
 export const bucketMsForRange = (range: TraceStatisticsRange): number =>
   range === 'day' ? HOUR_MS : DAY_MS;
 
+/**
+ * Day buckets start at local midnight, and a DST transition makes consecutive midnights 23 or 25
+ * hours apart, so they have to be walked with calendar arithmetic. Hour buckets are evenly spaced
+ * in absolute time whatever the offset does, so a fixed step is exact there.
+ */
+const nextBucketStart = (timestamp: number, range: TraceStatisticsRange): number => {
+  if (range === 'day') return timestamp + HOUR_MS;
+  const next = new Date(timestamp);
+  next.setDate(next.getDate() + 1);
+  return next.getTime();
+};
+
 export const bucketAdverbForRange = (range: TraceStatisticsRange): string =>
   range === 'day' ? 'Hourly' : 'Daily';
 
@@ -30,9 +42,10 @@ export const bucketAdverbForRange = (range: TraceStatisticsRange): string =>
  * Intake only emits buckets that saw runs. Re-inserting the empty ones as `null` points breaks the
  * line instead of dipping it to zero — a quiet day is missing data, not a day that cost nothing.
  *
- * Bucket starts arrive aligned to the requested timezone, so stepping by a fixed width is exact for
- * hour and day buckets. A DST transition shifts a day boundary by an hour; the resulting point
- * lands within the same bucket, so the series stays in order.
+ * Bucket starts arrive aligned to the browser timezone, so the walk from one bucket to the next
+ * follows the local calendar (see `nextBucketStart`) rather than a fixed width — otherwise a DST
+ * transition knocks every later step off the real bucket starts and blanks out points that have
+ * data.
  */
 export const fillBucketGaps = (
   points: TraceStatisticsBucket[],
@@ -40,13 +53,16 @@ export const fillBucketGaps = (
 ): TraceStatisticsBucket[] => {
   if (points.length === 0) return [];
 
-  const bucketMs = bucketMsForRange(range);
   const sorted = [...points].sort((a, b) => a.timestamp - b.timestamp);
   const byTimestamp = new Map(sorted.map((point) => [point.timestamp, point]));
 
   const filled: TraceStatisticsBucket[] = [];
   const last = sorted[sorted.length - 1].timestamp;
-  for (let timestamp = sorted[0].timestamp; timestamp <= last; timestamp += bucketMs) {
+  for (
+    let timestamp = sorted[0].timestamp;
+    timestamp <= last;
+    timestamp = nextBucketStart(timestamp, range)
+  ) {
     filled.push(
       byTimestamp.get(timestamp) ?? { timestamp, costUsd: null, tokens: null, latencyMs: null }
     );

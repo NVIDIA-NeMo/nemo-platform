@@ -62,4 +62,47 @@ describe('fillBucketGaps', () => {
   it('returns no points for no buckets', () => {
     expect(fillBucketGaps([], 'month')).toEqual([]);
   });
+
+  describe('across a DST transition', () => {
+    const originalTz = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = 'America/New_York';
+    });
+
+    afterAll(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it('keeps daily buckets on local midnight when the clocks spring forward', () => {
+      // 2026-03-08 is the US spring-forward date: those local midnights are 23 hours apart.
+      const march7 = at('2026-03-07T05:00:00Z');
+      const march9 = at('2026-03-09T04:00:00Z');
+
+      const buckets = fillBucketGaps([march7, march9], 'week');
+
+      expect(buckets.map((bucket) => bucket.timestamp)).toEqual([
+        march7.timestamp,
+        new Date('2026-03-08T05:00:00Z').getTime(),
+        march9.timestamp,
+      ]);
+      expect(buckets[1].tokens).toBeNull();
+      expect(buckets[2].tokens).toBe(100);
+    });
+
+    it('keeps daily buckets on local midnight when the clocks fall back', () => {
+      // 2026-11-01 is the US fall-back date: those local midnights are 25 hours apart.
+      const oct31 = at('2026-10-31T04:00:00Z');
+      const nov2 = at('2026-11-02T05:00:00Z');
+
+      const buckets = fillBucketGaps([oct31, nov2], 'week');
+
+      expect(buckets.map((bucket) => bucket.timestamp)).toEqual([
+        oct31.timestamp,
+        new Date('2026-11-01T04:00:00Z').getTime(),
+        nov2.timestamp,
+      ]);
+      expect(buckets[2].tokens).toBe(100);
+    });
+  });
 });
