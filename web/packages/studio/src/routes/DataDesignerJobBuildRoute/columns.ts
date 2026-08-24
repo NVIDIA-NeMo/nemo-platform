@@ -736,7 +736,7 @@ export const getColumnReferences = (column: BuilderColumn, knownNames: Set<strin
  * to the seed column. Shared by {@link buildGraph} and {@link topologicalSortColumns} so
  * both agree on what counts as a dependency.
  */
-const buildNameMaps = (
+export const buildNameMaps = (
   columns: BuilderColumn[]
 ): { knownNames: Set<string>; idByName: Map<string, string> } => {
   const knownNames = new Set(columns.map((column) => column.name).filter(Boolean));
