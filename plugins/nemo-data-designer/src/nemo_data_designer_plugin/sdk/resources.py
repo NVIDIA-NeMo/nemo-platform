@@ -37,7 +37,6 @@ from nemo_data_designer_plugin.sdk.errors import (
 from nemo_data_designer_plugin.sdk.job_resources import AsyncDataDesignerJobResource, DataDesignerJobResource
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_data_designer_plugin.sdk.validation import (
-    ExecutionContext,
     ValidationReport,
     validate_config,
     validate_config_sync,
@@ -360,7 +359,6 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         self,
         config_builder: dd.DataDesignerConfigBuilder,
         *,
-        execution_context: ExecutionContext | None = None,
         workspace: str | None = None,
     ) -> ValidationReport:
         """Validate a Data Designer config against one or every execution context.
@@ -372,8 +370,6 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
 
         Args:
             config_builder: Data Designer configuration builder.
-            execution_context: ``"local"``, ``"remote"``, or ``None``.
-                ``None`` (the default) runs every applicable context.
             workspace: Workspace used to resolve provider references and seed
                 sources for the remote pass. Falls back to the platform
                 client's default workspace, then to ``"default"``.
@@ -387,7 +383,6 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
             config_builder,
             sdk=self._platform,
             workspace=resolved_workspace,
-            execution_context=execution_context,
         )
 
 
@@ -534,7 +529,6 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         self,
         config_builder: dd.DataDesignerConfigBuilder,
         *,
-        execution_context: ExecutionContext | None = None,
         workspace: str | None = None,
     ) -> ValidationReport:
         """Async equivalent of :meth:`DataDesignerResource.validate`."""
@@ -543,7 +537,6 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
             config_builder,
             async_sdk=self._platform,
             workspace=resolved_workspace,
-            execution_context=execution_context,
         )
 
 

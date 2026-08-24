@@ -22,7 +22,7 @@ import nemo_data_designer_plugin.testing.utils as u
 import pandas as pd
 import pytest
 from nemo_data_designer_plugin.sdk.resources import AsyncDataDesignerResource
-from nemo_data_designer_plugin.sdk.validation import ValidationReport, validate_config
+from nemo_data_designer_plugin.sdk.validation import validate_config
 
 pytestmark = pytest.mark.integration
 
@@ -44,58 +44,8 @@ def _llm_builder(model_config: dd.ModelConfig) -> dd.DataDesignerConfigBuilder:
     return builder
 
 
-async def test_validate_local_only_succeeds_with_igw_provider() -> None:
-    """The regression we are explicitly fixing: an IGW-only provider reference
-    must validate cleanly under the local execution context.
-    """
-    builder = _llm_builder(u.make_model_config(provider=u.OPEN_PROVIDER_NAME))
-
-    with (
-        u.make_mock_client_context() as client_context,
-        u.setup_mock_providers(client_context),
-    ):
-        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
-
-    assert isinstance(report, ValidationReport)
-    assert report.ok
-    assert len(report.results) == 1
-    assert report.results[0].context == "local"
-    assert report.results[0].errors == []
-
-
-async def test_validate_local_only_rejects_unrecognized_alias() -> None:
-    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)])
-    builder.add_column(
-        column_config=dd.SamplerColumnConfig(
-            name="topic",
-            sampler_type=dd.SamplerType.CATEGORY,
-            params=dd.CategorySamplerParams(values=["a", "b"]),
-        )
-    )
-    builder.add_column(
-        column_config=dd.LLMTextColumnConfig(
-            name="description",
-            model_alias="unknown-alias",
-            prompt="Describe {{ topic }}",
-        )
-    )
-
-    with (
-        u.make_mock_client_context() as client_context,
-        u.setup_mock_providers(client_context),
-    ):
-        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
-
-    assert not report.ok
-    [result] = report.results
-    assert result.context == "local"
-    assert any("unknown-alias" in err.message for err in result.errors)
-
-
-async def test_validate_remote_only_aggregates_seed_and_tool_errors() -> None:
-    """Remote-only validation surfaces unsupported seed type *and* tool configs
+async def test_validate_aggregates_seed_and_tool_errors() -> None:
+    """Validation surfaces unsupported seed type *and* tool configs
     in a single pass — exercising the §5.0 aggregation end-to-end.
     """
     builder = dd.DataDesignerConfigBuilder(
@@ -117,23 +67,20 @@ async def test_validate_remote_only_aggregates_seed_and_tool_errors() -> None:
     ):
         # Exercise the validation core directly so the contract is documented
         # without going through the SDK shell. The SDK-shell path is covered
-        # by ``test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors``.
+        # by ``test_sdk_validate_method_aggregates_df_seed_with_other_errors``.
         report = await validate_config(
             builder,
             async_sdk=client_context.async_sdk,
             workspace=u.WORKSPACE_NAME,
-            execution_context="remote",
         )
 
     assert not report.ok
-    [result] = report.results
-    assert result.context == "remote"
-    messages = [err.message for err in result.errors]
+    messages = [err.message for err in report.errors]
     assert any("Tool configs" in m for m in messages)
     assert any(("seed" in m.lower()) or ("df" in m) for m in messages)
 
 
-async def test_validate_remote_only_rejects_empty_fileset_root_seed() -> None:
+async def test_validate_rejects_empty_fileset_root_seed() -> None:
     builder = dd.DataDesignerConfigBuilder()
     builder.with_seed_dataset(dd.DirectorySeedSource(path=f"{u.WORKSPACE_NAME}/{u.FILESET_NAME}"))
     builder.add_column(column_config=dd.ExpressionColumnConfig(name="full_name", expr=u.FULL_NAME_EXPR))
@@ -141,15 +88,13 @@ async def test_validate_remote_only_rejects_empty_fileset_root_seed() -> None:
     with u.make_mock_client_context() as client_context:
         client_context.sdk.files.filesets.create(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="remote")
+        report = await dd_client.validate(builder)
 
     assert not report.ok
-    [result] = report.results
-    assert result.context == "remote"
-    assert any("contains no files to use as seed data" in err.message for err in result.errors)
+    assert any("contains no files to use as seed data" in err.message for err in report.errors)
 
 
-async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors() -> None:
+async def test_sdk_validate_method_aggregates_df_seed_with_other_errors() -> None:
     """Regression: ``DataDesignerResource.validate`` itself (not just the
     underlying ``validate_config`` core) must accept a ``df``-seed config and
     aggregate the unsupported-seed error with every other detected problem.
@@ -177,49 +122,13 @@ async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors()
         u.setup_mock_providers(client_context),
     ):
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="remote")
+        report = await dd_client.validate(builder)
 
     assert not report.ok
-    [result] = report.results
-    assert result.context == "remote"
-    messages = [err.message for err in result.errors]
+    messages = [err.message for err in report.errors]
     # Both messages must surface in a single pass.
     assert any("Tool configs" in m for m in messages)
-    # Remote rejects everything outside the {hf, nmp} whitelist; the message
-    # mentions both supported types rather than calling out "df" specifically.
     assert any("seed sources" in m and "Files service" in m for m in messages)
-
-
-async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:
-    """A ``df``-seed config is invalid for local execution too — preview
-    serializes the config across the worker-thread boundary, which a
-    pandas DataFrame can't survive — but the diagnostic must come from
-    the validate pass (with a helpful message), not from an eager
-    pre-flight rejection.
-    """
-    builder = dd.DataDesignerConfigBuilder(
-        model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)],
-    )
-    builder.with_seed_dataset(dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
-    builder.add_column(
-        column_config=dd.SamplerColumnConfig(
-            name="foo",
-            sampler_type=dd.SamplerType.CATEGORY,
-            params=dd.CategorySamplerParams(values=["a", "b"]),
-        )
-    )
-
-    with (
-        u.make_mock_client_context() as client_context,
-        u.setup_mock_providers(client_context),
-    ):
-        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
-
-    assert not report.ok
-    [result] = report.results
-    assert result.context == "local"
-    assert any("Dataframe seed sources" in err.message for err in result.errors)
 
 
 async def test_sdk_validate_method_rejects_custom_columns() -> None:
@@ -243,55 +152,19 @@ async def test_sdk_validate_method_rejects_custom_columns() -> None:
         u.setup_mock_providers(client_context),
     ):
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="remote")
+        report = await dd_client.validate(builder)
 
     assert not report.ok
-    [result] = report.results
-    assert result.context == "remote"
-    messages = [err.message for err in result.errors]
+    messages = [err.message for err in report.errors]
     assert any("Custom columns are not supported" in m for m in messages)
 
 
-async def test_validate_remote_only_rejects_unknown_provider() -> None:
+async def test_validate_rejects_unknown_provider() -> None:
     builder = _llm_builder(u.make_model_config(provider="some-unknown-provider"))
 
     with u.make_mock_client_context() as client_context:
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="remote")
-
-    assert not report.ok
-    [result] = report.results
-    assert any("Cannot access provider" in err.message for err in result.errors)
-
-
-async def test_validate_default_runs_every_context() -> None:
-    """Omitting ``execution_context`` runs both local and remote, reports each independently."""
-    builder = _llm_builder(u.make_model_config(provider=u.OPEN_PROVIDER_NAME))
-
-    with (
-        u.make_mock_client_context() as client_context,
-        u.setup_mock_providers(client_context),
-    ):
-        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
         report = await dd_client.validate(builder)
 
-    assert report.ok
-    contexts = [r.context for r in report.results]
-    assert contexts == ["local", "remote"]
-
-
-async def test_validate_report_round_trips_through_pydantic() -> None:
-    builder = _llm_builder(u.make_model_config(provider=u.OPEN_PROVIDER_NAME))
-
-    with (
-        u.make_mock_client_context() as client_context,
-        u.setup_mock_providers(client_context),
-    ):
-        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
-
-    payload = report.model_dump_json()
-    rehydrated = ValidationReport.model_validate_json(payload)
-    assert rehydrated.results[0].context == "local"
-    # Successful pass has no errors; the model itself is round-trippable either way.
-    assert rehydrated.results[0].errors == []
+    assert not report.ok
+    assert any("Cannot access provider" in err.message for err in report.errors)
