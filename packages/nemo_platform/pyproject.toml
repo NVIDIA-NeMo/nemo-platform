@@ -37,7 +37,6 @@ classifiers = [
 Homepage = "https://github.com/NVIDIA-NeMo/nemo-platform"
 Documentation = "https://docs.nvidia.com/nemo-platform"
 Source = "https://github.com/NVIDIA-NeMo/nemo-platform"
-"Bug Tracker" = "https://github.com/NVIDIA-NeMo/nemo-platform/issues"
 
 # Base install: SDK + shared runtime (nmp-common) + plugin contract.
 # Keep the true workspace deps here for editable installs and local tooling.
