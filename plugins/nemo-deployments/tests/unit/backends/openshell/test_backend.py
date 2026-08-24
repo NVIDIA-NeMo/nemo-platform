@@ -466,6 +466,63 @@ async def test_create_injects_serve_path_into_sandbox_environment(
     assert spec.template.environment["PATH"] == expected
 
 
+async def test_create_injects_serve_virtual_env_into_sandbox_environment(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    """PATH alone does not keep a re-launched interpreter inside the venv.
+
+    Fabric starts its adapter host from ``sys.base_prefix``, which resolves to the
+    uv-managed interpreter rather than the venv and so cannot import the adapter
+    packages. VIRTUAL_ENV is what keeps that child in the venv.
+    """
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    update = await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    assert update.status == "STARTING"
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    expected = openshell_backend._executor_config.serve_virtual_env
+    assert spec.environment["VIRTUAL_ENV"] == expected
+    assert spec.template.environment["VIRTUAL_ENV"] == expected
+
+
+async def test_create_respects_a_container_declared_virtual_env(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config_with_env([EnvVar(name="VIRTUAL_ENV", value="/opt/other-venv")])
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    update = await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    assert update.status == "STARTING"
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert spec.environment["VIRTUAL_ENV"] == "/opt/other-venv"
+
+
+async def test_create_omits_virtual_env_when_disabled(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    openshell_backend._executor_config.serve_virtual_env = ""
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    update = await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    assert update.status == "STARTING"
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert "VIRTUAL_ENV" not in spec.environment
+
+
 async def test_create_respects_a_container_declared_path(
     openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
 ) -> None:
