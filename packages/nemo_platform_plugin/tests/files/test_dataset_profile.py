@@ -137,10 +137,8 @@ partitions:
       - {name: complexity,  dtype: int64,  semantic_role: score, semantic_role_source: detected}
       - {name: verbosity,   dtype: int64,  semantic_role: score, semantic_role_source: detected}
     stats:
-      prompt:   {text: {chars: {p50: 320, p95: 2200, p99: 5600, max: 12000}},
-                 quality: {whitespace_ratio: 0.16, non_ascii_ratio: 0.004, repetition_score: 0.02}}
-      response: {text: {chars: {p50: 1350, p95: 3900, p99: 6200, max: 10500}},
-                 quality: {whitespace_ratio: 0.15, non_ascii_ratio: 0.003, repetition_score: 0.04}}
+      prompt:   {text: {chars: {p50: 320, p95: 2200, p99: 5600, max: 12000}}}
+      response: {text: {chars: {p50: 1350, p95: 3900, p99: 6200, max: 10500}}}
       helpfulness: {numeric: {min: 0, max: 4, mean: 2.8}, categorical: {distinct_count: 5}}
       correctness: {numeric: {min: 0, max: 4, mean: 2.9}, categorical: {distinct_count: 5}}
       coherence:   {numeric: {min: 0, max: 4, mean: 3.5}, categorical: {distinct_count: 5}}

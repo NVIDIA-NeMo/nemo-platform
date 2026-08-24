@@ -42,7 +42,7 @@ class FilePreview:
     A parquet footer carries both; a line-delimited format carries neither. The pipeline asks every
     file this before it reads any of them, because knowing the schema up front is what lets a
     partition be measured without first being materialised, and knowing the row count up front is
-    what lets a quality sample be strided across a column the fold has not finished seeing.
+    what lets a split report an exact ``num_examples`` from a run that never read to the end.
     """
 
     arrow_schema: pa.Schema | None = None

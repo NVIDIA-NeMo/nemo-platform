@@ -17,11 +17,9 @@ An exhaustive read therefore costs what a short one costs, which is why reading 
 default. ``row_budget`` survives only as a way to ask for a shorter run.
 
 What a declared schema buys is not the fold but its sharpness. Parquet footers are read first, so
-the columns are known before a row is parsed and each accumulator is chosen up front, and the exact
-row count is known too, which is what lets the quality sample be spread across a column not yet
-seen.
+the columns are known before a row is parsed and each accumulator is chosen up front.
 
-Without one — line-delimited data — both wait for the data. Columns are created on first sight and
+Without one — line-delimited data — the columns wait for the data. Columns are created on first sight and
 back-filled with the rows they were absent for, and each carries every shape at once until the last
 row has gone by and the dtype resolves. That costs a deferred type per column and nothing else; it
 does not cost a second pass, and it does not decide from a prefix.
@@ -281,20 +279,6 @@ def _peek_files(source: FileSource, entries: list[FileEntry]) -> dict[str, FileP
     return previews
 
 
-def _expected_rows(previews: dict[str, FilePreview], row_cap: int | None) -> int | None:
-    """How many rows the fold is about to see, if every file said.
-
-    Capped per file the same way the read will be, so a budgeted run spreads its quality sample over
-    what it will actually scan rather than over what the dataset holds.
-    """
-    total = 0
-    for preview in previews.values():
-        if preview.num_rows is None:
-            return None
-        total += min(preview.num_rows, row_cap) if row_cap is not None else preview.num_rows
-    return total
-
-
 class _PartitionFolds:
     """The two folds a partition needs, driven together over the same batches.
 
@@ -302,12 +286,12 @@ class _PartitionFolds:
     neither. Keeping them side by side is what lets the file loop hand over a batch and forget it.
     """
 
-    def __init__(self, features: list[FeatureSchema] | None, expected_rows: int | None) -> None:
+    def __init__(self, features: list[FeatureSchema] | None) -> None:
         # Declared: the columns are known, so the accumulators are chosen now. Inferred: they are
         # discovered as they appear and typed once every row has gone by.
         self.features = features or []
         self._columns: ColumnFold | InferredColumnFold = (
-            ColumnFold(features, expected_rows) if features is not None else InferredColumnFold(expected_rows)
+            ColumnFold(features) if features is not None else InferredColumnFold()
         )
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
@@ -385,19 +369,15 @@ def _profile_partition(
     # Footers first, before a single row is read. A parquet file declares its schema and its exact
     # row count there, so one seek per file establishes the partition's whole shape: what the columns
     # are, and how many rows are coming. That is what a fold needs and cannot otherwise have -- the
-    # accumulators must exist before the first batch, and the quality stride must be placed before
-    # the column it strides has been seen.
+    # accumulators must exist before the first batch.
     previews = _peek_files(source, entries)
     arrow_schemas = [preview.arrow_schema for preview in previews.values() if preview.arrow_schema is not None]
     declared = _unify_schemas(arrow_schemas) if len(arrow_schemas) == len(entries) and arrow_schemas else None
     # Declared or not, the partition folds. With a schema the accumulators are chosen up front and
-    # the exact row count places the quality stride; without one both wait for the data, which costs
-    # a deferred dtype per column and nothing else.
+    # without one the columns wait for the data, which costs a deferred dtype per column and nothing
+    # else.
     row_cap = _per_file_cap(row_budget, len(entries))
-    folds = _PartitionFolds(
-        derive_features([], declared) if declared is not None else None,
-        expected_rows=_expected_rows(previews, row_cap),
-    )
+    folds = _PartitionFolds(derive_features([], declared) if declared is not None else None)
     rows_scanned = 0
     files_read = 0
     rows_present: int | None = 0
