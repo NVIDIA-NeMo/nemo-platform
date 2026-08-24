@@ -43,9 +43,9 @@ class AnalyzeSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent: str = Field(description="Agent under test.")
-    agent_spec: str | None = Field(
+    ethos: str | None = Field(
         default=None,
-        description="Optional markdown spec content for the agent under test.",
+        description="Optional Ethos Markdown for the agent under test.",
     )
     base_url: str | None = Field(
         default=None,
@@ -142,7 +142,7 @@ class AnalyzeJob(NemoJob):
             report = asyncio.run(
                 run_analyst(
                     agent=spec.agent,
-                    agent_spec=spec.agent_spec,
+                    ethos=spec.ethos,
                     workspace=ctx.workspace,
                     base_url=spec.base_url,
                     client=async_client,

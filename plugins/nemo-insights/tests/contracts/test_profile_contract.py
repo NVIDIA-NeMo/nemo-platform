@@ -11,8 +11,8 @@ from nemo_insights_plugin.contracts.profile import (
     discover_profile,
     load_env_file,
     load_profile_model,
-    resolve_agent_spec_path,
     resolve_base_url,
+    resolve_ethos_path,
     resolve_profile_path,
 )
 from pydantic import BaseModel, ConfigDict
@@ -147,18 +147,18 @@ def test_load_env_file_wraps_permission_errors(
     assert exc_info.value.__cause__ is None
 
 
-def test_resolve_agent_spec_uses_configured_then_conventional_precedence(tmp_path: Path) -> None:
+def test_resolve_ethos_uses_configured_then_conventional_precedence(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text("# Readme", encoding="utf-8")
-    assert resolve_agent_spec_path(tmp_path, None) == readme
+    assert resolve_ethos_path(tmp_path, None) == readme
 
-    spec = tmp_path / "AGENT-SPEC.md"
-    spec.write_text("# Spec", encoding="utf-8")
-    assert resolve_agent_spec_path(tmp_path, None) == spec
-    assert resolve_agent_spec_path(tmp_path, "./README.md") == readme.resolve()
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos", encoding="utf-8")
+    assert resolve_ethos_path(tmp_path, None) == ethos
+    assert resolve_ethos_path(tmp_path, "./README.md") == readme.resolve()
 
     with pytest.raises(ProfileError, match="does not exist"):
-        resolve_agent_spec_path(tmp_path, "./missing.md")
+        resolve_ethos_path(tmp_path, "./missing.md")
 
 
 def test_resolve_base_url_uses_only_explicit_nmp_and_default() -> None:

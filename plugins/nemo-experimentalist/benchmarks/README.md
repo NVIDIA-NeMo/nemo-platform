@@ -17,7 +17,7 @@ a local cache; no task content is vendored here.
 | `suites/tau3-retail.yaml` | `sierra-research/tau3-bench@1`, retail scoped | 114 | `examples/tau3-nooa-agent` |
 | `suites/tau3-telecom.yaml` | `sierra-research/tau3-bench@1`, telecom scoped | 114 | `examples/tau3-nooa-agent` |
 
-The four tau3 suites share one agent: its `AGENT-SPEC.md` is domain-generic because
+The four tau3 suites share one agent: its `ETHOS.md` is domain-generic because
 the domain policy arrives at runtime in the task instruction.
 
 ## Terminal-Bench provenance

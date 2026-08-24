@@ -30,6 +30,7 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
+- ``ethos``        — sub-group: migrate an agent's Ethos artifacts to their final names
 """
 
 from __future__ import annotations
@@ -39,7 +40,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -63,11 +66,11 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
-    MAX_AGENT_SPEC_STAGED_BYTES,
-    MAX_AGENT_SPEC_STAGED_FILES,
+    MAX_ETHOS_STAGED_BYTES,
+    MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
-    agent_spec_fileset_name,
+    ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
@@ -120,6 +123,7 @@ class AgentsCLI(NemoCLI):
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
+        _register_ethos_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
         for name, cli_cls in discover_agent_cli().items():
@@ -769,8 +773,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        migration_warning: tuple[str, ...] = ()
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            from nemo_agents_plugin.ethos_migrate import registration_migration_warning
+
+            migration_warning = registration_migration_warning(name, workspace, agent_config)
+            for line in migration_warning:
+                typer.echo(line, err=True)
         elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
             # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
             # user context at deploy time.
@@ -795,15 +805,16 @@ def _register_platform_commands(app: typer.Typer) -> None:
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             try:
-                _upload_agent_spec_fileset(
+                _upload_ethos_fileset(
                     agent_name=name,
                     workspace=workspace,
                     agent_root=agent_config.parent,
                     base_url=base_url,
+                    omit_legacy_contract=bool(migration_warning),
                 )
             except Exception as exc:
                 typer.echo(
-                    f"Error: failed to upload agent spec fileset for {name!r}: {exc}",
+                    f"Error: failed to upload Ethos fileset for {name!r}: {exc}",
                     err=True,
                 )
                 try:
@@ -1197,6 +1208,76 @@ def _register_platform_commands(app: typer.Typer) -> None:
         assert name  # guaranteed by the checks above
         success = _wait_for_deployment(base_url, workspace, name, timeout=timeout, interval=interval)
         raise typer.Exit(code=0 if success else 1)
+
+
+# ---------------------------------------------------------------------------
+# Ethos artifact commands
+# ---------------------------------------------------------------------------
+
+
+def _register_ethos_commands(app: typer.Typer) -> None:
+    """Register the ``ethos`` sub-group onto *app*.
+
+    Glue only: migration validation and changes live in
+    :mod:`nemo_agents_plugin.ethos_migrate`.
+    """
+    ethos_app = typer.Typer(name="ethos", help="Manage an agent's Ethos artifacts.", no_args_is_help=True)
+    app.add_typer(ethos_app, rich_help_panel="Agent Resources (requires running cluster)")
+
+    @ethos_app.command(name="migrate")
+    def ethos_migrate(
+        name: str = typer.Option(..., "--name", "-n", help="Agent name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        dry_run: bool = typer.Option(
+            False,
+            "--dry-run",
+            help="Assess the migration without writing or deleting artifacts.",
+        ),
+        cleanup: bool = typer.Option(
+            False,
+            "--cleanup",
+            help="Delete matching legacy artifacts after you verify completed targets.",
+        ),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Move an agent's platform-managed package and Fileset to their Ethos names.
+
+        Additive migration preserves legacy artifacts. Cleanup deletes them only
+        after matching targets are verified.
+        """
+        from nemo_agents_plugin.ethos_migrate import (
+            MigrationError,
+            MigrationRequest,
+            run_migration,
+            validate_agent_name,
+        )
+
+        # Reject an unsafe name before anything else, so a usage error never
+        # needs a reachable platform and never reaches a path operation.
+        try:
+            validate_agent_name(name)
+        except MigrationError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+        try:
+            sdk = _platform_sdk(_resolve_base_url(base_url))
+            request = MigrationRequest(
+                agent=name,
+                workspace=workspace,
+                dry_run=dry_run,
+                cleanup=cleanup,
+            )
+            report = run_migration(request, sdk=sdk)
+        except MigrationError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        except Exception as exc:
+            typer.echo(f"Error: migration failed: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+        for line in report.lines:
+            typer.echo(line)
 
 
 # ---------------------------------------------------------------------------
@@ -1612,49 +1693,78 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
             continue
         file_count += 1
         total_bytes += path.stat().st_size
-        if file_count > MAX_AGENT_SPEC_STAGED_FILES:
+        if file_count > MAX_ETHOS_STAGED_FILES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} holds more than "
-                f"{MAX_AGENT_SPEC_STAGED_FILES} files; point --agent-config at a "
+                f"{MAX_ETHOS_STAGED_FILES} files; point --agent-config at a "
                 "directory containing only the agent's own artifacts"
             )
-        if total_bytes > MAX_AGENT_SPEC_STAGED_BYTES:
+        if total_bytes > MAX_ETHOS_STAGED_BYTES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} exceeds the "
-                f"{MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery; "
+                f"{MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery; "
                 "point --agent-config at a directory containing only the agent's own artifacts"
             )
 
 
-def _upload_agent_spec_fileset(
+def _upload_ethos_fileset(
     *,
     agent_name: str,
     workspace: str,
     agent_root: Path,
     base_url: str,
+    omit_legacy_contract: bool = False,
 ) -> None:
-    """Upload *agent_root* into the conventional ``{agent}-spec`` fileset.
+    """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
     Agent YAML must live in a dedicated agent root so sibling artifacts
-    (skills, prompts) upload without shipping an unrelated checkout tree.
+    (skills, prompts) upload without shipping an unrelated checkout tree. A
+    legacy contract is omitted so the explicit migration can complete the
+    target Fileset without a conflict.
     """
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
     _check_agent_root_bounds(agent_root)
+    fileset = ethos_fileset_name(agent_name)
+    sdk = _platform_sdk(base_url)
+    if omit_legacy_contract:
+        from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
+        from nemo_platform import NotFoundError as PlatformNotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
+        with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
+            staged = Path(directory) / agent_root.name
+            shutil.copytree(agent_root, staged)
+            (staged / LEGACY_CONTRACT_FILENAME).unlink()
+            upload_to_fileset(
+                staged,
+                fileset=fileset,
+                workspace=workspace,
+                sdk=sdk,
+            )
+        try:
+            sdk.files.delete(
+                remote_path=LEGACY_CONTRACT_FILENAME,
+                fileset=fileset,
+                workspace=workspace,
+            )
+        except (PlatformNotFoundError, PluginNotFoundError):
+            pass
+        return
     upload_to_fileset(
         agent_root,
-        fileset=agent_spec_fileset_name(agent_name),
+        fileset=fileset,
         workspace=workspace,
-        sdk=_platform_sdk(base_url),
+        sdk=sdk,
     )
 
 
 def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:
-    """Delete the agent entity, leaving the ``{agent}-spec`` fileset in place.
+    """Delete the agent entity, leaving the ``{agent}-ethos`` fileset in place.
 
     The fileset outlives the agent on purpose: it is the canonical home of
-    ``AGENT-SPEC.md`` (see ``agent_spec_file_ref``), which ``nemo-spec`` writes
+    ``ETHOS.md`` (see ``ethos_file_ref``), which ``nemo-ethos`` writes
     before the agent exists and ``nemo-build-agent`` reads on every rebuild.
     Deleting the fileset here would destroy that durable contract, so the
     executable artifacts it also carries are left behind instead.

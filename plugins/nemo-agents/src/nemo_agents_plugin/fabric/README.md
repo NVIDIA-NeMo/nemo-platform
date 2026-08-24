@@ -8,7 +8,7 @@ Fabric-backed NeMo Agents.
 
 NeMo Platform owns the persisted agent contract. A Fabric-backed agent is stored
 using the Platform-managed `nemo-agents-spec-v1` config shape, authored as
-`agent.yaml` in the agent spec fileset and represented in code as `AgentConfig`.
+`agent.yaml` in the Ethos fileset and represented in code as `AgentConfig`.
 
 Fabric is an execution dependency, not the persisted Platform contract. Before
 calling Fabric SDK APIs, NeMo Agents translates the Platform-managed config into a

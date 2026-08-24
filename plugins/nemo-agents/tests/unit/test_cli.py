@@ -14,10 +14,15 @@ from unittest.mock import patch
 import httpx
 import pytest
 from nemo_agents_plugin.cli import (
-    MAX_AGENT_SPEC_STAGED_BYTES,
-    MAX_AGENT_SPEC_STAGED_FILES,
+    MAX_ETHOS_STAGED_BYTES,
+    MAX_ETHOS_STAGED_FILES,
     AgentsCLI,
     _check_agent_root_bounds,
+)
+from nemo_agents_plugin.ethos_migrate import (
+    LEGACY_CONTRACT_FILENAME,
+    LEGACY_PACKAGE_SUFFIX,
+    registration_migration_warning,
 )
 from typer.testing import CliRunner
 
@@ -256,7 +261,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     with (
         _install_mock_transport(handler),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
-        patch("nemo_agents_plugin.cli._upload_agent_spec_fileset") as mock_upload,
+        patch("nemo_agents_plugin.cli._upload_ethos_fileset") as mock_upload,
     ):
         result = CliRunner().invoke(
             app,
@@ -274,11 +279,14 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         workspace="default",
         agent_root=tmp_path,
         base_url="http://test",
+        omit_legacy_contract=False,
     )
 
 
-def test_create_fabric_uploads_agent_spec_fileset(tmp_path) -> None:
-    config = tmp_path / "agent.yaml"
+def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package = tmp_path / "agents" / f"fabric-agent{LEGACY_PACKAGE_SUFFIX}"
+    package.mkdir(parents=True)
+    config = package / "agent.yaml"
     config.write_text(
         "\n".join(
             [
@@ -292,6 +300,8 @@ def test_create_fabric_uploads_agent_spec_fileset(tmp_path) -> None:
             ]
         )
     )
+    (package / LEGACY_CONTRACT_FILENAME).write_text("# Contract\n")
+    monkeypatch.chdir(tmp_path)
     normalized_config = {
         "config_format": "nemo-agents-spec-v1",
         "name": "fabric-agent",
@@ -311,10 +321,21 @@ def test_create_fabric_uploads_agent_spec_fileset(tmp_path) -> None:
     uploaded: dict[str, Any] = {}
 
     def fake_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
-        uploaded["local_dir"] = local_dir
+        uploaded["files"] = {path.relative_to(local_dir).as_posix() for path in local_dir.rglob("*") if path.is_file()}
         uploaded["fileset"] = fileset
         uploaded["workspace"] = workspace
         uploaded["sdk_base_url"] = sdk.base_url
+
+    class FakeFiles:
+        def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
+            uploaded["deleted"] = (remote_path, fileset, workspace)
+            from nemo_platform import NotFoundError
+
+            raise NotFoundError(
+                response=httpx.Response(404, request=httpx.Request("DELETE", "http://test")),
+                body=None,
+                message="not found",
+            )
 
     app = AgentsCLI().get_cli()
     with (
@@ -323,15 +344,17 @@ def test_create_fabric_uploads_agent_spec_fileset(tmp_path) -> None:
         patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
         patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
     ):
-        mock_sdk.return_value = type("SDK", (), {"base_url": "http://test"})()
+        mock_sdk.return_value = type("SDK", (), {"base_url": "http://test", "files": FakeFiles()})()
         result = CliRunner().invoke(
             app,
             ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
         )
 
     assert result.exit_code == 0, result.stderr
-    assert uploaded["local_dir"] == tmp_path
-    assert uploaded["fileset"] == "fabric-agent-spec"
+    assert result.stderr.splitlines()[-3:] == list(registration_migration_warning("fabric-agent", "default", config))
+    assert uploaded["files"] == {"agent.yaml"}
+    assert uploaded["deleted"] == (LEGACY_CONTRACT_FILENAME, "fabric-agent-ethos", "default")
+    assert uploaded["fileset"] == "fabric-agent-ethos"
     assert uploaded["workspace"] == "default"
     assert uploaded["sdk_base_url"] == "http://test"
 
@@ -345,14 +368,14 @@ def test_check_agent_root_bounds_allows_small_agent_root(tmp_path) -> None:
 
 
 def test_check_agent_root_bounds_rejects_oversized_agent_root(tmp_path) -> None:
-    (tmp_path / "big.bin").write_bytes(b"x" * (MAX_AGENT_SPEC_STAGED_BYTES + 1))
+    (tmp_path / "big.bin").write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
 
     with pytest.raises(ValueError, match="byte limit for container config delivery"):
         _check_agent_root_bounds(tmp_path)
 
 
 def test_check_agent_root_bounds_rejects_too_many_files(tmp_path) -> None:
-    for index in range(MAX_AGENT_SPEC_STAGED_FILES + 1):
+    for index in range(MAX_ETHOS_STAGED_FILES + 1):
         (tmp_path / f"f{index}.txt").write_text("x")
 
     with pytest.raises(ValueError, match="more than"):
@@ -361,7 +384,7 @@ def test_check_agent_root_bounds_rejects_too_many_files(tmp_path) -> None:
 
 def test_check_agent_root_bounds_rejects_file_symlink(tmp_path) -> None:
     outside = tmp_path.parent / "outside.bin"
-    outside.write_bytes(b"x" * (MAX_AGENT_SPEC_STAGED_BYTES + 1))
+    outside.write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
     agent_root = tmp_path / "agent"
     agent_root.mkdir()
     (agent_root / "agent.yaml").write_text("name: a\n")
@@ -425,7 +448,7 @@ def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> N
         _install_mock_transport(handler),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
         patch(
-            "nemo_agents_plugin.cli._upload_agent_spec_fileset",
+            "nemo_agents_plugin.cli._upload_ethos_fileset",
             side_effect=RuntimeError("upload boom"),
         ),
         patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
@@ -436,9 +459,9 @@ def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> N
         )
 
     assert result.exit_code == 1
-    assert "failed to upload agent spec fileset" in result.stderr
-    # Rollback removes the agent entity only; the spec fileset is durable and may
-    # already hold an AGENT-SPEC.md written before this agent existed.
+    assert "failed to upload Ethos fileset" in result.stderr
+    # Rollback removes the agent entity only; the Ethos fileset is durable and may
+    # already hold an ETHOS.md written before this agent existed.
     assert methods == ["POST", "DELETE"]
     mock_sdk.assert_not_called()
 
@@ -480,7 +503,7 @@ def test_create_fabric_reports_rollback_failure(tmp_path) -> None:
         _install_mock_transport(handler),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
         patch(
-            "nemo_agents_plugin.cli._upload_agent_spec_fileset",
+            "nemo_agents_plugin.cli._upload_ethos_fileset",
             side_effect=RuntimeError("upload boom"),
         ),
     ):
@@ -494,7 +517,7 @@ def test_create_fabric_reports_rollback_failure(tmp_path) -> None:
     assert "nemo agents delete fabric-agent" in result.stderr
 
 
-def test_create_nat_does_not_upload_agent_spec_fileset(tmp_path) -> None:
+def test_create_nat_does_not_upload_ethos_fileset(tmp_path) -> None:
     config = tmp_path / "agent.yml"
     config.write_text("llms:\n  llm:\n    _type: openai\n    model_name: nvidia-nemotron-3-super-v3\n")
 
@@ -505,7 +528,7 @@ def test_create_nat_does_not_upload_agent_spec_fileset(tmp_path) -> None:
     app = AgentsCLI().get_cli()
     with (
         _install_mock_transport(handler),
-        patch("nemo_agents_plugin.cli._upload_agent_spec_fileset") as mock_upload,
+        patch("nemo_agents_plugin.cli._upload_ethos_fileset") as mock_upload,
         patch("nemo_agents_plugin.utils.get_default_model", return_value="nvidia-nemotron-3-super-v3"),
     ):
         result = CliRunner().invoke(

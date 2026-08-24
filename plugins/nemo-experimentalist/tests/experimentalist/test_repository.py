@@ -22,7 +22,7 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
     PRPublisherError,
     clone_agent_repo,
     looks_like_git,
-    split_agent_spec,
+    split_agent_source_uri,
     split_git_ref,
 )
 
@@ -361,7 +361,7 @@ def test_agent_source_model() -> None:
 
 
 # ---------------------------------------------------------------------------
-# candidate-storage helpers: spec fragment and agent-path validation
+# candidate-storage helpers: source URI fragment and agent-path validation
 # ---------------------------------------------------------------------------
 
 
@@ -377,8 +377,8 @@ def test_agent_source_model() -> None:
         ("https://h/g/r.git#./", "https://h/g/r.git", "."),
     ],
 )
-def test_split_agent_spec(spec: str, core: str, agent_path: str) -> None:
-    assert split_agent_spec(spec) == (core, agent_path)
+def test_split_agent_source_uri(spec: str, core: str, agent_path: str) -> None:
+    assert split_agent_source_uri(spec) == (core, agent_path)
 
 
 @pytest.mark.parametrize(
@@ -399,9 +399,9 @@ def test_split_agent_spec(spec: str, core: str, agent_path: str) -> None:
         "pkg/\x00agent",
     ],
 )
-def test_split_agent_spec_rejects_unsafe_agent_path_without_echo(agent_path: str) -> None:
+def test_split_agent_source_uri_rejects_unsafe_agent_path_without_echo(agent_path: str) -> None:
     with pytest.raises(ValueError) as exc_info:
-        split_agent_spec(f"https://github.com/org/repo.git#{agent_path}")
+        split_agent_source_uri(f"https://github.com/org/repo.git#{agent_path}")
 
     assert str(exc_info.value) == "agent path must be a normalized relative POSIX path"
     if agent_path:

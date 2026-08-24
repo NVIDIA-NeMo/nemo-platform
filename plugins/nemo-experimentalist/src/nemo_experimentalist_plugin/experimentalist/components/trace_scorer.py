@@ -207,10 +207,10 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
         analysis directory.
         """
         self._load_trace = ctx.load_trace
-        await self._ensure_goal_tree(ctx.datasets["train"], ctx.agent_spec)
+        await self._ensure_goal_tree(ctx.datasets["train"], ctx.ethos)
         if analysis is not None:
             await self._update_goal_tree(
-                round_num=round_num, analysis=analysis, dataset=ctx.datasets["train"], agent_spec=ctx.agent_spec
+                round_num=round_num, analysis=analysis, dataset=ctx.datasets["train"], ethos=ctx.ethos
             )
         results = await self._reward_trajectories(dataset=ctx.datasets[PRIMARY_SPLIT], candidates=candidates)
         by_label = {c.label: c for c in candidates}
@@ -250,7 +250,7 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
             logger.warning(f"[TRAJ] Failed to load {context} goal tree {path}: {exc}")
             return None
 
-    async def _ensure_goal_tree(self, dataset: Dataset, agent_spec: Path | None) -> None:
+    async def _ensure_goal_tree(self, dataset: Dataset, ethos: Path | None) -> None:
         """Generate and persist the round-0 goal tree if it does not already exist."""
         tree_path = self._goal_tree_path(0)
         if tree_path.exists():
@@ -260,7 +260,7 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
                 workspace=self.workspace,
                 config=self._goal_config,
                 framework_skills_dirs=self._framework_skills_dirs,
-            ).generate(dataset, agent_spec=agent_spec)
+            ).generate(dataset, ethos=ethos)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[TRAJ] Failed to generate initial goal tree; continuing without trajectory scoring: {exc}")
             return
@@ -268,7 +268,7 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
         tree_path.write_text(tree.to_json())
 
     async def _update_goal_tree(
-        self, *, round_num: int, analysis: str, dataset: Dataset, agent_spec: Path | None = None
+        self, *, round_num: int, analysis: str, dataset: Dataset, ethos: Path | None = None
     ) -> None:
         """Refine and persist the goal tree for round *round_num* + 1."""
         next_goal_path = self._goal_tree_path(round_num + 1)
@@ -286,7 +286,7 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
             config=goal_config,
             framework_skills_dirs=self._framework_skills_dirs,
         )
-        updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, agent_spec=agent_spec)
+        updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, ethos=ethos)
         next_goal_path.parent.mkdir(parents=True, exist_ok=True)
         next_goal_path.write_text(updated_tree.to_json())
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Stage Fabric agent-spec fileset artifacts for container and subprocess deployments."""
+"""Stage Fabric Ethos fileset artifacts for container and subprocess deployments."""
 
 from __future__ import annotations
 
@@ -17,15 +17,17 @@ from typing import Any, Protocol
 import yaml
 from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
-    AGENT_SPEC_FILENAME,
-    MAX_AGENT_SPEC_STAGED_BYTES,
-    agent_spec_fileset_name,
+    ETHOS_FILENAME,
+    MAX_ETHOS_STAGED_BYTES,
+    ethos_fileset_name,
 )
+from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError as PlatformNotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 logger = logging.getLogger(__name__)
+_CONTRACT_FILENAMES = {ETHOS_FILENAME, LEGACY_CONTRACT_FILENAME}
 
 
 class FabricArtifactStagingError(ValueError):
@@ -42,7 +44,7 @@ class _FilesDownloader(Protocol):
     ) -> None: ...
 
 
-async def stage_fabric_spec_dir(
+async def stage_fabric_ethos_dir(
     *,
     workspace: str,
     agent_name: str,
@@ -50,15 +52,15 @@ async def stage_fabric_spec_dir(
     base_dir: Path,
     sdk: _FilesDownloader | None,
 ) -> None:
-    """Download the agent spec fileset into *base_dir* for subprocess deployments.
+    """Download the Ethos fileset into *base_dir* for subprocess deployments.
 
-    Mirrors :func:`stage_fabric_spec_config_files` for a runtime that reads the
+    Mirrors :func:`stage_fabric_ethos_config_files` for a runtime that reads the
     agent root off local disk rather than through a ConfigMap. An unavailable
     fileset is not fatal — config-only agents deploy from ``agent.yaml`` alone —
     but a config referencing skills still needs them staged.
 
-    ``AGENT-SPEC.md`` is dropped after download, matching the container path,
-    so both runtimes see the same tree.
+    ``ETHOS.md`` and the legacy ``AGENT-SPEC.md`` file are dropped after
+    download, matching the container path, so both runtimes see the same tree.
 
     The container byte cap does not apply here: it bounds ConfigMap and env
     delivery, neither of which is in this path. What lands on the platform host
@@ -75,12 +77,12 @@ async def stage_fabric_spec_dir(
     await asyncio.to_thread(_clear_staged_tree, base_dir, preserved)
 
     if agent_name and sdk is not None:
-        fileset_name = agent_spec_fileset_name(agent_name)
+        fileset_name = ethos_fileset_name(agent_name)
         try:
             await sdk.download(local_path=str(base_dir), fileset=fileset_name, workspace=workspace)
         except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
             logger.info(
-                "Agent spec fileset %s/%s unavailable (%s); using inline agent.yaml only",
+                "Ethos fileset %s/%s unavailable (%s); using inline agent.yaml only",
                 workspace,
                 fileset_name,
                 exc,
@@ -133,7 +135,7 @@ def _clear_staged_tree(base_dir: Path, preserved: set[str]) -> None:
                 child.unlink(missing_ok=True)
         except OSError as exc:
             raise FabricArtifactStagingError(
-                f"Failed to remove stale agent spec artifact {child.name!r} from {base_dir}: {exc}"
+                f"Failed to remove stale Ethos artifact {child.name!r} from {base_dir}: {exc}"
             ) from exc
 
 
@@ -144,7 +146,7 @@ def _collect_staged_dir(base_dir: Path, preserved: set[str]) -> set[PurePosixPat
     writes to the platform host's filesystem rather than an inert ConfigMap, so
     it keeps the same guard. Symlinks are the reachable form here: the download
     lands real files, but a link inside the tree would resolve outside it.
-    ``AGENT-SPEC.md`` is removed for parity with the container path.
+    Contract Markdown files are removed for parity with the container path.
 
     *preserved* runtime directories are skipped: a running agent owns their
     contents, symlinks included, and staging neither writes nor validates them.
@@ -157,11 +159,11 @@ def _collect_staged_dir(base_dir: Path, preserved: set[str]) -> set[PurePosixPat
             continue
         if path.is_symlink() or not path.resolve().is_relative_to(resolved_base):
             raise FabricArtifactStagingError(
-                f"Staged agent spec path {rel.as_posix()!r} escapes the agent base directory {base_dir}"
+                f"Staged Ethos path {rel.as_posix()!r} escapes the agent base directory {base_dir}"
             )
         if not path.is_file():
             continue
-        if path.name == AGENT_SPEC_FILENAME:
+        if path.name in _CONTRACT_FILENAMES:
             path.unlink()
             continue
         staged.add(PurePosixPath(rel.as_posix()))
@@ -172,7 +174,7 @@ def _staged_relative_paths(base_dir: Path) -> set[PurePosixPath]:
     return {PurePosixPath(path.relative_to(base_dir).as_posix()) for path in base_dir.rglob("*") if path.is_file()}
 
 
-async def stage_fabric_spec_config_files(
+async def stage_fabric_ethos_config_files(
     *,
     workspace: str,
     agent_name: str,
@@ -180,7 +182,7 @@ async def stage_fabric_spec_config_files(
     agent_yaml_path: str,
     sdk: _FilesDownloader,
 ) -> list[ConfigFile]:
-    """Download the agent spec fileset and return container ``config_files`` entries.
+    """Download the Ethos fileset and return container ``config_files`` entries.
 
     When the fileset is unavailable, returns a single inline ``agent.yaml`` entry
     (AIRCORE-947 behavior). When available, maps every fileset file under the same
@@ -191,9 +193,9 @@ async def stage_fabric_spec_config_files(
     if not agent_name:
         return [ConfigFile(path=agent_yaml_path, content=config_yaml)]
 
-    fileset_name = agent_spec_fileset_name(agent_name)
+    fileset_name = ethos_fileset_name(agent_name)
     try:
-        with tempfile.TemporaryDirectory(prefix=f".fabric-spec-{agent_name}-") as tmp:
+        with tempfile.TemporaryDirectory(prefix=f".fabric-ethos-{agent_name}-") as tmp:
             tmp_path = Path(tmp)
             await sdk.download(local_path=str(tmp_path), fileset=fileset_name, workspace=workspace)
             config_files = _collect_staged_config_files(
@@ -203,13 +205,13 @@ async def stage_fabric_spec_config_files(
             )
             # Validate against what the fileset delivered, not config_files, which
             # carries the generated agent.yaml whether or not the fileset supplied one.
-            delivered = {path for path in _staged_relative_paths(tmp_path) if path.name != AGENT_SPEC_FILENAME}
+            delivered = {path for path in _staged_relative_paths(tmp_path) if path.name not in _CONTRACT_FILENAMES}
             validate_referenced_skill_paths(rewritten_agent_config, delivered)
             _validate_staged_size(config_files, fileset_name)
             return config_files
     except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
         logger.info(
-            "Agent spec fileset %s/%s unavailable (%s); using inline agent.yaml only",
+            "Ethos fileset %s/%s unavailable (%s); using inline agent.yaml only",
             workspace,
             fileset_name,
             exc,
@@ -235,8 +237,8 @@ def _collect_staged_config_files(
             continue
         rel = path.relative_to(root)
         if ".." in rel.parts:
-            raise FabricArtifactStagingError(f"Path escape in agent spec fileset: {rel.as_posix()!r}")
-        if rel.name == AGENT_SPEC_FILENAME:
+            raise FabricArtifactStagingError(f"Path escape in Ethos fileset: {rel.as_posix()!r}")
+        if rel.name in _CONTRACT_FILENAMES:
             continue
         container_path = str(base_dir / PurePosixPath(rel.as_posix()))
         if rel.name == AGENT_CONFIG_FILENAME and container_path == agent_yaml_path:
@@ -246,7 +248,7 @@ def _collect_staged_config_files(
                 content = path.read_text(encoding="utf-8")
             except UnicodeDecodeError as exc:
                 raise FabricArtifactStagingError(
-                    f"Agent spec fileset contains non-UTF-8 file {rel.as_posix()!r}; staged artifacts must be text"
+                    f"Ethos fileset contains non-UTF-8 file {rel.as_posix()!r}; staged artifacts must be text"
                 ) from exc
         config_files.append(ConfigFile(path=container_path, content=content))
 
@@ -257,10 +259,10 @@ def _collect_staged_config_files(
 
 def _validate_staged_size(config_files: list[ConfigFile], fileset_name: str) -> None:
     total = sum(len(config_file.content.encode("utf-8")) for config_file in config_files)
-    if total > MAX_AGENT_SPEC_STAGED_BYTES:
+    if total > MAX_ETHOS_STAGED_BYTES:
         raise FabricArtifactStagingError(
-            f"Agent spec fileset {fileset_name!r} stages {total} bytes across {len(config_files)} files, "
-            f"exceeding the {MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery"
+            f"Ethos fileset {fileset_name!r} stages {total} bytes across {len(config_files)} files, "
+            f"exceeding the {MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery"
         )
 
 
@@ -297,5 +299,5 @@ def validate_referenced_skill_paths(
             matched = bool(staged_paths)
         if not matched:
             raise FabricArtifactStagingError(
-                f"Referenced skills.paths entry {skill_path!r} was not found in staged agent spec fileset"
+                f"Referenced skills.paths entry {skill_path!r} was not found in staged Ethos fileset"
             )

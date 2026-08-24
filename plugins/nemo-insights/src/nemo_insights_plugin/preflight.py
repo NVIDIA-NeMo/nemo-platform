@@ -95,59 +95,59 @@ def check_profile(
     ]
 
 
-def check_agent_spec(
-    spec_path: Path | None,
-    spec_error: str | None,
+def check_ethos(
+    ethos_path: Path | None,
+    ethos_error: str | None,
 ) -> list[CheckResult]:
-    """Check the optional agent-spec artifact, including explicit UTF-8 readability."""
-    return read_agent_spec(spec_path, spec_error)[1]
+    """Check the optional Ethos content, including explicit UTF-8 readability."""
+    return read_ethos(ethos_path, ethos_error)[1]
 
 
-def read_agent_spec(
-    spec_path: Path | None,
-    spec_error: str | None,
+def read_ethos(
+    ethos_path: Path | None,
+    ethos_error: str | None,
 ) -> tuple[str | None, list[CheckResult]]:
-    """Read the optional agent spec as UTF-8 and return its readiness check."""
-    if spec_error is not None:
+    """Read the optional Ethos as UTF-8 and return its readiness check."""
+    if ethos_error is not None:
         return None, [
             CheckResult(
-                name="agent-spec",
+                name="ethos",
                 group="artifacts",
                 status="fail",
                 severity="required",
-                message=spec_error,
+                message=ethos_error,
             )
         ]
-    if spec_path is None:
+    if ethos_path is None:
         return None, [
             CheckResult(
-                name="agent-spec",
+                name="ethos",
                 group="artifacts",
                 status="pass",
                 severity="advisory",
-                message="agent spec omitted (optional)",
+                message="Ethos omitted (optional)",
             )
         ]
     try:
-        content = spec_path.read_text(encoding="utf-8")
+        content = ethos_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
         return None, [
             CheckResult(
-                name="agent-spec",
+                name="ethos",
                 group="artifacts",
                 status="fail",
                 severity="required",
-                message=f"Could not read agent spec {spec_path} as UTF-8: {exc}",
+                message=f"Could not read Ethos {ethos_path} as UTF-8: {exc}",
                 hint="ensure the file is readable and encoded as UTF-8",
             )
         ]
     return content, [
         CheckResult(
-            name="agent-spec",
+            name="ethos",
             group="artifacts",
             status="pass",
             severity="required",
-            message=f"agent spec readable at {spec_path}",
+            message=f"Ethos readable at {ethos_path}",
         )
     ]
 

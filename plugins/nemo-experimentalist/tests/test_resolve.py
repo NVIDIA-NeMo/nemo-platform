@@ -18,7 +18,7 @@ from nemo_experimentalist_plugin.resolve import (
     classify_dataset_value,
     normalize_insight_ref,
     parse_local_insights,
-    pick_agent_spec,
+    pick_ethos,
     profile_storage_flags,
     resolve_dataset,
     resolve_experiment_inputs,
@@ -653,7 +653,7 @@ def test_stale_fixed_partial_file_does_not_interfere(tmp_path: Path) -> None:
 def make_profile_tree(tmp_path: Path) -> Path:
     for sub in ("evals/task_template", "evals/train", "evals/val"):
         (tmp_path / sub).mkdir(parents=True)
-    (tmp_path / "AGENT-SPEC.md").write_text("# spec", encoding="utf-8")
+    (tmp_path / "ETHOS.md").write_text("# Ethos", encoding="utf-8")
     (tmp_path / "optimizer.yaml").write_text(
         "agent: flight-planner\n"
         "task_template: ./evals/task_template\n"
@@ -663,20 +663,20 @@ def make_profile_tree(tmp_path: Path) -> Path:
     return tmp_path / "optimizer.yaml"
 
 
-def test_pick_agent_spec_delegates_profile_owned_selection(
+def test_pick_ethos_delegates_profile_owned_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profile_path = make_profile_tree(tmp_path)
     with profile_path.open("a", encoding="utf-8") as profile_file:
-        profile_file.write("agent_spec: ./configured.md\n")
+        profile_file.write("ethos: ./configured.md\n")
     selected = tmp_path / "selected-by-shared-resolver.md"
     selected.write_text("# selected", encoding="utf-8")
     profile = load_profile(profile_path)
     resolver = Mock(return_value=selected)
-    monkeypatch.setattr("nemo_experimentalist_plugin.resolve.resolve_agent_spec_path", resolver)
+    monkeypatch.setattr("nemo_experimentalist_plugin.resolve.resolve_ethos_path", resolver)
 
-    assert pick_agent_spec(profile) == str(selected)
+    assert pick_ethos(profile) == str(selected)
     resolver.assert_called_once_with(profile.profile_dir, "./configured.md")
 
 
@@ -686,10 +686,10 @@ def test_shared_profile_error_is_translated_without_exception_chain(
 ) -> None:
     profile = load_profile(make_profile_tree(tmp_path))
     resolver = Mock(side_effect=ProfileError("shared profile selection failed"))
-    monkeypatch.setattr("nemo_experimentalist_plugin.resolve.resolve_agent_spec_path", resolver)
+    monkeypatch.setattr("nemo_experimentalist_plugin.resolve.resolve_ethos_path", resolver)
 
     with pytest.raises(ResolveError) as exc_info:
-        pick_agent_spec(profile)
+        pick_ethos(profile)
 
     assert str(exc_info.value) == "shared profile selection failed"
     assert exc_info.value.__cause__ is None
@@ -700,7 +700,7 @@ def test_full_resolution_from_profile(tmp_path: Path) -> None:
     profile = load_profile(make_profile_tree(tmp_path))
     inputs = asyncio.run(resolve_experiment_inputs(profile=profile, scratch_dir=tmp_path / "scratch", insight="ins-1"))
     assert inputs.agent == str(tmp_path.resolve())  # agent_source "." → profile dir
-    assert inputs.agent_spec == str((tmp_path / "AGENT-SPEC.md").resolve())  # auto-pick
+    assert inputs.ethos == str((tmp_path / "ETHOS.md").resolve())  # auto-pick
     assert inputs.train_dataset.uri == str((tmp_path / "evals" / "train").resolve())
     assert inputs.train_dataset.metadata == {"id": "train"}
     assert inputs.task_template is not None
@@ -875,13 +875,13 @@ def test_empty_experiment_config_file_names_the_file(tmp_path: Path) -> None:
         asyncio.run(resolve_experiment_inputs(profile=profile, scratch_dir=tmp_path / "s", insight="ins-1"))
 
 
-def test_profile_agent_spec_must_be_readable_utf8(tmp_path: Path) -> None:
+def test_profile_ethos_must_be_readable_utf8(tmp_path: Path) -> None:
     profile_path = make_profile_tree(tmp_path)
-    spec = tmp_path / "AGENT-SPEC.md"
-    spec.write_bytes(b"\xff")
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_bytes(b"\xff")
     profile = load_profile(profile_path)
 
-    with pytest.raises(ResolveError, match="Could not read agent_spec"):
+    with pytest.raises(ResolveError, match="Could not read ethos"):
         asyncio.run(resolve_experiment_inputs(profile=profile, scratch_dir=tmp_path / "s"))
 
 

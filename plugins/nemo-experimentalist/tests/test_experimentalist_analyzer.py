@@ -132,7 +132,7 @@ class _FakeRationalizer:
         self.config = config
         self.framework_skills_dirs = framework_skills_dirs or []
 
-    async def run(self, task: Any, agent_spec: Any = None) -> Rationale:
+    async def run(self, task: Any, ethos: Any = None) -> Rationale:
         return Rationale(task_name=task.id, steps=[])
 
 
