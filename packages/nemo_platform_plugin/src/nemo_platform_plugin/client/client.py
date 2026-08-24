@@ -347,6 +347,32 @@ class BaseNemoClient:
         """Default headers sent with every request."""
         return self._default_headers or {}
 
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to plugin SDK discovery.
+
+        Mirrors NeMoPlatform.__getattr__: discovers plugin SDK resources
+        via entry points and instantiates them with self as the platform.
+        This handles sdk.auditor, sdk.evaluator, sdk.agents, sdk.iron_swarm,
+        sdk.anonymizer, sdk.customizer, and any other plugin-level resource
+        not covered by the convenience properties.
+        """
+        from nemo_platform_plugin.discovery import discover_sdk
+
+        plugins = discover_sdk()
+        if name not in plugins:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
+
+        if isinstance(self, AsyncNemoClient):
+            resource_cls = getattr(plugins[name], "async_resource", None)
+        else:
+            resource_cls = getattr(plugins[name], "sync_resource", None)
+        if resource_cls is None:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
+
+        instance = resource_cls(self)
+        self.__dict__[name] = instance
+        return instance
+
     @property
     def workspace(self) -> str | None:
         return self._workspace
