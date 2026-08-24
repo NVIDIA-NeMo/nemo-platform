@@ -25,9 +25,16 @@ from typing import Any
 from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
     Agent,
+    AgentComputeSpec,
     AgentDeployment,
+    AgentEnvironment,
+    AgentEnvironmentInline,
+    AgentEnvironmentSpec,
+    AgentSession,
+    ComputeSpecInline,
     DeploymentMode,
     DeploymentStatus,
+    EnvironmentSpecInline,
 )
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
@@ -62,6 +69,23 @@ class CreateDeploymentRequest(BaseModel):
         default="",
         description="Container image for docker/k8s modes. Ignored for subprocess.",
     )
+    environment: str | AgentEnvironmentInline | None = Field(
+        default=None,
+        description=(
+            'Optional AgentEnvironment: a "workspace/name" ref, an inline environment, or None. '
+            "Resolved and snapshotted onto the deployment at create time."
+        ),
+    )
+
+
+class CreateSessionRequest(BaseModel):
+    """Request body for ``POST /v2/workspaces/{workspace}/sessions``."""
+
+    deployment_id: str = Field(min_length=1, description="ID of the AgentDeployment to create a session for.")
+    name: str | None = Field(
+        default=None,
+        description="Optional session name. Auto-generated from deployment name + random suffix if omitted.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -91,9 +115,52 @@ class DeploymentFilter(NemoFilter):
     )
 
 
+class SessionFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/sessions``."""
+
+    deployment_id: str | None = Field(
+        default=None,
+        description="Filter to sessions for this deployment ID.",
+    )
+
+
+class CreateEnvironmentRequest(AgentEnvironmentInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/environments``."""
+
+    name: str = Field(description="Unique environment name within the workspace.")
+
+
+class CreateEnvironmentSpecRequest(EnvironmentSpecInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/environment-specs``."""
+
+    name: str = Field(description="Unique environment-spec name within the workspace.")
+
+
+class CreateComputeSpecRequest(ComputeSpecInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/compute-specs``."""
+
+    name: str = Field(description="Unique compute-spec name within the workspace.")
+
+
+class EnvironmentFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/environments``."""
+
+
+class EnvironmentSpecFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/environment-specs``."""
+
+
+class ComputeSpecFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/compute-specs``."""
+
+
 # ---------------------------------------------------------------------------
 # List response type aliases
 # ---------------------------------------------------------------------------
 
 AgentPage = NemoListResponse[Agent]
 DeploymentPage = NemoListResponse[AgentDeployment]
+SessionPage = NemoListResponse[AgentSession]
+EnvironmentPage = NemoListResponse[AgentEnvironment]
+EnvironmentSpecPage = NemoListResponse[AgentEnvironmentSpec]
+ComputeSpecPage = NemoListResponse[AgentComputeSpec]

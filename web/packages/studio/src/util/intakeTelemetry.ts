@@ -82,19 +82,32 @@ export const getEvaluationContextSummary = (
   context: SpanEvaluationContext | null | undefined
 ): string => {
   if (!context) return EMPTY_VALUE;
-  return context.evaluation_id || context.test_case_id || EMPTY_VALUE;
+  return (
+    context.evaluation_name ||
+    context.test_case_name ||
+    context.evaluation_id ||
+    context.test_case_id ||
+    EMPTY_VALUE
+  );
 };
 
 export const hasEvaluationContext = (context: SpanEvaluationContext | null | undefined): boolean =>
-  Boolean(context && (context.evaluation_id || context.test_case_id));
+  Boolean(
+    context &&
+    (context.evaluation_name ||
+      context.test_case_name ||
+      context.evaluation_id ||
+      context.test_case_id)
+  );
 
 export const compareSpansByStartedAt = (a: Span, b: Span): number => {
   const aStartedAt = Date.parse(a.started_at);
   const bStartedAt = Date.parse(b.started_at);
-  if (Number.isNaN(aStartedAt) || Number.isNaN(bStartedAt) || aStartedAt === bStartedAt) {
-    return a.span_id.localeCompare(b.span_id);
+  if (!Number.isNaN(aStartedAt) && !Number.isNaN(bStartedAt) && aStartedAt !== bStartedAt) {
+    return aStartedAt - bStartedAt;
   }
-  return aStartedAt - bStartedAt;
+  // Array.sort is stable, so tied timestamps retain the API's step-aware order.
+  return 0;
 };
 
 export const buildSpanHierarchyRows = (spans: Span[]): SpanTableRow[] => {

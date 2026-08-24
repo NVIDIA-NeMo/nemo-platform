@@ -71,12 +71,16 @@ version = "0.0.0"
 [dependency-groups]
 # Insights analyst plugin convenience group.
 insights = ["nemo-insights-plugin"]
-# Experimentalist and Eval Author currently support Python 3.12 and 3.13. Both are listed
-# because insight mode imports Eval Author at module scope, while Eval Author still depends
-# back on Experimentalist for evaluator/trace helpers (see plugins/nemo-eval-author/README.md).
+# Experimentalist and Eval Author support Python 3.12 and 3.13. Both are listed so the
+# `nemo agents eval-author` commands are installed alongside Experimentalist. The
+# dependency is one arrow: Eval Author borrows the Experimentalist platform client
+# (see plugins/nemo-eval-author/README.md).
 experimentalist = [
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
   "nemo-eval-author-plugin ; python_full_version < '3.14'",
+]
+typecheck = [
+  "transformers>=5.5.0,<5.9.0",
 ]
 dev = [
   "pre-commit>=3.8.0",
@@ -95,7 +99,7 @@ dev = [
   "ty==0.0.56",
   "hatchling>=1.26.3",
   "nmp-testing",
-  "mlflow-skinny>=3.11.1,<3.12.0", # Optional dep for fine-tuning (shipped in training images); skinny variant to test API surface without bloating uv.lock
+  "mlflow-skinny>=3.13.0,<3.14.0", # Optional dep for fine-tuning (shipped in training images); skinny variant to test API surface without bloating uv.lock
   "nemo-platform-plugin",          # Optional runtime dep; included here for type checking
   # Needed so the plugin's unit tests can import it. Safe to install: the plugin never imports
   # iron-swarm itself, which stays in its own venv (garak pulls litellm/torch, incompatible pins).
@@ -186,7 +190,6 @@ enabled-plugins = [
   "nemo-evaluator-plugin",
   "nemo-insights-plugin",
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
-  "nemo-eval-author-plugin ; python_full_version < '3.14'",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
   "nemo-safe-synthesizer-plugin",
@@ -307,6 +310,13 @@ constraint-dependencies = [
   "mistune>=3.3.2",
   "mcp>=1.28.1",
   "msgpack>=1.2.1",
+  "nemo-fabric-adapter-contract>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-claude>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-codex>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-common>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-deepagents>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0",
+  "nemo-fabric-runtime>=0.2.0,<0.3.0",
   "nbconvert>=7.17.1",
   "nltk>=3.10.0",
   "pillow>=12.3.0",
@@ -349,7 +359,7 @@ override-dependencies = [
   "ujson>=5.12.0",           # High – nmp-api/cpu-tasks/gpu-tasks
   "xgrammar>=0.1.32",        # High – customizer + nmp-gpu-tasks
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
-  "wandb>=0.28.2",           # wandb-core Go CVEs (nspect); unsloth + training images
+  "wandb>=0.28.2",           # wandb-core Go CVEs (nspect); optional integrations + training images
   "cryptography>=50.0.0,<51", # GHSA-g6cj-pr64-35w5; overrides nvidia-nat-core's <47 cap after changelog review
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
@@ -395,21 +405,6 @@ nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
 nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
-
-# Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
-# FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every
-# package — git subdirectory sources do not inherit Fabric's own path mappings,
-# and the metapackage pins runtime/adapters to ==0.2.0.
-# Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
-# wheel still resolve (uv.sources do not apply outside this workspace).
-# Remove these entries once PyPI has 0.2.0.
-nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0" }
-nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "python" }
-nemo-fabric-adapters-common = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/common" }
-nemo-fabric-adapters-claude = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/claude" }
-nemo-fabric-adapters-codex = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/codex" }
-nemo-fabric-adapters-deepagents = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/deepagents" }
-nemo-fabric-adapters-hermes = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/hermes" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -616,8 +611,6 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # Source path for the Insights analyst plugin.
   "plugins/nemo-insights/src",
-  # Source path for the Eval Author plugin.
-  "plugins/nemo-eval-author/src",
   # Source path for Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
@@ -687,12 +680,9 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
+# return, so the rule is off for the Experimentalist agent classes only.
 [[tool.ty.overrides]]
-include = [
-  "plugins/nemo-experimentalist/src/**",
-  "plugins/nemo-eval-author/src/**",
-]
+include = ["plugins/nemo-experimentalist/src/**"]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"

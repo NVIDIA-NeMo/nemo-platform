@@ -59,10 +59,7 @@ from urllib.parse import urlparse
 
 import httpx
 import pytest
-from nemo_insights_plugin.analyst.observability import (
-    ANALYST_OBSERVABILITY_AGENT_NAME,
-    ANALYST_OBSERVABILITY_ENV,
-)
+from nemo_insights_plugin.analyst.observability import ANALYST_OBSERVABILITY_AGENT_NAME
 
 # Scope every artifact this test produces to a dedicated project/agent name so
 # it is non-destructive to the real `research-agent` data.
@@ -462,8 +459,6 @@ def test_analyst_creates_insight_end_to_end(platform_server: str) -> None:  # no
     assert trace_count >= MIN_TRACES, f"expected >= {MIN_TRACES} traces for {TEST_AGENT}, saw {trace_count}"
 
     # 4. Run the analyst.
-    analyst_env = _subprocess_env()
-    analyst_env[ANALYST_OBSERVABILITY_ENV] = "1"
     result = subprocess.run(
         _cli_cmd(
             "nemo",
@@ -478,7 +473,7 @@ def test_analyst_creates_insight_end_to_end(platform_server: str) -> None:  # no
             BASE_URL,
         ),
         cwd=str(EXAMPLE_DIR),
-        env=analyst_env,
+        env=_subprocess_env(),
         capture_output=True,
         text=True,
         timeout=600,

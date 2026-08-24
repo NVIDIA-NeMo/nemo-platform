@@ -7,6 +7,7 @@ import { CJobCancellableStatuses, CJobLaunchableStatuses } from '@nemo/common/sr
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   useCustomizationCancelAutomodelJob,
+  useCustomizationCancelRlJob,
   useCustomizationCancelUnslothJob,
 } from '@nemo/sdk/generated/customizer/api';
 import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/api';
@@ -62,17 +63,22 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
   };
   const automodelCancel = useCustomizationCancelAutomodelJob({ mutation: cancelMutation });
   const unslothCancel = useCustomizationCancelUnslothJob({ mutation: cancelMutation });
-  const isPending = automodelCancel.isPending || unslothCancel.isPending;
+  const rlCancel = useCustomizationCancelRlJob({ mutation: cancelMutation });
+  const isPending = automodelCancel.isPending || unslothCancel.isPending || rlCancel.isPending;
+
+  type CancelJob = (vars: { workspace: string; name: string }) => Promise<unknown>;
+  const cancelByBackend: Record<CustomizationBackend, CancelJob> = {
+    [CustomizationBackend.automodel]: automodelCancel.mutateAsync,
+    [CustomizationBackend.unsloth]: unslothCancel.mutateAsync,
+    [CustomizationBackend.rl]: rlCancel.mutateAsync,
+  };
 
   const cancelJob = async () => {
     if (!backend) {
       toast.error('Unable to determine the training backend for this job.');
       return;
     }
-    const cancel =
-      backend === CustomizationBackend.automodel
-        ? automodelCancel.mutateAsync
-        : unslothCancel.mutateAsync;
+    const cancel = cancelByBackend[backend];
     try {
       await cancel({ workspace, name });
     } catch (e) {

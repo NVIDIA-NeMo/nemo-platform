@@ -10,6 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   useBaseModels,
   type ModelEntityFilterInput,
@@ -19,14 +20,14 @@ import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getModelEntityChatStatus } from '@nemo/common/src/utils/models';
 import { getSortParam } from '@nemo/common/src/utils/query';
 import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
 import type { ModelEntity, ModelEntitySortField } from '@nemo/sdk/generated/platform/schema';
 import {
-  Button,
   Checkbox,
   Flex,
   PageHeader,
@@ -149,10 +150,6 @@ export const WorkspaceBaseModelsRoute: FC = () => {
     customizableFilter && Object.keys(customizableFilter).length > 0
   );
 
-  // Only blame the Customizable filter for an empty result when it's the *only* active filter —
-  // otherwise a name search or date filter could be the real cause and we'd misreport it.
-  const onlyCustomizableFilterActive = customizableFilterActive && !nameSearch && !apiColumnFilters;
-
   const hasActiveFilters = !!nameSearch || !!apiColumnFilters || customizableFilterActive;
 
   const filter = useMemo<ModelEntityFilterInput | undefined>(() => {
@@ -169,6 +166,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
     models,
     isLoading,
     isError,
+    error,
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
@@ -388,28 +386,21 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                 <Spinner size="large" description="Loading base models..." />
               </Flex>
             )}
-            renderEmptyState={() => (
-              <TableEmptyState
-                header="No Base Models Available"
-                emptyMessage={
-                  onlyCustomizableFilterActive
-                    ? "No customizable models in this workspace. Inference-only models (e.g. from custom providers) can't be fine-tuned or prompt-tuned in Studio."
-                    : hasActiveFilters
-                      ? 'No base models match your search or filters.'
-                      : 'No base models have been deployed yet.'
-                }
-              />
-            )}
-            renderErrorState={() => (
-              <Stack align="center" justify="center" gap="density-md" className="h-full">
-                <TableEmptyState
-                  header="Failed to Load Base Models"
-                  emptyMessage="An error occurred while loading base models."
+            renderEmptyState={() =>
+              hasActiveFilters ? (
+                <EntityEmptyState
+                  entity="baseModels"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
-                <Button kind="secondary" onClick={() => refetch()}>
-                  Retry
-                </Button>
-              </Stack>
+              ) : (
+                <EntityEmptyState entity="baseModels" variant="first-use" />
+              )
+            }
+            renderErrorState={() => (
+              <ErrorPanel
+                errorMessage={getErrorMessage(error ?? new Error('Failed to load base models.'))}
+              />
             )}
           >
             {({ rows }) => (

@@ -112,11 +112,11 @@ async def create_taskset(
         return created
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during taskset creation: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except (TaskRefNotFoundError, DuplicateTaskRefError) as e:
         # A bad member reference (missing task, or two refs to the same task) — a client error.
         logger.warning(f"Taskset has an invalid task reference: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except TasksetExistsError:
         logger.warning(f"Taskset already exists: {safe_workspace}/{safe_name}")
         raise HTTPException(
@@ -168,10 +168,10 @@ async def replace_taskset(
         replaced, published = await service.replace_taskset(name, taskset, workspace=workspace, project=project)
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during taskset replace: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except (TaskRefNotFoundError, DuplicateTaskRefError) as e:
         logger.warning(f"Taskset has an invalid task reference: {e}")
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except RevisionConflictError as e:
         logger.warning(f"Taskset revision allocation contended: {e}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -259,7 +259,7 @@ async def get_taskset_revision(
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Taskset or revision not found"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Tag is reserved"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Tag is reserved"},
     },
 )
 @scope.write
@@ -275,7 +275,7 @@ async def tag_taskset_revision(
     try:
         tagged = await service.tag_revision(workspace, name, tag, revision)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     except RevisionNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     if tagged is None:

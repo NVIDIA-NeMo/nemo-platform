@@ -8,3 +8,7 @@ environments = [
     { dir = "../common" },
     { dir = "../osv-scanner" }
 ]
+
+[install]
+helm-docs.pkg-path = "helm-docs"
+helm-docs.version = "1.14.2"

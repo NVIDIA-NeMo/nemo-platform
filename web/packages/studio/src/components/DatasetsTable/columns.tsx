@@ -13,7 +13,7 @@ import {
   StorageConfigType,
   type FilesetOutput as Dataset,
 } from '@nemo/sdk/generated/platform/schema';
-import { Flex, Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Flex, Text } from '@nvidia/foundations-react-core';
 import { PURPOSE_LABELS } from '@studio/components/DatasetsTable/constants';
 import { getStorageBackend, getStoragePath } from '@studio/components/DatasetsTable/helpers';
 import {
@@ -170,7 +170,7 @@ export function makeDatasetsTableColumns({
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (data: DatasetWithId) => [
+          rowActions: (data: DatasetWithId): DropdownEntry[] => [
             ...(getDatasetRoute
               ? [
                   {

@@ -54,8 +54,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --baseline-freeze /tmp/base-python-freeze.txt \
         --label platform-glue
 
-# Codec cleanup for release image scans.
-RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/automodel/codec-file-removals.txt
+# Late file cleanup for bundled or non-package-managed files.
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/remove-listed-files.py,readonly \
+    --mount=type=bind,source=docker/removals/files/final/customizer-codecs.txt,target=/tmp/file-removals.txt,readonly \
+    python /tmp/remove-listed-files.py /tmp/file-removals.txt
 
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 ENTRYPOINT ["/opt/venv/bin/python"]
@@ -67,7 +69,9 @@ FROM runtime AS smoke-test
 ARG SMOKE_MARKER
 USER 0
 COPY tests/smoke_gpu/ /smoke_test/
-RUN uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --reinstall pytest && \
+RUN --mount=type=bind,source=docker/removals/files/base/pytorch-ngc-common.txt,target=/smoke_test/removals/files/base/pytorch-ngc-common.txt,readonly \
+    --mount=type=bind,source=docker/removals/files/final/customizer-codecs.txt,target=/smoke_test/removals/files/final/customizer-codecs.txt,readonly \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --reinstall pytest && \
     ${VIRTUAL_ENV}/bin/pytest /smoke_test/ -m ${SMOKE_MARKER} -v
 
 # Default stage for untargeted builds (bake uses --target runtime; smoke-test is opt-in).

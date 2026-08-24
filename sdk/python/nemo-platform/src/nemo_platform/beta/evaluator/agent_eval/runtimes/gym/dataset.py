@@ -17,8 +17,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.records import _RUNTIME_KEYS, NG_TASK_INDEX, _read_jsonl
-from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.results import GymRewardMetric
+from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.records import (
+    _RUNTIME_KEYS,
+    NG_TASK_INDEX,
+    _read_jsonl,
+)
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask
 
 logger = logging.getLogger(__name__)
@@ -90,6 +93,13 @@ def _render_instruction(responses_create_params: Mapping[str, Any]) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
+def _default_gym_metric() -> object:
+    """The default reward metric, imported lazily (see ``metrics.runner_rewards``)."""
+    from nemo_platform.beta.evaluator.metrics.runner_rewards import GymRewardMetric
+
+    return GymRewardMetric()
+
+
 def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = None) -> list[AgentEvalTask]:
     """Build one :class:`AgentEvalTask` per distinct row in a Gym dataset (jsonl).
 
@@ -101,9 +111,6 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     ground-truth fields, ``agent_ref``, and so on) on ``metadata['gym_row_extras']``.
     Together with ``inputs['gym_row']`` those reconstruct the complete source row,
     which :class:`GymAgentTaskRunner` re-materializes into the dataset it hands to Gym.
-    They are kept disjoint deliberately: the task record is persisted to the run
-    bundle's ``tasks.jsonl``, and ``responses_create_params`` is usually the bulk of a
-    row, so storing it in both places would write every dataset twice per run.
 
     **One distinct row is one task.** Duplicate rows collapse (identity is row content,
     so they are by definition the same task) and are reported as a warning: repeated
@@ -155,7 +162,7 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
                     **({"instruction": instruction} if instruction else {}),
                     "gym_row": params,
                 },
-                metrics=list(metrics) if metrics is not None else [GymRewardMetric()],
+                metrics=list(metrics) if metrics is not None else [_default_gym_metric()],
                 metadata={
                     "gym_dataset_path": str(dataset),
                     # Everything except responses_create_params, which already lives in inputs['gym_row'].
@@ -215,15 +222,16 @@ def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int
     the rollout→task join total and order-independent, and confines the run to the tasks we asked for.
 
     The row is reassembled from ``inputs['gym_row']`` (``responses_create_params``) and
-    ``metadata['gym_row_extras']`` (everything else), which :func:`discover_gym_tasks` keeps disjoint
-    so the run bundle doesn't store the same payload twice. Any pre-existing ``_ng_*`` fields are
-    stripped: ours is authoritative, and Gym assigns ``_ng_rollout_index`` itself per attempt.
+    ``metadata['gym_row_extras']`` (everything else), which :func:`discover_gym_tasks` writes as
+    a plain dict that remains structured through submitted job specs. Any pre-existing ``_ng_*``
+    fields are stripped: ours is authoritative, and Gym assigns ``_ng_rollout_index`` itself per
+    attempt.
     """
     index_to_task_id: dict[int, str] = {}
     seen_task_ids: set[str] = set()
     lines: list[str] = []
     for index, task in enumerate(tasks):
-        # The source row is stored split across inputs/metadata so the run bundle doesn't persist
+        # The source row is split across inputs and metadata so the run bundle doesn't persist
         # responses_create_params twice; reassemble it here.
         extras = task.metadata.get("gym_row_extras")
         params = task.inputs.get("gym_row")

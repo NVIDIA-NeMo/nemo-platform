@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 from nemo_evaluator_sdk.agent_eval.trials import EVIDENCE_FINAL_STATE
+from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.metrics.protocol import (
     CandidateOutput,
     MetricInput,
@@ -31,7 +33,8 @@ from nemo_evaluator_sdk.metrics.protocol import (
 )
 from nemo_evaluator_sdk.values.atif import Trajectory
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_TRACE
-from pydantic import BaseModel, ConfigDict, ValidationError
+from nemo_evaluator_sdk.values.metrics import MetricBase
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +48,18 @@ TOKEN_KEYS: tuple[str, ...] = (
 )
 
 
-class AgentPhaseSuccessMetric:
+class AgentPhaseSuccessMetric(MetricBase):
     """Emit ``True`` when the agent phase exited successfully, else ``False``.
 
-    The metric ``type`` is overridable via the ``metric_type`` class attribute so
-    callers can namespace it; the output name stays ``agent_phase_success`` (which
-    gating reads as a reward signal — ``True``/``False`` coerces to ``1.0``/``0.0``).
+    The output name stays ``agent_phase_success`` (which gating reads as a reward
+    signal — ``True``/``False`` coerces to ``1.0``/``0.0``).
+
+    A built-in metric type, so it bundles inline and needs no cloudpickle opt-in to be
+    stored on a task. ``type`` is therefore a fixed discriminator and no longer
+    overridable per caller.
     """
 
-    metric_type: str = "agent_phase_success"
-
-    @property
-    def type(self) -> str:
-        return self.metric_type
+    type: Literal[MetricType.AGENT_PHASE_SUCCESS] = MetricType.AGENT_PHASE_SUCCESS
 
     def output_spec(self) -> list[MetricOutputSpec]:
         return [MetricOutputSpec.boolean("agent_phase_success")]
@@ -70,7 +72,7 @@ class AgentPhaseSuccessMetric:
         return MetricResult(outputs=[MetricOutput(name="agent_phase_success", value=agent_ok)])
 
 
-class EvidencePresenceMetric:
+class EvidencePresenceMetric(MetricBase):
     """Emit ``True`` when a named filesystem evidence directory exists (and is non-empty).
 
     Reads ``candidate.evidence`` directly — the canonical metric-over-evidence
@@ -78,43 +80,35 @@ class EvidencePresenceMetric:
     not a reward stamped into metadata by a verifier.
     """
 
-    def __init__(
-        self,
-        *,
-        evidence_name: str = EVIDENCE_FINAL_STATE,
-        output_name: str = "evidence_present",
-        require_non_empty: bool = True,
-    ) -> None:
-        self._evidence_name = evidence_name
-        self._output_name = output_name
-        self._require_non_empty = require_non_empty
-
-    @property
-    def type(self) -> str:
-        return "evidence_presence"
+    type: Literal[MetricType.EVIDENCE_PRESENCE] = MetricType.EVIDENCE_PRESENCE
+    evidence_name: str = Field(default=EVIDENCE_FINAL_STATE, description="Evidence directory to look for.")
+    output_name: str = Field(default="evidence_present", description="Name of the emitted boolean score.")
+    require_non_empty: bool = Field(
+        default=True, description="Require the evidence directory to be non-empty, not merely present."
+    )
 
     def output_spec(self) -> list[MetricOutputSpec]:
-        return [MetricOutputSpec.boolean(self._output_name)]
+        return [MetricOutputSpec.boolean(self.output_name)]
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         present = False
         evidence = input.candidate.evidence
-        if evidence is not None and evidence.get(self._evidence_name) is not None:
+        if evidence is not None and evidence.get(self.evidence_name) is not None:
             try:
-                handle = await evidence.filesystem(self._evidence_name)
+                handle = await evidence.filesystem(self.evidence_name)
                 if await handle.exists():
-                    present = bool(await handle.iter_paths(recursive=True)) if self._require_non_empty else True
+                    present = bool(await handle.iter_paths(recursive=True)) if self.require_non_empty else True
             except (KeyError, ValueError) as exc:
                 logger.warning(
                     "EvidencePresenceMetric scored False: could not resolve evidence %r for output %r: %s",
-                    self._evidence_name,
-                    self._output_name,
+                    self.evidence_name,
+                    self.output_name,
                     exc,
                 )
-        return MetricResult(outputs=[MetricOutput(name=self._output_name, value=present)])
+        return MetricResult(outputs=[MetricOutput(name=self.output_name, value=present)])
 
 
-class SkillUsedMetric:
+class SkillUsedMetric(MetricBase):
     """Emit ``skill_present`` and ``skill_used`` so an eval can flag a failure to use an injected skill.
 
     * ``skill_present`` — ``True`` when one or more skills were injected into the trial. Reads
@@ -134,18 +128,13 @@ class SkillUsedMetric:
     With no skill present, both outputs are ``False``.
     """
 
-    metric_type: str = "skill_used"
-    OUTPUT_PRESENT: str = "skill_present"
-    OUTPUT_USED: str = "skill_used"
+    type: Literal[MetricType.SKILL_USED] = MetricType.SKILL_USED
+    trace_evidence: str = Field(default=EVIDENCE_TRACE, description="Trace evidence to scan for skill usage.")
+
+    OUTPUT_PRESENT: ClassVar[str] = "skill_present"
+    OUTPUT_USED: ClassVar[str] = "skill_used"
     # Metadata key skill-aware runtimes stamp the provenance list under (matches the fabric runtime).
-    _SKILLS_KEY: str = "skills"
-
-    def __init__(self, *, trace_evidence: str = EVIDENCE_TRACE) -> None:
-        self._trace_evidence = trace_evidence
-
-    @property
-    def type(self) -> str:
-        return self.metric_type
+    _SKILLS_KEY: ClassVar[str] = "skills"
 
     def output_spec(self) -> list[MetricOutputSpec]:
         return [
@@ -175,15 +164,15 @@ class SkillUsedMetric:
         if not locations:
             return False
         evidence = candidate.evidence
-        if evidence is None or evidence.get(self._trace_evidence) is None:
+        if evidence is None or evidence.get(self.trace_evidence) is None:
             return False
         try:
-            trajectory = await (await evidence.trace(self._trace_evidence)).trace()
+            trajectory = await (await evidence.trace(self.trace_evidence)).trace()
         except (KeyError, ValueError, ValidationError, OSError) as exc:
             # Best-effort: a missing/malformed/invalid trajectory must score skill_used=False, not raise.
             # ValidationError covers Trajectory.model_validate; OSError covers the underlying file read.
             logger.warning(
-                "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self._trace_evidence, exc
+                "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self.trace_evidence, exc
             )
             return False
         return any(_trajectory_references(trajectory, loc) for loc in locations)
@@ -204,8 +193,22 @@ class TrialMeasurements(BaseModel):
     cache_creation_tokens: int | None = None
     cache_read_tokens: int | None = None
     runtime_sec: float | None = None
+    cost_usd: float | None = Field(default=None, allow_inf_nan=False)
     reward: float | None = None
     passed: bool | None = None
+
+    @field_validator("cost_usd", mode="before")
+    @classmethod
+    def _reject_boolean_cost(cls, value: Any) -> Any:
+        """Refuse a ``bool`` cost, which coercion would otherwise hide.
+
+        ``bool`` is an ``int`` subclass, so ``True`` would validate as a cost of 1.0. Every other
+        unusable value is already refused: ``allow_inf_nan=False`` covers NaN and the infinities
+        however they were spelled, and float coercion covers an int too large to represent.
+        """
+        if isinstance(value, bool):
+            raise ValueError("cost_usd must be a number, not a bool")
+        return value
 
     @classmethod
     def from_metadata(cls, metadata: Mapping[str, Any] | None) -> TrialMeasurements:
@@ -225,6 +228,7 @@ class TrialMeasurements(BaseModel):
         return cls(
             **tokens,
             runtime_sec=_runtime_sec(metadata),
+            cost_usd=_as_float(metadata.get("cost_usd")),
             reward=_reward(metadata, passed),
             passed=passed,
         )
@@ -255,6 +259,19 @@ def _as_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
     return value if isinstance(value, int) else None
+
+
+def _as_float(value: Any) -> float | None:
+    # bool is an int subclass; never treat True/False as a measurement. NaN, the infinities, and
+    # integers too large to represent are rejected too: none can be serialised onto the wire, so
+    # recording one would fail the publish of an otherwise good trial.
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
 
 
 def _runtime_sec(metadata: Mapping[str, Any]) -> float | None:

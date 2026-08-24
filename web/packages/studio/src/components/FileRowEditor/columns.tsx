@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
-import { Tag, Text } from '@nvidia/foundations-react-core';
+import { type DropdownEntry, Tag, Text } from '@nvidia/foundations-react-core';
 import { formatCellValue } from '@studio/components/FileRowEditor/schema';
 import type { DataFileColumn, DataFileRow } from '@studio/components/FileRowEditor/types';
-import { Copy, Pencil, Trash } from 'lucide-react';
 import type { ComponentProps } from 'react';
 
 type MakeColumns = ComponentProps<typeof StudioDataView<DataFileRow>>['makeColumns'];
@@ -78,11 +77,10 @@ export const makeDataFileColumns =
     rowActionsColumn({
       size: 58,
       enableResizing: false,
-      rowActions: (row) => [
-        { slotLeft: <Pencil />, children: 'Edit row', onSelect: () => onEdit(row) },
-        { slotLeft: <Copy />, children: 'Duplicate row', onSelect: () => onDuplicate(row) },
+      rowActions: (row): DropdownEntry[] => [
+        { children: 'Edit row', onSelect: () => onEdit(row) },
+        { children: 'Duplicate row', onSelect: () => onDuplicate(row) },
         {
-          slotLeft: <Trash />,
           children: 'Delete row',
           danger: true,
           onSelect: () => onDelete(row),

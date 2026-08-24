@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import re
 from pathlib import Path
@@ -14,9 +15,20 @@ from typing import Any
 
 import pytest
 import yaml
-from nemo_evaluator.api.schemas import TasksetRef
-from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, CodexRunnerTarget, FabricRunnerTarget
+from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    MetricRef,
+    TaskInput,
+    TaskRef,
+    TasksetInput,
+    TasksetRef,
+)
+from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, FabricRunnerTarget
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec
+from nemo_evaluator.sdk.job_resources import AgentEvaluatorJobResource, EvaluatorJobResource
+from nemo_evaluator.sdk.metric_resources import EvaluatorMetricsResource
+from nemo_evaluator.sdk.task_resources import EvaluatorTasksResource
+from nemo_evaluator.sdk.taskset_resources import EvaluatorTasksetsResource
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric, unbundle_metric
 from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk import ExactMatchMetric, LLMJudgeMetric, Model
@@ -161,13 +173,14 @@ def test_skill_python_examples_import_and_build_agent_spec() -> None:
 
     assert not isinstance(spec.tasks, TasksetRef)
     assert len(spec.tasks) == 1
-    assert isinstance(spec.target, CodexRunnerTarget)
+    assert isinstance(spec.target, FabricRunnerTarget)
+    assert spec.target.config["harness"]["adapter_id"] == "nvidia.fabric.codex"
     assert spec.target.model is None
 
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/agent-evaluation.md").read_text(
         encoding="utf-8"
     )
-    assert 'CodexRunnerTarget(model="<codex-model>")' not in reference
+    assert "CodexRunnerTarget" not in reference
     assert 'labels={"benchmark": "geography-smoke"}' in reference
 
 
@@ -407,11 +420,27 @@ def test_metric_selection_lists_exactly_the_supported_metric_names() -> None:
 
     `tunable-rag-evaluator` is registered for optimize / NAT-style judge flows but
     is intentionally omitted from this curated skill list until skill docs cover it.
+
+    The runner and agent-eval metrics are omitted for a different reason: this page is about
+    *choosing a scorer for your data*, and none of them is a choice. They arrive with the runner
+    or the agent-eval harness -- `gym_reward` and `harbor_reward` surface a reward their runner
+    already computed, and the rest score trial metadata and evidence. They became registry members
+    so they bundle inline instead of demanding the cloudpickle opt-in, not so callers would pick
+    them off a list.
     """
     from nemo_evaluator.cli import _is_ragas_metric, _metric_type_models
 
     # Registry metrics the skill may omit without failing this contract.
-    skill_omitted = frozenset({"tunable-rag-evaluator"})
+    skill_omitted = frozenset(
+        {
+            "tunable-rag-evaluator",
+            "gym_reward",
+            "harbor_reward",
+            "agent_phase_success",
+            "evidence_presence",
+            "skill_used",
+        }
+    )
 
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/metric-selection.md").read_text(
         encoding="utf-8"
@@ -445,13 +474,163 @@ def test_multiple_metric_platform_submission_uses_cli() -> None:
     assert "nemo evaluator evaluate submit --spec-file multi-metric.json" in section
 
 
-def test_resources_show_inline_task_before_held_out_reference_guidance() -> None:
+class _RecordingResource:
+    """Stand-in for one ``client.evaluator.<resource>`` namespace.
+
+    ``create`` is bound against the *real* resource method's signature, so an example that stops
+    matching the SDK — a renamed keyword, a dropped argument — fails here rather than silently
+    passing against a permissive mock.
+    """
+
+    def __init__(self, resource_type: type) -> None:
+        self._signature = inspect.signature(resource_type.create)
+        self.calls: list[inspect.BoundArguments] = []
+
+    def create(self, *args: Any, **kwargs: Any) -> None:
+        bound = self._signature.bind(None, *args, **kwargs)
+        bound.apply_defaults()
+        self.calls.append(bound)
+
+    def only_call(self) -> inspect.BoundArguments:
+        assert len(self.calls) == 1
+        return self.calls[0]
+
+
+class _RecordingEvaluator:
+    def __init__(self) -> None:
+        self.metrics = _RecordingResource(EvaluatorMetricsResource)
+        self.tasks = _RecordingResource(EvaluatorTasksResource)
+        self.tasksets = _RecordingResource(EvaluatorTasksetsResource)
+
+
+class _RecordingClient:
+    def __init__(self) -> None:
+        self.evaluator = _RecordingEvaluator()
+
+
+def test_skill_store_resources_example_matches_the_sdk_and_task_schema() -> None:
+    """Execute ``store_resources`` rather than only asserting on its source text.
+
+    The example is the skill's canonical stored-task shape. Reading it as a string cannot tell us
+    whether ``TaskInput``/``EvaluatorTaskDefinition`` still accept these fields, so run it against
+    the real resource signatures and re-validate each payload through the wire form ``create``
+    actually posts.
+    """
+    examples = _load_module(
+        "skills/nemo-evaluator-plugin/assets/examples/plugin_sdk_examples.py",
+        "nemo_evaluator_skill_store_resources",
+    )
+    client = _RecordingClient()
+
+    examples.store_resources(client)
+
+    metric_call = client.evaluator.metrics.only_call()
+    assert metric_call.arguments["name"] == "answer-exact"
+
+    task_call = client.evaluator.tasks.only_call()
+    assert task_call.arguments["name"] == "capital-france"
+    task = task_call.arguments["task"]
+    assert isinstance(task, TaskInput)
+    # The SDK posts ``task.model_dump(mode="json")``; re-validating proves the example survives the
+    # round trip through the discriminated ``spec`` union, not just in-memory construction.
+    stored = TaskInput.model_validate(task.model_dump(mode="json"))
+    assert isinstance(stored.spec, EvaluatorTaskDefinition)
+    assert stored.spec.kind == "evaluator"
+    assert stored.spec.metrics == [MetricRef("answer-exact")]
+
+    taskset_call = client.evaluator.tasksets.only_call()
+    assert taskset_call.arguments["name"] == "geography"
+    taskset = taskset_call.arguments["taskset"]
+    assert isinstance(taskset, TasksetInput)
+    assert TasksetInput.model_validate(taskset.model_dump(mode="json")).tasks == [TaskRef("capital-france")]
+
+
+def test_skill_evals_do_not_contradict_the_skill_guidance() -> None:
+    """The skill's own eval must not grade highest for what the skill tells you not to do.
+
+    Two contradictions have lived here. ``evals.json`` expected
+    ``nemo evaluator evaluate run --spec`` while SKILL.md says to default to ``submit`` (the flags
+    are identical, so it rewarded the discouraged verb for nothing), and it expected the agent to
+    require manual ``.venv`` activation while SKILL.md routes a checkout through ``uv run`` and says
+    installed usage needs no activation at all.
+
+    Both are the same failure: the eval and the guidance drifting apart with nothing comparing them.
+    """
+    evals = json.loads((_repo_root() / "skills/nemo-evaluator-plugin/evals/evals.json").read_text(encoding="utf-8"))
+    graded = [text for case in evals for text in [case["ground_truth"], *case["expected_behavior"]]]
+
+    assert graded, "evals.json defines no graded expectations"
+    for text in graded:
+        assert "evaluate run" not in text, f"eval rewards the retired local run verb: {text}"
+        assert "activating the Python virtual environment" not in text, (
+            f"eval rewards manual .venv activation, which SKILL.md disclaims: {text}"
+        )
+
+    skill = (_repo_root() / "skills/nemo-evaluator-plugin/SKILL.md").read_text(encoding="utf-8")
+    assert "Default to `submit` for every plugin evaluation." in skill
+    assert "without assuming a repository root or manually activating `.venv`" in skill
+
+
+def test_skill_documents_the_taskset_submit_path_and_its_job_handle() -> None:
+    """The two ``submit`` shapes return unrelated handles, and the skill must not blur them.
+
+    A taskset submission yields ``AgentEvaluatorJobResource``, which deliberately has no
+    ``get_result``/``download_artifacts`` -- an agent evaluation publishes agent-eval results and a
+    summary rather than row scores. Every other job example in the skill ends in ``get_result()``,
+    so the difference is asserted here: if the resource ever grows those methods, the troubleshooting
+    row promising an ``AttributeError`` becomes wrong and should be revisited.
+    """
+    assert not hasattr(AgentEvaluatorJobResource, "get_result")
+    assert not hasattr(AgentEvaluatorJobResource, "download_artifacts")
+    for method in ("name", "job", "get_job_status", "check_if_complete", "wait_until_done"):
+        assert hasattr(AgentEvaluatorJobResource, method), method
+    assert hasattr(EvaluatorJobResource, "get_result"), "the row handle should still carry get_result"
+
+    root = _repo_root() / "skills/nemo-evaluator-plugin"
+    skill = (root / "SKILL.md").read_text(encoding="utf-8")
+    agent_eval = (root / "references/agent-evaluation.md").read_text(encoding="utf-8")
+    troubleshooting = (root / "references/troubleshooting.md").read_text(encoding="utf-8")
+
+    assert "client.evaluator.submit(tasks=..., target=<runner>)" in skill
+    assert 'job = client.evaluator.submit(tasks=TasksetRef("my-suite"), target=runner)' in agent_eval
+    assert "no `get_result()` or" in agent_eval
+    assert "`AttributeError` on `get_result()` or `download_artifacts()` after `submit(tasks=...)`" in troubleshooting
+
+
+def test_agent_evaluation_reference_reflects_stored_task_reference_support() -> None:
+    """The stale "stored tasks have no reference" steer must not survive in the agent-eval guide.
+
+    ``EvaluatorTaskDefinition.reference`` exists, so routing users to inline tasks for held-out data
+    costs them tasksets and revision pinning. ``resources.md`` was corrected; this covers the second
+    place that said it.
+    """
+    assert "reference" in EvaluatorTaskDefinition.model_fields
+
+    root = _repo_root() / "skills/nemo-evaluator-plugin"
+    agent_eval = (root / "references/agent-evaluation.md").read_text(encoding="utf-8")
+    troubleshooting = (root / "references/troubleshooting.md").read_text(encoding="utf-8")
+
+    for text in (agent_eval, troubleshooting):
+        normalized = " ".join(text.split())
+        assert "Stored tasks do not include grader-only" not in normalized
+        assert "Stored tasks do not carry grader-only" not in normalized
+    assert "Stored\ntasks carry the grader-only `reference` field too" in agent_eval
+
+
+def test_resources_show_a_stored_task_carrying_held_out_reference() -> None:
+    """Held-out ground truth belongs on a *stored* task, so it survives taskset expansion.
+
+    The skill used to steer users to an inline ``AgentEvalTaskInput`` because the stored spec had no
+    ``reference`` field. It has one now, and routing them back to inline would cost them tasksets
+    and revision pinning for no reason.
+    """
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/resources.md").read_text(encoding="utf-8")
 
-    example_position = reference.index("inline_task = AgentEvalTaskInput(")
+    example_position = reference.index('"capital-france-graded"')
     guidance_position = reference.index("Stored tasks keep metric references.")
     assert example_position < guidance_position
     assert 'reference={"expected": "Paris"}' in reference
+    assert "EvaluatorTaskDefinition(" in reference
 
 
 def test_agent_evaluation_shows_how_to_retrieve_stored_trials() -> None:

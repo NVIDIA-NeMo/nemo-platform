@@ -317,13 +317,12 @@ each run.
 from nemo_evaluator.api.schemas import TasksetRef
 from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, ModelTarget
 from nemo_evaluator_sdk.values import Model
-from nemo_evaluator_sdk.enums import ModelFormat
 
 # Instead of inlining AgentEvalTaskInput objects, point `tasks` at a stored taskset.
 input_spec = AgentEvalInputSpec(
     tasks=TasksetRef("default/geography-suite"),
     target=ModelTarget(
-        model=Model(url="https://integrate.api.nvidia.com/v1", name="meta/llama-3.3-70b-instruct", format=ModelFormat.OPEN_AI),
+        model=Model(url="https://integrate.api.nvidia.com/v1", name="meta/llama-3.3-70b-instruct"),
     ),
 )
 ```

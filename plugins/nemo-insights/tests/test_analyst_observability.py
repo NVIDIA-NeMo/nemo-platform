@@ -29,6 +29,10 @@ def test_setup_maps_intake_endpoint_auth_resource_and_session(monkeypatch: pytes
         base_url="https://platform.example/",
         workspace="workspace",
         target_agent="target-agent",
+        evaluation_context=observability.AnalystEvaluationContext(
+            evaluation_name="analyst-eval-1",
+            test_case_name="smoke/g1",
+        ),
     )
 
     assert configured.endpoint == ("https://platform.example/apis/intake/v2/workspaces/workspace/ingest/otlp/v1/traces")
@@ -37,6 +41,8 @@ def test_setup_maps_intake_endpoint_auth_resource_and_session(monkeypatch: pytes
     assert enabled_exporters == [exporter]
     assert attributes["gen_ai.agent.name"] == observability.ANALYST_OBSERVABILITY_AGENT_NAME
     assert attributes["nemo.insights.target_agent"] == "target-agent"
+    assert attributes["nemo.evaluation.name"] == "analyst-eval-1"
+    assert attributes["nemo.test_case.name"] == "smoke/g1"
     assert seen["session"] == configured.session_id
 
 

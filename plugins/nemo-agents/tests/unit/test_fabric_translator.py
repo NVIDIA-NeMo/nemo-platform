@@ -84,33 +84,49 @@ class TestTranslateAgentConfig:
         deepagents_config = translate_agent_config(config, harness_name="deepagents")
         hermes_config = translate_agent_config(config, harness_name="hermes")
 
-        assert codex_config.harness.adapter_id == "nvidia.fabric.codex"
-        assert "skip_git_repo_check" not in codex_config.harness.settings
-        assert claude_config.harness.adapter_id == "nvidia.fabric.claude"
-        assert claude_config.harness.settings["permission_mode"] == "dontAsk"
-        assert deepagents_config.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
-        assert deepagents_config.harness.settings["deepagents"] == {}
-        assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
-        assert hermes_config.harness.settings["max_tokens"] == 512
+        codex_harness = codex_config.harness
+        claude_harness = claude_config.harness
+        deepagents_harness = deepagents_config.harness
+        hermes_harness = hermes_config.harness
+        assert codex_harness is not None
+        assert claude_harness is not None
+        assert deepagents_harness is not None
+        assert hermes_harness is not None
+        assert codex_harness.adapter_id == "nvidia.fabric.codex"
+        assert "skip_git_repo_check" not in codex_harness.settings
+        assert claude_harness.adapter_id == "nvidia.fabric.claude"
+        assert claude_harness.settings["permission_mode"] == "dontAsk"
+        assert deepagents_harness.adapter_id == "nvidia.fabric.langchain.deepagents"
+        assert deepagents_harness.settings["deepagents"] == {}
+        assert hermes_harness.adapter_id == "nvidia.fabric.hermes"
+        assert hermes_harness.settings["max_tokens"] == 512
 
     def test_translates_default_harness(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
         fabric_config = translate_agent_config(config)
 
+        harness = fabric_config.harness
+        instructions = fabric_config.instructions
+        environment = fabric_config.environment
+        assert harness is not None
+        assert instructions is not None
+        system_instruction = instructions.system
+        assert system_instruction is not None
+        assert environment is not None
         assert fabric_config.metadata.name == "example-agent"
         assert fabric_config.metadata.description == "Example Agent"
-        assert fabric_config.harness.adapter_id == "nvidia.fabric.hermes"
-        assert fabric_config.harness.resolution == "preinstalled"
-        assert fabric_config.harness.settings["max_tokens"] == 512
-        assert fabric_config.instructions.system.content == "You are a concise assistant."
-        assert fabric_config.instructions.system.mode == "replace"
+        assert harness.adapter_id == "nvidia.fabric.hermes"
+        assert harness.resolution == "preinstalled"
+        assert harness.settings["max_tokens"] == 512
+        assert system_instruction.content == "You are a concise assistant."
+        assert system_instruction.mode == "replace"
         assert fabric_config.models["default"].provider == "nvidia"
         assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
         assert fabric_config.models["default"].base_url == "https://integrate.api.nvidia.com/v1"
-        assert fabric_config.environment.provider == "local"
-        assert fabric_config.environment.workspace == "./workspace"
-        assert fabric_config.environment.artifacts == "./artifacts"
+        assert environment.provider == "local"
+        assert environment.workspace == "./workspace"
+        assert environment.artifacts == "./artifacts"
         assert fabric_config.relay is None
 
     def test_selected_harness_uses_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,8 +137,12 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config, harness_name="codex")
 
-        assert fabric_config.harness.adapter_id == "nvidia.fabric.codex"
-        assert fabric_config.harness.settings["sandbox"] == "workspace-write"
+        harness = fabric_config.harness
+        environment = fabric_config.environment
+        assert harness is not None
+        assert environment is not None
+        assert harness.adapter_id == "nvidia.fabric.codex"
+        assert harness.settings["sandbox"] == "workspace-write"
         assert fabric_config.models["default"].provider == "openai"
         assert fabric_config.models["default"].model == "openai/gpt-5.4"
         assert (
@@ -130,7 +150,7 @@ class TestTranslateAgentConfig:
             == "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
         )
         assert fabric_config.models["default"].api_key_env == PLATFORM_IGW_API_KEY_ENV
-        assert fabric_config.environment.env == {PLATFORM_IGW_API_KEY_ENV: PLATFORM_IGW_API_KEY_PLACEHOLDER}
+        assert environment.env == {PLATFORM_IGW_API_KEY_ENV: PLATFORM_IGW_API_KEY_PLACEHOLDER}
         assert config.models["default"].api_key_env is None
 
     def test_forwards_platform_runtime_environment_to_child_tools(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -141,7 +161,9 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config, harness_name="codex")
 
-        assert fabric_config.environment.env == {
+        environment = fabric_config.environment
+        assert environment is not None
+        assert environment.env == {
             "NEMO_BASE_URL": "http://command-platform:8080",
             "NMP_BASE_URL": "http://shared-platform:8080",
             "NMP_WORKSPACE": "request-workspace",
@@ -182,11 +204,17 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config)
 
-        assert fabric_config.skills.paths == ["skills/review"]
-        assert fabric_config.mcp.servers["repo"].transport == "stdio"
-        assert fabric_config.mcp.servers["repo"].url == "repo-mcp --root ."
-        assert fabric_config.mcp.servers["repo"].exposure == "fabric_managed"
-        assert fabric_config.tools.blocked == ["shell", "browser"]
+        skills = fabric_config.skills
+        mcp = fabric_config.mcp
+        tools = fabric_config.tools
+        assert skills is not None
+        assert mcp is not None
+        assert tools is not None
+        assert skills.paths == ["skills/review"]
+        assert mcp.servers["repo"].transport == "stdio"
+        assert mcp.servers["repo"].url == "repo-mcp --root ."
+        assert mcp.servers["repo"].exposure == "fabric_managed"
+        assert tools.blocked == ["shell", "browser"]
 
     def test_top_level_prompts_rejected_until_shared_prompt_contract_exists(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
@@ -195,6 +223,41 @@ class TestTranslateAgentConfig:
 
         with pytest.raises(FabricTranslationError, match="Top-level prompts are not translated yet"):
             translate_agent_config(config)
+
+    def test_environment_spec_env_forwarded_platform_values_win(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Simulates a config after an EnvironmentSpec merge: environment.env holds
+        # the spec's plaintext vars. Platform-injected runtime values win on key
+        # collision.
+        monkeypatch.setenv("NMP_WORKSPACE", "runtime-ws")
+        monkeypatch.delenv("NEMO_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_BASE_URL", raising=False)
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["environment"]["env"] = {"CUSTOM": "from-spec", "NMP_WORKSPACE": "spec-should-lose"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config, harness_name="codex")
+
+        assert fabric_config.environment.env["CUSTOM"] == "from-spec"
+        assert fabric_config.environment.env["NMP_WORKSPACE"] == "runtime-ws"
+
+    def test_environment_mirror_fields_forwarded(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["environment"].update(
+            {
+                "control_location": "in_env_control",
+                "ownership": "fabric_owned",
+                "connection": {"url": "http://sandbox"},
+                "metadata": {"team": "platform"},
+            }
+        )
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config, harness_name="codex")
+
+        assert fabric_config.environment.control_location == "in_env_control"
+        assert fabric_config.environment.ownership == "fabric_owned"
+        assert fabric_config.environment.connection == {"url": "http://sandbox"}
+        assert fabric_config.environment.metadata == {"team": "platform"}
 
     @pytest.mark.parametrize(
         ("kind", "adapter_id"),
@@ -217,7 +280,9 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config)
 
-        assert fabric_config.harness.adapter_id == adapter_id
+        harness = fabric_config.harness
+        assert harness is not None
+        assert harness.adapter_id == adapter_id
 
     def test_unknown_selected_harness_rejected(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
@@ -250,11 +315,20 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config)
 
-        assert fabric_config.telemetry.providers["relay"].config is None
-        assert fabric_config.relay.project == "example-agent"
-        assert fabric_config.relay.output_dir == "./artifacts/relay"
-        assert fabric_config.relay.observability.model_dump(exclude_none=True) == {
-            "version": 2,
+        telemetry = fabric_config.telemetry
+        assert telemetry is not None
+        relay_provider = telemetry.providers["relay"]
+        assert not isinstance(relay_provider, dict)
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        assert relay_provider.config is None
+        assert relay.project == "example-agent"
+        assert relay.output_dir == "./artifacts/relay"
+        assert observability.model_dump(exclude_none=True) == {
+            "version": 3,
+            "enable_full_payloads": False,
             "atif": {
                 "enabled": True,
                 "filename_template": "trajectory-{session_id}.atif.json",
@@ -292,7 +366,11 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config)
 
-        assert fabric_config.relay.observability.model_dump(exclude_none=True)["atof"]["sinks"] == [
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        assert observability.model_dump(exclude_none=True)["atof"]["sinks"] == [
             {
                 "type": "file",
                 "output_directory": "./artifacts/relay",

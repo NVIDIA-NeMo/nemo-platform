@@ -17,7 +17,7 @@ So these tests target exactly the things only a real entity store can confirm:
 - a published revision is immutable in practice: reading a pinned digest returns the old content
   after the task has moved on.
 
-Pure CRUD (no codex/IGW), so it only needs the host subprocess backend. Shares the evaluator-plugin
+Pure CRUD (no online target or IGW), so it only needs the host subprocess backend. Shares the evaluator-plugin
 integration opt-in (``RUN_AGENT_EVAL_INTEGRATION``) and the session-scoped ``subprocess_platform``.
 """
 

@@ -115,7 +115,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "ace40313d474f33cabc9a8fdf13d8dd4dda218c8" # soluwalana/RL nmp/customizer
+  default = "cd42a71d6d4b2eeb6f3d2feef275c5795d2f008c" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""
@@ -326,6 +326,15 @@ group "docker-cpu" {
   targets = [
     "nmp-api-docker",
     "nmp-cpu-tasks-docker",
+    "nmp-gym-tasks-docker",
+  ]
+}
+
+# CI extension that adds the Gym smoke-test stage to docker-cpu.
+group "docker-cpu-ci" {
+  targets = [
+    "docker-cpu",
+    "nmp-gym-tasks-smoke-test",
   ]
 }
 
@@ -682,6 +691,34 @@ target "nmp-cpu-tasks-docker" {
   cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
   tags       = sha_and_maybe_latest_tags("nmp-cpu-tasks")
   output     = image_output()
+  platforms  = get_platforms()
+}
+
+# Dedicated Gym task image. The Gym-specific dependencies remain isolated from the shared CPU task image.
+target "nmp-gym-tasks-docker" {
+  target     = "runtime"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-gym-tasks"
+  contexts = {
+    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+  }
+  cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
+  cache-from = maybe_registry_cache_from("nmp-gym-tasks")
+  tags       = sha_and_maybe_latest_tags("nmp-gym-tasks")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
+# Cheap import/CLI validation for the isolated Gym environment. Built in docker-cpu-ci.
+target "nmp-gym-tasks-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-gym-tasks"
+  contexts = {
+    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+  }
+  cache-from = maybe_registry_cache_from("nmp-gym-tasks")
+  output     = ["type=cacheonly"]
   platforms  = get_platforms()
 }
 

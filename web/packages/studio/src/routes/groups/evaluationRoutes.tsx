@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { EVALUATOR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -39,7 +39,7 @@ export const evaluationRoutes: RouteObject[] = gateEvaluationRoutes([
   {
     path: ROUTES.workspace.evaluation,
     element: <EvaluationLayout />,
-    errorElement: <ErrorPanel title="Evaluator" />,
+    errorElement: <RouteErrorPanel title="Evaluator" />,
     children: [
       {
         index: true,
@@ -51,12 +51,12 @@ export const evaluationRoutes: RouteObject[] = gateEvaluationRoutes([
   {
     path: ROUTES.workspace.evaluationResultDetails,
     element: <EvaluationResultDetailsRoute />,
-    errorElement: <ErrorPanel title="Evaluator" />,
+    errorElement: <RouteErrorPanel title="Evaluator" />,
   },
   {
     path: ROUTES.workspace.evaluationResults,
     element: <EvaluationResultsLayout />,
-    errorElement: <ErrorPanel title="Evaluator" />,
+    errorElement: <RouteErrorPanel title="Evaluator" />,
     children: [
       {
         index: true,

@@ -44,6 +44,8 @@ navigation:
                     path: ../../set-up/helm/prerequisites.mdx
                   - page: Install
                     path: ../../set-up/helm/install.mdx
+                  - page: NetworkPolicy Smoke Test
+                    path: ../../set-up/helm/network-policy-smoke-test.mdx
                   - page: Database Setup
                     path: ../../set-up/helm/database-setup.mdx
                   - page: Persistent Volumes

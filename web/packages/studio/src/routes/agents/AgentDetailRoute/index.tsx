@@ -18,7 +18,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
-import { INTAKE_ENABLED } from '@studio/constants/environment';
+import { AGENT_OVERVIEW_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -28,6 +28,7 @@ import { DeploymentLogsView } from '@studio/routes/agents/AgentDetailRoute/Deplo
 import { DeploymentsTab } from '@studio/routes/agents/AgentDetailRoute/DeploymentsTab';
 import { DetailsTab } from '@studio/routes/agents/AgentDetailRoute/DetailsTab';
 import { EvaluationsTab } from '@studio/routes/agents/AgentDetailRoute/EvaluationsTab';
+import { OverviewTab } from '@studio/routes/agents/AgentDetailRoute/OverviewTab';
 import { useAgentDetails } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import { deriveWalkthroughStep } from '@studio/routes/agents/AgentDetailRoute/walkthrough';
 import { WalkthroughCoachmarks } from '@studio/routes/agents/AgentDetailRoute/WalkthroughCoachmarks';
@@ -41,13 +42,15 @@ import { type FC, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
-const DETAIL_TABS = ['deployments', 'logs', 'chat', 'evaluations', 'details'] as const;
-const DEFAULT_TAB = 'deployments';
+const DETAIL_TABS = ['overview', 'deployments', 'logs', 'chat', 'evaluations', 'details'] as const;
+const DEFAULT_TAB = AGENT_OVERVIEW_ENABLED ? 'overview' : 'deployments';
 
 type AgentDetailTab = (typeof DETAIL_TABS)[number];
 
 const isAgentDetailTab = (value: string | null): value is AgentDetailTab =>
-  !!value && DETAIL_TABS.includes(value as AgentDetailTab);
+  !!value &&
+  DETAIL_TABS.includes(value as AgentDetailTab) &&
+  (value !== 'overview' || AGENT_OVERVIEW_ENABLED);
 
 export const AgentDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -201,12 +204,24 @@ export const AgentDetailRoute: FC = () => {
           }}
         >
           <TabsList className="shrink-0" ref={tabsRef}>
+            {AGENT_OVERVIEW_ENABLED && <TabsTrigger value="overview">Overview</TabsTrigger>}
             <TabsTrigger value="deployments">Deployments</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="evaluations">Evaluations</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
           </TabsList>
+
+          {AGENT_OVERVIEW_ENABLED && (
+            <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="overview">
+              <OverviewTab
+                workspace={workspace}
+                agent={agent}
+                modelNames={modelNames}
+                onRunAgent={() => setSelectedTab('chat')}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="evaluations">
             <EvaluationsTab workspace={workspace} evals={agentEvals} jobs={agentJobs} />

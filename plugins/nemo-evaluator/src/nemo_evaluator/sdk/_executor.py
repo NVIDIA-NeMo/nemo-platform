@@ -9,12 +9,16 @@ from collections.abc import Sequence
 from typing import Any
 
 import httpx
-from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.api.schemas import MetricInline, TasksetRef
 from nemo_evaluator.filesets import FilesetRef
+from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, TargetSpec
+from nemo_evaluator.jobs.runner_targets import runner_to_target
 from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.job_resources import (
+    AgentEvaluatorJob,
+    AgentEvaluatorJobResource,
     AsyncEvaluatorJobResource,
     EvaluatorJob,
     EvaluatorJobResource,
@@ -26,6 +30,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundlePackagerPolicyError,
     bundle_metric,
 )
+from nemo_evaluator_sdk.agent_eval.trials import AgentTaskRunner
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
@@ -194,6 +199,66 @@ class _SyncEvaluatorPluginExecutor:
                 pending_timeout_seconds=self._pending_timeout_seconds,
             )
         return job_resource
+
+    def create_agent_eval(
+        self,
+        *,
+        spec: AgentEvalInputSpec,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> AgentEvaluatorJobResource:
+        """Create an agent-evaluation job with a sync platform client.
+
+        The twin of :meth:`create`, against the ``agent-evaluate`` collection rather than
+        ``evaluate``. The two job kinds share a resource type because a submitted job is a submitted
+        job — polling, status, and artifacts do not differ by what produced the trials.
+        """
+        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
+        response = self._http_client.post(
+            http_utils.url(self._platform, "/v2/workspaces/{workspace}/agent-evaluate/jobs", resolved_workspace),
+            json={"spec": spec.model_dump(mode="json")},
+            headers=http_utils.platform_default_headers(self._platform),
+            timeout=self._platform.timeout,
+        )
+
+        response.raise_for_status()
+
+        job_resource = AgentEvaluatorJobResource(
+            job=AgentEvaluatorJob.model_validate(response.json()),
+            http_client=self._http_client,
+            base_url=http_utils.base_url(str(self._platform.base_url)),
+            workspace=resolved_workspace,
+            headers=http_utils.platform_default_headers(self._platform),
+        )
+
+        if wait_until_done:
+            job_resource.wait_until_done(
+                poll_interval_seconds=self._poll_interval_seconds,
+                job_timeout_seconds=self._job_timeout_seconds,
+                pending_timeout_seconds=self._pending_timeout_seconds,
+            )
+        return job_resource
+
+    def submit_agent_eval(
+        self,
+        *,
+        tasks: TasksetRef,
+        target: AgentTaskRunner,
+        wait_until_done: bool = False,
+    ) -> AgentEvaluatorJobResource:
+        """Submit an agent evaluation over a stored taskset, run by ``target``.
+
+        ``target`` is a *live* runner — the object someone already ran locally with
+        ``AgentEvaluator()``. :func:`runner_to_target` describes it as the spec that reproduces it
+        job-side, and refuses runners carrying state the wire cannot express, so a submitted job
+        cannot silently run something other than what was tested.
+        """
+        spec = AgentEvalInputSpec(tasks=tasks, target=runner_to_target(target))
+        return self.create_agent_eval(
+            spec=spec,
+            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
+            wait_until_done=wait_until_done,
+        )
 
     def submit(
         self,

@@ -16,16 +16,32 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 
-import typer
 import yaml
+from nemo_agents_plugin.container.errors import (
+    AgentConfigValidationError,
+    ContainerToolingUnavailableError,
+    ImageBuildError,
+    ManagedFileConflictError,
+)
 from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
 )
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[str], None]
+"""Sink for human-facing build progress. The CLI passes ``typer.echo``."""
+
+
+def emit_progress(on_progress: ProgressCallback | None, message: str) -> None:
+    if on_progress is not None:
+        on_progress(message)
+    else:
+        logger.info("%s", message)
 
 
 def docker_build(
@@ -36,6 +52,7 @@ def docker_build(
     build_args: dict[str, str] | None = None,
     platforms: list[str] | None = None,
     push: bool = False,
+    on_progress: ProgressCallback | None = None,
 ) -> str:
     """Build a Docker image and return the tag.
 
@@ -51,23 +68,19 @@ def docker_build(
             to one entry — multi-arch builds via buildx are not yet
             implemented and are rejected at the CLI layer.
         push: Push the image as part of the build (single round-trip).
+        on_progress: Sink for progress lines; defaults to the module logger.
 
     Returns:
         The image tag that was built.
 
     Raises:
-        typer.Exit: On build failure.
+        ContainerToolingUnavailableError: When python-on-whales is missing.
+        ImageBuildError: On build failure.
     """
     try:
-        from python_on_whales import docker  # ty: ignore[unresolved-import]
-    except ImportError:
-        typer.echo(
-            "Error: 'python-on-whales' is required for building images.  "
-            "From the repository root, install it with:  "
-            "uv sync --package nemo-agents-plugin --extra container",
-            err=True,
-        )
-        raise typer.Exit(code=1)
+        from python_on_whales import docker
+    except ImportError as exc:
+        raise ContainerToolingUnavailableError("building images") from exc
 
     # The plugin's Dockerfile uses BuildKit cache mounts (``RUN --mount=...``)
     # which silently fail on older daemons without ``DOCKER_BUILDKIT=1``.
@@ -76,7 +89,7 @@ def docker_build(
     os.environ.setdefault("DOCKER_BUILDKIT", "1")
 
     file_arg = str(dockerfile) if dockerfile else None
-    typer.echo(f"Building image '{tag}' from context {context_dir} ...")
+    emit_progress(on_progress, f"Building image '{tag}' from context {context_dir} ...")
     try:
         docker.build(
             str(context_dir),
@@ -87,10 +100,9 @@ def docker_build(
             push=push,
         )
     except Exception as exc:
-        typer.echo(f"Docker build failed: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise ImageBuildError(f"Docker build failed: {exc}") from exc
 
-    typer.echo(f"Successfully built {tag}")
+    emit_progress(on_progress, f"Successfully built {tag}")
     return tag
 
 
@@ -114,6 +126,7 @@ def build_nat_agent_image(
     generate_ignore: bool = True,
     platforms: list[str] | None = None,
     push: bool = False,
+    on_progress: ProgressCallback | None = None,
 ) -> str:
     """High-level helper: validate, render (if needed), then build a NAT image.
 
@@ -133,12 +146,9 @@ def build_nat_agent_image(
         # of overall validity so the operator can see them even when the
         # config is otherwise fine.  Hard errors still abort the build.
         for warn in result.warnings:
-            typer.echo(f"warning: {warn}", err=True)
+            emit_progress(on_progress, f"warning: {warn}")
         if not result.valid:
-            typer.echo("Agent config validation failed:", err=True)
-            for err in result.errors:
-                typer.echo(f"  - {err}", err=True)
-            raise typer.Exit(code=1)
+            raise AgentConfigValidationError(result.errors)
 
     if pyproject is not None and pyproject.exists():
         context_dir = pyproject.resolve().parent
@@ -189,6 +199,7 @@ def build_nat_agent_image(
             build_args=build_args,
             platforms=platforms,
             push=push,
+            on_progress=on_progress,
         )
 
     content = render_nat_dockerfile(
@@ -212,7 +223,7 @@ def build_nat_agent_image(
     # pre-existing file by the same name, since the cleanup would delete the
     # user's file along with our own.
     if tmp_dockerfile.exists():
-        raise typer.Exit(_emit_refusal_error(tmp_dockerfile))
+        raise ManagedFileConflictError(tmp_dockerfile)
     ignore_file: Path | None = None
     # Snapshot the pre-existing ``.dockerignore`` state so the ``finally``
     # cleanup only deletes files this run actually *created*.  Without this,
@@ -243,6 +254,7 @@ def build_nat_agent_image(
             build_args=build_args,
             platforms=platforms,
             push=push,
+            on_progress=on_progress,
         )
     finally:
         tmp_dockerfile.unlink(missing_ok=True)
@@ -265,16 +277,21 @@ def build_fabric_agent_image(
     agent_version: str | None = None,
     agent_author: str | None = None,
     template_path: str | None = None,
+    tag_namespace: str | None = None,
     skip_validation: bool = False,
     generate_ignore: bool = True,
     platforms: list[str] | None = None,
     push: bool = False,
+    on_progress: ProgressCallback | None = None,
 ) -> str:
     """Build a Fabric-backed NeMo agent image.
 
     This is intentionally separate from ``build_nat_agent_image`` so Fabric
     packaging can grow without inheriting NAT-specific args such as
     ``nat_version`` or ``NAT_CONFIG_FILE``.
+
+    *tag_namespace* prefixes the final reference, supplied or derived, so callers
+    that do not own the daemon cannot repoint a reference somebody else owns.
     """
     if pyproject is not None and pyproject.exists():
         context_dir = pyproject.resolve().parent
@@ -321,6 +338,8 @@ def build_fabric_agent_image(
     )
     if tag is None:
         tag = _default_tag_from_meta(meta)
+    if tag_namespace:
+        tag = f"{tag_namespace}/{tag}"
 
     build_args = {
         "BASE_IMAGE_URL": resolved_base_url,
@@ -336,6 +355,7 @@ def build_fabric_agent_image(
             build_args=build_args,
             platforms=platforms,
             push=push,
+            on_progress=on_progress,
         )
 
     content = render_fabric_dockerfile(
@@ -355,7 +375,7 @@ def build_fabric_agent_image(
 
     tmp_dockerfile = context_dir / "Dockerfile.generated"
     if tmp_dockerfile.exists():
-        raise typer.Exit(_emit_refusal_error(tmp_dockerfile))
+        raise ManagedFileConflictError(tmp_dockerfile)
 
     ignore_file: Path | None = None
     ignore_path = context_dir / ".dockerignore"
@@ -373,6 +393,7 @@ def build_fabric_agent_image(
             build_args=build_args,
             platforms=platforms,
             push=push,
+            on_progress=on_progress,
         )
     finally:
         tmp_dockerfile.unlink(missing_ok=True)
@@ -400,15 +421,6 @@ def detect_agent_config_format(agent_config: Path) -> str:
     if config_format not in {NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT}:
         raise ValueError(f"Unsupported agent config format: {config_format!r}")
     return config_format
-
-
-def _emit_refusal_error(path: Path) -> int:
-    """Emit a uniform refuse-to-overwrite error and return the exit code."""
-    typer.echo(
-        f"Error: refusing to overwrite pre-existing file {path}. Rename or remove it and re-run the package command.",
-        err=True,
-    )
-    return 1
 
 
 _TAG_NAME_INVALID = re.compile(r"[^a-z0-9._-]")

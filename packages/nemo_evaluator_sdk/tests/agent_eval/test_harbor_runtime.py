@@ -85,6 +85,7 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     assert trials["pass-task"].status == AgentEvalTrialStatus.COMPLETED
     assert trials["pass-task"].metadata["reward"] == 1.0
     assert trials["pass-task"].metadata["prompt_tokens"] == 100
+    assert trials["pass-task"].metadata["cost_usd"] == 0.25
     assert trials["pass-task"].evidence is not None
     assert trials["fail-task"].status == AgentEvalTrialStatus.PARTIAL
     assert trials["fail-task"].error is not None
@@ -1127,12 +1128,18 @@ class _DriftConfig(BaseModel):
     quiet: bool = True
 
 
-def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object], Awaitable[object]]) -> None:
+def _stub_harbor(
+    monkeypatch: pytest.MonkeyPatch,
+    job_create: Callable[[object], Awaitable[object]],
+    verifier_calls: list[dict[str, object]] | None = None,
+) -> None:
     """Install a minimal fake ``harbor`` package so ``run_job`` can execute.
 
     Only the names ``_build_native_job``'s ``run_job`` imports are provided.
     ``job_create`` becomes ``Job.create``; every config class is a permissive stub,
     since what is under test is the control flow around Harbor, not the payload.
+    ``verifier_calls`` records ``VerifierConfig`` kwargs, which no caller can read back
+    off the permissive ``JobConfig`` stub.
     """
 
     def _module(name: str, **attrs: object) -> None:
@@ -1142,6 +1149,11 @@ def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object],
         monkeypatch.setitem(sys.modules, name, module)
 
     def _anything(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    def _verifier_config(**kwargs: object) -> object:
+        if verifier_calls is not None:
+            verifier_calls.append(kwargs)
         return object()
 
     class _Job:
@@ -1156,7 +1168,12 @@ def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object],
     _module("harbor.models.job")
     _module("harbor.models.job.config", RetryConfig=_anything)
     _module("harbor.models.trial")
-    _module("harbor.models.trial.config", AgentConfig=_anything, ArtifactConfig=_anything)
+    _module(
+        "harbor.models.trial.config",
+        AgentConfig=_anything,
+        ArtifactConfig=_anything,
+        VerifierConfig=_verifier_config,
+    )
 
 
 class _FakeJob:
@@ -1204,6 +1221,25 @@ async def test_harbor_refusing_to_resume_discards_and_reruns(
     assert not (job_dir / "old-trial").exists(), "the stale trial must be gone, not resumed onto"
     assert "refused to resume" in caplog.text, "silently deleting completed trials must be visible"
     assert "n_concurrent_trials: 10 -> 4" in caplog.text, "the warning must name what forced the discard"
+
+
+@pytest.mark.asyncio
+async def test_trace_dir_is_published_to_the_verifier_as_trace_dir_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Drop this and every trace-reading metric reads an empty directory instead of raising.
+    verifier_calls: list[dict[str, object]] = []
+
+    async def create(_config: object) -> _FakeJob:
+        return _FakeJob()
+
+    _stub_harbor(monkeypatch, create, verifier_calls)
+    config = HarborRuntimeConfig(jobs_dir=tmp_path / "jobs", job_name="pinned", trace_dir="/app/traces")
+    _built, run_job = _build_native_job(config, tmp_path / "dataset", None, job_name="pinned", force_rerun=False)
+
+    await run_job()
+
+    assert verifier_calls == [{"env": {"TRACE_DIR": "/app/traces"}}]
 
 
 @pytest.mark.asyncio
@@ -1325,6 +1361,8 @@ def test_job_config_drift_is_silent_when_it_cannot_tell(tmp_path: Path) -> None:
 _STAMP_COVERED_HARBOR_FIELDS = {
     "n_attempts": {"n_attempts"},
     "artifacts": {"artifacts", "trace_dir"},
+    # Carries TRACE_DIR, the container trace path verifiers read.
+    "verifier": {"trace_dir"},
     "retry": {"max_retries"},
     "agents": {"agent_name", "agent_import_path", "agent_model_name"},
     "timeout_multiplier": {"timeout_multiplier"},
@@ -1336,7 +1374,7 @@ _STAMP_COVERED_HARBOR_FIELDS = {
 # Left at Harbor's defaults by _build_native_job, so two SDK-built configs can never
 # disagree on them. (A dir written by the Harbor CLI could, but it carries no SDK cache
 # stamp, so it is stale and gets discarded before Harbor ever sees it.)
-_SDK_NEVER_SETS = {"install_only", "environment", "verifier", "metrics", "tasks", "extra_instruction_paths"}
+_SDK_NEVER_SETS = {"install_only", "environment", "metrics", "tasks", "extra_instruction_paths"}
 # Compared by Harbor, deliberately *not* keyed by the SDK stamp. Harbor asks "can I
 # resume this directory?"; the stamp asks "did these inputs produce these results?".
 # Where the answers diverge, _build_native_job absorbs Harbor's refusal.
@@ -1689,3 +1727,50 @@ def test_a_real_harbor_error_payload_reaches_the_summary_rollup(tmp_path: Path) 
     summary = AgentEvalSummary.from_scores([], trials=[trial])
     assert summary.error_trial_ids == {"AgentTimeoutError": [trial_name]}
     assert summary.error_count == 1
+
+
+def _atif_trajectory_payload() -> dict[str, object]:
+    """A minimal ATIF trajectory shaped like the one Harbor's ATIF-capable agents write."""
+    return {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "s1",
+        "agent": {"name": "codex", "version": "1.0"},
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "solve it", "timestamp": "2026-01-01T00:00:00+00:00"},
+            {"step_id": 2, "source": "agent", "message": "thinking", "timestamp": "2026-01-01T00:00:01+00:00"},
+            {"step_id": 3, "source": "agent", "message": "204", "timestamp": "2026-01-01T00:00:02+00:00"},
+        ],
+    }
+
+
+def _trial_with_trajectory(tmp_path: Path, payload: object) -> AgentEvalTrial:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _trial_from_harbor_result
+
+    job_dir = tmp_path / "job"
+    _write_trial(job_dir, "t__1", "t", reward=1.0)
+    trial_dir = job_dir / "t__1"
+    if payload is None:
+        (trial_dir / "agent" / "trajectory.json").unlink()
+    else:
+        (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(payload))
+    data = json.loads((trial_dir / "result.json").read_text())
+    return _trial_from_harbor_result(trial_dir, data, reward_key="reward")
+
+
+def test_atif_trajectory_is_labelled_atif(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, _atif_trajectory_payload())
+
+    # Harbor names the file trajectory.json, so only its contents identify it as ATIF.
+    assert trial.evidence.descriptors["trace"].format == "atif"
+
+
+def test_absent_trajectory_leaves_no_trace_evidence(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, None)
+
+    assert trial.evidence.descriptors.get("trace") is None
+
+
+def test_non_atif_trajectory_is_kept_as_json_evidence(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, {"not": "atif"})
+
+    assert trial.evidence.descriptors["trace"].format == "json"

@@ -69,21 +69,36 @@ overrides:
   # NVIDIA Proprietary Libraries
   cuda-bindings: LicenseRef-NVIDIA-SOFTWARE-LICENSE
   cuda-python: LicenseRef-NVIDIA-SOFTWARE-LICENSE
+  cuda-toolkit: NVIDIA Proprietary Software
+  nvidia-cublas: NVIDIA Proprietary Software
   nvidia-cublas-cu12: NVIDIA Proprietary Software
+  nvidia-cuda-cupti: NVIDIA Proprietary Software
   nvidia-cuda-cupti-cu12: NVIDIA Proprietary Software
+  nvidia-cuda-nvrtc: NVIDIA Proprietary Software
   nvidia-cuda-nvrtc-cu12: NVIDIA Proprietary Software
+  nvidia-cuda-runtime: NVIDIA Proprietary Software
   nvidia-cuda-runtime-cu12: NVIDIA Proprietary Software
+  nvidia-cudnn-cu13: NVIDIA Proprietary Software
   nvidia-cudnn-cu12: NVIDIA Proprietary Software
+  nvidia-cufft: NVIDIA Proprietary Software
   nvidia-cufft-cu12: NVIDIA Proprietary Software
+  nvidia-cufile: NVIDIA Proprietary Software
   nvidia-cufile-cu12: NVIDIA Proprietary Software
+  nvidia-curand: NVIDIA Proprietary Software
   nvidia-curand-cu12: NVIDIA Proprietary Software
+  nvidia-cusolver: NVIDIA Proprietary Software
   nvidia-cusolver-cu12: NVIDIA Proprietary Software
+  nvidia-cusparse: NVIDIA Proprietary Software
   nvidia-cusparse-cu12: NVIDIA Proprietary Software
+  nvidia-cusparselt-cu13: NVIDIA Proprietary Software
   nvidia-cusparselt-cu12: NVIDIA Proprietary Software
+  nvidia-nccl-cu13: NVIDIA Proprietary Software
+  nvidia-nvjitlink: NVIDIA Proprietary Software
   nvidia-nvjitlink-cu12: NVIDIA Proprietary Software
   nvidia-ml-py: BSD-3-Clause # Python bindings for NVML
   nemollm: NVIDIA Proprietary Software
   nvidia-cudnn-frontend: NVIDIA Proprietary Software
+  nvidia-nvshmem-cu13: NVIDIA Proprietary Software
   nvidia-nvshmem-cu12: NVIDIA Proprietary Software
   nvidia-nat-config-optimizer: Apache-2.0 # NVIDIA NeMo Agent Toolkit config optimizer
   triton: MIT
@@ -112,6 +127,7 @@ overrides:
   vine: BSD-3-Clause # Promises/futures library for Celery
 
   # Configuration / Parsing
+  antlr4-python3-runtime: BSD-3-Clause # ANTLR 4 runtime; via latex2sympy2-extended <- math-verify
   expandvars: MIT # Shell-style env var expansion
   ply: BSD-3-Clause # Python Lex-Yacc (parsing)
 
@@ -244,6 +260,7 @@ overrides:
   supervisor: BSD-3-Clause
   typing-extensions: PSF-2.0
   unsloth-zoo: LGPL-3.0-or-later
+  wget: Public Domain # Declares "License: Public Domain" (no SPDX id); via verifiers <- NeMo Gym
   zope-interface: ZPL-2.0
 
   # Files service

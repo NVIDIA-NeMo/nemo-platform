@@ -36,8 +36,8 @@ const trace1: Trace = {
   span_count: 4,
   error_count: 0,
   evaluation_context: {
-    evaluation_id: 'support-policy-smoke',
-    test_case_id: 'case-0042',
+    evaluation_name: 'support-policy-smoke',
+    test_case_name: 'case-0042',
   },
 };
 

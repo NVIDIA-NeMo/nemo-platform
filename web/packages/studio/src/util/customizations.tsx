@@ -13,6 +13,7 @@ import type {
 } from '@studio/types/customization';
 import {
   isAutomodelJob,
+  isRlJob,
   isUnslothJob,
   type CustomizationJob,
   type CustomizationJobStatusDetails,
@@ -172,7 +173,10 @@ export const getCustomizationTrainingProgress = (customization: CustomizationJob
     return '';
   }
 
-  const epochs = customization.spec?.schedule?.epochs;
+  // RL keeps epochs on spec.training; the other backends use spec.schedule.
+  const epochs = isRlJob(customization)
+    ? customization.spec?.training?.epochs
+    : customization.spec?.schedule?.epochs;
 
   const { epoch, percentage_done: percentageDone } = customization.status_details || {};
 

@@ -13,6 +13,25 @@ Inherited from the NeMo Platform monorepo that now hosts this plugin:
 
 ## Active migrations
 
+### 2026-08-19: Eval Author agent moved back into this plugin
+
+`nemo_experimentalist_plugin.eval_author` owns the Eval Author agent again, along with
+`eval_author/traces.py`. The 2026-07-28 extraction aimed at a standalone Eval Author
+plugin. That goal is retired: the customer-facing path is a skill rather than a plugin
+install, and insight mode was the agent's only caller.
+
+**The dependency is one arrow, and it points out of the Eval Author plugin.**
+Experimentalist imports nothing from `nemo-eval-author-plugin`, so the package cycle that
+`uv` had to resolve is gone.
+
+- The agent's borrows of the evaluator, staging, trace, tools, and reporting helpers are
+  intra-package imports. The Eval Author plugin's boundary ratchet existed to drive those
+  ten borrows to zero, so it went away with them.
+- `tests/test_contract_dependency.py` asserts that this plugin never declares
+  `nemo-eval-author-plugin` as a dependency, which is what keeps the cycle broken.
+- Agent tests live in `tests/eval_author/`. This plugin's `conftest.py` already covers the
+  isolation those tests need, so the Eval Author copy went away.
+
 ### 2026-07-31: Command group nested under `nemo agents`
 
 The only path is `nemo agents experimentalist <verb>`. `ExperimentalistCLI` is
@@ -20,33 +39,21 @@ registered under the `nemo.cli.agents` entry-point group, which the `nemo-agents
 plugin's `AgentsCLI` discovers and mounts. There is no top-level
 `nemo experimentalist` alias.
 
-Analyst and Eval Author follow the same rule: `nemo agents analyst run` (was
-`nemo insights analyze`) and `nemo agents eval-author <verb>`. Prefer
-`ctx.command_path` over a hardcoded path when a message quotes the command back
-to the user.
+The Analyst follows the same rule: `nemo agents analyst run` (was `nemo insights
+analyze`). Prefer `ctx.command_path` over a hardcoded path when a message quotes the
+command back to the user.
 
-### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone
+### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone (superseded)
 
-`plugins/nemo-eval-author/` (`nemo-eval-author-plugin`) owns the Eval Author agent package
-(`eval_author/`).
+Superseded by the 2026-08-19 entry, which moved the agent back.
 
-**The target is one arrow: Experimentalist → Eval Author.** Eval Author is meant to stop
-depending on Experimentalist entirely, even where that means duplicating code. Today the
-arrow points both ways:
+`plugins/nemo-eval-author/` took ownership of the `eval_author/` package, targeting a
+standalone plugin that imported nothing from Experimentalist. Both arrows pointed at each
+other for the duration, and `uv` resolved the cycle.
 
-- Experimentalist → Eval Author is permanent. Insight mode imports `EvalAuthor` in
-  `components/loop.py` and `EvalAuthorConfig` in `resolve.py`, both at module scope, so
-  the dependency is declared in `pyproject.toml`.
-- Eval Author → Experimentalist is temporary. It still borrows the evaluator/Harbor
-  abstractions, dataset staging, trace analyzer/explorer, `GuardedShellTools`, the cache,
-  and the backend factory.
-
-`plugins/nemo-eval-author/tests/test_plugin_boundary.py` pins that second list so it can
-only shrink. **Do not share Eval Author implementation helpers with Experimentalist.**
-The Platform-owned model client integration is intentionally different: both plugins use
-`nemo_platform_plugin.nooa_model_client` so provider routing, Platform authentication,
-and configured model selection have one owner outside either plugin. `uv` resolves the
-remaining package cycle; install both with `uv sync --group experimentalist`.
+One rule from that entry still holds: both plugins use
+`nemo_platform_plugin.nooa_model_client`, so provider routing, Platform authentication,
+and configured model selection have one owner outside either plugin.
 
 ### 2026-07-24: Optimizer renamed to Experimentalist
 
@@ -87,7 +94,7 @@ including components registered by a separately installed package.
 The Curator agent was renamed directly to Eval Author in ASE-643. This is a
 breaking rename with no compatibility aliases or migration layer:
 
-- `nemo_experimentalist_plugin.curator` → `nemo_eval_author_plugin.eval_author` (was `nemo_experimentalist_plugin.eval_author` before extraction)
+- `nemo_experimentalist_plugin.curator` → `nemo_experimentalist_plugin.eval_author` (briefly `nemo_eval_author_plugin.eval_author` while the agent had its own plugin)
 - `Curator`, `CuratorConfig`, and `CuratorResult` → `EvalAuthor`,
   `EvalAuthorConfig`, and `EvalAuthorResult`
 - `run_curator(...)` and `build_curator_agent(...)` →
@@ -112,7 +119,7 @@ instead of restoring Curator imports, configuration, or aliases. The obsolete
 - `nooa` comes from PyPI. This plugin's `pyproject.toml` declares the floor
   (`nooa>=0.0.9`), which is the first release carrying the callable
   `@strategy(llm=...)` support the components depend on. When raising the floor,
-  move it in this plugin, `nemo-insights`, `nemo-eval-author`, and
+  move it in this plugin, `nemo-insights`, and
   `examples/tau3-nooa-agent/pyproject.toml`, update the tag quoted in
   `framework-skills/nooa/SKILL.md`, and relock both lock files together. Keep the
   Platform-supplied Insights plugin separate.

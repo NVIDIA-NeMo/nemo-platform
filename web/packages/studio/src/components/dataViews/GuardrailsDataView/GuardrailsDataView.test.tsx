@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
@@ -141,11 +142,13 @@ describe('GuardrailsDataView', () => {
     );
     renderComponent({ onCreate });
     expect(
-      await screen.findByText('No guardrail configs yet', undefined, {
+      await screen.findByText(ENTITY_EMPTY_STATES.guardrails.heading, undefined, {
         timeout: XL_SELECTOR_TIMEOUT,
       })
     ).toBeInTheDocument();
-    const createButton = screen.getByRole('button', { name: 'Create guardrail config' });
+    const createButton = screen.getByRole('button', {
+      name: ENTITY_EMPTY_STATES.guardrails.createAction?.label,
+    });
     expect(createButton).toBeInTheDocument();
 
     await user.click(createButton);

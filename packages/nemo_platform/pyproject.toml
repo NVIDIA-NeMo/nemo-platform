@@ -229,6 +229,7 @@ nemo-agents-example-calculator = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-agents-plugin = [
   "nemo-platform-plugin",
+  "nemo-deployments-plugin",
   "nemo-optimization-plugin",
   "nemo-agents-example-calculator",
   "nvidia-nat-core>=1.9.0a20260811,<1.10",
@@ -242,10 +243,12 @@ nemo-agents-plugin = [
   "botocore>=1.40.46,<1.40.62",
   "httpx>=0.27",
   "pyyaml>=6.0",
+  "jinja2>=3.1",
+  "python-on-whales>=0.60",
   "anthropic>=0.88.0",
   "rich>=13.7.1",
-  "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.3.0",
-  "nemo-fabric-adapters-hermes>=0.1.0,<0.3.0; python_version < '3.14'",
+  "nemo-fabric[claude,codex,deepagents,relay]>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0; python_version < '3.14'",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -281,15 +284,13 @@ nemo-data-designer-plugin = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
-nemo-eval-author-plugin = [
-  "pydantic>=2",
-  "harbor>=0.18",
-  "nooa>=0.0.9",
-  "nemo-experimentalist-plugin",
-  "nemo-insights-plugin",
+nemo-deployments-plugin = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "nemo-platform-sdk",
   "nemo-platform-plugin",
-  "pyyaml>=6.0.3",
-  "tomlkit>=0.13.3",
+  "pydantic>=2.10.6",
+  "pyyaml>=6.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -317,8 +318,8 @@ nemo-evaluator-sdk = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.6.0,<0.7",
-  "nemo-fabric>=0.1.1,<0.3.0",
+  "nemo-relay>=0.7.2,<0.8",
+  "nemo-fabric>=0.2.0,<0.3.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -331,7 +332,6 @@ nemo-experimentalist-plugin = [
   "protobuf>=6.0.0",
   "nooa>=0.0.9",
   "pyyaml>=6.0.3",
-  "nemo-eval-author-plugin",
   "nemo-insights-plugin",
   "nemo-platform-plugin",
   "tomlkit>=0.13.3",
@@ -479,7 +479,7 @@ plugins = [
     "nemo-platform[nemo-anonymizer-plugin]",
     "nemo-platform[nemo-auditor-plugin]",
     "nemo-platform[nemo-data-designer-plugin]",
-    "nemo-platform[nemo-eval-author-plugin]",
+    "nemo-platform[nemo-deployments-plugin]",
     "nemo-platform[nemo-evaluator-plugin]",
     "nemo-platform[nemo-experimentalist-plugin]",
     "nemo-platform[nemo-guardrails-plugin]",
@@ -560,7 +560,6 @@ insights = "nemo_insights_plugin.cli:InsightsCLI"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli.agents"]
-eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
 experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"
 analyst = "nemo_insights_plugin.analyst.cli:AnalystCLI"
 
@@ -572,6 +571,7 @@ platform = "nmp.common.client_factory:PlatformNemoClientProvider"
 [project.entry-points."nemo.controllers"]
 agents-deployment = "nemo_agents_plugin.runner.controller:AgentDeploymentController"
 insights-analysis = "nemo_insights_plugin.controller:InsightsAnalysisController"
+deployments = "nemo_deployments_plugin.controller:DeploymentsController"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.docs"]
@@ -613,11 +613,17 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "evaluator.evaluate" = "nemo_evaluator.jobs.evaluate:EvaluateJob"
 "evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
 "insights.analyze-job" = "nemo_insights_plugin.jobs.analyze:AnalyzeJob"
+"agents.execute" = "nemo_agents_plugin.jobs.execute:ExecuteAgentJob"
+"agents.package-agent" = "nemo_agents_plugin.jobs.package_agent:PackageAgentJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]
 optuna = "nemo_optimization.backends.optuna.backend:OptunaBackend"
 ga = "nemo_optimization.backends.ga.backend:GaBackend"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.sandbox_profiles"]
+openshell = "nemo_deployments_plugin.backends.openshell.sandbox_profile:PROFILE"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.sdk"]
@@ -646,6 +652,7 @@ auditor = "nemo_auditor.service:AuditorPluginService"
 data-designer = "nemo_data_designer_plugin.service:DataDesignerService"
 evaluator = "nemo_evaluator.service:EvaluatorPluginService"
 insights = "nemo_insights_plugin.service:InsightsService"
+deployments = "nemo_deployments_plugin.service:DeploymentsService"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.skills"]
@@ -659,6 +666,7 @@ platform = "nemo_platform.skills:skills_dir"
 safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
 experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 insights = "nemo_insights_plugin.skills:skills_dir"
+deployments = "nemo_deployments_plugin.skills:skills_dir"
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }
@@ -710,11 +718,7 @@ nemo-agents-plugin = { source = "../../plugins/nemo-agents/src/nemo_agents_plugi
 nemo-anonymizer-plugin = { source = "../../plugins/nemo-anonymizer/src/nemo_anonymizer_plugin", module = "nemo_anonymizer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-data-designer-plugin = { source = "../../plugins/nemo-data-designer/src/nemo_data_designer_plugin", module = "nemo_data_designer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
-# Eval Author, Experimentalist, and Insights ship together: Experimentalist imports
-# EvalAuthor and EvalAuthorConfig at module scope, Eval Author still borrows
-# Experimentalist helpers, and both read the Insights profile contract. Bundling all
-# three into one distribution collapses that dependency cycle into intra-wheel extras.
-nemo-eval-author-plugin = { source = "../../plugins/nemo-eval-author/src/nemo_eval_author_plugin", module = "nemo_eval_author_plugin", inherit = { "entry-points" = ["nemo.*"] } }
+nemo-deployments-plugin = { source = "../../plugins/nemo-deployments/src/nemo_deployments_plugin", module = "nemo_deployments_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-experimentalist-plugin = { source = "../../plugins/nemo-experimentalist/src/nemo_experimentalist_plugin", module = "nemo_experimentalist_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-insights-plugin = { source = "../../plugins/nemo-insights/src/nemo_insights_plugin", module = "nemo_insights_plugin", inherit = { "entry-points" = ["nemo.*"] } }

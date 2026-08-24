@@ -174,7 +174,7 @@ class _EvalResultCommon(BaseModel):
 
     job_id: str = Field(description="Identifier of the job run that produced this result (one result per run).")
     target_kind: str | None = Field(
-        description="Target discriminator: 'model', 'agent', or a runner kind e.g. 'codex'."
+        description="Target discriminator: 'model', 'agent', or a runner kind e.g. 'fabric'."
     )
     target_name: str | None = Field(description="Model/agent entity name, or the runner's model — filterable trait.")
     target_url: str | None = Field(description="Endpoint URL, when the target is an HTTP model/agent.")
@@ -246,7 +246,7 @@ class TaskEntity(_RevisionedCommon, EntityBase):
     A task is an evaluation unit; ``spec`` says what it is and which runner executes it. Both kinds
     live in one record type so a user manages every evaluation unit in one place, and so a taskset
     can group them without caring how each one runs — the same way ``AgentRunnerTarget`` already
-    treats codex/fabric/harbor as members of one union on the target side.
+    treats fabric/gym/harbor as members of one union on the target side.
 
     Content is nested under ``spec`` rather than flattened with nullable per-kind fields, so each
     variant's required fields stay genuinely required and the revision digest covers the spec as one

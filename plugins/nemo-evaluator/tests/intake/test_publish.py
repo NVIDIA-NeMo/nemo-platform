@@ -131,12 +131,18 @@ def _result(trials: list[AgentEvalTrial], scores: list[AgentEvalTaskScore]) -> A
 
 def test_token_final_metrics_projects_recorded_token_usage() -> None:
     # Recorded token usage becomes ATIF final_metrics, which Intake promotes onto the root span.
-    measurements = TrialMeasurements(prompt_tokens=120, completion_tokens=45, cache_read_tokens=30)
+    measurements = TrialMeasurements(prompt_tokens=120, completion_tokens=45, cache_read_tokens=30, cost_usd=0.134)
     assert _token_final_metrics(measurements) == {
         "total_prompt_tokens": 120,
         "total_completion_tokens": 45,
         "total_cached_tokens": 30,
+        "total_cost_usd": 0.134,
     }
+
+
+def test_token_final_metrics_carries_cost_without_token_counts() -> None:
+    # A harness that reports spend but not usage still gets its cost onto the root span.
+    assert _token_final_metrics(TrialMeasurements(cost_usd=0.5)) == {"total_cost_usd": 0.5}
 
 
 def test_token_final_metrics_is_none_without_recorded_usage() -> None:
@@ -160,7 +166,10 @@ async def test_publishes_trajectory_and_scores() -> None:
 
     assert len(client.atif_calls) == 1
     assert client.atif_calls[0]["session_id"] == "run-1:t-1"
-    assert client.atif_calls[0]["evaluation_context"] == {"evaluation_id": "exp-1", "test_case_id": "task-1"}
+    assert client.atif_calls[0]["evaluation_context"] == {
+        "evaluation_name": "exp-1",
+        "test_case_name": "task-1",
+    }
     # 3 metric outputs across the two score records -> 3 evaluator-result rows.
     assert len(client.eval_calls) == 3
     assert {call["name"] for call in client.eval_calls} == {"accuracy.score", "accuracy.passed", "latency.p50"}

@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ConfigMap mounted by opensandbox-server-crun.
+# Shared-kernel profile: no runtimeClassName → cluster default (crun on this CRI-O cluster).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-batchsandbox-template-crun
+  namespace: opensandbox-system
+  labels:
+    app.kubernetes.io/part-of: opensandbox
+    opensandbox.nvidia.com/isolation-class: shared-kernel
+data:
+  batchsandbox-template.yaml: |
+    metadata:
+      labels:
+        opensandbox.nvidia.com/isolation-class: shared-kernel
+        opensandbox.nvidia.com/runtime: crun
+    spec:
+      replicas: 1
+      template:
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 30
+          # Sandbox pods are built from this template by the OpenSandbox server,
+          # not by the jobs controller, so the `image_pull_secrets` under
+          # platformConfig.jobs.executor_defaults never reaches them and neither does the
+          # chart's top-level imagePullSecrets. The Secret must exist in the sandbox namespace
+          imagePullSecrets:
+            - name: nvcrimagepullsecret
+          # Prefer non-GPU / non-kata workers so H100 capacity stays for kata-qemu
+          # and GPU training. Soft preference only — still schedules if needed.
+          affinity:
+            nodeAffinity:
+              # Hard floor. These pods run untrusted environment code on a shared
+              # kernel, and `tolerations: [{operator: Exists}]` below tolerates every
+              # taint — including the control-plane NoSchedule taint. Without a
+              # required rule the soft preferences above collapse under capacity
+              # pressure and a sandbox can land on a control-plane node.
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+                      - key: node-role.kubernetes.io/master
+                        operator: DoesNotExist
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: katacontainers.io/kata-runtime
+                        operator: NotIn
+                        values: ["true"]
+                - weight: 80
+                  preference:
+                    matchExpressions:
+                      - key: nvidia.com/gpu.present
+                        operator: NotIn
+                        values: ["true"]
+          tolerations:
+            - operator: Exists

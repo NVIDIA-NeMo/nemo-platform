@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
@@ -46,10 +46,15 @@ from nemo_platform.beta.evaluator.agent_inference import (
     make_agent_inference_fn,
     new_agent_inference_client,
 )
-from nemo_platform.beta.evaluator.execution.metric_execution import generate_online_sample, run_sync
+from nemo_platform.beta.evaluator.execution.metric_execution import (
+    generate_online_sample,
+    resolve_target_structured_output_mode,
+    run_sync,
+)
+from nemo_platform.beta.evaluator.session import begin_evaluation_session
 from nemo_platform.beta.evaluator.execution.samples import build_metric_input
 from nemo_platform.beta.evaluator.inference import InferenceFn
-from nemo_platform.beta.evaluator.metrics.protocol import Metric, validate_metric_result
+from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricWithPreflight, validate_metric_result
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.values import (
     Agent,
@@ -161,22 +166,25 @@ class AgentEvaluator:
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
         started_at = datetime.now(UTC)
 
-        # Branch on which seam was supplied so the type checker can narrow ``target`` to a
-        # concrete ``AgentEvalTarget`` without a cast.
-        if trials is not None:
-            if target is not None:
-                raise ValueError("provide exactly one of trials or target")
-            trial_list = list(trials)
-        elif target is not None:
-            trial_list = await self._generate_trials(tasks=task_list, target=target, config=runtime_config)
-        else:
-            raise ValueError("provide exactly one of trials or target")
-        scores = await self._score_trials(
-            tasks=task_list,
-            trials=trial_list,
-            config=runtime_config,
-            run_id=run_id,
-        )
+        seam_error = "provide exactly one of trials or target"
+        if trials is not None and target is not None:
+            raise ValueError(seam_error)
+
+        async with begin_evaluation_session():
+            # Branch on which seam was supplied so the type checker narrows each of ``trials`` and
+            # ``target`` to a concrete type without a cast. The final arm is the "neither" case.
+            if trials is not None:
+                trial_list = list(trials)
+            elif target is not None:
+                trial_list = await self._generate_trials(tasks=task_list, target=target, config=runtime_config)
+            else:
+                raise ValueError(seam_error)
+            scores = await self._score_trials(
+                tasks=task_list,
+                trials=trial_list,
+                config=runtime_config,
+                run_id=run_id,
+            )
         runner_scores = _collect_runner_aggregate_scores(target) if target is not None else []
         finished_at = datetime.now(UTC)
         metadata = RunMetadata(
@@ -238,6 +246,8 @@ class AgentEvaluator:
         for task in tasks:
             if not task.metrics:
                 raise ValueError(f"task {task.id!r} does not declare any metrics")
+
+        await _preflight_task_metrics(tasks, trials_by_task)
 
         semaphore = asyncio.Semaphore(config.parallelism)
 
@@ -378,6 +388,28 @@ class AgentEvaluator:
                 await close_client()
 
 
+async def _preflight_task_metrics(
+    tasks: Sequence[AgentEvalTask],
+    trials_by_task: Mapping[str, Sequence[AgentEvalTrial]],
+) -> None:
+    """Run each distinct metric's preflight once, skipping metrics with nothing to score.
+
+    Agent-eval scores metrics directly rather than through ``prepare_metric_for_execution``, so
+    nothing else runs their preflight. Failed trials short-circuit to a failed score without
+    invoking the metric, so a task whose trials all failed must not trigger one: preflight resolves
+    the judge endpoint, making it both a wasted request and a way for the run to abort.
+    """
+    preflighted: set[int] = set()
+    for task in tasks:
+        scoreable = any(trial.status != AgentEvalTrialStatus.FAILED for trial in trials_by_task.get(task.id, ()))
+        if not scoreable:
+            continue
+        for metric in task.metrics:
+            if isinstance(metric, MetricWithPreflight) and id(metric) not in preflighted:
+                preflighted.add(id(metric))
+                await metric.preflight()
+
+
 async def _generate_sample(
     *,
     target: Model | Agent,
@@ -395,9 +427,15 @@ async def _generate_sample(
     # The transport client is a real class union, so isinstance narrowing is enough there.
     if isinstance(target, Model):
         model_params = cast(RunConfigOnlineModel, params)
-        preprocess_hooks, postprocess_hooks = inference.new_hooks(model_params, model_format=target.format)
+        preprocess_hooks, postprocess_hooks = inference.new_hooks(model_params)
         model_inference_fn = (
             cast(InferenceFn, inference_fn) if inference_fn is not None else inference.make_inference_request
+        )
+        await resolve_target_structured_output_mode(
+            preprocess_hooks=preprocess_hooks,
+            model=target,
+            inference_fn=model_inference_fn,
+            params=model_params,
         )
         return await generate_online_sample(
             target=target,

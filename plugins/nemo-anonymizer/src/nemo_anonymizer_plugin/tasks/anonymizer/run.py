@@ -20,6 +20,7 @@ from nemo_anonymizer_plugin.app.input import prepare_anonymizer_input
 from nemo_anonymizer_plugin.app.task_config import AnonymizerStepConfig
 from nemo_anonymizer_plugin.app.upstream_logging import preserve_root_logging
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (
@@ -29,6 +30,7 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
+from nemo_platform_plugin.models.client import ModelsClient
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -147,12 +149,13 @@ def _resolve_provider_endpoints(
         return [DDModelProvider.model_validate(raw) for raw in step_config.dd_model_providers]
     if sdk is None:
         raise RuntimeError("Remote anonymizer task requires a NeMo Platform SDK.")
+    models = client_from_platform(sdk, ModelsClient)
     refreshed: list[DDModelProvider] = []
     for raw in step_config.dd_model_providers:
         provider = DDModelProvider.model_validate(raw)
         provider_workspace, provider_name = parse_provider_reference(provider.name, workspace)
         nmp_provider = get_nmp_provider(sdk, provider_workspace, provider_name)
-        provider.endpoint = sdk.models.get_provider_route_openai_url(nmp_provider)
+        provider.endpoint = models.get_provider_route_openai_url(nmp_provider)
         refreshed.append(provider)
     return refreshed
 

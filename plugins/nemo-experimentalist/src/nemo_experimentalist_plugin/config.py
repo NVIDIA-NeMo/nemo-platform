@@ -19,8 +19,8 @@ components that consume them rather than redeclared here.
 from pathlib import Path
 from typing import Any, Self
 
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.entities import MetricTarget
+from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.models import (  # noqa: F401 - re-exported
     has_metric_dimensions,
     pareto_objectives,

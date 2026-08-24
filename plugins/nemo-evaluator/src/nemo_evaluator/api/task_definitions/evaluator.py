@@ -30,7 +30,7 @@ class EvaluatorTaskDefinition(BaseModel):
 
     kind: Literal["evaluator"] = Field(description="Task kind discriminator.")
     intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="Inputs supplied to the task.")
     metrics: list[MetricRefOrInline] = Field(
         default_factory=list,
         description="Metrics that score this task — stored-metric references, and inline bundles on "

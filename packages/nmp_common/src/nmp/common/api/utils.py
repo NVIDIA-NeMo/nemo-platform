@@ -655,7 +655,7 @@ def parse_deep_object_query(field_name: str, value_type: Type[T]) -> Callable[[R
                 return None
             return value_type(**parsed)
         except ValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
     return _dep
 

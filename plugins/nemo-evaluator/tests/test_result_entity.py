@@ -36,13 +36,38 @@ def _roundtrip(entity: _E) -> _E:
     return cls.model_validate({"name": entity.name, "workspace": entity.workspace, **data})
 
 
+def test_agent_eval_result_roundtrip_reads_a_retired_runner_kind() -> None:
+    """A result stored before its runner was removed still loads: ``target_kind`` is a free-form
+    trait, not a live discriminator, so retiring a runner never strands the rows it wrote.
+
+    Built from the raw string rather than a target class on purpose — the class is gone, and a test
+    that needed it could not express this.
+    """
+    entity = AgentEvalResultEntity(
+        name="job-legacy",
+        workspace="default",
+        job_id="job-legacy",
+        target_kind="codex",
+        target_name="gpt-5.5",
+        target_url=None,
+        scores=_scores(),
+        bundle_ref="fileset://default/agent-eval-results#legacy",
+    )
+
+    restored = _roundtrip(entity)
+
+    assert restored.target_kind == "codex"
+    assert restored.target_name == "gpt-5.5"
+    assert restored.scores == entity.scores
+
+
 def test_agent_eval_result_roundtrip_preserves_scores_and_target() -> None:
     entity = AgentEvalResultEntity(
         name="job-123",
         workspace="default",
         job_id="job-123",
-        target_kind="codex",
-        target_name="gpt-5.5",
+        target_kind="fabric",
+        target_name="openai/gpt-5.4",
         target_url=None,
         scores=_scores(),
         bundle_ref="fileset://default/agent-eval-results#bundle",
@@ -51,8 +76,8 @@ def test_agent_eval_result_roundtrip_preserves_scores_and_target() -> None:
     restored = _roundtrip(entity)
 
     assert restored.job_id == "job-123"
-    assert restored.target_kind == "codex"
-    assert restored.target_name == "gpt-5.5"
+    assert restored.target_kind == "fabric"
+    assert restored.target_name == "openai/gpt-5.4"
     assert restored.target_url is None
     assert restored.bundle_ref == entity.bundle_ref
     # The nested AggregatedMetricResult must survive the JSON column intact.

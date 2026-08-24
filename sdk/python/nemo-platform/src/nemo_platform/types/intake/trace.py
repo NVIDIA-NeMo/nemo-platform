@@ -15,7 +15,7 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
@@ -36,6 +36,10 @@ class Trace(BaseModel):
 
     workspace: str
 
+    agent_name: Optional[str] = None
+
+    agent_version: Optional[str] = None
+
     cached_tokens: Optional[int] = None
 
     cost_input_usd: Optional[float] = None
@@ -51,11 +55,9 @@ class Trace(BaseModel):
     error_count: Optional[int] = None
 
     evaluation_context: Optional[EvaluationContext] = None
-    """Evaluation context accepted by ingest endpoints (the canonical shape).
-
-    `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-    evaluation_run_id, metadata) keeps ingesting without error rather than being
-    rejected.
+    """
+    Identifies the Evaluation and optional test case associated with ingested
+    telemetry.
     """
 
     input: Optional[str] = None
@@ -66,6 +68,9 @@ class Trace(BaseModel):
 
     input_tokens: Optional[int] = None
 
+    models: Optional[List[str]] = None
+    """Distinct models used across the trace's spans. Omitted in summary mode."""
+
     name: Optional[str] = None
 
     output: Optional[str] = None
@@ -75,6 +80,12 @@ class Trace(BaseModel):
     """
 
     output_tokens: Optional[int] = None
+
+    providers: Optional[List[str]] = None
+    """Distinct inference providers used across the trace's spans.
+
+    Omitted in summary mode.
+    """
 
     root_span_id: Optional[str] = None
 

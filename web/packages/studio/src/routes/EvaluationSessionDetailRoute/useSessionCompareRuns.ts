@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 
 /**
  * Every run of the current session's test case across the group's evaluations, plus
- * the test_case_id the session is keyed on.
+ * the test case name the session is keyed on.
  *
  * Shared by the compare view and the single session view's "Compare against…" entry
  * point. React Query dedupes the session/trace fetches when both the surrounding
@@ -19,12 +19,12 @@ export function useSessionCompareRuns(
   experimentName: string,
   sessionId: string
 ): {
-  testCaseId: string | undefined;
+  testCaseName: string | undefined;
   runs: ReturnType<typeof useTestCaseRuns>['runs'];
   isRunsLoading: boolean;
 } {
-  // The session's traces supply the test_case_id every run is matched on.
-  const { testCaseId } = useSessionTrajectories(workspace, sessionId);
+  // The session's traces supply the test case name every run is matched on.
+  const { testCaseName } = useSessionTrajectories(workspace, sessionId);
 
   const { data: group } = useGetExperiment(workspace, experimentName);
   const { data: evaluationsPage } = useListEvaluations(
@@ -40,8 +40,8 @@ export function useSessionCompareRuns(
   const { runs, isLoading: isRunsLoading } = useTestCaseRuns({
     workspace,
     evaluationNames,
-    testCaseId,
+    testCaseName,
   });
 
-  return { testCaseId, runs, isRunsLoading };
+  return { testCaseName, runs, isRunsLoading };
 }

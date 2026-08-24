@@ -206,10 +206,10 @@ def test_spans_builds_valid_protobuf_with_ids_and_name():
 
 
 def test_spans_injects_resource_attrs():
-    req = _merge(spans_to_protobuf([_span_row()], {"nemo.evaluation.name": "exp-42", "nemo.test_case.id": "task1"}))
+    req = _merge(spans_to_protobuf([_span_row()], {"nemo.evaluation.name": "exp-42", "nemo.test_case.name": "task1"}))
     attrs = _resource_attrs(req.resource_spans[0])
     assert attrs["nemo.evaluation.name"].string_value == "exp-42"
-    assert attrs["nemo.test_case.id"].string_value == "task1"
+    assert attrs["nemo.test_case.name"].string_value == "task1"
 
 
 def test_spans_preserves_raw_attributes_from_json_string():

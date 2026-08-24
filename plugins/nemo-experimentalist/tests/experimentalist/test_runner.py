@@ -371,7 +371,7 @@ async def _run_with_insight_suite(
         _async(lambda _root, **refs: SimpleNamespace(**refs)),
     )
     monkeypatch.setattr(
-        "nemo_eval_author_plugin.eval_author.agent.EvalAuthor",
+        "nemo_experimentalist_plugin.eval_author.agent.EvalAuthor",
         lambda **_: SimpleNamespace(
             run=_async(
                 lambda **kwargs: SimpleNamespace(

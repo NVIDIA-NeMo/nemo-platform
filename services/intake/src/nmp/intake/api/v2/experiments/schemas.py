@@ -285,8 +285,8 @@ class EvaluationResponse(BaseModel):
     test_case_count: int = Field(
         default=0,
         description=(
-            "Number of distinct test cases in the evaluation, i.e. distinct test_case_id values "
-            "(sessions with no test_case_id each count as their own). A test case run k times counts once; "
+            "Number of distinct test cases in the evaluation, i.e. distinct test_case_name values "
+            "(sessions with no test_case_name each count as their own). A test case run k times counts once; "
             "the rollup metrics are averaged per test case before pooling across test cases."
         ),
     )
@@ -458,7 +458,12 @@ class EvaluationFilter(Filter):
 class EvaluationSessionFilter(Filter):
     """Filter for listing EvaluationSessions."""
 
-    test_case_id: str | None = Field(default=None, description="Filter by producer-supplied test case id.")
+    test_case_name: str | None = Field(default=None, description="Filter by test case name.")
+    test_case_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for test_case_name. Use test_case_name instead.",
+    )
     status: str | None = Field(
         default=None, description="Filter by root-span status (success, error, cancelled, unknown)."
     )
@@ -474,9 +479,14 @@ class EvaluationSessionResponse(BaseModel):
     workspace: str
     evaluation_name: str
     session_id: str
+    test_case_name: str | None = Field(
+        default=None,
+        description="Test case name; null when the producer did not set one.",
+    )
     test_case_id: str | None = Field(
         default=None,
-        description="Producer-supplied test case identifier; null when the producer did not set one.",
+        deprecated=True,
+        description="Deprecated alias for test_case_name. Use test_case_name instead.",
     )
     trace_id: str
     root_span_id: str
@@ -525,7 +535,8 @@ class EvaluationSessionResponse(BaseModel):
             workspace=row.workspace,
             evaluation_name=row.evaluation_name,
             session_id=row.session_id,
-            test_case_id=row.test_case_id,
+            test_case_name=row.test_case_name,
+            test_case_id=row.test_case_name,
             trace_id=row.trace_id,
             root_span_id=row.root_span_id,
             started_at=row.started_at,

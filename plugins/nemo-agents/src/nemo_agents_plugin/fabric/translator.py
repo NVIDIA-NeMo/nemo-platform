@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
-# CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
-import nemo_fabric as fabric  # ty: ignore[unresolved-import]
+import nemo_fabric as fabric
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
 from nemo_agents_plugin.fabric.gateway_credentials import (
     bind_platform_gateway_model_credential,
@@ -52,13 +52,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             "default": fabric.ModelConfig(**model_payload),
         },
         instructions=_instructions_config(config),
-        environment=fabric.EnvironmentConfig(
-            provider=config.environment.provider,
-            workspace=config.environment.workspace,
-            artifacts=config.environment.artifacts,
-            env=runtime_env,
-            settings=config.environment.settings,
-        ),
+        environment=_environment_config(config, runtime_env),
         skills=_skills_config(config),
         mcp=_mcp_config(config),
         tools=_tools_config(config),
@@ -71,6 +65,36 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
 def _platform_runtime_env() -> dict[str, str]:
     """Forward the Platform location needed by SDK-backed child tools."""
     return {name: value for name in PLATFORM_RUNTIME_ENV_VARS if (value := os.environ.get(name))}
+
+
+def _environment_config(config: AgentConfig, runtime_env: dict[str, str]) -> Any:
+    """Build FabricConfig.environment, merging spec env + mirror fields.
+
+    ``runtime_env`` carries platform-injected values (base URLs, gateway
+    credential). The EnvironmentSpec's plaintext ``env`` (merged onto
+    ``config.environment.env`` at deploy time) is layered underneath so
+    platform-injected values win on key collision.
+    """
+    environment = config.environment
+    env = {**environment.env, **runtime_env}
+    kwargs: dict[str, Any] = {
+        "provider": environment.provider,
+        "workspace": environment.workspace,
+        "artifacts": environment.artifacts,
+        "env": env,
+        "settings": environment.settings,
+    }
+    # Forward optional Fabric mirror fields only when set, so defaults stay with
+    # Fabric rather than being pinned by the platform config.
+    if environment.control_location is not None:
+        kwargs["control_location"] = environment.control_location
+    if environment.ownership is not None:
+        kwargs["ownership"] = environment.ownership
+    if environment.connection:
+        kwargs["connection"] = environment.connection
+    if environment.metadata:
+        kwargs["metadata"] = environment.metadata
+    return fabric.EnvironmentConfig(**kwargs)
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:
@@ -133,7 +157,9 @@ def _instructions_config(config: AgentConfig) -> Any:
 def _skills_config(config: AgentConfig) -> Any:
     if config.skills is None:
         return None
-    return fabric.SkillConfig(paths=config.skills.paths)
+    paths: list[str | Path] = []
+    paths.extend(config.skills.paths)
+    return fabric.SkillConfig(paths=paths)
 
 
 def _mcp_config(config: AgentConfig) -> Any:
@@ -168,7 +194,7 @@ def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig
 
 def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict[str, Any]:
     telemetry = config.telemetry
-    observability: dict[str, Any] = {"version": 2}
+    observability: dict[str, Any] = {"version": 3}
 
     if telemetry.atif is not None:
         atif = dict(telemetry.atif)

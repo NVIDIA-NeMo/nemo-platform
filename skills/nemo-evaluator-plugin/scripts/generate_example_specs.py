@@ -43,7 +43,6 @@ from nemo_evaluator_sdk import (
     RangeScore,
     SecretRef,
 )
-from nemo_evaluator_sdk.enums import ModelFormat
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 SPEC_DIR = SKILL_DIR / "assets" / "specs"
@@ -88,7 +87,6 @@ def build_llm_as_judge_spec() -> dict[str, Any]:
         url="https://integrate.api.nvidia.com/v1/chat/completions",
         name="nvidia/nemotron-3-super-120b-a12b",
         api_key_secret=SecretRef(root="NVIDIA_API_KEY"),
-        format=ModelFormat.NVIDIA_NIM,
     )
     judge = LLMJudgeMetric(
         model=model,

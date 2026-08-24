@@ -9,7 +9,7 @@ import pytest
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse
 from nmp.common.auth.jwt import TokenClaims
 from nmp.common.entities import EntityConflictError, EntityNotFoundError
-from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyRegistry
+from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyRegistry, AccessKeyStateConflictError
 from nmp.core.auth.entities import AccessKeyEntity
 
 NOW = datetime(2026, 8, 4, 18, 0, tzinfo=UTC)
@@ -207,6 +207,20 @@ async def test_registry_concurrent_revoke_with_hard_delete_treats_as_already_rev
 
 
 @pytest.mark.asyncio
+async def test_registry_concurrent_suspend_with_hard_delete_reports_not_found() -> None:
+    entity_client = AsyncMock()
+    # First get succeeds; update conflicts; second get raises not-found (key deleted).
+    entity_client.get.side_effect = [_record(), EntityNotFoundError("gone")]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    with pytest.raises(AccessKeyNotFoundError, match="Scoped Access Key ak_example was not found"):
+        await registry.suspend("ak_example", "alice@example.com")
+
+    assert entity_client.get.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_registry_can_newly_revoke_expired_key() -> None:
     entity_client = AsyncMock()
     entity_client.get.return_value = _expired_record()
@@ -277,7 +291,7 @@ async def test_registry_backfills_missing_legacy_access_key_from_validated_claim
 
 
 @pytest.mark.asyncio
-async def test_registry_reports_suspended_key_as_revoked_in_list() -> None:
+async def test_registry_reports_suspended_key_in_list() -> None:
     entity_client = AsyncMock()
     entity_client.list.return_value = SimpleNamespace(
         data=[_suspended_record()], pagination=SimpleNamespace(total_pages=1)
@@ -286,7 +300,29 @@ async def test_registry_reports_suspended_key_as_revoked_in_list() -> None:
 
     result = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
 
-    assert result.data[0].status == "REVOKED"
+    assert result.data[0].status == "SUSPENDED"
+
+
+@pytest.mark.asyncio
+async def test_registry_expiration_prevents_suspension_state_changes() -> None:
+    suspended_expired = _expired_record().model_copy(update={"status": "SUSPENDED"})
+    entity_client = AsyncMock()
+    entity_client.list.return_value = SimpleNamespace(
+        data=[suspended_expired], pagination=SimpleNamespace(total_pages=1)
+    )
+    entity_client.get.side_effect = [suspended_expired, _expired_record()]
+    registry = AccessKeyRegistry(entity_client)
+
+    listed = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
+    assert listed.data[0].status == "EXPIRED"
+
+    unsuspend_changed, unsuspend_status = await registry.unsuspend("ak_expired", "alice@example.com")
+    suspend_changed, suspend_status = await registry.suspend("ak_expired", "alice@example.com")
+    assert not unsuspend_changed
+    assert unsuspend_status == "EXPIRED"
+    assert not suspend_changed
+    assert suspend_status == "EXPIRED"
+    entity_client.update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -322,6 +358,98 @@ async def test_registry_reports_suspended_key_as_inactive() -> None:
     registry = AccessKeyRegistry(entity_client)
 
     assert not await registry.is_active("ak_suspended", "alice@example.com")
+
+
+@pytest.mark.asyncio
+async def test_registry_suspends_and_unsuspends_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [_record(), _suspended_record()]
+    registry = AccessKeyRegistry(entity_client)
+
+    suspend_changed, suspend_status = await registry.suspend("ak_example", "alice@example.com")
+    assert suspend_changed
+    assert suspend_status == "SUSPENDED"
+    assert entity_client.update.await_args_list[0].args[0].status == "SUSPENDED"
+    unsuspend_changed, unsuspend_status = await registry.unsuspend("ak_suspended", "alice@example.com")
+    assert unsuspend_changed
+    assert unsuspend_status == "ACTIVE"
+    assert entity_client.update.await_args_list[1].args[0].status == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_registry_suspension_operations_are_idempotent() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [_suspended_record(), _record()]
+    registry = AccessKeyRegistry(entity_client)
+
+    suspend_changed, suspend_status = await registry.suspend("ak_suspended", "alice@example.com")
+    assert not suspend_changed
+    assert suspend_status == "SUSPENDED"
+    unsuspend_changed, unsuspend_status = await registry.unsuspend("ak_example", "alice@example.com")
+    assert not unsuspend_changed
+    assert unsuspend_status == "ACTIVE"
+    entity_client.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["suspend", "unsuspend"])
+async def test_registry_rejects_suspension_transition_for_revoked_key(operation: str) -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(revoked=True)
+    registry = AccessKeyRegistry(entity_client)
+
+    with pytest.raises(AccessKeyStateConflictError, match=f"cannot be {operation}ed"):
+        await getattr(registry, operation)("ak_example", "alice@example.com")
+
+    entity_client.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "current"),
+    [("suspend", _suspended_record()), ("unsuspend", _record())],
+)
+async def test_registry_concurrent_suspension_transition_reports_target_state(
+    operation: str, current: AccessKeyEntity
+) -> None:
+    initial = _record() if operation == "suspend" else _suspended_record()
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [initial, current]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    changed, effective_status = await getattr(registry, operation)(initial.name, initial.principal)
+    assert not changed
+    assert effective_status == current.status
+    assert entity_client.get.await_count == 2
+    entity_client.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_registry_concurrent_suspension_transition_reports_expiration() -> None:
+    entity_client = AsyncMock()
+    expired = _expired_record().model_copy(update={"name": "ak_example"})
+    entity_client.get.side_effect = [_record(), expired]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    changed, effective_status = await registry.suspend("ak_example", "alice@example.com")
+
+    assert not changed
+    assert effective_status == "EXPIRED"
+    assert entity_client.get.await_count == 2
+    entity_client.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_registry_concurrent_suspension_transition_rejects_revocation() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [_record(), _record(revoked=True)]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    with pytest.raises(AccessKeyStateConflictError, match="cannot be suspended"):
+        await registry.suspend("ak_example", "alice@example.com")
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,310 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: network-policies
+spec:
+  timeouts:
+    apply: 30s
+    assert: 2m
+    cleanup: 2m
+    delete: 2m
+  steps:
+    - name: assert network policies rendered
+      try:
+        - assert:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: NetworkPolicy
+              metadata:
+                name: nemo-platform-api-ingress
+              spec:
+                policyTypes:
+                  - Ingress
+        - assert:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: NetworkPolicy
+              metadata:
+                name: nemo-platform-core-controller-ingress
+              spec:
+                policyTypes:
+                  - Ingress
+        - assert:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: NetworkPolicy
+              metadata:
+                name: nemo-platform-jobs-egress
+              spec:
+                policyTypes:
+                  - Egress
+
+    - name: create open in-cluster target
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: nmp-np-open-http
+              spec:
+                selector:
+                  app: nmp-network-policy-open-target
+                ports:
+                  - name: http
+                    port: 8080
+                    targetPort: http
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-open-http
+                labels:
+                  app: nmp-network-policy-open-target
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: http
+                    image: docker.io/library/python:3.12-alpine
+                    ports:
+                      - name: http
+                        containerPort: 8080
+                    command:
+                      - python
+                      - -m
+                      - http.server
+                      - "8080"
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-open-http
+            for:
+              condition:
+                name: Ready
+                value: "True"
+            timeout: 2m
+
+    - name: assert allowed traffic
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-release-api
+                labels:
+                  app.kubernetes.io/name: nemo-platform
+                  app.kubernetes.io/instance: nemo-platform
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nemo-platform-api:8080/health/ready
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-release-api
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Succeeded
+            timeout: 2m
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-managed-job-api
+                labels:
+                  app: nemo-job
+                  nmp.nvidia.com/managed_by: jobs-controller
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nemo-platform-api:8080/health/ready
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-managed-job-api
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Succeeded
+            timeout: 2m
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-release-controller
+                labels:
+                  app.kubernetes.io/name: nemo-platform
+                  app.kubernetes.io/instance: nemo-platform
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nemo-platform-core-controller:8080/health/ready
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-release-controller
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Succeeded
+            timeout: 2m
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-release-open-http
+                labels:
+                  app.kubernetes.io/name: nemo-platform
+                  app.kubernetes.io/instance: nemo-platform
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nmp-np-open-http:8080/
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-release-open-http
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Succeeded
+            timeout: 2m
+
+    - name: assert denied traffic
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-managed-job-open-http
+                labels:
+                  app: nemo-job
+                  nmp.nvidia.com/managed_by: jobs-controller
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nmp-np-open-http:8080/
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-managed-job-open-http
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Failed
+            timeout: 2m
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-denied-api
+                labels:
+                  app: nmp-network-policy-probe
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nemo-platform-api:8080/health/ready
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-denied-api
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Failed
+            timeout: 2m
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nmp-np-denied-controller
+                labels:
+                  app: nmp-network-policy-probe
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: curl
+                    image: curlimages/curl:8.11.1
+                    command:
+                      - curl
+                      - -fsS
+                      - --connect-timeout
+                      - "8"
+                      - --max-time
+                      - "8"
+                      - http://nemo-platform-core-controller:8080/health/ready
+        - wait:
+            apiVersion: v1
+            kind: Pod
+            name: nmp-np-denied-controller
+            for:
+              jsonPath:
+                path: "{.status.phase}"
+                value: Failed
+            timeout: 2m

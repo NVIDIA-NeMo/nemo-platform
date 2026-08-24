@@ -209,10 +209,14 @@ is that base name. Runs no longer mint a workspace each. Run isolation comes fro
 the per-span `nemo.evaluation.name=<run-id>` tag plus the Analyst's `evaluation_id`
 filter (which AND-pins every span read to that run) — that is what scopes the
 analysis. The matching **Experiment** entity registered on the `-oracle` workspace
-is metadata for the UI (run-picker + leaderboard), not the scoping mechanism. So
-workspaces stop accumulating and each run reads only its own traces. (Old runs'
-spans age out by Intake retention; the Experiment entities are cheap and
-soft-deletable.)
+is metadata for the UI (run-picker + leaderboard), not the scoping mechanism.
+For standard Platform subjects, every `analyze` also creates a separate
+Evaluation under the `nemo-analyst` Experiment and associates the Analyst's own
+OTLP trace with that Evaluation and the subject-derived test case. The source
+Evaluation ID scopes what the Analyst reads; the Analyst Evaluation ID tags what
+the Analyst emits. Workspaces therefore stop accumulating while each source run
+still reads only its own traces. (Old spans age out by Intake retention;
+Experiment and Evaluation entities are soft-deletable.)
 
 Keys come from `evaluation/.env` (see below), so the commands need no inline env. **`doctor`**
 prints a per-subject readiness checklist — on a fresh clone, run it first and it tells you

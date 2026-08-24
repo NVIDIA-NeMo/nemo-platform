@@ -47,7 +47,7 @@ def test_runner_info_is_required_by_the_runner_contract() -> None:
 
 
 def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() -> None:
-    """All eight shipped runners: a curated name (not a class name) and the settings that change results.
+    """Every shipped runner: a curated name (not a class name) and the settings that change results.
 
     Provenance that omits a result-shaping setting is worse than none — two runs that behaved
     differently would record identical metadata — so assert each runner surfaces its own knobs.
@@ -55,7 +55,6 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
     from pathlib import Path
 
     from nemo_evaluator_sdk.agent_eval.runtimes.callable_runtime import CallableAgentTaskRunner
-    from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime, CodexDockerCliAgentRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.container_runtime import FabricContainerRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
@@ -74,8 +73,6 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
     harness = {"harness": {"adapter_id": "nvidia.fabric.codex"}}
     runners = [
         (CallableAgentTaskRunner(_agent_fn), "callable", {"agent_fn", "parallelism"}),
-        (CodexCliAgentRuntime(), "codex_cli", {"model", "timeout_s", "codex_bin", "prompt_builder"}),
-        (CodexDockerCliAgentRuntime(), "codex_docker_cli", {"model", "timeout_s", "codex_bin", "prompt_builder"}),
         (DockerSandboxAgentRuntime(), "docker_sandbox", {"model", "image", "timeout_s", "instructions"}),
         (
             FabricAgentRuntime(config=harness),
@@ -283,8 +280,8 @@ def test_model_provenance_records_the_endpoint_and_invocation_params() -> None:
 def _load_example(name: str):
     """Import an example runtime module.
 
-    The example runtimes use relative imports, so they are imported as a package (rather than loaded
-    by path like the standalone codex_docker example) with the SDK package root on sys.path.
+    The example runtimes use relative imports, so they are imported as a package with the SDK
+    package root on sys.path.
     """
     import importlib
     import sys

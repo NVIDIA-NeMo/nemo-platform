@@ -19,13 +19,13 @@ import type {
   GuardrailConfigFilter,
   GuardrailsListGuardrailConfigsParams,
 } from '@nemo/sdk/generated/platform/schema';
-import { Badge, Button, Flex, Text } from '@nvidia/foundations-react-core';
+import { Badge, Button, type DropdownEntry, Flex, Text } from '@nvidia/foundations-react-core';
 import {
   getMainModelName,
   getRailCounts,
 } from '@studio/components/dataViews/GuardrailsDataView/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Copy, Trash } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface GuardrailsDataViewProps {
@@ -155,14 +155,12 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
         rowActionsColumn({
           size: ROW_ACTIONS_COLUMN_SIZE,
           enableResizing: false,
-          rowActions: (config: GuardrailConfig) => [
+          rowActions: (config: GuardrailConfig): DropdownEntry[] => [
             {
-              slotLeft: <Copy />,
               children: 'Duplicate',
               onSelect: () => onRequestDuplicate?.(config),
             },
             {
-              slotLeft: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => onRequestDelete?.(config),

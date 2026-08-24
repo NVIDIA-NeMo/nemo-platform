@@ -36,6 +36,7 @@ from ...types.access_keys import access_key_list_params, access_key_create_param
 from ...types.access_keys.access_key_list_response import AccessKeyListResponse
 from ...types.access_keys.access_key_create_response import AccessKeyCreateResponse
 from ...types.access_keys.access_key_revoke_response import AccessKeyRevokeResponse
+from ...types.access_keys.access_key_status_change_response import AccessKeyStatusChangeResponse
 
 __all__ = ["AccessKeysResource", "AsyncAccessKeysResource"]
 
@@ -172,7 +173,7 @@ class AccessKeysResource(SyncAPIResource):
         Revoke Access Key
 
         Args:
-          jti: Stable JWT ID of the Scoped Access Key to revoke.
+          jti: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
 
           extra_headers: Send extra headers
 
@@ -190,6 +191,76 @@ class AccessKeysResource(SyncAPIResource):
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
             cast_to=AccessKeyRevokeResponse,
+        )
+
+    def suspend(
+        self,
+        jti: str,
+        *,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> AccessKeyStatusChangeResponse:
+        """
+        Suspend Access Key
+
+        Args:
+          jti: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if not jti:
+            raise ValueError(f"Expected a non-empty value for `jti` but received {jti!r}")
+        return self._post(
+            path_template("/apis/auth/v2/access-keys/{jti}/suspend", jti=jti),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=AccessKeyStatusChangeResponse,
+        )
+
+    def unsuspend(
+        self,
+        jti: str,
+        *,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> AccessKeyStatusChangeResponse:
+        """
+        Unsuspend Access Key
+
+        Args:
+          jti: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if not jti:
+            raise ValueError(f"Expected a non-empty value for `jti` but received {jti!r}")
+        return self._post(
+            path_template("/apis/auth/v2/access-keys/{jti}/unsuspend", jti=jti),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=AccessKeyStatusChangeResponse,
         )
 
 
@@ -325,7 +396,7 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         Revoke Access Key
 
         Args:
-          jti: Stable JWT ID of the Scoped Access Key to revoke.
+          jti: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
 
           extra_headers: Send extra headers
 
@@ -345,6 +416,76 @@ class AsyncAccessKeysResource(AsyncAPIResource):
             cast_to=AccessKeyRevokeResponse,
         )
 
+    async def suspend(
+        self,
+        jti: str,
+        *,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> AccessKeyStatusChangeResponse:
+        """
+        Suspend Access Key
+
+        Args:
+          jti: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if not jti:
+            raise ValueError(f"Expected a non-empty value for `jti` but received {jti!r}")
+        return await self._post(
+            path_template("/apis/auth/v2/access-keys/{jti}/suspend", jti=jti),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=AccessKeyStatusChangeResponse,
+        )
+
+    async def unsuspend(
+        self,
+        jti: str,
+        *,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> AccessKeyStatusChangeResponse:
+        """
+        Unsuspend Access Key
+
+        Args:
+          jti: Stable JWT ID of the Scoped Access Key for the lifecycle operation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if not jti:
+            raise ValueError(f"Expected a non-empty value for `jti` but received {jti!r}")
+        return await self._post(
+            path_template("/apis/auth/v2/access-keys/{jti}/unsuspend", jti=jti),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=AccessKeyStatusChangeResponse,
+        )
+
 
 class AccessKeysResourceWithRawResponse:
     def __init__(self, access_keys: AccessKeysResource) -> None:
@@ -358,6 +499,12 @@ class AccessKeysResourceWithRawResponse:
         )
         self.delete = to_raw_response_wrapper(
             access_keys.delete,
+        )
+        self.suspend = to_raw_response_wrapper(
+            access_keys.suspend,
+        )
+        self.unsuspend = to_raw_response_wrapper(
+            access_keys.unsuspend,
         )
 
 
@@ -374,6 +521,12 @@ class AsyncAccessKeysResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             access_keys.delete,
         )
+        self.suspend = async_to_raw_response_wrapper(
+            access_keys.suspend,
+        )
+        self.unsuspend = async_to_raw_response_wrapper(
+            access_keys.unsuspend,
+        )
 
 
 class AccessKeysResourceWithStreamingResponse:
@@ -389,6 +542,12 @@ class AccessKeysResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             access_keys.delete,
         )
+        self.suspend = to_streamed_response_wrapper(
+            access_keys.suspend,
+        )
+        self.unsuspend = to_streamed_response_wrapper(
+            access_keys.unsuspend,
+        )
 
 
 class AsyncAccessKeysResourceWithStreamingResponse:
@@ -403,4 +562,10 @@ class AsyncAccessKeysResourceWithStreamingResponse:
         )
         self.delete = async_to_streamed_response_wrapper(
             access_keys.delete,
+        )
+        self.suspend = async_to_streamed_response_wrapper(
+            access_keys.suspend,
+        )
+        self.unsuspend = async_to_streamed_response_wrapper(
+            access_keys.unsuspend,
         )

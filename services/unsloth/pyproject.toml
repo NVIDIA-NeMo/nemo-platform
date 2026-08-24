@@ -15,8 +15,6 @@ dependencies = [
     "pydantic-settings>=2.6.1",
     "httpx>=0.27.0",
     "tenacity>=8.5.0",
-    "wandb>=0.28.0",
-    "mlflow-skinny>=3.11.1,<3.12.0",
 ]
 
 # Heavy ML deps live behind an optional extra. The package itself is
@@ -26,6 +24,10 @@ dependencies = [
 version = "0.0.0"
 
 [project.optional-dependencies]
+integrations = [
+    "wandb>=0.28.2",
+    "mlflow-skinny>=3.13.0,<3.14.0",
+]
 # We deliberately don't pin transformers / trl / peft / accelerate / bitsandbytes
 # here. Unsloth's own pyproject.toml has *precise* constraints for these
 # (including explicit !=X.Y.Z blocklists for known-broken releases of

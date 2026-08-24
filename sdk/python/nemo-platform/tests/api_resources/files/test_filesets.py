@@ -60,6 +60,14 @@ class TestFilesets:
                     "schema_defs": {"foo": {"foo": "bar"}},
                     "schemas_by_path": {"foo": {"foo": "bar"}},
                 },
+                "environment": {
+                    "format": "format",
+                    "name": "name",
+                    "adapter_agent": "adapter_agent",
+                    "config_paths": ["string"],
+                    "hub_id": "hub_id",
+                    "vf_env_id": "vf_env_id",
+                },
                 "model": {
                     "tool_calling": {
                         "auto_tool_choice": True,
@@ -191,6 +199,14 @@ class TestFilesets:
                     "schema": {"foo": "bar"},
                     "schema_defs": {"foo": {"foo": "bar"}},
                     "schemas_by_path": {"foo": {"foo": "bar"}},
+                },
+                "environment": {
+                    "format": "format",
+                    "name": "name",
+                    "adapter_agent": "adapter_agent",
+                    "config_paths": ["string"],
+                    "hub_id": "hub_id",
+                    "vf_env_id": "vf_env_id",
                 },
                 "model": {
                     "tool_calling": {
@@ -408,6 +424,14 @@ class TestAsyncFilesets:
                     "schema_defs": {"foo": {"foo": "bar"}},
                     "schemas_by_path": {"foo": {"foo": "bar"}},
                 },
+                "environment": {
+                    "format": "format",
+                    "name": "name",
+                    "adapter_agent": "adapter_agent",
+                    "config_paths": ["string"],
+                    "hub_id": "hub_id",
+                    "vf_env_id": "vf_env_id",
+                },
                 "model": {
                     "tool_calling": {
                         "auto_tool_choice": True,
@@ -539,6 +563,14 @@ class TestAsyncFilesets:
                     "schema": {"foo": "bar"},
                     "schema_defs": {"foo": {"foo": "bar"}},
                     "schemas_by_path": {"foo": {"foo": "bar"}},
+                },
+                "environment": {
+                    "format": "format",
+                    "name": "name",
+                    "adapter_agent": "adapter_agent",
+                    "config_paths": ["string"],
+                    "hub_id": "hub_id",
+                    "vf_env_id": "vf_env_id",
                 },
                 "model": {
                     "tool_calling": {

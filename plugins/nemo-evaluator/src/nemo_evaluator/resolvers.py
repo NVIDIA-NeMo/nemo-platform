@@ -10,7 +10,6 @@ import logging
 from collections.abc import Awaitable
 from typing import Protocol, TypeVar, cast, runtime_checkable
 
-from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values.models import Model, ModelRef
 from nemo_platform import NotFoundError
 from nemo_platform.types.inference import ModelProvider as PlatformModelProvider
@@ -128,6 +127,5 @@ class PlatformModelResolver:
         return Model(
             url=endpoint,
             name=name,
-            format=ModelFormat.NVIDIA_NIM,
             host_url=host_url,
         )

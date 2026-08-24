@@ -1,62 +1,50 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# NeMo Eval Author Plugin
+# NeMo Eval Author
 
-Library-only plugin that owns the Eval Author agent (`eval_author/`).
+Two skills that an agent reads to work on the evaluation suites in a user's own
+repository. There is no CLI, no service, and no importable code, so this directory
+builds no package at all. A customer points their agent at `skills/` and nothing
+gets installed.
 
-## Direction of travel
+| Skill | Role |
+| --- | --- |
+| [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
+| [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
 
-**Eval Author is meant to become standalone, with nothing imported from
-Experimentalist.** Prefer duplicating a helper over sharing one, even when sharing
-looks tidier.
+## Where findings go
 
-Right now the two packages depend on each other:
+`eval-author-discover` leaves a report at `.eval-author/discovery.md`, carrying the
+JSON as front matter so a later model reads the verdict without Harbor. It is
+visible and worth committing: a teammate who reads it skips the discovery pass.
 
-| Arrow | Status | Why |
-| --- | --- | --- |
-| Experimentalist → Eval Author | permanent | insight mode imports `EvalAuthor` and `EvalAuthorConfig` at module scope |
-| Eval Author → Experimentalist | temporary | still borrows evaluator/Harbor, staging, trace, tools, cache, backend |
+The scripts write no files. They report to stdout and the skill tells the agent
+where to save, because that is a judgement about someone's repository.
 
-[`tests/test_plugin_boundary.py`](tests/test_plugin_boundary.py) pins the second list
-so it can only shrink, and names what each remaining import is still for. `uv`
-resolves the current cycle; install both packages with:
+## Why skills instead of an agent
 
-```bash
-uv sync --group experimentalist
-```
+Harbor tasks live in the customer's repository, so an agent that proposes changes
+has to write to that repository. Customers were unwilling to grant that, sandboxed
+or not. A skill inverts the arrangement: the customer's own agent does the work,
+and this directory only supplies the instructions and the deterministic scripts.
 
-## Public API
+The Eval Author agent that Experimentalist insight mode still uses lives in
+[the Experimentalist plugin](../nemo-experimentalist/src/nemo_experimentalist_plugin/eval_author/README.md).
 
-```python
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor, build_eval_author_agent
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.eval_author.run import run_eval_author
+## Dependencies
 
-# Still borrowed from Experimentalist, and on the way out. Treat these as Eval Author's
-# own types once they move; do not build new code on the Experimentalist paths.
-from nemo_experimentalist_plugin.entities import Dataset, DatasetRef
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
-from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import TraceAnalyzer
-from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
-```
+The scripts under `skills/*/scripts/` import nothing beyond the standard library and
+Harbor itself, so they run on whatever Python the customer already has. Where a real
+answer needs a provider, the skill defers to the provider's own validators rather
+than guessing from file layout, which is why `eval-author-discover` probes for an
+installed Harbor and asks Harbor to judge each config.
 
-## Agent models
+`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
+the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that
+make Harbor judge a fixture suite skip when Harbor is absent, which is why this
+directory declares no dependencies and appears in no dependency group.
 
-Run `nemo setup` and select the default and fast models for the active Platform
-context. Eval Author uses the default model for authoring and the fast model for
-summarization. Press Enter at the fast-model prompt to reuse the default model.
-
-The selections are workspace-qualified Platform Model Entity IDs. The Platform
-routes each request to the provider registered for that entity and reads its
-credential from Platform Secrets; Eval Author does not accept separate provider,
-endpoint, key, or model environment variables.
-
-For non-interactive and isolated environments, `NEMO_DEFAULT_MODEL` and
-`NEMO_FAST_MODEL` can override the stored selections. Values must still use
-`workspace/model-name` and refer to Model Entities on the target Platform.
-
-A `nemo agents eval-author` CLI is registered under `nemo.cli.agents` and
-mounted by the agents plugin. `discover` is implemented; `audit`, `propose`,
-`run`, and `doctor` remain placeholders. The library runner already uses the
-configured Platform model pair.
+Adding a runtime dependency to a bundled script is a breaking change for anyone who
+copied the skill, so the contract test walks each script's imports and fails on
+anything outside the standard library, a sibling module, or Harbor.

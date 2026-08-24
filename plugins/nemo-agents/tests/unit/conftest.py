@@ -53,3 +53,11 @@ def ctx(tmp_path: Path) -> JobContext:
         storage=StoragePaths(ephemeral=ephemeral, persistent=persistent),
         results=LocalJobResults(root=persistent / "results"),
     )
+
+
+@pytest.fixture(autouse=True)
+def _released_contract_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source checkout reports a version the packaging guard rejects."""
+    import nemo_agents_plugin.container.template as template
+
+    monkeypatch.setattr(template, "get_contract_version", lambda: "1.0.0")

@@ -21,6 +21,8 @@ export interface ErrorPanelProps {
   attributes?: {
     ErrorMessage?: ComponentProps<typeof ErrorMessage>;
   };
+  /** The underlying error, when known (e.g. resolved by `RouteErrorPanel` from `useRouteError`). */
+  error?: unknown;
 }
 
 /**
@@ -43,38 +45,20 @@ const getErrorCode = (error: unknown): string | undefined => {
 };
 
 /**
- * Generic error panel component for React Router's errorElement.
+ * Generic, hook-free error panel. Renders from the `error`/`errorMessage` props it is given —
+ * it never reads a data-router error itself, so it is safe to render inline (e.g. a DataView's
+ * `renderErrorState`) as well as anywhere else outside a route `errorElement`.
  *
- * Use this as the errorElement in your route configuration to display
- * error UI with a custom title and error message attributes.
+ * Use {@link RouteErrorPanel} instead when rendering as a route's `errorElement`.
  *
  * @example
  * ```tsx
- * // In your route configuration:
- * {
- *   path: ROUTES.workspace.evaluation,
- *   element: <EvaluationLayout />,
- *   errorElement: <ErrorPanel title="Evaluator" />,
- * }
- *
- * // With custom error message props:
- * {
- *   path: ROUTES.workspace.filesets,
- *   element: <FilesetLayout />,
- *   errorElement: (
- *     <ErrorPanel
- *       title="Data Store"
- *       attributes={{
- *         slotMedia: <CustomIcon />,
- *         slotFooter: <CustomFooter />,
- *       }}
- *     />
- *   ),
- * }
+ * renderErrorState: () => (
+ *   <ErrorPanel errorMessage={getErrorMessage(error ?? new Error('Failed to load items'))} />
+ * )
  * ```
  */
-export const ErrorPanel: FC<ErrorPanelProps> = ({ title, errorMessage, attributes }) => {
-  const error = useRouteError();
+export const ErrorPanel: FC<ErrorPanelProps> = ({ title, errorMessage, attributes, error }) => {
   const errorCode = getErrorCode(error);
   const errorMessageInternal =
     errorMessage ?? getRouterErrorMessage(error) ?? DEFAULT_ERROR_MESSAGE;
@@ -115,4 +99,41 @@ export const ErrorPanel: FC<ErrorPanelProps> = ({ title, errorMessage, attribute
       </Panel>
     </Stack>
   );
+};
+
+/**
+ * Route-only wrapper around {@link ErrorPanel}. Resolves the current route error via
+ * `useRouteError()` — which is only valid inside a data router's `errorElement` tree — and hands
+ * it down to the hook-free `ErrorPanel`.
+ *
+ * Use this as the `errorElement` in your route configuration to display error UI with a custom
+ * title and error message attributes.
+ *
+ * @example
+ * ```tsx
+ * // In your route configuration:
+ * {
+ *   path: ROUTES.workspace.evaluation,
+ *   element: <EvaluationLayout />,
+ *   errorElement: <RouteErrorPanel title="Evaluator" />,
+ * }
+ *
+ * // With custom error message props:
+ * {
+ *   path: ROUTES.workspace.filesets,
+ *   element: <FilesetLayout />,
+ *   errorElement: (
+ *     <RouteErrorPanel
+ *       title="Data Store"
+ *       attributes={{
+ *         ErrorMessage: { slotMedia: <CustomIcon />, slotFooter: <CustomFooter /> },
+ *       }}
+ *     />
+ *   ),
+ * }
+ * ```
+ */
+export const RouteErrorPanel: FC<Omit<ErrorPanelProps, 'error'>> = (props) => {
+  const error = useRouteError();
+  return <ErrorPanel {...props} error={error} />;
 };

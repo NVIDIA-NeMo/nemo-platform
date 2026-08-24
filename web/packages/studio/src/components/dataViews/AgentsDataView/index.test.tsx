@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { AgentsTable } from '@studio/components/dataViews/AgentsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
@@ -109,9 +110,11 @@ describe('CombinedAgentsTable', () => {
       renderTable();
 
       expect(
-        await screen.findByText('No Agents Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText(ENTITY_EMPTY_STATES.agents.heading, undefined, {
+          timeout: XL_SELECTOR_TIMEOUT,
+        })
       ).toBeInTheDocument();
-      expect(screen.getByText('No agents have been created yet.')).toBeInTheDocument();
+      expect(screen.getByText(ENTITY_EMPTY_STATES.agents.subheading)).toBeInTheDocument();
     });
   });
 

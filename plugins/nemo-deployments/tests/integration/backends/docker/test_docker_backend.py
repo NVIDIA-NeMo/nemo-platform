@@ -49,8 +49,19 @@ def _worker_port_base(worker_id: str) -> int:
     return TEST_PORT_RANGE_START + worker_index * TEST_PORT_RANGE_SIZE
 
 
-def _build_docker_backend(worker_id: str = "master", **config_overrides: Any) -> DockerDeploymentBackend:
-    mock_entities = AsyncMock()
+@pytest.fixture
+def mock_entities() -> AsyncMock:
+    return AsyncMock()
+
+
+def _build_docker_backend(
+    worker_id: str = "master",
+    *,
+    mock_entities: AsyncMock | None = None,
+    **config_overrides: Any,
+) -> DockerDeploymentBackend:
+    if mock_entities is None:
+        mock_entities = AsyncMock()
     mock_sdk = MagicMock()
     port_base = _worker_port_base(worker_id)
     executor_config: dict[str, Any] = {
@@ -70,8 +81,8 @@ def _build_docker_backend(worker_id: str = "master", **config_overrides: Any) ->
 
 
 @pytest.fixture
-def docker_backend(worker_id: str) -> DockerDeploymentBackend:
-    return _build_docker_backend(worker_id)
+def docker_backend(worker_id: str, mock_entities: AsyncMock) -> DockerDeploymentBackend:
+    return _build_docker_backend(worker_id, mock_entities=mock_entities)
 
 
 def _never_config() -> DeploymentConfig:
@@ -148,9 +159,12 @@ async def test_volume_lifecycle(docker_backend: DockerDeploymentBackend) -> None
 
 
 @pytest.mark.asyncio
-async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend) -> None:
+async def test_never_deployment_succeeds(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
     config = _never_config()
-    docker_backend._entities.get.return_value = config  # ty: ignore[unresolved-attribute]
+    mock_entities.get.return_value = config
     c_name = container_name("itest", "echo-job")
     client = docker.from_env()
 
@@ -189,7 +203,14 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds(worker_id: s
         oneshot_observe_timeout_seconds=observe_timeout_seconds,
     )
     config = _never_sleep_config(sleep_seconds=job_sleep_seconds)
-    docker_backend._entities.get.return_value = config  # ty: ignore[unresolved-attribute]
+    deployment = Deployment(name="sleep-job", workspace="itest", deployment_config="sleep-cfg")
+
+    async def get_side_effect(entity_type, name, workspace=None):
+        if entity_type is Deployment:
+            return deployment
+        return config
+
+    docker_backend._entities.get.side_effect = get_side_effect  # ty: ignore[unresolved-attribute]
     c_name = container_name("itest", "sleep-job")
     client = docker.from_env()
 
@@ -233,7 +254,55 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds(worker_id: s
 
 
 @pytest.mark.asyncio
-async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend) -> None:
+async def test_removed_never_deployment_reports_missing(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    config = _never_config()
+    deployment = Deployment(name="removed-job", workspace="itest", deployment_config="echo-cfg")
+
+    async def get_side_effect(entity_type, name, workspace=None):
+        if entity_type is Deployment:
+            return deployment
+        return config
+
+    mock_entities.get.side_effect = get_side_effect
+    c_name = container_name("itest", "removed-job")
+    client = docker.from_env()
+
+    try:
+        created = await docker_backend.create_deployment(
+            workspace="itest",
+            name="removed-job",
+            config_name="echo-cfg",
+            labels={"managed-by": MANAGED_BY_LABEL},
+            backend_config={},
+        )
+        assert created.status == "SUCCEEDED"
+        assert created.exit_code == 0
+
+        container = client.containers.get(c_name)
+        result = container.wait(timeout=20)
+        assert result["StatusCode"] == 0
+        container.remove(force=True)
+
+        status = await docker_backend.read_status(workspace="itest", name="removed-job")
+
+        assert status.status == "FAILED"
+        assert status.exit_code is None
+        assert status.error_details == {
+            "expected_container_name": c_name,
+        }
+    finally:
+        await docker_backend.delete_deployment("itest", "removed-job")
+        force_remove_container(client, c_name)
+
+
+@pytest.mark.asyncio
+async def test_lost_detection_for_always(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
     deployment = Deployment(name="lost-srv", workspace="itest", deployment_config="http-cfg")
     config = _always_http_config()
 
@@ -242,7 +311,7 @@ async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend
             return deployment
         return config
 
-    docker_backend._entities.get.side_effect = get_side_effect  # ty: ignore[unresolved-attribute]
+    mock_entities.get.side_effect = get_side_effect
     c_name = container_name("itest", "lost-srv")
     client = docker.from_env()
 

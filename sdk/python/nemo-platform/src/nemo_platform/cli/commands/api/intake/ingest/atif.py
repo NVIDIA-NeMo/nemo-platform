@@ -36,7 +36,7 @@ def create_atif(
         str | None,
         typer.Option(
             "--evaluation-context",
-            help='Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)',
+            help="Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)",
         ),
     ] = None,
     extra: Annotated[str | None, typer.Option("--extra", help="JSON string")] = None,

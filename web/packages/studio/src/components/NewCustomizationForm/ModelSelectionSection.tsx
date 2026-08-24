@@ -7,7 +7,10 @@ import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/
 import { FormField, Stack } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import {
+  MODEL_FIELD_BY_BACKEND,
+  type CustomizationFormFields,
+} from '@studio/util/forms/customization';
 import { useState } from 'react';
 import { useController, useFormContext } from 'react-hook-form';
 
@@ -17,7 +20,7 @@ export const ModelSelectionSection = () => {
   const backend = watch('backend');
   const disabled = formState.isSubmitting;
 
-  const modelFieldName = backend === 'automodel' ? 'automodel.model' : 'unsloth.model.name';
+  const modelFieldName = MODEL_FIELD_BY_BACKEND[backend];
 
   const { field: modelField, fieldState: modelFieldState } = useController({
     control,

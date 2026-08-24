@@ -60,6 +60,7 @@ def submit_and_collect(client: Any, output_dir: Path) -> tuple[Any, Path]:
 def store_resources(client: Any) -> None:
     """Store one metric, task, and taskset."""
     from nemo_evaluator.api.schemas import (
+        EvaluatorTaskDefinition,
         MetricRef,
         TaskInput,
         TaskInputs,
@@ -74,14 +75,17 @@ def store_resources(client: Any) -> None:
     client.evaluator.tasks.create(
         "capital-france",
         task=TaskInput(
-            intent="Name the capital of France.",
-            inputs=TaskInputs(instruction="What is the capital of France?"),
-            metrics=[MetricRef("default/answer-exact")],
+            spec=EvaluatorTaskDefinition(
+                kind="evaluator",
+                intent="Name the capital of France.",
+                inputs=TaskInputs(instruction="What is the capital of France?"),
+                metrics=[MetricRef("answer-exact")],
+            ),
         ),
     )
     client.evaluator.tasksets.create(
         "geography",
-        taskset=TasksetInput(tasks=[TaskRef("default/capital-france")]),
+        taskset=TasksetInput(tasks=[TaskRef("capital-france")]),
     )
 
 
@@ -91,7 +95,7 @@ def build_agent_eval_spec(metric_bundle: Any) -> Any:
     from nemo_evaluator.jobs.agent_spec import (
         AgentEvalInputSpec,
         AgentEvalTaskInput,
-        CodexRunnerTarget,
+        FabricRunnerTarget,
     )
 
     return AgentEvalInputSpec(
@@ -103,7 +107,12 @@ def build_agent_eval_spec(metric_bundle: Any) -> Any:
                 metrics=[metric_bundle],
             )
         ],
-        target=CodexRunnerTarget(),
+        target=FabricRunnerTarget(
+            config={
+                "metadata": {"name": "geography-smoke"},
+                "harness": {"adapter_id": "nvidia.fabric.codex"},
+            }
+        ),
         max_concurrent_tasks=2,
         labels={"benchmark": "geography-smoke"},
     )

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { DATA_DESIGNER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -50,27 +50,27 @@ export const dataDesignerRoutes: RouteObject[] = gateDataDesignerRoutes([
   {
     path: ROUTES.workspace.dataDesignerJobList,
     element: DataDesignerJobListRoute ? <DataDesignerJobListRoute /> : null,
-    errorElement: <ErrorPanel title="Data Designer" />,
+    errorElement: <RouteErrorPanel title="Data Designer" />,
   },
   {
     path: ROUTES.workspace.dataDesignerJobDetails,
     element: DataDesignerJobDetailsRoute ? <DataDesignerJobDetailsRoute /> : null,
-    errorElement: <ErrorPanel title="Data Designer" />,
+    errorElement: <RouteErrorPanel title="Data Designer" />,
   },
   {
     path: ROUTES.workspace.dataDesignerJobNew,
     element: NewDataDesignerJobRoute ? <NewDataDesignerJobRoute /> : null,
-    errorElement: <ErrorPanel title="Data Designer" />,
+    errorElement: <RouteErrorPanel title="Data Designer" />,
   },
   {
     path: ROUTES.workspace.dataDesignerJobBuild,
     element: DataDesignerJobBuildRoute ? <DataDesignerJobBuildRoute /> : null,
-    errorElement: <ErrorPanel title="Data Designer" />,
+    errorElement: <RouteErrorPanel title="Data Designer" />,
   },
   {
     path: ROUTES.workspace.dataDesignerJobNewLegacy,
     element: LegacyNewDataDesignerJobRoute ? <LegacyNewDataDesignerJobRoute /> : null,
-    errorElement: <ErrorPanel title="Data Designer" />,
+    errorElement: <RouteErrorPanel title="Data Designer" />,
   },
 ]);
 

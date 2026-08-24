@@ -281,6 +281,8 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 * `create`: Create a Scoped Access Key for the currently...
 * `list`: List Scoped Access Keys owned by the currently...
 * `revoke`: Revoke a Scoped Access Key owned by the currently...
+* `suspend`: Temporarily suspend a Scoped Access Key owned by the...
+* `unsuspend`: Restore a suspended Scoped Access Key owned by the...
 
 ##### nemo auth access-keys create
 
@@ -334,6 +336,44 @@ nemo auth access-keys revoke [OPTIONS] JTI
 **Arguments:**
 
 * `<JTI>`: Stable ID of the Scoped Access Key to revoke.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys suspend
+
+Temporarily suspend a Scoped Access Key owned by the current user.
+
+Unlike revocation, suspension is reversible until the key expires.
+
+**Usage:**
+
+```shell
+nemo auth access-keys suspend [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to suspend.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys unsuspend
+
+Restore a suspended Scoped Access Key owned by the current user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys unsuspend [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to unsuspend.
 
 **Help:**
 
@@ -1354,7 +1394,7 @@ nemo files filesets create [OPTIONS] [NAME]
 
 Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
 * `--project`: The name of the project associated with this fileset.
-* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, environment, generic, model]
 * `--storage`: The storage configuration for the fileset. If not provided, uses default storage. (JSON string)
 * `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
 
@@ -1504,7 +1544,7 @@ nemo files filesets update [OPTIONS] NAME
 
 Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
 * `--project`: The name of the project associated with this fileset.
-* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, environment, generic, model]
 
 **Help:**
 
@@ -6599,7 +6639,7 @@ nemo intake ingest atif create [OPTIONS]
 * `--agent`: JSON string
 * `--schema-version <CHOICE>`: (required) [possible values: ATIF-v1.0, ATIF-v1.1, ATIF-v1.2, ATIF-v1.3, ATIF-v1.4, ATIF-v1.5, ATIF-v1.6, ATIF-v1.7]
 * `--continued-trajectory-ref`
-* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--evaluation-context`: Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)
 * `--extra`: JSON string
 * `--final-metrics`: JSON string
 * `--notes`
@@ -6669,7 +6709,7 @@ nemo intake ingest chat-completions create [OPTIONS]
 * `--cost-input-usd <FLOAT>`: Estimated input-token cost of this model call in USD.
 * `--cost-output-usd <FLOAT>`: Estimated output-token cost of this model call in USD.
 * `--cost-usd <FLOAT>`: Total estimated cost of this model call in USD. This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
-* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--evaluation-context`: Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)
 * `--provider`
 * `--session-id`: Groups related chat-completions calls without forcing them into the same trace.
 * `--trace-id`: Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.
@@ -6925,10 +6965,11 @@ nemo intake spans list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation_name, test_case_name, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
 * `--filter.agent-id`
 * `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
@@ -6938,6 +6979,7 @@ Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, te
 * `--filter.source`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 * `--filter.tool-name`
 * `--filter.trace-id`
 
@@ -7072,6 +7114,7 @@ Filter spans by the same fields as the span list endpoint, then group matching s
 * `--filter.agent-id`
 * `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
@@ -7081,6 +7124,7 @@ Filter spans by the same fields as the span list endpoint, then group matching s
 * `--filter.source`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 * `--filter.tool-name`
 * `--filter.trace-id`
 
@@ -7111,8 +7155,49 @@ nemo intake traces [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
+* `get-metrics`: Get Trace Metrics
 * `list`: List Traces
 * `get`: Get Trace
+
+##### nemo intake traces get-metrics
+
+Get Trace Metrics
+
+**Usage:**
+
+```shell
+nemo intake traces get-metrics [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--bucket <CHOICE>`: Time bucket granularity. [possible values: total, hour, day, week, month]
+* `--timezone`: IANA timezone the buckets are aligned to, e.g. America/Los_Angeles.
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  started_at: \{gte: str, lte: str}
+
+Filter the traces the metrics are computed over. Accepts the same fields as the traces list, so agent_name scopes the rollup to one agent. Without a started_at lower bound the rollup covers the last 7 days.
+* `--filter.id`
+* `--filter.agent-name`
+* `--filter.evaluation-id`
+* `--filter.evaluation-name`
+* `--filter.session-id`
+* `--filter.status`
+* `--filter.test-case-id`
+* `--filter.test-case-name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
 ##### nemo intake traces list
 
@@ -7139,12 +7224,15 @@ nemo intake traces list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.
+Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, test_case_name, and agent_name.
 * `--filter.id`
+* `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.session-id`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 
 **Help:**
 

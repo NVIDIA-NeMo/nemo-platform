@@ -12,7 +12,7 @@ whole path end-to-end against a real entity store + Files service — the part t
 - the derived metric is real (retrievable, ``derived=True``, Files-backed);
 - it is hidden from the default ``/metrics`` listing but visible with ``include_derived``.
 
-Pure CRUD (no codex/IGW), so it only needs the host subprocess backend. Shares the evaluator-plugin
+Pure CRUD (no online target or IGW), so it only needs the host subprocess backend. Shares the evaluator-plugin
 integration opt-in (``RUN_AGENT_EVAL_INTEGRATION``) and the session-scoped ``subprocess_platform``.
 """
 
