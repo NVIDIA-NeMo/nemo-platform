@@ -20,6 +20,8 @@ from typing import Any
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.method import method
+from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
+from nemo_platform_plugin.virtual_models.client import AsyncVirtualModelsClient, VirtualModelsClient
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -491,6 +493,21 @@ class AuditorCompat:
     submit = method(_au_submit)
     list_jobs = method(_au_list_jobs)
 
+    def plugin_status(self) -> Any:
+        """Delegate to the auditor plugin SDK resource."""
+        from nemo_platform_plugin.discovery import discover_sdk
+
+        plugins = discover_sdk()
+        if "auditor" not in plugins:
+            raise AttributeError("auditor plugin not found")
+        if isinstance(self, AsyncNemoClient):
+            resource_cls = getattr(plugins["auditor"], "async_resource", None)
+        else:
+            resource_cls = getattr(plugins["auditor"], "sync_resource", None)
+        if resource_cls is None:
+            raise AttributeError("auditor plugin has no resource")
+        return resource_cls(self).plugin_status()
+
     @property
     def configs(self) -> Any:
         if isinstance(self, AsyncNemoClient):
@@ -589,6 +606,36 @@ class _AsyncMetricsCompat(_MetricsCompatMixin, AsyncNemoClient):
 
 class EvaluatorCompat:
     submit = method(_ev_submit)
+
+    def plugin_status(self) -> Any:
+        """Delegate to the evaluator plugin SDK resource."""
+        from nemo_platform_plugin.discovery import discover_sdk
+
+        plugins = discover_sdk()
+        if "evaluator" not in plugins:
+            raise AttributeError("evaluator plugin not found")
+        if isinstance(self, AsyncNemoClient):
+            resource_cls = getattr(plugins["evaluator"], "async_resource", None)
+        else:
+            resource_cls = getattr(plugins["evaluator"], "sync_resource", None)
+        if resource_cls is None:
+            raise AttributeError("evaluator plugin has no resource")
+        return resource_cls(self).plugin_status()
+
+    def get_job_resource(self, job_name: str, workspace: str | None = None) -> Any:
+        """Delegate to the evaluator plugin SDK resource."""
+        from nemo_platform_plugin.discovery import discover_sdk
+
+        plugins = discover_sdk()
+        if "evaluator" not in plugins:
+            raise AttributeError("evaluator plugin not found")
+        if isinstance(self, AsyncNemoClient):
+            resource_cls = getattr(plugins["evaluator"], "async_resource", None)
+        else:
+            resource_cls = getattr(plugins["evaluator"], "sync_resource", None)
+        if resource_cls is None:
+            raise AttributeError("evaluator plugin has no resource")
+        return resource_cls(self).get_job_resource(job_name, workspace=workspace)
 
     @property
     def eval_results(self) -> Any:
@@ -969,11 +1016,11 @@ class _InferenceProvidersCompatMixin:
     update_status = method(_inf_prov_update_status)
 
 
-class _InferenceProvidersCompat(_InferenceProvidersCompatMixin, NemoClient):
+class _InferenceProvidersCompat(_InferenceProvidersCompatMixin, ModelsClient):
     pass
 
 
-class _AsyncInferenceProvidersCompat(_InferenceProvidersCompatMixin, AsyncNemoClient):
+class _AsyncInferenceProvidersCompat(_InferenceProvidersCompatMixin, AsyncModelsClient):
     pass
 
 
@@ -1024,11 +1071,11 @@ class _InferenceDeploymentsCompatMixin:
     update_status = method(_inf_dep_update_status)
 
 
-class _InferenceDeploymentsCompat(_InferenceDeploymentsCompatMixin, NemoClient):
+class _InferenceDeploymentsCompat(_InferenceDeploymentsCompatMixin, ModelsClient):
     pass
 
 
-class _AsyncInferenceDeploymentsCompat(_InferenceDeploymentsCompatMixin, AsyncNemoClient):
+class _AsyncInferenceDeploymentsCompat(_InferenceDeploymentsCompatMixin, AsyncModelsClient):
     pass
 
 
@@ -1072,11 +1119,11 @@ class _InferenceDeploymentConfigsCompatMixin:
     list = method(_inf_dc_list)
 
 
-class _InferenceDeploymentConfigsCompat(_InferenceDeploymentConfigsCompatMixin, NemoClient):
+class _InferenceDeploymentConfigsCompat(_InferenceDeploymentConfigsCompatMixin, ModelsClient):
     pass
 
 
-class _AsyncInferenceDeploymentConfigsCompat(_InferenceDeploymentConfigsCompatMixin, AsyncNemoClient):
+class _AsyncInferenceDeploymentConfigsCompat(_InferenceDeploymentConfigsCompatMixin, AsyncModelsClient):
     pass
 
 
@@ -1124,9 +1171,9 @@ class _InferenceVirtualModelsCompatMixin:
     list = method(_vm_list)
 
 
-class _InferenceVirtualModelsCompat(_InferenceVirtualModelsCompatMixin, NemoClient):
+class _InferenceVirtualModelsCompat(_InferenceVirtualModelsCompatMixin, VirtualModelsClient):
     pass
 
 
-class _AsyncInferenceVirtualModelsCompat(_InferenceVirtualModelsCompatMixin, AsyncNemoClient):
+class _AsyncInferenceVirtualModelsCompat(_InferenceVirtualModelsCompatMixin, AsyncVirtualModelsClient):
     pass
