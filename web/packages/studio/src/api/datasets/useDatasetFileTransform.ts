@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { filesUploadFile } from '@nemo/sdk/generated/platform/api';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
 import { invalidateDatasetCaches } from '@studio/api/datasets/invalidateDatasetCaches';
 import { renderTemplate } from '@studio/components/transform/renderTemplate';
 import { parseFileContent } from '@studio/util/files';
-import { useMutation, UseMutationOptions } from '@tanstack/react-query';
+import { useMutation, type UseMutationOptions } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 interface MutationProps {
@@ -40,8 +39,6 @@ export const isTransformableFilePath = (filepath: string): boolean => /\.jsonl$/
  * the user approved is exactly what is uploaded.
  */
 export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
-  const toast = useToast();
-
   const mutationFn = useCallback(
     async ({
       fileContent,
@@ -57,7 +54,9 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
 
       const { rows, failures } = parseFileContent({ content: fileContent, fileType: 'jsonl' });
       if (failures?.length) {
-        toast.error(`${failures.length} Line(s) had parsing errors.`);
+        throw new Error(
+          `${failures.length} line(s) could not be parsed, so the file was left unchanged.`
+        );
       }
       if (!rows.length) {
         throw new Error('No rows could be read from this file, so it was left unchanged.');
@@ -75,7 +74,7 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
 
       return filesUploadFile(workspace, datasetName, filepath, blob);
     },
-    [toast]
+    []
   );
 
   return useMutation({

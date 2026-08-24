@@ -68,18 +68,31 @@ describe('useDatasetFileTransform', () => {
   });
 
   it('does not upload anything when every row fails to parse', async () => {
-    // `parseFileContent` logs each unparseable line, and the parse-failure toast logs too.
+    // `parseFileContent` logs each unparseable line.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { result } = renderTransform();
 
     await expect(
       result.current.mutateAsync({ ...baseVariables, fileContent: 'not json at all' })
-    ).rejects.toThrow(/No rows could be read/);
+    ).rejects.toThrow(/could not be parsed/);
 
     expect(uploadMock).not.toHaveBeenCalled();
     warn.mockRestore();
-    error.mockRestore();
+  });
+
+  it('does not upload a partially parsed file', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = renderTransform();
+
+    await expect(
+      result.current.mutateAsync({
+        ...baseVariables,
+        fileContent: '{"task_id":"a1"}\nnot json at all\n{"task_id":"a2"}',
+      })
+    ).rejects.toThrow(/1 line\(s\) could not be parsed/);
+
+    expect(uploadMock).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('refuses to overwrite a file that is not JSONL', async () => {
