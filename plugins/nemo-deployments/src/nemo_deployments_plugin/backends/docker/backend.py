@@ -129,12 +129,20 @@ def _config_files_tar(config_files: list[ConfigFile]) -> bytes:
                 seen_dirs.add(d)
                 info = tarfile.TarInfo(name=d)
                 info.type = tarfile.DIRTYPE
-                info.mode = 0o755
+                if d == "tmp":
+                    info.mode = 0o1777
+                elif parts[0] == "tmp" and i == 2:
+                    # Configs under /tmp need one writable deployment-owned root
+                    # so hardened, non-root runtimes can create sibling workspace
+                    # and artifact directories beside the delivered config.
+                    info.mode = 0o777
+                else:
+                    info.mode = 0o755
                 tar.addfile(info)
             data = cf.content.encode("utf-8")
             info = tarfile.TarInfo(name=rel)
             info.size = len(data)
-            info.mode = 0o644
+            info.mode = cf.mode
             tar.addfile(info, io.BytesIO(data))
     return buf.getvalue()
 
