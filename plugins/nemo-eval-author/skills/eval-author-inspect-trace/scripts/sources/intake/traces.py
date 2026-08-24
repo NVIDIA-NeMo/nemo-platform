@@ -4,7 +4,7 @@
 """JSON-returning Intake span and trace queries."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, Union
 
 from sources.intake._http import IntakeClient
 
@@ -24,53 +24,40 @@ def _page_size(limit: int) -> int:
     return max(1, min(limit, _MAX_PAGE_SIZE))
 
 
-def _with_trace_ref(row: dict[str, Any]) -> dict[str, Any]:
-    result = dict(row)
-    group = result.get("group")
-    trace_id = result.get("trace_id") or (group.get("trace_id") if isinstance(group, dict) else None)
-    if trace_id:
-        result["trace_ref"] = f"intake://{trace_id}"
-    return result
+def trace_ref(trace_id: str) -> str:
+    """Build the one canonical Intake trace reference that every caller emits."""
+    return f"intake://traces/{trace_id}"
 
 
-def query_spans(
+def _since_filter(since: Optional[Union[datetime, str]]) -> Optional[dict[str, Any]]:
+    if since is None:
+        return None
+    return {"gte": since.isoformat() if isinstance(since, datetime) else since}
+
+
+def group_spans(
     client: IntakeClient,
     *,
-    filter: dict[str, Any] | None = None,
-    group_by: str | None = None,
-    sort: str | None = None,
-    mode: str = "summary",
+    by: str,
+    filter: Optional[dict[str, Any]] = None,
+    sort: Optional[str] = None,
     limit: int = DEFAULT_ROW_LIMIT,
 ) -> dict[str, Any]:
-    """Query Intake spans, either flat or grouped."""
+    """Roll spans up by one field, so a search can rank whole traces rather than spans."""
     limit = _limit(limit, MAX_ROW_LIMIT)
-    params: dict[str, Any] = {
-        "filter": filter,
-        "sort": sort or "-started_at",
-        "page_size": _page_size(limit),
-    }
-    if group_by is not None:
-        params["by"] = group_by
-        rows, truncated = client.drain("spans/groups", params, limit=limit)
-        groups = [_with_trace_ref(row) for row in rows]
-        return {
-            "groups": groups,
-            "grouped_by": group_by,
-            "count": len(groups),
-            "truncated": truncated,
-        }
-
-    params["mode"] = mode
-    rows, truncated = client.drain("spans", params, limit=limit)
-    spans = [_with_trace_ref(row) for row in rows]
-    return {"spans": spans, "count": len(spans), "truncated": truncated}
+    rows, truncated = client.drain(
+        "spans/groups",
+        {"filter": filter, "sort": sort or "-started_at", "by": by, "page_size": _page_size(limit)},
+        limit=limit,
+    )
+    return {"groups": rows, "count": len(rows), "truncated": truncated}
 
 
 def query_traces(
     client: IntakeClient,
     *,
-    filter: dict[str, Any] | None = None,
-    sort: str | None = None,
+    filter: Optional[dict[str, Any]] = None,
+    sort: Optional[str] = None,
     mode: str = "preview",
     limit: int = DEFAULT_ROW_LIMIT,
 ) -> dict[str, Any]:
@@ -89,23 +76,55 @@ def query_traces(
     return {"traces": rows, "count": len(rows), "truncated": truncated}
 
 
+def recent_traces(
+    client: IntakeClient,
+    *,
+    since: Optional[Union[datetime, str]] = None,
+    limit: int = DEFAULT_TRACE_LIMIT,
+) -> dict[str, Any]:
+    """List the most recent traces in one workspace, newest first."""
+    limit = _limit(limit, MAX_TRACE_LIMIT)
+    started_at = _since_filter(since)
+    page = query_traces(
+        client,
+        filter={"started_at": started_at} if started_at else None,
+        sort="-started_at",
+        mode="preview",
+        limit=limit,
+    )
+    traces = [_trace_entry(row["id"], row) for row in page["traces"] if row.get("id")]
+    result: dict[str, Any] = {
+        "traces": traces,
+        "count": len(traces),
+        "truncated": page["truncated"],
+    }
+    if not traces:
+        window = f" since {started_at['gte']}" if started_at else ""
+        result["note"] = (
+            f"No traces were recorded in workspace '{client.workspace}'{window}. "
+            "An empty result is not an error. Confirm the workspace and that the agent reports to Intake."
+        )
+    return result
+
+
 def find_agent_traces(
     client: IntakeClient,
     agent: str,
     *,
-    since: datetime | str | None = None,
+    since: Optional[Union[datetime, str]] = None,
     limit: int = DEFAULT_TRACE_LIMIT,
 ) -> dict[str, Any]:
     """Find recent traces that contain a span from one agent."""
     limit = _limit(limit, MAX_TRACE_LIMIT)
     span_filter: dict[str, Any] = {"agent_name": agent}
-    if since is not None:
-        span_filter["started_at"] = {"gte": since.isoformat() if isinstance(since, datetime) else since}
+    started_at = _since_filter(since)
+    if started_at is not None:
+        span_filter["started_at"] = started_at
 
-    grouped = query_spans(
+    grouped = group_spans(
         client,
+        by="trace_id",
         filter=span_filter,
-        group_by="trace_id",
         sort="-started_at",
         limit=limit,
     )
@@ -135,7 +154,7 @@ def find_agent_traces(
         "truncated": grouped["truncated"],
     }
     if not traces:
-        window = f" since {span_filter['started_at']['gte']}" if since is not None else ""
+        window = f" since {started_at['gte']}" if started_at else ""
         result["note"] = (
             f"No spans matched agent_name='{agent}' in workspace '{client.workspace}'{window}. "
             "An empty result is not an error. Confirm the agent_name value reported to Intake."
@@ -143,10 +162,10 @@ def find_agent_traces(
     return result
 
 
-def _trace_entry(trace_id: str, summary: dict[str, Any] | None) -> dict[str, Any]:
+def _trace_entry(trace_id: str, summary: Optional[dict[str, Any]]) -> dict[str, Any]:
     summary = summary or {}
     return {
-        "trace_ref": f"intake://{trace_id}",
+        "trace_ref": trace_ref(trace_id),
         "trace_id": trace_id,
         "started_at": summary.get("started_at"),
         "status": summary.get("status", "unknown"),

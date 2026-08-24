@@ -5,7 +5,11 @@
 
 from collections import Counter
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
+
+# A provider traceback can repeat verbatim across every retry, so the overview keeps
+# only enough to identify the failure. The trace payload keeps the full text.
+MAX_ERROR_MESSAGE = 600
 
 
 def _values(rows: list[dict[str, Any]], field: str) -> list[str]:
@@ -16,7 +20,7 @@ def _counts(rows: list[dict[str, Any]], field: str) -> dict[str, int]:
     return dict(sorted(Counter(str(row[field]) for row in rows if row.get(field) not in {None, ""}).items()))
 
 
-def _timestamp(value: Any) -> datetime | None:
+def _timestamp(value: Any) -> Optional[datetime]:
     if not isinstance(value, str):
         return None
     try:
@@ -25,7 +29,7 @@ def _timestamp(value: Any) -> datetime | None:
         return None
 
 
-def _duration_ms(start: datetime | None, end: datetime | None) -> float | None:
+def _duration_ms(start: Optional[datetime], end: Optional[datetime]) -> Optional[float]:
     if start is None or end is None:
         return None
     try:
@@ -34,7 +38,7 @@ def _duration_ms(start: datetime | None, end: datetime | None) -> float | None:
         return None
 
 
-def _trace_duration_ms(spans: list[dict[str, Any]]) -> float | None:
+def _trace_duration_ms(spans: list[dict[str, Any]]) -> Optional[float]:
     starts = [_timestamp(span.get("started_at")) for span in spans]
     ends = [_timestamp(span.get("ended_at")) for span in spans]
     valid_starts = [value for value in starts if value is not None]
@@ -43,6 +47,50 @@ def _trace_duration_ms(spans: list[dict[str, Any]]) -> float | None:
         return _duration_ms(min(valid_starts), max(valid_ends)) if valid_starts and valid_ends else None
     except TypeError:
         return None
+
+
+def _error_span(span: dict[str, Any]) -> dict[str, Any]:
+    """Identify one error span without carrying its whole traceback."""
+    entry: dict[str, Any] = {
+        field: span[field]
+        for field in ("span_id", "parent_span_id", "name", "kind", "error_type")
+        if span.get(field) is not None
+    }
+    message = span.get("error_message")
+    if message is None:
+        return entry
+    text = message if isinstance(message, str) else str(message)
+    entry["error_message"] = text[:MAX_ERROR_MESSAGE]
+    if len(text) > MAX_ERROR_MESSAGE:
+        entry["error_message_truncated"] = True
+        entry["error_message_length"] = len(text)
+    return entry
+
+
+def build_timeline(bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    """Place every span in order with its offset from the first start and its duration.
+
+    This is kept beside the overview rather than inside it, because a long trace
+    would otherwise bloat the report front matter that copies the overview.
+    """
+    paired = [(span, _timestamp(span.get("started_at"))) for span in bundle.get("spans", []) if isinstance(span, dict)]
+    valid_starts = [start for _, start in paired if start is not None]
+    try:
+        origin = min(valid_starts) if valid_starts else None
+    except TypeError:
+        origin = None
+    return [
+        {
+            "span_id": span.get("span_id"),
+            "parent_span_id": span.get("parent_span_id"),
+            "name": span.get("name"),
+            "kind": span.get("kind"),
+            "status": span.get("status"),
+            "offset_ms": _duration_ms(origin, start),
+            "duration_ms": _duration_ms(start, _timestamp(span.get("ended_at"))),
+        }
+        for span, start in paired
+    ]
 
 
 def _evaluator_signal(result: dict[str, Any]) -> dict[str, Any]:
@@ -67,14 +115,7 @@ def build_overview(bundle: dict[str, Any]) -> dict[str, Any]:
     summary: dict[str, Any] = raw_summary if isinstance(raw_summary, dict) else {}
     evaluator_results = [result for result in bundle.get("evaluator_results", []) if isinstance(result, dict)]
     errors = [span for span in spans if span.get("status") == "error"]
-    error_spans = [
-        {
-            field: span[field]
-            for field in ("span_id", "parent_span_id", "name", "kind", "error_type", "error_message")
-            if span.get(field) is not None
-        }
-        for span in errors
-    ]
+    error_spans = [_error_span(span) for span in errors]
     root_status = summary.get("status", "unknown")
     duration_ms = summary.get("duration_ms")
     if duration_ms is None and spans:
