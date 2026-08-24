@@ -16,6 +16,7 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 
 WORKSPACE = "lora-training-workspace"
 FILESET = "sft-training-data"
@@ -61,7 +62,7 @@ def _list_automodel_jobs(client: NeMoPlatform) -> list[dict[str, Any]]:
 
 def test_workspace_exists(client: NeMoPlatform):
     """Verify the lora-training-workspace exists."""
-    response = client.workspaces.list()
+    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
     workspace_names = [ws.name for ws in response.data]
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found. Found: {workspace_names}"
 

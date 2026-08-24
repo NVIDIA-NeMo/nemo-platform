@@ -76,8 +76,11 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+<<<<<<< HEAD
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 from e2e.services_pool_fixtures import (  # noqa: F401
     _services,
@@ -167,7 +170,8 @@ def files_client(sdk: NeMoPlatform) -> FilesClient:
 @pytest.fixture(scope="function")
 def workspace(sdk: NeMoPlatform) -> Iterator[str]:
     """Create a unique workspace for each test, deleted on teardown."""
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = f"e2e-{uuid.uuid4().hex[:8]}"
-    sdk.workspaces.create(name=name)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
     yield name
-    sdk.workspaces.delete(name)
+    workspaces.delete_workspace(name=name).data()

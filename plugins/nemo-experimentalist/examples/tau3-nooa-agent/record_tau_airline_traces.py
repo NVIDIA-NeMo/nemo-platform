@@ -25,6 +25,9 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parents[1]
@@ -197,6 +200,7 @@ async def _wait_for_traces(
 
 
 async def run(args: argparse.Namespace) -> Path:
+    workspaces = client_from_platform(client, WorkspacesClient)
     dataset_path = args.dataset.expanduser().resolve()
     agent_path = args.agent.expanduser().resolve()
     if not dataset_path.is_dir():
@@ -223,11 +227,10 @@ async def run(args: argparse.Namespace) -> Path:
         evaluation_name = args.evaluation_name or run_dir.name
         client = make_client(args.base_url)
         try:
-            await client.workspaces.create(
-                name=args.workspace,
-                description="Tau3 Airline agent traces for Insights",
+            await workspaces.create_workspace(
                 exist_ok=True,
-            )
+                body=CreateWorkspaceRequest(name=args.workspace, description="Tau3 Airline agent traces for Insights"),
+            ).data()
             trace_ids = await _upload_trials(
                 client,
                 uploadable_trials,
@@ -263,11 +266,10 @@ async def run(args: argparse.Namespace) -> Path:
     _configure_models(model=args.model, user_model=args.user_model, api_base=args.api_base)
     client = make_client(args.base_url)
     try:
-        await client.workspaces.create(
-            name=args.workspace,
-            description="Tau3 Airline agent traces for Insights",
+        await workspaces.create_workspace(
             exist_ok=True,
-        )
+            body=CreateWorkspaceRequest(name=args.workspace, description="Tau3 Airline agent traces for Insights"),
+        ).data()
         run_dir.mkdir(parents=True)
 
         options = HarborEvaluatorConfig(

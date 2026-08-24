@@ -12,6 +12,8 @@ a separate binding with granted_at and revoked_at timestamps.
 import os
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 
 
 def _get_client() -> NeMoPlatform:
@@ -22,7 +24,7 @@ def _get_client() -> NeMoPlatform:
 def test_workspace_exists() -> None:
     """Test that the harbor-auth-test workspace was created."""
     client = _get_client()
-    response = client.workspaces.list()
+    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
     workspace_names = [ws.name for ws in response.data]
 
     assert "harbor-auth-test" in workspace_names, (
@@ -33,7 +35,9 @@ def test_workspace_exists() -> None:
 def test_current_members() -> None:
     """Test that the current member list matches expected final state."""
     client = _get_client()
-    response = client.workspaces.members.list(workspace="harbor-auth-test")
+    response = (
+        client_from_platform(client, WorkspacesClient).list_workspace_members(workspace="harbor-auth-test").data()
+    )
     members = {m.principal: m.roles for m in response.data}
 
     # viewer@test.com should now be Editor (was promoted from Viewer)

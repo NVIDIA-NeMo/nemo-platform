@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotGiven, not_given
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.common.config.base import AuthConfig, Configuration, DatabaseConfig, PlatformConfig, ServiceConfig
 from nmp.common.entities.client import EntityClient
 from nmp.common.service import Service
@@ -349,6 +351,7 @@ def create_test_client(
             for req in entity_requests:
                 assert req.principal_id == "test@example.com"
     """
+    entities = client_from_platform(async_sdk, AsyncEntitiesClient)
     selected_client_type: type[object] = client_type or NeMoPlatform
     with ExitStack() as stack:
         # Create temp directory if not provided
@@ -493,7 +496,7 @@ def create_test_client(
         async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
-        entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
+        entity_client = EntityClient(entities)
 
         # Inject ASGI-transport clients into each service's DependencyProvider.
         # This is critical for services that call dependency_provider.get_sdk_client()
@@ -644,7 +647,9 @@ def create_test_client(
 
                 for ws_id in workspaces_to_create:
                     try:
-                        sdk.workspaces.create(name=ws_id)
+                        client_from_platform(sdk, WorkspacesClient).create_workspace(
+                            body=CreateWorkspaceRequest(name=ws_id)
+                        ).data()
                     except ConflictError:
                         logger.warning(f"Workspace '{ws_id}' already exists (created by service startup)")
                 from nemo_platform_plugin.projects.client import ProjectsClient

@@ -13,6 +13,9 @@ import logging
 from typing import Any
 
 from fastmcp import FastMCP
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest, ListWorkspacesQueryParams
 from nmp.common.mcp import format_error_response
 from nmp.common.sdk_factory import get_platform_sdk
 
@@ -32,6 +35,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
     Returns:
         Configured FastMCP server instance with entities tools registered
     """
+    workspaces = client_from_platform(nemo_client, WorkspacesClient)
     # Initialize FastMCP server for entities service
     server = FastMCP("NeMo Entities Service")
 
@@ -67,11 +71,9 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """
         try:
             # Call the SDK to list workspaces with pagination and filtering
-            response = nemo_client.workspaces.list(
-                page=page,
-                page_size=page_size,
-                filter=search_by_like,
-            )
+            response = workspaces.list_workspaces(
+                query_params=ListWorkspacesQueryParams(page=page, page_size=page_size, filter=search_by_like)
+            ).data()
 
             # Extract workspace data from response.data
             workspaces = []
@@ -126,10 +128,9 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """
         try:
             # Call the SDK to create the workspace
-            workspace = nemo_client.workspaces.create(
-                name=name,
-                description=description,
-            )
+            workspace = workspaces.create_workspace(
+                body=CreateWorkspaceRequest(name=name, description=description)
+            ).data()
 
             return {
                 "success": True,
@@ -164,7 +165,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """
         try:
             # Call the SDK to delete the workspace
-            nemo_client.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
             return {
                 "success": True,

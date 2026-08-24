@@ -35,6 +35,8 @@ from nemo_platform_plugin.models.types import (
     CreateModelEntityRequest,
     FinetuningType,
 )
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.files.service import FilesService
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.service import SecretsService
@@ -139,10 +141,17 @@ class TestWorkspaceIamIsolationSDK:
         shared_group = f"team-{uuid4().hex[:12]}"
 
         admin: NeMoPlatform = as_user(sdk, TEST_ADMIN_EMAIL)
+        workspaces = client_from_platform(admin, WorkspacesClient)
 
-        admin.workspaces.create(name=ws_a, description="user-a only", wait_role_propagation=True)
-        admin.workspaces.create(name=ws_b, description="user-b only", wait_role_propagation=True)
-        admin.workspaces.create(name=ws_c, description="shared via group", wait_role_propagation=True)
+        workspaces.create_workspace(
+            wait_role_propagation=True, body=CreateWorkspaceRequest(name=ws_a, description="user-a only")
+        ).data()
+        workspaces.create_workspace(
+            wait_role_propagation=True, body=CreateWorkspaceRequest(name=ws_b, description="user-b only")
+        ).data()
+        workspaces.create_workspace(
+            wait_role_propagation=True, body=CreateWorkspaceRequest(name=ws_c, description="shared via group")
+        ).data()
 
         as_user(sdk, owner_d).workspaces.create(
             name=ws_d, description="isolated from A and B", wait_role_propagation=True

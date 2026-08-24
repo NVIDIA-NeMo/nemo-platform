@@ -14,6 +14,13 @@ from typing import Generator
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import (
+    CreateWorkspaceRequest,
+    ListWorkspacesQueryParams,
+    UpdateWorkspaceRequest,
+)
 from nmp.core.entities.service import EntitiesService
 from nmp.testing import create_test_client, short_unique_name
 
@@ -35,12 +42,13 @@ class TestWorkspaceCRUD:
 
     def test_default_workspaces_created_on_startup(self, sdk: NeMoPlatform):
         """Test that 'default' and 'system' workspaces are created automatically on startup."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         # These workspaces are created by EntitiesService.startup()
-        default_ws = sdk.workspaces.retrieve("default")
+        default_ws = workspaces.get_workspace(name="default").data()
         assert default_ws.name == "default"
         assert default_ws.description == "General-purpose workspace (all users have write access)"
 
-        system_ws = sdk.workspaces.retrieve("system")
+        system_ws = workspaces.get_workspace(name="system").data()
         assert system_ws.name == "system"
         assert system_ws.description == "Platform-provided resources (read-only for users)"
 
@@ -48,9 +56,12 @@ class TestWorkspaceCRUD:
         """Test creating a new workspace."""
         workspace_name = short_unique_name("test-ws")
 
-        workspace = sdk.workspaces.create(
-            name=workspace_name,
-            description="Test workspace for integration tests",
+        workspace = (
+            client_from_platform(sdk, WorkspacesClient)
+            .create_workspace(
+                body=CreateWorkspaceRequest(name=workspace_name, description="Test workspace for integration tests")
+            )
+            .data()
         )
 
         assert workspace.name == workspace_name
@@ -64,28 +75,29 @@ class TestWorkspaceCRUD:
 
     def test_create_duplicate_workspace_fails(self, sdk: NeMoPlatform):
         """Test that creating a duplicate workspace returns 409."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("dup-ws")
 
         # Create first workspace
-        sdk.workspaces.create(name=workspace_name)
+        workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
         # Try to create duplicate
         from nemo_platform import ConflictError
 
         with pytest.raises(ConflictError) as exc_info:
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
         assert "already exists" in str(exc_info.value)
 
     def test_retrieve_workspace(self, sdk: NeMoPlatform):
         """Test retrieving a workspace by name."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("get-ws")
-        created = sdk.workspaces.create(
-            name=workspace_name,
-            description="Retrieve test",
-        )
+        created = workspaces.create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name, description="Retrieve test")
+        ).data()
 
-        retrieved = sdk.workspaces.retrieve(workspace_name)
+        retrieved = workspaces.get_workspace(name=workspace_name).data()
 
         assert retrieved.id == created.id
         assert retrieved.name == workspace_name
@@ -96,27 +108,29 @@ class TestWorkspaceCRUD:
         from nemo_platform import NotFoundError
 
         with pytest.raises(NotFoundError):
-            sdk.workspaces.retrieve("nonexistent-workspace")
+            client_from_platform(sdk, WorkspacesClient).get_workspace(name="nonexistent-workspace").data()
 
     def test_list_workspaces(self, sdk: NeMoPlatform):
         """Test listing workspaces."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("list-ws")
-        created = sdk.workspaces.create(name=workspace_name)
+        created = workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
-        result = sdk.workspaces.list()
+        result = workspaces.list_workspaces().data()
 
         workspace_ids = [ws.id for ws in result.data]
         assert created.id in workspace_ids
 
     def test_list_workspaces_with_pagination(self, sdk: NeMoPlatform):
         """Test pagination when listing workspaces."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         # Create a few workspaces
         for i in range(3):
             name = short_unique_name(f"page-{i}")
-            sdk.workspaces.create(name=name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
 
         # List with pagination
-        result = sdk.workspaces.list(page=1, page_size=2)
+        result = workspaces.list_workspaces(query_params=ListWorkspacesQueryParams(page=1, page_size=2)).data()
 
         assert result.pagination is not None
         assert result.pagination.page == 1
@@ -124,16 +138,15 @@ class TestWorkspaceCRUD:
 
     def test_update_workspace(self, sdk: NeMoPlatform):
         """Test updating a workspace description."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("upd-ws")
-        sdk.workspaces.create(
-            name=workspace_name,
-            description="Original description",
-        )
+        workspaces.create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name, description="Original description")
+        ).data()
 
-        updated = sdk.workspaces.update(
-            workspace_name,
-            description="Updated description",
-        )
+        updated = workspaces.update_workspace(
+            name=workspace_name, body=UpdateWorkspaceRequest(description="Updated description")
+        ).data()
 
         assert updated.name == workspace_name
         assert updated.description == "Updated description"
@@ -146,63 +159,62 @@ class TestWorkspaceCRUD:
         from nemo_platform import NotFoundError
 
         with pytest.raises(NotFoundError):
-            sdk.workspaces.update(
-                "nonexistent-workspace",
-                description="Should fail",
-            )
+            client_from_platform(sdk, WorkspacesClient).update_workspace(
+                name="nonexistent-workspace", body=UpdateWorkspaceRequest(description="Should fail")
+            ).data()
 
     def test_delete_workspace(self, sdk: NeMoPlatform):
         """Test deleting a workspace."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("del-ws")
-        sdk.workspaces.create(name=workspace_name)
+        workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
         # Delete the workspace
-        sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()
 
         # Verify it's deleted
         from nemo_platform import NotFoundError
 
         with pytest.raises(NotFoundError):
-            sdk.workspaces.retrieve(workspace_name)
+            workspaces.get_workspace(name=workspace_name).data()
 
     def test_delete_nonexistent_workspace_fails(self, sdk: NeMoPlatform):
         """Test that deleting a non-existent workspace returns 404."""
         from nemo_platform import NotFoundError
 
         with pytest.raises(NotFoundError):
-            sdk.workspaces.delete("nonexistent-workspace")
+            client_from_platform(sdk, WorkspacesClient).delete_workspace(name="nonexistent-workspace").data()
 
     def test_workspace_crud_lifecycle(self, sdk: NeMoPlatform):
         """Test full CRUD lifecycle for workspaces."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("crud-ws")
 
         # CREATE
-        created = sdk.workspaces.create(
-            name=workspace_name,
-            description="CRUD lifecycle test",
-        )
+        created = workspaces.create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name, description="CRUD lifecycle test")
+        ).data()
         assert created.name == workspace_name
         assert created.id is not None
 
         # READ
-        retrieved = sdk.workspaces.retrieve(workspace_name)
+        retrieved = workspaces.get_workspace(name=workspace_name).data()
         assert retrieved.id == created.id
 
         # UPDATE
-        updated = sdk.workspaces.update(
-            workspace_name,
-            description="Updated in lifecycle test",
-        )
+        updated = workspaces.update_workspace(
+            name=workspace_name, body=UpdateWorkspaceRequest(description="Updated in lifecycle test")
+        ).data()
         assert updated.description == "Updated in lifecycle test"
 
         # DELETE
-        sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()
 
         # Verify deleted
         from nemo_platform import NotFoundError
 
         with pytest.raises(NotFoundError):
-            sdk.workspaces.retrieve(workspace_name)
+            workspaces.get_workspace(name=workspace_name).data()
 
 
 @pytest.mark.integration

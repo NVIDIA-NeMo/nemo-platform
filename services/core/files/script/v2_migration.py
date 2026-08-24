@@ -49,6 +49,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesetsQueryParams
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -354,14 +356,15 @@ def _ensure_workspace(sdk: NeMoPlatform, workspace: str, dry_run: bool) -> Liter
     """
     Ensure that the target workspace exists, and create it if it doesn't.
     """
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     if dry_run:
         return "dry_run"
     try:
-        sdk.workspaces.retrieve(workspace)
+        workspaces.get_workspace(name=workspace).data()
         return "exists"
     except NotFoundError:
         try:
-            sdk.workspaces.create(name=workspace)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace)).data()
         except ConflictError:
             # Another actor may have created the workspace concurrently.
             return "exists"

@@ -5,7 +5,11 @@ import os
 
 import pytest
 from fastapi import status
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
+from nemo_platform_plugin.client.errors import NeMoPlatform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.entities.utils.identifiers import generate_entity_id
 
 base_url = os.getenv("BASE_URL", "http://localhost:8080")
@@ -14,9 +18,13 @@ sdk = NeMoPlatform(base_url=base_url, max_retries=0)
 
 @pytest.fixture(scope="module")
 def workspace():
-    workspace = sdk.v2.workspaces.create(name=generate_entity_id("workspace"))
+    workspace = (
+        client_from_platform(sdk.v2, WorkspacesClient)
+        .create_workspace(body=CreateWorkspaceRequest(name=generate_entity_id("workspace")))
+        .data()
+    )
     yield workspace
-    sdk.v2.workspaces.delete(workspace=workspace.name)
+    client_from_platform(sdk.v2, WorkspacesClient).delete_workspace(workspace=workspace.name).data()
 
 
 def test_crud_entity(workspace):

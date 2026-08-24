@@ -16,6 +16,8 @@ import pytest
 from fastmcp import FastMCP
 from mcp.types import TextContent
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.mcp.server import create_server
 
@@ -52,7 +54,7 @@ class TestMCPServerSmoke:
     def test_nmp_connection(self, nemo_sdk: NeMoPlatform) -> None:
         """Verify we can connect to NeMo Platform instance."""
         # This will raise if NeMo Platform is not accessible
-        response = nemo_sdk.workspaces.list()
+        response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces().data()
         assert response is not None
         assert hasattr(response, "data")
 
@@ -78,7 +80,7 @@ class TestMCPServerSmoke:
         import json
 
         # Get workspaces via SDK
-        sdk_response = nemo_sdk.workspaces.list()
+        sdk_response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces().data()
         sdk_workspace_ids = {ws.id for ws in sdk_response.data}
 
         # Get workspaces via MCP tool

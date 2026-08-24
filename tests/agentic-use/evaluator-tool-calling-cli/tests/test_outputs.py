@@ -21,6 +21,7 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 
 sys.path.insert(0, "/tests/shared")
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from trace_reader import get_session
 
 WORKSPACE = "tool-calling-eval-workspace"
@@ -56,7 +57,7 @@ def _get_files_client() -> FilesClient:
 def test_workspace_exists():
     """Verify the tool-calling-eval-workspace was created."""
     client = _get_client()
-    response = client.workspaces.list()
+    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
     workspace_names = [ws.name for ws in response.data]
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found. Found: {workspace_names}"
 

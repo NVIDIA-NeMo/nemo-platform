@@ -11,6 +11,8 @@ quickstart environment does not include the job execution worker.
 import os
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 
 WORKSPACE = "benchmark-eval-workspace"
 
@@ -23,7 +25,7 @@ def _get_client() -> NeMoPlatform:
 def test_workspace_exists():
     """Verify the benchmark-eval-workspace was created."""
     client = _get_client()
-    response = client.workspaces.list()
+    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
     workspace_names = [ws.name for ws in response.data]
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found. Found: {workspace_names}"
 

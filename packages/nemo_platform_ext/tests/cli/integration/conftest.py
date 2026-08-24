@@ -21,6 +21,8 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.files.service import FilesService
 from nmp.testing import ClientContext, create_test_client
 from starlette.testclient import TestClient
@@ -63,7 +65,9 @@ def random_workspace(sdk: NeMoPlatform) -> str:
     service dependency to make tests faster, but that requires unique workspace names for isolation.
     """
     workspace_name = f"test-{uuid.uuid4().hex[:8]}"
-    sdk.workspaces.create(name=workspace_name, description=f"Test Workspace {workspace_name}")
+    client_from_platform(sdk, WorkspacesClient).create_workspace(
+        body=CreateWorkspaceRequest(name=workspace_name, description=f"Test Workspace {workspace_name}")
+    ).data()
     return workspace_name
 
 

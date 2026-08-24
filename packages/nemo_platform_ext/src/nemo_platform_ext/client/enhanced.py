@@ -330,7 +330,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             async def main() -> None:
                 client = AsyncNeMoPlatform()
-                page = await client.workspaces.list()
+                page = await client_from_platform(client, WorkspacesClient).list_workspaces().data()
                 print(page.data)
 
             asyncio.run(main())
@@ -348,7 +348,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                     access_token=os.environ["NMP_ACCESS_TOKEN"],
                     workspace="default",
                 )
-                page = await client.workspaces.list()
+                page = await client_from_platform(client, WorkspacesClient).list_workspaces().data()
                 print(page.data)
 
             asyncio.run(main())

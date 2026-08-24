@@ -4,6 +4,8 @@
 """Unit tests for nmp_testing client utilities."""
 
 import pytest
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nmp.common.config import Configuration
 from nmp.core.entities.service import EntitiesService
 from nmp.core.inference_gateway.config import InferenceGatewayConfig
@@ -114,7 +116,7 @@ def test_create_test_client_creates_default_workspace():
     """Test that create_test_client creates default workspace."""
     with create_test_client(EntitiesService, client_type=ClientContext) as ctx:
         # Default workspace should exist
-        workspace = ctx.sdk.workspaces.retrieve(name="default")
+        workspace = client_from_platform(ctx.client, WorkspacesClient).get_workspace(name="default").data()
         assert workspace.name == "default"
 
 

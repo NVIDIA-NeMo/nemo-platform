@@ -46,13 +46,16 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import APIStatusError, NeMoPlatform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.models.client import ModelsClient
 from nemo_platform_plugin.models.types import CreateModelEntityRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
@@ -351,13 +354,14 @@ def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
 
 @pytest.fixture(scope="module")
 def evaluator_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = short_unique_name("e2e-eval")
     try:
-        sdk.workspaces.create(name=name)
+        workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
 
 @pytest.fixture(scope="module")

@@ -14,6 +14,9 @@ import httpx
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, client_verify_from_env
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 from e2e.services_pool import E2EHarnessConfig, E2EServicesPool, RunningServices
 from tests.auth_idp.authentik_live import authentik_gateway_tls_ca_bundle, prepare_authentik_compose_inputs
@@ -329,17 +332,17 @@ def auth_idp_runtime(
 
 @pytest.fixture
 def auth_idp_workspace(auth_idp_runtime) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     workspace_name = f"auth-idp-ws-{uuid.uuid4().hex[:8]}"
     sdk = auth_idp_runtime.e2e_setup_sdk()
-    sdk.workspaces.create(
-        name=workspace_name,
-        description="Workspace for auth-idp provider contract tests",
+    workspaces.create_workspace(
         wait_role_propagation=True,
-    )
+        body=CreateWorkspaceRequest(name=workspace_name, description="Workspace for auth-idp provider contract tests"),
+    ).data()
     try:
         yield workspace_name
     finally:
-        sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()
 
 
 @pytest.fixture(scope="module")
@@ -427,13 +430,13 @@ def workload_provider_sdk(authentik_stack: ProviderConfig, workload_provider_tok
 
 @pytest.fixture
 def authentik_workspace(authentik_e2e_setup_sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(authentik_e2e_setup_sdk, WorkspacesClient)
     workspace_name = f"authentik-ws-{uuid.uuid4().hex[:8]}"
-    authentik_e2e_setup_sdk.workspaces.create(
-        name=workspace_name,
-        description="Workspace for Authentik live auth tests",
+    workspaces.create_workspace(
         wait_role_propagation=True,
-    )
+        body=CreateWorkspaceRequest(name=workspace_name, description="Workspace for Authentik live auth tests"),
+    ).data()
     try:
         yield workspace_name
     finally:
-        authentik_e2e_setup_sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()
