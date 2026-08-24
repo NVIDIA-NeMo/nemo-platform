@@ -7,8 +7,8 @@ import type { InsightListItem } from '@studio/api/optimizer';
 import type { FC } from 'react';
 
 interface OpenInsightRowProps {
-  insight: InsightListItem;
-  onOpen: (insight: InsightListItem) => void;
+  readonly insight: InsightListItem;
+  readonly onOpen: (insight: InsightListItem) => void;
 }
 
 /**

@@ -49,18 +49,22 @@ export const insightsHandlers = [
     const agent = params.get('agent');
     const status = params.get('status');
 
-    const data = mockInsights.filter(
+    const matches = mockInsights.filter(
       (insight) => (!agent || insight.agent === agent) && (!status || insight.status === status)
     );
+
+    const page = Number(params.get('page') ?? 1);
+    const pageSize = Number(params.get('page_size') ?? 20);
+    const data = matches.slice((page - 1) * pageSize, page * pageSize);
 
     return HttpResponse.json({
       data,
       pagination: {
-        page: 1,
-        page_size: Number(params.get('page_size') ?? 20),
+        page,
+        page_size: pageSize,
         current_page_size: data.length,
-        total_pages: 1,
-        total_results: data.length,
+        total_pages: Math.ceil(matches.length / pageSize),
+        total_results: matches.length,
       },
     });
   }),

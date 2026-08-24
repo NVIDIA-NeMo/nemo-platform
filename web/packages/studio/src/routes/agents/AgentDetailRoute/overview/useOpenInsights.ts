@@ -13,10 +13,19 @@ const INSIGHT_PAGE_SIZE = 20;
 export const OVERVIEW_INSIGHT_LIMIT = 5;
 
 interface UseOpenInsightsParams {
-  workspace: string;
+  readonly workspace: string;
   /** Registered agent name. Insights carry agent attribution, so this filters server-side. */
-  agent?: string;
-  enabled: boolean;
+  readonly agent?: string;
+  readonly enabled: boolean;
+}
+
+export interface UseOpenInsightsResult {
+  readonly insights: InsightListItem[];
+  /** Every open insight for the agent, not just the ranked slice rendered. */
+  readonly totalCount: number;
+  /** Also pending before the agent resolves, so the panel never flashes its empty state. */
+  readonly isPending: boolean;
+  readonly error: unknown;
 }
 
 /**
@@ -36,7 +45,11 @@ const byImpact = (a: InsightListItem, b: InsightListItem): number => {
 };
 
 /** Open insights the analyst has filed against this agent, ranked for the overview panel. */
-export const useOpenInsights = ({ workspace, agent, enabled }: UseOpenInsightsParams) => {
+export const useOpenInsights = ({
+  workspace,
+  agent,
+  enabled,
+}: UseOpenInsightsParams): UseOpenInsightsResult => {
   const { data, isPending, error } = useOptimizerListInsights(
     workspace,
     {
@@ -56,9 +69,7 @@ export const useOpenInsights = ({ workspace, agent, enabled }: UseOpenInsightsPa
 
   return {
     insights,
-    /** Every open insight for the agent, not just the ranked slice rendered. */
     totalCount: data?.pagination?.total_results ?? insights.length,
-    /** Also pending before the agent resolves, so the panel never flashes its empty state. */
     isPending: enabled && (!agent || isPending),
     error,
   };

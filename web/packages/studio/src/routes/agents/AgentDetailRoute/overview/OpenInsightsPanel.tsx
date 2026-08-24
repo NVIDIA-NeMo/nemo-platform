@@ -11,14 +11,14 @@ import { Lightbulb } from 'lucide-react';
 import type { FC } from 'react';
 
 interface OpenInsightsPanelProps {
-  insights: InsightListItem[];
+  readonly insights: InsightListItem[];
   /** Open insights for the agent overall, which can exceed the rendered slice. */
-  totalCount: number;
-  isPending?: boolean;
-  error?: unknown;
-  onOpenInsight: (insight: InsightListItem) => void;
+  readonly totalCount: number;
+  readonly isPending?: boolean;
+  readonly error?: unknown;
+  readonly onOpenInsight: (insight: InsightListItem) => void;
   /** Omit to hide the "View all" action. */
-  onViewAll?: () => void;
+  readonly onViewAll?: () => void;
 }
 
 /**
