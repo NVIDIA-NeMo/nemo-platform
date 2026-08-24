@@ -696,7 +696,8 @@ async def test_compile_injects_secret_env_and_compute_resources() -> None:
     # Secret ref -> secret-backed env var.
     assert step["environment"] == [{"name": "OPENAI_API_KEY", "from_secret": {"name": "default/openai-key"}}]
     # Compute -> executor resources: cpu/memory pass through, gpu -> num_gpus.
-    resources = step["executor"]["resources"]
+    executor = cast(dict[str, Any], step["executor"])
+    resources = executor["resources"]
     assert resources["limits"] == {"cpu": "2", "memory": "4Gi"}
     assert resources["requests"] == {"cpu": "1", "memory": "2Gi"}
     assert resources["num_gpus"] == 2
@@ -720,7 +721,7 @@ async def test_compile_without_compute_omits_executor_resources() -> None:
         )
 
     step = list(platform_spec["steps"])[0]
-    assert "resources" not in step["executor"]
+    assert "resources" not in cast(dict[str, Any], step["executor"])
     assert step["environment"] == []
 
 
