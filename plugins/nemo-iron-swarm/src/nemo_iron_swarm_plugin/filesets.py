@@ -16,6 +16,7 @@ import logging
 import stat
 import subprocess
 import tempfile
+import uuid
 import zipfile
 from fnmatch import fnmatch
 from pathlib import Path
@@ -26,6 +27,7 @@ from nemo_agents_plugin.container.template import DOCKERIGNORE_TEMPLATE
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +67,16 @@ def upload_file_to_fileset(sdk: NeMoPlatform, local_path: Path, *, workspace: st
     Used to persist a war-game's produced garak hitlog so a later run can replay it: platform
     persistent job storage is per-job, so the hitlog must live in a fileset to survive across runs.
     """
-    fileset = sdk.files.upload(
-        local_path=str(local_path),
+    files = client_from_platform(sdk, FilesClient)
+    fileset_name = f"hitlog-{uuid.uuid4().hex[:8]}"
+    files.create_fileset(workspace=workspace, body=CreateFilesetRequest(name=fileset_name))
+    files.upload_file(
+        name=fileset_name,
         workspace=workspace,
-        fileset_auto_create=True,  # generates a unique fileset name
+        path=local_path.name,
+        content=local_path.read_bytes(),
     )
-    return f"{workspace}/{fileset.name}"
+    return f"{workspace}/{fileset_name}"
 
 
 def _is_excluded(relative_path: Path) -> bool:
@@ -95,7 +101,7 @@ def delete_fileset(sdk: NeMoPlatform, ref: str) -> None:
     if not workspace or not name:
         return
     try:
-        sdk.files.filesets.delete(name, workspace=workspace)
+        client_from_platform(sdk, FilesClient).delete_fileset(name, workspace=workspace)
     except Exception:  # already deleted, or storage unavailable — the manifest still goes
         logger.warning("failed to delete fileset %s", ref, exc_info=True)
 

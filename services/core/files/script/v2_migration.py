@@ -375,7 +375,7 @@ def _get_existing_target_paths(sdk: NeMoPlatform, workspace: str, fileset: str) 
     If the fileset does not exist yet, return an empty set.
     """
     try:
-        files = sdk.files.list(fileset=fileset, workspace=workspace).data
+        files = client_from_platform(sdk, FilesClient).list_files(name=fileset, workspace=workspace).data()
         return {f.path for f in files}
     except NotFoundError:
         return set()
@@ -475,11 +475,11 @@ def apply_plan(
                             local_dir=str(local_root / repo_id),
                             repo_type="dataset",
                         )
-                        sdk.files.upload(
+                        client_from_platform(sdk, FilesClient).upload_file(
                             local_path=local_file,
-                            fileset=fileset,
+                            name=fileset,
                             workspace=workspace,
-                            remote_path=target_path,
+                            path=target_path,
                             fileset_auto_create=False,
                         )
                         artifact_result["status"] = "uploaded"

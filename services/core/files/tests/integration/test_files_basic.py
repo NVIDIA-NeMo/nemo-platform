@@ -170,42 +170,39 @@ class TestFilesBasic:
         test_content = b"Hello, World! This is a test file.\nLine 2\nLine 3"
         test_path = "test.txt"
 
-        sdk.files.upload_content(
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
             content=test_content,
-            remote_path=test_path,
-            fileset=fileset.name,
+            path=test_path,
+            name=fileset.name,
             workspace=fileset.workspace,
         )
 
         # Verify upload succeeded
-        files_response = sdk.files.list(
-            fileset=fileset.name,
-            workspace=fileset.workspace,
+        files_response = (
+            client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
         )
-        assert len(files_response.data) == 1
-        uploaded_file = files_response.data[0]
+        assert len(files_response) == 1
+        uploaded_file = files_response[0]
         assert uploaded_file.path == test_path
         assert uploaded_file.size == len(test_content)
 
         # Download file
-        downloaded = sdk.files.download_content(
-            remote_path="test.txt",
-            fileset=fileset.name,
-            workspace=fileset.workspace,
+        downloaded = client_from_platform(sdk, FilesClient).download_file(
+            name=fileset.name, workspace=fileset.workspace, path="test.txt"
         )
         assert downloaded == test_content
 
-        sdk.files.delete(
-            remote_path=test_path,
-            fileset=fileset.name,
+        files.delete_file(
+            path=test_path,
+            name=fileset.name,
             workspace=fileset.workspace,
         )
 
-        files_response = sdk.files.list(
-            fileset=fileset.name,
-            workspace=fileset.workspace,
+        files_response = (
+            client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
         )
-        assert len(files_response.data) == 0, "File should be deleted"
+        assert len(files_response) == 0, "File should be deleted"
 
     def test_file_upload_nested_paths_and_list(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test uploading multiple files with nested paths concurrently and listing them."""
@@ -222,10 +219,10 @@ class TestFilesBasic:
         def upload_file(path_content_tuple):
             """Upload a single file."""
             path, content = path_content_tuple
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=content,
-                remote_path=path,
-                fileset=fileset.name,
+                path=path,
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
             return path
@@ -237,23 +234,20 @@ class TestFilesBasic:
                 path = future.result()
                 assert path in test_files
 
-        files_response = sdk.files.list(
-            fileset=fileset.name,
-            workspace=fileset.workspace,
+        files_response = (
+            client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
         )
 
-        listed_paths = {f.path for f in files_response.data}
+        listed_paths = {f.path for f in files_response}
         assert listed_paths == set(test_files.keys())
 
         # Verify each file has correct size
-        for f in files_response.data:
+        for f in files_response:
             assert f.size == len(test_files[f.path])
 
         for path, expected_content in test_files.items():
-            downloaded = sdk.files.download_content(
-                remote_path=path,
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            downloaded = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path=path
             )
             assert downloaded == expected_content
 
@@ -278,15 +272,15 @@ class TestFilesBasic:
         parquet_path = "test_data.parquet"
 
         # Upload parquet file
-        sdk.files.upload_content(
+        client_from_platform(sdk, FilesClient).upload_file(
             content=parquet_bytes,
-            remote_path=parquet_path,
-            fileset=fileset.name,
+            path=parquet_path,
+            name=fileset.name,
             workspace=fileset.workspace,
         )
         # Get the file info for the file_url
-        files = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
-        upload_response = next(f for f in files.data if f.path == parquet_path)
+        files = client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+        upload_response = next(f for f in files if f.path == parquet_path)
 
         # Use DuckDB with HTTPXFileSystem to query via the test client's transport
         conn = duckdb.connect(":memory:")
@@ -330,10 +324,10 @@ class TestFilesBasic:
             workspace_str = fileset.workspace
 
             # Upload a file to verify fileset exists
-            sdk.files.upload_content(
+            files.upload_file(
                 content=b"test content",
-                remote_path="test.txt",
-                fileset=fileset_name_str,
+                path="test.txt",
+                name=fileset_name_str,
                 workspace=workspace_str,
             )
 
@@ -358,9 +352,9 @@ class TestFilesBasic:
         # Test 3: Try to download non-existent file
         with create_fileset(sdk) as fileset:
             try:
-                sdk.files.download_content(
-                    remote_path="non-existent-file.txt",
-                    fileset=fileset.name,
+                files.download_file(
+                    path="non-existent-file.txt",
+                    name=fileset.name,
                     workspace=fileset.workspace,
                 )
                 assert False, "Should have raised NotFoundError for non-existent file"
@@ -370,9 +364,9 @@ class TestFilesBasic:
         # Test 4: Try to delete non-existent file
         with create_fileset(sdk) as fileset:
             try:
-                sdk.files.delete(
-                    remote_path="non-existent-file.txt",
-                    fileset=fileset.name,
+                files.delete_file(
+                    path="non-existent-file.txt",
+                    name=fileset.name,
                     workspace=fileset.workspace,
                 )
                 assert False, "Should have raised NotFoundError when deleting non-existent file"
@@ -381,10 +375,10 @@ class TestFilesBasic:
 
         # Test 5: List files in non-existent fileset
         try:
-            sdk.files.list(
-                fileset="non-existent-fileset",
+            files.list_files(
+                name="non-existent-fileset",
                 workspace="non-existent-workspace",
-            )
+            ).data()
             assert False, "Should have raised NotFoundError"
         except NotFoundError:
             pass  # Expected
@@ -643,16 +637,16 @@ class TestFilesBasic:
 
         try:
             # Upload some files
-            sdk.files.upload_content(
+            files.upload_file(
                 content=b"content1",
-                remote_path="file1.txt",
-                fileset=fileset.name,
+                path="file1.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
-            sdk.files.upload_content(
+            files.upload_file(
                 content=b"content2",
-                remote_path="subdir/file2.txt",
-                fileset=fileset.name,
+                path="subdir/file2.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 

@@ -240,9 +240,9 @@ def fileset_with_nested_files(
     (dir_b / "file2.txt").write_text("content2")
     (dir_b / "file3.txt").write_text("content3")
 
-    sdk.files.upload(
+    client_from_platform(sdk, FilesClient).upload_file(
         local_path=str(dir_a),
-        fileset=fileset.name,
+        name=fileset.name,
         workspace=random_workspace,
     )
 

@@ -24,7 +24,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
-from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesQueryParams
 from nmp.core.files.app.backends.base import StorageImpl
 from nmp.core.files.app.streaming import download_url_streaming
 from nmp.core.files.testing.utils import create_fileset
@@ -140,16 +140,15 @@ class TestHuggingfaceStorageBackend:
             },
         ) as fileset:
             # List files from the Huggingface repo
-            files_response = sdk.files.list(
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            files_response = (
+                client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
             )
 
             # Should have files in the repo
-            assert len(files_response.data) > 0
+            assert len(files_response) > 0
 
             # Check for expected files (config.json is common in model repos)
-            file_paths = {f.path for f in files_response.data}
+            file_paths = {f.path for f in files_response}
             assert "config.json" in file_paths
 
     def test_gated_repo_fails_on_fileset_creation(self, sdk: NeMoPlatform):
@@ -196,10 +195,8 @@ class TestHuggingfaceStorageBackend:
             },
         ) as fileset:
             # Download config.json
-            content = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            content = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             # Should be valid JSON
@@ -220,19 +217,14 @@ class TestHuggingfaceStorageBackend:
             },
         ) as fileset:
             # First get full file to know its size
-            full_content = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            full_content = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             # Now request just the first 50 bytes using range header
             # Note: Range requests require the private _download_file method for extra_headers
-            range_response = sdk.files._download_file(
-                "config.json",
-                workspace=fileset.workspace,
-                name=fileset.name,
-                extra_headers={"Range": "bytes=0-49"},
+            range_response = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             assert range_response.status_code == 206  # Partial Content
@@ -445,10 +437,8 @@ class TestHuggingfaceCaching:
             assert commit_sha != "main", "revision should be resolved to SHA"
 
             # Download a file to populate the cache
-            content = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            content = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
             assert len(content) > 0
 
@@ -495,10 +485,8 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # First download - should fetch from source (cache miss)
-            content1 = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            content1 = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             # Source download should have been called twice:
@@ -507,10 +495,8 @@ class TestHuggingfaceCaching:
             assert download_spy.call_count == 2, "First download should fetch from source (serve + cache)"
 
             # Second download - should be served from cache (no source fetch)
-            content2 = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            content2 = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             # Content should be identical
@@ -545,27 +531,21 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # Download config.json
-            config_content = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            config_content = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             # Download tokenizer_config.json (different file)
-            tokenizer_content = sdk.files.download_content(
-                remote_path="tokenizer_config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            tokenizer_content = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="tokenizer_config.json"
             )
 
             # Files should be different
             assert config_content != tokenizer_content
 
             # Download config.json again - should be from cache
-            config_content2 = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            config_content2 = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
             assert config_content2 == config_content
 
@@ -600,10 +580,8 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # First, do a full download to populate cache
-            full_content = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            full_content = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
 
             # Verify file is in cache after first download
@@ -615,11 +593,8 @@ class TestHuggingfaceCaching:
 
             # Now do a range request - should still work even though we have cache
             # Note: Range requests require the private _download_file method for extra_headers
-            range_response = sdk.files._download_file(
-                "config.json",
-                workspace=fileset.workspace,
-                name=fileset.name,
-                extra_headers={"Range": "bytes=0-49"},
+            range_response = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
             assert range_response.status_code == 206  # Partial Content
             range_content = range_response.read()
@@ -627,10 +602,8 @@ class TestHuggingfaceCaching:
             assert range_content == full_content[:50]
 
             # Another full download should use cache
-            full_content2 = sdk.files.download_content(
-                remote_path="config.json",
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            full_content2 = client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
             assert full_content2 == full_content
 
@@ -659,14 +632,18 @@ class TestHuggingfaceCaching:
             # Poll until files are cached or timeout
             max_attempts = 30
             for _ in range(max_attempts):
-                files_response = sdk.files.list(
-                    fileset=fileset.name,
-                    workspace=fileset.workspace,
-                    include_cache_status=True,
+                files_response = (
+                    client_from_platform(sdk, FilesClient)
+                    .list_files(
+                        name=fileset.name,
+                        workspace=fileset.workspace,
+                        query_params=ListFilesQueryParams(include_cache_status=True),
+                    )
+                    .data()
                 )
 
                 # Check if all files are cached
-                statuses = {f.cache_status for f in files_response.data}
+                statuses = {f.cache_status for f in files_response}
                 if statuses == {"cached"}:
                     break
 
@@ -675,7 +652,7 @@ class TestHuggingfaceCaching:
                 pytest.fail(f"Cache warming timed out after {max_attempts * 0.5}s. Final statuses: {statuses}")
 
             # Verify all files are cached
-            for f in files_response.data:
+            for f in files_response:
                 assert f.cache_status == "cached", f"File {f.path} should be cached, got {f.cache_status}"
 
     def test_cache_warming_disabled_by_default(self, sdk: NeMoPlatform, cache_storage_impl: StorageImpl):
@@ -697,14 +674,18 @@ class TestHuggingfaceCaching:
             time.sleep(0.5)
 
             # Check cache status - files should NOT be cached
-            files_response = sdk.files.list(
-                fileset=fileset.name,
-                workspace=fileset.workspace,
-                include_cache_status=True,
+            files_response = (
+                client_from_platform(sdk, FilesClient)
+                .list_files(
+                    name=fileset.name,
+                    workspace=fileset.workspace,
+                    query_params=ListFilesQueryParams(include_cache_status=True),
+                )
+                .data()
             )
 
             # All files should be not_cached (no warming happened)
-            for f in files_response.data:
+            for f in files_response:
                 assert f.cache_status == "not_cached", f"File {f.path} should not be cached without cache=True"
 
 
@@ -770,11 +751,10 @@ class TestHuggingfaceHubClientCompatibility:
             base_url = str(sdk._client.base_url).rstrip("/")
 
             # First, list files to know what to expect
-            files_response = sdk.files.list(
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            files_response = (
+                client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
             )
-            expected_files = {f.path for f in files_response.data}
+            expected_files = {f.path for f in files_response}
 
             # Download via snapshot_download
             local_dir = snapshot_download(
@@ -821,13 +801,12 @@ class TestHuggingfaceHubClientCompatibility:
             },
         ) as fileset:
             # 1. List all files in the repo
-            all_files = sdk.files.list(
-                fileset=fileset.name,
-                workspace=fileset.workspace,
+            all_files = (
+                client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
             )
 
             # 2. Filter to get only config files (exclude large model files)
-            config_only_paths = [f.path for f in all_files.data if not f.path.endswith(large_file_suffixes)]
+            config_only_paths = [f.path for f in all_files if not f.path.endswith(large_file_suffixes)]
 
             assert len(config_only_paths) > 0, "Should have some config files"
 
@@ -835,10 +814,10 @@ class TestHuggingfaceHubClientCompatibility:
             download_dir = tmp_path / "nested" / "path" / "downloads"
             assert not download_dir.exists(), "Directory should not exist before download"
 
-            sdk.files.download(
-                fileset=fileset.name,
+            client_from_platform(sdk, FilesClient).download_file(
+                name=fileset.name,
                 workspace=fileset.workspace,
-                remote_path=config_only_paths,
+                path=config_only_paths,
                 local_path=str(download_dir),
             )
 

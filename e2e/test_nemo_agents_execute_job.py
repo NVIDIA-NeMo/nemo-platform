@@ -14,6 +14,7 @@ import pytest
 from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 from nmp.testing.e2e import wait_for_platform_job
@@ -178,10 +179,10 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         served_models={model_name: model_name},
     )
 
-    sdk.files.upload_content(
-        fileset=fileset_name,
+    client_from_platform(sdk, FilesClient).upload_file(
+        name=fileset_name,
         workspace=workspace,
-        remote_path="project/context.txt",
+        path="project/context.txt",
         content="This file proves the input workdir was staged.\n",
         fileset_auto_create=True,
     )
@@ -292,10 +293,10 @@ def test_fabric_agent_invocation_job_saves_failed_run_result_and_partial_outputs
         served_models={model_name: model_name},
     )
 
-    sdk.files.upload_content(
-        fileset=fileset_name,
+    client_from_platform(sdk, FilesClient).upload_file(
+        name=fileset_name,
         workspace=workspace,
-        remote_path="project/context.txt",
+        path="project/context.txt",
         content="This file proves the failed invocation still saves the input snapshot.\n",
         fileset_auto_create=True,
     )

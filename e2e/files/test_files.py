@@ -14,8 +14,9 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesQueryParams
 from nemo_platform_plugin.files.types import FilesetOutput as Fileset
 
 
@@ -46,25 +47,26 @@ def test_file_upload_and_download(sdk: NeMoPlatform, workspace: str, fileset: Fi
         local_file.write_bytes(test_content)
 
         # Upload file using high-level API
-        sdk.files.upload(
-            fileset=fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            name=fileset.name,
             workspace=workspace,
             local_path=str(local_file),
-            remote_path="test.txt",
+            path="test.txt",
         )
 
         # Verify file was uploaded
-        files = sdk.files.list(fileset=fileset.name, workspace=workspace)
-        assert len(files.data) == 1
-        assert files.data[0].path == "test.txt"
-        assert files.data[0].size == len(test_content)
+        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
+        assert len(files_list) == 1
+        assert files_list[0].path == "test.txt"
+        assert files_list[0].size == len(test_content)
 
         # Download file and verify content
         download_path = Path(tmpdir, "downloaded.txt")
-        sdk.files.download(
-            fileset=fileset.name,
+        files.download_file(
+            name=fileset.name,
             workspace=workspace,
-            remote_path="test.txt",
+            path="test.txt",
             local_path=str(download_path),
         )
         assert download_path.read_bytes() == test_content
@@ -74,24 +76,25 @@ def test_file_list_cache_status_for_default_storage(sdk: NeMoPlatform, workspace
     """Test cache status reporting for files stored in the default backend."""
     test_content = b"cache status coverage"
 
-    sdk.files.upload_content(
-        fileset=fileset.name,
+    client_from_platform(sdk, FilesClient).upload_file(
+        name=fileset.name,
         workspace=workspace,
-        remote_path="cache-status.txt",
+        path="cache-status.txt",
         content=test_content,
     )
 
-    files_without_cache_check = sdk.files.list(fileset=fileset.name, workspace=workspace)
-    assert len(files_without_cache_check.data) == 1
-    assert files_without_cache_check.data[0].cache_status == "not_cacheable"
+    files = client_from_platform(sdk, FilesClient)
+    files_without_cache_check = files.list_files(name=fileset.name, workspace=workspace).data()
+    assert len(files_without_cache_check) == 1
+    assert files_without_cache_check[0].cache_status == "not_cacheable"
 
-    files_with_cache_check = sdk.files.list(
-        fileset=fileset.name,
+    files_with_cache_check = files.list_files(
+        name=fileset.name,
         workspace=workspace,
-        include_cache_status=True,
-    )
-    assert len(files_with_cache_check.data) == 1
-    assert files_with_cache_check.data[0].cache_status == "not_cacheable"
+        query_params=ListFilesQueryParams(include_cache_status=True),
+    ).data()
+    assert len(files_with_cache_check) == 1
+    assert files_with_cache_check[0].cache_status == "not_cacheable"
 
 
 def test_file_upload_nested_path(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
@@ -109,24 +112,25 @@ def test_file_upload_nested_path(sdk: NeMoPlatform, workspace: str, fileset: Fil
         local_file.write_bytes(test_content)
 
         # Upload file to nested path
-        sdk.files.upload(
-            fileset=fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            name=fileset.name,
             workspace=workspace,
             local_path=str(local_file),
-            remote_path=test_path,
+            path=test_path,
         )
 
         # List files and verify the nested file appears
-        files = sdk.files.list(fileset=fileset.name, workspace=workspace)
-        file_paths = {f.path for f in files.data}
+        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
+        file_paths = {f.path for f in files_list}
         assert test_path in file_paths
 
         # Download and verify
         download_path = Path(tmpdir, "downloaded.txt")
-        sdk.files.download(
-            fileset=fileset.name,
+        files.download_file(
+            name=fileset.name,
             workspace=workspace,
-            remote_path=test_path,
+            path=test_path,
             local_path=str(download_path),
         )
         assert download_path.read_bytes() == test_content
@@ -147,27 +151,28 @@ def test_file_delete(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
         local_file.write_bytes(test_content)
 
         # Upload file
-        sdk.files.upload(
-            fileset=fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            name=fileset.name,
             workspace=workspace,
             local_path=str(local_file),
-            remote_path=test_path,
+            path=test_path,
         )
 
         # Verify file exists by listing
-        files = sdk.files.list(fileset=fileset.name, workspace=workspace)
-        assert any(f.path == test_path for f in files.data)
+        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
+        assert any(f.path == test_path for f in files_list)
 
         # Delete file
-        sdk.files.delete(
-            fileset=fileset.name,
+        files.delete_file(
+            name=fileset.name,
             workspace=workspace,
-            remote_path=test_path,
+            path=test_path,
         )
 
         # Verify file is gone
-        files = sdk.files.list(fileset=fileset.name, workspace=workspace)
-        assert not any(f.path == test_path for f in files.data)
+        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
+        assert not any(f.path == test_path for f in files_list)
 
 
 def test_directory_upload_and_download(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
@@ -187,23 +192,24 @@ def test_directory_upload_and_download(sdk: NeMoPlatform, workspace: str, filese
         (subdir / "file3.txt").write_text("content3")
 
         # Upload entire directory
-        sdk.files.upload(
-            fileset=fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            name=fileset.name,
             workspace=workspace,
             local_path=f"{upload_dir}/",
-            remote_path="",
+            path="",
         )
 
         # Verify all files were uploaded
-        files = sdk.files.list(fileset=fileset.name, workspace=workspace)
-        paths = {f.path for f in files.data}
+        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
+        paths = {f.path for f in files_list}
         assert paths == {"file1.txt", "file2.txt", "subdir/file3.txt"}
 
         # Download entire fileset
         download_dir = Path(tmpdir, "download")
         download_dir.mkdir()
-        sdk.files.download(
-            fileset=fileset.name,
+        files.download_file(
+            name=fileset.name,
             workspace=workspace,
             local_path=f"{download_dir}/",
         )
