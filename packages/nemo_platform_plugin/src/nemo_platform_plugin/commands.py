@@ -330,6 +330,8 @@ def _register_job_subgroup(
     """Register a ``<job-name>`` sub-group with run / submit / explain verbs."""
     if not job_cls.generate_legacy_verbs:
         _add_submit_command(cli_app, job_cls, scheduler, cli=cli, command_name=job_cls.name, rich_help_panel="Jobs")
+        if cli is not None:
+            cli.update_job_cli(job_cls, cli_app)
         return
 
     job_group = typer.Typer(
@@ -874,6 +876,8 @@ def _register_function_subgroup(
     """Register a ``<fn-name>`` sub-group with run / submit verbs."""
     if not fn_cls.generate_legacy_verbs:
         _add_function_submit_command(cli_app, fn_cls, cli=cli, command_name=fn_cls.name, rich_help_panel="Functions")
+        if cli is not None:
+            cli.update_function_cli(fn_cls, cli_app)
         return
 
     fn_group = typer.Typer(
