@@ -24,7 +24,7 @@ class DataDesignerCLI(NemoCLI):
     description: ClassVar[str] = "Data Designer: generate synthetic datasets"
 
     def get_cli(self) -> typer.Typer:
-        from data_designer.cli.main import agent_app, config_app
+        from data_designer.cli.main import agent_app
         from data_designer.cli.runtime import ensure_cli_default_model_settings
         from nemo_data_designer_plugin.cli.validate import validate_command
 
@@ -40,7 +40,6 @@ class DataDesignerCLI(NemoCLI):
         )
         personas_app.command("make-fileset")(make_fileset_command)
 
-        app.add_typer(config_app, name="config")
         app.add_typer(personas_app, name="personas")
         app.add_typer(agent_app, name="agent")
 
