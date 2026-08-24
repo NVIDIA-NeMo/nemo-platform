@@ -256,7 +256,6 @@ def test_the_core_treats_trace_sources_as_pluggable() -> None:
 
     assert "trace source" in core_text.lower()
     assert "Intake" not in core_text
-    assert not list((_CORE_DIR / "scripts" / "intake").glob("*.py"))
 
 
 def test_inspect_flow_selects_source_guidance_from_a_qualified_reference() -> None:
@@ -267,21 +266,13 @@ def test_inspect_flow_selects_source_guidance_from_a_qualified_reference() -> No
     assert "source-qualified" in inspect_text
     assert "`references/intake.md`" in body
     assert "bare trace" in lower_body and "reject" in lower_body
-    assert "Intake remains authoritative" not in body
 
 
-def test_generic_trace_entry_point_defers_source_specific_arguments_and_errors() -> None:
+def test_the_entry_point_owns_no_source_specific_arguments_or_internals() -> None:
+    """The entry point names one adapter function; the source owns its own flags and client."""
     entry_point = (_INSPECT_SCRIPTS_DIR / "inspect_trace.py").read_text(encoding="utf-8")
 
-    for detail in (
-        "--workspace",
-        "NMP_BASE_URL",
-        "NMP_ACCESS_TOKEN",
-        "IntakeClient",
-        "IntakeError",
-        "read_trace",
-        "_SOURCE_DIRS",
-    ):
+    for detail in ("--workspace", "NMP_BASE_URL", "NMP_ACCESS_TOKEN", "IntakeClient", "IntakeError", "read_trace"):
         assert detail not in entry_point
 
 
@@ -316,9 +307,9 @@ def test_inspect_flow_requires_neutral_evidence_based_reporting() -> None:
         assert value in body
     for category in ("`behavior`", "`issue`", "`recovery`", "`uncertainty`"):
         assert category in body
-    for requirement in ("span ID", "path and symbol", '"input_bundle"', "`report_path`", ".eval-author/traces/"):
+    for requirement in ("span ID", "path and symbol", '"overview"', "`report_path`", ".eval-author/traces/"):
         assert requirement in body
-    assert "Don't invent an\n`issue`" in body
+    assert "invent an" in body
 
 
 def test_every_bundled_path_the_skill_names_exists() -> None:

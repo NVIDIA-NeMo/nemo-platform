@@ -40,7 +40,9 @@ The adapter lives under `scripts/sources/intake/`:
   normalized source identity and trace evidence.
 - `scripts/sources/intake/_http.py` validates the Platform origin,
   authenticates, encodes filters, and drains pages.
-- `scripts/sources/intake/traces.py` queries spans and trace summaries.
+- `scripts/sources/intake/traces.py` builds Intake span and trace queries. Trace
+  inspection reaches only the trace-summary query. The span and agent-corpus
+  queries wait on the audit flow that consumes them.
 - `scripts/sources/intake/reader.py` loads detailed spans and related evaluator
   results.
 

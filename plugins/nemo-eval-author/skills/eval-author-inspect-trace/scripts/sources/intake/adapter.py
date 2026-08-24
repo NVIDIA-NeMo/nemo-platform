@@ -6,8 +6,8 @@
 import argparse
 from typing import Any, NoReturn
 
-from _http import IntakeClient, IntakeError
-from reader import read_trace
+from sources.intake._http import IntakeClient, IntakeError
+from sources.intake.reader import read_trace
 
 
 class _ArgumentParser(argparse.ArgumentParser):

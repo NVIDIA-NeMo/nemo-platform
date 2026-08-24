@@ -3,7 +3,6 @@
 
 """Behavior tests for the Eval Author Intake trace source."""
 
-import hashlib
 import importlib
 import json
 import os
@@ -35,11 +34,12 @@ def _modules() -> tuple[ModuleType, ModuleType, ModuleType, ModuleType]:
     """Load the wished-for public modules after asserting their paths exist."""
     missing = [path.name for path in _MODULE_PATHS if not path.exists()]
     assert not missing, f"missing Intake modules: {missing}"
-    if str(_INTAKE_DIR) not in sys.path:
-        sys.path.insert(0, str(_INTAKE_DIR))
     if str(_INSPECT_SCRIPTS) not in sys.path:
         sys.path.insert(0, str(_INSPECT_SCRIPTS))
-    modules = [importlib.import_module(name) for name in ("_http", "traces", "reader", "overview")]
+    modules = [
+        importlib.import_module(name)
+        for name in ("sources.intake._http", "sources.intake.traces", "sources.intake.reader", "overview")
+    ]
     return modules[0], modules[1], modules[2], modules[3]
 
 
@@ -361,7 +361,7 @@ def test_read_trace_normalizes_refs_and_fetches_all_evidence(ref: str) -> None:
         result = reader.read_trace(http.IntakeClient(base_url, "default"), ref)
 
     assert result["trace_id"] == "trace-1"
-    assert result["trace_ref"] == "intake://trace-1"
+    assert result["trace_ref"] == "intake://traces/trace-1"
     assert result["session_ids"] == ["session-1", "session-2"]
     assert [span["span_id"] for span in result["spans"]] == ["span-1", "span-2"]
     assert [item["evaluator_result_id"] for item in result["evaluator_results"]] == ["eval-1", "eval-2"]
@@ -565,12 +565,12 @@ def test_inspect_entry_point_rejects_an_unknown_trace_source() -> None:
 
 
 @pytest.mark.parametrize(
-    ("trace_id", "workspace"),
+    ("trace_id", "workspace", "report_name"),
     [
-        ("trace-1", "default"),
-        ("trace-1", "other-workspace"),
-        ("../../README", "default"),
-        ("x" * 512, "default"),
+        ("trace-1", "default", "intake-default-trace-1.md"),
+        ("trace-1", "other-workspace", "intake-other-workspace-trace-1.md"),
+        ("../../README", "default", "intake-default-README.md"),
+        ("x" * 512, "default", f"intake-default-{'x' * 81}.md"),
     ],
     ids=("regular", "other-workspace", "path-traversal", "long"),
 )
@@ -578,6 +578,7 @@ def test_inspect_entry_point_emits_json_and_writes_nothing(
     tmp_path: Path,
     trace_id: str,
     workspace: str,
+    report_name: str,
 ) -> None:
     assert _INSPECT.exists(), "missing inspect_trace.py"
     shadow_package = tmp_path / "site-packages" / "intake"
@@ -630,13 +631,12 @@ def test_inspect_entry_point_emits_json_and_writes_nothing(
     assert report["trace"]["trace_id"] == trace_id
     assert report["source"] == {
         "kind": "intake",
-        "trace_ref": f"intake://{trace_id}",
+        "trace_ref": f"intake://traces/{trace_id}",
         "context": {"platform_origin": base_url, "workspace": workspace},
     }
-    identity = json.dumps(report["source"], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     assert "platform_origin" not in report
     assert "workspace" not in report
-    assert report["report_path"] == f".eval-author/traces/{hashlib.sha256(identity.encode()).hexdigest()}.md"
+    assert report["report_path"] == f".eval-author/traces/{report_name}"
     assert report["overview"]["root_status"] == "success"
     assert scenario.requests[0]["authorization"] == "Bearer secret"
     assert list(tmp_path.iterdir()) == before

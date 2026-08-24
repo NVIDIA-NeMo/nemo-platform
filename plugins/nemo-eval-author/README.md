@@ -20,9 +20,9 @@ JSON as front matter so a later model reads the verdict without Harbor. It is
 visible and worth committing: a teammate who reads it skips the discovery pass.
 
 `eval-author-inspect-trace` leaves one report per trace under
-`.eval-author/traces/`. The report preserves the source identity and complete
-trace bundle in its front matter. Its findings use `behavior`, `issue`,
-`recovery`, and `uncertainty` categories.
+`.eval-author/traces/`. The front matter carries the source identity, the
+deterministic overview, and the command that rebuilds the full evidence. Its
+findings use `behavior`, `issue`, `recovery`, and `uncertainty` categories.
 
 The scripts write no files. They report to stdout and the skill tells the agent
 where to save because that is a judgment about someone's repository.
@@ -33,9 +33,6 @@ Harbor tasks live in the customer's repository, so an agent that proposes change
 has to write to that repository. Customers were unwilling to grant that, sandboxed
 or not. A skill inverts the arrangement: the customer's own agent does the work,
 and this directory only supplies the instructions and the deterministic scripts.
-
-The Eval Author agent that Experimentalist insight mode still uses lives in
-[the Experimentalist plugin](../nemo-experimentalist/src/nemo_experimentalist_plugin/eval_author/README.md).
 
 ## Dependencies
 
