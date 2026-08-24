@@ -25,6 +25,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
 from nemo_platform_plugin.entities.client import EntitiesClient
 from nemo_platform_plugin.entities.types import EntityCreateInput, EntityUpdate, ListEntitiesQueryParams
+from nemo_platform_plugin.projects.client import ProjectsClient
+from nemo_platform_plugin.projects.types import CreateProjectRequest
 from nmp.testing import as_service_for
 
 ENTITY_TYPE = "e2e-test-entity"
@@ -151,10 +153,13 @@ def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, 
     entity_name = _unique_name()
 
     # Create project first
-    project = sdk.projects.create(
-        workspace=workspace,
-        name=project_name,
-        description="E2E test project",
+    project = (
+        client_from_platform(sdk, ProjectsClient)
+        .create_project(
+            workspace=workspace,
+            body=CreateProjectRequest(name=project_name, description="E2E test project"),
+        )
+        .data()
     )
     assert project.name == project_name
 
@@ -189,7 +194,7 @@ def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, 
 
     finally:
         # Clean up project
-        sdk.projects.delete(name=project_name, workspace=workspace)
+        client_from_platform(sdk, ProjectsClient).delete_project(name=project_name, workspace=workspace)
 
 
 def test_entity_without_project(entity_store_sdk: NeMoPlatform, workspace: str):
