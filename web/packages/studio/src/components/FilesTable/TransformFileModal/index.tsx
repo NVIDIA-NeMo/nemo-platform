@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Divider, Flex, Stack } from '@nvidia/foundations-react-core';
+import { Banner, Divider, Flex, Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
-import { useDatasetFileTransform } from '@studio/api/datasets/useDatasetFileTransform';
+import {
+  isTransformableFilePath,
+  useDatasetFileTransform,
+} from '@studio/api/datasets/useDatasetFileTransform';
 import { DiscardTransformModal } from '@studio/components/transform/DiscardTransformModal';
 import { FormatPicker } from '@studio/components/transform/FormatPicker';
 import { MappingSection } from '@studio/components/transform/MappingSection';
@@ -37,6 +41,7 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
   const resolvedFilepath = filepath ?? '';
   const filepathParts = resolvedFilepath.split('.');
   const fileType = filepathParts.length > 1 ? (filepathParts.at(-1) ?? '') : '';
+  const isSupportedFile = isTransformableFilePath(resolvedFilepath);
 
   const { data: fileContent, isLoading: isLoadingFileContent } = useDatasetFileContent({
     ...datasetNameSplit,
@@ -50,6 +55,9 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
     onSuccess: () => {
       toast.success('Successfully finished file transformation!');
       onClose();
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
     },
   });
 
@@ -93,10 +101,17 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
         className="w-[860px] overflow-hidden"
         onClose={handleCloseRequest}
         disabled={isPending}
-        submitDisabled={isLoadingFileContent || !mapping.isComplete}
+        submitDisabled={isLoadingFileContent || !mapping.isComplete || !isSupportedFile}
         loading={isPending}
       >
         <Stack gap="density-xl">
+          {!isSupportedFile && (
+            <Banner kind="inline" status="warning">
+              This file cannot be transformed: the transform rewrites rows as JSONL, so only .jsonl
+              files can be transformed in place.
+            </Banner>
+          )}
+
           <ValueWithLabel
             labelProps={{ className: 'font-bold' }}
             label="Source file"

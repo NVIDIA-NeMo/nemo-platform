@@ -17,6 +17,17 @@ interface Props {
   generatedIdColumn?: string;
 }
 
+export interface UseTransformPreviewResult {
+  /** 1-based index of the row actually shown. */
+  currentRow: number;
+  totalRows: number;
+  sourceRow: Row | null;
+  afterRow: Row | null;
+  /** True when the rendered row could not be produced faithfully in the browser. */
+  approximated: boolean;
+  onRowChange: (row: number) => void;
+}
+
 /** Stable stand-in for a generated identifier, so the preview does not churn. */
 const placeholderId = (index: number): string =>
   ((index + 1) * 2654435761).toString(16).slice(-8).padStart(8, '0');
@@ -30,7 +41,7 @@ export const useTransformPreview = ({
   fileType,
   template,
   generatedIdColumn,
-}: Props) => {
+}: Props): UseTransformPreviewResult => {
   const [currentRow, setCurrentRow] = useState(1);
 
   const rows = useMemo(() => {

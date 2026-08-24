@@ -60,7 +60,8 @@ export const TransformPreview: FC<Props> = ({
       />
       {approximated && (
         <Text kind="body/regular/xs" className="text-muted">
-          This preview ignores template filters — the transform applies them when it runs.
+          Complex Jinja2 — filters, blocks, helpers — is only approximated here; the transform
+          applies it exactly when it runs.
         </Text>
       )}
     </Stack>

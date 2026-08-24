@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { tooltipClassName } from '@studio/styles/common';
 import { HelpCircle } from 'lucide-react';
 import { type FC } from 'react';
@@ -25,8 +25,10 @@ const TemplateSyntaxTooltipContent: FC = () => (
         <code>{'{{ text | trim }}'}</code>, <code>{'{{ score | int }}'}</code>.
       </Tip>
       <Tip>
-        <strong>Fallbacks</strong> cover empty cells: <code>{"{{ notes | default('none') }}"}</code>
-        .
+        <strong>Fallbacks</strong> cover missing values:{' '}
+        <code>{"{{ notes | default('none') }}"}</code> applies only when the column is undefined — a
+        defined but empty cell stays empty. Use <code>{"{{ notes | default('none', true) }}"}</code>{' '}
+        to replace empty values too.
       </Tip>
       <Text kind="label/bold/sm" className="pt-density-xs">
         Key syntax
@@ -49,8 +51,14 @@ const TemplateSyntaxTooltipContent: FC = () => (
 /** Help affordance explaining Jinja2 template and key syntax for the field mapping. */
 export const TemplateSyntaxTooltip: FC = () => (
   <Tooltip slotContent={<TemplateSyntaxTooltipContent />} side="right">
-    <Flex align="center" className="cursor-help text-fg-subdued" aria-label="Template syntax help">
+    <Button
+      aria-label="Template syntax help"
+      kind="tertiary"
+      color="neutral"
+      size="small"
+      className="cursor-help text-fg-subdued"
+    >
       <HelpCircle width={16} height={16} />
-    </Flex>
+    </Button>
   </Tooltip>
 );

@@ -20,12 +20,19 @@ interface MutationProps {
   /**
    * Column the template references but the source file does not have. A Data
    * Designer job would declare it as a UUID sampler; here each row gets its own
-   * short identifier as it is rewritten.
+   * UUID as it is rewritten.
    */
   generatedIdColumn?: string;
 }
 
 type Props = Omit<UseMutationOptions<FilesetFileOutput, Error, MutationProps>, 'mutationFn'>;
+
+/**
+ * The in-place transform rewrites rows and re-serializes them as JSONL, so it
+ * only accepts files that are already JSONL. Anything else — CSV, a JSON array,
+ * Parquet — would be overwritten in a format its extension does not describe.
+ */
+export const isTransformableFilePath = (filepath: string): boolean => /\.jsonl$/i.test(filepath);
 
 /**
  * Rewrites a fileset file in place through a transform template. The mapping is
@@ -44,17 +51,21 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
       datasetName,
       generatedIdColumn,
     }: MutationProps) => {
-      const { rows, failures } = parseFileContent({
-        content: fileContent,
-        fileType: filepath.split('.').at(-1),
-      });
+      if (!isTransformableFilePath(filepath)) {
+        throw new Error('Only JSONL files can be transformed in place.');
+      }
+
+      const { rows, failures } = parseFileContent({ content: fileContent, fileType: 'jsonl' });
       if (failures?.length) {
         toast.error(`${failures.length} Line(s) had parsing errors.`);
+      }
+      if (!rows.length) {
+        throw new Error('No rows could be read from this file, so it was left unchanged.');
       }
 
       const transformed = rows.map((row) => {
         const input = generatedIdColumn
-          ? { ...row, [generatedIdColumn]: crypto.randomUUID().replaceAll('-', '').slice(0, 8) }
+          ? { ...row, [generatedIdColumn]: crypto.randomUUID() }
           : row;
         return renderTemplate(template, input).row;
       });

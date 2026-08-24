@@ -15,6 +15,8 @@ const withIdColumn = [
 const withoutIdColumn = [
   { category: 'billing', user_request: 'Where is my refund?', ideal_response: '..' },
 ];
+// No column an assistant turn could be guessed from.
+const withoutResponseColumn = [{ task_id: 'a1', user_request: 'Where is my refund?' }];
 
 const createJobMock = vi.fn();
 const onCloseMock = vi.fn();
@@ -167,11 +169,12 @@ describe('DataDesignerTransformModal', () => {
   });
 
   it('blocks submission while a required field is unmapped', async () => {
+    SOURCE_ROWS = withoutResponseColumn;
     const user = userEvent.setup();
     renderModal();
 
-    // Switching to Preference Pairs leaves `rejected` with no matching column.
-    await user.click(screen.getByRole('radio', { name: 'Preference Pairs' }));
+    // Messages needs an assistant turn, which nothing in this file matches.
+    await user.click(screen.getByRole('radio', { name: 'Messages' }));
 
     expect(screen.getByText(/must have a source/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create transform job' })).toBeDisabled();

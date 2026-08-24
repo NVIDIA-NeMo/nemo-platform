@@ -14,6 +14,8 @@ const withIdColumn = [
 const withoutIdColumn = [
   { category: 'billing', user_request: 'Where is my refund?', ideal_response: '..' },
 ];
+// No column an assistant turn could be guessed from.
+const withoutResponseColumn = [{ task_id: 'a1', user_request: 'Where is my refund?' }];
 
 const transformMock = vi.fn();
 const onCloseMock = vi.fn();
@@ -29,19 +31,24 @@ vi.mock('@studio/api/datasets/useDatasetFileContent', () => ({
   }),
 }));
 
-vi.mock('@studio/api/datasets/useDatasetFileTransform', () => ({
-  useDatasetFileTransform: () => ({ mutate: transformMock, isPending: false }),
-}));
+let transformOptions: { onError?: (error: Error) => void } = {};
 
-const renderModal = () =>
+vi.mock('@studio/api/datasets/useDatasetFileTransform', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@studio/api/datasets/useDatasetFileTransform')>();
+  return {
+    ...actual,
+    useDatasetFileTransform: (options: { onError?: (error: Error) => void }) => {
+      transformOptions = options;
+      return { mutate: transformMock, isPending: false };
+    },
+  };
+});
+
+const renderModal = (filepath = 'data.jsonl') =>
   render(
     <TestProviders>
-      <TransformFileModal
-        open
-        onClose={onCloseMock}
-        filepath="data.jsonl"
-        datasetId="default/test"
-      />
+      <TransformFileModal open onClose={onCloseMock} filepath={filepath} datasetId="default/test" />
     </TestProviders>
   );
 
@@ -91,13 +98,16 @@ describe('TransformFileModal', () => {
   });
 
   it('blocks submission while a required field is unmapped', async () => {
+    SOURCE_ROWS = withoutResponseColumn;
     const user = userEvent.setup();
     renderModal();
 
-    // Switching to Preference Pairs leaves `rejected` with no matching column.
-    await user.click(screen.getByRole('radio', { name: 'Preference Pairs' }));
+    // Messages needs an assistant turn, which nothing in this file matches.
+    await user.click(screen.getByRole('radio', { name: 'Messages' }));
 
-    expect(screen.getByText(/must have a source/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/must have a source before this transform can run/)
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Transform file' })).toBeDisabled();
   });
 
@@ -117,6 +127,29 @@ describe('TransformFileModal', () => {
 
     expect(screen.getByLabelText('Output key 6')).toHaveValue('');
     expect(screen.queryByRole('button', { name: 'Add key' })).not.toBeInTheDocument();
+  });
+
+  it('blocks a file that is not JSONL, since the transform rewrites it as JSONL', () => {
+    // The mocked content is JSONL, so parsing it as CSV logs.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderModal('data.csv');
+
+    expect(screen.getByText(/only .jsonl files can be transformed in place/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Transform file' })).toBeDisabled();
+    error.mockRestore();
+  });
+
+  it('surfaces a failed transform and leaves the modal open to retry', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderModal();
+
+    transformOptions.onError?.(new Error('Only JSONL files can be transformed in place.'));
+
+    expect(
+      await screen.findByText('Only JSONL files can be transformed in place.')
+    ).toBeInTheDocument();
+    expect(onCloseMock).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('warns before discarding an edited mapping', async () => {

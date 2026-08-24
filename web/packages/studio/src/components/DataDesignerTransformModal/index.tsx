@@ -264,9 +264,10 @@ export const DataDesignerTransformModal: FC<DataDesignerTransformModalProps> = (
           </Flex>
 
           {exceedsSource && (
-            <Banner kind="inline" status="warning" title="More rows than the source has">
-              The source job produced {defaultNumRecords} rows. Reading more than that restarts at
-              the top of the file, duplicating rows in the output.
+            <Banner kind="inline" status="warning">
+              More rows than the source has: the source job produced {defaultNumRecords} rows.
+              Reading more than that restarts at the top of the file, duplicating rows in the
+              output.
             </Banner>
           )}
         </Stack>
