@@ -657,9 +657,10 @@ api:
   server:
     # -- Seconds Uvicorn keeps idle HTTP connections open. Must be greater than envoyProxy.timeouts.upstreamIdle when Envoy is enabled.
     keepAliveTimeoutSeconds: 5
-  # -- Predefined service group passed to `nemo services run --service-group`. Ignored when api.services is non-empty.
+
+  # -- Predefined service group passed to `nemo services run` with `--service-group`. Ignored when api.services is non-empty.
   serviceGroup: all
-  # -- Explicit services passed to `nemo services run --services`. When non-empty, overrides api.serviceGroup. Must be a list.
+  # -- Explicit services passed to `nemo services run` with `--services`. When non-empty, overrides api.serviceGroup. Must be a list.
   services: []
   # -- Additional arguments to pass to the Platform API service
   extraArgs: []
@@ -892,9 +893,10 @@ core:
       annotations: {}
       # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template.
       name: ""
-    # -- Predefined controller group passed to `nemo services run --controller-group`. Ignored when core.controller.controllers is non-empty.
+
+    # -- Predefined controller group passed to `nemo services run` with `--controller-group`. Ignored when core.controller.controllers is non-empty.
     controllerGroup: all
-    # -- Explicit controllers passed to `nemo services run --controllers`. When non-empty, overrides core.controller.controllerGroup. Must be a list.
+    # -- Explicit controllers passed to `nemo services run` with `--controllers`. When non-empty, overrides core.controller.controllerGroup. Must be a list.
     controllers: []
     # -- Additional arguments to pass to the Core Controller service
     extraArgs: []
