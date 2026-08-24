@@ -69,10 +69,9 @@ The Analyst reads telemetry; it cannot create it. Confirm all three:
   it names what is missing and how to set it. Don't reach for the
   Experimentalist's configuration; that is a different contract.
 
-An `ETHOS.md` file is optional but makes the Analyst materially better. It
-carries the intent behind the agent — what it is for, its constraints, what
-counts as success — none of which is recoverable from code or traces, so
-without it the Analyst can only judge an agent against itself.
+An `ETHOS.md` file is optional. It gives the Analyst the agent's intent,
+constraints, and success criteria. Code and traces don't contain that context.
+Without it, the Analyst can only judge an agent against itself.
 
 ## Pre-flight
 

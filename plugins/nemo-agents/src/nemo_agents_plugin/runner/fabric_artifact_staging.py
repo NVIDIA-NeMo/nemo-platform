@@ -21,11 +21,13 @@ from nemo_agents_plugin.entities import (
     MAX_ETHOS_STAGED_BYTES,
     ethos_fileset_name,
 )
+from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError as PlatformNotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 logger = logging.getLogger(__name__)
+_CONTRACT_FILENAMES = {ETHOS_FILENAME, LEGACY_CONTRACT_FILENAME}
 
 
 class FabricArtifactStagingError(ValueError):
@@ -57,8 +59,8 @@ async def stage_fabric_ethos_dir(
     fileset is not fatal — config-only agents deploy from ``agent.yaml`` alone —
     but a config referencing skills still needs them staged.
 
-    ``ETHOS.md`` is dropped after download, matching the container path,
-    so both runtimes see the same tree.
+    ``ETHOS.md`` and the legacy ``AGENT-SPEC.md`` file are dropped after
+    download, matching the container path, so both runtimes see the same tree.
 
     The container byte cap does not apply here: it bounds ConfigMap and env
     delivery, neither of which is in this path. What lands on the platform host
@@ -144,7 +146,7 @@ def _collect_staged_dir(base_dir: Path, preserved: set[str]) -> set[PurePosixPat
     writes to the platform host's filesystem rather than an inert ConfigMap, so
     it keeps the same guard. Symlinks are the reachable form here: the download
     lands real files, but a link inside the tree would resolve outside it.
-    ``ETHOS.md`` is removed for parity with the container path.
+    Contract Markdown files are removed for parity with the container path.
 
     *preserved* runtime directories are skipped: a running agent owns their
     contents, symlinks included, and staging neither writes nor validates them.
@@ -161,7 +163,7 @@ def _collect_staged_dir(base_dir: Path, preserved: set[str]) -> set[PurePosixPat
             )
         if not path.is_file():
             continue
-        if path.name == ETHOS_FILENAME:
+        if path.name in _CONTRACT_FILENAMES:
             path.unlink()
             continue
         staged.add(PurePosixPath(rel.as_posix()))
@@ -203,7 +205,7 @@ async def stage_fabric_ethos_config_files(
             )
             # Validate against what the fileset delivered, not config_files, which
             # carries the generated agent.yaml whether or not the fileset supplied one.
-            delivered = {path for path in _staged_relative_paths(tmp_path) if path.name != ETHOS_FILENAME}
+            delivered = {path for path in _staged_relative_paths(tmp_path) if path.name not in _CONTRACT_FILENAMES}
             validate_referenced_skill_paths(rewritten_agent_config, delivered)
             _validate_staged_size(config_files, fileset_name)
             return config_files
@@ -236,7 +238,7 @@ def _collect_staged_config_files(
         rel = path.relative_to(root)
         if ".." in rel.parts:
             raise FabricArtifactStagingError(f"Path escape in Ethos fileset: {rel.as_posix()!r}")
-        if rel.name == ETHOS_FILENAME:
+        if rel.name in _CONTRACT_FILENAMES:
             continue
         container_path = str(base_dir / PurePosixPath(rel.as_posix()))
         if rel.name == AGENT_CONFIG_FILENAME and container_path == agent_yaml_path:

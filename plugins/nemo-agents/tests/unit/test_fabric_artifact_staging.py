@@ -132,6 +132,7 @@ async def test_stage_fabric_ethos_config_files_stages_sibling_artifacts() -> Non
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# Review\n", encoding="utf-8")
         (root / "ETHOS.md").write_text("# Ethos\n", encoding="utf-8")
+        (root / "AGENT-SPEC.md").write_text("x" * 1_000_000, encoding="utf-8")
 
     rewritten = _fabric_config(skills_paths=["skills/review"])
     rewritten["models"] = {"default": {"provider": "openai", "model": "gpt", "settings": {"base_url": "http://igw"}}}
@@ -150,7 +151,8 @@ async def test_stage_fabric_ethos_config_files_stages_sibling_artifacts() -> Non
     assert "/workspace/agent.yaml" in by_path
     assert "/workspace/prompts/system.md" in by_path
     assert "/workspace/skills/review/SKILL.md" in by_path
-    assert "ETHOS.md" not in by_path
+    assert "/workspace/ETHOS.md" not in by_path
+    assert "/workspace/AGENT-SPEC.md" not in by_path
     loaded = yaml.safe_load(by_path["/workspace/agent.yaml"])
     assert loaded["models"]["default"]["settings"]["base_url"] == "http://igw"
     assert "stale" not in by_path["/workspace/agent.yaml"]
@@ -521,11 +523,31 @@ async def test_stage_fabric_ethos_config_files_ethos_md_alone_does_not_satisfy_r
 
 
 @pytest.mark.asyncio
-async def test_stage_fabric_ethos_dir_drops_ethos_markdown(tmp_path: Path) -> None:
+async def test_stage_fabric_ethos_config_files_legacy_contract_alone_does_not_satisfy_root_skill() -> None:
+    async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
+        del fileset, workspace
+        (Path(local_path) / "AGENT-SPEC.md").write_text("# Legacy contract\n", encoding="utf-8")
+
+    sdk = AsyncMock()
+    sdk.download = AsyncMock(side_effect=_fake_download)
+
+    with pytest.raises(FabricArtifactStagingError, match="was not found"):
+        await stage_fabric_ethos_config_files(
+            workspace="default",
+            agent_name="fabric-agent",
+            rewritten_agent_config=_fabric_config(skills_paths=["."]),
+            agent_yaml_path="/workspace/agent.yaml",
+            sdk=sdk,
+        )
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_ethos_dir_drops_contract_markdown(tmp_path: Path) -> None:
     async def _fake_download(*, local_path: str, fileset: str | None, workspace: str | None) -> None:
         del fileset, workspace
         root = Path(local_path)
         (root / "ETHOS.md").write_text("# Ethos\n", encoding="utf-8")
+        (root / "AGENT-SPEC.md").write_text("# Legacy contract\n", encoding="utf-8")
         (root / "mcps").mkdir()
         (root / "mcps" / "calculator.py").write_text("print(1)\n", encoding="utf-8")
 
@@ -541,6 +563,7 @@ async def test_stage_fabric_ethos_dir_drops_ethos_markdown(tmp_path: Path) -> No
     )
 
     assert not (tmp_path / "ETHOS.md").exists()
+    assert not (tmp_path / "AGENT-SPEC.md").exists()
     assert (tmp_path / "mcps" / "calculator.py").exists()
 
 

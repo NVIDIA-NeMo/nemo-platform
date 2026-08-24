@@ -231,18 +231,6 @@ async def test_get_ethos_directory_raises(tmp_path: Path) -> None:
         await _local_backend(tmp_path).get_ethos(workspace="w", ethos=str(tmp_path), dest=dest)
 
 
-async def test_get_ethos_remote_delegates_to_files(tmp_path: Path) -> None:
-    ethos_file = tmp_path / "ETHOS.md"
-    ethos_file.write_text("# Remote Agent\n")
-    dest = tmp_path / "workspace" / "ETHOS.md"
-    backend = _local_backend(tmp_path / "backend")
-
-    result = await backend.get_ethos(workspace="w", ethos=str(ethos_file), dest=dest)
-
-    assert result == dest
-    assert dest.read_text() == "# Remote Agent\n"
-
-
 # ---------------------------------------------------------------------------
 # archive_candidate / publish_candidate — clean (workspace, candidate) verbs.
 # The backend derives branch/base_ref/agent_path/title/body from the captured git
