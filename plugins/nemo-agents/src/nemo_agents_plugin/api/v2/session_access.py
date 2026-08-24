@@ -35,10 +35,50 @@ async def get_owned_session(
         logger.exception("Failed to get session '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to get session.") from exc
 
-    if session.workspace != workspace or session.created_by != effective_principal_id:
+    if not _is_owned_session(session, workspace=workspace, effective_principal_id=effective_principal_id):
         raise session_not_found(workspace, name)
 
     return session
+
+
+async def get_owned_session_by_id(
+    entity_client: NemoEntitiesClient,
+    *,
+    workspace: str,
+    session_id: str,
+    effective_principal_id: str,
+) -> AgentSession:
+    """Resolve a session ID owned by the request's effective principal."""
+    try:
+        session = await entity_client.find_one(
+            AgentSession,
+            workspace=workspace,
+            filter_obj={"id": session_id, "created_by": effective_principal_id},
+        )
+    except NemoEntityNotFoundError as exc:
+        raise session_id_not_found(workspace, session_id) from exc
+    except Exception as exc:
+        logger.exception("Failed to get session ID '%s'", session_id)
+        raise HTTPException(status_code=500, detail="Failed to get session.") from exc
+
+    if session.id != session_id or not _is_owned_session(
+        session,
+        workspace=workspace,
+        effective_principal_id=effective_principal_id,
+    ):
+        raise session_id_not_found(workspace, session_id)
+
+    return session
+
+
+def _is_owned_session(
+    session: AgentSession,
+    *,
+    workspace: str,
+    effective_principal_id: str,
+) -> bool:
+    """Return whether a session belongs to the request workspace and principal."""
+    return session.workspace == workspace and session.created_by == effective_principal_id
 
 
 def session_not_found(workspace: str, name: str) -> HTTPException:
@@ -46,4 +86,12 @@ def session_not_found(workspace: str, name: str) -> HTTPException:
     return HTTPException(
         status_code=404,
         detail=f"Session '{name}' not found in workspace '{workspace}'.",
+    )
+
+
+def session_id_not_found(workspace: str, session_id: str) -> HTTPException:
+    """Return the non-disclosing response for an unavailable session ID."""
+    return HTTPException(
+        status_code=404,
+        detail=f"Session ID '{session_id}' not found in workspace '{workspace}'.",
     )
