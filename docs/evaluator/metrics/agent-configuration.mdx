@@ -9,7 +9,7 @@ description: ""
 
 Online evaluations can target an **agent** instead of a model. An agent is an HTTP endpoint that accepts a request and returns a response, optionally with a trajectory of intermediate steps. Use agents when you want to evaluate an agentic system end to end rather than a standalone LLM endpoint.
 
-Provide an `Agent` as `target=...`. The metric, prompt template, target, dataset rows, and runtime parameters are all passed through the Evaluator plugin SDK call.
+Provide a `GenericAgent` or `NemoAgentToolkitAgent` as `target=...`. `Agent` is the union type alias used in SDK signatures; instantiate one of the concrete classes. The metric, prompt template, target, dataset rows, and runtime parameters are all passed through the Evaluator plugin SDK call.
 
 ## Agent Formats
 
@@ -76,14 +76,15 @@ You control the request shape with `body` and extract values from the response w
 ### Run a Generic Agent Evaluation
 
 ```python
-from nemo_evaluator_sdk import Agent, RunConfigOnline
-from nemo_evaluator_sdk import ExactMatchMetric
+from nemo_evaluator_sdk import ExactMatchMetric, GenericAgent, RunConfigOnline, SecretRef
+from nemo_evaluator_sdk.enums import AgentFormat
+
 metric = ExactMatchMetric(reference="{{item.expected_answer}}")
-agent = Agent(
+agent = GenericAgent(
     url="https://my-agent.example.com/invoke",
     name="qa-agent",
-    format="generic",
-    api_key_secret="MY_AGENT_API_KEY",
+    format=AgentFormat.GENERIC,
+    api_key_secret=SecretRef(root="MY_AGENT_API_KEY"),
     body={"question": "{{ prompt }}"},
     response_path="$.answer",
     trajectory_path="$.reasoning_steps",
@@ -156,15 +157,15 @@ Use the `nemo_agent_toolkit` format when evaluating agents built with the [NeMo 
 ### Run a NAT Agent Evaluation
 
 ```python
-from nemo_evaluator_sdk import Agent, RunConfigOnline
+from nemo_evaluator_sdk import ExactMatchMetric, NemoAgentToolkitAgent, RunConfigOnline, SecretRef
+from nemo_evaluator_sdk.enums import AgentFormat
 
-from nemo_evaluator_sdk import ExactMatchMetric
 metric = ExactMatchMetric(reference="{{item.expected_answer}}")
-agent = Agent(
+agent = NemoAgentToolkitAgent(
     url="https://my-nat-agent.example.com",
     name="nat-research-agent",
-    format="nemo_agent_toolkit",
-    api_key_secret="my-nat-api-key",
+    format=AgentFormat.NEMO_AGENT_TOOLKIT,
+    api_key_secret=SecretRef(root="my-nat-api-key"),
 )
 
 job = evaluator.submit(
