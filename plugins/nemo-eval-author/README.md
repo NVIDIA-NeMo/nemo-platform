@@ -4,14 +4,14 @@
 # NeMo Eval Author
 
 Three skills help an agent work on repository-owned evaluation suites and
-understand agent traces from Intake. This directory builds no package. A
-customer points their agent at `skills/`, and nothing gets installed.
+understand traces from supported sources. This directory builds no package.
+A customer points their agent at `skills/`, and nothing gets installed.
 
 | Skill | Role |
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
-| [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Explains one Intake trace without presuming that it failed. |
+| [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Explains one source-qualified trace without presuming that it failed. |
 
 ## Where findings go
 
@@ -20,9 +20,9 @@ JSON as front matter so a later model reads the verdict without Harbor. It is
 visible and worth committing: a teammate who reads it skips the discovery pass.
 
 `eval-author-inspect-trace` leaves one report per trace under
-`.eval-author/traces/`. The report preserves the complete Intake bundle in its
-front matter. Its findings use `behavior`, `issue`, `recovery`, and `uncertainty`
-categories.
+`.eval-author/traces/`. The report preserves the source identity and complete
+trace bundle in its front matter. Its findings use `behavior`, `issue`,
+`recovery`, and `uncertainty` categories.
 
 The scripts write no files. They report to stdout and the skill tells the agent
 where to save because that is a judgment about someone's repository.
@@ -39,13 +39,14 @@ The Eval Author agent that Experimentalist insight mode still uses lives in
 
 ## Dependencies
 
-The Intake and entry-point scripts use only the Python standard library. The
-Harbor validation ladder also imports Harbor and its transitive dependencies.
-The discovery flow asks Harbor to judge each configuration instead of guessing
-from file layout.
+The trace entry point and source adapters use only the Python standard library.
+The Harbor validation ladder also imports Harbor and its transitive
+dependencies. The discovery flow asks Harbor to judge each configuration
+instead of guessing from file layout.
 
-The Intake client reads `NMP_BASE_URL` and `NMP_ACCESS_TOKEN`. It permits HTTP
-only for loopback targets, rejects redirects, and makes read-only requests under
+Intake is the first supported trace source. Its adapter reads `NMP_BASE_URL` and
+`NMP_ACCESS_TOKEN`. It permits HTTP only for loopback targets, rejects
+redirects, and makes read-only requests under
 `/apis/intake/v2/workspaces/{workspace}`.
 
 `tests/test_skill_contract.py` enforces the same dependency boundary.
