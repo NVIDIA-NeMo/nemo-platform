@@ -4,10 +4,11 @@
 """Contract tests for the bundled Eval Author skills.
 
 ``eval-author`` is the core skill: it owns the standard, the vocabulary, the
-boundaries, the shared Intake modules, and the routing. ``eval-author-discover``
-and ``eval-author-inspect-trace`` are sub-flows that carry the steps and defer the
-standard to the core. All three ship as directories customers copy into their own
-repository, so nothing at runtime enforces their promises.
+boundaries, and the routing. ``eval-author-discover`` and
+``eval-author-inspect-trace`` are sub-flows that carry the steps and defer the
+standard to the core. Trace-source adapters belong to the inspection sub-flow.
+All three ship as directories customers copy into their own repository, so
+nothing at runtime enforces their promises.
 These tests are that enforcement:
 
 - The frontmatter of each skill carries every field ``docs/contributing/skills-spec.mdx`` requires.
@@ -55,13 +56,11 @@ _DISCOVER_FLOW_DIR = _SKILLS_DIR / "eval-author-discover"
 _INSPECT_FLOW_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
 _SKILL_DIRS = (_CORE_DIR, _DISCOVER_FLOW_DIR, _INSPECT_FLOW_DIR)
 _SUB_FLOW_DIRS = (_DISCOVER_FLOW_DIR, _INSPECT_FLOW_DIR)
-_CORE_SCRIPTS_DIR = _CORE_DIR / "scripts"
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_FLOW_DIR / "scripts"
 _INSPECT_SCRIPTS_DIR = _INSPECT_FLOW_DIR / "scripts"
-_SCRIPT_DIRS = (_CORE_SCRIPTS_DIR, _DISCOVER_SCRIPTS_DIR, _INSPECT_SCRIPTS_DIR)
+_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _INSPECT_SCRIPTS_DIR)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
-_SHARED_INTAKE_ROOTS = {path.stem for path in (_CORE_SCRIPTS_DIR / "intake").glob("*.py")}
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -251,12 +250,39 @@ def test_the_core_names_every_sub_flow() -> None:
         assert skill_dir.name in body, f"the core does not route to {skill_dir.name}"
 
 
-def test_the_core_limits_platform_access_to_read_only_intake() -> None:
-    _, body = _frontmatter_and_body(_CORE_DIR)
+def test_the_core_treats_trace_sources_as_pluggable() -> None:
+    frontmatter, body = _frontmatter_and_body(_CORE_DIR)
+    core_text = json.dumps(frontmatter) + body
 
-    assert "Only `eval-author-inspect-trace` reads a Platform" in body
-    assert "read-only `GET` requests to Intake" in body
-    assert "ingests data" in body and "uploads files" in body
+    assert "trace source" in core_text.lower()
+    assert "Intake" not in core_text
+    assert not list((_CORE_DIR / "scripts" / "intake").glob("*.py"))
+
+
+def test_inspect_flow_selects_source_guidance_from_a_qualified_reference() -> None:
+    frontmatter, body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
+    inspect_text = json.dumps(frontmatter) + body
+    lower_body = body.lower()
+
+    assert "source-qualified" in inspect_text
+    assert "`references/intake.md`" in body
+    assert "bare trace" in lower_body and "reject" in lower_body
+    assert "Intake remains authoritative" not in body
+
+
+def test_generic_trace_entry_point_defers_source_specific_arguments_and_errors() -> None:
+    entry_point = (_INSPECT_SCRIPTS_DIR / "inspect_trace.py").read_text(encoding="utf-8")
+
+    for detail in (
+        "--workspace",
+        "NMP_BASE_URL",
+        "NMP_ACCESS_TOKEN",
+        "IntakeClient",
+        "IntakeError",
+        "read_trace",
+        "_SOURCE_DIRS",
+    ):
+        assert detail not in entry_point
 
 
 @pytest.mark.parametrize("skill_dir", _SUB_FLOW_DIRS, ids=lambda path: path.name)
@@ -296,38 +322,52 @@ def test_inspect_flow_requires_neutral_evidence_based_reporting() -> None:
 
 
 def test_every_bundled_path_the_skill_names_exists() -> None:
-    expected = {
-        _CORE_DIR: (
-            "scripts/intake/_http.py",
-            "scripts/intake/traces.py",
-            "scripts/intake/reader.py",
-            "scripts/intake/overview.py",
+    expected = (
+        (
+            _DISCOVER_FLOW_DIR,
+            _DISCOVER_FLOW_DIR / "SKILL.md",
+            (
+                "scripts/discover.py",
+                "scripts/_checks.py",
+                "scripts/providers/harbor/_probe.py",
+                "scripts/providers/harbor/_inventory.py",
+                "scripts/providers/harbor/_ladder.py",
+            ),
         ),
-        _DISCOVER_FLOW_DIR: (
-            "scripts/discover.py",
-            "scripts/_checks.py",
-            "scripts/providers/harbor/_probe.py",
-            "scripts/providers/harbor/_inventory.py",
-            "scripts/providers/harbor/_ladder.py",
+        (
+            _INSPECT_FLOW_DIR,
+            _INSPECT_FLOW_DIR / "SKILL.md",
+            (
+                "scripts/inspect_trace.py",
+                "scripts/overview.py",
+                "references/intake.md",
+            ),
         ),
-        _INSPECT_FLOW_DIR: ("scripts/inspect_trace.py",),
-    }
-    for skill_dir, paths in expected.items():
-        _, body = _frontmatter_and_body(skill_dir)
+        (
+            _INSPECT_FLOW_DIR,
+            _INSPECT_FLOW_DIR / "references" / "intake.md",
+            (
+                "scripts/sources/intake/adapter.py",
+                "scripts/sources/intake/_http.py",
+                "scripts/sources/intake/traces.py",
+                "scripts/sources/intake/reader.py",
+            ),
+        ),
+    )
+    for skill_dir, document, paths in expected:
+        body = document.read_text(encoding="utf-8")
         for relative in paths:
-            assert relative in body, f"{skill_dir.name}/SKILL.md no longer documents {relative}"
-            assert (skill_dir / relative).exists(), f"{skill_dir.name}/SKILL.md names missing {relative}"
+            assert relative in body, f"{document.relative_to(skill_dir)} no longer documents {relative}"
+            assert (skill_dir / relative).exists(), f"{document.relative_to(skill_dir)} names missing {relative}"
 
 
 def test_bundled_scripts_respect_each_flow_dependency_boundary() -> None:
-    """Only discovery can use Harbor packages; Intake scripts stay dependency-free."""
+    """Only discovery can use Harbor packages; trace-source scripts stay dependency-free."""
     offenders: dict[str, set[str]] = {}
     for path in _bundled_scripts():
         permitted = _local_roots(path) | sys.stdlib_module_names
         if path.is_relative_to(_DISCOVER_SCRIPTS_DIR):
             permitted.update(_PERMITTED_THIRD_PARTY)
-        if path.is_relative_to(_INSPECT_SCRIPTS_DIR):
-            permitted.update(_SHARED_INTAKE_ROOTS)
         found = {root for root in _imported_roots(path) if root not in permitted}
         if found:
             offenders[path.name] = found

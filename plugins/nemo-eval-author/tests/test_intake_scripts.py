@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Behavior tests for the Eval Author Intake scripts."""
+"""Behavior tests for the Eval Author Intake trace source."""
 
 import hashlib
 import importlib
@@ -22,10 +22,13 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
-_CORE_SCRIPTS = _SKILLS_DIR / "eval-author" / "scripts"
-_INTAKE_DIR = _CORE_SCRIPTS / "intake"
-_INSPECT = _SKILLS_DIR / "eval-author-inspect-trace" / "scripts" / "inspect_trace.py"
-_MODULE_PATHS = tuple(_INTAKE_DIR / name for name in ("_http.py", "traces.py", "reader.py", "overview.py"))
+_INSPECT_SCRIPTS = _SKILLS_DIR / "eval-author-inspect-trace" / "scripts"
+_INTAKE_DIR = _INSPECT_SCRIPTS / "sources" / "intake"
+_INSPECT = _INSPECT_SCRIPTS / "inspect_trace.py"
+_MODULE_PATHS = (
+    *(_INTAKE_DIR / name for name in ("_http.py", "traces.py", "reader.py")),
+    _INSPECT_SCRIPTS / "overview.py",
+)
 
 
 def _modules() -> tuple[ModuleType, ModuleType, ModuleType, ModuleType]:
@@ -34,6 +37,8 @@ def _modules() -> tuple[ModuleType, ModuleType, ModuleType, ModuleType]:
     assert not missing, f"missing Intake modules: {missing}"
     if str(_INTAKE_DIR) not in sys.path:
         sys.path.insert(0, str(_INTAKE_DIR))
+    if str(_INSPECT_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(_INSPECT_SCRIPTS))
     modules = [importlib.import_module(name) for name in ("_http", "traces", "reader", "overview")]
     return modules[0], modules[1], modules[2], modules[3]
 
@@ -114,7 +119,7 @@ def _query(request: dict) -> dict[str, list[str]]:
     return parse_qs(urlsplit(request["path"]).query)
 
 
-def test_core_intake_modules_exist_and_import_without_the_platform() -> None:
+def test_intake_source_modules_exist_and_import_without_the_platform() -> None:
     http, traces, reader, overview = _modules()
 
     assert http.IntakeClient
@@ -508,6 +513,57 @@ def test_overview_separates_cancelled_spans_from_incomplete_telemetry() -> None:
     assert result["incomplete_span_ids"] == []
 
 
+@pytest.mark.parametrize("trace_ref", ["trace-1", "intake:trace-1"], ids=("bare", "missing-slashes"))
+def test_inspect_entry_point_rejects_an_unqualified_trace_reference(trace_ref: str) -> None:
+    env = {key: value for key, value in os.environ.items() if key not in {"NMP_BASE_URL", "NMP_ACCESS_TOKEN"}}
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(_INSPECT),
+            "--workspace",
+            "default",
+            "--trace",
+            trace_ref,
+            "--compact",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    assert "source-qualified" in report["error"]
+    assert report["supported_sources"] == ["intake"]
+
+
+def test_inspect_entry_point_rejects_an_unknown_trace_source() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(_INSPECT),
+            "--workspace",
+            "default",
+            "--trace",
+            "langfuse://project/trace-1",
+            "--compact",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    assert "langfuse" in report["error"]
+    assert report["supported_sources"] == ["intake"]
+    assert "NMP_" not in report["hint"]
+
+
 @pytest.mark.parametrize(
     ("trace_id", "workspace"),
     [
@@ -558,7 +614,7 @@ def test_inspect_entry_point_emits_json_and_writes_nothing(
                 "--workspace",
                 workspace,
                 "--trace",
-                trace_id,
+                f"intake://traces/{trace_id}",
                 "--compact",
             ],
             cwd=tmp_path,
@@ -572,8 +628,14 @@ def test_inspect_entry_point_emits_json_and_writes_nothing(
     report = json.loads(result.stdout)
     assert report["schema_version"] == "1"
     assert report["trace"]["trace_id"] == trace_id
-    identity = json.dumps([base_url, workspace, trace_id], ensure_ascii=False, separators=(",", ":"))
-    assert report["platform_origin"] == base_url
+    assert report["source"] == {
+        "kind": "intake",
+        "trace_ref": f"intake://{trace_id}",
+        "context": {"platform_origin": base_url, "workspace": workspace},
+    }
+    identity = json.dumps(report["source"], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    assert "platform_origin" not in report
+    assert "workspace" not in report
     assert report["report_path"] == f".eval-author/traces/{hashlib.sha256(identity.encode()).hexdigest()}.md"
     assert report["overview"]["root_status"] == "success"
     assert scenario.requests[0]["authorization"] == "Bearer secret"

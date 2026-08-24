@@ -4,15 +4,14 @@
 
 name: eval-author-inspect-trace
 description: >-
-  Understand one agent trace from a NeMo Platform Intake instance without
-  presuming that the trace failed. Reads the complete trace, evaluator results,
-  and a deterministic overview. Then reports evidence-backed behavior, issues,
-  recoveries, and uncertainties tied to span IDs. Use when the user asks "what
-  happened in this trace?", "inspect this Intake trace", "explain this agent
-  run", "did this trace succeed?", or "why did this production trace fail?".
-  Optionally reads relevant local agent source, but changes none of it.
+  Understand one agent trace from a supported trace source without presuming
+  that the trace failed. Reports evidence-backed behavior, issues, recoveries,
+  and uncertainties tied to span IDs. Use when the user asks "what happened in
+  this trace?", "inspect this trace", "explain this agent run", "did this trace
+  succeed?", or "why did this production trace fail?". Optionally reads relevant
+  local agent source, but changes none of it.
 triggers:
-  - inspect this Intake trace
+  - inspect this agent trace
   - what happened in this agent trace
   - explain this production agent run
   - did this trace succeed
@@ -22,8 +21,8 @@ not-for:
   - eval-author-discover (use to establish whether a repository's Harbor suite is runnable)
   - nemo-experimentalist (use for an optimization experiment across many trials)
 compatibility: >-
-  Python 3.12 or later. Requires read access to Intake, NMP_BASE_URL, an explicit
-  workspace, and NMP_ACCESS_TOKEN when the Platform requires authentication.
+  Python 3.12 or later. Each trace source states its own access, authentication,
+  and runtime requirements.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -32,8 +31,8 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 
 # Eval Author: inspect a trace
 
-Read one complete Intake trace, explain its trajectory, and save an
-evidence-backed report. Read `eval-author` for the shared standard and boundaries.
+Read one complete trace, explain its trajectory, and save an evidence-backed
+report. Read `eval-author` for the shared standard and boundaries.
 
 The trace might show a use case, an issue, a recovery, or incomplete evidence.
 Don't assume that every error span made the run fail. Don't assign one global
@@ -41,42 +40,32 @@ trace type because findings can use several categories.
 
 ## Before you start
 
-Get the workspace and trace reference from the user or the preceding workflow.
-The trace reference can be a bare ID, `intake://<id>`, or
-`intake://traces/<id>`.
+Get a source-qualified trace reference from the user or the preceding workflow.
+A source-qualified reference starts with a URI scheme. Reject a bare trace ID
+because it doesn't identify its source.
 
-Set these environment variables in the shell that runs the script:
+Select the matching source guide:
 
-- `NMP_BASE_URL`: The Platform origin. Remote origins must use HTTPS. Loopback
-  origins can use HTTP.
-- `NMP_ACCESS_TOKEN`: A bearer token when the Platform requires authentication.
+| Trace reference | Source guide |
+|---|---|
+| `intake://...` | `references/intake.md` |
 
-The script makes read-only `GET` requests. It follows no redirects, and it sends
-credentials only to the validated origin.
+If no guide matches, stop and report the unsupported scheme. Don't reinterpret
+the reference as one of the supported sources.
 
 ## Step 1: build the analysis bundle
 
-Run:
-
-```bash
-python3 <skill_dir>/scripts/inspect_trace.py \
-  --workspace "<workspace>" \
-  --trace "<trace-reference>"
-```
-
-The script calls shared modules under `eval-author/scripts/intake/`:
-
-- `scripts/intake/_http.py` validates and reads the Intake API.
-- `scripts/intake/traces.py` queries spans and trace summaries.
-- `scripts/intake/reader.py` loads detailed spans and evaluator results.
-- `scripts/intake/overview.py` derives factual structure.
+Read the selected source guide and run its command exactly. The
+`scripts/inspect_trace.py` entry point validates the URI scheme, invokes the
+matching source adapter, and applies the source-neutral overview.
 
 The command prints one JSON object and writes no files. An exit code of `1`
 means that the object contains `error` and `hint` fields. Resolve that error
 before interpreting the trace.
 
-Preserve the complete JSON object. Span payloads and evaluator comments are
-evidence, and dropping them can change the assessment.
+Preserve the complete JSON object. It separates `source` identity and context
+from `trace` evidence and the deterministic `overview`. Span payloads and
+evaluator comments are evidence, and dropping them can change the assessment.
 
 ## Step 2: review the overview
 
@@ -111,8 +100,8 @@ they affect the outcome.
 ## Step 4: inspect source only when it helps
 
 After the trace identifies a behavior that source can explain, read the relevant
-local agent source if it is available. Intake remains authoritative about what
-happened.
+local agent source if it is available. The selected trace source remains
+authoritative about what happened.
 
 For every source-based claim:
 
@@ -149,10 +138,10 @@ result IDs, or source symbols.
 ## Step 6: save the report
 
 Write the report to the exact top-level `report_path` from the analysis bundle.
-The script derives its bounded filename from the Platform origin, workspace, and
-trace ID with SHA-256. Don't build a path from the raw trace ID. Create the
-`traces` directory when it doesn't exist. Replace a preceding report for the
-same trace instead of merging assessments.
+The script derives its bounded filename from the canonical source identity with
+SHA-256. Don't build a path from the raw trace reference. Create the `traces`
+directory when it doesn't exist. Replace a preceding report for the same trace
+instead of merging assessments.
 
 Start the file with JSON-compatible YAML front matter that preserves the complete
 input bundle:
@@ -170,22 +159,25 @@ input bundle:
 Then use this report shape:
 
 ```markdown
-# Intake trace <trace-id>
+# Trace <TRACE_REFERENCE>
+
+## Source
+<SOURCE_KIND_REFERENCE_AND_CONTEXT>
 
 ## Outcome
-<success, failure, or unknown, followed by the decisive evidence>
+<OUTCOME_AND_DECISIVE_EVIDENCE>
 
 ## Summary
-<what the trace did and why the outcome follows>
+<TRACE_SUMMARY>
 
 ## Key moments
-- `<span-id>` — <observed transition and its significance>
+- `<SPAN_ID>`: <TRANSITION_AND_SIGNIFICANCE>
 
 ## Findings
-- **<behavior, issue, recovery, or uncertainty>** — <claim and evidence IDs>
+- **<FINDING_CATEGORY>**: <CLAIM_AND_EVIDENCE_IDS>
 
 ## Source evidence
-- `<path>:<symbol>` — <source-backed explanation>
+- `<PATH>:<SYMBOL>`: <SOURCE_BACKED_EXPLANATION>
 ```
 
 Omit **Source evidence** when you didn't inspect source. Keep uncertainties in
@@ -210,4 +202,6 @@ user's decision.
 
 | Path | Purpose |
 |---|---|
-| `scripts/inspect_trace.py` | Entry point. Reads the trace, builds the overview, and prints the JSON bundle |
+| `scripts/inspect_trace.py` | Selects the source adapter and prints the normalized JSON bundle |
+| `scripts/overview.py` | Derives factual trace structure without assigning an outcome |
+| `references/intake.md` | Provides Intake requirements, invocation, and adapter details |
