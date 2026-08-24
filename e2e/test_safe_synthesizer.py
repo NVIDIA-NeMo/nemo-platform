@@ -38,6 +38,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.jobs.client import JobsClient
 
 pytestmark = [
     pytest.mark.timeout(600),
@@ -320,15 +321,16 @@ def _result_names(results: dict[str, Any]) -> set[str]:
 
 def _status_details(sdk: NeMoPlatform, workspace: str, job_name: str) -> str:
     details = [f"Safe Synthesizer job {job_name} did not complete successfully."]
+    jobs = client_from_platform(sdk, JobsClient)
     with suppress(Exception):
-        job = sdk.jobs.retrieve(job_name, workspace=workspace)
+        job = jobs.get_job(name=job_name, workspace=workspace).data()
         details.append(f"Job: {job.model_dump_json(indent=2)}")
     with suppress(Exception):
-        status = sdk.jobs.get_status(job_name, workspace=workspace)
+        status = jobs.get_job_status(name=job_name, workspace=workspace).data()
         details.append(f"Status: {status.model_dump_json(indent=2)}")
     with suppress(Exception):
-        logs = sdk.jobs.get_logs(job_name, workspace=workspace)
-        tail = logs.data[-30:] if logs.data else []
+        log_entries = list(jobs.list_job_logs(name=job_name, workspace=workspace).items())
+        tail = log_entries[-30:] if log_entries else []
         details.append("Recent logs:")
         details.extend(f"[{entry.job_step}] {entry.message}" for entry in tail)
     return "\n".join(details)
@@ -350,7 +352,7 @@ def _wait_for_status(
 
     while time.monotonic() < deadline:
         try:
-            status_info = sdk.jobs.get_status(job_name, workspace=workspace)
+            status_info = client_from_platform(sdk, JobsClient).get_job_status(name=job_name, workspace=workspace)
             status = str(status_info.status)
             if not history or history[-1] != status:
                 history.append(status)

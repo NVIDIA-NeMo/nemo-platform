@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.testing import grant_workspace_role
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
@@ -31,34 +34,40 @@ def test_provider_workload_job_runs_via_workload_profile(
             roles=["Viewer", "JobRunner"],
         )
 
-    job = e2e_setup_sdk.jobs.create(
-        workspace=auth_idp_workspace,
-        source=f"{auth_idp_case.id}-workload-job",
-        spec={"test": "workload-job"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "workload-workspace-get",
-                    "executor": {
-                        "provider": "cpu",
-                        "profile": "workload",
-                        "container": {
-                            "image": nmp_api_image(),
-                            "entrypoint": ["nemo-platform"],
-                            "command": [
-                                "run",
-                                "task",
-                                "--task",
-                                "nmp.hello_world.tasks.workload_workspace_get",
-                            ],
-                        },
-                    },
-                    "config": {
-                        "workspace": auth_idp_workspace,
-                    },
-                }
-            ]
-        },
+    job = (
+        client_from_platform(e2e_setup_sdk, JobsClient)
+        .create_job(
+            workspace=auth_idp_workspace,
+            body=CreatePlatformJobRequest(
+                source=f"{auth_idp_case.id}-workload-job",
+                spec={"test": "workload-job"},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "workload-workspace-get",
+                            "executor": {
+                                "provider": "cpu",
+                                "profile": "workload",
+                                "container": {
+                                    "image": nmp_api_image(),
+                                    "entrypoint": ["nemo-platform"],
+                                    "command": [
+                                        "run",
+                                        "task",
+                                        "--task",
+                                        "nmp.hello_world.tasks.workload_workspace_get",
+                                    ],
+                                },
+                            },
+                            "config": {
+                                "workspace": auth_idp_workspace,
+                            },
+                        }
+                    ]
+                },
+            ),
+        )
+        .data()
     )
 
     completed_job = wait_for_platform_job(e2e_setup_sdk, job.name, auth_idp_workspace, timeout=240)

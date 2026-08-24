@@ -16,7 +16,10 @@ import uuid
 
 import pytest
 from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 from e2e.services_pool import RunningServices
@@ -38,10 +41,10 @@ def _job_diagnostic_message(sdk: NeMoPlatform, job, workspace: str, prefix: str)
     if job.error_details:
         parts.append(f"Error details: {job.error_details}")
     try:
-        logs = sdk.jobs.get_logs(workspace=workspace, name=job.name)
-        if logs.data:
-            parts.append(f"Job logs ({len(logs.data)} entries):")
-            for entry in logs.data:
+        logs = list(client_from_platform(sdk, JobsClient).list_job_logs(workspace=workspace, name=job.name).items())
+        if logs:
+            parts.append(f"Job logs ({len(logs)} entries):")
+            for entry in logs:
                 parts.append(f"  - {entry.message}")
     except Exception as log_err:
         parts.append(f"Could not fetch job logs: {log_err}")
@@ -57,23 +60,29 @@ def test_basic_platform_job_lifecycle(sdk: NeMoPlatform, workspace: str):
     3. Verify job reaches completed status
     4. Retrieve and check step logs
     """
-    job = sdk.jobs.create(
-        workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "echo-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["echo", "Hello from e2e test!"],
+    job = (
+        client_from_platform(sdk, JobsClient)
+        .create_job(
+            workspace=workspace,
+            body=CreatePlatformJobRequest(
+                source=JOB_SOURCE,
+                spec={"test": "value"},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "echo-step",
+                            "executor": {
+                                "provider": "cpu",
+                                "container": {
+                                    "command": ["echo", "Hello from e2e test!"],
+                                },
+                            },
                         },
-                    },
+                    ],
                 },
-            ],
-        },
+            ),
+        )
+        .data()
     )
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
@@ -100,23 +109,29 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
         [f'echo "Log message {i} of {num_logs}"; sleep {delay_seconds}' for i in range(1, num_logs + 1)]
     )
 
-    job = sdk.jobs.create(
-        workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "multi-batch-logs"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "multi-log-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", log_command],
+    job = (
+        client_from_platform(sdk, JobsClient)
+        .create_job(
+            workspace=workspace,
+            body=CreatePlatformJobRequest(
+                source=JOB_SOURCE,
+                spec={"test": "multi-batch-logs"},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "multi-log-step",
+                            "executor": {
+                                "provider": "cpu",
+                                "container": {
+                                    "command": ["sh", "-c", log_command],
+                                },
+                            },
                         },
-                    },
+                    ],
                 },
-            ],
-        },
+            ),
+        )
+        .data()
     )
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace, timeout=120)
@@ -139,26 +154,36 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
 
 def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
     """Test that a job can read its configuration via $NEMO_JOB_STEP_CONFIG_FILE_PATH."""
-    job = sdk.jobs.create(
-        workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "config-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;"],
+    job = (
+        client_from_platform(sdk, JobsClient)
+        .create_job(
+            workspace=workspace,
+            body=CreatePlatformJobRequest(
+                source=JOB_SOURCE,
+                spec={"test": "value"},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "config-step",
+                            "executor": {
+                                "provider": "cpu",
+                                "container": {
+                                    "command": [
+                                        "sh",
+                                        "-c",
+                                        "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;",
+                                    ],
+                                },
+                            },
+                            "config": {
+                                "message": "Hello from job config!",
+                            },
                         },
-                    },
-                    "config": {
-                        "message": "Hello from job config!",
-                    },
+                    ],
                 },
-            ],
-        },
+            ),
+        )
+        .data()
     )
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
@@ -177,51 +202,54 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
         "name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH",
         "value": DEFAULT_JOB_STORAGE_PATH,
     }
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "generate-data-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "echo 'Data from first step' > $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
-                            ],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "generate-data-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "echo 'Data from first step' > $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
+                                ],
+                            },
                         },
+                        "environment": [persistent_storage_env],
                     },
-                    "environment": [persistent_storage_env],
-                },
-                {
-                    "name": "consume-data-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "echo 'Consuming data:'; cat $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
-                            ],
+                    {
+                        "name": "consume-data-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "echo 'Consuming data:'; cat $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
+                                ],
+                            },
                         },
+                        "environment": [persistent_storage_env],
                     },
-                    "environment": [persistent_storage_env],
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
     assert completed_job.status == "completed", _job_diagnostic_message(
         sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
     )
 
-    step_logs = sdk.jobs.get_logs(workspace=workspace, name=job.name)
-    all_messages = " ".join(log.message for log in step_logs.data)
+    step_logs = list(jobs.list_job_logs(workspace=workspace, name=job.name).items())
+    all_messages = " ".join(log.message for log in step_logs)
     assert "Data from first step" in all_messages, "Second step did not receive data from first step"
 
 
@@ -235,29 +263,35 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
 
     secret_deleted = False
     try:
-        job = sdk.jobs.create(
-            workspace=workspace,
-            source=JOB_SOURCE,
-            spec={"test": "value"},
-            platform_spec={
-                "steps": [
-                    {
-                        "name": "secret-envvar-step",
-                        "executor": {
-                            "provider": "cpu",
-                            "container": {
-                                "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
-                            },
-                        },
-                        "environment": [
+        job = (
+            client_from_platform(sdk, JobsClient)
+            .create_job(
+                workspace=workspace,
+                body=CreatePlatformJobRequest(
+                    source=JOB_SOURCE,
+                    spec={"test": "value"},
+                    platform_spec={
+                        "steps": [
                             {
-                                "name": "SECRET_ENV_VAR",
-                                "from_secret": {"name": secret.name},
+                                "name": "secret-envvar-step",
+                                "executor": {
+                                    "provider": "cpu",
+                                    "container": {
+                                        "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
+                                    },
+                                },
+                                "environment": [
+                                    {
+                                        "name": "SECRET_ENV_VAR",
+                                        "from_secret": {"name": secret.name},
+                                    },
+                                ],
                             },
                         ],
                     },
-                ],
-            },
+                ),
+            )
+            .data()
         )
 
         completed_job = wait_for_platform_job(sdk, job.name, workspace)
@@ -283,23 +317,29 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
 
 def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
     """Test that a job correctly reports failure when a step exits non-zero."""
-    job = sdk.jobs.create(
-        workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "failing-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
+    job = (
+        client_from_platform(sdk, JobsClient)
+        .create_job(
+            workspace=workspace,
+            body=CreatePlatformJobRequest(
+                source=JOB_SOURCE,
+                spec={"test": "value"},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "failing-step",
+                            "executor": {
+                                "provider": "cpu",
+                                "container": {
+                                    "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
+                                },
+                            },
                         },
-                    },
+                    ],
                 },
-            ],
-        },
+            ),
+        )
+        .data()
     )
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
@@ -312,26 +352,29 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
 
 def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be created and then cancelled immediately."""
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "long-running-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 60"],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "long-running-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": ["sh", "-c", "sleep 60"],
+                            },
                         },
                     },
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
-    sdk.jobs.cancel(workspace=workspace, name=job.name)
+    jobs.cancel_job(workspace=workspace, name=job.name)
 
     cancelled_job = wait_for_platform_job(sdk, job.name, workspace)
     assert cancelled_job.status == "cancelled", _job_diagnostic_message(
@@ -341,31 +384,34 @@ def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
 
 def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
     """Test that an active job can be cancelled."""
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "long-running-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 300"],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "long-running-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": ["sh", "-c", "sleep 300"],
+                            },
                         },
                     },
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
     active_job = wait_for_platform_job(sdk, job.name, workspace, status_to_check="active")
     assert active_job.status == "active", _job_diagnostic_message(
         sdk, active_job, workspace, f"Job did not become active, status: {active_job.status}"
     )
 
-    sdk.jobs.cancel(workspace=workspace, name=job.name)
+    jobs.cancel_job(workspace=workspace, name=job.name)
 
     cancelled_job = wait_for_platform_job(sdk, job.name, workspace)
     assert cancelled_job.status == "cancelled", _job_diagnostic_message(
@@ -380,36 +426,39 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "long-running-step-pause-resume",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            # Short sleep so the job completes quickly after resume.
-                            # The pause/resume cycle is what we're testing, not the workload.
-                            "command": ["sh", "-c", "sleep 30"],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "long-running-step-pause-resume",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                # Short sleep so the job completes quickly after resume.
+                                # The pause/resume cycle is what we're testing, not the workload.
+                                "command": ["sh", "-c", "sleep 30"],
+                            },
                         },
                     },
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
     active_job = wait_for_platform_job(sdk, job.name, workspace, status_to_check="active")
     assert active_job.status == "active", f"Job did not become active, status: {active_job.status}"
 
-    sdk.jobs.pause(workspace=workspace, name=job.name)
+    jobs.pause_job(workspace=workspace, name=job.name)
 
     paused_job = wait_for_platform_job(sdk, job.name, workspace, status_to_check="paused")
     assert paused_job.status == "paused", f"Job should have been paused but has status: {paused_job.status}"
 
-    sdk.jobs.resume(workspace=workspace, name=job.name)
+    jobs.resume_job(workspace=workspace, name=job.name)
 
     resumed_job = wait_for_platform_job(sdk, job.name, workspace, status_to_check="active")
     assert resumed_job.status in ("active", "completed"), (
@@ -422,34 +471,37 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
 
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "long-running-step-pause-cancel",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 30"],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "long-running-step-pause-cancel",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": ["sh", "-c", "sleep 30"],
+                            },
                         },
                     },
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
     active_job = wait_for_platform_job(sdk, job.name, workspace, status_to_check="active")
     assert active_job.status == "active", f"Job did not become active, status: {active_job.status}"
 
-    sdk.jobs.pause(workspace=workspace, name=job.name)
+    jobs.pause_job(workspace=workspace, name=job.name)
 
     paused_job = wait_for_platform_job(sdk, job.name, workspace, status_to_check="paused")
     assert paused_job.status == "paused", f"Job should have been paused but has status: {paused_job.status}"
 
-    sdk.jobs.cancel(workspace=workspace, name=job.name)
+    jobs.cancel_job(workspace=workspace, name=job.name)
 
     cancelled_job = wait_for_platform_job(sdk, job.name, workspace)
     assert cancelled_job.status == "cancelled", f"Job should have been cancelled but has status: {cancelled_job.status}"
@@ -464,82 +516,88 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str, _service
     # not affect unrelated jobs that also request persistent job storage.
     profile = ADDITIONAL_VOLUME_PROFILE if _services_instance.config_path is None else "default"
 
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "data-between-steps"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "write-data",
-                    "executor": {
-                        "provider": "cpu",
-                        "profile": profile,
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "echo 'Hello, World!' > /mnt/additional_storage/shared_data.txt; "
-                                "echo 'Successfully wrote data to persistent storage';",
-                            ],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "data-between-steps"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "write-data",
+                        "executor": {
+                            "provider": "cpu",
+                            "profile": profile,
+                            "container": {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "echo 'Hello, World!' > /mnt/additional_storage/shared_data.txt; "
+                                    "echo 'Successfully wrote data to persistent storage';",
+                                ],
+                            },
                         },
                     },
-                },
-                {
-                    "name": "read-data",
-                    "executor": {
-                        "provider": "cpu",
-                        "profile": profile,
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "cat /mnt/additional_storage/shared_data.txt; "
-                                "echo 'Successfully read data from persistent storage';",
-                            ],
+                    {
+                        "name": "read-data",
+                        "executor": {
+                            "provider": "cpu",
+                            "profile": profile,
+                            "container": {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "cat /mnt/additional_storage/shared_data.txt; "
+                                    "echo 'Successfully read data from persistent storage';",
+                                ],
+                            },
                         },
                     },
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
     assert completed_job.status == "completed", f"Job failed with status: {completed_job.status}"
 
-    step_logs = sdk.jobs.get_logs(workspace=workspace, name=job.name)
-    assert len(step_logs.data) == 3, "Expected three step logs"
-    assert "Successfully wrote data to persistent storage" in step_logs.data[0].message
-    assert "Hello, World!" in step_logs.data[1].message
-    assert "Successfully read data from persistent storage" in step_logs.data[2].message
+    step_logs = list(jobs.list_job_logs(workspace=workspace, name=job.name).items())
+    assert len(step_logs) == 3, "Expected three step logs"
+    assert "Successfully wrote data to persistent storage" in step_logs[0].message
+    assert "Hello, World!" in step_logs[1].message
+    assert "Successfully read data from persistent storage" in step_logs[2].message
 
 
 @pytest.mark.container_only
 @pytest.mark.parametrize("bad_image", ["__invalid_ubuntu:image", "ubuntu:does-not-exist-1234"])
 def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: str):
     """Test that a job with a bad image fails appropriately."""
-    job = sdk.jobs.create(
+    jobs = client_from_platform(sdk, JobsClient)
+    job = jobs.create_job(
         workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "bad-image-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "image": bad_image,
-                            "command": ["echo", "This should not run"],
+        body=CreatePlatformJobRequest(
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "bad-image-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "image": bad_image,
+                                "command": ["echo", "This should not run"],
+                            },
                         },
                     },
-                },
-            ],
-        },
-    )
+                ],
+            },
+        ),
+    ).data()
 
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
     assert completed_job.status == "error", f"Job should have failed but has status: {completed_job.status}"
 
-    job_status = sdk.jobs.get_status(workspace=workspace, name=job.name)
-    assert job_status.steps[0].status == "error", "Step should have failed"
+    job_status = jobs.get_job_status(workspace=workspace, name=job.name)
+    assert job_status.data().steps[0].status == "error", "Step should have failed"
