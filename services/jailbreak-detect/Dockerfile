@@ -12,10 +12,10 @@
 # Build context is this directory (so pyproject.toml + uv.lock + model/ are present).
 # Requires BuildKit/buildx (this file uses a `RUN --mount=type=cache` build mount):
 #   docker buildx build -t nemo/jailbreak-detect:0.1.0 --load .
-ARG PYTHON_IMAGE=python:3.11-slim
-ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.8
+ARG PYTHON_VERSION=3.11
+ARG DISTROLESS_IMAGE_VERSION=v4.0.8
 
-FROM ${PYTHON_IMAGE} AS builder
+FROM python:${PYTHON_VERSION}-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 
@@ -38,7 +38,7 @@ RUN useradd --create-home --uid 1000 jbd && \
     chown -R 1000:0 /opt/jailbreak-detect && \
     chmod -R g+rwX /opt/jailbreak-detect
 
-FROM ${DISTROLESS_BASE} AS runtime
+FROM nvcr.io/nvidia/distroless/python:${PYTHON_VERSION}-${DISTROLESS_IMAGE_VERSION} AS runtime
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV JAILBREAK_CHECK_DEVICE=cpu \

@@ -137,7 +137,8 @@ RUN groupadd --gid ${USER_GID} ${USERNAME} && \
 
 RUN mkdir -p /source-distributions/auditor-tasks && \
     bash /usr/local/bin/collect-apt-sources.sh /source-distributions/auditor-tasks/apt --installed && \
-    python /usr/local/bin/collect-cpython-source.py \
+    uv run --no-project --python /usr/local/bin/python \
+        /usr/local/bin/collect-cpython-source.py \
         --python /usr/local/bin/python \
         --output /source-distributions/auditor-tasks
 
