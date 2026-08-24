@@ -16,9 +16,20 @@ Two failure classes are caught at .so load time, before any GPU device is touche
                          the one installed (ABI mismatch)
 """
 
+from pathlib import Path
+
 import pytest
+from file_removals import assert_file_patterns_absent, read_file_patterns
 from python_package_versions import assert_python_package_min_versions
 
+BASE_FILE_REMOVALS = (
+    Path("/smoke_test/removals/files/base/pytorch-ngc-common.txt"),
+    Path("/smoke_test/removals/files/base/nmp-customizer-tasks.txt"),
+)
+DALI_FILE_REMOVALS = {
+    "/usr/local/lib/python3.12/dist-packages/nvidia/dali",
+    "/usr/local/lib/python3.12/dist-packages/nvidia_dali_cuda130-*.dist-info",
+}
 MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "mamba-ssm": "2.3.0",
     "transformers": "5.8.1",
@@ -63,3 +74,14 @@ def test_nmp_customizer_tasks_importable():
     from nmp.customization_common.tasks import file_io  # noqa: F401
     from nmp.customization_common.tasks.file_io import __main__ as file_io_main  # noqa: F401
     from nmp.customization_common.tasks.model_entity import __main__ as model_entity_main  # noqa: F401
+
+
+@pytest.mark.smoke_nmp_customizer_tasks
+def test_dali_files_removed():
+    patterns = [
+        pattern
+        for pattern in read_file_patterns(*BASE_FILE_REMOVALS)
+        if "/nvidia/dali" in pattern or "nvidia_dali_cuda130" in pattern
+    ]
+    assert DALI_FILE_REMOVALS.issubset(patterns)
+    assert_file_patterns_absent(patterns)

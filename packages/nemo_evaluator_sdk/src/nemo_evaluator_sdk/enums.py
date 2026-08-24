@@ -36,6 +36,15 @@ class MetricType(str, Enum):
     NOISE_SENSITIVITY = "noise_sensitivity"
     TUNABLE_RAG_EVALUATOR = "tunable-rag-evaluator"
 
+    # Runner-owned rewards: the runner scores, these surface it.
+    GYM_REWARD = "gym_reward"
+    HARBOR_REWARD = "harbor_reward"
+
+    # Agent-eval scoring over trial metadata and evidence.
+    AGENT_PHASE_SUCCESS = "agent_phase_success"
+    EVIDENCE_PRESENCE = "evidence_presence"
+    SKILL_USED = "skill_used"
+
     SYSTEM = "system"
 
 

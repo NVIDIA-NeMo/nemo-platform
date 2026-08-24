@@ -31,6 +31,11 @@ that half stays dependency-free regardless of how the job was produced.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nemo_evaluator_sdk.metrics.runner_rewards import HarborRewardMetric
+
 import contextlib
 import hashlib
 import importlib.machinery
@@ -60,7 +65,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     TrialError,
     standard_evidence_descriptors,
 )
-from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
     CandidateEvidence,
@@ -176,32 +181,6 @@ class HarborRuntimeConfig(BaseModel):
         if self.agent_dir is not None and self.agent_import_path is None:
             raise ValueError("agent_dir only applies to a custom agent_import_path")
         return self
-
-
-class HarborRewardMetric:
-    """Score the verifier reward Harbor stamped onto trial metadata.
-
-    Reads ``reward`` from the candidate metadata (populated by
-    :func:`build_trials_from_job_dir`); a trial with no verifier reward scores
-    ``0.0``. This is the Harbor analogue of the example ``VerifierRewardMetric``
-    — a reward-off-metadata scorer.
-    """
-
-    def __init__(self, *, output_name: str = "reward", metric_type: str = "harbor_reward") -> None:
-        self._output_name = output_name
-        self._metric_type = metric_type
-
-    @property
-    def type(self) -> str:
-        return self._metric_type
-
-    def output_spec(self) -> list[MetricOutputSpec]:
-        return [MetricOutputSpec.continuous_score(self._output_name)]
-
-    async def compute_scores(self, input: MetricInput) -> MetricResult:
-        reward = input.candidate.metadata.get("reward")
-        value = float(reward) if reward is not None else 0.0
-        return MetricResult(outputs=[MetricOutput(name=self._output_name, value=value)])
 
 
 def _effective_harbor_agent(config: HarborRuntimeConfig | None) -> str | None:
@@ -1373,7 +1352,7 @@ def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
                 # lives in `inputs["instruction"]`.
                 intent=task_name,
                 inputs={"instruction": instruction},
-                metrics=[HarborRewardMetric()],
+                metrics=[_harbor_reward_metric()],
                 metadata={"harbor_dataset_path": str(dataset_path), "harbor_task_dir": str(task_dir)},
             )
         )
@@ -1501,3 +1480,24 @@ __all__ = [
     "run_harbor_eval",
     "scoped_harbor_agent_import",
 ]
+
+
+def _harbor_reward_metric() -> "HarborRewardMetric":
+    """Build the default reward metric, importing it lazily to keep this module light."""
+    from nemo_evaluator_sdk.metrics.runner_rewards import HarborRewardMetric
+
+    return HarborRewardMetric()
+
+
+def __getattr__(name: str) -> object:
+    """Re-export ``HarborRewardMetric`` without importing the metric stack at module scope.
+
+    Defining it here would pull ``MetricBase`` and the dataset-schema machinery (jinja2,
+    jsonschema) onto the optimizer's light import path. See
+    ``nemo_evaluator_sdk.metrics.runner_rewards``.
+    """
+    if name == "HarborRewardMetric":
+        from nemo_evaluator_sdk.metrics.runner_rewards import HarborRewardMetric
+
+        return HarborRewardMetric
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

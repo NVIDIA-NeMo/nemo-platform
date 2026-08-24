@@ -24,6 +24,7 @@ import types
 from typing import Any
 
 import pytest
+from nmp.customization_common.training.reporting import DIAGNOSTIC_TIME_SERIES
 
 # NeMo-RL is only installed inside the training image, so the LoggerInterface import
 # at nemo_rl_logger module scope fails in a plain repo checkout. Stub just enough to
@@ -129,6 +130,50 @@ def _driver_steps(max_steps: int) -> range:
     directly would validate against a convention no caller uses.
     """
     return range(1, max_steps + 1)
+
+
+class _RecordingReporter:
+    """A JobsServiceProgressReporter that keeps every report instead of sending it.
+
+    Lets a test drive the real TrainingProgressCallback, so what gets recorded as a
+    series is decided by the production `_records_history`/`_qualify_metric_names`
+    rather than by the test restating the matching rule.
+
+    `fetch_current_metrics` returns `{}` -- nothing stored -- which is the first-run
+    case. Returning None would mean the seed *read failed*, which suppresses the
+    `metrics` payload entirely and would make every assertion here vacuous.
+    """
+
+    def __init__(self) -> None:
+        self.reports: list[dict[str, Any]] = []
+
+    def fetch_current_metrics(self) -> dict[str, list[dict[str, float]]]:
+        return {}
+
+    def configure_progress_tracking(self, max_steps: int, num_epochs: int) -> None:
+        pass
+
+    def report_running(self, phase: str, **details: Any) -> None:
+        self.reports.append(details)
+
+    def close(self) -> None:
+        pass
+
+
+def _recording_callback(time_series_metrics: Any) -> tuple[Any, _RecordingReporter]:
+    """A real TrainingProgressCallback over a _RecordingReporter."""
+    from typing import cast
+
+    from nmp.customization_common.training.callbacks import TrainingProgressCallback
+    from nmp.customization_common.training.progress import JobsServiceProgressReporter
+
+    reporter = _RecordingReporter()
+    callback = TrainingProgressCallback(
+        cast(JobsServiceProgressReporter, reporter),
+        time_series_metrics=time_series_metrics,
+        min_report_interval_seconds=0,
+    )
+    return callback, reporter
 
 
 class _Histogram:
@@ -366,15 +411,33 @@ def test_an_absent_report_interval_takes_the_shared_default(callback: _Recording
     assert callback.min_report_interval_seconds == nemo_rl_logger.DEFAULT_MIN_REPORT_INTERVAL_SECONDS
 
 
-def test_an_absent_list_takes_the_backend_default(callback: _RecordingCallback) -> None:
-    """Absent means NeMo-RL's default set, not everything.
+def test_an_absent_list_takes_the_callers_default(callback: _RecordingCallback) -> None:
+    """Absent means the calling driver's algorithm set, not everything.
 
     A config compiled before this knob existed omits it, and a user who wants
-    every metric asks with ``["*"]`` -- the two are now different requests.
+    every metric asks with ``["*"]`` -- the two are different requests.
+    """
+    NemoRLLogger.for_schedule(
+        max_steps=20_000,
+        num_epochs=1,
+        val_period=100,
+        default_time_series_metrics=nemo_rl_logger.GRPO_DEFAULT_TIME_SERIES_METRICS,
+    )
+
+    assert callback.time_series_metrics == nemo_rl_logger.GRPO_DEFAULT_TIME_SERIES_METRICS
+
+
+def test_a_caller_that_states_no_default_gets_the_diagnostics_only(callback: _RecordingCallback) -> None:
+    """A driver that forgets its algorithm list loses history, not reporting.
+
+    The fallback is deliberately the algorithm-agnostic diagnostic set rather than
+    any one algorithm's: a new driver wired up without a default keeps the loss/lr/
+    grad_norm curves and drops its own metrics' history, which shows up in the log,
+    instead of silently inheriting patterns belonging to a different algorithm.
     """
     NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
 
-    assert callback.time_series_metrics == nemo_rl_logger.DEFAULT_TIME_SERIES_METRICS
+    assert callback.time_series_metrics == DIAGNOSTIC_TIME_SERIES
 
 
 def test_an_empty_list_is_honoured_rather_than_defaulted(callback: _RecordingCallback) -> None:
@@ -392,27 +455,6 @@ def test_the_default_set_covers_dpos_diagnostics_and_drops_its_counters() -> Non
     `fnmatchcase` over the same hardcoded list and asserted against the module
     constant, executing no production code at all.
     """
-    from typing import cast
-
-    from nmp.customization_common.training.callbacks import TrainingProgressCallback
-    from nmp.customization_common.training.progress import JobsServiceProgressReporter
-
-    class _Reporter:
-        def __init__(self) -> None:
-            self.reports: list[dict[str, Any]] = []
-
-        def fetch_current_metrics(self) -> dict[str, list[dict[str, float]]]:
-            return {}
-
-        def configure_progress_tracking(self, max_steps: int, num_epochs: int) -> None:
-            pass
-
-        def report_running(self, phase: str, **details: Any) -> None:
-            self.reports.append(details)
-
-        def close(self) -> None:
-            pass
-
     train = {
         "loss": 0.69,
         "grad_norm": 1.2,
@@ -428,12 +470,7 @@ def test_the_default_set_covers_dpos_diagnostics_and_drops_its_counters() -> Non
     }
     val = {k: v for k, v in train.items() if k not in ("grad_norm", "lr")}
 
-    reporter = _Reporter()
-    callback = TrainingProgressCallback(
-        cast(JobsServiceProgressReporter, reporter),
-        time_series_metrics=nemo_rl_logger.DEFAULT_TIME_SERIES_METRICS,
-        min_report_interval_seconds=0,
-    )
+    callback, reporter = _recording_callback(nemo_rl_logger.DPO_DEFAULT_TIME_SERIES_METRICS)
     callback.report_train_step(step=1, epoch=1, metrics=train)
     callback.report_validation(step=1, epoch=1, metrics=val)
 
@@ -451,6 +488,87 @@ def test_the_default_set_covers_dpos_diagnostics_and_drops_its_counters() -> Non
         "val_num_valid_samples",
     }
     assert reporter.reports[0]["train_global_valid_toks"] == 16384.0, "still a latest value"
+
+
+def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> None:
+    """Pinned against GRPO's real metric names, the same way as DPO's above.
+
+    Names taken from `grpo.py`'s train dict at the `prefix="train"` log: the loss
+    function's `all_mb_metrics`, the NeMo-Gym rollout aggregate (whose families
+    carry `/mean` and friends), and `validate()`'s `accuracy`/`avg_length`.
+
+    Before the GRPO entries existed this recorded four series out of eighty-odd
+    metrics and none of them was a reward, which is the one curve a policy-gradient
+    run is read on. The `/max /min /median /stddev` siblings staying out is the
+    other half of the intent: a family costs one series, not six.
+    """
+    train = {
+        "loss": -0.041,
+        "grad_norm": 0.87,
+        "lr": 8.4e-07,
+        "reward": 0.617,
+        "kl_penalty": 0.0031,
+        "approx_entropy": 0.49,
+        "token_mult_prob_error": 1.011,
+        "gen_kl_error": 0.0041,
+        "advantages/mean": 0.003,
+        "advantages/max": 2.49,
+        "total_reward/mean": 0.617,
+        "total_reward/stddev": 0.486,
+        "gen_tokens_per_sample/mean": 689.3,
+        "gen_tokens_per_sample/max": 2048.0,
+        "turns_per_sample/mean": 3.41,
+        "turns_per_sample/p95": 7.0,
+        "truncation_rate": 0.039,
+        "natural_termination_rate": 0.961,
+        "mean_prompt_length": 753.8,
+        "global_valid_toks": 176432.0,
+    }
+    val = {
+        "accuracy": 0.703,
+        "avg_length": 604.2,
+        "total_reward/mean": 0.703,
+        "truncation_rate": 0.023,
+    }
+
+    callback, reporter = _recording_callback(nemo_rl_logger.GRPO_DEFAULT_TIME_SERIES_METRICS)
+    callback.report_train_step(step=1, epoch=1, metrics=train)
+    callback.report_validation(step=1, epoch=1, metrics=val)
+
+    recorded = {name for name, points in reporter.reports[-1]["metrics"].items() if points}
+
+    assert recorded == {
+        # Shared diagnostics.
+        "train_loss",
+        "train_grad_norm",
+        "train_lr",
+        # Reward, on both phases -- the point of the change. `*total_reward/mean`
+        # is deliberately not here: on this service it is the same number as
+        # `train_reward`, and `val_total_reward/mean` is the last-batch-only
+        # version of `val_accuracy`. Both arrive in the dicts above and are
+        # reported as current values; neither keeps a history.
+        "train_reward",
+        "val_accuracy",
+        # Off-policy drift and advantage centering.
+        "train_kl_penalty",
+        "train_gen_kl_error",
+        "train_token_mult_prob_error",
+        "train_advantages/mean",
+        "train_approx_entropy",
+        # Length and termination behaviour.
+        "train_gen_tokens_per_sample/mean",
+        "train_truncation_rate",
+        "train_turns_per_sample/mean",
+        "val_avg_length",
+        "val_truncation_rate",
+    }
+    # Excluded from the series, still reported as a current value -- dropping a
+    # metric's history never drops the metric.
+    assert reporter.reports[-1]["train_total_reward/mean"] == 0.617
+    assert reporter.reports[-1]["train_total_reward/stddev"] == 0.486
+    assert reporter.reports[-1]["train_global_valid_toks"] == 176432.0
+    # The redundancy the exclusion rests on: same number, two names.
+    assert reporter.reports[-1]["train_total_reward/mean"] == reporter.reports[-1]["train_reward"]
 
 
 def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _RecordingCallback) -> None:

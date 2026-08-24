@@ -20,7 +20,7 @@ The thin contributor wrapper that registers Unsloth with the customization hub l
 
 ```
 services/unsloth/
-├── pyproject.toml            # nmp-unsloth + [unsloth] extra for container image
+├── pyproject.toml            # nmp-unsloth + [integrations]/[unsloth] extras for container images
 ├── README.md                 # this file
 ├── docker/                   # Dockerfile for nmp-unsloth-training
 └── src/nmp/unsloth/
@@ -62,6 +62,6 @@ Two reasons:
 
 ## Status
 
-Container submit is the **only** supported execution path. The GPU image (`docker/Dockerfile.nmp-unsloth-training`) installs the ML stack via the canonical `uv pip install unsloth --torch-backend=auto`, then layers the platform glue on top. The `[unsloth]` extra in `pyproject.toml` is now a thin alias for `unsloth[huggingface]` for any caller that wants to install the same ML stack outside the image.
+Container submit is the **only** supported execution path. The GPU image (`docker/Dockerfile.nmp-unsloth-training`) installs the ML stack via the canonical `uv pip install unsloth --torch-backend=auto`, then layers the platform glue on top with the `[integrations]` extra for W&B/MLflow. The `[unsloth]` extra in `pyproject.toml` is now a thin alias for `unsloth[huggingface]` for any caller that wants to install the same ML stack outside the image.
 
 See `docker/README.md` for build / push / GPU smoke-test instructions.

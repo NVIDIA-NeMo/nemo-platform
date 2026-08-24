@@ -48,9 +48,6 @@ export const getFormattedTrainingType = (type?: string) => {
     case 'distillation': {
       return 'Distillation';
     }
-    case 'dpo': {
-      return 'DPO';
-    }
     default: {
       return type;
     }
@@ -82,8 +79,8 @@ export const getFormattedCustomizationStatus = (
 };
 
 /**
- * Returns the base model reference for a customization job. Automodel and RL store it
- * as a string; unsloth stores it as a `ModelLoadSpec` whose `name` is the reference.
+ * Returns the base model reference for a customization job. Automodel stores it as a string;
+ * unsloth stores it as a `ModelLoadSpec` whose `name` is the reference.
  */
 export const getBaseModel = (customizationJob?: CustomizationJob): string => {
   if (!customizationJob) {
@@ -93,9 +90,6 @@ export const getBaseModel = (customizationJob?: CustomizationJob): string => {
     return customizationJob.spec.model.name ?? '';
   }
   if (isAutomodelJob(customizationJob)) {
-    return customizationJob.spec.model ?? '';
-  }
-  if (isRlJob(customizationJob)) {
     return customizationJob.spec.model ?? '';
   }
   return '';
@@ -116,8 +110,7 @@ export const getFinetuningType = (customizationJob?: CustomizationJob): string =
 
 /**
  * Returns the training dataset URI for a customization job. Automodel stores it under
- * `dataset.training` and unsloth under `dataset.path`; RL's `dataset` is the reference
- * itself, a plain string, so it has no sub-field to read.
+ * `dataset.training`; unsloth stores it under `dataset.path`.
  */
 export const getDatasetUri = (customizationJob?: CustomizationJob): string => {
   if (!customizationJob) {
@@ -129,16 +122,12 @@ export const getDatasetUri = (customizationJob?: CustomizationJob): string => {
   if (isUnslothJob(customizationJob)) {
     return customizationJob.spec.dataset.path ?? '';
   }
-  if (isRlJob(customizationJob)) {
-    return customizationJob.spec.dataset ?? '';
-  }
   return '';
 };
 
 /**
  * Effective training batch size, used to compute the loss-chart x-axis. Automodel uses
- * `batch.global_batch_size` and unsloth `batch.per_device_train_batch_size`; RL has no
- * `batch` block and keeps `batch_size` on `training`.
+ * `batch.global_batch_size`; unsloth uses `batch.per_device_train_batch_size`.
  */
 export const getTrainingBatchSize = (customizationJob?: CustomizationJob): number => {
   if (!customizationJob) {
@@ -149,9 +138,6 @@ export const getTrainingBatchSize = (customizationJob?: CustomizationJob): numbe
   }
   if (isUnslothJob(customizationJob)) {
     return customizationJob.spec.batch?.per_device_train_batch_size ?? 0;
-  }
-  if (isRlJob(customizationJob)) {
-    return customizationJob.spec.training.batch_size ?? 0;
   }
   return 0;
 };
@@ -187,6 +173,7 @@ export const getCustomizationTrainingProgress = (customization: CustomizationJob
     return '';
   }
 
+  // RL keeps epochs on spec.training; the other backends use spec.schedule.
   const epochs = isRlJob(customization)
     ? customization.spec?.training?.epochs
     : customization.spec?.schedule?.epochs;
@@ -458,29 +445,6 @@ export const getTrainingOptionBadges = (job: CustomizationJob | null | undefined
       badges.push(badge('gpus', <Gpu />, getTextWithCount('GPU', gpuCount)));
     }
     badges.push(badge('precision', undefined, `Precision: ${precision}`));
-    return badges;
-  }
-
-  if (isRlJob(job)) {
-    const p = job.spec.training.parallelism;
-    if (!p) return [];
-    const badges: ReactNode[] = [
-      badge('num_gpus_per_node', <Gpu />, getTextWithCount('GPU', p.num_gpus_per_node ?? 0)),
-      badge('num_nodes', <Circle />, getTextWithCount('Node', p.num_nodes ?? 0)),
-    ];
-    // Only shown when engaged; RL defaults every degree to 1 and a "1 Tensor Parallel" badge says nothing.
-    if (p.tensor_parallel_size && p.tensor_parallel_size > 1) {
-      badges.push(
-        badge(
-          'tensor_parallel_size',
-          <Gpu />,
-          getTextWithCount('Tensor Parallel', p.tensor_parallel_size)
-        )
-      );
-    }
-    if (p.sequence_parallel) {
-      badges.push(badge('sequence_parallel', undefined, 'Sequence Parallel'));
-    }
     return badges;
   }
 

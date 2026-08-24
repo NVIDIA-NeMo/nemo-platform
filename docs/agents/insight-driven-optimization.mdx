@@ -285,11 +285,6 @@ evaluation suite for validating candidates that address the Insight. The
 Experimenter invokes the Eval Author workflow in Insight mode and reads the
 `eval_author` section of the experiment configuration.
 
-The plugin also exposes the canonical `nemo agents eval-author` command
-namespace with `discover`, `audit`, `propose`, `run`, and `doctor` verbs. These
-standalone verbs are currently scaffolding and exit with a nonzero status until
-their implementations are available.
-
 ## Get Started
 
 ### Set Up
@@ -325,7 +320,6 @@ Confirm the plugins are installed and discoverable:
 ```bash
 nemo agents analyst --help
 nemo agents experimentalist --help
-nemo agents eval-author --help
 ```
 
 From an agent directory with an `optimizer.yaml` profile, check that the
@@ -529,8 +523,7 @@ seconds and submits a run after the scheduled daily or weekly window is reached.
 ## Command Reference
 
 The Analyst lives under `nemo agents analyst`, and the Experimenter lives under
-`nemo agents experimentalist`. The Eval Author command surface lives under
-`nemo agents eval-author`. These command namespaces share the `optimizer.yaml`
+`nemo agents experimentalist`. These command namespaces share the `optimizer.yaml`
 profile, and each validates its own configuration. Scheduled analysis remains
 under `nemo insights analysis`.
 
@@ -585,12 +578,6 @@ Run the local Experimenter loop.
 
 Diagnose the Experimenter setup: profile, configured models, Insight resolution,
 datasets, and the experiment plan.
-
-### `nemo agents eval-author`
-
-Discover the current Eval Author command surface with `--help`. The
-`discover`, `audit`, `propose`, `run`, and `doctor` verbs are placeholders and
-exit with a nonzero status until their implementations are available.
 
 ### Models
 

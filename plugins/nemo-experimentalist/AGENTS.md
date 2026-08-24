@@ -29,8 +29,6 @@ Experimentalist imports nothing from `nemo-eval-author-plugin`, so the package c
   ten borrows to zero, so it went away with them.
 - `tests/test_contract_dependency.py` asserts that this plugin never declares
   `nemo-eval-author-plugin` as a dependency, which is what keeps the cycle broken.
-- `plugins/nemo-eval-author/` keeps the `nemo agents eval-author` command group and its
-  `discovery/` package, whose one remaining borrow is `make_client`.
 - Agent tests live in `tests/eval_author/`. This plugin's `conftest.py` already covers the
   isolation those tests need, so the Eval Author copy went away.
 
@@ -41,10 +39,9 @@ registered under the `nemo.cli.agents` entry-point group, which the `nemo-agents
 plugin's `AgentsCLI` discovers and mounts. There is no top-level
 `nemo experimentalist` alias.
 
-Analyst and Eval Author follow the same rule: `nemo agents analyst run` (was
-`nemo insights analyze`) and `nemo agents eval-author <verb>`. Prefer
-`ctx.command_path` over a hardcoded path when a message quotes the command back
-to the user.
+The Analyst follows the same rule: `nemo agents analyst run` (was `nemo insights
+analyze`). Prefer `ctx.command_path` over a hardcoded path when a message quotes the
+command back to the user.
 
 ### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone (superseded)
 

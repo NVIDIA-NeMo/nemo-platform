@@ -472,6 +472,7 @@ def _register_package_command(app: typer.Typer) -> None:
             return
 
         from nemo_agents_plugin.container.builder import build_fabric_agent_image, build_nat_agent_image
+        from nemo_agents_plugin.container.errors import AgentPackagingError
 
         try:
             if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
@@ -492,6 +493,7 @@ def _register_package_command(app: typer.Typer) -> None:
                     skip_validation=skip_validation,
                     generate_ignore=generate_ignore,
                     platforms=platform,
+                    on_progress=typer.echo,
                 )
             else:
                 result_tag = build_nat_agent_image(
@@ -512,8 +514,9 @@ def _register_package_command(app: typer.Typer) -> None:
                     skip_validation=skip_validation,
                     generate_ignore=generate_ignore,
                     platforms=platform,
+                    on_progress=typer.echo,
                 )
-        except ValueError as exc:
+        except (ValueError, AgentPackagingError) as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1)
 
@@ -525,7 +528,11 @@ def _register_package_command(app: typer.Typer) -> None:
         from nemo_agents_plugin.container.publisher import docker_push
 
         assert registry is not None  # guaranteed by _validate_package_flags
-        remote = docker_push(local_tag=result_tag, registry=registry, push_tag=push_tag)
+        try:
+            remote = docker_push(local_tag=result_tag, registry=registry, push_tag=push_tag, on_progress=typer.echo)
+        except AgentPackagingError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
         typer.echo(f"Published: {remote}")
 
 

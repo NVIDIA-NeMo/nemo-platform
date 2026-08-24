@@ -27,8 +27,10 @@ Two rendering modes are supported:
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import Any
 
 import jinja2
 
@@ -39,6 +41,12 @@ import jinja2
 # the next ``nemo agents package`` invocation.
 DOCKERIGNORE_SENTINEL = "# Managed by `nemo agents package` — safe to delete if you take ownership."
 DOCKERFILE_SENTINEL = "# Managed by `nemo agents package` — safe to delete if you take ownership."
+
+UNRESOLVED_CONTRACT_VERSION = "0.0.0"
+
+#: PEP 440 dev segment. The separator is optional and the spelling is case
+#: insensitive, so ``1.2.3dev0`` and ``1.2.3.DEV0`` both normalize to ``1.2.3.dev0``.
+_DEV_SEGMENT = re.compile(r"[-_.]?dev[-_.]?[0-9]*$", re.IGNORECASE)
 
 
 def is_plugin_managed(path: Path) -> bool:
@@ -425,9 +433,10 @@ def _jinja_env() -> jinja2.Environment:
         undefined=jinja2.StrictUndefined,
     )
     env.filters["dockerfile_escape"] = _dockerfile_escape
-    env.globals["pinned_nemo_relay_cli_version"] = PINNED_NEMO_RELAY_CLI_VERSION
-    env.globals["pinned_nemo_relay_installer_commit"] = PINNED_NEMO_RELAY_INSTALLER_COMMIT
-    env.globals["pinned_nemo_relay_installer_sha256"] = PINNED_NEMO_RELAY_INSTALLER_SHA256
+    template_globals: dict[str, Any] = env.globals
+    template_globals["pinned_nemo_relay_cli_version"] = PINNED_NEMO_RELAY_CLI_VERSION
+    template_globals["pinned_nemo_relay_installer_commit"] = PINNED_NEMO_RELAY_INSTALLER_COMMIT
+    template_globals["pinned_nemo_relay_installer_sha256"] = PINNED_NEMO_RELAY_INSTALLER_SHA256
     return env
 
 
@@ -634,11 +643,10 @@ def render_fabric_dockerfile(
         agent_author=agent_author,
         metadata=metadata,
     )
-    if shared.contract_version == "0.0.0":
-        raise ValueError(
-            "Unable to resolve the installed nemo-platform contract version; "
-            "Fabric packaging requires an installed release version."
-        )
+    require_installable_contract_version(
+        shared.contract_version,
+        pins_contract_version=template_path is None,
+    )
     params = FabricRenderParams(**{f.name: getattr(shared, f.name) for f in fields(shared)})
 
     if template_path:
@@ -660,7 +668,42 @@ def get_contract_version() -> str:
     try:
         return version("nemo-platform")
     except PackageNotFoundError:
-        return "0.0.0"
+        return UNRESOLVED_CONTRACT_VERSION
+
+
+def require_installable_contract_version(contract_version: str, *, pins_contract_version: bool = True) -> None:
+    """Reject a version no index can serve: a local identifier or a ``.dev`` release.
+
+    ``pins_contract_version`` is False for a caller-supplied ``--template``,
+    whose contents may not pin the version at all.
+    """
+    if contract_version == UNRESOLVED_CONTRACT_VERSION:
+        raise ValueError(
+            "Unable to resolve the installed nemo-platform contract version; "
+            "Fabric packaging requires an installed release version."
+        )
+
+    if not pins_contract_version:
+        return
+
+    if os.environ.get("NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION", "").strip().lower() in {"1", "true", "yes"}:
+        return
+
+    public, _, local = contract_version.partition("+")
+    reasons = []
+    if local:
+        reasons.append("carries a local build identifier")
+    if _DEV_SEGMENT.search(public):
+        reasons.append("is a developmental release")
+    if not reasons:
+        return
+
+    raise ValueError(
+        f"The installed nemo-platform version '{contract_version}' {' and '.join(reasons)}, so no "
+        "package index serves it. Fabric packaging pins this exact version inside the image, so the "
+        "build would fail while resolving it. Install a released nemo-platform to package an agent, "
+        "or set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this version."
+    )
 
 
 def render_dockerignore(output_dir: Path) -> Path | None:

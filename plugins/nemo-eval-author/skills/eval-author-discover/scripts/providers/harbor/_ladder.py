@@ -1,19 +1,33 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run Harbor preflight checks against a repository-owned config."""
+"""Make Harbor judge a repository-owned config.
+
+Every rung asks Harbor's own validators for a verdict, so each recorded fact is
+proved rather than observed. Nothing here reimplements a Harbor rule.
+
+This module imports Harbor at module scope. Import it only after ``_probe`` reports
+Harbor available, so that a repository without Harbor still gets an inventory
+instead of an ImportError.
+
+``from harbor... import`` here reaches the installed Harbor library, not the
+directory holding this file. Python 3 imports are absolute, and ``scripts/`` holds
+no top-level ``harbor`` name for the enclosing directory to be found under.
+"""
+
+from __future__ import annotations
 
 import contextlib
 import shutil
 import subprocess
 import sys
-import tempfile
 import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from _checks import ADVISORY, FAIL, PASS, REQUIRED, WARN, CheckResult, check
 from harbor.agents.factory import AgentFactory
 from harbor.environments.factory import EnvironmentFactory
 from harbor.job import Job
@@ -24,9 +38,10 @@ from harbor.models.task.paths import TaskPaths
 from harbor.models.task.task import Task
 from harbor.utils.env import get_required_host_vars
 from harbor.utils.import_path import import_class
-from nemo_eval_author_plugin.discovery.scan import ConfigCandidate
-from nemo_insights_plugin.contracts.checks import CheckResult, CheckSeverity, CheckStatus
+from providers.harbor._inventory import ConfigCandidate
 from pydantic import ValidationError
+
+_ROUND_TRIP_TIMEOUT_SEC = 120
 
 
 @dataclass
@@ -46,32 +61,37 @@ class ValidationOutcome:
     required_env_vars: list[RequiredEnvVar] = field(default_factory=list)
 
 
-def _check(
-    name: str,
-    status: CheckStatus,
-    message: str,
-    *,
-    severity: CheckSeverity = "required",
-    hint: str | None = None,
-) -> CheckResult:
-    return CheckResult(name=name, group="validation", status=status, severity=severity, message=message, hint=hint)
+def _check(name: str, status: str, message: str, **kwargs: object) -> CheckResult:
+    return check(name, "validation", status, message, **kwargs)  # ty: ignore[invalid-argument-type]
 
 
 async def run_ladder(candidate: ConfigCandidate, repo_root: Path) -> ValidationOutcome:
     """Run the complete preflight without caching or skipping any check."""
     outcome = ValidationOutcome()
+    if not candidate.parsed:
+        outcome.checks.append(
+            _check(
+                "schema",
+                FAIL,
+                "Cannot read {} to validate it.".format(candidate.path.name),
+                # Harbor is importable here, so it brought PyYAML: the syntax is the fault.
+                hint="Fix the file's YAML syntax, which PyYAML could not parse.",
+            )
+        )
+        return outcome
+
     with contextlib.chdir(repo_root):
         try:
             config = JobConfig.model_validate(candidate.data)
             config.validate_agent_concurrency_limits()
         except ValidationError as exc:
             errors = exc.errors(include_url=False, include_input=False)
-            outcome.checks.append(_check("schema", "fail", f"Harbor rejected the job config: {errors}"))
+            outcome.checks.append(_check("schema", FAIL, "Harbor rejected the job config: {}".format(errors)))
             return outcome
         except ValueError as exc:
-            outcome.checks.append(_check("schema", "fail", f"Harbor rejected the job config: {exc}"))
+            outcome.checks.append(_check("schema", FAIL, "Harbor rejected the job config: {}".format(exc)))
             return outcome
-        outcome.checks.append(_check("schema", "pass", "Harbor accepts the job config schema."))
+        outcome.checks.append(_check("schema", PASS, "Harbor accepts the job config schema."))
 
         job = await _resolve(config, outcome)
         _check_agent(config, outcome)
@@ -85,7 +105,7 @@ async def run_ladder(candidate: ConfigCandidate, repo_root: Path) -> ValidationO
             outcome.checks.append(
                 _check(
                     "compatibility",
-                    "fail",
+                    FAIL,
                     "This Harbor version does not expose Job._task_configs.",
                     hint="Install a Harbor version that exposes the resolved task list.",
                 )
@@ -98,21 +118,27 @@ async def run_ladder(candidate: ConfigCandidate, repo_root: Path) -> ValidationO
 
 
 async def _resolve(config: JobConfig, outcome: ValidationOutcome) -> Job | None:
+    import tempfile
+
     try:
         with tempfile.TemporaryDirectory(prefix="eval-author-jobs-") as scratch:
             job = await Job.create(config.model_copy(update={"jobs_dir": Path(scratch)}))
-            job._close_logger_handlers()
+            # Cleanup on a private API, and it has to precede the scratch removal.
+            # Resolution already succeeded, so a Harbor rename here is not a
+            # resolution failure and must not be reported as one.
+            with contextlib.suppress(Exception):
+                job._close_logger_handlers()
     except Exception as exc:
         outcome.checks.append(
             _check(
                 "resolution",
-                "fail",
-                f"Harbor could not resolve the job: {type(exc).__name__}: {exc}",
+                FAIL,
+                "Harbor could not resolve the job: {}: {}".format(type(exc).__name__, exc),
                 hint="This error occurs before Harbor starts a container.",
             )
         )
         return None
-    outcome.checks.append(_check("resolution", "pass", "Harbor resolved the job."))
+    outcome.checks.append(_check("resolution", PASS, "Harbor resolved the job."))
     return job
 
 
@@ -132,19 +158,24 @@ def _resolved_task_paths(job: Job) -> list[Path] | None:
 def _check_tasks(resolved: list[Path], outcome: ValidationOutcome) -> list[Path]:
     valid = [path for path in resolved if Task.is_valid_dir(path)]
     if not resolved:
-        outcome.checks.append(_check("tasks", "fail", "The config resolves to zero tasks."))
+        outcome.checks.append(_check("tasks", FAIL, "The config resolves to zero tasks."))
         return []
     outcome.checks.append(
         _check(
             "tasks",
-            "fail" if len(valid) != len(resolved) else "pass",
-            f"{len(valid)} of {len(resolved)} task dirs are valid Harbor tasks.",
+            FAIL if len(valid) != len(resolved) else PASS,
+            "{} of {} task dirs are valid Harbor tasks.".format(len(valid), len(resolved)),
         )
     )
     return valid
 
 
 def _check_coverage(config: JobConfig, resolved: list[Path], outcome: ValidationOutcome) -> None:
+    """Report task dirs Harbor dropped.
+
+    Harbor skips task directories it cannot parse without raising, so a per-task
+    check alone reports every survivor valid while one silently vanishes.
+    """
     resolved_set = {path.resolve() for path in resolved}
     dropped_any = False
     for dataset in config.datasets:
@@ -172,9 +203,9 @@ def _check_coverage(config: JobConfig, resolved: list[Path], outcome: Validation
         outcome.checks.append(
             _check(
                 "coverage",
-                "fail" if required else "warn",
-                f"Harbor did not resolve {len(reported)} task dirs: {names}.",
-                severity="required" if required else "advisory",
+                FAIL if required else WARN,
+                "Harbor did not resolve {} task dirs: {}.".format(len(reported), names),
+                severity=REQUIRED if required else ADVISORY,
                 hint=(
                     "Harbor skipped a task selected by the dataset filters."
                     if required and filtered
@@ -185,7 +216,7 @@ def _check_coverage(config: JobConfig, resolved: list[Path], outcome: Validation
             )
         )
     if not dropped_any:
-        outcome.checks.append(_check("coverage", "pass", "Harbor dropped no local task dirs."))
+        outcome.checks.append(_check("coverage", PASS, "Harbor dropped no local task dirs."))
 
 
 def _check_required_env_vars(config: JobConfig, task_dirs: list[Path], outcome: ValidationOutcome) -> None:
@@ -210,7 +241,11 @@ def _check_required_env_vars(config: JobConfig, task_dirs: list[Path], outcome: 
     outcome.required_env_vars = sorted(required.values(), key=lambda item: item.name)
     names = ", ".join(item.name for item in outcome.required_env_vars)
     outcome.checks.append(
-        _check("credentials", "pass", f"{len(required)} host variables required" + (f": {names}." if names else "."))
+        _check(
+            "credentials",
+            PASS,
+            "{} host variables required".format(len(required)) + (": {}.".format(names) if names else "."),
+        )
     )
 
 
@@ -229,19 +264,29 @@ def _check_agent(config: JobConfig, outcome: ValidationOutcome) -> None:
                     imported = import_class(agent.import_path, label="agent")
                 except (Exception, SystemExit) as exc:
                     outcome.checks.append(
-                        _check("agent", "fail", f"Cannot import agent {agent.import_path}: {type(exc).__name__}: {exc}")
+                        _check(
+                            "agent",
+                            FAIL,
+                            "Cannot import agent {}: {}: {}".format(agent.import_path, type(exc).__name__, exc),
+                        )
                     )
                 else:
-                    outcome.checks.append(_check("agent", "pass", f"Agent {imported.__name__} imports as a class."))
+                    outcome.checks.append(
+                        _check("agent", PASS, "Agent {} imports as a class.".format(imported.__name__))
+                    )
         elif agent.name is not None:
             try:
                 AgentFactory.get_agent_class(AgentName(agent.name))
             except Exception as exc:
                 outcome.checks.append(
-                    _check("agent", "fail", f"Cannot load Harbor agent {agent.name}: {type(exc).__name__}: {exc}")
+                    _check(
+                        "agent",
+                        FAIL,
+                        "Cannot load Harbor agent {}: {}: {}".format(agent.name, type(exc).__name__, exc),
+                    )
                 )
             else:
-                outcome.checks.append(_check("agent", "pass", f"Built-in agent {agent.name} is available."))
+                outcome.checks.append(_check("agent", PASS, "Built-in agent {} is available.".format(agent.name)))
 
 
 def _check_backend(config: JobConfig, outcome: ValidationOutcome) -> None:
@@ -250,10 +295,14 @@ def _check_backend(config: JobConfig, outcome: ValidationOutcome) -> None:
         EnvironmentFactory.run_preflight(config.environment.type, config.environment.import_path)
     except (Exception, SystemExit) as exc:
         outcome.checks.append(
-            _check("backend", "fail", f"Environment backend {label} is not ready: {type(exc).__name__}: {exc}")
+            _check(
+                "backend",
+                FAIL,
+                "Environment backend {} is not ready: {}: {}".format(label, type(exc).__name__, exc),
+            )
         )
     else:
-        outcome.checks.append(_check("backend", "pass", f"Environment backend {label} passed preflight."))
+        outcome.checks.append(_check("backend", PASS, "Environment backend {} passed preflight.".format(label)))
 
 
 def check_config_file(config_path: Path, repo_root: Path) -> CheckResult:
@@ -262,9 +311,9 @@ def check_config_file(config_path: Path, repo_root: Path) -> CheckResult:
     if harbor is None:
         return _check(
             "round-trip",
-            "warn",
+            WARN,
             "The Harbor CLI round trip did not run.",
-            severity="advisory",
+            severity=ADVISORY,
             hint="No harbor executable exists on PATH.",
         )
     try:
@@ -273,17 +322,19 @@ def check_config_file(config_path: Path, repo_root: Path) -> CheckResult:
             cwd=repo_root,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_ROUND_TRIP_TIMEOUT_SEC,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return _check("round-trip", "warn", f"The Harbor CLI round trip failed: {exc}", severity="advisory")
+        return _check("round-trip", WARN, "The Harbor CLI round trip failed: {}".format(exc), severity=ADVISORY)
     if completed.returncode:
         detail = (completed.stderr or completed.stdout).strip().splitlines()
         return _check(
-            "round-trip", "fail", f"The Harbor CLI rejected the config: {detail[-1] if detail else 'no output'}."
+            "round-trip",
+            FAIL,
+            "The Harbor CLI rejected the config: {}.".format(detail[-1] if detail else "no output"),
         )
-    return _check("round-trip", "pass", "The config file loads through the Harbor CLI.")
+    return _check("round-trip", PASS, "The config file loads through the Harbor CLI.")
 
 
 def _harbor_executable() -> str | None:
@@ -296,7 +347,9 @@ def _evict_module_tree(import_path: str) -> Iterator[None]:
     """Import without cached modules from another repository."""
     module = import_path.split(":", 1)[0].split(".", 1)[0]
     previous = {
-        name: cached for name, cached in list(sys.modules.items()) if name == module or name.startswith(f"{module}.")
+        name: cached
+        for name, cached in list(sys.modules.items())
+        if name == module or name.startswith("{}.".format(module))
     }
     for name in previous:
         sys.modules.pop(name)
@@ -304,6 +357,6 @@ def _evict_module_tree(import_path: str) -> Iterator[None]:
         yield
     finally:
         for name in list(sys.modules):
-            if name == module or name.startswith(f"{module}."):
+            if name == module or name.startswith("{}.".format(module)):
                 sys.modules.pop(name)
         sys.modules.update(previous)

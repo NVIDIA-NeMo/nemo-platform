@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
-from nmp.intake.spans.domain import SpanKind, SpanStatus
+from nmp.intake.spans.domain import NEMO_STEP_ID_ATTRIBUTE, SpanKind, SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -536,6 +536,29 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     assert "evaluation.id" not in child.attributes_string
     assert "nemo.evaluation.name" not in child.attributes_string
     assert "nemo.test_case.name" not in child.attributes_string
+
+
+def test_atif_mapping_persists_step_order_when_timestamps_match() -> None:
+    timestamp = datetime(2026, 8, 21, 13, 32, 49, 843000, tzinfo=timezone.utc)
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [
+                {"step_id": 1, "timestamp": timestamp.isoformat(), "source": "system", "message": "rules"},
+                {"step_id": 2, "timestamp": timestamp.isoformat(), "source": "user", "message": "task"},
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(workspace="default", trajectory=trajectory, ingested_at=timestamp)
+    steps = [span for span in spans if NEMO_STEP_ID_ATTRIBUTE in span.attributes_number]
+
+    assert [(span.name, span.start_time, span.attributes_number[NEMO_STEP_ID_ATTRIBUTE]) for span in steps] == [
+        ("system-1", timestamp, 1),
+        ("user-2", timestamp, 2),
+    ]
 
 
 def test_atif_mapping_uses_root_final_metrics_when_steps_have_no_metrics() -> None:

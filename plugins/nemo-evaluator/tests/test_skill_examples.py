@@ -420,11 +420,27 @@ def test_metric_selection_lists_exactly_the_supported_metric_names() -> None:
 
     `tunable-rag-evaluator` is registered for optimize / NAT-style judge flows but
     is intentionally omitted from this curated skill list until skill docs cover it.
+
+    The runner and agent-eval metrics are omitted for a different reason: this page is about
+    *choosing a scorer for your data*, and none of them is a choice. They arrive with the runner
+    or the agent-eval harness -- `gym_reward` and `harbor_reward` surface a reward their runner
+    already computed, and the rest score trial metadata and evidence. They became registry members
+    so they bundle inline instead of demanding the cloudpickle opt-in, not so callers would pick
+    them off a list.
     """
     from nemo_evaluator.cli import _is_ragas_metric, _metric_type_models
 
     # Registry metrics the skill may omit without failing this contract.
-    skill_omitted = frozenset({"tunable-rag-evaluator"})
+    skill_omitted = frozenset(
+        {
+            "tunable-rag-evaluator",
+            "gym_reward",
+            "harbor_reward",
+            "agent_phase_success",
+            "evidence_presence",
+            "skill_used",
+        }
+    )
 
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/metric-selection.md").read_text(
         encoding="utf-8"

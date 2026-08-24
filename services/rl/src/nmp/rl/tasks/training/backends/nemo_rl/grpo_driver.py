@@ -19,7 +19,10 @@ from nemo_rl.models.generation import configure_generation_config
 from nemo_rl.utils.config import load_config, parse_hydra_overrides
 from nemo_rl.utils.logger import get_next_experiment_dir
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import NemoRLLogger
+from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (
+    GRPO_DEFAULT_TIME_SERIES_METRICS,
+    NemoRLLogger,
+)
 from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import assemble_master_egress_allow
 from omegaconf import OmegaConf
 
@@ -153,6 +156,7 @@ def main() -> None:
             steps_per_epoch=getattr(config.grpo, "steps_per_epoch", None),
             time_series_metrics=getattr(config.grpo, "progress_time_series_metrics", None),
             min_report_interval_seconds=getattr(config.grpo, "progress_min_report_interval_seconds", None),
+            default_time_series_metrics=GRPO_DEFAULT_TIME_SERIES_METRICS,
         )
         if hasattr(logger_inst, "loggers"):
             logger_inst.loggers.append(customizer_logger)

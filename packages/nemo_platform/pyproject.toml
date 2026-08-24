@@ -243,6 +243,8 @@ nemo-agents-plugin = [
   "botocore>=1.40.46,<1.40.62",
   "httpx>=0.27",
   "pyyaml>=6.0",
+  "jinja2>=3.1",
+  "python-on-whales>=0.60",
   "anthropic>=0.88.0",
   "rich>=13.7.1",
   "nemo-fabric[claude,codex,deepagents,relay]>=0.2.0,<0.3.0",
@@ -289,16 +291,6 @@ nemo-deployments-plugin = [
   "nemo-platform-plugin",
   "pydantic>=2.10.6",
   "pyyaml>=6.0",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
-nemo-eval-author-plugin = [
-  "pydantic>=2",
-  "harbor>=0.18",
-  "nemo-experimentalist-plugin",
-  "nemo-insights-plugin",
-  "nemo-platform-plugin",
-  "pyyaml>=6.0.3",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -488,7 +480,6 @@ plugins = [
     "nemo-platform[nemo-auditor-plugin]",
     "nemo-platform[nemo-data-designer-plugin]",
     "nemo-platform[nemo-deployments-plugin]",
-    "nemo-platform[nemo-eval-author-plugin]",
     "nemo-platform[nemo-evaluator-plugin]",
     "nemo-platform[nemo-experimentalist-plugin]",
     "nemo-platform[nemo-guardrails-plugin]",
@@ -569,7 +560,6 @@ insights = "nemo_insights_plugin.cli:InsightsCLI"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli.agents"]
-eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
 experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"
 analyst = "nemo_insights_plugin.analyst.cli:AnalystCLI"
 
@@ -624,6 +614,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
 "insights.analyze-job" = "nemo_insights_plugin.jobs.analyze:AnalyzeJob"
 "agents.execute" = "nemo_agents_plugin.jobs.execute:ExecuteAgentJob"
+"agents.package-agent" = "nemo_agents_plugin.jobs.package_agent:PackageAgentJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]
@@ -728,11 +719,6 @@ nemo-anonymizer-plugin = { source = "../../plugins/nemo-anonymizer/src/nemo_anon
 nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-data-designer-plugin = { source = "../../plugins/nemo-data-designer/src/nemo_data_designer_plugin", module = "nemo_data_designer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-deployments-plugin = { source = "../../plugins/nemo-deployments/src/nemo_deployments_plugin", module = "nemo_deployments_plugin", inherit = { "entry-points" = ["nemo.*"] } }
-# Eval Author, Experimentalist, and Insights ship together: Experimentalist imports
-# EvalAuthor and EvalAuthorConfig at module scope, Eval Author still borrows
-# Experimentalist helpers, and both read the Insights profile contract. Bundling all
-# three into one distribution collapses that dependency cycle into intra-wheel extras.
-nemo-eval-author-plugin = { source = "../../plugins/nemo-eval-author/src/nemo_eval_author_plugin", module = "nemo_eval_author_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-experimentalist-plugin = { source = "../../plugins/nemo-experimentalist/src/nemo_experimentalist_plugin", module = "nemo_experimentalist_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-insights-plugin = { source = "../../plugins/nemo-insights/src/nemo_insights_plugin", module = "nemo_insights_plugin", inherit = { "entry-points" = ["nemo.*"] } }
