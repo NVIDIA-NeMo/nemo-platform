@@ -66,6 +66,7 @@ from nemo_platform_plugin.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     TASK_CONFIG_ENVVAR,
 )
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
 from pydantic import BaseModel, Field
@@ -284,10 +285,26 @@ class ExecuteAgentJob(NemoJob):
                 command=["nemo_agents_plugin.tasks.execute"],
             ),
         )
-        # Snapshotted compute -> executor resources. Injected only when the
-        # environment supplied a compute spec, so the default CPU sizing is left
-        # to the jobs backend otherwise.
-        resources = _compute_to_resources(step_config.compute)
+        # Snapshotted compute -> executor resources, and secret-env refs ->
+        # secret-backed step env vars. Both validate the snapshot and raise
+        # ``ValueError`` on a bad shape (an unsupported resource key, or a secret
+        # env name colliding with a reserved job env var). Surface those as a
+        # ``PlatformJobCompilationError`` so the jobs create route maps them to a
+        # descriptive 422 rather than an opaque 500 (the route's compile wrapper
+        # only translates ``PlatformJobCompilationError``, not bare ``ValueError``).
+        try:
+            # Snapshotted compute -> executor resources. Injected only when the
+            # environment supplied a compute spec, so the default CPU sizing is
+            # left to the jobs backend otherwise.
+            resources = _compute_to_resources(step_config.compute)
+            # Snapshotted secret-env refs -> secret-backed step env vars. The jobs
+            # substrate materializes each value into the process env under
+            # ENV_NAME; Fabric and its MCP servers read it by name (env-var-name
+            # indirection - see environment_resolution).
+            environment = _secret_environment(step_config.secrets)
+        except ValueError as exc:
+            raise PlatformJobCompilationError(str(exc)) from exc
+
         if resources is not None:
             executor["resources"] = resources
 
@@ -297,11 +314,7 @@ class ExecuteAgentJob(NemoJob):
                     name="execute-agent",
                     executor=executor,
                     config=step_config.model_dump(mode="json"),
-                    # Snapshotted secret-env refs -> secret-backed step env vars.
-                    # The jobs substrate materializes each value into the process
-                    # env under ENV_NAME; Fabric and its MCP servers read it by
-                    # name (env-var-name indirection - see environment_resolution).
-                    environment=_secret_environment(step_config.secrets),
+                    environment=environment,
                 )
             ],
         )

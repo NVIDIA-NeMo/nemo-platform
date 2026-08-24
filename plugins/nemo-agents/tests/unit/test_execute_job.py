@@ -46,6 +46,7 @@ from nemo_agents_plugin.tasks.execute.workdir import (
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.routes import add_job_routes
 
 
@@ -735,7 +736,7 @@ async def test_compile_rejects_unsupported_compute_resource_key() -> None:
 
     with (
         patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config,
-        pytest.raises(ValueError, match="Unsupported compute resource key"),
+        pytest.raises(PlatformJobCompilationError, match="Unsupported compute resource key"),
     ):
         get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
         await ExecuteAgentJob.compile(
@@ -757,7 +758,7 @@ async def test_compile_rejects_secret_env_colliding_with_reserved_name() -> None
 
     with (
         patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config,
-        pytest.raises(ValueError, match="reserved job env var name"),
+        pytest.raises(PlatformJobCompilationError, match="reserved job env var name"),
     ):
         get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
         await ExecuteAgentJob.compile(
@@ -1114,3 +1115,48 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
     assert body.platform_spec.steps[0].name == "execute-agent"
     assert response.json()["spec"]["workdir"]["base_workdir"] == "default/source#project/"
+
+
+def test_execute_job_create_route_maps_reserved_secret_env_to_422() -> None:
+    """A reserved-name secret-env collision must surface as a 422, not a 500.
+
+    The collision is detected in ``compile`` (``_secret_environment``). The jobs
+    create route only translates ``PlatformJobCompilationError`` into a 422 - a
+    bare ``ValueError`` escaping ``compile`` would fall through to the global
+    handler as an opaque 500. This guards that the error reaches the client as a
+    descriptive 422 at the HTTP boundary (the unit test on ``_secret_environment``
+    only checks the raised exception, not the mapped status code).
+    """
+    app = FastAPI()
+    app.include_router(add_job_routes(ExecuteAgentJob), prefix="/apis/agents/v2/workspaces/{workspace}")
+
+    # Agent resolves, plus an environment whose EnvironmentSpec maps a secret env
+    # var onto a reserved job env var name (NMP_BASE_URL).
+    env = AgentEnvironment(name="prod", workspace="default", environment_spec="default/prod-spec")
+    env_spec = AgentEnvironmentSpec(
+        name="prod-spec", workspace="default", secrets={"NMP_BASE_URL": "default/some-secret"}
+    )
+
+    async def _get(entity_type: type, *, name: str, workspace: str) -> object:
+        if entity_type is Agent:
+            return _agent()
+        if entity_type is AgentEnvironment:
+            return env
+        if entity_type is AgentEnvironmentSpec:
+            return env_spec
+        raise AssertionError(f"unexpected entity type {entity_type!r}")
+
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = _get
+    app.dependency_overrides[get_entity_client] = lambda: entity_client
+    app.dependency_overrides[get_sdk_client] = lambda: _sdk_with_files()
+
+    with patch("nemo_agents_plugin.jobs.execute.AgentsConfig.get") as get_config:
+        get_config.return_value.deployments.default_image = "registry.example/nmp-api:test"
+        response = TestClient(app, raise_server_exceptions=False).post(
+            "/apis/agents/v2/workspaces/default/jobs/execute",
+            json={"name": "execute-1", "spec": {"agent": "calc", "input": "hello", "environment": "default/prod"}},
+        )
+
+    assert response.status_code == 422, response.text
+    assert "reserved job env var name" in response.json()["detail"]
