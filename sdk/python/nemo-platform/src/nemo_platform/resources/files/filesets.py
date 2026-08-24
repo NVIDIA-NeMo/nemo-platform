@@ -37,13 +37,16 @@ from ...types.files import (
     fileset_list_params,
     fileset_create_params,
     fileset_update_params,
+    fileset_profile_params,
 )
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.files.fileset import Fileset
 from ...types.files.fileset_purpose import FilesetPurpose
 from ...types.shared.generic_sort_field import GenericSortField
 from ...types.files.fileset_filter_param import FilesetFilterParam
+from ...types.files.fileset_profile_response import FilesetProfileResponse
 from ...types.shared_params.fileset_metadata import FilesetMetadata
+from ...types.files.submit_profile_job_response import SubmitProfileJobResponse
 from ..._exceptions import ConflictError
 
 __all__ = ["FilesetsResource", "AsyncFilesetsResource"]
@@ -374,6 +377,115 @@ class FilesetsResource(SyncAPIResource):
             cast_to=Fileset,
         )
 
+    def get_profile(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> FilesetProfileResponse:
+        """
+        Get the stored profile for a fileset, with the current profiling state.
+
+        `state` is `ready` (a profile is available), `running` (a job is in flight),
+        `paused` (a job exists but is suspended and will produce nothing until resumed),
+        `cancelled` (the last job was stopped deliberately and no profile exists),
+        `failed` (the last job errored and no profile exists), or `absent` (never
+        profiled). A stored profile short-circuits without querying the Jobs service, so
+        a re-profile running over an existing profile still reads `ready` (with the
+        current profile) and GET stays resilient to a Jobs-service outage.
+
+        There is no `stale`. A profile carries no content digest to compare a fresh
+        listing against — see `DatasetProfile` for why it deliberately holds no
+        staleness marker — so a stored profile describes the fileset as of its
+        `created_at`, and whether that is still good enough is the caller's call.
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._get(
+            path_template(
+                "/apis/files/v2/workspaces/{workspace}/filesets/{name}/profile", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=FilesetProfileResponse,
+        )
+
+    def profile(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        row_budget: int | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> SubmitProfileJobResponse:
+        """
+        Profile a fileset's dataset contents.
+
+        Submits a background job that runs the dataset profiler over the fileset, stores
+        the resulting profile (read it via `GET .../filesets/{name}/profile`), and
+        publishes it as a job result artifact. If a profiling job for this fileset is
+        already on its way, that job is returned instead of submitting a duplicate.
+
+        Args:
+          row_budget: Rows the profiler may read per _partition_, divided across that partition's
+              files rather than applied to each one. Omit (or pass 0) to read every row, which
+              is the default: the profiler folds, so memory is flat in rows and an exhaustive
+              read buys exact row counts, proven value enumerations, and `rows_complete`. Set
+              a budget when the fileset is large enough that the transfer is the cost worth
+              bounding — files are read over the network, so an uncapped run pulls every row
+              group over the wire. Named to match the profiler's own `row_budget`, which is
+              the value this becomes.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._post(
+            path_template(
+                "/apis/files/v2/workspaces/{workspace}/filesets/{name}/profile", workspace=workspace, name=name
+            ),
+            body=maybe_transform({"row_budget": row_budget}, fileset_profile_params.FilesetProfileParams),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=SubmitProfileJobResponse,
+        )
+
 
 class AsyncFilesetsResource(AsyncAPIResource):
     @cached_property
@@ -700,6 +812,115 @@ class AsyncFilesetsResource(AsyncAPIResource):
             cast_to=Fileset,
         )
 
+    async def get_profile(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> FilesetProfileResponse:
+        """
+        Get the stored profile for a fileset, with the current profiling state.
+
+        `state` is `ready` (a profile is available), `running` (a job is in flight),
+        `paused` (a job exists but is suspended and will produce nothing until resumed),
+        `cancelled` (the last job was stopped deliberately and no profile exists),
+        `failed` (the last job errored and no profile exists), or `absent` (never
+        profiled). A stored profile short-circuits without querying the Jobs service, so
+        a re-profile running over an existing profile still reads `ready` (with the
+        current profile) and GET stays resilient to a Jobs-service outage.
+
+        There is no `stale`. A profile carries no content digest to compare a fresh
+        listing against — see `DatasetProfile` for why it deliberately holds no
+        staleness marker — so a stored profile describes the fileset as of its
+        `created_at`, and whether that is still good enough is the caller's call.
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._get(
+            path_template(
+                "/apis/files/v2/workspaces/{workspace}/filesets/{name}/profile", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=FilesetProfileResponse,
+        )
+
+    async def profile(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        row_budget: int | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> SubmitProfileJobResponse:
+        """
+        Profile a fileset's dataset contents.
+
+        Submits a background job that runs the dataset profiler over the fileset, stores
+        the resulting profile (read it via `GET .../filesets/{name}/profile`), and
+        publishes it as a job result artifact. If a profiling job for this fileset is
+        already on its way, that job is returned instead of submitting a duplicate.
+
+        Args:
+          row_budget: Rows the profiler may read per _partition_, divided across that partition's
+              files rather than applied to each one. Omit (or pass 0) to read every row, which
+              is the default: the profiler folds, so memory is flat in rows and an exhaustive
+              read buys exact row counts, proven value enumerations, and `rows_complete`. Set
+              a budget when the fileset is large enough that the transfer is the cost worth
+              bounding — files are read over the network, so an uncapped run pulls every row
+              group over the wire. Named to match the profiler's own `row_budget`, which is
+              the value this becomes.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._post(
+            path_template(
+                "/apis/files/v2/workspaces/{workspace}/filesets/{name}/profile", workspace=workspace, name=name
+            ),
+            body=await async_maybe_transform({"row_budget": row_budget}, fileset_profile_params.FilesetProfileParams),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=SubmitProfileJobResponse,
+        )
+
 
 class FilesetsResourceWithRawResponse:
     def __init__(self, filesets: FilesetsResource) -> None:
@@ -719,6 +940,12 @@ class FilesetsResourceWithRawResponse:
         )
         self.delete = to_raw_response_wrapper(
             filesets.delete,
+        )
+        self.get_profile = to_raw_response_wrapper(
+            filesets.get_profile,
+        )
+        self.profile = to_raw_response_wrapper(
+            filesets.profile,
         )
 
 
@@ -741,6 +968,12 @@ class AsyncFilesetsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             filesets.delete,
         )
+        self.get_profile = async_to_raw_response_wrapper(
+            filesets.get_profile,
+        )
+        self.profile = async_to_raw_response_wrapper(
+            filesets.profile,
+        )
 
 
 class FilesetsResourceWithStreamingResponse:
@@ -762,6 +995,12 @@ class FilesetsResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             filesets.delete,
         )
+        self.get_profile = to_streamed_response_wrapper(
+            filesets.get_profile,
+        )
+        self.profile = to_streamed_response_wrapper(
+            filesets.profile,
+        )
 
 
 class AsyncFilesetsResourceWithStreamingResponse:
@@ -782,4 +1021,10 @@ class AsyncFilesetsResourceWithStreamingResponse:
         )
         self.delete = async_to_streamed_response_wrapper(
             filesets.delete,
+        )
+        self.get_profile = async_to_streamed_response_wrapper(
+            filesets.get_profile,
+        )
+        self.profile = async_to_streamed_response_wrapper(
+            filesets.profile,
         )

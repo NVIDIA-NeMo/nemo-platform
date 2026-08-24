@@ -36,7 +36,27 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.files import FilesetFilter
+from nemo_platform.types.files import (
+    CategoricalStats,
+    ColumnStats,
+    DatasetProfile,
+    Evidence,
+    FeatureSchema,
+    FileError,
+    FilesetFilter,
+    FilesetProfileResponse,
+    MessageStats,
+    NumericStats,
+    PartitionClassification,
+    PartitionProfile,
+    ProfileFilesetRequest,
+    Quantiles,
+    SamplingInfo,
+    SplitProfile,
+    SubmitProfileJobResponse,
+    TextStats,
+    Verifiability,
+)
 ```
 
 Methods:
@@ -46,6 +66,8 @@ Methods:
 - <code title="patch /apis/files/v2/workspaces/{workspace}/filesets/{name}">client.files.filesets.<a href="./src/nemo_platform/resources/files/filesets.py">update</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/files/fileset_update_params.py">params</a>) -> <a href="./src/nemo_platform/types/files/fileset.py">Fileset</a></code>
 - <code title="get /apis/files/v2/workspaces/{workspace}/filesets">client.files.filesets.<a href="./src/nemo_platform/resources/files/filesets.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/files/fileset_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/files/fileset.py">SyncDefaultPagination[Fileset]</a></code>
 - <code title="delete /apis/files/v2/workspaces/{workspace}/filesets/{name}">client.files.filesets.<a href="./src/nemo_platform/resources/files/filesets.py">delete</a>(name, \*, workspace) -> <a href="./src/nemo_platform/types/files/fileset.py">Fileset</a></code>
+- <code title="get /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile">client.files.filesets.<a href="./src/nemo_platform/resources/files/filesets.py">get_profile</a>(name, \*, workspace) -> <a href="./src/nemo_platform/types/files/fileset_profile_response.py">FilesetProfileResponse</a></code>
+- <code title="post /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile">client.files.filesets.<a href="./src/nemo_platform/resources/files/filesets.py">profile</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/files/fileset_profile_params.py">params</a>) -> <a href="./src/nemo_platform/types/files/submit_profile_job_response.py">SubmitProfileJobResponse</a></code>
 
 ## Otlp
 
