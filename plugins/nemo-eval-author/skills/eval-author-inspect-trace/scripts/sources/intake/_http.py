@@ -6,8 +6,8 @@
 import ipaddress
 import json
 import os
-from collections.abc import Iterator, Mapping
-from typing import Any
+from collections.abc import Callable, Iterator, Mapping
+from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -64,7 +64,7 @@ def _deep_items(name: str, value: Any) -> Iterator[tuple[str, str]]:
         for key, child in value.items():
             yield from _deep_items(f"{name}[{key}]", child)
         return
-    if isinstance(value, list | tuple):
+    if isinstance(value, (list, tuple)):
         if not value:
             raise ValueError(f"{name} must not be empty because omitting it would broaden the query.")
         for child in value:
@@ -85,7 +85,7 @@ def encode_query(params: Mapping[str, Any]) -> str:
     for name, value in params.items():
         if isinstance(value, Mapping):
             items.extend(_deep_items(name, value))
-        elif isinstance(value, list | tuple):
+        elif isinstance(value, (list, tuple)):
             items.extend(_deep_items(name, value))
         elif value is not None:
             items.append((name, str(value)))
@@ -100,7 +100,7 @@ class IntakeClient:
         base_url: str,
         workspace: str,
         *,
-        access_token: str | None = None,
+        access_token: Optional[str] = None,
         timeout: float = 30.0,
     ) -> None:
         if not workspace:
@@ -128,7 +128,7 @@ class IntakeClient:
         query = encode_query(params)
         return f"{self.base_url}{path}" + (f"?{query}" if query else "")
 
-    def get(self, endpoint: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def get(self, endpoint: str, params: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
         """Return one decoded JSON object from a read-only Intake endpoint."""
         headers = {"Accept": "application/json"}
         if self.access_token:
@@ -143,6 +143,13 @@ class IntakeClient:
             raise IntakeError(
                 f"Reading Intake failed: the Platform is unreachable at {self.base_url}. "
                 "Check NMP_BASE_URL and that the services are running."
+            ) from exc
+        except OSError as exc:
+            # A timeout while draining the response body arrives as a bare OSError
+            # rather than a URLError, so it needs its own guidance.
+            raise IntakeError(
+                f"Reading Intake failed after {self.timeout:g}s while reading {endpoint}: {exc}. "
+                "Retry, or narrow the query with a smaller limit."
             ) from exc
         try:
             decoded = json.loads(payload)
@@ -177,11 +184,18 @@ class IntakeClient:
     def drain(
         self,
         endpoint: str,
-        params: Mapping[str, Any] | None = None,
+        params: Optional[Mapping[str, Any]] = None,
         *,
-        limit: int | None,
+        limit: Optional[int],
+        stop_when: Optional[Callable[[list[dict[str, Any]]], bool]] = None,
     ) -> tuple[list[dict[str, Any]], bool]:
-        """Read page-based results, preserving the caller's row limit."""
+        """Read page-based results, preserving the caller's row limit.
+
+        ``stop_when`` receives each page as it is kept and ends the read once the
+        caller has what it asked for. It is how a search for named rows avoids paying
+        for every remaining page. The returned flag then reports only whether a row
+        limit cut the result, so a caller that stops early owns that judgement itself.
+        """
         rows: list[dict[str, Any]] = []
         page = 1
         truncated = False
@@ -196,7 +210,10 @@ class IntakeClient:
                 raise IntakeError(f"Intake returned a non-object row while reading {endpoint}.")
 
             remaining = len(data) if limit is None else max(0, limit - len(rows))
-            rows.extend(data[:remaining])
+            kept = data[:remaining]
+            rows.extend(kept)
+            if stop_when is not None and stop_when(kept):
+                break
             total_results = pagination.get("total_results")
             total_pages = pagination.get("total_pages", page)
             if limit is not None and len(rows) >= limit:

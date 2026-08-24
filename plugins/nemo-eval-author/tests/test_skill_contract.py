@@ -272,7 +272,16 @@ def test_the_entry_point_owns_no_source_specific_arguments_or_internals() -> Non
     """The entry point names one adapter function; the source owns its own flags and client."""
     entry_point = (_INSPECT_SCRIPTS_DIR / "inspect_trace.py").read_text(encoding="utf-8")
 
-    for detail in ("--workspace", "NMP_BASE_URL", "NMP_ACCESS_TOKEN", "IntakeClient", "IntakeError", "read_trace"):
+    forbidden = (
+        "--workspace",
+        "NMP_BASE_URL",
+        "NMP_ACCESS_TOKEN",
+        "IntakeClient",
+        "IntakeError",
+        "read_overview",
+        "read_spans",
+    )
+    for detail in forbidden:
         assert detail not in entry_point
 
 
@@ -350,6 +359,27 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
         for relative in paths:
             assert relative in body, f"{document.relative_to(skill_dir)} no longer documents {relative}"
             assert (skill_dir / relative).exists(), f"{document.relative_to(skill_dir)} names missing {relative}"
+
+
+def test_no_document_names_a_script_that_was_deleted() -> None:
+    """Catch the other direction of drift: a document naming a file that no longer exists.
+
+    Listing the expected paths only proves the ones we remembered to list. A script
+    that gets folded into another one leaves its name behind in the prose, and the
+    agent then runs a command that cannot work.
+    """
+    named = re.compile(r"`(scripts/[A-Za-z0-9_/]+\.py)`")
+    missing: dict[str, set[str]] = {}
+    for skill_dir in _SKILL_DIRS:
+        for document in sorted(skill_dir.rglob("*.md")):
+            absent = {
+                relative
+                for relative in named.findall(document.read_text(encoding="utf-8"))
+                if not (skill_dir / relative).exists()
+            }
+            if absent:
+                missing[str(document.relative_to(skill_dir.parent))] = absent
+    assert not missing, f"documents name scripts that do not exist: {missing}"
 
 
 def test_bundled_scripts_respect_each_flow_dependency_boundary() -> None:

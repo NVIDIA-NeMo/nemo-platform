@@ -21,8 +21,8 @@ not-for:
   - eval-author-discover (use to establish whether a repository's Harbor suite is runnable)
   - nemo-experimentalist (use for an optimization experiment across many trials)
 compatibility: >-
-  Python 3.12 or later. Each trace source states its own access, authentication,
-  and runtime requirements.
+  Python 3.9 or later, with no third-party packages. Each trace source states its
+  own access, authentication, and runtime requirements.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -53,27 +53,34 @@ Select the matching source guide:
 If no guide matches, stop and report the unsupported scheme. Don't reinterpret
 the reference as one of the supported sources.
 
-## Step 1: build the analysis bundle
+When nobody named a trace, don't guess an ID. Run the `list` verb for the source
+the user names. It returns candidates, each with a reference the read verbs accept
+verbatim. Report the candidates, then inspect the one the user picks, or the most
+recent one when the user asks for whatever is there.
 
-Read the selected source guide and run its command exactly. The
+## Step 1: read the trace structure
+
+Read the selected source guide and run its `overview` command exactly. The
 `scripts/inspect_trace.py` entry point validates the URI scheme, invokes the
 matching source adapter, and applies the source-neutral overview.
 
-The command prints one JSON object and writes no files. An exit code of `1`
+Every command prints one JSON object and writes no files. An exit code of `1`
 means that the object contains `error` and `hint` fields. Resolve that error
 before interpreting the trace.
 
-Preserve the complete JSON object. It separates `source` identity and context
-from `trace` evidence and the deterministic `overview`. Span payloads and
-evaluator comments are evidence, and dropping them can change the assessment.
+The `overview` verb reads every span in a compact form, so it stays affordable on
+a trace of any size. It returns `source` identity and context, a `report_path`,
+the deterministic `overview`, and a per-span `timeline`. It carries no span
+payloads, which is what makes it cheap. Step 3 fetches those for the spans you
+choose.
 
 ## Step 2: review the overview
 
-Read the deterministic `overview` before the payloads. It reports structure,
+Read the deterministic `overview` before any payload. It reports structure,
 not an outcome:
 
 - Root and span statuses
-- Timing and span kinds
+- Root duration and span kinds
 - Tools, models, providers, agents, sessions, and projects
 - Error, canceled, and incomplete spans
 - A `root_succeeded_with_errors` recovery signal
@@ -83,9 +90,28 @@ Treat `root_succeeded_with_errors` as a signal, not proof of correct behavior.
 A successful root status can still conflict with the requested result or an
 evaluator score.
 
-## Step 3: analyze the trajectory
+An `error_spans` message keeps only its first characters, and
+`error_message_truncated` marks the cut. When the exact wording decides
+something, read the full text with the `spans` verb in step 3.
 
-Read `trace.spans` in chronological order. For each important transition:
+Then read the `timeline`. It orders every span with `offset_ms` from the first
+start and its own `duration_ms`, which is the only place either appears: span
+payloads carry timestamps but no duration. Use it to find where the time went
+and which spans ran as siblings.
+
+## Step 3: read the spans that matter
+
+The overview and timeline name every span, so you now choose which ones to read
+in full. Run the source guide's `spans` command, selecting by status, kind, or
+span ID. Read the error spans and the transitions the timeline makes look
+decisive, rather than every span in the trace.
+
+Payloads arrive shortened by default, and a shortened field records its full
+length beside it. Ask for a field in full only when the exact text decides the
+assessment. Span payloads and evaluator comments are evidence, so quote them
+rather than paraphrasing.
+
+For each important transition:
 
 1. Identify the span ID.
 2. State what the span received or attempted.
@@ -156,9 +182,10 @@ identity, the deterministic overview, and the command that rebuilds the evidence
 ---
 ```
 
-Copy those two objects verbatim. Don't paste `trace` into the report. Span
-payloads can run to megabytes, retyping them invites corruption, and the command
-rebuilds them exactly when a later reader needs them.
+Copy those two objects verbatim, writing them with a tool instead of retyping
+them. Don't paste the `timeline` or any span payload into the front matter. A
+long timeline rivals the report in size, retyping either invites corruption, and
+the recorded command rebuilds both exactly when a later reader needs them.
 
 Then use this report shape:
 
@@ -206,6 +233,6 @@ user's decision.
 
 | Path | Purpose |
 |---|---|
-| `scripts/inspect_trace.py` | Selects the source adapter and prints the normalized JSON bundle |
-| `scripts/overview.py` | Derives factual trace structure without assigning an outcome |
+| `scripts/inspect_trace.py` | Runs the `list`, `overview`, and `spans` verbs against the source a reference names |
+| `scripts/overview.py` | Derives factual trace structure and the span timeline without assigning an outcome |
 | `references/intake.md` | Provides Intake requirements, invocation, and adapter details |
