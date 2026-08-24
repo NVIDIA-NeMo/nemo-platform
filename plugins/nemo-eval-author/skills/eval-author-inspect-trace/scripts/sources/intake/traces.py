@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import Any
 
-from _http import IntakeClient
+from sources.intake._http import IntakeClient
 
 DEFAULT_ROW_LIMIT = 100
 MAX_ROW_LIMIT = 1000

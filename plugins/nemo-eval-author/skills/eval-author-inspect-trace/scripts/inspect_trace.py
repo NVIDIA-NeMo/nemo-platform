@@ -4,9 +4,8 @@
 """Print one source-qualified trace analysis bundle as JSON."""
 
 import argparse
-import hashlib
-import importlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,9 +15,10 @@ _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS))
 
 from overview import build_overview  # noqa: E402
+from sources.intake.adapter import read_source as read_intake_source  # noqa: E402
 
-_INTAKE_SOURCE_DIR = _SCRIPTS / "sources" / "intake"
-SUPPORTED_SOURCES = ("intake",)
+SOURCE_READERS = {"intake": read_intake_source}
+_UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -37,32 +37,30 @@ def _source_kind(trace_ref: str) -> str:
         raise ValueError(f"Trace reference is invalid: {exc}") from exc
     if not source_kind:
         raise ValueError("Trace reference must be source-qualified, for example intake://traces/TRACE_ID.")
-    if source_kind not in SUPPORTED_SOURCES:
+    if source_kind not in SOURCE_READERS:
         raise ValueError(
-            f"Trace source '{source_kind}' is not supported. Supported sources: {', '.join(SUPPORTED_SOURCES)}."
+            f"Trace source '{source_kind}' is not supported. Supported sources: {', '.join(SOURCE_READERS)}."
         )
     return source_kind
+
+
+def _report_name(source: dict[str, Any]) -> str:
+    """Name the report after its source identity, without a path character in it."""
+    trace_id = source["trace_ref"].rpartition("/")[2]
+    workspace = source.get("context", {}).get("workspace", "")
+    slug = _UNSAFE_NAME.sub("-", f"{source['kind']}-{workspace}-{trace_id}").strip("-.")
+    return slug[:96] or "trace"
 
 
 def inspect(trace_ref: str, source_args: list[str]) -> dict[str, Any]:
     """Build the deterministic input for the skill's trace assessment."""
     source_kind = _source_kind(trace_ref)
     _, _, locator = trace_ref.partition("://")
-    if source_kind == "intake":
-        sys.path.insert(0, str(_INTAKE_SOURCE_DIR))
-    adapter = importlib.import_module("adapter")
-    source, trace = adapter.read_source(f"{source_kind}://{locator}", source_args)
-    identity = json.dumps(
-        source,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    report_name = hashlib.sha256(identity.encode()).hexdigest()
+    source, trace = SOURCE_READERS[source_kind](f"{source_kind}://{locator}", source_args)
     return {
         "schema_version": "1",
         "source": source,
-        "report_path": f".eval-author/traces/{report_name}.md",
+        "report_path": f".eval-author/traces/{_report_name(source)}.md",
         "trace": trace,
         "overview": build_overview(trace),
     }
@@ -77,7 +75,7 @@ def main() -> int:
         report = {
             "schema_version": "1",
             "trace_ref": args.trace,
-            "supported_sources": list(SUPPORTED_SOURCES),
+            "supported_sources": list(SOURCE_READERS),
             "error": str(exc),
             "hint": "Read the selected source guide and check its requirements, trace reference, and source arguments.",
         }

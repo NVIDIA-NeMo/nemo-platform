@@ -5,8 +5,8 @@
 
 from typing import Any
 
-from _http import IntakeClient, IntakeError
-from traces import query_traces
+from sources.intake._http import IntakeClient, IntakeError
+from sources.intake.traces import query_traces
 
 
 def _trace_id(ref: str) -> str:
@@ -61,7 +61,7 @@ def read_trace(client: IntakeClient, ref: str) -> dict[str, Any]:
     evaluator_results.sort(key=lambda result: (result.get("created_at") or "", result.get("evaluator_result_id") or ""))
 
     return {
-        "trace_ref": f"intake://{trace_id}",
+        "trace_ref": f"intake://traces/{trace_id}",
         "trace_id": trace_id,
         "summary": summary,
         "session_ids": session_ids,

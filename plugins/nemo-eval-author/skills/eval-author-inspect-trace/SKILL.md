@@ -138,23 +138,27 @@ result IDs, or source symbols.
 ## Step 6: save the report
 
 Write the report to the exact top-level `report_path` from the analysis bundle.
-The script derives its bounded filename from the canonical source identity with
-SHA-256. Don't build a path from the raw trace reference. Create the `traces`
-directory when it doesn't exist. Replace a preceding report for the same trace
-instead of merging assessments.
+The script derives that bounded filename from the source identity. Don't build a
+path from the raw trace reference. Create the `traces` directory when it doesn't
+exist. Replace a preceding report for the same trace instead of merging
+assessments.
 
-Start the file with JSON-compatible YAML front matter that preserves the complete
-input bundle:
+Start the file with JSON-compatible YAML front matter that carries the source
+identity, the deterministic overview, and the command that rebuilds the evidence:
 
 ```markdown
 ---
 {
-  "input_bundle": {
-    "...": "paste the complete script output here"
-  }
+  "source": "copy the source object from the script output",
+  "overview": "copy the overview object from the script output",
+  "command": "the exact command you ran to build the bundle"
 }
 ---
 ```
+
+Copy those two objects verbatim. Don't paste `trace` into the report. Span
+payloads can run to megabytes, retyping them invites corruption, and the command
+rebuilds them exactly when a later reader needs them.
 
 Then use this report shape:
 
@@ -187,7 +191,7 @@ the findings instead of resolving them through speculation.
 
 Before reporting completion, confirm:
 
-1. The front matter contains the unmodified input bundle.
+1. The front matter carries the unmodified `source` and `overview` objects and the command.
 2. Every key moment names a span ID.
 3. Every finding uses one allowed category and names its evidence.
 4. The outcome is `success`, `failure`, or `unknown`.

@@ -20,7 +20,7 @@ triggers:
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
   - eval-author-inspect-trace (use to understand one trace from a supported source)
-  - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
+  - nemo-experimentalist (use to run insight-driven optimization end to end)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: >-
   Reading only. Discovery uses the local checkout. Trace inspection requires

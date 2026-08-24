@@ -34,10 +34,6 @@ def _duration_ms(start: datetime | None, end: datetime | None) -> float | None:
         return None
 
 
-def _milliseconds(started_at: Any, ended_at: Any) -> float | None:
-    return _duration_ms(_timestamp(started_at), _timestamp(ended_at))
-
-
 def _trace_duration_ms(spans: list[dict[str, Any]]) -> float | None:
     starts = [_timestamp(span.get("started_at")) for span in spans]
     ends = [_timestamp(span.get("ended_at")) for span in spans]
@@ -95,12 +91,6 @@ def build_overview(bundle: dict[str, Any]) -> dict[str, Any]:
         {str(value) for value in bundle.get("session_ids", []) if value}
         | {str(span["session_id"]) for span in spans if span.get("session_id")}
     )
-    span_durations = [
-        {"span_id": span.get("span_id"), "duration_ms": duration}
-        for span in spans
-        if (duration := _milliseconds(span.get("started_at"), span.get("ended_at"))) is not None
-    ]
-
     return {
         "trace_id": bundle.get("trace_id"),
         "trace_ref": bundle.get("trace_ref"),
@@ -117,7 +107,6 @@ def build_overview(bundle: dict[str, Any]) -> dict[str, Any]:
         "agents": sorted(agents),
         "sources": _values(spans, "source"),
         "projects": _values(spans, "project"),
-        "span_durations": span_durations,
         "error_span_count": len(errors),
         "error_spans": error_spans,
         "root_succeeded_with_errors": root_status == "success" and bool(errors),

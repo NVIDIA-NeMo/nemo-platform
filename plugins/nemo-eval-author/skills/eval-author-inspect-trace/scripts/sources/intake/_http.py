@@ -43,7 +43,7 @@ def _validated_origin(base_url: str) -> str:
     try:
         parsed = urlsplit(base_url.strip())
         hostname = parsed.hostname
-        parsed.port
+        _ = parsed.port  # Evaluated because a malformed port only raises on access.
     except ValueError as exc:
         raise ValueError(f"NMP_BASE_URL is invalid: {exc}") from exc
     if not hostname or parsed.scheme not in {"http", "https"}:
