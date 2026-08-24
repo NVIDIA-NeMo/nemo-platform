@@ -6,7 +6,7 @@
 Registered under ``nemo.jobs`` as ``agents.package-agent``, serving
 ``/jobs/package``. The REST equivalent of
 ``nemo agents package``, for agents whose source of truth is the
-``{agent}-spec`` fileset rather than a directory on the submitter's laptop.
+``{agent}-ethos`` fileset rather than a directory on the submitter's laptop.
 
 The build runs as a **host subprocess**, not in a container — the same shape
 every other agents job uses. That is deliberate: the Fabric Dockerfile relies
@@ -32,6 +32,7 @@ from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
+    ethos_fileset_name,
 )
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -337,7 +338,7 @@ class PackageAgentJob(NemoJob):
         staged = build_dir / ".dockerignore"
         if not staged.exists():
             return
-        logger.warning("Discarding .dockerignore from the agent spec fileset; the managed one is used instead.")
+        logger.warning("Discarding .dockerignore from the Ethos fileset; the managed one is used instead.")
         staged.unlink()
 
     @staticmethod
@@ -353,21 +354,21 @@ class PackageAgentJob(NemoJob):
 
     @staticmethod
     async def _stage(cfg: PackageAgentSpec, build_dir: Path, async_sdk: AsyncNeMoPlatform | None) -> None:
-        """Download the ``{agent}-spec`` fileset into *build_dir*.
+        """Download the ``{agent}-ethos`` fileset into *build_dir*.
 
         Must run before ``agent.yaml`` is written — staging clears the tree first.
         """
-        from nemo_agents_plugin.runner.fabric_artifact_staging import stage_fabric_spec_dir
+        from nemo_agents_plugin.runner.fabric_artifact_staging import stage_fabric_ethos_dir
 
         if async_sdk is None:
             logger.warning(
                 "No platform client available; packaging agent %r from its stored agent.yaml alone. "
                 "Skills, MCP servers, and prompts in the %r fileset will be missing from the image.",
                 cfg.agent,
-                f"{cfg.agent}-spec",
+                ethos_fileset_name(cfg.agent),
             )
 
-        await stage_fabric_spec_dir(
+        await stage_fabric_ethos_dir(
             workspace=cfg.workspace,
             agent_name=cfg.agent,
             agent_config=cfg.agent_config,
