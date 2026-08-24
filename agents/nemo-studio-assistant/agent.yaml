@@ -67,13 +67,21 @@ models:
 
 skills:
   paths:
-    - skills
+    - skills/auditor
+    - skills/benchmark-execution
+    - skills/entities
+    - skills/evaluator
+    - skills/files
+    - skills/guardrails
+    - skills/inference
+    - skills/secrets
+    - skills/workspace
 
 mcp:
   servers:
     nemo_studio:
       transport: stdio
-      url: env NMP_BASE_URL=$NMP_BASE_URL NMP_WORKSPACE=$NMP_WORKSPACE nemo-studio-assistant-mcp
+      url: nemo-studio-assistant-mcp
       exposure: harness_native
 
 tools:

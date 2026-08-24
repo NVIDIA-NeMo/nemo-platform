@@ -19,6 +19,17 @@ AGENT_ROOT = Path(__file__).parents[1]
 SPEC_ROOT = AGENT_ROOT.parent / "nemo-studio-assistant-spec"
 EVAL_DATA_PATH = AGENT_ROOT / "src/nemo_studio_assistant/nemo-studio-assistant-eval-data.json"
 REAL_PREFLIGHT_GUARDRAIL_MODEL = register._preflight_guardrail_model
+SKILL_PATHS = [
+    "skills/auditor",
+    "skills/benchmark-execution",
+    "skills/entities",
+    "skills/evaluator",
+    "skills/files",
+    "skills/guardrails",
+    "skills/inference",
+    "skills/secrets",
+    "skills/workspace",
+]
 
 pytestmark = pytest.mark.unit
 
@@ -77,9 +88,7 @@ def test_agent_config_translates_to_fabric_deepagents() -> None:
     assert translated.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
     assert translated.models["default"].provider == "nvidia"
     assert translated.mcp is not None
-    assert translated.mcp.servers["nemo_studio"].url == (
-        "env NMP_BASE_URL=$NMP_BASE_URL NMP_WORKSPACE=$NMP_WORKSPACE nemo-studio-assistant-mcp"
-    )
+    assert translated.mcp.servers["nemo_studio"].url == "nemo-studio-assistant-mcp"
 
 
 def test_canonical_registration_config_translates_to_same_runtime() -> None:
@@ -96,16 +105,16 @@ def test_every_configured_skill_is_packaged() -> None:
     config = load_agent_config(AGENT_ROOT / "agent.yaml")
 
     assert config.skills is not None
-    assert config.skills.paths == ["skills"]
-    source = AGENT_ROOT / config.skills.paths[0]
-    skill_files = sorted(source.glob("*/SKILL.md"))
+    assert config.skills.paths == SKILL_PATHS
+    skill_files = [AGENT_ROOT / skill_path / "SKILL.md" for skill_path in config.skills.paths]
     assert len(skill_files) == 9
+    assert all(skill_file.is_file() for skill_file in skill_files)
     assert all(skill_file.read_text(encoding="utf-8").startswith("---\n") for skill_file in skill_files)
 
     registered = load_agent_config(SPEC_ROOT / "agent.yaml")
     assert registered.skills is not None
-    assert registered.skills.paths == ["skills"]
-    assert len(list((SPEC_ROOT / registered.skills.paths[0]).glob("*/SKILL.md"))) == 9
+    assert registered.skills.paths == SKILL_PATHS
+    assert all((SPEC_ROOT / skill_path / "SKILL.md").is_file() for skill_path in registered.skills.paths)
     assert config.environment.workspace == "."
     assert registered.environment.workspace == "."
 
