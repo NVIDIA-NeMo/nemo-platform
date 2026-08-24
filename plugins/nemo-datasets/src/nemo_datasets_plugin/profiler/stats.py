@@ -4,7 +4,7 @@
 """Per-column statistics and content probes.
 
 Given a partition's features and its rows, :func:`measure_columns` measures each top-level column
-according to its dtype: length quantiles and corruption signals for text, min/max/mean for numbers,
+according to its dtype: length quantiles for text, min/max/mean for numbers,
 chat-shape signals for messages, and a bounded vocabulary where the column has one. The result is
 sparse — a column with nothing worth measuring is omitted — and each column is isolated, so one the
 detectors cannot handle costs only itself. Row values themselves are never stored here at all; a
@@ -21,10 +21,10 @@ the same answer as one measured whole — the property that lets a caller stop m
 partition before it can measure it. The base class is the entire measurement for a dtype with no
 statistics of its own, because the probes run over every column whatever its type.
 
-Every measurement is O(1) in rows. Nothing is retained: the one thing that used to be — a string
-column's values, held so a quality sample could be placed across them — went when the sample learned
-to place itself as it goes, in contiguous blocks whose size does not depend on how long the column
-turns out to be.
+Every measurement is O(1) in rows and exact in what it counts, and nothing is retained: a column's
+values are folded in and let go. The one estimate left is :class:`Quantiles`, which reads its
+percentiles off bucketed counters rather than off the lengths themselves -- see
+:class:`_LengthHistogram` for the bound that buys.
 """
 
 from __future__ import annotations
@@ -43,7 +43,6 @@ from nemo_platform_plugin.files.dataset_profile import (
     MessageStats,
     NumericStats,
     Quantiles,
-    TextQuality,
     TextStats,
 )
 
@@ -106,7 +105,7 @@ class ColumnFold:
     :func:`quote_enumerations` adds them afterwards, from the vocabulary this kept.
     """
 
-    def __init__(self, features: list[FeatureSchema], expected_rows: int | None = None) -> None:
+    def __init__(self, features: list[FeatureSchema]) -> None:
         self._accumulators: dict[str, ColumnAccumulator] = {}
         self._features: list[FeatureSchema] = []
         self._failed: dict[str, Evidence] = {}
@@ -116,7 +115,7 @@ class ColumnFold:
             # "whichever came last", and keeps stats and probes agreeing on the same one.
             if feature.name in self._accumulators:
                 continue
-            self._accumulators[feature.name] = _accumulator_for(feature, expected_rows)
+            self._accumulators[feature.name] = _accumulator_for(feature)
             self._features.append(feature)
 
     def update(self, rows: list[dict[str, Any]]) -> None:
@@ -348,81 +347,24 @@ class _Vocabulary:
 
 
 class StringAccumulator(ColumnAccumulator):
-    """A ``string`` column: length quantiles, corruption ratios, and a vocabulary if it has one."""
+    """A ``string`` column: length quantiles and a vocabulary if it has one."""
 
-    def __init__(self, expected_rows: int | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self._lengths = _LengthHistogram()
         self._vocabulary = _Vocabulary()
-        self._quality = _TextQualityCounters()
-        self._seen = 0
-        self._sampled = 0
-        # The cycle starts at one block either way -- every value eligible, each standing only for
-        # itself -- and widens as the column's own length becomes apparent. With the row count known
-        # a measured density is what widens it, which the first batch already settles; without one it
-        # doubles each time the sample fills. Starting narrow rather than at a guessed width is what
-        # keeps the head at the lowest weight there is, so a target that later proves wrong cannot
-        # leave the first block over-counted. Each sampled row stands for `cycle / block` rows, which
-        # is what keeps the estimate unbiased rather than weighted toward the head where sampling was
-        # densest.
-        self._block = _QUALITY_SAMPLE_BLOCK
-        self._expected_rows = expected_rows
-        self._cycle = self._block
-        self._adaptive = expected_rows is None
+        self._strings = 0
 
     def _observe(self, present: list[Any]) -> None:
         for value in present:
             if isinstance(value, str):
                 self._lengths.add(len(value))
-                if self._seen % self._cycle < self._block:
-                    self._quality.add(value, self._cycle / self._block)
-                    self._sampled += 1
-                    if self._adaptive and self._sampled >= _QUALITY_SAMPLE_ROWS:
-                        self._cycle *= 2
-                        self._sampled = 0
-                self._seen += 1
-                # Every block, not merely every batch: `measure_columns` hands the whole partition
-                # over as one, and a width settled only between batches would never move at all.
-                if not self._seen % self._block:
-                    self._retarget_cycle(widen_only=True)
+                self._strings += 1
         self._vocabulary.update(present)
-        self._retarget_cycle()
-
-    def _retarget_cycle(self, *, widen_only: bool = False) -> None:
-        """Widen the sampling cycle toward the values this column actually holds.
-
-        The cycle strides over *present strings* (``_seen``), while a caller-supplied
-        ``expected_rows`` counts the partition's *rows*. On a mostly-null column those are different
-        units, and a cycle sized in the wrong one never completes a single revolution: only the first
-        block is ever eligible and the sample collapses onto the head of the column -- the precise
-        bias blocks were introduced to remove. A column of 2,000 values in a 200,000-row partition
-        measured its first 512 and reported a repetition score of 0.000 against a truth of 0.500.
-
-        Scaling the target by the density observed so far puts both back in the same units. Density
-        is read off the inherited row counter, which the base ``update`` advances for the whole batch
-        before this runs, so it is settled within the first batch and only sharpens after. A dense
-        column reaches the same width it would have been given up front and costs the same sample; a
-        sparse one is measured across the values it has rather than across rows it does not.
-
-        ``widen_only`` is for the calls made *during* a batch. The row counter is already at the end
-        of that batch while ``_seen`` is still walking through it, so a density read mid-way reads
-        low -- on a column with no nulls at all it reads half. Left to narrow on that, the cycle
-        would collapse and re-widen once per batch and sample about twice what was asked for.
-        Widening only means a mid-batch reading can rescue a stalled stride but never undo the
-        settled one; the call at the end of the batch, where both counters describe the same rows,
-        is the authoritative one.
-        """
-        if self._adaptive or self._expected_rows is None or not self.rows:
-            return
-        target = _quality_cycle(self._expected_rows * self._seen // self.rows)
-        self._cycle = max(self._cycle, target) if widen_only else target
 
     def _blocks(self) -> dict[str, Any]:
-        text = quality = None
-        if self._seen:
-            text = TextStats(chars=self._lengths.quantiles())
-            quality = self._quality.finalize()
-        return {"text": text, "quality": quality, "categorical": self._vocabulary.finalize()}
+        text = TextStats(chars=self._lengths.quantiles()) if self._strings else None
+        return {"text": text, "categorical": self._vocabulary.finalize()}
 
     def vocabulary(self) -> set[Any] | None:
         return self._vocabulary.values()
@@ -538,15 +480,10 @@ class MessageAccumulator(ColumnAccumulator):
         }
 
 
-def _accumulator_for(feature: FeatureSchema, expected_rows: int | None = None) -> ColumnAccumulator:
-    """The accumulator that knows how to measure this column, dispatched once on its dtype.
-
-    ``expected_rows`` is the partition's row count when it is known before reading -- only a string
-    column uses it, to space its quality blocks across the whole of itself rather than thinning
-    as it goes.
-    """
+def _accumulator_for(feature: FeatureSchema) -> ColumnAccumulator:
+    """The accumulator that knows how to measure this column, dispatched once on its dtype."""
     if feature.dtype == "string":
-        return StringAccumulator(expected_rows)
+        return StringAccumulator()
     if feature.dtype == "bool":
         return BoolAccumulator()
     if feature.dtype == "messages":
@@ -571,10 +508,10 @@ class DeferredAccumulator(ColumnAccumulator):
     dispatch would have produced for it anyway.
     """
 
-    def __init__(self, name: str, expected_rows: int | None = None) -> None:
+    def __init__(self, name: str) -> None:
         super().__init__()
         self._schema = SchemaFold(name)
-        self._string = StringAccumulator(expected_rows)
+        self._string = StringAccumulator()
         self._numeric = NumericAccumulator()
         self._bool = BoolAccumulator()
         self._messages = MessageAccumulator()
@@ -586,11 +523,6 @@ class DeferredAccumulator(ColumnAccumulator):
         # column was strings -- so this sees exactly what the chosen accumulator would have seen.
         strings = [value for value in present if isinstance(value, str)]
         if strings:
-            # Driving `_observe` directly skips the base `update` that would normally advance the
-            # string accumulator's row counter, and its quality stride reads that counter to keep
-            # itself in row units rather than present-value ones. Handing the count over is what
-            # makes the sample land in the same places here as it does on the declared path.
-            self._string.rows = self.rows
             self._string._observe(strings)
         numbers = [value for value in present if isinstance(value, (int, float)) and not isinstance(value, bool)]
         if numbers:
@@ -638,8 +570,7 @@ class InferredColumnFold:
     holds a null for it.
     """
 
-    def __init__(self, expected_rows: int | None = None) -> None:
-        self._expected_rows = expected_rows
+    def __init__(self) -> None:
         self._accumulators: dict[str, DeferredAccumulator] = {}
         self._order: list[str] = []
         self._failed: dict[str, Evidence] = {}
@@ -650,7 +581,7 @@ class InferredColumnFold:
             for name in row:
                 if name in self._accumulators or len(self._accumulators) >= MAX_COLUMNS:
                     continue
-                accumulator = DeferredAccumulator(name, self._expected_rows)
+                accumulator = DeferredAccumulator(name)
                 accumulator.backfill_nulls(self._rows_seen)
                 self._accumulators[name] = accumulator
                 self._order.append(name)
@@ -781,126 +712,6 @@ class _LengthHistogram:
                 # and a p99 above the maximum would be nonsense.
                 return min((low + high) // 2, self._max)
         return self._max
-
-
-# --- text quality --------------------------------------------------------------------------------
-
-
-_WHITESPACE_RUN = re.compile(r"\s")
-_NON_ASCII_RUN = re.compile(r"[^\x00-\x7f]")
-# Any character repeated four or more times in a row. Scanning with the regex engine instead of a
-# Python loop is what keeps this affordable: these three measurements used to run three interpreted
-# passes over every character of every string and dominated total profiling time.
-_REPEAT_RUN = re.compile(r"(.)\1{3,}", re.DOTALL)
-
-# What `\s` matches within ASCII, in the order `str.count` will be asked for them.
-_ASCII_WHITESPACE = " \t\n\r\f\v"
-
-# Rows a column's quality ratios are measured over. These three are the only per-character work left
-# in the profiler -- measured at 37x the cost of every content probe combined, and roughly fifteen
-# times everything else in a column's measurement put together -- while every other statistic is
-# O(1) per row. They are also ratios, which a sample of tens of thousands of rows pins down far past
-# the precision anyone reads them to. Bounding them is what makes reading every row affordable.
-_QUALITY_SAMPLE_ROWS = 50_000
-
-# ...and the sample is taken in contiguous blocks of this many rows, not at an even step.
-#
-# A step aliases. Data is periodic more often than it looks -- a set that round-robins over ten
-# sources, or carries k responses per prompt, is periodic by construction -- and a step that shares a
-# factor with the period samples one phase and only that phase. Measured before this was blocks:
-# 500,000 rows with every tenth corrupt gives a step of ten, which reported a repetition score of
-# 1.000 against a truth of 0.100. Not noise; the wrong answer.
-#
-# A block longer than the period sees every phase of it, whatever the period is, and costs exactly
-# the same. 512 covers anything plausible -- k-per-prompt is single digits, round-robin over sources
-# is tens to low hundreds.
-_QUALITY_SAMPLE_BLOCK = 512
-
-
-def _whitespace_count(text: str) -> int:
-    """Whitespace characters, matching ``\\s`` exactly.
-
-    The ASCII branch is not merely faster, it is the only one that may take the shortcut: within
-    ASCII ``\\s`` is precisely :data:`_ASCII_WHITESPACE`, so counting those six literals in C is the
-    same measurement. Outside it, ``\\s`` also matches U+00A0 and the rest of Unicode's spaces, which
-    the literal count would silently miss -- so the regex is a correctness fallback, not a slow path
-    kept for tidiness.
-    """
-    if text.isascii():
-        return sum(text.count(char) for char in _ASCII_WHITESPACE)
-    return _count_matches(_WHITESPACE_RUN, text)
-
-
-def _non_ascii_count(text: str) -> int:
-    """Characters outside ASCII. ``str.isascii`` settles the common case in C without a scan.
-
-    Deliberately not ``len(text.encode()) - len(text)``, which is faster still and answers a
-    different question: that counts *bytes* of encoding overhead, so a three-byte codepoint would
-    contribute two where this contributes one.
-    """
-    if text.isascii():
-        return 0
-    return _count_matches(_NON_ASCII_RUN, text)
-
-
-class _TextQualityCounters:
-    """The three corruption ratios as running sums, so a sampled subset needs no storage.
-
-    Every denominator is the sample's own, never the column's: each ratio is an estimate over the
-    rows actually scanned, which is what keeps it unbiased rather than diluted.
-    """
-
-    def __init__(self) -> None:
-        self._chars = 0
-        self._whitespace = 0
-        self._non_ascii = 0
-        self._repetition = 0.0
-        self._rows = 0
-
-    def add(self, text: str, weight: float = 1.0) -> None:
-        """Fold one sampled row in, standing for ``weight`` rows of the column.
-
-        The weight is what keeps a *varying* sample rate honest. Sampling one row in four and
-        counting it once would let a densely sampled stretch outvote a sparsely sampled one; counting
-        it four times estimates the population sums instead, and the ratios come out unbiased.
-        """
-        self._chars += weight * len(text)
-        self._whitespace += weight * _whitespace_count(text)
-        self._non_ascii += weight * _non_ascii_count(text)
-        self._repetition += weight * _repetition_score(text)
-        self._rows += weight
-
-    def finalize(self) -> TextQuality:
-        return TextQuality(
-            whitespace_ratio=self._whitespace / self._chars if self._chars else 0.0,
-            non_ascii_ratio=self._non_ascii / self._chars if self._chars else 0.0,
-            repetition_score=self._repetition / self._rows if self._rows else 0.0,
-        )
-
-
-def _quality_cycle(rows: int) -> int:
-    """How many rows one sampled block stands in for, when the column's length is known.
-
-    Every ``cycle`` rows, the first ``_QUALITY_SAMPLE_BLOCK`` of them are measured. Sized so the
-    blocks add up to the sample budget and spread across the whole column.
-    """
-    return max(_QUALITY_SAMPLE_BLOCK, rows * _QUALITY_SAMPLE_BLOCK // _QUALITY_SAMPLE_ROWS)
-
-
-def _count_matches(pattern: re.Pattern[str], text: str) -> int:
-    return sum(1 for _ in pattern.finditer(text))
-
-
-def _repetition_score(text: str) -> float:
-    """Fraction of characters inside a run of the same character of length >= 4.
-
-    A cheap corruption proxy: near zero for natural text, high for scraping junk and degenerate
-    single-character loops (``"aaaaaa"``, long ``"------"`` separators).
-    """
-    if not text:
-        return 0.0
-    redundant = sum(len(match.group(0)) for match in _REPEAT_RUN.finditer(text))
-    return redundant / len(text)
 
 
 # --- messages ------------------------------------------------------------------------------------

@@ -196,29 +196,6 @@ class NumericStats(BaseModel):
     mean: float
 
 
-class TextQuality(BaseModel):
-    """Corruption signals for a text column. Flags training-wrecking data, not toxicity / PII.
-
-    **Estimates, not counts**, and the only measurements in the profile that are. These three are
-    all the per-character work there is — every other statistic is O(1) per row, and the content
-    probes are literal searches costing a fraction of these — so scanning every row of a large
-    column costs more than the entire rest of the profile. They are also ratios, which a sample of
-    tens of thousands of rows pins down far past the precision anyone reads them to. Bounding them
-    is what makes reading every row of a dataset affordable.
-
-    The sample is contiguous blocks, spaced evenly across the column: deterministic, so two runs over
-    the same bytes agree, and spread rather than taken from the head, so a sorted shard does not
-    decide the answer. Blocks rather than every n-th row because an even step aliases against
-    periodic data — a set that round-robins over sources, or carries k responses per prompt, is
-    periodic by construction, and a step sharing a factor with that period samples one phase and
-    only that phase. A column smaller than the bound is measured in full.
-    """
-
-    whitespace_ratio: float = Field(ge=0.0, le=1.0, description="Padding / bad scraping.")
-    non_ascii_ratio: float = Field(ge=0.0, le=1.0, description="Encoding / non-Latin signal.")
-    repetition_score: float = Field(ge=0.0, le=1.0, description="Degenerate repeated-substring loops.")
-
-
 class FeatureSchema(BaseModel):
     """One node of the row schema, derived de novo from the data (there is no external JSON-Schema
     store to reference). Carries the measured layout (name, dtype, children) plus at most one
@@ -331,7 +308,6 @@ class ColumnStats(BaseModel):
         default=None,
         description="Present only when the column is a bounded controlled vocabulary; absence means it is not one.",
     )
-    quality: TextQuality | None = Field(default=None, description="dtype == string: corruption signals")
 
 
 class FileError(BaseModel):
@@ -479,8 +455,8 @@ class PartitionProfile(BaseModel):
             "assert enum / required in a bridged JSON Schema, or read a verifiability coverage of "
             "1.0 as literal.\n\n"
             "Named for what it measures. It was `stats_complete`, which promised more than it "
-            "delivered: `Quantiles` and `TextQuality` are estimates by construction however much was "
-            "read, each bounded for the cost reasons its own docstring gives. Whether a number is "
+            "delivered: `Quantiles` is an estimate by construction however much was read, bounded "
+            "for the cost reason its own docstring gives. Whether a number is "
             "exact is a property of that number, and every one of them says so; this says only "
             "whether anything was missed on the way in.\n\n"
             "Scoped to the partition because that is where it is decided — a corrupt shard in one "

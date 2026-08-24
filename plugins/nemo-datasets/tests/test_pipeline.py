@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.pipeline import _expected_rows, _peek_files, profile
+from nemo_datasets_plugin.profiler.pipeline import _peek_files, profile
 from nemo_datasets_plugin.profiler.readers.base import FilePreview
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
@@ -164,8 +164,8 @@ def test_data_files_glob_means_the_same_thing_to_pythons_own_glob(tmp_path):
 
 def test_a_parquet_footer_declares_enough_to_fold_without_reading_rows(tmp_path):
     # The footer is what makes a fold possible at all: the schema, so accumulators can exist before
-    # the first batch, and the exact row count, so the quality stride can be placed before the column
-    # it strides has been seen. A line-delimited file declares neither, which is why it materialises.
+    # the first batch, and the exact row count, so a split can report an exact `num_examples` from a
+    # run that never read to the end. A line-delimited file declares neither.
     _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(7)])
     (tmp_path / "extra.jsonl").write_text('{"a": 1}\n')
     source = LocalFileSource(tmp_path)
@@ -175,15 +175,6 @@ def test_a_parquet_footer_declares_enough_to_fold_without_reading_rows(tmp_path)
     assert previews["train.parquet"].num_rows == 7
     assert previews["train.parquet"].arrow_schema is not None
     assert previews["extra.jsonl"] == FilePreview()  # declares nothing, so the partition cannot fold
-
-
-def test_expected_rows_counts_what_the_read_will_actually_scan():
-    # The stride has to be placed over the rows that will be *scanned*, not the rows the dataset
-    # holds, or a budgeted run would stride far too coarsely and sample almost nothing.
-    previews = {"a": FilePreview(num_rows=100), "b": FilePreview(num_rows=100)}
-    assert _expected_rows(previews, None) == 200
-    assert _expected_rows(previews, 30) == 60  # capped per file, exactly as the read will be
-    assert _expected_rows({"a": FilePreview(num_rows=100), "b": FilePreview()}, None) is None
 
 
 def test_the_folded_and_materialised_paths_measure_the_same_thing(tmp_path):
@@ -646,9 +637,7 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
     monkeypatch.setattr(
         stats_module,
         "_accumulator_for",
-        lambda feature, expected_rows=None: (
-            Boom() if feature.name == "completion" else real_accumulator_for(feature, expected_rows)
-        ),
+        lambda feature: Boom() if feature.name == "completion" else real_accumulator_for(feature),
     )
     _write_parquet(tmp_path / "train.parquet", [{"prompt": "q", "completion": "a"}])
 
@@ -722,8 +711,8 @@ def test_reading_everything_is_the_default(tmp_path):
 
 
 def test_rows_complete_speaks_to_rows_read_not_to_exactness(tmp_path):
-    # It was `stats_complete`, which promised more than it delivered: quantiles and quality ratios
-    # are estimates by construction, whatever it says. Renamed to what it actually measures.
+    # It was `stats_complete`, which promised more than it delivered: the length quantiles are
+    # estimates by construction, whatever it says. Renamed to what it actually measures.
     _write_parquet(tmp_path / "train.parquet", [{"t": f"row {i}"} for i in range(100)])
 
     short = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=10)
