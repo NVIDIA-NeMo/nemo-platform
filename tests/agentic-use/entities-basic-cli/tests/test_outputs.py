@@ -15,6 +15,8 @@ import os
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import EntitiesClient
 
 WORKSPACE = "default"
 
@@ -27,7 +29,7 @@ def client() -> NeMoPlatform:
 
 def test_harbor_test_model_deleted(client: NeMoPlatform) -> None:
     """Test that harbor-test-model was deleted after CRUD operations."""
-    response = client.entities.list(entity_type="model")
+    response = client_from_platform(client, EntitiesClient).list_entities(entity_type="model").data()
     entity_names = [e.name for e in response.data]
     assert "harbor-test-model" not in entity_names, (
         f"Entity 'harbor-test-model' should have been deleted but still exists! Found: {entity_names}"
@@ -36,7 +38,11 @@ def test_harbor_test_model_deleted(client: NeMoPlatform) -> None:
 
 def test_harbor_final_dataset_exists(client: NeMoPlatform) -> None:
     """Test that harbor-final-dataset was created and has correct data."""
-    response = client.entities.get_entity_by_name(name="harbor-final-dataset", entity_type="dataset")
+    response = (
+        client_from_platform(client, EntitiesClient)
+        .get_entity_by_name(name="harbor-final-dataset", entity_type="dataset")
+        .data()
+    )
     assert response.name == "harbor-final-dataset", (
         f"Expected entity name 'harbor-final-dataset', got '{response.name}'"
     )

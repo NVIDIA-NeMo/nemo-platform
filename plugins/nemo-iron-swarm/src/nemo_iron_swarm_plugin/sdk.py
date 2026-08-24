@@ -25,6 +25,9 @@ from nemo_iron_swarm_plugin.jobs.defenses import compose_defense
 from nemo_iron_swarm_plugin.jobs.run import IronSwarmRunJob
 from nemo_iron_swarm_plugin.jobs.synth_benign import IronSwarmSynthBenignJob
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import EntitiesClient
+from nemo_platform_plugin.entities.types import ListEntitiesQueryParams
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
@@ -108,7 +111,15 @@ def _list_newest(platform: NeMoPlatform, entity_type: str, *, workspace: str, li
     ``page_size`` bounds the *page*, not the total — iterating it walks the entire history. We ask for
     one page of *limit* and take only that page's items, which is a single request.
     """
-    page = platform.entities.list(entity_type, workspace=workspace, sort="-created_at", page_size=limit)
+    page = (
+        client_from_platform(platform, EntitiesClient)
+        .list_entities(
+            entity_type=entity_type,
+            workspace=workspace,
+            query_params=ListEntitiesQueryParams(sort="-created_at", page_size=limit),
+        )
+        .data()
+    )
     return [_run_to_dict(item) for item in itertools.islice(page, limit)]
 
 
