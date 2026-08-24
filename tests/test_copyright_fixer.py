@@ -63,7 +63,7 @@ def test_add_header_uses_syntax_safe_styles_for_missing_osrb_file_types(tmp_path
 
     files = {
         "test_case.py": ('print("ok")\n', copyright_fixer._HASH_HEADER + "\n"),
-        "nemo-helm-readme.md.gotmpl": ("# title\n", copyright_fixer._HELM_TEMPLATE_HEADER + "\n"),
+        "nemo-helm-readme.md.gotmpl": ("# title\n", copyright_fixer._HTML_HEADER + "\n"),
         "values.yaml": ("apiVersion: v1\n", copyright_fixer._HASH_HEADER + "\n"),
         "chart/templates/serviceaccount.yaml": (
             "{{- if .Values.enabled -}}\napiVersion: v1\n{{- end }}\n",
@@ -100,6 +100,15 @@ def test_fix_style_converts_helm_template_yaml_to_non_rendering_comment(tmp_path
     assert copyright_fixer._needs_style_fix(str(chart_template))
     assert copyright_fixer._fix_header_style(str(chart_template))
     assert chart_template.read_text(encoding="utf-8").startswith(copyright_fixer._HELM_TEMPLATE_HEADER + "\n")
+
+
+def test_fix_style_preserves_markdown_gotmpl_rendered_header(tmp_path: Path) -> None:
+    template = tmp_path / "nemo-helm-readme.md.gotmpl"
+    template.write_text(copyright_fixer._HTML_HEADER + '\n# {{ template "chart.description" . }}\n', encoding="utf-8")
+
+    assert not copyright_fixer._needs_style_fix(str(template))
+    assert not copyright_fixer._fix_header_style(str(template))
+    assert template.read_text(encoding="utf-8").startswith(copyright_fixer._HTML_HEADER + "\n")
 
 
 def test_plain_yaml_keeps_hash_comment_header(tmp_path: Path) -> None:

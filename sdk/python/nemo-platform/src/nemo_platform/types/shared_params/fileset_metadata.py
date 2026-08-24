@@ -21,6 +21,7 @@ from typing_extensions import TypedDict
 
 from .model_metadata_content import ModelMetadataContent
 from .dataset_metadata_content import DatasetMetadataContent
+from .environment_metadata_content import EnvironmentMetadataContent
 
 __all__ = ["FilesetMetadata"]
 
@@ -38,6 +39,9 @@ class FilesetMetadata(TypedDict, total=False):
 
     dataset: DatasetMetadataContent
     """Content for dataset-type filesets."""
+
+    environment: EnvironmentMetadataContent
+    """Content for environment-type filesets (GRPO Gym packages)."""
 
     model: ModelMetadataContent
     """Content for model-type filesets.

@@ -2158,7 +2158,8 @@ components:
           title: Val At End
           description: Run a final validation pass after the last training step. Keep
             enabled so the final checkpoint carries validation metrics and best-checkpoint
-            selection works; set False only to skip the extra eval.
+            selection works; set False only to skip the extra eval. GRPO ignores this
+            when the dataset ships no validation.jsonl.
           default: true
         progress_reporting:
           $ref: '#/components/schemas/ProgressReportingConfig'
@@ -2209,7 +2210,6 @@ components:
           type: string
           const: dpo
           title: Type
-          default: dpo
         ref_policy_kl_penalty:
           type: number
           minimum: 0.0
@@ -2246,8 +2246,279 @@ components:
           default: 1.0
       additionalProperties: false
       type: object
+      required:
+      - type
       title: RlDPOTraining
       description: "Direct Preference Optimization (full-weight only \u2014 PEFT unsupported)."
+    RlGRPOTraining:
+      properties:
+        optimizer_type:
+          allOf:
+          - $ref: '#/components/schemas/OptimizerType'
+          description: "Optimizer + LR-scheduler combination (AdamW/Adam \xD7 cosine-annealing/flat-LR).\
+            \ Defaults to AdamW with cosine annealing."
+        learning_rate:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Learning Rate
+          description: Peak learning rate.
+          default: 0.0001
+        min_learning_rate:
+          title: Min Learning Rate
+          description: Minimum LR for cosine decay.
+          type: number
+          minimum: 0.0
+        weight_decay:
+          type: number
+          minimum: 0.0
+          title: Weight Decay
+          description: Weight decay coefficient.
+          default: 0.01
+        adam_beta1:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta1
+          description: Adam beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta2
+          description: Adam beta2.
+          default: 0.999
+        adam_eps:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Eps
+          description: Adam epsilon (numerical stability term).
+          default: 1.0e-05
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          description: Linear warmup steps.
+          default: 0
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          description: Number of passes through the dataset.
+          default: 1
+        max_steps:
+          title: Max Steps
+          description: Max training steps (overrides epochs if set).
+          type: integer
+          exclusiveMinimum: 0.0
+        val_check_interval:
+          title: Val Check Interval
+          description: Validation interval. Float <= 1.0 is fraction of epoch; > 1.0
+            is step count.
+          type: number
+        val_at_end:
+          type: boolean
+          title: Val At End
+          description: Run a final validation pass after the last training step. Keep
+            enabled so the final checkpoint carries validation metrics and best-checkpoint
+            selection works; set False only to skip the extra eval. GRPO ignores this
+            when the dataset ships no validation.jsonl.
+          default: true
+        progress_reporting:
+          $ref: '#/components/schemas/ProgressReportingConfig'
+        keep_top_k:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Keep Top K
+          description: Number of best checkpoints to retain (ranked by validation
+            loss).
+          default: 1
+        batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Batch Size
+          description: Global batch size across all GPUs.
+          default: 32
+        micro_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Micro Batch Size
+          description: Per-GPU micro batch size.
+          default: 1
+        activation_checkpointing:
+          type: boolean
+          title: Activation Checkpointing
+          description: Recompute activations during the backward pass to reduce memory
+            at the cost of compute. Enable to fit larger models or longer sequences.
+          default: false
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          description: Maximum token sequence length for training.
+          default: 2048
+        seed:
+          title: Seed
+          description: Random seed for reproducibility.
+          type: integer
+        parallelism:
+          $ref: '#/components/schemas/RlParallelismParams'
+        execution_profile:
+          title: Execution Profile
+          description: Execution profile for the GPU training step (operator-configured).
+            Falls back to the service default when omitted.
+          type: string
+          minLength: 1
+        type:
+          type: string
+          const: grpo
+          title: Type
+        finetuning_type:
+          type: string
+          enum:
+          - all_weights
+          - lora
+          title: Finetuning Type
+          description: Full-weight GRPO or LoRA adapter training. lora_merged is not
+            supported.
+          default: all_weights
+        lora:
+          allOf:
+          - $ref: '#/components/schemas/RlLoRAParams'
+          description: LoRA hyperparameters. Defaults applied when finetuning_type
+            is lora.
+        val_at_start:
+          type: boolean
+          title: Val At Start
+          description: 'Run a validation pass before the first training step. Enable
+            it to measure uplift: the baseline and the trained result then come from
+            one job, on the same data with the same generation settings, instead of
+            a separate baseline run that has to be kept in sync. Off by default because
+            a GRPO baseline costs a full rollout pass. Ignored when the dataset ships
+            no validation.jsonl. DPO always validates at step 0 and has no such knob,
+            since its validation needs no generation.'
+          default: false
+        num_generations_per_prompt:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Generations Per Prompt
+          description: 'Group size: rollouts sampled per prompt, used for relative
+            advantages.'
+          default: 8
+        num_prompts_per_step:
+          title: Num Prompts Per Step
+          description: Prompts sampled per training step. Derived from batch_size
+            / num_generations_per_prompt when omitted; the product of the two must
+            be a multiple of batch_size.
+          type: integer
+          exclusiveMinimum: 0.0
+        temperature:
+          type: number
+          maximum: 2.0
+          exclusiveMinimum: 0.0
+          title: Temperature
+          description: 'Sampling temperature for rollout generation. Must be greater
+            than 0: GRPO''s advantage is the spread of rewards inside a prompt group,
+            so greedy sampling makes every rollout in a group identical, the spread
+            zero, and the whole run a no-op. Applies to validation rollouts too, which
+            are generated with the same settings.'
+          default: 1.0
+        max_new_tokens:
+          title: Max New Tokens
+          description: 'Cap on tokens generated per rollout turn. Defaults to max_seq_length,
+            which lets a rollout run until the context is exhausted; vLLM clamps it
+            to whatever the prompt leaves. Cannot exceed max_seq_length. NOTE: NeMo
+            Gym''s verifiers_agent does not yet honour this -- it reads max_tokens
+            from its own environment config and drops the per-row value, so the effective
+            cap is min(agent max_tokens, max_seq_length - prompt_len). Until that
+            is fixed, bound response length through max_seq_length or the environment''s
+            own max_tokens.'
+          type: integer
+          exclusiveMinimum: 0.0
+        normalize_rewards:
+          type: boolean
+          title: Normalize Rewards
+          description: Normalize rewards within each prompt group.
+          default: true
+        overlong_filtering:
+          type: boolean
+          title: Overlong Filtering
+          description: Zero the loss contribution of rollouts truncated by the generation
+            limit. Enable when a low max_new_tokens truncates many rollouts, so the
+            policy is not penalised for responses it was cut off from finishing.
+          default: false
+        max_rollout_turns:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Rollout Turns
+          description: Maximum agent turns per rollout. Single-turn environments use
+            1.
+          default: 1
+        ref_policy_kl_penalty:
+          type: number
+          minimum: 0.0
+          title: Ref Policy Kl Penalty
+          description: KL penalty coefficient against the reference policy.
+          default: 0.0
+        ratio_clip_min:
+          type: number
+          minimum: 0.0
+          title: Ratio Clip Min
+          description: Lower PPO-style importance ratio clip bound.
+          default: 0.2
+        ratio_clip_max:
+          type: number
+          minimum: 0.0
+          title: Ratio Clip Max
+          description: Upper PPO-style importance ratio clip bound.
+          default: 0.28
+        max_grad_norm:
+          type: number
+          minimum: 0.0
+          title: Max Grad Norm
+          description: Maximum gradient norm for clipping.
+          default: 1.0
+        automodel_kwargs:
+          title: Automodel Kwargs
+          description: 'Passed to policy.dtensor_cfg.automodel_kwargs; selects the
+            DTensor v2 backend. {''force_hf'': true} loads the stock HuggingFace modules;
+            a {''backend'': {...}} block picks the Transformer-Engine / DeepEP MoE
+            implementation. Unset means Automodel auto-detects.'
+          additionalProperties: true
+          type: object
+        router_aux_loss_coef:
+          title: Router Aux Loss Coef
+          description: MoE router auxiliary-loss coefficient, applied as a HuggingFace
+            config override. Use 0.0 to drop the load-balancing term during RL. Unset
+            keeps the model's own value.
+          type: number
+          minimum: 0.0
+        vllm_tensor_parallel_size:
+          title: Vllm Tensor Parallel Size
+          description: Tensor parallel size for the vLLM rollout engine, independent
+            of the policy's. Defaults to min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node).
+          type: integer
+          exclusiveMinimum: 0.0
+        vllm_gpu_memory_utilization:
+          type: number
+          maximum: 1.0
+          exclusiveMinimum: 0.0
+          title: Vllm Gpu Memory Utilization
+          description: Fraction of each GPU vLLM reserves for weights plus KV cache.
+            Raise toward 0.7 for large models; the rest is left for the colocated
+            policy.
+          default: 0.5
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      title: RlGRPOTraining
+      description: 'Group Relative Policy Optimization with NeMo Gym environments.
+
+
+        ``finetuning_type`` is ``all_weights`` (default) or ``lora`` only.
+
+        ``lora_merged`` is not supported for GRPO on the platform DTensor path.'
     RlJobInput:
       properties:
         name:
@@ -2260,12 +2531,24 @@ components:
         dataset:
           type: string
           title: Dataset
-          description: Preference dataset fileset reference. Must contain training.jsonl
-            + validation.jsonl.
+          description: 'Dataset fileset reference. DPO: preference JSONL (training.jsonl
+            + validation.jsonl). GRPO: Gym JSONL (training.jsonl required).'
+        environment:
+          title: Environment
+          description: Environment fileset reference (required when training.type
+            is grpo).
+          type: string
         training:
-          allOf:
+          oneOf:
           - $ref: '#/components/schemas/RlDPOTraining'
-          description: DPO training method and hyperparameters.
+          - $ref: '#/components/schemas/RlGRPOTraining'
+          title: Training
+          description: Training method and hyperparameters (DPO or GRPO).
+          discriminator:
+            propertyName: type
+            mapping:
+              dpo: '#/components/schemas/RlDPOTraining'
+              grpo: '#/components/schemas/RlGRPOTraining'
         integrations:
           $ref: '#/components/schemas/IntegrationsSpec'
         output:
@@ -2282,7 +2565,6 @@ components:
       properties:
         name:
           title: Name
-          description: Optional job name; auto-generated when omitted.
           type: string
         model:
           type: string
@@ -2291,15 +2573,23 @@ components:
         dataset:
           type: string
           title: Dataset
-          description: Preference dataset fileset reference ('name' or 'workspace/name').
+          description: Dataset fileset reference ('name' or 'workspace/name').
+        environment:
+          title: Environment
+          type: string
         training:
-          allOf:
+          oneOf:
           - $ref: '#/components/schemas/RlDPOTraining'
-          description: Training method and hyperparameters (DPO).
+          - $ref: '#/components/schemas/RlGRPOTraining'
+          title: Training
+          description: Training method and hyperparameters.
+          discriminator:
+            propertyName: type
+            mapping:
+              dpo: '#/components/schemas/RlDPOTraining'
+              grpo: '#/components/schemas/RlGRPOTraining'
         integrations:
-          allOf:
-          - $ref: '#/components/schemas/IntegrationsSpec'
-          description: W&B / MLflow integrations.
+          $ref: '#/components/schemas/IntegrationsSpec'
         output:
           allOf:
           - $ref: '#/components/schemas/RlOutputResponse'
@@ -2312,14 +2602,7 @@ components:
       - training
       - output
       title: RlJobOutput
-      description: 'Canonical NeMo-RL job spec (output of the plugin transform).
-
-
-        The ``dataset`` fileset must contain ``training.jsonl`` and ``validation.jsonl``
-
-        (any of the four supported preference formats); the dataset-preparation step
-
-        splits/normalizes them at runtime.'
+      description: Canonical NeMo-RL job spec (output of the plugin transform).
     RlJobsJob:
       properties:
         id:
@@ -2461,6 +2744,50 @@ components:
       - updated_at
       - -updated_at
       title: RlJobsJobsSortField
+    RlLoRAParams:
+      properties:
+        rank:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rank
+          description: LoRA rank (r); maps to NeMo-RL lora_cfg.dim.
+          default: 16
+        alpha:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Alpha
+          description: LoRA scaling factor (effective lr multiplier = alpha/rank).
+          default: 32
+        dropout:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Dropout
+          description: LoRA dropout probability.
+          default: 0.0
+        target_modules:
+          title: Target Modules
+          description: Module names to adapt. Empty/None with match_all_linear applies
+            to all linear layers.
+          items:
+            type: string
+          type: array
+        exclude_modules:
+          title: Exclude Modules
+          description: Module name patterns to exclude from LoRA.
+          items:
+            type: string
+          type: array
+        use_triton:
+          type: boolean
+          title: Use Triton
+          description: Use Triton LoRA kernels (DTensor v2). Set false when tensor_parallel_size
+            > 1.
+          default: true
+      additionalProperties: false
+      type: object
+      title: RlLoRAParams
+      description: LoRA hyperparameters for GRPO (DTensor ``lora_cfg``). No merge-at-export.
     RlOutputRequest:
       properties:
         name:
@@ -2478,20 +2805,16 @@ components:
           type: string
           maxLength: 255
           title: Name
-          description: Name of the output artifact. Used to identify it during deployment
-            and inference.
           examples:
           - my-dpo-llama
         type:
           allOf:
           - $ref: '#/components/schemas/OutputNameType'
-          description: Output artifact type. DPO is full-weight, so always `model`.
           default: model
         fileset:
           type: string
           maxLength: 255
           title: Fileset
-          description: FileSet name where output artifacts are stored.
       additionalProperties: false
       type: object
       required:
@@ -2531,6 +2854,13 @@ components:
           title: Context Parallel Size
           description: Context parallel size.
           default: 1
+        expert_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expert Parallel Size
+          description: Expert parallel size for MoE models. GRPO only; a value above
+            1 selects the DTensor v2 backend.
+          default: 1
         sequence_parallel:
           type: boolean
           title: Sequence Parallel
@@ -2539,14 +2869,7 @@ components:
       additionalProperties: false
       type: object
       title: RlParallelismParams
-      description: 'Distributed training parallelism configuration.
-
-
-        Single-node multi-GPU uses ``num_nodes=1`` with ``num_gpus_per_node>1``;
-
-        multi-node sets ``num_nodes>1`` and the compiler emits a distributed-GPU
-
-        executor (see :mod:`nmp.rl.app.jobs.compiler`).'
+      description: Distributed training parallelism configuration.
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$

@@ -5,6 +5,11 @@
 
 from typing import Annotated, TypeAlias
 
+from nemo_platform.beta.evaluator.agent_eval.metrics import (
+    AgentPhaseSuccessMetric,
+    EvidencePresenceMetric,
+    SkillUsedMetric,
+)
 from nemo_platform.beta.evaluator.metrics.bleu import BLEUMetric
 from nemo_platform.beta.evaluator.metrics.exact_match import ExactMatchMetric
 from nemo_platform.beta.evaluator.metrics.f1 import F1Metric
@@ -26,6 +31,7 @@ from nemo_platform.beta.evaluator.metrics.ragas.metrics import (
 )
 from nemo_platform.beta.evaluator.metrics.remote import NemoAgentToolkitRemoteMetric, RemoteMetric
 from nemo_platform.beta.evaluator.metrics.rouge import ROUGEMetric
+from nemo_platform.beta.evaluator.metrics.runner_rewards import GymRewardMetric, HarborRewardMetric
 from nemo_platform.beta.evaluator.metrics.string_check import StringCheckMetric
 from nemo_platform.beta.evaluator.metrics.tool_calling import ToolCallingMetric
 from nemo_platform.beta.evaluator.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
@@ -55,6 +61,11 @@ MetricVariants: TypeAlias = (
     | ResponseRelevancyMetric
     | FaithfulnessMetric
     | NoiseSensitivityMetric
+    | GymRewardMetric
+    | HarborRewardMetric
+    | AgentPhaseSuccessMetric
+    | EvidencePresenceMetric
+    | SkillUsedMetric
 )
 """Raw union of SDK metric configuration models, excluding service-only system metrics."""
 

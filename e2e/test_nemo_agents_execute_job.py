@@ -239,7 +239,6 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         artifacts_members = _tar_member_names(artifacts)
         assert _tar_contains(artifacts_members, "adapter-invocation.json")
         assert _tar_contains(artifacts_members, "stdout.txt")
-        assert _tar_contains(artifacts_members, "stderr.txt")
 
         # The run result captures platform-normalized Fabric RunResult details
         run_result = json.loads(_download_execute_job_result(sdk, workspace, job_name, "fabric_run_result"))

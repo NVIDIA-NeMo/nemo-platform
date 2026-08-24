@@ -600,6 +600,18 @@ basePlatformConfig: |
   unsloth:
     default_training_execution_profile: default
 
+  # -- rl is the configuration specific to NeMo-RL customization jobs (DPO / GRPO)
+  rl:
+    # -- job_storage_pvc_claim is the claim sandboxed GRPO re-mounts into the Gym host so
+    # the sandbox can read the downloaded environment and dataset. Must match the claim the
+    # Jobs controller mounts for job storage.
+    job_storage_pvc_claim: {{ (include "nmp-core.persistentVolumeClaim" . ) }}
+    # -- sandbox_cluster_capable declares that OpenSandbox is installed on this cluster.
+    # The chart does not install OpenSandbox, so this defaults to false: GRPO defaults to
+    # sandboxed Gym rollouts, and failing those at compile time is the safe outcome on a
+    # cluster that cannot sandbox. Set it to true once OpenSandbox is deployed.
+    sandbox_cluster_capable: false
+
   # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
   safe_synthesizer:
     job_mode: container
@@ -1028,15 +1040,15 @@ core:
     # -- Liveness probe configuration for the controller service.
     # @default -- This object has the following default values for the liveness probe configuration.
     livenessProbe:
-      # -- The HTTP GET request to use for the readiness probe.
+      # -- The HTTP GET request to use for the liveness probe.
       httpGet:
         path: /health/live
         port: http
-      # -- The frequency in seconds to perform the readiness probe.
+      # -- The frequency in seconds to perform the liveness probe.
       periodSeconds: 10
-      # -- The timeout in seconds for the readiness probe.
+      # -- The timeout in seconds for the liveness probe.
       timeoutSeconds: 5
-      # -- The failure threshold for the readiness probe.
+      # -- The failure threshold for the liveness probe.
       failureThreshold: 3
 
     # -- Readiness probe configuration for the controller service.

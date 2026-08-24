@@ -23,3 +23,4 @@ from .access_key_list_response import AccessKeyListResponse as AccessKeyListResp
 from .access_key_create_response import AccessKeyCreateResponse as AccessKeyCreateResponse
 from .access_key_revoke_response import AccessKeyRevokeResponse as AccessKeyRevokeResponse
 from .access_key_metadata_response import AccessKeyMetadataResponse as AccessKeyMetadataResponse
+from .access_key_status_change_response import AccessKeyStatusChangeResponse as AccessKeyStatusChangeResponse

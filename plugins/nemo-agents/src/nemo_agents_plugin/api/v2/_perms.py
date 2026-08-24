@@ -39,3 +39,24 @@ class SessionPerms(PermissionSet, namespace="agents.sessions"):
 
 class GatewayPerms(PermissionSet, namespace="agents.gateway"):
     INVOKE = perm("Invoke a deployed agent through the gateway proxy")
+
+
+class EnvironmentPerms(PermissionSet, namespace="agents.environments"):
+    CREATE = perm("Create agent environments")
+    LIST = perm("List agent environments")
+    READ = perm("Read an agent environment")
+    DELETE = perm("Delete an agent environment")
+
+
+class EnvironmentSpecPerms(PermissionSet, namespace="agents.environment-specs"):
+    CREATE = perm("Create agent environment specs")
+    LIST = perm("List agent environment specs")
+    READ = perm("Read an agent environment spec")
+    DELETE = perm("Delete an agent environment spec")
+
+
+class ComputeSpecPerms(PermissionSet, namespace="agents.compute-specs"):
+    CREATE = perm("Create agent compute specs")
+    LIST = perm("List agent compute specs")
+    READ = perm("Read an agent compute spec")
+    DELETE = perm("Delete an agent compute spec")

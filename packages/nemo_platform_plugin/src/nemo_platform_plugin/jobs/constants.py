@@ -25,3 +25,15 @@ NEMO_JOB_FILESET_ENVVAR = "NEMO_JOB_FILESET"
 NEMO_JOB_SECRETS_ENVVAR = "NEMO_JOB_SECRETS"
 
 TERMINAL_EXIT_CODES = (0, 137)
+
+
+def job_storage_subpath(workspace: str, job_id: str) -> str:
+    """Path of a job's storage directory *relative to the job-storage PVC root*.
+
+    The Kubernetes jobs backend mounts the shared PVC at the job storage path
+    with this value as ``subPath``. Anything that needs to hand the same data to
+    a second consumer that mounts the PVC itself — e.g. the GRPO Gym sandbox,
+    which re-mounts the environment and dataset directories — must reproduce the
+    layout exactly, so it lives here rather than being spelled out per call site.
+    """
+    return f"jobs/{workspace}/{job_id}"

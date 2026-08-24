@@ -26,7 +26,7 @@
 #       also missing (common on newer CUDA stacks), logging "FA2 = False /
 #       Xformers = None".
 #   2. Editable installs of the platform glue (nemo-platform SDK, plugin,
-#      nmp-common, nmp-unsloth) from the in-repo workspace slice.
+#      nmp-common, nmp-unsloth[integrations]) from the in-repo workspace slice.
 #
 # Publish target: nmp-unsloth-training
 # Default tag:    `local` (override via BAKE_TAG at build time).
@@ -57,7 +57,7 @@ ENV PATH="/bin:${PATH}"
 RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages.txt
 
 RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target=/tmp/remove-listed-apt-packages.sh,readonly \
-    --mount=type=bind,source=docker/customizer/removals/apt/nmp-unsloth-training.txt,target=/tmp/apt-package-removals.txt,readonly \
+    --mount=type=bind,source=docker/removals/apt/nmp-unsloth-training.txt,target=/tmp/apt-package-removals.txt,readonly \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade openssl libssl3t64 && \
     bash /tmp/remove-listed-apt-packages.sh /tmp/apt-package-removals.txt && \
@@ -164,15 +164,17 @@ RUN chown -R ${USER_UID}:${USER_GID} /app
 
 # Step 2: install the platform glue editably. No [unsloth] extra here — that's
 # what we just installed in step 1, and re-triggering it would force the
-# resolver to re-evaluate the whole HF stack.
+# resolver to re-evaluate the whole HF stack. The [integrations] extra is
+# training-runtime only; nmp-api installs nmp-unsloth without extras.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --reinstall-package wandb \
     --overrides /opt/docker/no_override_requirements.txt \
     -e /app/sdk/python/nemo-platform \
     -e /app/packages/nemo_platform_plugin \
     -e /app/packages/nmp_common \
     -e /app/packages/nmp_customization_common \
-    -e "/app/services/unsloth"
+    -e "/app/services/unsloth[integrations]"
 
 # hf-transfer can pull huggingface-hub 1.x — install then re-pin hub + transformers.
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -201,46 +203,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "GitPython>=3.1.58,<4" \
     "mlflow-skinny>=3.13.0,<3.14.0"
 
-RUN rm -rf \
-    /usr/local/lib/python3.12/dist-packages/aiohttp \
-    /usr/local/lib/python3.12/dist-packages/aiohttp-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/black \
-    /usr/local/lib/python3.12/dist-packages/_black* \
-    /usr/local/lib/python3.12/dist-packages/black-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/blackd \
-    /usr/local/lib/python3.12/dist-packages/tornado \
-    /usr/local/lib/python3.12/dist-packages/tornado-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/onnx \
-    /usr/local/lib/python3.12/dist-packages/onnx-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/urllib3 \
-    /usr/local/lib/python3.12/dist-packages/urllib3-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/grpc \
-    /usr/local/lib/python3.12/dist-packages/grpcio \
-    /usr/local/lib/python3.12/dist-packages/grpcio-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/wandb \
-    /usr/local/lib/python3.12/dist-packages/wandb-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/mlflow \
-    /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/git \
-    /usr/local/lib/python3.12/dist-packages/gitpython-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/GitPython-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/jupyterlab \
-    /usr/local/lib/python3.12/dist-packages/jupyterlab-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/PIL \
-    /usr/local/lib/python3.12/dist-packages/pillow.libs \
-    /usr/local/lib/python3.12/dist-packages/pillow-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/mistune \
-    /usr/local/lib/python3.12/dist-packages/mistune-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/soupsieve \
-    /usr/local/lib/python3.12/dist-packages/soupsieve-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/jupyter_server \
-    /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/jupyterlab \
-    /usr/local/lib/python3.12/dist-packages/jupyterlab-*.dist-info \
-    /usr/local/cuda/NsightSystems-cli-*  \
-    /usr/local/bin/nsys \
-    /usr/local/cuda/bin/nsys
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/remove-listed-files.py,readonly \
+    --mount=type=bind,source=docker/removals/files/base/pytorch-ngc-common.txt,target=/tmp/common-file-removals.txt,readonly \
+    python /tmp/remove-listed-files.py /tmp/common-file-removals.txt
 
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
@@ -254,9 +219,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --label app-venv
 
 # Late file cleanup for bundled or non-package-managed files.
-RUN --mount=type=bind,source=docker/scripts/remove-listed-files.sh,target=/tmp/remove-listed-files.sh,readonly \
-    --mount=type=bind,source=docker/customizer/removals/files/nmp-unsloth-training.txt,target=/tmp/file-removals.txt,readonly \
-    bash /tmp/remove-listed-files.sh /tmp/file-removals.txt
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/remove-listed-files.py,readonly \
+    --mount=type=bind,source=docker/removals/files/final/customizer-codecs.txt,target=/tmp/file-removals.txt,readonly \
+    python /tmp/remove-listed-files.py /tmp/file-removals.txt
 
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.unsloth.tasks.training", "--help"]

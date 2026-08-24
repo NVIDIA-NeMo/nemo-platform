@@ -13,7 +13,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import deployments as deployments_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT, Agent, AgentDeployment, DeploymentStatus
+from nemo_agents_plugin.entities import (
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    Agent,
+    AgentComputeSpec,
+    AgentDeployment,
+    AgentEnvironment,
+    AgentEnvironmentSpec,
+    DeploymentStatus,
+)
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 NOW = datetime.now(timezone.utc)
@@ -107,6 +115,100 @@ class TestCreateDeployment:
         )
         assert "functions" not in created_deployment.config
         assert "workflow" not in created_deployment.config
+
+    def test_create_with_environment_ref_snapshots_config_and_compute(self) -> None:
+        agent = _make_agent()
+        environment = AgentEnvironment(
+            name="env1",
+            workspace="default",
+            environment_spec="default/espec",
+            compute_spec="default/cspec",
+        )
+        espec = AgentEnvironmentSpec(
+            name="espec",
+            workspace="default",
+            env={"CUSTOM": "from-spec"},
+            secrets={"APP_TOKEN": "default/app-token"},
+        )
+        cspec = AgentComputeSpec(name="cspec", workspace="default", resources={"limits": {"cpu": "2"}})
+
+        mock_entity_client = AsyncMock()
+        # get order: agent (route), then AgentEnvironment, env spec, compute spec (resolver).
+        mock_entity_client.get = AsyncMock(side_effect=[agent, environment, espec, cspec])
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "environment": "default/env1"},
+        )
+
+        assert resp.status_code == 201
+        created: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        # Raw environment ref is snapshotted for provenance.
+        assert created.environment == "default/env1"
+        # Environment spec env merged into the resolved config.
+        assert created.config["environment"]["env"]["CUSTOM"] == "from-spec"
+        # Compute spec snapshotted onto the deployment.
+        assert created.compute is not None
+        assert created.compute.resources.limits == {"cpu": "2"}
+        # Secret env references snapshotted (never merged into config as plaintext).
+        assert created.secrets == {"APP_TOKEN": "default/app-token"}
+        assert "APP_TOKEN" not in created.config.get("environment", {}).get("env", {})
+
+    def test_create_with_inline_environment(self) -> None:
+        agent = _make_agent()
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=agent)
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "environment": {
+                    "environment_spec": {"env": {"INLINE": "yes"}},
+                    "compute_spec": {"resources": {"requests": {"cpu": "1"}}},
+                },
+            },
+        )
+
+        assert resp.status_code == 201
+        created: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created.config["environment"]["env"]["INLINE"] == "yes"
+        assert created.compute is not None
+        assert created.compute.resources.requests == {"cpu": "1"}
+        # Only the agent lookup hit the entity store; inline specs need no deref.
+        assert mock_entity_client.get.await_count == 1
+
+    def test_create_rejects_missing_environment_ref(self) -> None:
+        agent = _make_agent()
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(side_effect=[agent, NemoEntityNotFoundError("gone")])
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "environment": "default/missing"},
+        )
+
+        assert resp.status_code == 422
+        assert "AgentEnvironment 'missing' not found" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
 
     def test_create_rejects_invalid_platform_agent_config(self) -> None:
         config = _fabric_agent_config()

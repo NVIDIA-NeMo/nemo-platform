@@ -1,4 +1,5 @@
 {"name": "absl-py", "license": "APACHE-2.0", "compatible": true}
+{"name": "accelerate", "license": "APACHE-2.0", "compatible": true}
 {"name": "aioboto3", "license": "APACHE-2.0", "compatible": true}
 {"name": "aiobotocore", "license": "APACHE-2.0", "compatible": true}
 {"name": "aiofile", "license": "APACHE-2.0", "compatible": true}
@@ -23,6 +24,7 @@
 {"name": "authlib", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "base58", "license": "MIT", "compatible": true}
 {"name": "beartype", "license": "MIT", "compatible": true}
+{"name": "bitsandbytes", "license": "MIT", "compatible": true}
 {"name": "boto3", "license": "APACHE-2.0", "compatible": true}
 {"name": "botocore", "license": "APACHE-2.0", "compatible": true}
 {"name": "botocore-stubs", "license": "MIT", "compatible": true}
@@ -41,6 +43,10 @@
 {"name": "colorlog", "license": "MIT", "compatible": true}
 {"name": "contourpy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cryptography", "license": "APACHE-2.0", "compatible": true}
+{"name": "cuda-bindings", "license": "LICENSEREF-NVIDIA-SOFTWARE-LICENSE", "compatible": true}
+{"name": "cuda-pathfinder", "license": "APACHE-2.0", "compatible": true}
+{"name": "cuda-toolkit", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "cut-cross-entropy", "license": "LICENSEREF-APPLE-CUSTOM", "compatible": true}
 {"name": "cycler", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cyclopts", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer", "license": "APACHE-2.0", "compatible": true}
@@ -54,6 +60,7 @@
 {"name": "deprecation", "license": "APACHE-2.0", "compatible": true}
 {"name": "detect-installer", "license": "0BSD", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
+{"name": "diffusers", "license": "APACHE-2.0", "compatible": true}
 {"name": "dill", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "dirhash", "license": "MIT", "compatible": true}
 {"name": "distro", "license": "APACHE-2.0", "compatible": true}
@@ -144,6 +151,7 @@
 {"name": "h11", "license": "MIT", "compatible": true}
 {"name": "h2", "license": "MIT", "compatible": true}
 {"name": "harbor", "license": "APACHE-2.0", "compatible": true}
+{"name": "hf-transfer", "license": "APACHE-2.0", "compatible": true}
 {"name": "hf-xet", "license": "APACHE-2.0", "compatible": true}
 {"name": "hpack", "license": "MIT", "compatible": true}
 {"name": "httpcore", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -199,6 +207,7 @@
 {"name": "langsmith", "license": "MIT", "compatible": true}
 {"name": "lark", "license": "MIT", "compatible": true}
 {"name": "litellm", "license": "MIT", "compatible": true}
+{"name": "llguidance", "license": "MIT", "compatible": true}
 {"name": "loguru", "license": "MIT", "compatible": true}
 {"name": "lxml", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "lz4", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -210,12 +219,21 @@
 {"name": "matplotlib", "license": "PSF-2.0", "compatible": true}
 {"name": "mcp", "license": "MIT", "compatible": true}
 {"name": "mdurl", "license": "MIT", "compatible": true}
+{"name": "miniaudio", "license": "MIT", "compatible": true}
 {"name": "mlflow-skinny", "license": "APACHE-2.0", "compatible": true}
+{"name": "mlx", "license": "MIT", "compatible": true}
+{"name": "mlx-audio", "license": "MIT", "compatible": true}
+{"name": "mlx-lm", "license": "MIT", "compatible": true}
+{"name": "mlx-metal", "license": "MIT", "compatible": true}
+{"name": "mlx-vlm", "license": "MIT", "compatible": true}
 {"name": "mmh3", "license": "MIT", "compatible": true}
 {"name": "more-itertools", "license": "MIT", "compatible": true}
+{"name": "mpmath", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "msgspec", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "multidict", "license": "APACHE-2.0", "compatible": true}
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
+{"name": "narwhals", "license": "MIT", "compatible": true}
 {"name": "nemo-anonymizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-fabric", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-fabric-adapter-contract", "license": "APACHE-2.0", "compatible": true}
@@ -236,6 +254,17 @@
 {"name": "nltk", "license": "APACHE-2.0", "compatible": true}
 {"name": "nooa", "license": "APACHE-2.0", "compatible": true}
 {"name": "numpy", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "nvidia-cublas", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cuda-cupti", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cuda-nvrtc", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cuda-runtime", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cudnn-cu13", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cufft", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cufile", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-curand", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cusolver", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cusparse", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-cusparselt-cu13", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
 {"name": "nvidia-ml-py", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-nat-atif", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-config-optimizer", "license": "APACHE-2.0", "compatible": true}
@@ -243,15 +272,21 @@
 {"name": "nvidia-nat-eval", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-langchain", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-opentelemetry", "license": "APACHE-2.0", "compatible": true}
+{"name": "nvidia-nccl-cu13", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-nvjitlink", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-nvshmem-cu13", "license": "NVIDIA PROPRIETARY SOFTWARE", "compatible": true}
+{"name": "nvidia-nvtx", "license": "APACHE-2.0", "compatible": true}
 {"name": "oauthlib", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "onnxruntime", "license": "MIT", "compatible": true}
 {"name": "openai", "license": "APACHE-2.0", "compatible": true}
 {"name": "openai-codex", "license": "APACHE-2.0", "compatible": true}
 {"name": "openai-codex-cli-bin", "license": "APACHE-2.0", "compatible": true}
 {"name": "openapi-pydantic", "license": "MIT", "compatible": true}
+{"name": "opencv-python", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-instrumentation", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-instrumentation-litellm", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-semantic-conventions", "license": "APACHE-2.0", "compatible": true}
+{"name": "openshell", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-api", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-distro", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-exporter-otlp", "license": "APACHE-2.0", "compatible": true}
@@ -278,6 +313,7 @@
 {"name": "pandas", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pathable", "license": "APACHE-2.0", "compatible": true}
 {"name": "pathspec", "license": "MPL-2.0", "compatible": true}
+{"name": "peft", "license": "APACHE-2.0", "compatible": true}
 {"name": "pillow", "license": "MIT-CMU", "compatible": true}
 {"name": "pip", "license": "MIT", "compatible": true}
 {"name": "pkce", "license": "MIT", "compatible": true}
@@ -316,6 +352,7 @@
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-multipart", "license": "APACHE-2.0", "compatible": true}
+{"name": "python-on-whales", "license": "MIT", "compatible": true}
 {"name": "pytz", "license": "MIT", "compatible": true}
 {"name": "pyyaml", "license": "MIT", "compatible": true}
 {"name": "ragas", "license": "APACHE-2.0", "compatible": true}
@@ -337,9 +374,12 @@
 {"name": "sacrebleu", "license": "APACHE-2.0", "compatible": true}
 {"name": "safetensors", "license": "APACHE-2.0", "compatible": true}
 {"name": "scantree", "license": "MIT", "compatible": true}
+{"name": "scikit-learn", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "scikit-network", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "scipy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "secretstorage", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "sentence-transformers", "license": "APACHE-2.0", "compatible": true}
+{"name": "sentencepiece", "license": "APACHE-2.0", "compatible": true}
 {"name": "sentry-sdk", "license": "MIT", "compatible": true}
 {"name": "setuptools", "license": "MIT", "compatible": true}
 {"name": "shellingham", "license": "ISC", "compatible": true}
@@ -350,6 +390,7 @@
 {"name": "smart-open", "license": "MIT", "compatible": true}
 {"name": "smmap", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sniffio", "license": "APACHE-2.0", "compatible": true}
+{"name": "sounddevice", "license": "MIT", "compatible": true}
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}
 {"name": "sqlfluff", "license": "MIT", "compatible": true}
 {"name": "sqlite-vec", "license": "MIT", "compatible": true}
@@ -365,17 +406,25 @@
 {"name": "supabase", "license": "MIT", "compatible": true}
 {"name": "supabase-auth", "license": "MIT", "compatible": true}
 {"name": "supabase-functions", "license": "MIT", "compatible": true}
+{"name": "sympy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "tabulate", "license": "MIT", "compatible": true}
 {"name": "tblib", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "tenacity", "license": "APACHE-2.0", "compatible": true}
+{"name": "threadpoolctl", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "tiktoken", "license": "MIT", "compatible": true}
 {"name": "tokenizers", "license": "APACHE-2.0", "compatible": true}
 {"name": "toml", "license": "MIT", "compatible": true}
 {"name": "tomli-w", "license": "MIT", "compatible": true}
 {"name": "tomlkit", "license": "MIT", "compatible": true}
+{"name": "torch", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "torchao", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "torchvision", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "tornado", "license": "APACHE-2.0", "compatible": true}
 {"name": "tqdm", "license": "MIT AND MPL-2.0", "compatible": true}
 {"name": "transformers", "license": "APACHE-2.0", "compatible": true}
+{"name": "triton", "license": "MIT", "compatible": true}
+{"name": "trl", "license": "APACHE-2.0", "compatible": true}
+{"name": "typeguard", "license": "MIT", "compatible": true}
 {"name": "typer", "license": "MIT", "compatible": true}
 {"name": "types-aioboto3", "license": "MIT", "compatible": true}
 {"name": "types-aiobotocore", "license": "MIT", "compatible": true}
@@ -385,9 +434,12 @@
 {"name": "typing-extensions", "license": "PSF-2.0", "compatible": true}
 {"name": "typing-inspect", "license": "MIT", "compatible": true}
 {"name": "typing-inspection", "license": "MIT", "compatible": true}
+{"name": "tyro", "license": "MIT", "compatible": true}
 {"name": "tzdata", "license": "APACHE-2.0", "compatible": true}
 {"name": "tzlocal", "license": "MIT", "compatible": true}
 {"name": "uncalled-for", "license": "MIT", "compatible": true}
+{"name": "unsloth", "license": "APACHE-2.0", "compatible": true}
+{"name": "unsloth-zoo", "license": "LGPL-3.0-OR-LATER", "compatible": true}
 {"name": "urllib3", "license": "MIT", "compatible": true}
 {"name": "uuid-utils", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "uvicorn", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -400,8 +452,10 @@
 {"name": "wcwidth", "license": "MIT", "compatible": true}
 {"name": "websocket-client", "license": "APACHE-2.0", "compatible": true}
 {"name": "websockets", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "wheel", "license": "MIT", "compatible": true}
 {"name": "wrapt", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "xdg-base-dirs", "license": "ISC", "compatible": true}
+{"name": "xformers", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "xxhash", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "yara-python", "license": "APACHE-2.0", "compatible": true}
 {"name": "yarl", "license": "APACHE-2.0", "compatible": true}

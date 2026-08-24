@@ -24,4 +24,4 @@ if [ ${#filtered_files[@]} -eq 0 ]; then
 	exit 0
 fi
 
-uv run --frozen ty check "${filtered_files[@]}"
+uv run --frozen --group typecheck ty check "${filtered_files[@]}"

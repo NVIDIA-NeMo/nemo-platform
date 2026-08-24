@@ -26,7 +26,6 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
-from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_evaluator_sdk.values.results import AggregateRangeScore, AggregateScalarScore, AggregateScore
 
@@ -43,33 +42,6 @@ _INPUT_TOKEN_KEYS = ("total_tokens", "input_tokens", "prompt_tokens")
 #: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and
 #: copies only a fixed allowlist of row keys onto the result, so no field we invent comes back. Gym
 #: *honors* a caller-supplied ``_ng_task_index``, which is what makes the join here deterministic.
-class GymRewardMetric:
-    """Score the Gym verifier reward stamped onto trial metadata.
-
-    The Gym analogue of :class:`HarborRewardMetric`: reads the per-trial ``reward``
-    off the candidate metadata (populated by :class:`GymAgentTaskRunner`); a trial
-    with no reward is left **unscored** (``None`` → ``nan``), excluded from the mean
-    and surfaced as ``nan_count`` rather than counted as a spurious ``0.0``. Gym owns
-    the scoring — this metric only surfaces it (Evaluator does not re-derive the reward).
-    """
-
-    def __init__(self, *, output_name: str = "reward", metric_type: str = "gym_reward") -> None:
-        self._output_name = output_name
-        self._metric_type = metric_type
-
-    @property
-    def type(self) -> str:
-        return self._metric_type
-
-    def output_spec(self) -> list[MetricOutputSpec]:
-        return [MetricOutputSpec.continuous_score(self._output_name)]
-
-    async def compute_scores(self, input: MetricInput) -> MetricResult:
-        reward = input.candidate.metadata.get("reward")
-        value = float(reward) if reward is not None else None
-        return MetricResult(outputs=[MetricOutput(name=self._output_name, value=value)])
-
-
 def _agent_never_ran(record: Mapping[str, Any]) -> bool:
     """True when a result record shows the agent produced nothing *and* never called the model.
 

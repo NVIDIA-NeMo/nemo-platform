@@ -17,6 +17,7 @@ DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/Dockerfile.safe-synthesizer-tasks"),
     Path("docker/automodel/Dockerfile.nmp-automodel-base"),
     Path("docker/automodel/no_override_requirements.txt"),
+    Path("docker/rl/Dockerfile.nmp-rl-base"),
     Path("docker/unsloth/no_override_requirements.txt"),
 )
 
@@ -58,14 +59,15 @@ def _workspace_sources(pyproject: dict) -> set[str]:
     "path",
     [pytest.param(ROOT / path, id=str(path)) for path in DOCKER_IMAGE_WANDB_CONFIG_PATHS],
 )
-def test_distributed_image_wandb_specs_match_notice(path: Path) -> None:
-    """Docker image wandb pins must match the wandb-core NOTICE metadata."""
-    expected = f"wandb=={_notice_wandb_version()}"
+def test_distributed_image_wandb_specs_use_notice_floor(path: Path) -> None:
+    """Docker image wandb constraints must use the reviewed wandb-core floor."""
+    expected = f"wandb>={_notice_wandb_version()}"
     assert path.exists()
 
     specs = _wandb_package_specs(path)
 
-    assert specs == [expected]
+    assert specs
+    assert all(spec == expected for spec in specs)
 
 
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)

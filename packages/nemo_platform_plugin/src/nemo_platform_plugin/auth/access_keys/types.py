@@ -8,7 +8,8 @@ from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED"]
+AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"]
+AccessKeyReversibleStatus = Literal["ACTIVE", "EXPIRED", "SUSPENDED"]
 
 
 class AccessKeyListQueryParams(TypedDict, total=False):
@@ -94,6 +95,16 @@ class AccessKeyRevokeResponse(BaseModel):
 
     jti: str = Field(description="Stable JWT ID for this Scoped Access Key.")
     revoked: bool = Field(description="True when this request newly recorded the key's revocation.")
+
+
+class AccessKeyStatusChangeResponse(BaseModel):
+    """Response returned after a reversible Scoped Access Key status change."""
+
+    jti: str = Field(description="Stable JWT ID for this Scoped Access Key.")
+    status: AccessKeyReversibleStatus = Field(
+        description="Resulting effective status of the key, including expiration."
+    )
+    changed: bool = Field(description="True when this request changed the key's persistent status.")
 
 
 class AccessKeyNotImplementedErrorResponse(BaseModel):

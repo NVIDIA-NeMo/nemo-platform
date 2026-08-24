@@ -5,7 +5,6 @@ import type { StudioDataView } from '@nemo/common/src/components/DataView/Studio
 import { type DropdownEntry, Tag, Text } from '@nvidia/foundations-react-core';
 import { formatCellValue } from '@studio/components/FileRowEditor/schema';
 import type { DataFileColumn, DataFileRow } from '@studio/components/FileRowEditor/types';
-import { Copy, Pencil, Trash } from 'lucide-react';
 import type { ComponentProps } from 'react';
 
 type MakeColumns = ComponentProps<typeof StudioDataView<DataFileRow>>['makeColumns'];
@@ -79,10 +78,9 @@ export const makeDataFileColumns =
       size: 58,
       enableResizing: false,
       rowActions: (row): DropdownEntry[] => [
-        { slotStart: <Pencil />, children: 'Edit row', onSelect: () => onEdit(row) },
-        { slotStart: <Copy />, children: 'Duplicate row', onSelect: () => onDuplicate(row) },
+        { children: 'Edit row', onSelect: () => onEdit(row) },
+        { children: 'Duplicate row', onSelect: () => onDuplicate(row) },
         {
-          slotStart: <Trash />,
           children: 'Delete row',
           danger: true,
           onSelect: () => onDelete(row),

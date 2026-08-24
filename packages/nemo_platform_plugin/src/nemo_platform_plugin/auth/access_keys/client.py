@@ -14,6 +14,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateResponse,
     AccessKeyListResponse,
     AccessKeyRevokeResponse,
+    AccessKeyStatusChangeResponse,
 )
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import NemoHTTPError
@@ -24,6 +25,8 @@ class _AccessKeyMethods:
     create_access_key = method(endpoints.create_access_key)
     list_access_keys = method(endpoints.list_access_keys)
     revoke_access_key = method(endpoints.revoke_access_key)
+    suspend_access_key = method(endpoints.suspend_access_key)
+    unsuspend_access_key = method(endpoints.unsuspend_access_key)
 
 
 class AccessKeysClient(_AccessKeyMethods, NemoClient):
@@ -44,25 +47,39 @@ class AccessKeyIssuerClient(AccessKeyIssuer):
         try:
             return self._client.create_access_key(body=request).data()
         except NemoHTTPError as exc:
-            _raise_domain_error_from_http(exc)
+            _raise_known_domain_error_from_http(exc)
             raise
 
     def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:
         try:
             return self._client.list_access_keys(query_params={"page": page, "page_size": page_size}).data()
         except NemoHTTPError as exc:
-            _raise_domain_error_from_http(exc)
+            _raise_known_domain_error_from_http(exc)
             raise
 
     def revoke(self, jti: str) -> AccessKeyRevokeResponse:
         try:
             return self._client.revoke_access_key(jti=jti).data()
         except NemoHTTPError as exc:
-            _raise_domain_error_from_http(exc)
+            _raise_known_domain_error_from_http(exc)
+            raise
+
+    def suspend(self, jti: str) -> AccessKeyStatusChangeResponse:
+        try:
+            return self._client.suspend_access_key(jti=jti).data()
+        except NemoHTTPError as exc:
+            _raise_known_domain_error_from_http(exc)
+            raise
+
+    def unsuspend(self, jti: str) -> AccessKeyStatusChangeResponse:
+        try:
+            return self._client.unsuspend_access_key(jti=jti).data()
+        except NemoHTTPError as exc:
+            _raise_known_domain_error_from_http(exc)
             raise
 
 
-def _raise_domain_error_from_http(exc: NemoHTTPError) -> None:
+def _raise_known_domain_error_from_http(exc: NemoHTTPError) -> None:
     if exc.status_code == 501:
         raise AccessKeyOperationNotImplementedError(exc.detail) from exc
     if exc.status_code == 404:

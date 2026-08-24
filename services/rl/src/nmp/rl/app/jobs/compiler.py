@@ -5,8 +5,8 @@
 
 Steps mirror unsloth/automodel:
 
-1. file_io download    — pull model fileset + preference dataset to the PVC
-2. training            — Ray DPO step (single-node GPU or multi-node distributed)
+1. file_io download    — pull model fileset + dataset (+ environment for GRPO) to the PVC
+2. training            — Ray DPO/GRPO step (single-node GPU or multi-node distributed)
 3. file_io upload      — push the trained checkpoint to a new fileset
 4. model_entity        — create the output ``ModelEntity`` referencing it
 
@@ -48,17 +48,27 @@ from nmp.customization_common.schemas.file_io import (
     FileSetRef,
     UploadItem,
 )
-from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
+from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
 from nmp.customization_common.service.platform_client import fetch_model_entity
 from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.rl.app.constants import (
     BASE_LOG_DIR_ENVVAR,
     DEFAULT_DATASET_PATH,
+    DEFAULT_ENVIRONMENT_PATH,
     DEFAULT_MODEL_PATH,
     DEFAULT_OUTPUT_MODEL_PATH,
+    NMP_BROKER_HOST_ENVVAR,
+    NMP_BROKER_PORT_ENVVAR,
+    NMP_JOB_STORAGE_PVC_ENVVAR,
+    NMP_VLLM_HOST_ENVVAR,
+    NMP_VLLM_PORT_ENVVAR,
+    SANDBOX_DATASET_PATH,
+    SANDBOX_ENVIRONMENT_PATH,
 )
 from nmp.rl.app.jobs.training.schemas import (
     DPOConfig,
+    GRPOConfig,
+    LoRAConfig,
     MLflowConfig,
     ModelConfig,
     TrainingBackend,
@@ -74,7 +84,7 @@ from nmp.rl.images import (
     get_tasks_image,
     get_training_image,
 )
-from nmp.rl.schemas import DPOTraining, RlJobOutput
+from nmp.rl.schemas import DPOTraining, GRPOTraining, RlJobOutput
 
 logger = logging.getLogger(__name__)
 
@@ -106,19 +116,22 @@ def _require_fileset(name: str | None, *, label: str) -> str:
 
 def _build_download_config(job_spec: RlJobOutput, me: ModelEntity, *, workspace: str) -> FileIOTaskConfig:
     model_fileset = _require_fileset(me.fileset, label=f"Model '{me.workspace}/{me.name}'")
-    # The model ref is already workspace-qualified (from me.fileset), but the
-    # dataset ref comes straight from the submitted spec and may be a bare name
-    # ("dpo-data"). The file_io download step's SDK list() requires an explicit
-    # workspace, so qualify it with the job's workspace when unset.
     dataset_ref = FileSetRef.model_validate(job_spec.dataset)
     if dataset_ref.workspace is None:
         dataset_ref = FileSetRef(workspace=workspace, name=dataset_ref.name)
-    return FileIOTaskConfig(
-        download=[
-            DownloadItem(src=FileSetRef.model_validate(model_fileset), dest=DEFAULT_MODEL_PATH),
-            DownloadItem(src=dataset_ref, dest=DEFAULT_DATASET_PATH),
-        ],
-    )
+
+    downloads = [
+        DownloadItem(src=FileSetRef.model_validate(model_fileset), dest=DEFAULT_MODEL_PATH),
+        DownloadItem(src=dataset_ref, dest=DEFAULT_DATASET_PATH),
+    ]
+
+    if job_spec.training_type == TrainingType.GRPO:
+        env_ref = FileSetRef.model_validate(_require_fileset(job_spec.environment, label="Environment"))
+        if env_ref.workspace is None:
+            env_ref = FileSetRef(workspace=workspace, name=env_ref.name)
+        downloads.append(DownloadItem(src=env_ref, dest=DEFAULT_ENVIRONMENT_PATH))
+
+    return FileIOTaskConfig(download=downloads)
 
 
 def _build_upload_config(job_spec: RlJobOutput, me) -> FileIOTaskConfig:
@@ -136,15 +149,23 @@ def _build_upload_config(job_spec: RlJobOutput, me) -> FileIOTaskConfig:
 def _build_model_entity_config(
     workspace: str, job_spec: RlJobOutput, *, trust_remote_code: bool
 ) -> ModelEntityTaskConfig:
-    # DPO is full-weight: no PEFT/adapter config.
+    method = job_spec.training_type.value.upper()
+    peft: PEFTConfig | None = None
+    if isinstance(job_spec.training, GRPOTraining) and job_spec.training.finetuning_type == "lora":
+        lora = job_spec.training.lora
+        assert lora is not None  # validated on GRPOTraining
+        peft = PEFTConfig(type=FinetuningType.LORA, rank=lora.rank, alpha=lora.alpha)
+        description = f"{method}-trained LoRA adapter from nmp-rl job ({job_spec.model})"
+    else:
+        description = f"{method}-trained model from nmp-rl job ({job_spec.model})"
     return ModelEntityTaskConfig(
         name=job_spec.output.name,
         workspace=workspace,
-        description=f"DPO-trained model from nmp-rl job ({job_spec.model})",
+        description=description,
         fileset=FileSetRef(workspace=None, name=job_spec.output.fileset),
         model_entity=job_spec.model,
         base_model=job_spec.model,
-        peft=None,
+        peft=peft,
         trust_remote_code=trust_remote_code,
         deployment_config=None,
     )
@@ -190,9 +211,11 @@ def _build_integrations_config(integrations: IntegrationsSpec | None) -> Trainin
     return TrainingStepConfig.IntegrationsConfig(wandb=wandb_cfg, mlflow=mlflow_cfg)
 
 
-def _build_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: bool) -> TrainingStepConfig:
-    """Map the canonical DPO spec onto the backend-agnostic step config."""
-    t: DPOTraining = job_spec.training
+def _build_dpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: bool) -> TrainingStepConfig:
+    """Map a DPO spec onto the backend-agnostic step config."""
+    t = job_spec.training
+    if not isinstance(t, DPOTraining):
+        raise PlatformJobCompilationError(f"Expected a DPO training spec, got {type(t).__name__}.")
     p = t.parallelism
     return TrainingStepConfig(
         backend=TrainingBackend.NEMO_RL,
@@ -219,6 +242,8 @@ def _build_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: boo
             epochs=t.epochs,
             max_steps=t.max_steps,
             val_check_interval=t.val_check_interval,
+            # DPO validation is a logprob pass with no generation, so dpo_config always
+            # runs it at step 0. The knob is GRPO-only, where a baseline costs a rollout pass.
             val_at_end=t.val_at_end,
             keep_top_k=t.keep_top_k,
             progress_reporting=t.progress_reporting,
@@ -243,12 +268,131 @@ def _build_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: boo
             sequence_parallel=p.sequence_parallel,
             activation_checkpointing=t.activation_checkpointing,
         ),
-        # Carry W&B / MLflow config into the step so the driver actually enables
-        # them; secrets are injected separately as env vars in _build_training_step.
         integrations=_build_integrations_config(job_spec.integrations),
         output_model=job_spec.output.name,
         seed=t.seed if t.seed is not None else 42,
     )
+
+
+def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: bool) -> TrainingStepConfig:
+    """Map a GRPO spec onto the backend-agnostic step config."""
+    t = job_spec.training
+    if not isinstance(t, GRPOTraining):
+        raise PlatformJobCompilationError(f"Expected a GRPO training spec, got {type(t).__name__}.")
+    p = t.parallelism
+    sandboxed = config.sandboxed_gym_default
+    if sandboxed and not config.sandbox_cluster_capable:
+        raise PlatformJobCompilationError(
+            "GRPO jobs with custom environment filesets require sandboxed Gym (platform default). "
+            "OpenSandbox is not yet available on this cluster (sandbox_cluster_capable=false). "
+            "Set NMP_RL_SANDBOX_CLUSTER_CAPABLE=true once OpenSandbox is installed, or "
+            "NMP_RL_SANDBOXED_GYM_DEFAULT=false for trusted dev smoke tests only."
+        )
+    # The Gym host mounts the job-storage claim itself to read the environment and
+    # dataset, and the training container only ever learns the storage *path*. Without
+    # the claim name the sandbox config is unsatisfiable, so fail here rather than
+    # after the model download and vLLM startup.
+    if sandboxed and not config.job_storage_pvc_claim:
+        raise PlatformJobCompilationError(
+            "Sandboxed GRPO requires the job-storage PVC claim name so the Gym sandbox can "
+            "mount the downloaded environment and dataset. Set NMP_RL_JOB_STORAGE_PVC_CLAIM "
+            "to the same claim the Jobs controller mounts for job storage."
+        )
+
+    return TrainingStepConfig(
+        backend=TrainingBackend.NEMO_RL,
+        model=ModelConfig(
+            path=DEFAULT_MODEL_PATH,
+            name=job_spec.model,
+            max_seq_length=t.max_seq_length,
+            trust_remote_code=trust_remote_code,
+        ),
+        dataset=TrainingStepConfig.DatasetConfig(path=DEFAULT_DATASET_PATH),
+        gym=TrainingStepConfig.GymConfig(
+            environment_path=DEFAULT_ENVIRONMENT_PATH,
+            sandbox_environment_path=SANDBOX_ENVIRONMENT_PATH if sandboxed else None,
+            sandbox_dataset_path=SANDBOX_DATASET_PATH if sandboxed else None,
+            sandboxed=sandboxed,
+            gym_runtime_image=config.gym_runtime_image or get_training_image(),
+            allow_internet=config.sandbox_allow_internet,
+            public_dns_allow=config.sandbox_public_dns_allow,
+            sandbox_server_protocol=config.sandbox_server_protocol,
+            sandbox_resources=config.sandbox_resources,
+            sandbox_ttl_s=config.sandbox_ttl_s,
+        ),
+        training=TrainingStepConfig.TrainingConfig(
+            training_type=TrainingType.GRPO,
+            finetuning_type=FinetuningType.LORA if t.finetuning_type == "lora" else FinetuningType.ALL_WEIGHTS,
+            grpo=GRPOConfig(
+                num_generations_per_prompt=t.num_generations_per_prompt,
+                num_prompts_per_step=t.num_prompts_per_step,
+                temperature=t.temperature,
+                max_new_tokens=t.max_new_tokens,
+                normalize_rewards=t.normalize_rewards,
+                overlong_filtering=t.overlong_filtering,
+                max_rollout_turns=t.max_rollout_turns,
+                ref_policy_kl_penalty=t.ref_policy_kl_penalty,
+                ratio_clip_min=t.ratio_clip_min,
+                ratio_clip_max=t.ratio_clip_max,
+                max_grad_norm=t.max_grad_norm,
+                automodel_kwargs=t.automodel_kwargs,
+                router_aux_loss_coef=t.router_aux_loss_coef,
+                vllm_tensor_parallel_size=t.vllm_tensor_parallel_size,
+                vllm_gpu_memory_utilization=t.vllm_gpu_memory_utilization,
+            ),
+            lora=(
+                LoRAConfig(
+                    rank=t.lora.rank,
+                    alpha=t.lora.alpha,
+                    dropout=t.lora.dropout,
+                    target_modules=t.lora.target_modules,
+                    exclude_modules=t.lora.exclude_modules,
+                    use_triton=t.lora.use_triton,
+                )
+                if t.finetuning_type == "lora" and t.lora is not None
+                else None
+            ),
+        ),
+        schedule=TrainingStepConfig.ScheduleConfig(
+            epochs=t.epochs,
+            max_steps=t.max_steps,
+            val_check_interval=t.val_check_interval,
+            val_at_start=t.val_at_start,
+            val_at_end=t.val_at_end,
+            keep_top_k=t.keep_top_k,
+            progress_reporting=t.progress_reporting,
+        ),
+        batch=TrainingStepConfig.BatchConfig(global_batch_size=t.batch_size, micro_batch_size=t.micro_batch_size),
+        optimizer=TrainingStepConfig.OptimizerConfig(
+            optimizer_type=t.optimizer_type,
+            learning_rate=t.learning_rate,
+            min_learning_rate=t.min_learning_rate,
+            weight_decay=t.weight_decay,
+            beta1=t.adam_beta1,
+            beta2=t.adam_beta2,
+            eps=t.adam_eps,
+            warmup_steps=t.warmup_steps,
+        ),
+        parallelism=TrainingStepConfig.ParallelismConfig(
+            num_nodes=p.num_nodes,
+            num_gpus_per_node=p.num_gpus_per_node,
+            tensor_parallel_size=p.tensor_parallel_size,
+            pipeline_parallel_size=p.pipeline_parallel_size,
+            context_parallel_size=p.context_parallel_size,
+            expert_parallel_size=p.expert_parallel_size,
+            sequence_parallel=p.sequence_parallel,
+            activation_checkpointing=t.activation_checkpointing,
+        ),
+        integrations=_build_integrations_config(job_spec.integrations),
+        output_model=job_spec.output.name,
+        seed=t.seed if t.seed is not None else 42,
+    )
+
+
+def _build_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: bool) -> TrainingStepConfig:
+    if job_spec.training_type == TrainingType.GRPO:
+        return _build_grpo_training_step_config(job_spec, trust_remote_code=trust_remote_code)
+    return _build_dpo_training_step_config(job_spec, trust_remote_code=trust_remote_code)
 
 
 def _build_training_step(
@@ -268,6 +412,7 @@ def _build_training_step(
     num_gpus_per_node = p.num_gpus_per_node
 
     step_config = _build_training_step_config(job_spec, trust_remote_code=trust_remote_code)
+    step_name = "grpo-training" if job_spec.training_type == TrainingType.GRPO else "dpo-training"
 
     container = ContainerSpec(
         image=get_training_image(),
@@ -277,6 +422,17 @@ def _build_training_step(
 
     warn_incomplete_integrations(job_spec.integrations)
     environment = [*base_env, *collect_integration_secret_envs(job_spec.integrations)]
+
+    if job_spec.training_type == TrainingType.GRPO:
+        for name, value in (
+            (NMP_VLLM_HOST_ENVVAR, "127.0.0.1"),
+            (NMP_VLLM_PORT_ENVVAR, "8000"),
+            (NMP_BROKER_HOST_ENVVAR, "127.0.0.1"),
+            (NMP_BROKER_PORT_ENVVAR, "51234"),
+        ):
+            environment.append(EnvironmentVariable(name=name, value=value))
+        if config.job_storage_pvc_claim:
+            environment.append(EnvironmentVariable(name=NMP_JOB_STORAGE_PVC_ENVVAR, value=config.job_storage_pvc_claim))
 
     executor: GPUExecutionProviderSpec | DistributedGPUExecutionProviderSpec
     if num_nodes > 1:
@@ -307,7 +463,7 @@ def _build_training_step(
         executor["profile"] = resolved_profile
 
     return PlatformJobStep(
-        name="dpo-training",
+        name=step_name,
         executor=executor,
         environment=environment,
         config=step_config.model_dump(mode="json"),
@@ -329,15 +485,19 @@ async def platform_job_config_compiler(
     # `integrations` (W&B / MLflow tokens and tracking URIs), so it must not be
     # dumped at INFO.
     p = job_spec.training.parallelism
+    method = job_spec.training_type.value.upper()
     logger.info(
-        "Compiling NeMo-RL DPO job to PlatformJobSpec: model=%s, dataset=%s, output=%s, "
+        "Compiling NeMo-RL %s job to PlatformJobSpec: model=%s, dataset=%s, output=%s, "
         "num_nodes=%d, num_gpus_per_node=%d",
+        method,
         job_spec.model,
         job_spec.dataset,
         job_spec.output.name,
         p.num_nodes,
         p.num_gpus_per_node,
     )
+
+    job_spec.validate_for_training()
 
     me = await fetch_model_entity(job_spec.model, workspace, sdk)
     trust_remote_code = me.trust_remote_code or False
@@ -367,7 +527,9 @@ async def platform_job_config_compiler(
 
     steps: list[PlatformJobStep] = [
         _cpu_task_step(
-            "model-and-dataset-download",
+            "model-dataset-environment-download"
+            if job_spec.training_type == TrainingType.GRPO
+            else "model-and-dataset-download",
             FILE_IO_TASK_COMMAND,
             _build_download_config(job_spec, me, workspace=workspace),
         ),
