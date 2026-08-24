@@ -21,7 +21,7 @@ import uuid
 
 import pytest
 from nemo_platform_plugin.client.client import NemoClient
-# TODO: migrate APIStatusError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
 from nmp.testing import as_service_for
 
 ENTITY_TYPE = "e2e-test-entity"

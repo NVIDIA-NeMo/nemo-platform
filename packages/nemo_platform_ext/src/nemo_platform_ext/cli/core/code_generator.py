@@ -78,16 +78,16 @@ def generate_python_code(
         lines.append("import time")
     if wait_type == "inference_deployment":
         lines.append(
-            "from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NeMoPlatform, NotFoundError"
+            "from nemo_platform_plugin.client.client import NemoClient\nfrom nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError, NemoTransportError as APIConnectionError, NemoTransportError as APITimeoutError, NotFoundError"
         )
     else:
-        lines.append("from nemo_platform import NeMoPlatform")
+        lines.append("from nemo_platform_plugin.client.client import NemoClient")
     lines.append("")
 
     if base_url:
         lines.append(f"client = NeMoPlatform(base_url={_format_python_literal(base_url)})")
     else:
-        lines.append("client = NeMoPlatform()")
+        lines.append("client = NemoClient()")
     lines.append("")
 
     resource_chain = "client." + ".".join(resource_path)

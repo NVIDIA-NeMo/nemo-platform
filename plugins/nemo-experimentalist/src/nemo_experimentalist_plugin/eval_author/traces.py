@@ -31,7 +31,7 @@ from nemo_experimentalist_plugin.entities import ResourceRef, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic, TraceAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 from nemo_platform_plugin.client.client import AsyncNemoClient
-# TODO: migrate APIConnectionError, APIStatusError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoHTTPError as APIStatusError
 
 DEFAULT_ROW_LIMIT = 100
 MAX_ROW_LIMIT = 1000

@@ -163,7 +163,7 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
 
     import click.exceptions
     from nemo_platform_plugin.client.errors import NemoClientError, AuthenticationError, BadRequestError, ConflictError, InternalServerError, NotFoundError, PermissionDeniedError, RateLimitError
-# TODO: migrate APIConnectionError, APIStatusError, APITimeoutError from nemo_platform
+    from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoHTTPError as APIStatusError, NemoTransportError as APITimeoutError
     from nemo_platform_plugin.client import errors as plugin_errors
 
     prog = "nemo"

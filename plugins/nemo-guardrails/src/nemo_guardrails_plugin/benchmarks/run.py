@@ -61,7 +61,7 @@ from nemo_guardrails_plugin.benchmarks.processes import (
 )
 from nemo_guardrails_plugin.benchmarks.seeding import SeededResources, seed_benchmark
 from nemo_platform_plugin.client.client import NemoClient
-# TODO: migrate APIStatusError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
 
 log = logging.getLogger("nemo_guardrails_plugin.benchmarks")
 

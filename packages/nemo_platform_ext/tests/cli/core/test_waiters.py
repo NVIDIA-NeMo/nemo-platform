@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import AuthenticationError
-# TODO: migrate APIConnectionError, APIStatusError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoHTTPError as APIStatusError
 from nemo_platform_ext.cli.core import waiters
 
 WAITERS_MODULE = "nemo_platform_ext.cli.core.waiters"

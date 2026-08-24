@@ -12,8 +12,21 @@ from typing import Any, Mapping
 import httpx
 from httpx import Timeout
 from httpx import AsyncClient, Client
-# TODO: remove Stainless sentinel(s) NotGiven, not_given
-# TODO: migrate DEFAULT_MAX_RETRIES, AsyncStream, __version__ from nemo_platform
+from typing import Any
+
+__DEFAULT_MAX_RETRIES = 2
+_Any = type("_Any", (), {"__repr__": lambda self: "NOT_GIVEN"})()
+not_given: Any = _Any
+Any = type("Any", (), {})
+
+try:
+    from importlib.metadata import version as _get_version
+    __version__ = _get_version("nemo-platform-plugin")
+except Exception:
+    __version__ = "0.0.0"
+
+_DEFAULT_MAX_RETRIES = __DEFAULT_MAX_RETRIES
+AsyncStream = Any  # typed clients handle streaming differently
 from nemo_platform_plugin.client.client import AsyncNemoClient as AsyncAPIClient, NemoClient as SyncAPIClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 
@@ -53,8 +66,8 @@ class NemoClient(SyncAPIClient):
         config_path: Path | None = None,
         context_name: str | None = None,
         access_token: str | None = None,
-        timeout: float | Timeout | None | NotGiven = not_given,
-        max_retries: int = DEFAULT_MAX_RETRIES,
+        timeout: float | Timeout | None | Any = None,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         default_query: Mapping[str, object] | None = None,
         # Configure a custom httpx client.
@@ -160,7 +173,7 @@ class NemoClient(SyncAPIClient):
         self.workspace = workspace
 
         super().__init__(
-            version=__version__,
+            version=str(__version__),
             base_url=base_url,
             max_retries=max_retries,
             timeout=timeout,
@@ -202,8 +215,8 @@ class AsyncNemoClient(AsyncAPIClient):
         config_path: Path | None = None,
         context_name: str | None = None,
         access_token: str | None = None,
-        timeout: float | Timeout | None | NotGiven = not_given,
-        max_retries: int = DEFAULT_MAX_RETRIES,
+        timeout: float | Timeout | None | Any = None,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         default_query: Mapping[str, object] | None = None,
         # Configure a custom httpx client.
@@ -322,7 +335,7 @@ class AsyncNemoClient(AsyncAPIClient):
         self.workspace = workspace
 
         super().__init__(
-            version=__version__,
+            version=str(__version__),
             base_url=base_url,
             max_retries=max_retries,
             timeout=timeout,
@@ -332,7 +345,7 @@ class AsyncNemoClient(AsyncAPIClient):
             _strict_response_validation=_strict_response_validation,
         )
 
-        self._default_stream_cls = AsyncStream
+        self._default_stream_cls = None  # typed clients handle streaming internally
 
         # If no inference_base_url is provided, use base_url
         # TODO: needs to be removed

@@ -6,7 +6,7 @@ import os
 import pytest
 from fastapi import status
 from nemo_platform_plugin.client.client import NemoClient
-# TODO: migrate APIStatusError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
 from nmp.core.entities.utils.identifiers import generate_entity_id
 
 base_url = os.getenv("BASE_URL", "http://localhost:8080")

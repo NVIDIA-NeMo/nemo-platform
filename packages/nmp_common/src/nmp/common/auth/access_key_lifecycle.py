@@ -11,7 +11,7 @@ import httpx
 import jwt
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.errors import AuthenticationError
-# TODO: migrate APIConnectionError, APIResponseValidationError, APIStatusError, APITimeoutError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoResponseValidationError as APIResponseValidationError, NemoHTTPError as APIStatusError, NemoTransportError as APITimeoutError
 from nmp.common.config import AuthConfig
 
 from .jwt import TokenClaims

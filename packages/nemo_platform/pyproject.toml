@@ -41,7 +41,6 @@ classifiers = [
 # is retained as the underlying aggregate and continues to work.
 dependencies = [
   "nemo-platform-plugin",
-  "nemo-platform-sdk",
   "nmp-common",
 ]
 
@@ -108,7 +107,6 @@ entities-service = [
   "nmp-common",
   "lark>=1.1.0",
   "fastmcp>=3.2.0",
-  "nemo-platform-sdk",
   "alembic>=1.13.1",
 ]
 
@@ -285,7 +283,6 @@ nemo-data-designer-plugin = [
 nemo-deployments-plugin = [
   "fastapi>=0.115",
   "httpx>=0.27",
-  "nemo-platform-sdk",
   "nemo-platform-plugin",
   "pydantic>=2.10.6",
   "pyyaml>=6.0",
@@ -306,7 +303,6 @@ nemo-evaluator-plugin = [
   "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
-  "nemo-platform-sdk",
   "pydantic>=2.12.0",
   "typer>=0.20.0",
 ]
@@ -388,7 +384,6 @@ nemo-platform-plugin = [
   "fastapi>=0.115.4",
   "jsonschema>=4.0.0",
   "lark>=1.1.0",
-  "nemo-platform-sdk",
   "openai>=1.109.1",
   "pydantic>=2.12.0",
   "pydantic-settings>=2.8.1",
@@ -397,26 +392,6 @@ nemo-platform-plugin = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
-nemo-platform-sdk = [
-  "httpx>=0.23.0, <1",
-  "pydantic>=2.0.0,<3",
-  "typing-extensions>=4.14, <5",
-  "anyio>=4.0.0,<5",
-  "distro>=1.7.0, <2",
-  "sniffio",
-  "nemo-platform-plugin",
-  "typer>=0.20.0",
-  "rich>=13.7.1",
-  "prompt_toolkit>=3.0.0",
-  "requests>=2.31.0",
-  "pyyaml>=6.0.0",
-  "docker>=7.0.0",
-  "ngcsdk>=4.8.2",
-  "nvidia-ml-py>=13.0.0",
-  "psutil>=5.9.0",
-  "openai",
-  "fsspec>=2023.1.0",
-]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-safe-synthesizer-plugin = [
@@ -451,7 +426,6 @@ nmp-common = [
   "lark>=1.1.0",
   "nemo-platform-plugin",
   "pyyaml>=6.0.2",
-  "nemo-platform-sdk",
   "sqlalchemy>=2.0.0",
   "huggingface-hub>=1.0.1,<2.0.0",
   "hvac>=2.3.0",
@@ -677,7 +651,6 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 insights = "nemo_insights_plugin.skills:skills_dir"
 deployments = "nemo_deployments_plugin.skills:skills_dir"
 [tool.uv.sources]
-nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
 nmp-build-tools = { workspace = true }
@@ -756,12 +729,7 @@ nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_se
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
 nmp-intake = { source = "../../services/intake/src/nmp/intake", module = "nmp/intake", deps_group = "intake-service" }
 
-[tool.bundle-package.nemo-platform-sdk]
-source = "../../sdk/python/nemo-platform/src/nemo_platform"
-module = "nemo_platform"
-inherit."optional-dependencies" = true
-inherit.scripts = true
-inherit."entry-points" = ["nemo.*"]
+["nemo.*"]
 force_include."../../../../../docs" = "nemo_platform/cli/docs"
 
 [tool.bundle-package.nemo-agents-example-calculator]

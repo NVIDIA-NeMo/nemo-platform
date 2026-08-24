@@ -34,7 +34,6 @@ dependencies = [
     "lark>=1.1.0",
     "nemo-platform-plugin",
     "pyyaml>=6.0.2",
-    "nemo-platform-sdk",
     "sqlalchemy>=2.0.0",
     "huggingface-hub>=1.0.1,<2.0.0",
     "hvac>=2.3.0",

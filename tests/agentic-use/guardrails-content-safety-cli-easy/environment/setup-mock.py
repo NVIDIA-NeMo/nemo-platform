@@ -17,7 +17,7 @@ import time
 
 from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.client.errors import ConflictError, InternalServerError, NotFoundError, UnprocessableEntityError
-# TODO: migrate APIConnectionError, APITimeoutError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoTransportError as APITimeoutError
 
 # Exceptions we treat as transient readiness errors during setup polling.
 # Anything outside this set (auth errors, bad-request, schema validation

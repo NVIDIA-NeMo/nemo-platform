@@ -16,7 +16,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from nemo_platform_ext.cli.core.help_formatter import add_warning
 
 if typing.TYPE_CHECKING:
-    from nemo_platform.pagination import SyncDefaultPagination, SyncLogsPagination
+    # Pagination types from the typed client world use NemoPaginatedResponse.
+    # These aliases keep the CLI pagination helpers generic over the response type.
+    SyncDefaultPagination = list  # type: ignore[misc,assignment]
+    SyncLogsPagination = list  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 

@@ -47,7 +47,7 @@ dependencies = [
 version = "0.0.0"
 
 [dependency-groups]
-dev = ["nemo-evaluator-plugin", "nemo-platform-sdk"]
+dev = ["nemo-evaluator-plugin"]
 
 [project.optional-dependencies]
 agent-runtimes = [
@@ -64,7 +64,6 @@ harbor = [
   "harbor>=0.16.1; python_version >= '3.12'",
 ]
 nemo-platform = [
-  "nemo-platform-sdk",
 ]
 # NeMo Fabric HARNESS ADAPTERS for the agent-eval runtimes (FabricAgentRuntime /
 # FabricContainerRuntime). The Fabric SDK itself is a base dependency above; this extra adds the

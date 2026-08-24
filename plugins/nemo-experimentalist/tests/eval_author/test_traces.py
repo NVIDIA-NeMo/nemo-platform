@@ -17,7 +17,7 @@ import httpx
 import pytest
 from nemo_experimentalist_plugin.eval_author import traces
 from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
-# TODO: migrate APIConnectionError, APIStatusError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoHTTPError as APIStatusError
 
 _BASE = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 

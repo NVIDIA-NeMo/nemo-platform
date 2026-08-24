@@ -15,7 +15,7 @@ import httpx
 
 # https://docs.nvidia.com/nemo/microservices/latest/pysdk/index.html#handling-errors
 from nemo_platform_plugin.client.errors import AuthenticationError, PermissionDeniedError
-# TODO: migrate APIConnectionError, APIStatusError, APITimeoutError from nemo_platform
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError, NemoHTTPError as APIStatusError, NemoTransportError as APITimeoutError
 from nmp.customization_common.schemas.file_io import (
     FileDownloadError,
     FileIOTaskConfig,

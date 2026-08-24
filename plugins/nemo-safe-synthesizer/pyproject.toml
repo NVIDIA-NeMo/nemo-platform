@@ -71,7 +71,6 @@ packages = ["src/nemo_safe_synthesizer_plugin"]
 [tool.uv.sources]
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
-nemo-platform-sdk = { workspace = true }
 nmp-build-tools = { workspace = true }
 
 [tool.pytest.ini_options]
