@@ -150,6 +150,48 @@ def test_grpo_lora_defaults_params() -> None:
     assert t.lora.alpha == 32
 
 
+def test_grpo_advanced_knobs_default_to_current_behaviour() -> None:
+    """Turning hardcoded values into settings must not move an unchanged job.
+
+    The first three were fixed in the config compiler before they were fields; the
+    rest are NeMo-RL's own defaults, which the compiler was already passing through.
+    """
+    t = GRPOTraining(type="grpo")
+
+    assert t.normalize_rewards is True
+    assert t.use_leave_one_out_baseline is True
+    assert t.use_on_policy_kl_approximation is True
+    assert t.use_importance_sampling_correction is True
+    assert t.ratio_clip_c is None
+    assert t.advantage_clip_low is None
+    assert t.advantage_clip_high is None
+    assert t.top_k is None
+
+
+def test_grpo_dual_clip_must_exceed_one() -> None:
+    """The loss asserts this at startup; rejecting it here fails the request instead."""
+    with pytest.raises(ValueError, match="ratio_clip_c"):
+        GRPOTraining(type="grpo", ratio_clip_c=1.0)
+
+
+def test_grpo_rejects_an_inverted_advantage_clip_range() -> None:
+    """Bounds that cross clip every advantage to one value and kill the gradient."""
+    with pytest.raises(ValueError, match="advantage_clip_low"):
+        GRPOTraining(type="grpo", advantage_clip_low=5.0, advantage_clip_high=-5.0)
+
+
+def test_grpo_rejects_an_empty_advantage_clip_range() -> None:
+    """Equal bounds are the same failure, and just as quiet."""
+    with pytest.raises(ValueError, match="advantage_clip_low"):
+        GRPOTraining(type="grpo", advantage_clip_low=1.0, advantage_clip_high=1.0)
+
+
+def test_grpo_accepts_a_single_advantage_clip_bound() -> None:
+    """Bounding one side is a real request; the pair check only applies to both."""
+    assert GRPOTraining(type="grpo", advantage_clip_low=-5.0).advantage_clip_high is None
+    assert GRPOTraining(type="grpo", advantage_clip_high=5.0).advantage_clip_low is None
+
+
 def test_grpo_lora_rejects_params_with_all_weights() -> None:
     from nmp.rl.schemas import LoRAParams
 

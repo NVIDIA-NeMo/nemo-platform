@@ -117,3 +117,43 @@ def test_driver_reads_steps_per_epoch_defensively(driver: str) -> None:
         f"{driver} must read steps_per_epoch via getattr with a None default; "
         "it is an extra=allow field that a config need not carry"
     )
+
+
+def _for_schedule_keywords(source: str) -> set[str]:
+    """Keyword names passed to any `NemoRLLogger.for_schedule(...)` call."""
+    return {
+        keyword.arg
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "for_schedule"
+        for keyword in node.keywords
+        if keyword.arg is not None
+    }
+
+
+def test_for_schedule_keyword_detector_discriminates() -> None:
+    """The tripwire is only worth having if it can actually trip."""
+    assert _for_schedule_keywords("x = NemoRLLogger.for_schedule(run_facts=f, max_steps=1)\n") == {
+        "run_facts",
+        "max_steps",
+    }
+    assert _for_schedule_keywords("x = NemoRLLogger.other(run_facts=f)\n") == set()
+
+
+@pytest.mark.parametrize(
+    "driver,expected",
+    [
+        # GRPO's validate() reports the pass's mean reward as `accuracy`, so the
+        # driver names it as the alias source; without run_facts nothing in a job's
+        # status says which algorithm ran or how many rollouts a step generated.
+        ("grpo_driver.py", {"run_facts", "validation_reward_metric"}),
+        # DPO states which algorithm it is and stops there. Its `accuracy` is the
+        # share of preference pairs ranked correctly -- aliasing that to a reward
+        # would put a number on Studio's reward chart that is not one.
+        ("dpo_driver.py", {"run_facts"}),
+    ],
+)
+def test_driver_states_what_only_it_knows(driver: str, expected: set[str]) -> None:
+    """Both settings are per-algorithm, and only the driver has the compiled config."""
+    keywords = _for_schedule_keywords((DRIVERS / driver).read_text())
+
+    assert keywords & {"run_facts", "validation_reward_metric"} == expected

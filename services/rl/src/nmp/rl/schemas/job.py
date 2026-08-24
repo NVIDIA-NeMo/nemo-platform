@@ -204,7 +204,32 @@ class GRPOTraining(_TrainingBase):
         "min(agent max_tokens, max_seq_length - prompt_len). Until that is fixed, bound "
         "response length through max_seq_length or the environment's own max_tokens.",
     )
-    normalize_rewards: bool = Field(default=True, description="Normalize rewards within each prompt group.")
+    top_k: int | None = Field(
+        default=None,
+        gt=0,
+        description="Restrict rollout sampling to the k most likely tokens at each step. Omit to "
+        "sample from the full distribution, which is what standard GRPO does. Narrowing this has "
+        "the same risk as lowering temperature: the rollouts in a prompt group become more alike, "
+        "and GRPO learns from how much they differ.",
+    )
+    normalize_rewards: bool = Field(
+        default=True, description="Divide each group's advantages by their standard deviation."
+    )
+    use_leave_one_out_baseline: bool = Field(
+        default=True,
+        description="Compare each rollout against the mean of the *other* rollouts in its group "
+        "rather than against the group mean including itself. Excluding a rollout from its own "
+        "baseline removes the bias that comparing it to itself introduces.",
+    )
+    advantage_clip_low: float | None = Field(
+        default=None,
+        description="Lower bound applied to advantages after normalization. Omit for no bound. "
+        "Bounding both ends limits how much one unusual rollout can move the policy.",
+    )
+    advantage_clip_high: float | None = Field(
+        default=None,
+        description="Upper bound applied to advantages after normalization. Omit for no bound.",
+    )
     overlong_filtering: bool = Field(
         default=False,
         description="Zero the loss contribution of rollouts truncated by the generation limit. "
@@ -219,6 +244,25 @@ class GRPOTraining(_TrainingBase):
     )
     ratio_clip_min: float = Field(default=0.2, ge=0.0, description="Lower PPO-style importance ratio clip bound.")
     ratio_clip_max: float = Field(default=0.28, ge=0.0, description="Upper PPO-style importance ratio clip bound.")
+    ratio_clip_c: float | None = Field(
+        default=None,
+        gt=1.0,
+        description="Dual-clip bound. Puts a floor under the loss for tokens whose advantage is "
+        "negative, so a single badly-scored rollout cannot dominate the update. Must be greater "
+        "than 1; 3 is the usual choice. Omit to leave dual clipping off.",
+    )
+    use_on_policy_kl_approximation: bool = Field(
+        default=True,
+        description="Estimate the KL term against the policy that generated the rollouts rather "
+        "than the one currently training. The two differ once a rollout batch is reused across "
+        "several optimizer steps.",
+    )
+    use_importance_sampling_correction: bool = Field(
+        default=True,
+        description="Reweight each token by how much more or less likely the training policy is "
+        "to produce it than the rollout policy was. Corrects for the drift that builds up when a "
+        "rollout batch is reused, at the cost of higher variance.",
+    )
     max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
 
     # --- Per-architecture backend settings ---
@@ -254,6 +298,21 @@ class GRPOTraining(_TrainingBase):
             self.lora = LoRAParams()
         if self.finetuning_type == "all_weights" and self.lora is not None:
             raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
+
+    @model_validator(mode="after")
+    def _advantage_clip_range_is_usable(self) -> Self:
+        # Either bound alone is fine; together they have to leave room between them.
+        # Reversed or equal bounds clamp every advantage to one value, which zeroes
+        # the gradient and makes the run do nothing for the reason least visible in
+        # the logs -- reward stays flat and no error is raised anywhere.
+        low, high = self.advantage_clip_low, self.advantage_clip_high
+        if low is not None and high is not None and low >= high:
+            raise ValueError(
+                f"advantage_clip_low ({low}) must be less than advantage_clip_high ({high}); "
+                f"an empty or inverted range clips every advantage to the same value and the "
+                f"policy stops receiving a gradient"
+            )
         return self
 
     @model_validator(mode="after")

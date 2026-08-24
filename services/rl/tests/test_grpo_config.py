@@ -554,13 +554,23 @@ def test_generation_sampling_comes_from_the_grpo_hyperparameters(
     colocated and sandboxed rollouts sample.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
-    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, temperature=0.7))
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, temperature=0.7, top_k=20))
 
     generation = compile_grpo_config(step, job_ctx)["policy"]["generation"]
     assert generation["temperature"] == 0.7
-    # Neutral values, not knobs: only temperature is exposed on the job schema.
+    assert generation["top_k"] == 20
+    # Neutral value, not a knob: the job schema exposes no top_p.
     assert generation["top_p"] == 1.0
-    assert generation["top_k"] is None
+
+
+def test_generation_samples_the_full_distribution_by_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset top_k means no truncation, which is what standard GRPO does."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    assert compile_grpo_config(step, job_ctx)["policy"]["generation"]["top_k"] is None
 
 
 def test_generation_temperature_defaults_to_one(
@@ -571,6 +581,111 @@ def test_generation_temperature_defaults_to_one(
     step, _ = _prepared_step(tmp_path)
 
     assert compile_grpo_config(step, job_ctx)["policy"]["generation"]["temperature"] == 1.0
+
+
+def test_normalize_rewards_reaches_the_block_the_estimator_reads(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The advantage estimator reads `grpo.adv_estimator`, not `grpo`.
+
+    NeMo-RL's YAML recipes wire the two together with OmegaConf interpolation, which
+    this config never goes through -- it is assembled in Python. Writing only the
+    top-level field left AdvEstimatorConfig on its own default of True, so asking for
+    unnormalized advantages did nothing and said nothing.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, normalize_rewards=False, use_leave_one_out_baseline=False),
+    )
+
+    grpo_cfg = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo_cfg["adv_estimator"]["name"] == "grpo"
+    assert grpo_cfg["adv_estimator"]["normalize_rewards"] is False
+    assert grpo_cfg["adv_estimator"]["use_leave_one_out_baseline"] is False
+    # Written in both places so the config matches a resolved NeMo-RL recipe, which
+    # carries the top-level pair as the interpolation source.
+    assert grpo_cfg["normalize_rewards"] is False
+    assert grpo_cfg["use_leave_one_out_baseline"] is False
+
+
+def test_advantage_estimation_defaults_are_unchanged(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both were effectively on before they were knobs; a default job must not shift."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    estimator = compile_grpo_config(step, job_ctx)["grpo"]["adv_estimator"]
+    assert estimator["normalize_rewards"] is True
+    assert estimator["use_leave_one_out_baseline"] is True
+
+
+def test_advantage_clip_bounds_reach_the_grpo_block(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Applied after normalization, so they live on `grpo` rather than on the loss."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, advantage_clip_low=-5.0, advantage_clip_high=5.0),
+    )
+
+    grpo_cfg = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo_cfg["advantage_clip_low"] == -5.0
+    assert grpo_cfg["advantage_clip_high"] == 5.0
+
+
+def test_advantages_are_unbounded_by_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """None on both sides is NeMo-RL's default and standard GRPO."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    grpo_cfg = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo_cfg["advantage_clip_low"] is None
+    assert grpo_cfg["advantage_clip_high"] is None
+
+
+def test_loss_clipping_and_correction_knobs_reach_the_loss(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All three belong to ClippedPGLossConfig, so they compile into `loss_fn`."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            ratio_clip_c=3.0,
+            use_on_policy_kl_approximation=False,
+            use_importance_sampling_correction=False,
+        ),
+    )
+
+    loss_fn = compile_grpo_config(step, job_ctx)["loss_fn"]
+    assert loss_fn["ratio_clip_c"] == 3.0
+    assert loss_fn["use_on_policy_kl_approximation"] is False
+    assert loss_fn["use_importance_sampling_correction"] is False
+
+
+def test_loss_knob_defaults_are_unchanged(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """These two were hardcoded on before they were knobs; the default keeps them on.
+
+    NeMo-RL's own defaults are False. The platform has been running with them True, so
+    the default here follows the platform rather than the library: turning them into
+    settings must not silently change the loss every existing job computes.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    loss_fn = compile_grpo_config(step, job_ctx)["loss_fn"]
+    assert loss_fn["use_on_policy_kl_approximation"] is True
+    assert loss_fn["use_importance_sampling_correction"] is True
+    # Dual clipping stays off unless asked for, matching NeMo-RL.
+    assert loss_fn["ratio_clip_c"] is None
 
 
 def test_max_new_tokens_is_independent_of_max_seq_length(

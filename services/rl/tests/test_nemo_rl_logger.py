@@ -80,8 +80,8 @@ class _RecordingCallback:
         self.time_series_metrics: Any = None
         self.min_report_interval_seconds: Any = None
 
-    def report_training_start(self, max_steps: int, num_epochs: int) -> None:
-        self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
+    def report_training_start(self, max_steps: int, num_epochs: int, *, run_facts=None) -> None:
+        self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs, "run_facts": run_facts})
 
     def report_train_step(self, step, epoch, metrics, *, backend=None):
         self.train_steps.append({"step": step, "epoch": epoch, "metrics": metrics})
@@ -499,8 +499,9 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
 
     Before the GRPO entries existed this recorded four series out of eighty-odd
     metrics and none of them was a reward, which is the one curve a policy-gradient
-    run is read on. The `/max /min /median /stddev` siblings staying out is the
-    other half of the intent: a family costs one series, not six.
+    run is read on. The `/max /min /median` siblings staying out is the other half
+    of the intent: a family costs one series, not six. `/stddev` is the exception,
+    and only for reward, where the spread is the band Studio draws around the mean.
     """
     train = {
         "loss": -0.041,
@@ -511,10 +512,17 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "approx_entropy": 0.49,
         "token_mult_prob_error": 1.011,
         "gen_kl_error": 0.0041,
+        "policy_kl_error": 0.00071,
+        "js_divergence_error": 6.47e-05,
+        "sampling_importance_ratio": 1.0000072,
         "advantages/mean": 0.003,
         "advantages/max": 2.49,
+        "baseline_reward/pct_0": 46.09,
+        "baseline_reward/pct_1": 0.78,
+        "baseline_reward/pct_mixed": 53.13,
         "total_reward/mean": 0.617,
         "total_reward/stddev": 0.486,
+        "total_reward/median": 0.0,
         "gen_tokens_per_sample/mean": 689.3,
         "gen_tokens_per_sample/max": 2048.0,
         "turns_per_sample/mean": 3.41,
@@ -524,10 +532,14 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "mean_prompt_length": 753.8,
         "global_valid_toks": 176432.0,
     }
+    # `reward` here is the copy this adapter adds; GRPO itself reports only
+    # `accuracy`. See the validation-reward tests below.
     val = {
         "accuracy": 0.703,
+        "reward": 0.703,
         "avg_length": 604.2,
         "total_reward/mean": 0.703,
+        "total_reward/stddev": 0.457,
         "truncation_rate": 0.023,
     }
 
@@ -548,10 +560,22 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         # version of `val_accuracy`. Both arrive in the dicts above and are
         # reported as current values; neither keeps a history.
         "train_reward",
+        "val_reward",
         "val_accuracy",
+        # Reward dispersion, which is the band around the mean. Its `/median` and
+        # `/max` siblings above stay out.
+        "train_total_reward/stddev",
+        "val_total_reward/stddev",
+        # Group diversity: how many prompt groups had anything to learn from.
+        "train_baseline_reward/pct_0",
+        "train_baseline_reward/pct_1",
+        "train_baseline_reward/pct_mixed",
         # Off-policy drift and advantage centering.
         "train_kl_penalty",
         "train_gen_kl_error",
+        "train_policy_kl_error",
+        "train_js_divergence_error",
+        "train_sampling_importance_ratio",
         "train_token_mult_prob_error",
         "train_advantages/mean",
         "train_approx_entropy",
@@ -565,7 +589,7 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
     # Excluded from the series, still reported as a current value -- dropping a
     # metric's history never drops the metric.
     assert reporter.reports[-1]["train_total_reward/mean"] == 0.617
-    assert reporter.reports[-1]["train_total_reward/stddev"] == 0.486
+    assert reporter.reports[-1]["train_total_reward/median"] == 0.0
     assert reporter.reports[-1]["train_global_valid_toks"] == 176432.0
     # The redundancy the exclusion rests on: same number, two names.
     assert reporter.reports[-1]["train_total_reward/mean"] == reporter.reports[-1]["train_reward"]
@@ -582,7 +606,7 @@ def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _Recordi
     logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=2, val_period=100)
     logger.log_hyperparams({})
 
-    assert callback.training_starts == [{"max_steps": 20_000, "num_epochs": 2}]
+    assert callback.training_starts == [{"max_steps": 20_000, "num_epochs": 2, "run_facts": {}}]
 
 
 # --------------------------------------------------------------------------- #
@@ -669,6 +693,99 @@ def test_a_loss_free_validation_is_still_a_reported_pass(callback: _RecordingCal
     logger.log_metrics(REWARD_VALIDATION_METRICS, step=20, prefix="validation")
 
     assert len(callback.validations) == 2
+
+
+# --------------------------------------------------------------------------- #
+# Validation reward — GRPO reports it under a name that means something narrower
+# --------------------------------------------------------------------------- #
+
+
+def test_grpos_validation_accuracy_is_also_reported_as_a_reward(callback: _RecordingCallback) -> None:
+    """GRPO calls the pass's mean reward `accuracy`.
+
+    That is accurate for the math environment it was named after and misleading for
+    anything else, so the number goes out under both names rather than either alone.
+    """
+    _make_logger(validation_reward_metric="accuracy").log_metrics(
+        REWARD_VALIDATION_METRICS, step=10, prefix="validation"
+    )
+
+    reported = callback.validations[0]["metrics"]
+    assert reported["reward"] == 0.61
+    assert reported["accuracy"] == 0.61, "the pre-alias name every stored curve uses"
+
+
+def test_the_copy_is_off_unless_a_source_metric_is_named(callback: _RecordingCallback) -> None:
+    """DPO's `accuracy` measures how often the preferred response scored higher.
+
+    One logger class serves both algorithms, so the copy has to be opt-in per driver
+    rather than triggered by the metric name showing up.
+    """
+    _make_logger().log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation")
+
+    assert "reward" not in callback.validations[0]["metrics"]
+
+
+def test_a_reward_the_algorithm_reported_itself_is_not_overwritten(callback: _RecordingCallback) -> None:
+    """Nothing reports one today, and overwriting a real one would be worse."""
+    _make_logger(validation_reward_metric="accuracy").log_metrics(
+        {"accuracy": 0.61, "reward": 0.42}, step=10, prefix="validation"
+    )
+
+    assert callback.validations[0]["metrics"]["reward"] == 0.42
+
+
+def test_an_unchartable_source_is_left_where_it_is(callback: _RecordingCallback) -> None:
+    """A value that cannot be charted under its own name gains nothing from a second."""
+    _make_logger(validation_reward_metric="accuracy").log_metrics(
+        {"accuracy": _Histogram(), "avg_length": 412.5}, step=10, prefix="validation"
+    )
+
+    assert "reward" not in callback.validations[0]["metrics"]
+
+
+def test_a_missing_source_metric_is_not_an_error(callback: _RecordingCallback) -> None:
+    """A validation pass need not report every metric on every call."""
+    _make_logger(validation_reward_metric="accuracy").log_metrics({"avg_length": 412.5}, step=10, prefix="validation")
+
+    assert "reward" not in callback.validations[0]["metrics"]
+
+
+def test_the_copy_is_qualified_like_any_other_metric_on_a_second_dataset(
+    callback: _RecordingCallback,
+) -> None:
+    """The copy is made before dataset names are folded in, so it gets one too."""
+    logger = _make_logger(validation_reward_metric="accuracy")
+    logger.log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation-default")
+    logger.log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation-heldout")
+
+    assert callback.validations[0]["metrics"]["reward"] == 0.61
+    assert callback.validations[1]["metrics"]["heldout_reward"] == 0.61
+
+
+# --------------------------------------------------------------------------- #
+# Run facts — constants the driver states once, at training start
+# --------------------------------------------------------------------------- #
+
+
+def test_run_facts_ride_along_with_the_training_start_report(callback: _RecordingCallback) -> None:
+    """Which algorithm ran, and how many rollouts a step makes, are constants.
+
+    They belong on the one report that fires before the first step rather than on
+    every metric report after it.
+    """
+    facts = {"training_type": "grpo", "rollouts_per_step": 128}
+    logger = NemoRLLogger.for_schedule(max_steps=30, num_epochs=1, run_facts=facts)
+    logger.log_hyperparams({})
+
+    assert callback.training_starts[0]["run_facts"] == facts
+
+
+def test_run_facts_are_optional(callback: _RecordingCallback) -> None:
+    """A driver that states none reports the schedule alone, as before."""
+    NemoRLLogger.for_schedule(max_steps=30, num_epochs=1).log_hyperparams({})
+
+    assert callback.training_starts[0]["run_facts"] == {}
 
 
 def test_one_dataset_keeps_the_bare_metric_names(callback: _RecordingCallback) -> None:

@@ -522,7 +522,14 @@ class TrainingProgressCallback:
             ", ".join(sorted(self._metrics_seen)),
         )
 
-    def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
+    def report_training_start(
+        self,
+        max_steps: int,
+        num_epochs: int,
+        *,
+        run_facts: Mapping[str, object] | None = None,
+        backend: str | None = None,
+    ) -> None:
         """Report that training has started with schedule information.
 
         States neither ``metrics`` nor ``step``, and for the same reason: this
@@ -531,11 +538,20 @@ class TrainingProgressCallback:
         literal step 0 would overwrite the stored ``percentage_done`` -- the
         harder one to spot, since the epoch beside it goes on reading correctly.
         The first train step states the position instead.
+
+        Args:
+            run_facts: Constants describing the run rather than its progress --
+                which algorithm, how many rollouts a step generates. Sent once
+                and never restated, which works for the same reason the omissions
+                above do: a key left out of a later report keeps the value it
+                already has. These share the flat ``status_details`` namespace
+                with the metrics, so a name used here cannot also be a metric.
         """
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
         details: dict[str, object] = {
             "max_steps": max_steps,
             "num_epochs": num_epochs,
+            **(run_facts or {}),
         }
         self._send("training", details, backend)
 
