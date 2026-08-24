@@ -9,7 +9,7 @@ description: ""
 
 Online evaluations can target an **agent** instead of a model. An agent is an HTTP endpoint that accepts a request and returns a response, optionally with a trajectory of intermediate steps. Use agents when you want to evaluate an agentic system end to end rather than a standalone LLM endpoint.
 
-Provide a `GenericAgent` or `NemoAgentToolkitAgent` as `target=...`. `Agent` is the union type alias used in SDK signatures; instantiate one of the concrete classes. The metric, prompt template, target, dataset rows, and runtime parameters are all passed through the Evaluator plugin SDK call.
+Provide a `GenericAgent` or `NemoAgentToolkitAgent` as `target=...`. `Agent` is a union type alias used in SDK signatures, not an instantiable class; instantiate one of the concrete classes instead. The metric, prompt template, target, dataset rows, and runtime parameters are all passed through the Evaluator plugin SDK call.
 
 ## Agent Formats
 
