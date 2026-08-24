@@ -319,7 +319,7 @@ class TestSubmitVerb:
         else:
             monkeypatch.setenv("NMP_BASE_URL", env_base_url)
         monkeypatch.setattr("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _capture)
-        monkeypatch.setattr("nemo_platform.config.config.Config.load", lambda: _FakeConfig())
+        monkeypatch.setattr("nemo_platform_ext.config.config.Config.load", lambda: _FakeConfig())
 
         app = _app_with_jobs(_GreetJob)
         state = _State(context_base_url)

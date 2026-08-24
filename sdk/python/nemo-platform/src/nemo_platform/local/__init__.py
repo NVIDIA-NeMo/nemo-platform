@@ -3,4 +3,4 @@
 
 from nemo_platform._alias import alias_package as _alias_package
 
-_alias_package("models", globals())
+_alias_package("nemo_platform_ext.local", globals())

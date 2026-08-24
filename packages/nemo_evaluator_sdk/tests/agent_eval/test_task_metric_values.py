@@ -6,7 +6,9 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Iterator
+from importlib import import_module
 from pathlib import Path
+from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.results import (
@@ -28,6 +30,10 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask, SemanticReducer, 
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricResult
 from nemo_evaluator_sdk.values.protocol import MetricOutputSpec
 from pydantic import RootModel, ValidationError
+
+
+def _vendored_module(name: str) -> Any:
+    return import_module(f"nemo_platform.beta.evaluator.agent_eval.{name}")
 
 
 class _TokenCount(RootModel[int]):
@@ -543,7 +549,7 @@ def test_summary_without_task_metric_values_loads_as_empty() -> None:
 
 
 def test_vendored_summary_accepts_task_metric_values() -> None:
-    from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalSummary as VendoredAgentEvalSummary
+    VendoredAgentEvalSummary = _vendored_module("results").AgentEvalSummary
 
     payload = {
         "task_metric_values": {
@@ -559,18 +565,11 @@ def test_vendored_summary_accepts_task_metric_values() -> None:
 def test_vendored_module_exposes_the_public_value_api() -> None:
     # The byte-copy test below proves file parity, not that the names are usable through the shipped
     # package. These are the surface a consumer of nemo-platform actually imports.
-    from nemo_platform.beta.evaluator.agent_eval.results import (
-        AgentEvalSummary as VendoredSummary,
-    )
-    from nemo_platform.beta.evaluator.agent_eval.results import (
-        TrialMetricValue as VendoredValue,
-    )
-    from nemo_platform.beta.evaluator.agent_eval.results import (
-        TrialMetricValueType as VendoredType,
-    )
-    from nemo_platform.beta.evaluator.agent_eval.results import (
-        numeric_metric_values as vendored_numeric,
-    )
+    vendored_results = _vendored_module("results")
+    VendoredSummary = vendored_results.AgentEvalSummary
+    VendoredValue = vendored_results.TrialMetricValue
+    VendoredType = vendored_results.TrialMetricValueType
+    vendored_numeric = vendored_results.numeric_metric_values
 
     records = [VendoredValue(trial_id="t0", value=1.0), VendoredValue(trial_id="t1", value="good")]
     assert vendored_numeric(records) == [1.0]  # the label is dropped, as in the source module
@@ -581,22 +580,14 @@ def test_vendored_module_exposes_the_public_value_api() -> None:
     assert outcomes.task_id == "task-a" and outcomes.outcomes[0].metric_name == "reward.score"
 
 
-def test_vendored_results_module_is_a_verbatim_copy_of_this_one() -> None:
-    # `make vendor` mirrors this module into the SDK, rewriting only the package root. Validating the
-    # field shape (above) would still pass against a stale copy carrying older filtering or docs, so
-    # pin the whole file: any edit here that is not mirrored is drift between two live code paths.
+def test_legacy_results_import_resolves_to_the_source_module() -> None:
+    # The SDK exposes this legacy path through a runtime alias, not a rewritten copy, so import
+    # compatibility should point at the canonical source file.
     import nemo_evaluator_sdk.agent_eval.results as source
-    import nemo_platform.beta.evaluator.agent_eval.results as vendored
 
-    expected = (
-        Path(source.__file__)
-        .read_text(encoding="utf-8")
-        .replace("from nemo_evaluator_sdk.", "from nemo_platform.beta.evaluator.")
-    )
+    legacy = _vendored_module("results")
 
-    assert Path(vendored.__file__).read_text(encoding="utf-8") == expected, (
-        "sdk/python/.../beta/evaluator/agent_eval/results.py is out of sync; re-run `make vendor`"
-    )
+    assert Path(legacy.__file__).resolve() == Path(source.__file__).resolve()
 
 
 def test_gym_example_rejects_a_bundle_written_before_task_metric_values(tmp_path: Path) -> None:

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from data_designer_nemo.sdk_translation import async_to_sync_sdk
+from filesets import FilesetFileSystem
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 

@@ -22,14 +22,14 @@ import duckdb
 import fsspec
 import pandas as pd
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import (
+from filesets import (
     FilesetFileSystem,
     FilesetPathError,
     build_fileset_ref,
     parse_fileset_path,
     parse_fileset_ref,
 )
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetOutput

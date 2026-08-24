@@ -15,8 +15,8 @@ import huggingface_hub
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
+from filesets.resources import FilesResource
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets.resources import FilesResource
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
@@ -257,7 +257,7 @@ else:
     import io
 
     import requests
-    from huggingface_hub.utils import configure_http_backend, reset_sessions
+    from huggingface_hub.utils import configure_http_backend, reset_sessions  # ty: ignore[unresolved-import]
     from requests.adapters import BaseAdapter
     from urllib3 import HTTPResponse as Urllib3Response
 

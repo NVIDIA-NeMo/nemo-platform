@@ -7,10 +7,12 @@ from datetime import datetime
 from fnmatch import fnmatchcase
 from importlib.metadata import distribution
 from pathlib import Path
+from typing import Any, cast
 
 import libcst as cst
 import rich
 import tomlkit
+import tomlkit.items
 import typer
 from nemo_platform_sdk_tools.sdk.core.common import get_project_dir
 from nemo_platform_sdk_tools.sdk.vendor.dependency_utils import merge_dependencies
@@ -31,22 +33,18 @@ GENERATED_BUNDLE_TABLE_COMMENT = "# Generated from [tool.bundle-package]; do not
 GENERATED_BUNDLE_GROUP_COMMENT = "# Generated from [tool.bundle-package]; do not edit by hand."
 GENERATED_PROJECT_COMMENTS = {GENERATED_BUNDLE_GROUP_COMMENT, GENERATED_BUNDLE_TABLE_COMMENT}
 VALID_BUNDLE_INHERIT_VALUES = {"entry-points", "optional-dependencies", "scripts"}
-GENERATED_EMPTY_INIT_HEADER = """# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+GENERATED_FILE_HEADER = """# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """
+
+GENERATED_ALIAS_INIT_TEMPLATE = (
+    GENERATED_FILE_HEADER
+    + """
+from nemo_platform._alias import alias_package as _alias_package
+
+_alias_package("{source_module}", globals())
+"""
+)
 
 
 def _setup_logging() -> None:
@@ -80,13 +78,16 @@ class ResourceReplacement(BaseModel):
 
 
 _CLIENT_CLASS_NAMES = ("NeMoPlatform", "AsyncNeMoPlatform")
-_CLIENT_METHOD_NAMES = ("__init__", "__getattr__")
-_CLIENT_HELPER_FUNCTION_NAMES = ("_should_bootstrap_config",)
+_CLIENT_METHOD_NAMES = ("__init__", "__getattr__", "copy")
+_CLIENT_HELPER_FUNCTION_NAMES = ("_should_bootstrap_config", "_copy_requires_bootstrap")
 _CLIENT_INIT_REQUIRED_IMPORTS: dict[str, tuple[str, ...]] = {
     "nemo_platform._base_client": ("DefaultAsyncHttpxClient", "DefaultHttpxClient"),
-    "nemo_platform.client.tls": ("client_verify_from_env",),
+    "nemo_platform_ext.client.tls": ("client_verify_from_env",),
     "nemo_platform_plugin.client.constants": ("WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR",),
     "pathlib": ("Path",),
+}
+_STALE_CLIENT_INIT_IMPORTS: dict[str, tuple[str, ...]] = {
+    "nemo_platform.client.tls": ("client_verify_from_env",),
 }
 
 
@@ -271,8 +272,29 @@ def _find_import_insertion_index(module: cst.Module) -> int:
     return last_import_idx + 1 if last_import_idx >= 0 else 0
 
 
+def _without_stale_client_init_imports(module: cst.Module) -> cst.Module:
+    body: list[cst.BaseStatement] = []
+    for statement in module.body:
+        if isinstance(statement, cst.SimpleStatementLine) and len(statement.body) == 1:
+            body_statement = statement.body[0]
+            if isinstance(body_statement, cst.ImportFrom):
+                module_name = _module_name_from_expr(body_statement.module)
+                stale_names = _STALE_CLIENT_INIT_IMPORTS.get(module_name or "")
+                if stale_names is not None and not isinstance(body_statement.names, cst.ImportStar):
+                    imported_names = {
+                        imported_name
+                        for alias in body_statement.names
+                        if (imported_name := _imported_name(alias)) is not None
+                    }
+                    if imported_names <= set(stale_names):
+                        continue
+        body.append(statement)
+    return module.with_changes(body=body)
+
+
 def _ensure_required_client_init_imports(target_module: cst.Module) -> cst.Module:
     """Ensure statically required imports exist in SDK _client.py."""
+    target_module = _without_stale_client_init_imports(target_module)
     target_from_imports, _, _ = _collect_top_level_imports(target_module)
     missing_statements: list[cst.BaseStatement] = []
 
@@ -353,6 +375,7 @@ def _vendor_package_files(config: dict) -> None:
     tests_path = config.get("tests_path", "tests")
     tests_included_paths = list(config.get("tests_included_paths") or [])
     included_transitive_dependencies = list(config.get("included_transitive_dependencies") or [])
+    sdk_path = NMP_ROOT_PATH / "sdk/python/nemo-platform"
 
     package_root_path, package_path = _build_and_validate_package_path(
         package,
@@ -360,6 +383,17 @@ def _vendor_package_files(config: dict) -> None:
         source_module,
         with_src,
     )
+
+    if config.get("sdk_include_mode") == "source-package":
+        _write_source_package_aliases(
+            package=package,
+            package_path=package_path,
+            source_module=source_module,
+            target_sdk_module=target_sdk_module,
+            top_level=top_level,
+        )
+        _remove_vendored_tests(sdk_path=sdk_path, package=package, target_sdk_module=target_sdk_module)
+        return
 
     modules_to_vendor = []
     if target_sdk_module is None:
@@ -372,8 +406,6 @@ def _vendor_package_files(config: dict) -> None:
         modules_to_vendor = [
             {"source_path": package_path, "source_module": source_module, "module_name": target_sdk_module}
         ]
-
-    sdk_path = NMP_ROOT_PATH / "sdk/python/nemo-platform"
 
     module_names = [m["module_name"] for m in modules_to_vendor]
     rich.print(f"📦 Vendoring package `{package}` -> src/{', '.join(module_names)}")
@@ -421,12 +453,11 @@ def _vendor_package_files(config: dict) -> None:
             )
 
     if vendor_tests:
-        tests_target_subdir = target_sdk_module.replace(".", "/") if target_sdk_module else package
         _vendor_tests_flat(
             source_root_path=package_root_path,
             source_tests_path=tests_path,
             sdk_path=sdk_path,
-            tests_target_subdir=tests_target_subdir,
+            tests_target_subdir=_vendored_tests_target_subdir(package=package, target_sdk_module=target_sdk_module),
             tests_included_paths=tests_included_paths,
             module_rewrites=all_module_rewrites,
         )
@@ -481,8 +512,6 @@ def _vendor_package_metadata(config: dict) -> None:
         _replace_client_methods(
             sdk_path=sdk_path,
             source_path=package_path / Path(replace_client_inits_from),
-            source_module=source_module,
-            target_module="nemo_platform",
             remove_vendored_source_relative_path=replace_client_inits_from,
         )
 
@@ -493,6 +522,75 @@ def _vendor_package_metadata(config: dict) -> None:
         _vendor_scripts(sdk_path=sdk_path, scripts=scripts)
 
     rich.print(f"✅ Vendoring complete for `{package}`")
+
+
+def _write_source_package_aliases(
+    *,
+    package: str,
+    package_path: Path,
+    source_module: str,
+    target_sdk_module: str | None,
+    top_level: bool,
+) -> None:
+    """Write tiny SDK alias packages for source packages included at build time."""
+    sdk_path = NMP_ROOT_PATH / "sdk/python/nemo-platform"
+    modules_to_alias: list[tuple[str, str]] = []
+
+    if target_sdk_module is None:
+        for path in package_path.iterdir():
+            if path.is_dir() and not path.name.startswith("__"):
+                modules_to_alias.append((path.name, f"{source_module}.{path.name}"))
+    else:
+        modules_to_alias.append((target_sdk_module, source_module))
+
+    module_names = ", ".join(module for module, _ in modules_to_alias)
+    rich.print(f"🔗 Linking source package `{package}` through SDK aliases -> src/{module_names}")
+
+    for target_module_name, source_import in modules_to_alias:
+        target_path = _build_and_validate_target_paths(sdk_path, target_module_name, top_level=top_level)
+        if target_path.exists():
+            shutil.rmtree(target_path, ignore_errors=True)
+        target_path.mkdir(parents=True, exist_ok=True)
+        _ensure_parent_alias_init_files(sdk_path, target_path, top_level=top_level)
+        (target_path / "__init__.py").write_text(
+            GENERATED_ALIAS_INIT_TEMPLATE.format(source_module=source_import),
+            encoding="utf-8",
+        )
+
+
+def _ensure_parent_alias_init_files(sdk_path: Path, target_path: Path, *, top_level: bool) -> None:
+    if top_level:
+        return
+
+    root = sdk_path / "src/nemo_platform"
+    parent = target_path.parent
+    while parent != root and root in parent.parents:
+        init_file = parent / "__init__.py"
+        if not init_file.exists():
+            init_file.write_text(GENERATED_FILE_HEADER, encoding="utf-8")
+        parent = parent.parent
+
+
+def _vendored_tests_target_subdir(*, package: str, target_sdk_module: str | None) -> str:
+    return target_sdk_module.replace(".", "/") if target_sdk_module else package
+
+
+def _remove_vendored_tests(*, sdk_path: Path, package: str, target_sdk_module: str | None) -> None:
+    """Remove obsolete SDK test copies when a package switches to build-time staging.
+
+    Source-package mode no longer rewrites package tests into the generated SDK
+    tree. Removing the stale target prevents SDK test collection from loading an
+    old copied snapshot after ``make vendor``.
+    """
+    tests_target_path = (
+        sdk_path
+        / "tests"
+        / "vendored"
+        / _vendored_tests_target_subdir(package=package, target_sdk_module=target_sdk_module)
+    )
+    if tests_target_path.exists():
+        shutil.rmtree(tests_target_path, ignore_errors=True)
+        rich.print(f"🧹 Removed stale vendored tests `{tests_target_path.relative_to(sdk_path)}`")
 
 
 @app.command("from-config")
@@ -786,6 +884,7 @@ def _process_bundle_packages() -> None:
         pyproject = tomlkit.loads(member_pyproject_path.read_text(encoding="utf-8"))
         optional = pyproject["project"].setdefault("optional-dependencies", tomlkit.table())
         generated_optional_groups = _generated_optional_dependency_groups(optional)
+        reset_generated_optional_groups: set[str] = set()
 
         for pkg_name, pkg_config in bundle_config.items():
             deps_group = _bundle_deps_group(pkg_name, pkg_config)
@@ -820,7 +919,11 @@ def _process_bundle_packages() -> None:
                 if dep_name == canonical_parent:
                     logger.debug(f"  Filtering self-reference: {dep}")
                     continue
-                if dep_name in canonical_bundle_config:
+                bundled_dep_config = canonical_bundle_config.get(dep_name)
+                if bundled_dep_config is not None:
+                    if _bundle_deps_group(dep_name, bundled_dep_config) == deps_group:
+                        logger.debug(f"  Filtering same-group bundled dep: {dep}")
+                        continue
                     filtered_deps.append(dep)
                     logger.debug(f"  Keeping bundled dep: {dep}")
                     continue
@@ -829,21 +932,23 @@ def _process_bundle_packages() -> None:
                     continue
                 filtered_deps.append(dep)
 
+            # Separate self-referencing extras from regular deps. Self-refs
+            # must stay as individual entries — merge_dependencies would
+            # combine them into a single parent[X,Y,Z] line.
+            self_ref_prefix = f"{parent_name}["
+            existing = list(optional.get(deps_group, []))
+            if deps_group in generated_optional_groups and deps_group not in reset_generated_optional_groups:
+                existing_regular = []
+                existing_self_refs = [d for d in existing if d.startswith(self_ref_prefix)]
+                reset_generated_optional_groups.add(deps_group)
+                optional[deps_group] = _build_dependency_array(existing_self_refs)
+            else:
+                existing_regular = [d for d in existing if not d.startswith(self_ref_prefix)]
+                existing_self_refs = [d for d in existing if d.startswith(self_ref_prefix)]
+
             if filtered_deps:
-                # Separate self-referencing extras from regular deps.
-                # Self-refs must stay as individual entries — merge_dependencies
-                # would combine them into a single parent[X,Y,Z] line.
-                self_ref_prefix = f"{parent_name}["
                 regular_deps = [d for d in filtered_deps if not d.startswith(self_ref_prefix)]
                 self_ref_deps = [d for d in filtered_deps if d.startswith(self_ref_prefix)]
-
-                existing = list(optional.get(deps_group, []))
-                existing_regular = (
-                    []
-                    if deps_group in generated_optional_groups
-                    else [d for d in existing if not d.startswith(self_ref_prefix)]
-                )
-                existing_self_refs = [d for d in existing if d.startswith(self_ref_prefix)]
 
                 merged_regular = merge_dependencies(existing_regular, regular_deps)
                 # Deduplicate self-refs while preserving order
@@ -1445,7 +1550,7 @@ def _copy_included_paths(source_path: Path, destination_path: Path, included_pat
 
     def copy_file(source_file: Path, dest_file: Path) -> None:
         if source_file.name == "__init__.py" and source_file.read_text(encoding="utf-8") == "":
-            dest_file.write_text(GENERATED_EMPTY_INIT_HEADER, encoding="utf-8")
+            dest_file.write_text(GENERATED_FILE_HEADER, encoding="utf-8")
         else:
             shutil.copy(source_file, dest_file)
 
@@ -1554,7 +1659,17 @@ def _update_dependencies_of_sdk_pyproject(
         package_config = tomlkit.load(f)
 
     # Get dependencies from package config
-    package_dependencies = package_config["project"]["dependencies"]
+    raw_package_dependencies = cast(Any, package_config["project"]["dependencies"])
+    unwrapped_dependencies = (
+        raw_package_dependencies.unwrap() if hasattr(raw_package_dependencies, "unwrap") else raw_package_dependencies
+    )
+    if not isinstance(unwrapped_dependencies, list):
+        raise TypeError(f"Expected project dependencies array in {package_root_path / 'pyproject.toml'}")
+    package_dependencies = []
+    for dependency in unwrapped_dependencies:
+        if not isinstance(dependency, str):
+            raise TypeError(f"Expected project dependency string in {package_root_path / 'pyproject.toml'}")
+        package_dependencies.append(dependency)
 
     # Filter out excluded dependencies
     def _get_package_name(dep: str) -> str:
@@ -1666,7 +1781,7 @@ def _create_init_files(target_path: Path) -> None:
     # Create __init__.py in the target directory itself
     init_file = target_path / "__init__.py"
     if not init_file.exists():
-        init_file.write_text(GENERATED_EMPTY_INIT_HEADER, encoding="utf-8")
+        init_file.write_text(GENERATED_FILE_HEADER, encoding="utf-8")
         logger.debug(f"Created {init_file.relative_to(target_path.parent.parent.parent)}")
 
     # Create __init__.py in all subdirectories
@@ -1674,7 +1789,7 @@ def _create_init_files(target_path: Path) -> None:
         if subdir.is_dir():
             init_file = subdir / "__init__.py"
             if not init_file.exists():
-                init_file.write_text(GENERATED_EMPTY_INIT_HEADER, encoding="utf-8")
+                init_file.write_text(GENERATED_FILE_HEADER, encoding="utf-8")
                 logger.debug(f"Created {init_file.relative_to(target_path.parent.parent.parent)}")
 
 
@@ -2045,8 +2160,6 @@ def _replace_client_methods(
     *,
     sdk_path: Path,
     source_path: Path,
-    source_module: str,
-    target_module: str,
     remove_vendored_source_relative_path: str | None = None,
 ) -> None:
     """Replace NeMo client methods in SDK _client.py from a source module."""
@@ -2065,7 +2178,10 @@ def _replace_client_methods(
     with open(target_path, "r", encoding="utf-8") as f:
         target_content = f.read()
 
-    source_tree = cst.parse_module(source_content).visit(ImportRewriter(source_module, target_module))
+    # The generated SDK wheel stages the native source package beside
+    # ``nemo_platform``. Keep bootstrap imports pointed at that real package so
+    # static tooling can resolve them instead of chasing alias-only modules.
+    source_tree = cst.parse_module(source_content)
     collector = _ClientMethodCollector()
     source_tree.visit(collector)
     helper_functions = _collect_client_helper_functions(source_tree)

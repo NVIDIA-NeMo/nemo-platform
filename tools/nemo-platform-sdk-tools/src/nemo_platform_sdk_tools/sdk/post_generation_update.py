@@ -18,10 +18,53 @@ import tomlkit
 import typer
 from nemo_platform_sdk_tools.sdk.core.common import WRAPPER_DISTRIBUTION_NAME, SdkInfo, get_sdk_info
 from nemo_platform_sdk_tools.sdk.post_generation_exist_ok import inject_exist_ok
+from tomlkit.items import AoT, Table
 
 app = typer.Typer(
     name="post-generation", help="Post-generation update tool for NeMo Platform SDK.", no_args_is_help=True
 )
+
+SDK_BUILD_SOURCE_PACKAGES: tuple[dict[str, str | list[str]], ...] = (
+    {
+        "source": "packages/nemo_platform_ext/src/nemo_platform_ext",
+        "target": "nemo_platform_ext",
+        "include": [
+            "**/*.py",
+            "skills/**/*.md",
+            "skills/**/*.yaml",
+            "skills/**/*.yml",
+            "skills/**/*.json",
+        ],
+    },
+    {"source": "packages/models/src/models", "target": "models"},
+    {"source": "packages/filesets/src/filesets", "target": "filesets"},
+    {
+        "source": "packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk",
+        "target": "nemo_evaluator_sdk",
+        "include": [
+            "**/*.py",
+            "agent_eval/runtimes/fabric/sandbox.Dockerfile",
+        ],
+    },
+)
+
+
+def _build_hook_source(sdk_info: SdkInfo) -> Path:
+    return sdk_info.overrides_dir / "hatch_build.py"
+
+
+def _require_build_hook_source(sdk_info: SdkInfo) -> Path:
+    source = _build_hook_source(sdk_info)
+    if not source.exists():
+        raise FileNotFoundError(f"SDK build hook override is required but was not found: {source}")
+    return source
+
+
+def _copy_build_hook(sdk_info: SdkInfo) -> Path:
+    source = _require_build_hook_source(sdk_info)
+    destination = sdk_info.sdk_dir / "hatch_build.py"
+    shutil.copy2(source, destination)
+    return destination
 
 
 def sdk_version_file_content(distribution_name: str) -> str:
@@ -63,6 +106,23 @@ def merge_readme_files(readme_dir: Path) -> str:
         merged_content.append(content)
 
     return "\n\n".join(merged_content)
+
+
+def _toml_array_of_tables(entries: tuple[dict[str, str | list[str]], ...]) -> AoT:
+    array = tomlkit.aot()
+    for entry in entries:
+        table = tomlkit.table()
+        for key, value in entry.items():
+            table[key] = value
+        array.append(table)
+    return array
+
+
+def _source_package_hook_table() -> Table:
+    hook = tomlkit.table()
+    hook["path"] = "hatch_build.py"
+    hook["source-packages"] = _toml_array_of_tables(SDK_BUILD_SOURCE_PACKAGES)
+    return hook
 
 
 def get_string_replacements() -> List[Tuple[str, str]]:
@@ -261,18 +321,19 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
 
     pyproject["dependency-groups"].pop("pydantic-v1", None)
 
-    # Configure wheel build to include only the SDK package (client extensions
-    # are vendored into src/nemo_platform/ by `make vendor`).  Runtime/server
-    # packages are no longer vendored into the SDK — the wrapper handles bundling.
+    # Configure wheel build to include the generated SDK package directly and
+    # stage extension source packages at build time without import rewriting.
+    # Copy first so direct ``update-pyproject`` runs cannot leave Hatch pointing
+    # at a missing build hook.
+    _copy_build_hook(sdk_info)
     hatch_build = pyproject.setdefault("tool", {}).setdefault("hatch", {}).setdefault("build", {})
-    wheel_target = hatch_build.setdefault("targets", {}).setdefault("wheel", {})
+    hatch_targets = hatch_build.setdefault("targets", {})
+    wheel_target = hatch_targets.setdefault("wheel", {})
     wheel_target["packages"] = ["src/nemo_platform"]
-    wheel_target["force-include"] = {
-        "../../../docs": "nemo_platform/cli/docs",
-    }
-
-    # Remove legacy build hook config if present
-    wheel_target.pop("hooks", None)
+    wheel_target.pop("force-include", None)
+    wheel_target.setdefault("hooks", {})["custom"] = _source_package_hook_table()
+    sdist_target = hatch_targets.setdefault("sdist", {})
+    sdist_target.setdefault("hooks", {})["custom"] = _source_package_hook_table()
 
     updated_pyproject_str = tomlkit.dumps(pyproject)
 
@@ -534,6 +595,36 @@ def copy_license() -> None:
 
 
 @app.command()
+def copy_build_hook() -> None:
+    """Copy SDK build hook from overrides to the generated SDK directory."""
+    sdk_info = get_sdk_info()
+
+    typer.echo("Copying build hook...")
+
+    destination = _copy_build_hook(sdk_info)
+    typer.echo(f"  - Copied to {destination}")
+    typer.echo("Build hook copy completed!")
+
+
+@app.command()
+def copy_source_overrides() -> None:
+    """Copy SDK source overrides into the generated SDK directory."""
+    sdk_info = get_sdk_info()
+
+    typer.echo("Copying source overrides...")
+
+    source = sdk_info.overrides_dir / "src"
+    if not source.exists():
+        typer.echo(f"No source overrides found at {source}. Skipping override.")
+        return
+
+    destination = sdk_info.sdk_dir / "src"
+    shutil.copytree(source, destination, dirs_exist_ok=True)
+    typer.echo(f"  - Copied to {destination}")
+    typer.echo("Source override copy completed!")
+
+
+@app.command()
 def check_stainless_references() -> None:
     """Check for any remaining references to Stainless URLs in the SDK code."""
     sdk_info = get_sdk_info()
@@ -651,6 +742,10 @@ def update_all() -> None:
     update_pyproject()
     typer.echo()
     copy_license()
+    typer.echo()
+    copy_build_hook()
+    typer.echo()
+    copy_source_overrides()
     typer.echo()
     replace_strings()
     typer.echo()

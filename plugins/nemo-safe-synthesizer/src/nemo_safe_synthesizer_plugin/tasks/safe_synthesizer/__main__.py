@@ -25,8 +25,8 @@ from typing import cast
 
 import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
+from filesets import parse_fileset_ref
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.client import JobsClient
