@@ -168,6 +168,9 @@ navigation:
           - page: Customization Concepts
             path: ../../customizer/about.mdx
             slug: customization-concepts
+          - page: GRPO and Reward Environments
+            path: ../../customizer/grpo-training.mdx
+            slug: grpo-and-reward-environments
           - section: Manage Customization Jobs
             slug: manage-customization-jobs
             path: ../../customizer/manage-customization-jobs/index.mdx

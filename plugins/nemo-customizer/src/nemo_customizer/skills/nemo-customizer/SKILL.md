@@ -7,10 +7,12 @@ description: >-
   Fine-tune models on NeMo Platform with `automodel`, `unsloth`, or `rl` (all
   `submit`-only): HF dataset conversion, filesets, model entities, and job JSON
   (hyperparameters, batch, schedule, optimizer) + job polling. `automodel`/`unsloth`
-  run SFT/LoRA as Docker GPU jobs; `rl` runs DPO (preference) or GRPO (NeMo Gym)
-  on a Ray cluster (Kubernetes). Use for train, fine-tune, customize, SFT, LoRA, DPO,
-  GRPO, RLHF,
-  preference optimization, learning rate, epochs, or nemo customization.
+  run SFT/LoRA as Docker GPU jobs; `rl` runs DPO (preference) or GRPO (NeMo Gym
+  environment + reward) on a Ray cluster (Kubernetes). Covers building and converting
+  NeMo Gym environment packages (native-v1, wheels-v1, adapter-wheels-v1) and Gym
+  rollout-row datasets. Use for train, fine-tune, customize, SFT, LoRA, DPO, GRPO,
+  RLHF, reinforcement learning, reward environment, NeMo Gym, verifiers, Prime
+  Intellect, preference optimization, learning rate, epochs, or nemo customization.
 triggers:
   - nemo-customizer
   - nemo customizer
@@ -22,6 +24,16 @@ triggers:
   - sft
   - lora
   - dpo
+  - grpo
+  - rlhf
+  - reinforcement learning
+  - reward environment
+  - nemo gym
+  - nemo-gym
+  - gym environment
+  - verifiers env
+  - prime intellect
+  - environment fileset
   - direct preference optimization
   - preference optimization
   - preference tuning
@@ -52,13 +64,13 @@ allowed-tools: [Bash, Read, Grep]
 
 # NeMo Customizer
 
-End-to-end **SFT + LoRA** (automodel/unsloth) and **DPO** (rl) on NeMo Platform. Three backend plugins ship in this repo — all are **`submit`-only** (local `run` is hard-disabled on each):
+End-to-end **SFT + LoRA** (automodel/unsloth), **DPO**, and **GRPO** (rl) on NeMo Platform. Three backend plugins ship in this repo — all are **`submit`-only** (local `run` is hard-disabled on each):
 
 | Backend | Verb | Trains | Where it runs | Pick when |
 |---------|------|--------|---------------|-----------|
 | **`automodel`** (default) | `submit` | SFT / LoRA | Platform **Docker GPU executor** (Jobs service schedules containers on the platform host's daemon) | General SFT/LoRA; multi-GPU (data/tensor parallel); distillation; full-weight SFT |
 | **`unsloth`** | `submit` | SFT / LoRA | Same — Docker GPU job with 4 steps (download → train → upload → model-entity) | User asks for Unsloth, or wants Unsloth's 4-bit LoRA path / optimizer defaults on a single GPU |
-| **`rl`** | `submit` | **DPO** (preference) or **GRPO** (Gym env) | Platform **Kubernetes executor** — provisions a **Ray** cluster; 4 steps (download → train → upload → model-entity) | Preference DPO, or GRPO with an environment FileSet (`adapter-wheels-v1`); full-weight only |
+| **`rl`** | `submit` | **DPO** (preference) or **GRPO** (Gym env) | Platform **Kubernetes executor** — provisions a **Ray** cluster; 4 steps (download → train → upload → model-entity) | Preference DPO (full-weight), or GRPO with an environment FileSet (`native-v1` / `wheels-v1` / `adapter-wheels-v1`) + Gym rollout rows; GRPO also supports LoRA |
 
 `nemo-customizer` is the router (`nemo customization …`); training backends are separate plugins (`nemo-automodel`, `nemo-unsloth`, `nemo-rl`). `submit` posts to the platform API; the platform runs training in container steps — **not** in the CLI shell. Heavy ML deps live in container images only.
 
@@ -122,7 +134,7 @@ Full create/update commands, fileset `token_secret`, license acceptance, and dow
 5. Else if any profile has `provider: gpu` or `gpu_distributed` → **`automodel`** (default, SFT/LoRA).
 6. Else stop and tell the user GPU customization is unavailable (all backends need a GPU execution profile; `automodel`/`unsloth` also need `platform.runtime: docker`, `rl` needs `platform.runtime: kubernetes`).
 
-**`rl` runtime gate:** `rl submit` fails fast unless the platform runs `platform.runtime: kubernetes` (`require_distributed_runtime`). rl job steps execute as **Kubernetes pods via the `kubernetes_job` execution backend** — the **`docker` job backend cannot run rl**. Before submitting rl, confirm with `nemo jobs list-execution-profiles -f json` that the `cpu`/`gpu` profiles report `backend: kubernetes_job` (or `volcano_job`). If they report `backend: docker`/`subprocess`, the platform is **not** configured for rl: stop and tell the user DPO needs a Kubernetes-runtime platform — do **not** start/reuse a docker-runtime platform, and do **not** fall back to automodel/unsloth (those are SFT/LoRA, not DPO). To stand up or configure one, see `references/rl-kubernetes-runtime.md`.
+**`rl` runtime gate:** `rl submit` fails fast unless the platform runs `platform.runtime: kubernetes` (`require_distributed_runtime`). rl job steps execute as **Kubernetes pods via the `kubernetes_job` execution backend** — the **`docker` job backend cannot run rl**. Before submitting rl, confirm with `nemo jobs list-execution-profiles -f json` that the `cpu`/`gpu` profiles report `backend: kubernetes_job` (or `volcano_job`). If they report `backend: docker`/`subprocess`, the platform is **not** configured for rl: stop and tell the user DPO and GRPO need a Kubernetes-runtime platform — do **not** start/reuse a docker-runtime platform, and do **not** fall back to automodel/unsloth (those are SFT/LoRA, neither DPO nor GRPO). To stand up or configure one, see `references/rl-kubernetes-runtime.md`.
 
 For **`automodel`/`unsloth`**, training never runs inside the `nemo` CLI process. After `submit`, the platform's **local Docker executor** launches GPU container steps on the daemon attached to that platform host (often the same machine as `http://127.0.0.1:8080`, but always query the platform — not the agent's shell GPU or a separate `docker info` on another box). **`rl` does not use the Docker executor** — its steps run on the Kubernetes cluster the platform is configured against.
 
@@ -161,18 +173,24 @@ For **`automodel`/`unsloth`**, training never runs inside the `nemo` CLI process
 - **Missing training image on a remote platform** — if the user gave a non-localhost `NMP_BASE_URL` and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with the template in `references/reporting.md` (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
 - **Gated HuggingFace models** (Llama, Gemma, …) — confirm `hf-token` + fileset `token_secret` before submit; download fails with `Failed to access upstream storage` / 502 when missing. See **HuggingFace token (gated models)** and `references/troubleshooting.md` § **Gated HuggingFace models**.
 - **Post-training eval format** — use the same CHAT `messages` JSONL as training. **Do not** flatten rows to `prompt`/`expected` for the evaluator. Send `messages[:-1]` at inference (exclude final assistant label); score against `messages[-1].content`. See `references/post-training-eval.md` and `references/eval_helpers.py`.
-- **LoRA adapters load automatically for eval** — when a LoRA job completes (`save_method: lora`), the adapter is registered on the base model entity and hot-reloaded on any **READY** deployment with `lora_enabled: true`. **Do not** create or update deployments before LoRA eval. **Full SFT** (`finetuning_type: all_weights`) and **merged checkpoints** (`merged_16bit` / `merged_4bit`) register a new **model** entity at `output.name` — **deploy that entity for inference** before chat or eval; full weights are not hot-reloaded onto the base deployment. For LoRA eval, route through the **provider** gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`); the model-entity path (`/model/<entity>/-/v1`) always hits the base model. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
+- **LoRA adapters load automatically for eval** — when a LoRA job completes (automodel/unsloth `save_method: lora`, or **rl GRPO with `finetuning_type: "lora"`**), the adapter is registered on the base model entity and hot-reloaded on any **READY** deployment with `lora_enabled: true`. **Do not** create or update deployments before LoRA eval. **Full SFT** (`finetuning_type: all_weights`) and **merged checkpoints** (`merged_16bit` / `merged_4bit`) register a new **model** entity at `output.name` — **deploy that entity for inference** before chat or eval; full weights are not hot-reloaded onto the base deployment. For LoRA eval, route through the **provider** gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`); the model-entity path (`/model/<entity>/-/v1`) always hits the base model. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
 
 ### rl (DPO / GRPO) gotchas
 
-- **rl is DPO or GRPO, not SFT** — DPO trains on **preference pairs** `{prompt, chosen, rejected}`; GRPO needs an **environment** FileSet (`adapter-wheels-v1`) + Gym JSONL. Full-weight only (no LoRA/adapter; `finetuning_type` is not user-set). Don't route SFT/LoRA work here, and don't route DPO/GRPO to automodel/unsloth.
-- **GRPO convert is CLI-first** — run `pi-to-gym-conversion` on a host with internet; training clusters consume uploaded FileSets only (no hub egress). `sandboxed` is platform config (`NMP_RL_SANDBOXED_GYM_DEFAULT`, default true), not a job JSON field. See `references/hyperparameters-rl.md` § GRPO.
+- **rl is DPO or GRPO, not SFT** — DPO trains on **preference pairs** `{prompt, chosen, rejected}`; GRPO needs an **environment** FileSet + a Gym rollout-row dataset. Don't route SFT/LoRA work here, and don't route DPO/GRPO to automodel/unsloth.
+- **DPO is full-weight only; GRPO does LoRA too** — set `finetuning_type: "lora"` on the GRPO `training` block (plus an optional `lora` block). The output type is **inferred**, so `output` still carries only `name`. Three things the schema enforces: `lora` must be omitted when `finetuning_type` is `all_weights`; `lora_merged` is rejected outright (no merge at export — train full-weight if merged weights are the goal); and `use_triton` is forced off when `tensor_parallel_size > 1`, so leave it alone. Fields and module-selection rules: `references/hyperparameters-rl.md` § **LoRA (GRPO only)**.
+- **There is no `grpo` subcommand** — GRPO submits through **`nemo customization rl submit`** like DPO, selected by `training.type: "grpo"` in the job JSON. `training.type` is the union discriminator and is **required**: omitting it fails with `union_tag_not_found` rather than defaulting.
+- **GRPO needs TWO FileSets** — an `environment` (code + config, `purpose=environment`) and a `dataset` (prompt rows, `purpose=dataset`). Both are plain string refs in the job JSON. Three environment formats are supported — `native-v1`, `wheels-v1`, `adapter-wheels-v1` — and picking one is the first question to settle. Full guide: `references/gym-environments.md`.
+- **Never put `.jsonl` in the environment package** — validation rejects it outright. This bites the `native-v1` path especially: Gym's own configs point `datasets[].jsonl_fpath` at an in-tree file, so an environment copied straight from the Gym source tree fails until the data dir is stripped and the prompts move to the dataset FileSet.
+- **Validate the environment package before uploading** — `uv run --package nmp-rl pi-to-gym-conversion --validate-only <dir>` prints `{"valid": true, ...}` or exits 1 with the exact violation. The same checks run at submit against the FileSet listing, so this catches the failure minutes earlier and for free.
+- **GRPO convert is CLI-first** — run `pi-to-gym-conversion` on a host with internet; training clusters consume uploaded FileSets only (no hub egress). **Pin `--hub-version`**: unset takes whatever the index offers now, and a later release can narrow `Requires-Python` or ship code the training image's Python cannot run. `sandboxed` is platform config (`NMP_RL_SANDBOXED_GYM_DEFAULT`, default true), not a job JSON field.
+- **GRPO progress is read on reward, not loss** — the GRPO surrogate loss oscillates around zero and carries no signal about run quality. Report `train_reward` / `val_reward`; when reward stalls, look at `train_truncation_rate` (rising) and `train_baseline_reward/pct_mixed` (falling toward zero means every prompt group agrees with itself, so there is no gradient left). See `references/reporting.md`.
 - **One preference fileset, two files (DPO)** — `dataset` is a **single string** ref to a fileset that holds **both** `training.jsonl` and `validation.jsonl` (uploaded with `--remote-path`). Unlike automodel (`dataset.training`/`dataset.validation`) and unsloth (`dataset.path`/`validation_path`), there is no separate validation ref. See `references/dataset-formats.md` § NeMo-RL.
 - **String refs** — `model`, `dataset`, and (for GRPO) `environment` are plain strings (`"workspace/name"`), not objects. The training method goes under `training` with `type: "dpo"` or `"grpo"`.
 - **Kubernetes job backend, not Docker** — rl steps run as Kubernetes pods via the `kubernetes_job` backend; the docker job backend cannot run rl. `rl submit` fails fast on a docker-runtime platform. The target cluster must have the **job-step images** (`nmp-customizer-tasks`, `nmp-rl-training`), the **jobs-launcher** image (the per-step init container), and a **job-storage PVC**. Verify the platform with `nemo jobs list-execution-profiles -f json` (expect `backend: kubernetes_job`); to configure one, see `references/rl-kubernetes-runtime.md`. Multi-node (`parallelism.num_nodes > 1`) also needs the platform-side `NMP_RL_MULTINODE_SHARED_STORAGE_PATH` (shared FS for Ray coordination) or compile fails fast.
 - **Job id prefix is `rl-<hex>`** and the platform auto-generates it — `rl submit` has **no `--name` flag** (the job JSON `name` is the *output* name, not the job id). Read the job id from the `"name"` field in **submit stdout** (JSON), same as automodel/unsloth; `poll_customization_job.sh rl-<id>` works. **Do not** pick the newest `rl-*` from `nemo jobs list` — a concurrent job or an earlier failed submit selects the wrong one. If submit stdout could not be parsed, stop and re-check rather than guessing a job id.
 - **DPO main knob is `ref_policy_kl_penalty`** (β). For OOM, enable `activation_checkpointing: true` first. Full field reference: `references/hyperparameters-rl.md`.
-- **DPO main knob is `ref_policy_kl_penalty`** (β). For OOM, enable `activation_checkpointing: true` first. Full DPO field reference: `references/hyperparameters-rl.md`.
+- **GRPO main knobs are `num_generations_per_prompt`** (group size — the spread of rewards inside a group is the whole learning signal) **and `temperature`** (must stay > 0; greedy sampling makes every rollout in a group identical and the run a no-op). For OOM, enable `activation_checkpointing: true`, then lower `num_generations_per_prompt` keeping `batch_size` divisible.
 - **`max_steps` + `epochs`** — same caveat as the other backends: `max_steps` caps mid-epoch; it's in the smoke fixture (`plugins/nemo-rl/tests/fixtures/minimal_dpo.json`) — omit for real runs.
 
 ## Workflow
@@ -212,6 +230,19 @@ Common steps then **branch by plugin pick**:
 - [ ] Read job id from the "name" field in submit stdout (JSON) — submit has no --name flag; do NOT pick the newest rl-* from `nemo jobs list`
 - [ ] Poll until top-level terminal (`poll_customization_job.sh rl-<job-id>`; default 15s interval)
 - [ ] Report using the template in `references/reporting.md`
+
+# rl branch (GRPO; submit → Kubernetes/Ray job) — requires platform.runtime: kubernetes
+- [ ] Verify execution backend (same gate as DPO above)
+- [ ] Pick the ENVIRONMENT format — verifiers/hub env → adapter-wheels-v1; Gym source tree → native-v1; own code → wheels-v1 (see references/gym-environments.md)
+- [ ] Build the environment package: hub env → `pi-to-gym-conversion --hub-id … --hub-version … --out-dir …` on an internet-capable host; otherwise hand-build the manifest + configs (+ wheels for the two wheels formats)
+- [ ] Validate BEFORE upload: `pi-to-gym-conversion --validate-only <pkg-dir>` — cheapest possible failure
+- [ ] Upload environment (--purpose environment) and dataset (--purpose dataset) as TWO filesets; preserve relative paths; no .jsonl inside the env package
+- [ ] Dataset rows are GYM ROLLOUT ROWS (prompt under responses_create_params.input + agent_ref object) — see references/dataset-formats.md § NeMo-RL (GRPO)
+- [ ] Write /tmp/job.json with training.type "grpo" + the `environment` string ref (see Fast path — rl (GRPO))
+- [ ] nemo customization rl submit /tmp/job.json --workspace default [--profile <gpu-profile>]
+- [ ] Read job id from the "name" field in submit stdout (JSON) — submit has no --name flag
+- [ ] Poll until top-level terminal (`poll_customization_job.sh rl-<job-id>`)
+- [ ] Report on REWARD, not loss (references/reporting.md)
 ```
 
 ## Fast path — automodel
@@ -335,6 +366,80 @@ Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2
 
 If you try `nemo customization unsloth run …`, the CLI hard-fails with a pointer to `submit`.
 
+## Fast path — rl (GRPO)
+
+GRPO on a Ray cluster — **Kubernetes runtime only**, full-weight. Same runtime gate as DPO: confirm `nemo jobs list-execution-profiles -f json` shows `cpu`/`gpu` at `backend: kubernetes_job` before anything else.
+
+GRPO differs from every other backend in one structural way: it needs **two FileSets**, an **environment** (code that runs a rollout and returns a reward) and a **dataset** of prompt rows. There are no labelled completions — the reward comes from the environment.
+
+**1. Environment** — the bulk of the work, and it has its own reference: **`references/gym-environments.md`**. Pick the format first:
+
+| The user has… | Format | How |
+|---|---|---|
+| A Prime Intellect hub env, or any `verifiers` env | **`adapter-wheels-v1`** | `pi-to-gym-conversion` (below) — the supported path |
+| An env already in the NeMo Gym source tree | **`native-v1`** | Package the server dir + add a manifest; **strip any `.jsonl`** |
+| Their own environment code | **`wheels-v1`** | Hand-build: manifest + configs + vendored wheel closure |
+
+For a hub env, run the converter on an **internet-capable host** — training clusters have no hub egress:
+
+```bash
+uv run --package nmp-rl pi-to-gym-conversion \
+  --hub-id primeintellect/ascii-tree --hub-version 0.1.5 \
+  --out-dir ./ascii-tree-pkg --dataset-dir ./ascii-tree-data \
+  --validation-fraction 0.1 --upload --workspace default
+```
+
+`--upload` creates both FileSets and uploads them. Without it, upload by hand (`--purpose environment` for the package, `--purpose dataset` for the JSONL) — see `references/gym-environments.md` § **Upload**. **Always** validate first: `pi-to-gym-conversion --validate-only ./ascii-tree-pkg`.
+
+**2. Dataset** — the converter writes it for a hub env. For the user's own prompts, rows are Gym rollout rows with the prompt under `responses_create_params.input` and an `agent_ref` object — **not** `messages[]`, **not** prompt/completion, **not** preference triples. Schema and a conversion snippet: `references/dataset-formats.md` § **NeMo-RL (GRPO)**.
+
+**3. Model** — same as automodel Fast path step 2 (HF weights fileset + model entity; gated repos need `token_secret`).
+
+**4. Job JSON** — `model`, `dataset`, and `environment` are all **strings**; the method is `training.type: "grpo"`. Full field reference: `references/hyperparameters-rl.md`.
+
+```json
+{
+  "model": "default/<model-entity>",
+  "dataset": "default/<gym-dataset-fileset>",
+  "environment": "default/<environment-fileset>",
+  "training": {
+    "type": "grpo",
+    "epochs": 1,
+    "learning_rate": 1e-6,
+    "max_seq_length": 2048,
+    "batch_size": 32,
+    "micro_batch_size": 1,
+    "num_generations_per_prompt": 8,
+    "temperature": 1.0,
+    "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1 }
+  },
+  "output": { "name": "<output-name>" }
+}
+```
+
+**LoRA variant.** GRPO trains full-weight by default. To train an adapter instead, add `finetuning_type` and an optional `lora` block — nothing else changes:
+
+```json
+"training": {
+  "type": "grpo",
+  "finetuning_type": "lora",
+  "lora": { "rank": 16, "alpha": 32 },
+  "...": "rest as above"
+}
+```
+
+The output type is **inferred** — `lora` registers an HF PEFT adapter entity against the base model, and `output` still carries only `name`. Do not set `lora` alongside `all_weights` (hard error), and do not ask for `lora_merged` (rejected; GRPO does not merge at export). Field table and module-selection rules: `references/hyperparameters-rl.md` § **LoRA (GRPO only)**.
+
+**5. Submit and poll** — identical to DPO (no `--name`; read the `rl-<hex>` id from submit stdout):
+
+```bash
+nemo customization rl submit /tmp/job.json --workspace default > /tmp/rl-submit.json
+JOB=$(python3 -c "import json;print(json.load(open('/tmp/rl-submit.json'))['name'])")
+bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh "$JOB"
+```
+
+**Read GRPO progress on reward, not loss.** The GRPO surrogate loss oscillates near zero and says nothing about run quality. `train_reward` / `val_reward` are the curves that matter; `train_truncation_rate` rising or `train_baseline_reward/pct_mixed` falling toward zero explain a reward curve that stopped moving. See `references/reporting.md`.
+
 ## Fast path — rl (DPO)
 
 DPO on a Ray cluster — **Kubernetes runtime only**, full-weight. **Before anything else**, confirm the platform dispatches jobs to Kubernetes: `nemo jobs list-execution-profiles -f json` must show `cpu`/`gpu` at `backend: kubernetes_job` (not `docker`/`subprocess`). If it doesn't, stop — do not start/use a docker-runtime platform; configure a Kubernetes-runtime one per `references/rl-kubernetes-runtime.md`. Model-entity setup (step 2) is identical to automodel; the dataset is **preference data** and the job JSON is the `RlJobInput` shape.
@@ -433,6 +538,28 @@ When the user asks for a DPO job **without specifics**, default to the above: a
 20-step run of `Qwen/Qwen3-0.6B` on `nvidia/HelpSteer3` — small enough to finish
 quickly and confirm the pipeline end-to-end.
 
+rl-specific (GRPO):
+
+| Field | Value |
+|-------|-------|
+| Training | GRPO (`type: "grpo"`), full-weight by default (`finetuning_type: "all_weights"`). Use `finetuning_type: "lora"` when the user asks for an adapter or the full-weight run will not fit; `lora_merged` is rejected. |
+| Model (if user gives none) | `Qwen/Qwen3-0.6B` |
+| Environment (if user gives none) | `primeintellect/ascii-tree` converted with `pi-to-gym-conversion` — small, self-contained, no judge model needed |
+| Environment format | `adapter-wheels-v1` (converter output) unless the user's env dictates otherwise |
+| Schedule (if user gives none) | small demo run: `max_steps` 20. For a real run, set `epochs` and **omit** `max_steps`. |
+| Parallelism | 1 node, 1 GPU |
+| Batch | `batch_size` 32, `micro_batch_size` 1 |
+| Rollout | `num_generations_per_prompt` 8 (must divide `batch_size`), `temperature` 1.0 |
+| Optimizer | `learning_rate` 1e-6 (GRPO uses a very low LR — lower than DPO) |
+| Max sequence length | 2048 |
+| Validation | `val_at_start: true` when the user wants to see uplift; costs one extra rollout pass |
+| Output | full-weight model entity (`output.name`); with `finetuning_type: "lora"`, an HF PEFT adapter entity instead — the type is inferred, never set |
+| LoRA (when used) | `rank` 16, `alpha` 32, `dropout` 0.0, all linear layers (omit `target_modules`/`exclude_modules`) |
+
+When the user asks for a GRPO job **without specifics**, offer the `ascii-tree` demo
+above and say plainly that GRPO needs an environment — it cannot be run from a
+dataset alone, unlike every other backend here.
+
 ## Batch sizing
 
 `micro_batch_size` / `global_batch_size` (automodel) and `per_device_train_batch_size` × `gradient_accumulation_steps` (unsloth) on **≥48 GB GPUs**, multi-GPU (data vs tensor parallel), and OOM / throughput tuning live in **`references/batch-sizing.md`**. On unknown VRAM the **Defaults** above are safe — read batch-sizing before raising batch on a known ≥48 GB card. rl (DPO) batch knobs (`batch_size` / `micro_batch_size`) are in `references/hyperparameters-rl.md`.
@@ -467,7 +594,8 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | When | Read |
 |------|------|
 | HF conversion or MCQA shaping | `references/hf-conversion.md` |
-| CHAT vs SFT vs CUSTOM (automodel); text vs messages (unsloth); preference triples (rl/DPO) | `references/dataset-formats.md` |
+| CHAT vs SFT vs CUSTOM (automodel); text vs messages (unsloth); preference triples (rl/DPO); Gym rollout rows (rl/GRPO) | `references/dataset-formats.md` |
+| **GRPO environments** — the three formats (`native-v1`, `wheels-v1`, `adapter-wheels-v1`), converting a verifiers / Prime Intellect env, packaging a Gym source-tree env, bringing your own code, validation, upload, packaging errors | `references/gym-environments.md` |
 | Field glossary, full JSON template, distillation/KD, live-schema pointers (index routes per backend) | `references/hyperparameters.md` → `hyperparameters-automodel.md` / `hyperparameters-unsloth.md` / `hyperparameters-rl.md` |
 | Batch sizing (≥48 GB), OOM / throughput (automodel + unsloth) | `references/batch-sizing.md` |
 | Multi-GPU same node | `references/batch-sizing.md` § **Multi-GPU (same node)** (unsloth is single-GPU) |
@@ -478,6 +606,7 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Job JSON fixture (automodel, minimal) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
 | Job JSON fixture (unsloth, minimal) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
 | Job JSON fixture (rl / DPO, minimal) | `plugins/nemo-rl/tests/fixtures/minimal_dpo.json` (ignore `max_steps` for real runs) |
+| Environment manifest + validation rules (source of truth) | `services/rl/src/nmp/rl/schemas/environment.py`, `services/rl/src/nmp/rl/tasks/environment/validate.py` |
 | Job JSON fixture — integrations (W&B / MLflow) | automodel: `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json` · unsloth: `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json` · rl: `plugins/nemo-rl/tests/fixtures/integrations_wandb_mlflow.json` |
 | Automodel compile-path contract configs | `services/automodel/tests/contract/input_configs/` → YAML in `output_configs/` (legacy `TrainingStepConfig` shape, not submit JSON) |
 | W&B / MLflow field reference (all backends) | `references/hyperparameters.md` § **Integrations (all backends)** |

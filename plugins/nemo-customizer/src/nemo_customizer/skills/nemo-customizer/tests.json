@@ -43,7 +43,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "Fine-tune Qwen3-1.7B with Unsloth on NeMo Platform — I want the Unsloth training driver and bitsandbytes 4-bit loading.",
+      "prompt": "Fine-tune Qwen3-1.7B with Unsloth on NeMo Platform \u2014 I want the Unsloth training driver and bitsandbytes 4-bit loading.",
       "expected_skill": "nemo-customizer"
     },
     {
@@ -64,6 +64,46 @@
     {
       "type": "implicit",
       "prompt": "I want to run direct preference optimization on the platform's Ray cluster and register the trained model.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Use nemo customization rl submit to run a GRPO job against a NeMo Gym environment.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Run GRPO on the platform with an environment fileset and a Gym prompt dataset.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I want to train my model with reinforcement learning against a verifiable reward instead of labeled answers.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Convert the primeintellect/ascii-tree environment to a format the platform can train against.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "How do I package my own reward environment as adapter-wheels-v1 and upload it as a fileset?",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "My GRPO dataset rows are rejected at submit. What shape should the Gym JSONL rows be?",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Turn my existing NeMo Gym resources server into a native-v1 environment package for a customization job.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "contextual",
+      "prompt": "The environment fileset validation says prompt JSONL must not live in the environment package. How do I fix the layout?",
       "expected_skill": "nemo-customizer"
     },
     {
