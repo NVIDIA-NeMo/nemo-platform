@@ -6246,17 +6246,20 @@ components:
     OptimizeSpec:
       properties:
         optimize_config:
-          title: Optimize Config
-          description: Absolute path to the Fabric-native optimization YAML file on
-            the platform host.
           type: string
-        optimize_config_inline:
-          title: Optimize Config Inline
-          description: The Fabric-native optimization config inline, with the same
-            shape as the YAML file. Use instead of optimize_config when submitting
-            from a remote client.
-          additionalProperties: true
-          type: object
+          title: Optimize Config
+          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
+            \ set \u2014 required for `submit` \u2014 this is a path relative to the\
+            \ fileset root.  Without it (local `nemo agents optimize run` only) it\
+            \ is an absolute path on the host running the CLI."
+        optimize_config_fileset:
+          title: Optimize Config Fileset
+          description: 'Fileset holding the optimization bundle: the config named
+            by optimize_config plus every asset it references (Agent under Test package,
+            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
+            with `nemo agents optimize prepare-fileset`.  Required for `submit`, where
+            the job has no access to the client''s filesystem.'
+          type: string
         workspace:
           type: string
           title: Workspace
@@ -6280,6 +6283,8 @@ components:
             \ gives remote clients a stable, addressable location to read from."
           type: string
       type: object
+      required:
+      - optimize_config
       title: OptimizeSpec
       description: Spec for an Agents optimize study (``nemo agents optimize``).
     PackageAgentInput:
