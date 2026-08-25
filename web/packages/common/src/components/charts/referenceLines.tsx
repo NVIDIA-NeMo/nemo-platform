@@ -10,6 +10,9 @@ import { ReferenceLine } from 'recharts';
 /**
  * Must stay a plain function: recharts dispatches chart children by element type, so wrapping this
  * in a component would hide the `<ReferenceLine>` and it would silently never render.
+ *
+ * A line outside the y domain is dropped, so the caller must make room with `yAxisMin`/`yAxisMax`.
+ * `ifOverflow="extendDomain"` cannot: the explicit `domain` wins and the line escapes the plot.
  */
 export const renderReferenceLines = (lines: ChartReferenceLine[] = []): ReactElement[] =>
   lines.map((line, index) => (
