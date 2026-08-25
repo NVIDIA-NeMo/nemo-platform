@@ -522,6 +522,8 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "baseline_reward/pct_mixed": 53.13,
         "total_reward/mean": 0.617,
         "total_reward/stddev": 0.486,
+        "total_reward/p25": 0.0,
+        "total_reward/p75": 1.0,
         "total_reward/median": 0.0,
         "gen_tokens_per_sample/mean": 689.3,
         "gen_tokens_per_sample/max": 2048.0,
@@ -532,14 +534,13 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "mean_prompt_length": 753.8,
         "global_valid_toks": 176432.0,
     }
-    # `reward` here is the copy this adapter adds; GRPO itself reports only
-    # `accuracy`. See the validation-reward tests below.
     val = {
         "accuracy": 0.703,
-        "reward": 0.703,
         "avg_length": 604.2,
         "total_reward/mean": 0.703,
         "total_reward/stddev": 0.457,
+        "total_reward/p25": 0.0,
+        "total_reward/p75": 1.0,
         "truncation_rate": 0.023,
     }
 
@@ -560,12 +561,15 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         # version of `val_accuracy`. Both arrive in the dicts above and are
         # reported as current values; neither keeps a history.
         "train_reward",
-        "val_reward",
         "val_accuracy",
         # Reward dispersion, which is the band around the mean. Its `/median` and
         # `/max` siblings above stay out.
         "train_total_reward/stddev",
         "val_total_reward/stddev",
+        "train_total_reward/p25",
+        "train_total_reward/p75",
+        "val_total_reward/p25",
+        "val_total_reward/p75",
         # Group diversity: how many prompt groups had anything to learn from.
         "train_baseline_reward/pct_0",
         "train_baseline_reward/pct_1",
@@ -696,71 +700,60 @@ def test_a_loss_free_validation_is_still_a_reported_pass(callback: _RecordingCal
 
 
 # --------------------------------------------------------------------------- #
-# Validation reward — GRPO reports it under a name that means something narrower
+# Step timing — arrives under its own prefix
 # --------------------------------------------------------------------------- #
 
 
-def test_grpos_validation_accuracy_is_also_reported_as_a_reward(callback: _RecordingCallback) -> None:
-    """GRPO calls the pass's mean reward `accuracy`.
+def test_step_timings_are_reported_under_the_timing_prefix(callback: _RecordingCallback) -> None:
+    """NeMo-RL logs these separately from the train metrics, at the same step.
 
-    That is accurate for the math environment it was named after and misleading for
-    anything else, so the number goes out under both names rather than either alone.
+    Dropped whole before this, which is why a job could report eighty metrics and
+    not how long a step took.
     """
-    _make_logger(validation_reward_metric="accuracy").log_metrics(
-        REWARD_VALIDATION_METRICS, step=10, prefix="validation"
+    _make_logger().log_metrics(
+        {"total_step_time": 41.2, "generation": 28.0, "policy_training": 9.1},
+        step=3,
+        prefix="timing/train",
     )
 
-    reported = callback.validations[0]["metrics"]
-    assert reported["reward"] == 0.61
-    assert reported["accuracy"] == 0.61, "the pre-alias name every stored curve uses"
+    reported = callback.train_steps[0]["metrics"]
+    assert reported["timing/total_step_time"] == 41.2
+    assert reported["timing/generation"] == 28.0
+    assert callback.train_steps[0]["step"] == 3
 
 
-def test_the_copy_is_off_unless_a_source_metric_is_named(callback: _RecordingCallback) -> None:
-    """DPO's `accuracy` measures how often the preferred response scored higher.
-
-    One logger class serves both algorithms, so the copy has to be opt-in per driver
-    rather than triggered by the metric name showing up.
-    """
-    _make_logger().log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation")
-
-    assert "reward" not in callback.validations[0]["metrics"]
-
-
-def test_a_reward_the_algorithm_reported_itself_is_not_overwritten(callback: _RecordingCallback) -> None:
-    """Nothing reports one today, and overwriting a real one would be worse."""
-    _make_logger(validation_reward_metric="accuracy").log_metrics(
-        {"accuracy": 0.61, "reward": 0.42}, step=10, prefix="validation"
-    )
-
-    assert callback.validations[0]["metrics"]["reward"] == 0.42
-
-
-def test_an_unchartable_source_is_left_where_it_is(callback: _RecordingCallback) -> None:
-    """A value that cannot be charted under its own name gains nothing from a second."""
-    _make_logger(validation_reward_metric="accuracy").log_metrics(
-        {"accuracy": _Histogram(), "avg_length": 412.5}, step=10, prefix="validation"
-    )
-
-    assert "reward" not in callback.validations[0]["metrics"]
-
-
-def test_a_missing_source_metric_is_not_an_error(callback: _RecordingCallback) -> None:
-    """A validation pass need not report every metric on every call."""
-    _make_logger(validation_reward_metric="accuracy").log_metrics({"avg_length": 412.5}, step=10, prefix="validation")
-
-    assert "reward" not in callback.validations[0]["metrics"]
-
-
-def test_the_copy_is_qualified_like_any_other_metric_on_a_second_dataset(
+def test_step_timings_do_not_displace_the_train_metrics_at_that_step(
     callback: _RecordingCallback,
 ) -> None:
-    """The copy is made before dataset names are folded in, so it gets one too."""
-    logger = _make_logger(validation_reward_metric="accuracy")
-    logger.log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation-default")
-    logger.log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation-heldout")
+    """Both arrive at one step; the store merges by name, so both survive."""
+    logger = _make_logger()
+    logger.log_metrics(TRAIN_METRICS, step=3, prefix="train")
+    logger.log_metrics({"total_step_time": 41.2}, step=3, prefix="timing/train")
 
-    assert callback.validations[0]["metrics"]["reward"] == 0.61
-    assert callback.validations[1]["metrics"]["heldout_reward"] == 0.61
+    assert [r["step"] for r in callback.train_steps] == [3, 3]
+    assert "loss" in callback.train_steps[0]["metrics"]
+    assert "timing/total_step_time" in callback.train_steps[1]["metrics"]
+
+
+def test_timing_names_keep_their_prefix_so_durations_are_not_mistaken_for_counts(
+    callback: _RecordingCallback,
+) -> None:
+    """Bare, `generation` and `policy_training` read like counts rather than seconds."""
+    _make_logger().log_metrics({"generation": 28.0}, step=3, prefix="timing/train")
+
+    reported = callback.train_steps[0]["metrics"]
+    assert "generation" not in reported
+    assert reported["timing/generation"] == 28.0
+
+
+def test_other_timing_prefixes_are_still_ignored(callback: _RecordingCallback) -> None:
+    """Only the per-step train timer is charted; setup and validation timings are not."""
+    logger = _make_logger()
+    logger.log_metrics({"total_validation_time": 12.0}, step=3, prefix="timing/validation")
+    logger.log_metrics({"policy_init_time_s": 90.0}, step=0, prefix="timing/setup")
+
+    assert callback.train_steps == []
+    assert callback.validations == []
 
 
 # --------------------------------------------------------------------------- #
@@ -863,7 +856,8 @@ def test_all_validation_prefixes_are_handled(callback: _RecordingCallback, prefi
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("prefix", ["timing/train", "timing/validation", "timing/setup", "performance", "refit", ""])
+# `timing/train` used to be here and is now routed; see the step-timing section.
+@pytest.mark.parametrize("prefix", ["timing/validation", "timing/setup", "performance", "refit", ""])
 def test_unhandled_prefixes_produce_no_reports(callback: _RecordingCallback, prefix: str) -> None:
     _make_logger().log_metrics({"loss": 0.1, "total_step_time": 12.0}, step=0, prefix=prefix)
 

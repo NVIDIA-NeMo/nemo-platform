@@ -132,9 +132,6 @@ def main():
             # in a job's status that says which one ran. Set here as well as in the
             # GRPO driver: a field only one algorithm fills in looks like missing
             # data rather than like "not GRPO".
-            #
-            # No `validation_reward_metric`. DPO's `accuracy` measures how often the
-            # preferred response scored higher, which is not a reward.
             run_facts={"training_type": "dpo"},
         )
         # The setup() logger is a composite with a `.loggers` list; guard in case

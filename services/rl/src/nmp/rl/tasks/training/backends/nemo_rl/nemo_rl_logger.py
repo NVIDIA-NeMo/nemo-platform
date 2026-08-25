@@ -86,19 +86,19 @@ DPO_TIME_SERIES_METRICS = (
 #:
 #: ``*_rewards_chosen_mean``/``_rejected_mean`` are DPO's, and match nothing here.
 GRPO_TIME_SERIES_METRICS = (
-    # Reward on both phases: the mean over the step's batch on train, and the
-    # whole-pass mean on validation. This also matches `train_filtered_reward` if
-    # `use_dynamic_sampling` is ever turned on, which is the only case where the
-    # filtered and unfiltered rewards differ and both are worth a curve. It does not
-    # match the `*total_reward/*` family, whose names all end in a statistic.
-    #
-    # `val_reward` is a name this adapter adds; see `validation_reward_metric`.
-    # NeMo-RL calls the same number `accuracy`.
+    # Train reward: the mean over the step's batch, which is what the loss optimized.
+    # A pattern rather than the literal name so it also matches
+    # `train_filtered_reward` if `use_dynamic_sampling` is ever turned on -- the only
+    # case where the filtered and unfiltered rewards differ and both are worth a
+    # curve -- and so it picks up a validation reward if NeMo-RL ever reports one
+    # under this spelling. It does not match the `*total_reward/*` family, whose
+    # names all end in a statistic.
     "*_reward",
-    # NeMo-RL's own name for the validation reward. Same number as `val_reward`, and
-    # kept because it is the name jobs recorded before the alias existed. DPO uses
-    # this spelling too, where it means preference accuracy rather than reward; both
-    # lists carry it because both algorithms report one.
+    # The validation reward, under the name NeMo-RL gives it. `validate()` returns
+    # the pass's mean reward as `accuracy`, and that is the name consumers read it
+    # under -- there is no `val_reward`. DPO uses this spelling too, where it means
+    # preference accuracy rather than reward; both lists carry it because both
+    # algorithms report one.
     "*_accuracy",
     # How far the policy has drifted from the one that generated the rollouts.
     # `token_mult_prob_error` compares rollout and training logprobs; the KL family
@@ -120,7 +120,15 @@ GRPO_TIME_SERIES_METRICS = (
     # How spread out the step's rewards were. `*total_reward/mean` is excluded below
     # for being the same number as `train_reward`; that does not apply to the spread,
     # which nothing else here reports.
+    #
+    # `stddev` and the quartile pair say different things about a reward
+    # distribution, so both are kept. A binary reward is bimodal, not normal, and
+    # mean +/- stddev on it can run past 0 or 1 and describes no real rollout. The
+    # p25-p75 band is where the middle half of the rollouts actually landed, which is
+    # what a reward chart can shade without lying about the shape.
     "*total_reward/stddev",
+    "*total_reward/p25",
+    "*total_reward/p75",
     # How many prompt groups had rollouts that disagreed with each other. GRPO scores
     # each rollout against the others in its group, so a group where every rollout
     # got the same reward produces no gradient. When `pct_mixed` drops to zero the
@@ -130,6 +138,12 @@ GRPO_TIME_SERIES_METRICS = (
     "*baseline_reward/pct_0",
     "*baseline_reward/pct_1",
     "*baseline_reward/pct_mixed",
+    # Wall-clock for one training step, so a run's pace is readable from its history
+    # rather than only from the gap between two reports. Only the total keeps a
+    # curve; the per-phase breakdown beside it (`generation`, `policy_training`, ...)
+    # still reports as a current value, which is what it is read as when a step
+    # suddenly gets slower.
+    "*timing/total_step_time",
     # Advantage centering: should sit near zero, and drift means a broken baseline.
     "*advantages/mean",
     # Entropy collapse -- the failure that looks fine on the reward curve right up
@@ -219,7 +233,6 @@ class NemoRLLogger(LoggerInterface):
         min_report_interval_seconds: float | None = None,
         default_time_series_metrics: Collection[str] = DIAGNOSTIC_TIME_SERIES,
         run_facts: Mapping[str, object] | None = None,
-        validation_reward_metric: str | None = None,
     ):
         """Initialize the NemoRL logger.
 
@@ -233,15 +246,6 @@ class NemoRLLogger(LoggerInterface):
                 once with the training-start report and never restated. The
                 driver supplies them because it is the only place that has read
                 the compiled config.
-            validation_reward_metric: Name of the validation metric that holds the
-                pass's mean reward. Its value is also reported under ``reward``,
-                so the metric reaches consumers as ``val_reward``. GRPO reports
-                that number as ``accuracy``, which is accurate for a math
-                environment and misleading for anything else. Copying the value
-                here rather than renaming it upstream leaves
-                ``checkpointing.metric_name="val:accuracy"`` working. None turns
-                the copy off, which is what DPO needs: its ``accuracy`` measures
-                how often the preferred response scored higher, not a reward.
             time_series_metrics: Qualified metric names or glob patterns to
                 record as a series, from the job config. None takes
                 ``default_time_series_metrics`` -- absent means "the algorithm's
@@ -271,7 +275,6 @@ class NemoRLLogger(LoggerInterface):
         self._num_epochs = num_epochs
         self._steps_per_epoch = steps_per_epoch
         self._run_facts = dict(run_facts or {})
-        self._validation_reward_metric = validation_reward_metric
 
         self._callback = TrainingProgressCallback(
             JobsServiceProgressReporter(self._job_ctx),
@@ -305,7 +308,6 @@ class NemoRLLogger(LoggerInterface):
         min_report_interval_seconds: float | None = None,
         default_time_series_metrics: Collection[str] = DIAGNOSTIC_TIME_SERIES,
         run_facts: Mapping[str, object] | None = None,
-        validation_reward_metric: str | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
@@ -320,8 +322,6 @@ class NemoRLLogger(LoggerInterface):
                 :data:`DPO_DEFAULT_TIME_SERIES_METRICS`.
             run_facts: Run constants for the training-start report; see
                 :meth:`__init__`.
-            validation_reward_metric: Validation metric to republish as ``reward``;
-                see :meth:`__init__`.
             val_period: Accepted and unused. It used to set the validation report
                 cadence, and before that the training one; both now follow from
                 run length in the shared callback. Kept in the signature so the
@@ -337,7 +337,6 @@ class NemoRLLogger(LoggerInterface):
             min_report_interval_seconds=min_report_interval_seconds,
             default_time_series_metrics=default_time_series_metrics,
             run_facts=run_facts,
-            validation_reward_metric=validation_reward_metric,
         )
 
     def log_metrics(
@@ -377,6 +376,26 @@ class NemoRLLogger(LoggerInterface):
         if prefix == "train" and is_chartable(metrics.get("loss")):
             self._callback.report_train_step(step=step, epoch=epoch, metrics=dict(metrics))
 
+        # Step timings arrive under their own prefix and used to be dropped whole,
+        # which is why a job could report eighty metrics and not how long a step
+        # took. NeMo-RL logs this once per step, right after the train metrics and
+        # at the same step number, so it merges into the same report rather than
+        # starting a competing one -- the store is keyed by name and a second call
+        # at one step adds names to it.
+        #
+        # Names are re-prefixed with `timing/` before the phase prefix goes on, so
+        # `total_step_time` reads as `train_timing/total_step_time` rather than
+        # `train_total_step_time`. That matches `train_timing/rollout/*`, which
+        # already arrives this way inside the train dict, and keeps a duration from
+        # looking like a metric: bare, `generation` and `policy_training` would be
+        # indistinguishable from counts.
+        elif prefix == "timing/train":
+            self._callback.report_train_step(
+                step=step,
+                epoch=epoch,
+                metrics={f"timing/{name}": value for name, value in metrics.items()},
+            )
+
         # Validation reports whatever the pass produced. There is one validation
         # log per pass per dataloader and no rollout twin to tell apart, so
         # requiring a `loss` here bought nothing and cost whole passes: GRPO
@@ -388,30 +407,10 @@ class NemoRLLogger(LoggerInterface):
                 self._callback.report_validation(
                     step=step,
                     epoch=epoch,
-                    metrics=self._qualify_by_dataset(prefix, self._with_validation_reward(metrics)),
+                    metrics=self._qualify_by_dataset(prefix, metrics),
                 )
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
-
-    def _with_validation_reward(self, metrics: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Also report the configured validation metric under the name ``reward``.
-
-        GRPO returns its mean validation reward as ``accuracy``. Copying the value
-        instead of renaming it keeps both names working: the old one, which existing
-        jobs already have stored curves under, and one that says what the number is.
-
-        Runs before ``_qualify_by_dataset`` so a second validation dataloader's copy
-        gets the dataset prefix like everything else it reports.
-
-        A ``reward`` the algorithm reported itself is left alone. Nothing reports one
-        today, and overwriting a real one would be worse than not copying. A
-        non-numeric value is skipped too, since it could not be charted anyway.
-        """
-        source = self._validation_reward_metric
-        if source is None or "reward" in metrics:
-            return metrics
-        value = metrics.get(source)
-        return {**metrics, "reward": value} if is_chartable(value) else metrics
 
     def _qualify_by_dataset(self, prefix: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
         """Fold the dataloader name into each metric name, past the first set.

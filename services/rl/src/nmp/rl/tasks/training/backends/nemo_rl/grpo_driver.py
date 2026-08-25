@@ -180,8 +180,6 @@ def main() -> None:
             min_report_interval_seconds=getattr(config.grpo, "progress_min_report_interval_seconds", None),
             default_time_series_metrics=GRPO_DEFAULT_TIME_SERIES_METRICS,
             run_facts=_run_facts(config),
-            # GRPO's validation reward, which `validate()` names `accuracy`.
-            validation_reward_metric="accuracy",
         )
         if hasattr(logger_inst, "loggers"):
             logger_inst.loggers.append(customizer_logger)

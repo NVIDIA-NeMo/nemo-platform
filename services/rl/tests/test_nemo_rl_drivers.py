@@ -139,21 +139,10 @@ def test_for_schedule_keyword_detector_discriminates() -> None:
     assert _for_schedule_keywords("x = NemoRLLogger.other(run_facts=f)\n") == set()
 
 
-@pytest.mark.parametrize(
-    "driver,expected",
-    [
-        # GRPO's validate() reports the pass's mean reward as `accuracy`, so the
-        # driver names it as the alias source; without run_facts nothing in a job's
-        # status says which algorithm ran or how many rollouts a step generated.
-        ("grpo_driver.py", {"run_facts", "validation_reward_metric"}),
-        # DPO states which algorithm it is and stops there. Its `accuracy` is the
-        # share of preference pairs ranked correctly -- aliasing that to a reward
-        # would put a number on Studio's reward chart that is not one.
-        ("dpo_driver.py", {"run_facts"}),
-    ],
-)
-def test_driver_states_what_only_it_knows(driver: str, expected: set[str]) -> None:
-    """Both settings are per-algorithm, and only the driver has the compiled config."""
-    keywords = _for_schedule_keywords((DRIVERS / driver).read_text())
+@pytest.mark.parametrize("driver", ["grpo_driver.py", "dpo_driver.py"])
+def test_driver_states_which_algorithm_it_is(driver: str) -> None:
+    """`backend` is `nemo_rl` for both, so run_facts is the only thing telling them apart.
 
-    assert keywords & {"run_facts", "validation_reward_metric"} == expected
+    Per-algorithm, and only the driver has the compiled config to read it from.
+    """
+    assert "run_facts" in _for_schedule_keywords((DRIVERS / driver).read_text())
