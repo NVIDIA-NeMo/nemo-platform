@@ -43,6 +43,13 @@ The audit-spec approach has three item kinds in v1:
 | `capability` | A high-level behavior the agent should exercise |
 | `failure_case` | Expected safe behavior when a capability cannot proceed normally |
 
+Every item uses `name` as its stable coverage key. Names must be unique across
+the whole file; do not add sequential numeric IDs. Tool references in
+`required_tools`, `expected_tools`, and `evidence_required[].tool` must match the
+`name` of a declared `tool` item. `prohibited_tools` may name any syntactically
+valid tool name, including tools the agent must never call and therefore should
+not declare as allowed tools.
+
 Write audit artifacts under `.eval-author/`. Do not edit the customer's source,
 existing evals, or `ETHOS.md`.
 
@@ -66,9 +73,21 @@ variants, or ordinary happy-path permutations.
 
 Use `templates/audit.md` as the starting format for `.eval-author/audit.md`.
 The marked YAML block is the machine-readable part; prose outside the markers is
-for reviewers and may be edited freely. `schemas/audit.schema.json` is the
-canonical structural schema. The Python validator applies that schema first,
-then checks cross-item references such as `required_tools` and `applies_to`.
+for reviewers and may be edited freely. For `.eval-author/audit.md`, set
+`source_ethos: ../ETHOS.md` and replace the digest placeholder with:
+
+```bash
+shasum -a 256 ETHOS.md | awk '{print "sha256:" $1}'
+```
+
+`schemas/audit.schema.json` is the canonical structural schema. The Python
+validator applies that schema first, then checks source Ethos drift and cross-item
+references such as `required_tools` and `applies_to`.
+
+Capabilities that do not need tools, such as policy refusals or out-of-scope
+handling, should use `required_tools: []`. Failure cases attach to capability
+names through `applies_to`; tool-level failure expectations stay on the tool item
+as `expected_failure_behavior`.
 
 ## Step 2: Validate
 

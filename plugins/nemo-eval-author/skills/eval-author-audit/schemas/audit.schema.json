@@ -60,21 +60,8 @@
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
     },
-    "toolId": {
-      "type": "string",
-      "pattern": "^TOOL-[0-9]{3,}$"
-    },
-    "capabilityId": {
-      "type": "string",
-      "pattern": "^CAP-[0-9]{3,}$"
-    },
-    "failureCaseId": {
-      "type": "string",
-      "pattern": "^FAIL-[0-9]{3,}$"
-    },
     "toolList": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "$ref": "#/$defs/itemName"
       }
@@ -95,10 +82,11 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/capabilityId"
+        "$ref": "#/$defs/itemName"
       }
     },
     "ethosSection": {
+      "$comment": "Keep this enum aligned with the Ethos section titles used by nemo_agents_plugin.ethos.",
       "enum": [
         "Behavior",
         "Change Scope",
@@ -122,39 +110,62 @@
         "$ref": "#/$defs/ethosSection"
       }
     },
-    "evidenceKind": {
-      "enum": [
-        "environment_state",
-        "outcome",
-        "output",
-        "policy_boundary",
-        "state_change",
-        "tool_call",
-        "trace_span",
-        "user_intent",
-        "verifier"
-      ]
-    },
     "evidenceRequired": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "kind",
-          "description"
-        ],
-        "properties": {
-          "kind": {
-            "$ref": "#/$defs/evidenceKind"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/toolCallEvidence"
           },
-          "description": {
-            "$ref": "#/$defs/nonEmptyString"
-          },
-          "tool": {
-            "$ref": "#/$defs/itemName"
+          {
+            "$ref": "#/$defs/nonToolEvidence"
           }
+        ]
+      }
+    },
+    "toolCallEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description",
+        "tool"
+      ],
+      "properties": {
+        "kind": {
+          "const": "tool_call"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "tool": {
+          "$ref": "#/$defs/itemName"
+        }
+      }
+    },
+    "nonToolEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "environment_state",
+            "outcome",
+            "output",
+            "policy_boundary",
+            "state_change",
+            "trace_span",
+            "user_intent",
+            "verifier"
+          ]
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
         }
       }
     },
@@ -163,7 +174,6 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "id",
         "name",
         "ethos_refs",
         "description",
@@ -174,9 +184,6 @@
       "properties": {
         "kind": {
           "const": "tool"
-        },
-        "id": {
-          "$ref": "#/$defs/toolId"
         },
         "name": {
           "$ref": "#/$defs/itemName"
@@ -203,7 +210,6 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "id",
         "name",
         "ethos_refs",
         "description",
@@ -214,9 +220,6 @@
       "properties": {
         "kind": {
           "const": "capability"
-        },
-        "id": {
-          "$ref": "#/$defs/capabilityId"
         },
         "name": {
           "$ref": "#/$defs/itemName"
@@ -243,7 +246,6 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "id",
         "name",
         "applies_to",
         "ethos_refs",
@@ -255,9 +257,6 @@
       "properties": {
         "kind": {
           "const": "failure_case"
-        },
-        "id": {
-          "$ref": "#/$defs/failureCaseId"
         },
         "name": {
           "$ref": "#/$defs/itemName"

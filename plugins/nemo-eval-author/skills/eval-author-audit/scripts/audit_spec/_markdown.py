@@ -12,6 +12,8 @@ from pathlib import Path
 BEGIN_MARKER = "<!-- BEGIN:nemo-eval-author-audit:v1 -->"
 END_MARKER = "<!-- END:nemo-eval-author-audit:v1 -->"
 
+_BEGIN_MARKER_RE = re.compile(rf"(?m)^[ \t]*{re.escape(BEGIN_MARKER)}[ \t]*$")
+_END_MARKER_RE = re.compile(rf"(?m)^[ \t]*{re.escape(END_MARKER)}[ \t]*$")
 _YAML_BLOCK_RE = re.compile(r"```(?:yaml|yml)\s*\n(?P<body>.*?)\n```", re.DOTALL)
 
 
@@ -26,11 +28,11 @@ def extract_schema_block(path: Path) -> str:
     except (OSError, UnicodeError) as exc:
         raise AuditMarkdownError(f"could not read {path}: {exc}") from exc
 
-    starts = [match.start() for match in re.finditer(re.escape(BEGIN_MARKER), text)]
-    ends = [match.start() for match in re.finditer(re.escape(END_MARKER), text)]
+    starts = [match.end() for match in _BEGIN_MARKER_RE.finditer(text)]
+    ends = [match.start() for match in _END_MARKER_RE.finditer(text)]
     if len(starts) != 1 or len(ends) != 1:
         raise AuditMarkdownError(f"{path} must contain exactly one {BEGIN_MARKER!r} and one {END_MARKER!r}")
-    start = starts[0] + len(BEGIN_MARKER)
+    start = starts[0]
     end = ends[0]
     if start >= end:
         raise AuditMarkdownError(f"{path} has audit markers in the wrong order")
