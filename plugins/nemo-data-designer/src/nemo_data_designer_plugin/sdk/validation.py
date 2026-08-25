@@ -83,9 +83,7 @@ async def validate_config(
             back through the report. Not used for any logic.
 
     Returns:
-        A ``ValidationReport`` aggregating the results of every requested
-        context. The report's ``ok`` property is true iff every requested
-        context validated cleanly.
+        A ``ValidationReport``.
 
     Raises:
         ValueError: If neither ``sdk`` nor ``async_sdk`` is provided.
