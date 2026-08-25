@@ -17,6 +17,7 @@ SDK_EDITABLE_DOCKERFILES = (
     Path("docker/automodel/Dockerfile.nmp-automodel-training"),
     Path("docker/rl/Dockerfile.nmp-rl-training"),
 )
+SDK_ALIAS_PACKAGES = ("filesets", "models")
 WANDB_PACKAGE_SPEC_RE = re.compile(r"(?<![\w./-])wandb(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
 DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/Dockerfile.nmp-customizer-tasks"),
@@ -99,26 +100,28 @@ def test_docker_workspace_slice_contains_all_workspace_sources(slice_name):
     "path",
     [pytest.param(ROOT / path, id=str(path)) for path in SDK_EDITABLE_DOCKERFILES],
 )
-def test_sdk_editable_image_installs_filesets(path: Path) -> None:
-    """Editable SDK installs need the filesets source package available separately."""
+def test_sdk_editable_image_installs_sdk_alias_packages(path: Path) -> None:
+    """Editable SDK installs need source packages for SDK aliases available separately."""
     text = path.read_text(encoding="utf-8")
 
     assert "-e /app/sdk/python/nemo-platform" in text
-    assert "-e /app/packages/filesets" in text
+    for package in SDK_ALIAS_PACKAGES:
+        assert f"-e /app/packages/{package}" in text
 
 
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
-def test_sdk_editable_workspace_slice_includes_filesets(slice_name: str) -> None:
-    """The SDK imports ``filesets`` lazily when ``sdk.files`` is accessed."""
+@pytest.mark.parametrize("package", SDK_ALIAS_PACKAGES)
+def test_sdk_editable_workspace_slice_includes_sdk_alias_package(slice_name: str, package: str) -> None:
+    """The SDK imports alias packages lazily when those resources are accessed."""
     workspace_path = ROOT / "docker" / slice_name / "pyproject.workspace.toml"
     workspace = _load_pyproject(workspace_path)
     member_paths = set(workspace["tool"]["uv"]["workspace"]["members"])
     source_names = _workspace_sources(workspace)
     dockerfile_text = (ROOT / "docker" / slice_name / "Dockerfile.platform-workspace").read_text(encoding="utf-8")
 
-    assert "packages/filesets" in member_paths
-    assert "filesets" in source_names
-    assert "COPY packages/filesets packages/filesets" in dockerfile_text
+    assert f"packages/{package}" in member_paths
+    assert package in source_names
+    assert f"COPY packages/{package} packages/{package}" in dockerfile_text
 
 
 def test_deployments_plugin_is_optional_for_models_service():
