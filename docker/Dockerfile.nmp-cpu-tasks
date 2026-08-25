@@ -35,10 +35,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --output /app/.source-distributions/nmp-cpu-tasks
 RUN mkdir -p /app/.runtime-home/nvs
 
-FROM ${NMP_CPU_TASKS_RUNTIME_BASE} AS runtime
-
 # Job steps and plugin tasks may shell out to small POSIX utilities. Keep the
-# runtime distroless while preserving that command surface.
+# runtime distroless while preserving that command surface in one final layer.
+FROM scratch AS cpu-task-runtime-tools
 COPY --from=root-busybox /bin/chmod /bin/chmod
 COPY --from=root-busybox /bin/sh /bin/sh
 COPY --from=root-busybox /bin/ls /bin/ls
@@ -59,9 +58,15 @@ COPY --from=root-busybox /bin/echo /bin/echo
 COPY --from=root-busybox /bin/sleep /bin/sleep
 COPY --from=root-busybox /bin/dirname /bin/dirname
 COPY --from=root-busybox /bin/basename /bin/basename
+COPY --from=root-busybox /bin/find /bin/find
 COPY --from=builder /bin/bash /bin/bash
 COPY --from=builder /bin/uv /bin/uv
 COPY --from=builder /usr/bin/env /usr/bin/env
+COPY docker/scripts/cve-cleanup.sh /bin/cve-cleanup.sh
+
+FROM ${NMP_CPU_TASKS_RUNTIME_BASE} AS runtime
+
+COPY --from=cpu-task-runtime-tools / /
 
 ENV USERNAME=nvs \
     HOME=/home/nvs
@@ -74,6 +79,10 @@ ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/.venv/lib/python${PY_VERSION}/site-packages"
 USER 0
+RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/remove-listed-files.py,readonly \
+    --mount=type=bind,source=docker/removals/files/base/cve-cleanup-runtime.txt,target=/tmp/file-removals.txt,readonly \
+    sh /bin/cve-cleanup.sh && \
+    python /tmp/remove-listed-files.py /tmp/file-removals.txt
 ENTRYPOINT ["nemo-platform"]
 # Override CMD with "run" in orchestration (e.g., Helm, docker-compose)
 CMD ["--help"]

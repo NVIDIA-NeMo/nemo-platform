@@ -113,6 +113,8 @@ FROM ${AUDITOR_PYTHON_IMAGE} AS base
 ARG USERNAME=nvs
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
 COPY docker/scripts/collect-apt-sources.sh \
@@ -142,13 +144,8 @@ RUN mkdir -p /source-distributions/auditor-tasks && \
         --python /usr/local/bin/python \
         --output /source-distributions/auditor-tasks
 
-FROM ${AUDITOR_RUNTIME_BASE} AS core-final
-
-COPY --from=base /etc/passwd /etc/passwd
-COPY --from=base /etc/group /etc/group
-COPY --from=base --chown=1000:1000 /home/nvs /home/nvs
-
 # Copying handful commands into the destination image
+FROM scratch AS auditor-runtime-tools
 COPY --from=root-busybox /bin/chmod /bin/chmod
 COPY --from=root-busybox /bin/sh /bin/sh
 COPY --from=root-busybox /bin/ls /bin/ls
@@ -178,6 +175,13 @@ COPY --from=root-busybox /bin/kill /bin/kill
 COPY --from=root-busybox /bin/netstat /bin/netstat
 COPY --from=root-busybox /bin/wc /bin/wc
 
+FROM ${AUDITOR_RUNTIME_BASE} AS core-final
+
+COPY --from=base /etc/passwd /etc/passwd
+COPY --from=base /etc/group /etc/group
+COPY --from=base --chown=nvs:nvs /home/nvs /home/nvs
+COPY --from=auditor-runtime-tools / /
+
 WORKDIR /app/plugins/nemo-auditor
 
 # note: PY_VERSION is set within the container
@@ -185,11 +189,11 @@ ENV PYTHONPATH=/app/plugins/nemo-auditor/src:/app/packages/nmp_common/src:/app/s
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy installed packages and application
-COPY --chown=1000:1000 --from=py-builder /app /app
-COPY --chown=1000:1000 --from=py-builder /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
-COPY --chown=1000:1000 --from=base /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
+COPY --chown=nvs:nvs --from=py-builder /app /app
+COPY --chown=nvs:nvs --from=py-builder /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
+COPY --chown=nvs:nvs --from=base /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
 ARG CACHE_HOME
-COPY --chown=1000:1000 --from=py-builder ${CACHE_HOME} ${CACHE_HOME}
+COPY --chown=nvs:nvs --from=py-builder ${CACHE_HOME} ${CACHE_HOME}
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
 
