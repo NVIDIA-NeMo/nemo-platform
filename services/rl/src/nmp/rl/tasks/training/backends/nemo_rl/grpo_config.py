@@ -255,8 +255,10 @@ def _build_nemo_gym_env_config(
                 ),
                 # Same rule: unset leaves the OpenSandbox server's default in place.
                 resources=gym.sandbox_resources or None,
-                # ttl_s has a non-null default, so it is only overridden when declared.
+                # ttl_s and rollout_chunk_size both have non-null defaults, so they are only
+                # overridden when declared.
                 **({"ttl_s": gym.sandbox_ttl_s} if gym.sandbox_ttl_s else {}),
+                **({"rollout_chunk_size": gym.sandbox_rollout_chunk_size} if gym.sandbox_rollout_chunk_size else {}),
                 environment_pvc_claim=mounts.environment_pvc_claim,
                 environment_sub_path=mounts.environment_sub_path,
                 dataset_pvc_claim=mounts.dataset_pvc_claim,
@@ -329,8 +331,25 @@ def compile_grpo_config(
         "steps_per_epoch": steps_per_epoch,
         "progress_time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
         "progress_min_report_interval_seconds": customizer_config.schedule.progress_reporting.min_report_interval_seconds,
+        # The advantage estimator reads these two from `grpo.adv_estimator`, not from
+        # `grpo` itself. NeMo-RL's own YAML recipes set the top-level pair and point
+        # adv_estimator at them with OmegaConf interpolation
+        # (`normalize_rewards: ${grpo.normalize_rewards}`), so both spellings appear
+        # in a resolved config. This dict is built in Python with no interpolation, so
+        # writing only the top-level pair left AdvEstimatorConfig on its own defaults
+        # and `normalize_rewards: false` did nothing. Both are written here so the
+        # config matches a resolved recipe either way.
         "normalize_rewards": grpo_hp.normalize_rewards,
-        "use_leave_one_out_baseline": True,
+        "use_leave_one_out_baseline": grpo_hp.use_leave_one_out_baseline,
+        "adv_estimator": {
+            "name": "grpo",
+            "normalize_rewards": grpo_hp.normalize_rewards,
+            "use_leave_one_out_baseline": grpo_hp.use_leave_one_out_baseline,
+        },
+        # Bounds on the normalized advantages. None means unbounded on that side, which
+        # is NeMo-RL's default and standard GRPO.
+        "advantage_clip_low": grpo_hp.advantage_clip_low,
+        "advantage_clip_high": grpo_hp.advantage_clip_high,
         "val_period": val_period,
         "val_start_at": -1,
         "val_at_start": val_at_start,
@@ -358,8 +377,11 @@ def compile_grpo_config(
         "reference_policy_kl_type": "k3",
         "ratio_clip_min": grpo_hp.ratio_clip_min,
         "ratio_clip_max": grpo_hp.ratio_clip_max,
-        "use_on_policy_kl_approximation": True,
-        "use_importance_sampling_correction": True,
+        # None leaves dual clipping off, which is NeMo-RL's default. The loss asserts
+        # the value exceeds 1 when it is set; the job schema rejects it earlier.
+        "ratio_clip_c": grpo_hp.ratio_clip_c,
+        "use_on_policy_kl_approximation": grpo_hp.use_on_policy_kl_approximation,
+        "use_importance_sampling_correction": grpo_hp.use_importance_sampling_correction,
         "sequence_level_importance_ratios": False,
         "token_level_loss": True,
     }
@@ -413,10 +435,11 @@ def compile_grpo_config(
             # prompt leaves. An explicit value bounds response length instead.
             "max_new_tokens": grpo_hp.max_new_tokens or customizer_config.model.max_seq_length,
             "temperature": grpo_hp.temperature,
-            # top_p/top_k stay neutral: these are their disabled values, and temperature is
-            # the one sampling knob the job schema exposes.
+            # top_p stays neutral -- 1.0 is its disabled value, and the job schema has no
+            # knob for it. top_k defaults to None, which is also disabled: sample from the
+            # whole distribution.
             "top_p": 1.0,
-            "top_k": None,
+            "top_k": grpo_hp.top_k,
             "stop_token_ids": None,
             "stop_strings": None,
             "vllm_cfg": {
