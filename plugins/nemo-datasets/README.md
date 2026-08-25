@@ -76,8 +76,8 @@ flowchart TD
 
     BRANCH -->|"yes — parquet"| UNI["_unify_schemas<br/><i>order-independent across shards</i>"]
     UNI --> DERIVE["derive_features<br/><i>arrow types to dtypes</i>"]
-    DERIVE --> CF["ColumnFold(features)"]
-    BRANCH -->|"no — jsonl"| ICF["InferredColumnFold()"]
+    DERIVE --> CF["RowFold(features)"]
+    BRANCH -->|"no — jsonl"| ICF["InferredRowFold()"]
 
     CF --> SPLITS
     ICF --> SPLITS["resolve_splits<br/><i>from paths, format-agnostic</i>"]
@@ -107,7 +107,7 @@ flowchart LR
 
     subgraph FOLD["_PartitionFolds — state constant in rows"]
         direction TB
-        COL["<b>ColumnFold</b> / <b>InferredColumnFold</b><br/>one accumulator per column"]
+        COL["<b>RowFold</b> / <b>InferredRowFold</b><br/>one accumulator per column"]
         PRE["<b>PrefixPairFold</b><br/>relational: chosen vs rejected<br/><i>same row, two columns</i>"]
     end
 
@@ -132,8 +132,8 @@ until classification assigns them.
 ```mermaid
 flowchart TD
     FIN{"which fold?"}
-    FIN -->|"ColumnFold"| F1["finalize() → measured"]
-    FIN -->|"InferredColumnFold"| F2["finalize() → (features, measured)<br/><i>schema is an output here</i>"]
+    FIN -->|"RowFold"| F1["finalize() → measured"]
+    FIN -->|"InferredRowFold"| F2["finalize() → (features, measured)<br/><i>schema is an output here</i>"]
 
     F1 --> M["measured:<br/>stats · probes · vocabularies · errors"]
     F2 --> M

@@ -50,8 +50,8 @@ from nemo_datasets_plugin.profiler.readers.base import (
 from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_datasets_plugin.profiler.stats import (
-    ColumnFold,
-    InferredColumnFold,
+    InferredRowFold,
+    RowFold,
     quote_enumerations,
 )
 from nemo_platform_plugin.files.dataset_profile import (
@@ -290,9 +290,7 @@ class _PartitionFolds:
         # Declared: the columns are known, so the accumulators are chosen now. Inferred: they are
         # discovered as they appear and typed once every row has gone by.
         self.features = features or []
-        self._columns: ColumnFold | InferredColumnFold = (
-            ColumnFold(features) if features is not None else InferredColumnFold()
-        )
+        self._columns: RowFold | InferredRowFold = RowFold(features) if features is not None else InferredRowFold()
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
 
@@ -320,7 +318,7 @@ class _PartitionFolds:
         a classifier that trips over a shape no detector anticipated.
         """
         try:
-            if isinstance(self._columns, InferredColumnFold):
+            if isinstance(self._columns, InferredRowFold):
                 self.features, measured = self._columns.finalize()
             else:
                 measured = self._columns.finalize()
