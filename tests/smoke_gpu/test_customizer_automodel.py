@@ -101,12 +101,9 @@ def test_transformers_audio_backend_probe_is_off():
 def test_peft_lora_dispatch_matches_installed_torchao():
     """PEFT's torchao dispatcher must import against the torchao in this image.
 
-    ``merge_lora_adapter`` attaches the adapter with ``PeftModel.from_pretrained``, and
-    injection runs every dispatcher in ``_create_new_module`` against each target layer.
-    ``dispatch_torchao`` is gated on ``is_torchao_available()`` -- ``find_spec("torchao")``,
-    file presence rather than API compatibility -- and only then imports torchao symbols.
-    torchao is supplied by the NGC base image instead of the venv (``uv-pytorch.toml``
-    overrides it to an impossible marker), so a peft expecting a retired torchao API fails
+    ``dispatch_torchao`` runs during adapter injection and is gated on ``find_spec("torchao")`` --
+    file presence, not API compatibility -- before importing torchao symbols. torchao comes from
+    the NGC base image rather than the venv, so a peft expecting a retired torchao API fails
     ``merge=true`` jobs at injection, after training has already succeeded.
     """
     import torch
