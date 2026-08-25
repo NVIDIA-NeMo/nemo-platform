@@ -173,8 +173,8 @@ def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) 
     audit_dir.mkdir()
     audit = audit_dir / "audit.md"
     text = _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
-        'source_ethos_sha256: "sha256:<replace-with-64-hex-digest>"',
-        f"source_ethos_sha256: {_digest(ethos)}",
+        'sha256: "sha256:<replace-with-64-hex-digest>"',
+        f"sha256: {_digest(ethos)}",
     )
     if transform is not None:
         text = transform(text)
@@ -332,7 +332,7 @@ def test_audit_json_schema_is_valid() -> None:
     Draft202012Validator.check_schema(json.loads(_AUDIT_JSON_SCHEMA.read_text(encoding="utf-8")))
 
 
-def test_audit_file_with_matching_ethos_digest_validates(tmp_path: Path) -> None:
+def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
 
     code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
@@ -340,6 +340,22 @@ def test_audit_file_with_matching_ethos_digest_validates(tmp_path: Path) -> None
     assert code == 0, stderr or report
     assert report["valid"] is True
     assert report["item_counts"] == {"capability": 1, "failure_case": 1, "tool": 1}
+
+
+def test_audit_file_without_sources_validates(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n",
+            "",
+            text,
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
 
 
 def test_audit_validation_compact_output(tmp_path: Path) -> None:
@@ -388,8 +404,8 @@ def test_audit_validation_rejects_all_zero_source_digest(tmp_path: Path) -> None
     audit = _write_audit(
         tmp_path,
         lambda text: re.sub(
-            r"source_ethos_sha256: sha256:[0-9a-f]{64}",
-            "source_ethos_sha256: sha256:" + ("0" * 64),
+            r"sha256: sha256:[0-9a-f]{64}",
+            "sha256: sha256:" + ("0" * 64),
             text,
         ),
     )
@@ -405,8 +421,8 @@ def test_audit_validation_rejects_stale_source_digest(tmp_path: Path) -> None:
     audit = _write_audit(
         tmp_path,
         lambda text: re.sub(
-            r"source_ethos_sha256: sha256:[0-9a-f]{64}",
-            "source_ethos_sha256: sha256:" + ("1" * 64),
+            r"sha256: sha256:[0-9a-f]{64}",
+            "sha256: sha256:" + ("1" * 64),
             text,
         ),
     )
@@ -416,6 +432,36 @@ def test_audit_validation_rejects_stale_source_digest(tmp_path: Path) -> None:
     assert code == 1
     assert report["valid"] is False
     assert "does not match" in report["error"]
+
+
+def test_audit_validation_rejects_source_digest_without_path(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace("    path: ../ETHOS.md\n", ""),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "path" in report["error"]
+
+
+def test_audit_validation_rejects_duplicate_source_names(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"(sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n)",
+            "\\1  - name: ethos\n    description: duplicate\n",
+            text,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "audit.sources[1].name 'ethos' is duplicated" in report["error"]
 
 
 def test_audit_validation_allows_unknown_prohibited_tool(tmp_path: Path) -> None:
