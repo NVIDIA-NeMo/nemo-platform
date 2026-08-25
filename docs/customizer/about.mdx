@@ -204,6 +204,32 @@ Most of the models support Instruction Templates for training, the expected data
 
 For more information refer to our [in-depth instructions](/documentation/customizer-reference/tutorials/format-training-dataset#format-a-conversation-dataset).
 
+## Reinforcement Learning
+
+SFT and LoRA both learn from examples of the right answer. Reinforcement learning instead learns from a *comparison* — some signal that one response was better than another. NeMo Customizer supports two methods, both on the `rl` backend.
+
+### Direct Preference Optimization
+
+DPO trains on preference pairs. Each example is a prompt with a **chosen** response and a **rejected** one, and training pushes the model toward the chosen style without needing a separate reward model. Use it when you have human or model-generated preference data and want to shape tone, formatting, or helpfulness.
+
+The main control is `ref_policy_kl_penalty` (β), which sets how far the policy may drift from the model it started as.
+
+### Group Relative Policy Optimization
+
+GRPO needs no labeled responses at all. For each prompt it samples a **group** of responses, hands them to a **reward environment** that scores each one, and updates the policy toward the responses that scored better than the others in their group.
+
+That framing has a consequence worth understanding before you start: the learning signal is the *spread* of rewards inside a group. A prompt whose responses all earn the same score contributes nothing to the update. This is why GRPO runs are read on reward rather than loss, and why sampling settings such as `temperature` and `num_generations_per_prompt` matter more here than in any other method.
+
+Use GRPO when correctness is *verifiable* — math with a checkable answer, code that either passes tests or does not, structured output that either parses or does not — rather than merely preferred.
+
+GRPO requires a NeMo Gym environment packaged as a FileSet, alongside the prompt dataset. See [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments).
+
+<Note>
+
+Both RL methods run on a Ray cluster and require a platform configured with `platform.runtime: kubernetes`. They have no local Docker fallback, unlike the SFT and LoRA backends.
+
+</Note>
+
 ## Hyperparameters
 
 Hyperparameters are configuration settings used to control the training process. You'll set these values before training begins to optimize how the model learns from your data. While the model automatically learns its internal parameters during training, these hyperparameters help guide that learning process. The right values depend on your specific use case, dataset size, and computational resources.

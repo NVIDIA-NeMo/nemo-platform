@@ -1,0 +1,307 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "GRPO and Reward Environments"
+description: "Train a model with GRPO against a NeMo Gym reward environment."
+---
+
+GRPO (Group Relative Policy Optimization) trains a model against a **reward environment** instead of labeled completions. For each prompt the platform samples a group of responses, the environment scores them, and the policy is updated toward the responses that scored better than the others in their group.
+
+That last part is why GRPO behaves differently from every other customization method here: the learning signal is the *spread* of rewards inside a group. If every response to a prompt earns the same score, that prompt contributes nothing.
+
+GRPO runs on the `rl` backend, the same one that runs DPO, and requires a NeMo Platform configured with `platform.runtime: kubernetes` — it provisions a Ray cluster and has no local Docker fallback.
+
+## What you need
+
+Unlike SFT or DPO, GRPO takes **two** FileSets:
+
+| FileSet | `purpose` | Holds |
+| --- | --- | --- |
+| Environment | `environment` | Code and config that runs a rollout and returns a reward |
+| Dataset | `dataset` | `training.jsonl` (required) and `validation.jsonl` (optional) — prompt rows |
+
+Plus a registered model entity, exactly as for the other backends.
+
+<Note>
+Prompt JSONL must **not** live inside the environment package. Validation rejects any `.jsonl` in the environment FileSet, so keep the two FileSets separate.
+</Note>
+
+## Choose an environment format
+
+The environment package declares its format in a `nemo-environment.yaml` manifest at its root. Three formats are supported.
+
+| You have | Format | Ships wheels | `config_paths` live under |
+| --- | --- | --- | --- |
+| An environment already in the NeMo Gym source tree, or written against Gym's server layout | `native-v1` | No | `responses_api_agents/`, `resources_servers/`, `responses_api_models/` |
+| A Prime Intellect hub environment, or any `verifiers` environment installable as a wheel | `adapter-wheels-v1` | Yes | `configs/` |
+| Your own environment code, packaged as wheels, with no `verifiers` harness | `wheels-v1` | Yes | Anywhere in the package |
+
+`adapter-wheels-v1` is the best-supported path: it is what the bundled converter produces and what the training image is built to run. Prefer it when you have a choice.
+
+### Manifest
+
+```yaml
+format: adapter-wheels-v1
+config_paths:
+  - configs/policy_model.yaml
+  - configs/verifiers_agent.yaml
+adapter:                       # adapter-wheels-v1 only
+  agent: verifiers_agent
+  agent_type: responses_api_agents
+metadata:
+  name: ascii-tree
+  hub_id: primeintellect/ascii-tree
+  vf_env_id: ascii-tree
+```
+
+Rules that apply to every format:
+
+- `nemo-environment.yaml` sits at the package root.
+- Every `config_paths` entry is relative, contains no `..`, is not a symlink, and exists in the package.
+- No `.jsonl` anywhere in the package.
+- `wheels/` is non-empty and contains only `.whl` files, for the two wheels formats.
+- Unknown manifest keys are rejected.
+
+## Convert a Prime Intellect environment
+
+The platform ships a converter that downloads the hub package, vendors its full wheel closure, writes the configs and manifest, and builds the prompt JSONL.
+
+Run it on a machine with internet access. Training clusters have no hub egress and consume uploaded FileSets only.
+
+```bash
+uv run --package nmp-rl pi-to-gym-conversion \
+  --hub-id primeintellect/ascii-tree \
+  --hub-version 0.1.5 \
+  --out-dir ./ascii-tree-pkg \
+  --dataset-dir ./ascii-tree-data \
+  --validation-fraction 0.1
+```
+
+<Note>
+Pin `--hub-version`. Left unset, the converter takes whatever the index offers at that moment; a later release can narrow `Requires-Python` and fail the download, or install but not run on the training image's Python.
+</Note>
+
+The converter writes:
+
+```
+ascii-tree-pkg/
+  nemo-environment.yaml
+  configs/policy_model.yaml       # points Gym at the job's own vLLM engine
+  configs/verifiers_agent.yaml    # vf_env_id, vf_env_args, max_tokens, temperature
+  wheels/*.whl
+ascii-tree-data/
+  training.jsonl
+  validation.jsonl                # only with --validation-fraction > 0
+```
+
+Add `--upload` (with `NMP_BASE_URL` set) to create both FileSets and upload them in the same command.
+
+### Validate before uploading
+
+```bash
+uv run --package nmp-rl pi-to-gym-conversion --validate-only ./ascii-tree-pkg
+```
+
+Prints `{"valid": true, "format": "...", "name": "..."}` or exits non-zero with the specific violation. The same checks run at submit time, so validating locally catches the failure earlier and for free.
+
+## Package an existing NeMo Gym environment
+
+For `native-v1`, the package is a slice of the Gym source tree with its directory structure preserved, plus a manifest you add at the root:
+
+```
+resources_servers/example_single_tool_call/
+  app.py
+  configs/example_single_tool_call.yaml
+  requirements.txt
+nemo-environment.yaml
+```
+
+```yaml
+format: native-v1
+config_paths:
+  - resources_servers/example_single_tool_call/configs/example_single_tool_call.yaml
+metadata:
+  name: example-single-tool-call
+```
+
+<Warning>
+Gym's own configs point `datasets[].jsonl_fpath` at a file inside the server directory. That file cannot ship in the environment package. Remove the data directory and supply prompts through the dataset FileSet instead.
+</Warning>
+
+`native-v1` ships no wheels, and the platform installs nothing for it — anything the server imports must already be present in the training image.
+
+## Prompt dataset format
+
+GRPO rows are **rollout rows**, not prompt/completion pairs and not preference triples. The prompt goes under `responses_create_params.input`, in OpenAI Responses API shape.
+
+```json
+{
+  "task_idx": 0,
+  "vf_env_id": "ascii-tree",
+  "responses_create_params": {"input": [{"role": "user", "content": "Draw a binary tree of depth 3."}]},
+  "agent_ref": {"type": "responses_api_agents", "name": "verifiers_agent"},
+  "question": "Draw a binary tree of depth 3.",
+  "answer": "",
+  "task": "ascii-tree",
+  "example_id": "ex-0",
+  "info": {}
+}
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `responses_create_params` | Yes | The prompt. Messages go under `input`. |
+| `agent_ref` | Yes | Object routing the row to an agent. `name` must match the agent the environment declares. |
+| `vf_env_id` | verifiers environments | Must equal the manifest's `metadata.vf_env_id`. |
+| `task_idx` | verifiers environments | Row index. |
+| `answer`, `task`, `example_id`, `info`, `question` | No | Passed through to the environment. |
+
+Extra keys are allowed and forwarded to the environment.
+
+Validation runs exactly one rollout per row of `validation.jsonl` — there is no validation counterpart to `num_generations_per_prompt`. To score a prompt *k* times, repeat its row *k* times.
+
+## Upload both FileSets
+
+```bash
+ENV=ascii-tree
+nemo files filesets create "$ENV" --workspace default --purpose environment --exist-ok
+(cd ./ascii-tree-pkg && find . -type f | sed 's|^\./||' | while read -r f; do
+  nemo files upload "$f" "$ENV" --workspace default --remote-path "$f"
+done)
+
+DATA=ascii-tree-dataset
+nemo files filesets create "$DATA" --workspace default --purpose dataset --exist-ok
+nemo files upload ./ascii-tree-data/training.jsonl   "$DATA" --workspace default --remote-path training.jsonl
+nemo files upload ./ascii-tree-data/validation.jsonl "$DATA" --workspace default --remote-path validation.jsonl
+```
+
+Relative paths must be preserved. `config_paths` is matched against the FileSet listing, so a package flattened during upload fails with `config_paths reference files that are not in the package`.
+
+## Submit the job
+
+There is no `grpo` subcommand. GRPO submits through `nemo customization rl submit`, selected by `training.type`.
+
+```json
+{
+  "model": "default/qwen3-0.6b",
+  "dataset": "default/ascii-tree-dataset",
+  "environment": "default/ascii-tree",
+  "training": {
+    "type": "grpo",
+    "epochs": 1,
+    "learning_rate": 1e-6,
+    "max_seq_length": 2048,
+    "batch_size": 32,
+    "micro_batch_size": 1,
+    "num_generations_per_prompt": 8,
+    "temperature": 1.0,
+    "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1 }
+  },
+  "output": { "name": "qwen3-0.6b-ascii-tree" }
+}
+```
+
+```bash
+nemo customization rl submit ./job.json --workspace default
+```
+
+`training.type` is required — it is the union discriminator, and omitting it fails with `union_tag_not_found` rather than defaulting to DPO. `model`, `dataset`, and `environment` are plain string references.
+
+Read the `rl-<hex>` job id from the `name` field of the submit response; `rl submit` has no `--name` flag.
+
+## Train an adapter instead of full weights
+
+GRPO trains every weight by default. Set `finetuning_type` to train a LoRA adapter instead — useful when the full-weight run does not fit in memory, or when you want several environments' worth of behaviour over one shared base deployment.
+
+```json
+{
+  "model": "default/qwen3-0.6b",
+  "dataset": "default/ascii-tree-dataset",
+  "environment": "default/ascii-tree",
+  "training": {
+    "type": "grpo",
+    "finetuning_type": "lora",
+    "lora": { "rank": 16, "alpha": 32, "dropout": 0.0 },
+    "epochs": 1,
+    "batch_size": 32,
+    "num_generations_per_prompt": 8
+  },
+  "output": { "name": "qwen3-0.6b-ascii-tree" }
+}
+```
+
+| `finetuning_type` | Trains | Produces |
+| --- | --- | --- |
+| `all_weights` (default) | Every weight | A model entity, which needs its own deployment |
+| `lora` | An adapter | An HF PEFT adapter entity, registered against the base model |
+| `lora_merged` | — | Rejected. GRPO does not merge adapters at export. |
+
+<Note>
+You do not set the output type. It is inferred from `finetuning_type`, so `output` carries only `name` either way.
+</Note>
+
+DPO is full-weight only. LoRA applies to GRPO.
+
+### LoRA fields
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `rank` | `16` | LoRA rank. |
+| `alpha` | `32` | Scaling factor. The effective learning-rate multiplier on the adapter is `alpha / rank`, so changing `rank` alone also changes the effective learning rate. |
+| `dropout` | `0.0` | Dropout applied after the adapter. |
+| `target_modules` | `null` | Module names to adapt. |
+| `exclude_modules` | `null` | Module name patterns to skip. |
+| `use_triton` | `true` | Triton LoRA kernels. Automatically disabled when `tensor_parallel_size` is above 1 — you do not need to set it. |
+
+<Warning>
+Module selection is either/or. Leaving both `target_modules` and `exclude_modules` unset adapts **every** linear layer. Setting either list turns that behavior off, so `exclude_modules` on its own does not mean "all linear layers except these." Use `target_modules` when you want a specific set, and neither field when you want all of them.
+</Warning>
+
+Omitting the `lora` block while setting `finetuning_type: "lora"` is fine — defaults are filled in. Supplying a `lora` block alongside `all_weights` is rejected.
+
+### Using the adapter
+
+The adapter hot-reloads onto a **READY** deployment of the base model that has `lora_enabled: true`, so there is no new deployment to create before evaluating it. Route inference through the provider gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`); the model-entity path always resolves to the base model.
+
+A full-weight GRPO job instead registers a new model entity, which does need its own deployment.
+
+## Key hyperparameters
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `num_generations_per_prompt` | `8` | Group size. The spread of rewards within a group is the entire learning signal. |
+| `num_prompts_per_step` | Derived | From `batch_size / num_generations_per_prompt`. Their product must be a multiple of `batch_size`. |
+| `temperature` | `1.0` | Must be greater than 0. Greedy sampling makes every response in a group identical and the run a no-op. |
+| `max_rollout_turns` | `1` | Multi-turn rollouts. Most single-step environments use `1`. |
+| `overlong_filtering` | `false` | Zero the loss contribution of responses truncated at the generation cap. |
+| `ref_policy_kl_penalty` | `0.0` | KL coefficient against the reference policy. |
+| `val_at_start` | `false` | Run validation before the first step, so baseline and result come from one job. |
+
+Advanced clipping and advantage-estimation settings (`ratio_clip_c`, `advantage_clip_low` / `advantage_clip_high`, `normalize_rewards`, `use_leave_one_out_baseline`, `top_k`) are documented in [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+
+## Read the results
+
+Monitor GRPO on **reward**, not loss. The GRPO surrogate loss oscillates near zero and carries no signal about run quality.
+
+| Metric | Read it for |
+| --- | --- |
+| `train_reward`, `val_reward` | The curves that matter |
+| `train_truncation_rate` | Rising truncation is a common reason reward stops improving |
+| `train_baseline_reward/pct_mixed` | Share of prompt groups whose responses disagreed. Falling toward zero means there is no gradient left to learn from |
+| `train_approx_entropy` | Entropy collapse — responses degenerate while reward still looks acceptable |
+| `train_token_mult_prob_error` | Drift between the sampling policy and the training policy |
+
+## Troubleshooting
+
+| Message | Fix |
+| --- | --- |
+| `Missing nemo-environment.yaml at environment root` | Place the manifest at the FileSet root, not in a subdirectory |
+| `config_paths reference files that are not in the package` | Re-upload preserving relative paths |
+| `Prompt JSONL must not live in the environment package` | Move rows to the dataset FileSet |
+| `native-v1 config_paths must be under (...)` | Move the config under a Gym server directory, or switch format |
+| `adapter-wheels-v1 config_paths should live under configs/` | Move the config under `configs/` |
+| `must carry a non-empty wheels/ directory` | Vendor the dependency closure |
+| `adapter.agent ... is not built into the training image` | Use a supported harness, or switch format |
+| `ServerRefNotFoundError: ... Available responses_api_models: (none)` | The agent config references a model server nothing defines — include `configs/policy_model.yaml` |
+| `your requirements are unsatisfiable` | `wheels/` vendors two versions of one project; clear it and rebuild the closure |

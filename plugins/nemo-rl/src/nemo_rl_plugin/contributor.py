@@ -22,12 +22,18 @@ from nemo_rl_plugin.jobs.jobs import RlJob
 
 
 class RlContributor(BaseContributor):
-    """Registers NeMo-RL routes/CLI under the customization router (DPO, Kubernetes only)."""
+    """Registers NeMo-RL routes/CLI under the customization router (DPO + GRPO, Kubernetes only)."""
 
     name: ClassVar[str] = "rl"
     job_cls: ClassVar[type] = RlJob
-    cli_help: ClassVar[str] = "NeMo-RL preference training (DPO) on a Ray cluster. Remote Kubernetes only."
-    jobs_router_description: ClassVar[str] = "NeMo-RL DPO training jobs (Ray on Kubernetes)."
+    # One command for both algorithms: `training.type` in the job JSON selects between them,
+    # so there is no `grpo` subcommand to find. Say both names here, since this help text is
+    # where someone looking for GRPO first checks whether the platform supports it.
+    cli_help: ClassVar[str] = (
+        "NeMo-RL training on a Ray cluster: DPO (preference pairs) or GRPO (NeMo Gym "
+        "environment). Set training.type in the job JSON. Remote Kubernetes only."
+    )
+    jobs_router_description: ClassVar[str] = "NeMo-RL DPO and GRPO training jobs (Ray on Kubernetes)."
 
     generate_job_name = staticmethod(generate_rl_id)
 
