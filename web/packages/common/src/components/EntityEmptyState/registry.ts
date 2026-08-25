@@ -37,16 +37,19 @@ export interface EmptyStateDescriptor {
 }
 
 /**
- * Keys of entities that have a standardized empty state. Re-exported from the
- * canonical icon map so the two registries cannot fall out of sync.
+ * Keys of entities that have a standardized empty state — the subset of
+ * {@link EntityKey} that has migrated onto {@link EntityEmptyState}. Narrowing
+ * from `EntityKey` is what guarantees every empty state resolves an icon.
  */
+export type EmptyStateEntityKey = Exclude<EntityKey, 'datasets'>;
+
 export type { EntityKey };
 
 /**
  * Canonical empty-state registry. Grows one entry at a time as entities migrate
  * onto {@link EntityEmptyState}.
  */
-export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
+export const ENTITY_EMPTY_STATES: Record<EmptyStateEntityKey, EmptyStateDescriptor> = {
   guardrails: {
     heading: 'No guardrail configs yet',
     subheading:

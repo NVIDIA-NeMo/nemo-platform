@@ -39,15 +39,15 @@ import {
   getVirtualModelsSideNavItems,
 } from '@studio/routes/groups';
 import { getAgentsListRoute, getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
-import { Database } from 'lucide-react';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router';
 
 // The parent rows stand for the entity their landing page lists, so they take
-// that entity's canonical glyph. `Datasets` has no entity of its own — it only
-// groups the data jobs — so it keeps a local glyph.
+// that entity's canonical glyph. `Datasets` only groups the data jobs today,
+// but it is becoming an entity in its own right, so it is treated as one here.
 const AgentsIcon = ENTITY_ICONS.agents;
 const ModelsIcon = ENTITY_ICONS.baseModels;
+const DatasetsIcon = ENTITY_ICONS.datasets;
 
 /** Whether the path is on, or nested under, one of these items. */
 const isUnder = (pathname: string, items: { href?: string }[]) =>
@@ -156,7 +156,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ? [
             {
               id: 'datasets-group',
-              slotIcon: <Database className={iconColorClass} />,
+              slotIcon: <DatasetsIcon className={iconColorClass} />,
               slotLabel: 'Datasets',
               subItems: datasetSubItems,
             },

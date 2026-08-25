@@ -3,7 +3,7 @@
 
 import {
   ENTITY_EMPTY_STATES,
-  type EntityKey,
+  type EmptyStateEntityKey,
 } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -22,7 +22,7 @@ import { useNavigate } from 'react-router';
 export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 
 export interface EntityEmptyStateBaseProps {
-  entity: EntityKey;
+  entity: EmptyStateEntityKey;
   className?: string;
 }
 

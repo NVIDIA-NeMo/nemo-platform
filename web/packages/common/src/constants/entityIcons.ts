@@ -5,6 +5,7 @@ import {
   Bot,
   Boxes,
   ChartBar,
+  Database,
   DatabaseCheck,
   FileStack,
   FlaskConical,
@@ -20,7 +21,6 @@ import {
   Radar,
   Rocket,
   ShieldCheck,
-  ShieldKeyhole,
   UserPen,
   UsersRound,
   Waypoints,
@@ -36,11 +36,15 @@ import {
  * drifted apart in the first place (ASTD-447).
  *
  * Choosing a glyph for a new entity:
- * - Reuse the parent's glyph family for a sub-entity (`guardrails` /
- *   `guardrailChecks`, `telemetryTraces` / `telemetrySpans`) so the
- *   relationship reads visually.
- * - Never reuse a glyph already spoken for by an unrelated entity. Two entities
- *   on one glyph means neither one owns it.
+ * - Reuse the parent's glyph for a sub-entity the user reads as part of the
+ *   parent (`guardrails` / `guardrailChecks`), or the parent's family where the
+ *   two are genuinely distinct (`telemetryTraces` / `telemetrySpans`).
+ * - Never reuse a glyph already spoken for by an *unrelated* entity. Two
+ *   unrelated entities on one glyph means neither one owns it.
+ *
+ * Not every entity here has an empty state yet — this map is the superset, and
+ * `ENTITY_EMPTY_STATES` covers whichever subset has migrated onto
+ * {@link EntityEmptyState}.
  */
 export const ENTITY_ICONS = {
   // Agents
@@ -55,14 +59,16 @@ export const ENTITY_ICONS = {
   inferenceProviders: Radar,
 
   // Data
+  datasets: Database,
   filesets: FileStack,
   filesetFiles: FolderOpen,
   anonymizerJobs: UserPen,
   dataDesignerJobs: Form,
   safeSynthesizerJobs: DatabaseCheck,
 
-  // Governance. Keyhole locks a config down; the check verifies one.
-  guardrails: ShieldKeyhole,
+  // Governance. A config and its tests are one thing to the user, so the tests
+  // take the config's glyph rather than a second shield.
+  guardrails: ShieldCheck,
   guardrailChecks: ShieldCheck,
 
   // Evaluation
@@ -85,5 +91,5 @@ export const ENTITY_ICONS = {
   members: UsersRound,
 } as const satisfies Record<string, LucideIcon>;
 
-/** Every entity with a canonical icon. Also keys the empty-state registry. */
+/** Every entity with a canonical icon. A superset of the empty-state registry. */
 export type EntityKey = keyof typeof ENTITY_ICONS;
