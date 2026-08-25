@@ -286,7 +286,7 @@ class TestFormatLicenses:
         # langchain-oci, dropped with the move to NAT 1.9) has no row to check.
         expected_licenses = {
             "certifi": "MPL-2.0",
-            "greenlet": "MIT AND Python-2.0",
+            "greenlet": "MIT AND PSF-2.0",
             "pathspec": "MPL-2.0",
             "psycopg2-binary": "LGPL-3.0-or-later WITH openvpn-openssl-exception",
             "regex": "Apache-2.0 AND CNRI-Python",
