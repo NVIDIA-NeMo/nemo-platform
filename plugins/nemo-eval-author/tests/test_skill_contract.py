@@ -233,6 +233,21 @@ def test_inspect_flow_is_only_a_cli_driven_skill() -> None:
         assert command in body
 
 
+def test_inspect_flow_resolves_the_cli_without_changing_the_environment() -> None:
+    """The trace reader must handle installed and source-checkout CLI invocations."""
+    _, body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
+
+    candidates = (
+        "caller-supplied invocation",
+        "command -v nemo",
+        ".venv/bin/nemo",
+        "uv run --no-sync nemo",
+    )
+    positions = [body.index(candidate) for candidate in candidates]
+    assert positions == sorted(positions), "CLI candidates must appear in priority order"
+    assert "Use the resolved invocation for every command" in body
+
+
 @pytest.mark.parametrize("skill_dir", _SUB_FLOW_DIRS, ids=lambda path: path.name)
 def test_each_sub_flow_defers_to_the_core(skill_dir: Path) -> None:
     """A sub-flow points at the core rather than restating the standard itself.

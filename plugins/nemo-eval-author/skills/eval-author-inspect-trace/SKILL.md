@@ -21,8 +21,8 @@ not-for:
   - eval-author-discover (use to establish whether a repository's Harbor suite is runnable)
   - nemo-experimentalist (use for an optimization experiment across many trials)
 compatibility: >-
-  An installed nemo CLI, an explicit workspace, and read access to Intake on a
-  configured local or remote NeMo Platform instance.
+  A working nemo CLI invocation, an explicit workspace, and read access to
+  Intake on a configured local or remote NeMo Platform instance.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -36,14 +36,35 @@ report. Read `eval-author` for the shared standard and boundaries.
 
 ## Requirements
 
-Use the installed `nemo` CLI with an explicit workspace and read access to
+Use a working `nemo` CLI invocation with an explicit workspace and read access to
 Intake. The configured NeMo Platform instance can be local or remote. Use the
 active context, a caller-supplied context, or `NMP_BASE_URL` and
 `NMP_ACCESS_TOKEN`.
 
+### Resolve the CLI invocation
+
+Resolve the CLI invocation once before the first Intake read. If the caller
+provides an invocation, verify that caller-supplied invocation first. For a
+caller-supplied `uv run nemo` invocation, add `--no-sync`.
+
+Otherwise, probe these candidates in order with the `--version` flag:
+
+1. Use `nemo` when `command -v nemo` succeeds.
+2. Use `.venv/bin/nemo` when that executable exists in the source checkout.
+3. Use `uv run --no-sync nemo` when `uv` and the prepared environment provide
+   the CLI.
+
+Continue after a launcher error while another candidate remains. If no
+candidate works, quote the launcher errors and stop.
+
+Use the resolved invocation for every command. The examples use `nemo` as the
+logical prefix; replace only that prefix. In the report, record each expanded
+command instead of the logical example.
+
 Don't install the CLI, authenticate, change contexts, start services, or repair
-the platform. Don't print, copy, or save credentials. The first Intake read
-validates access. If it exits nonzero, quote the CLI error and stop.
+the platform. Don't run `uv sync`, use `uvx`, or activate an environment. Don't
+print, copy, or save credentials. The first Intake read validates access. If it
+exits nonzero, quote the CLI error and stop.
 
 ## Select the trace
 
