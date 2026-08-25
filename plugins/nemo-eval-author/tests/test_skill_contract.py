@@ -178,6 +178,32 @@ def _digest(path: Path) -> str:
         return f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
 
 
+def _audit_payload(path: Path) -> dict:
+    block = re.search(
+        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
+        r"<!-- END:nemo-eval-author-audit:v1 -->",
+        path.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None
+    return yaml.safe_load(block.group("body"))
+
+
+def _template_payload() -> dict:
+    block = re.search(
+        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
+        r"<!-- END:nemo-eval-author-audit:v1 -->",
+        _AUDIT_TEMPLATE.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None
+    return yaml.safe_load(block.group("body"))
+
+
+def _write_audit_items(path: Path, items: list[dict]) -> None:
+    path.write_text(yaml.safe_dump({"items": items}), encoding="utf-8")
+
+
 def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) -> Path:
     ethos = tmp_path / "ETHOS.md"
     ethos.write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n", encoding="utf-8")
@@ -695,34 +721,174 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
         "\n# Ethos: support-agent\n",
         encoding="utf-8",
     )
-    block = re.search(
-        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
-        r"<!-- END:nemo-eval-author-audit:v1 -->",
-        _AUDIT_TEMPLATE.read_text(encoding="utf-8"),
-        re.DOTALL,
-    )
-    assert block is not None
     items = tmp_path / "items.yaml"
-    items.write_text(yaml.safe_dump({"items": yaml.safe_load(block.group("body"))["items"]}), encoding="utf-8")
+    _write_audit_items(items, _template_payload()["items"])
     out = tmp_path / ".eval-author" / "audit.md"
 
     result = _run_script(_AUDIT_GENERATE, "--ethos", str(ethos), "--items", str(items), "--out", str(out))
     assert result.returncode == 0, result.stderr
     code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(out))
-    generated = re.search(
-        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
-        r"<!-- END:nemo-eval-author-audit:v1 -->",
-        out.read_text(encoding="utf-8"),
-        re.DOTALL,
-    )
-    assert generated is not None
-    payload = yaml.safe_load(generated.group("body"))
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(out)
 
     assert code == 0, stderr or report
+    assert summary["mode"] == "reconcile"
+    assert summary["action"] == "create"
+    assert summary["written"] is True
     assert report["agent"] == "support-agent"
     assert payload["sources"] == [{"name": "ethos", "path": "../ETHOS.md", "sha256": _digest(ethos)}]
     assert "source_ethos" not in payload
     assert "source_ethos_sha256" not in payload
+
+
+def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: (
+            "Manual reviewer notes must stay outside the block.\n\n"
+            + text.replace(
+                "Looks up customer profile, plan, account status, and contact details.",
+                "Hand reviewed lookup tool description.",
+                1,
+            )
+            + "\nManual footer must stay too.\n"
+        ),
+    )
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items_payload = _template_payload()["items"]
+    items_payload.append(
+        {
+            "kind": "tool",
+            "name": "ticket.create",
+            "description": "Creates a support ticket for issues requiring human follow-up.",
+            "expected_use": "Used when self-service resolution cannot proceed.",
+            "expected_failure_behavior": "If ticket creation fails, the agent explains the failure and avoids duplicates.",
+            "evidence_required": [
+                {
+                    "kind": "tool_call",
+                    "tool": "ticket.create",
+                    "description": "Trace shows a ticket.create call for an escalation.",
+                }
+            ],
+        }
+    )
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+    text = audit.read_text(encoding="utf-8")
+    items_by_name = {item["name"]: item for item in payload["items"]}
+
+    assert summary["action"] == "reconcile"
+    assert summary["written"] is True
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["changed_items"] == ["customer.lookup"]
+    assert summary["possibly_stale_items"] == []
+    assert payload["sources"][0]["sha256"] == _digest(tmp_path / "ETHOS.md")
+    assert items_by_name["customer.lookup"]["description"] == "Hand reviewed lookup tool description.\n"
+    assert items_by_name["ticket.create"]["kind"] == "tool"
+    assert "Manual reviewer notes must stay outside the block." in text
+    assert "Manual footer must stay too." in text
+
+
+def test_audit_generate_suggests_without_writing(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    items_payload.append(
+        {
+            "kind": "tool",
+            "name": "ticket.create",
+            "description": "Creates a support ticket for issues requiring human follow-up.",
+            "expected_use": "Used when self-service resolution cannot proceed.",
+            "expected_failure_behavior": "If ticket creation fails, the agent explains the failure and avoids duplicates.",
+            "evidence_required": [
+                {
+                    "kind": "tool_call",
+                    "tool": "ticket.create",
+                    "description": "Trace shows a ticket.create call for an escalation.",
+                }
+            ],
+        }
+    )
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+        "--mode",
+        "suggest",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    assert audit.read_bytes() == before
+    assert summary["action"] == "suggest_reconcile"
+    assert summary["written"] is False
+    assert summary["added_items"] == ["ticket.create"]
+
+
+def test_audit_generate_replace_mode_overwrites_existing_audit(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: (
+            "Manual reviewer notes should be discarded by replace mode.\n\n"
+            + text.replace(
+                "Looks up customer profile, plan, account status, and contact details.",
+                "Hand reviewed lookup tool description.",
+                1,
+            )
+        ),
+    )
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+        "--mode",
+        "replace",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+    text = audit.read_text(encoding="utf-8")
+    items_by_name = {item["name"]: item for item in payload["items"]}
+
+    assert summary["action"] == "replace"
+    assert summary["written"] is True
+    assert "Manual reviewer notes should be discarded by replace mode." not in text
+    assert items_by_name["customer.lookup"]["description"].startswith("Looks up customer profile")
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:

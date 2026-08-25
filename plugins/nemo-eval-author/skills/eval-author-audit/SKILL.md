@@ -60,7 +60,7 @@ Audit-spec mechanics live under `scripts/audit_spec/`:
 
 | Script | Use it to |
 |---|---|
-| `scripts/audit_spec/generate.py` | Render `.eval-author/audit.md` from `ETHOS.md` and a reviewed items file |
+| `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
@@ -73,19 +73,24 @@ tasks: canonical tools, high-level capabilities, and material failure cases. Kee
 the list finite. Do not create separate items for prompt paraphrases, fixture
 variants, or ordinary happy-path permutations.
 
-Save the reviewed item model as `.eval-author/audit-items.yaml`. The items file
-may be either a mapping with an `items` key or the item list itself. It should
-use the same item shape shown in `templates/audit.md` and enforced by
+Save the reviewed item proposals as `.eval-author/audit-items.yaml`. The items
+file may be either a mapping with an `items` key or the item list itself. It
+should use the same item shape shown in `templates/audit.md` and enforced by
 `schemas/audit.schema.json`.
+
+For an initial audit, this file should contain the full proposed denominator.
+For an update, it may contain only the proposed additions or edits. Existing
+reviewed `audit.md` items remain the source of truth in reconcile mode.
 
 Capabilities that do not need tools, such as policy refusals or out-of-scope
 handling, should use `required_tools: []`. Failure cases attach to capability
 names through `applies_to`; tool-level failure expectations stay on the tool item
 as `expected_failure_behavior`.
 
-## Step 2: Generate Audit.md
+## Step 2: Generate Or Reconcile Audit.md
 
-Render `.eval-author/audit.md` from `ETHOS.md` and the reviewed item model:
+Create or update `.eval-author/audit.md` from `ETHOS.md` and the reviewed item
+proposals:
 
 ```bash
 python <skill_dir>/scripts/audit_spec/generate.py \
@@ -93,6 +98,45 @@ python <skill_dir>/scripts/audit_spec/generate.py \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md
 ```
+
+The default mode is `reconcile`. If `.eval-author/audit.md` does not exist, it
+creates the file. If it already exists, the generator parses the existing marked
+block, updates source metadata such as the Ethos digest, preserves existing item
+bodies by stable `name`, appends new proposed items, and reports proposed edits
+or possibly stale items without silently rewriting them. Hand-authored prose
+outside the marked block is preserved.
+
+Use the explicit modes when the default is not what the user wants:
+
+```bash
+python <skill_dir>/scripts/audit_spec/generate.py \
+  --ethos ETHOS.md \
+  --items .eval-author/audit-items.yaml \
+  --out .eval-author/audit.md \
+  --mode suggest
+
+python <skill_dir>/scripts/audit_spec/generate.py \
+  --ethos ETHOS.md \
+  --items .eval-author/audit-items.yaml \
+  --out .eval-author/audit.md \
+  --mode reconcile
+
+python <skill_dir>/scripts/audit_spec/generate.py \
+  --ethos ETHOS.md \
+  --items .eval-author/audit-items.yaml \
+  --out .eval-author/audit.md \
+  --mode replace
+```
+
+`suggest` performs the same comparison as `reconcile` but writes nothing.
+`replace` rewrites the whole output from the item proposal file and should be
+used only when the user wants to discard the existing generated audit file.
+
+The generator prints a JSON summary containing `written`, `added_items`,
+`changed_items`, and `possibly_stale_items`. Treat `changed_items` as items where
+the proposal differs from the reviewed audit item; reconcile mode preserves the
+reviewed item and leaves the change for the user to accept manually or through a
+future editor.
 
 The generator adds an optional `sources` entry for Ethos with `name: ethos`, a
 path relative to `audit.md`, and a real `sha256` digest. It uses the frontmatter

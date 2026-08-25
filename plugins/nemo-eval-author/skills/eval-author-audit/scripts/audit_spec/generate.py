@@ -2,22 +2,28 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Render ``audit.md`` from ETHOS.md metadata and reviewed audit items."""
+"""Render or update ``audit.md`` from ETHOS.md metadata and reviewed audit items."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
+import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _markdown import BEGIN_MARKER, END_MARKER  # noqa: E402
-from _schema import AUDIT_SCHEMA, AuditEnvironmentError, AuditSpecError, validate_audit_spec  # noqa: E402
+from _markdown import BEGIN_MARKER, END_MARKER, AuditMarkdownError, extract_schema_block  # noqa: E402
+from _schema import AUDIT_SCHEMA, AuditEnvironmentError, AuditSpecError, item_counts, validate_audit_spec  # noqa: E402
+
+_MARKED_BLOCK_RE = re.compile(
+    rf"(?ms)^(?P<begin>[ \t]*{re.escape(BEGIN_MARKER)}[ \t]*\n).*?"
+    rf"^(?P<end>[ \t]*{re.escape(END_MARKER)}[ \t]*$)"
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,46 +32,47 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--items", type=Path, required=True, help="YAML file containing audit items")
     parser.add_argument("--out", type=Path, required=True, help="audit.md file to write")
     parser.add_argument("--agent", help="agent name; defaults to ETHOS.md front matter name or file stem")
-    parser.add_argument("--status", choices=("draft", "approved"), default="draft")
-    parser.add_argument("--force", action="store_true", help="overwrite an existing output file")
+    parser.add_argument("--status", choices=("draft", "approved"), help="audit review status; defaults to draft")
+    parser.add_argument(
+        "--mode",
+        choices=("reconcile", "replace", "suggest"),
+        default="reconcile",
+        help=(
+            "reconcile existing audit.md by stable item name, replace it completely, or suggest changes without writing"
+        ),
+    )
     args = parser.parse_args(argv)
 
-    if args.out.exists() and not args.force:
-        print(f"{args.out} already exists; pass --force to overwrite", file=sys.stderr)
-        return 1
     try:
         yaml = _load_yaml()
-        ethos_bytes = args.ethos.read_bytes()
-        ethos_text = ethos_bytes.decode("utf-8")
-        items = _load_items_file(args.items, yaml)
-        agent = args.agent or _agent_name(ethos_text, args.ethos, yaml)
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        spec = validate_audit_spec(
-            {
-                "schema": AUDIT_SCHEMA,
-                "agent": agent,
-                "sources": [
-                    {
-                        "name": "ethos",
-                        "path": _source_path(args.ethos, args.out),
-                        "sha256": f"sha256:{hashlib.sha256(ethos_bytes).hexdigest()}",
-                    }
-                ],
-                "status": args.status,
-                "items": items,
-            },
-            audit_path=args.out,
-        )
+        candidate = _candidate_spec(args, yaml)
+        existing = _load_existing_audit(args.out, yaml) if args.out.exists() and args.mode != "replace" else None
+        spec, summary = _prepare_output(candidate, existing, args)
+
+        if args.mode != "suggest":
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+        spec = validate_audit_spec(spec, audit_path=args.out if args.mode != "suggest" or args.out.exists() else None)
     except AuditEnvironmentError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    except (OSError, UnicodeError, AuditSpecError) as exc:
+    except (OSError, UnicodeError, AuditMarkdownError, AuditSpecError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    rendered = _render(spec, yaml)
-    args.out.write_text(rendered, encoding="utf-8")
-    print(args.out)
+    summary.update(
+        {
+            "valid": True,
+            "output": str(args.out),
+            "agent": spec["agent"],
+            "status": spec["status"],
+            "item_counts": item_counts(spec),
+        }
+    )
+    if args.mode != "suggest":
+        rendered = _render_reconciled(args.out, spec, yaml) if existing is not None else _render_full(spec, yaml)
+        args.out.write_text(rendered, encoding="utf-8")
+        summary["written"] = True
+    print(json.dumps(summary, sort_keys=True))
     return 0
 
 
@@ -89,6 +96,132 @@ def _load_items_file(path: Path, yaml: Any) -> list[Any]:
     return payload
 
 
+def _load_existing_audit(path: Path, yaml: Any) -> dict[str, Any]:
+    try:
+        payload = yaml.safe_load(extract_schema_block(path))
+    except yaml.YAMLError as exc:
+        raise AuditSpecError(f"existing audit YAML does not parse: {exc}") from exc
+    return validate_audit_spec(payload)
+
+
+def _candidate_spec(args: argparse.Namespace, yaml: Any) -> dict[str, Any]:
+    ethos_bytes = args.ethos.read_bytes()
+    ethos_text = ethos_bytes.decode("utf-8")
+    agent = args.agent or _agent_name(ethos_text, args.ethos, yaml)
+    return {
+        "schema": AUDIT_SCHEMA,
+        "agent": agent,
+        "sources": [
+            {
+                "name": "ethos",
+                "path": _source_path(args.ethos, args.out),
+                "sha256": f"sha256:{hashlib.sha256(ethos_bytes).hexdigest()}",
+            }
+        ],
+        "status": args.status or "draft",
+        "items": _load_items_file(args.items, yaml),
+    }
+
+
+def _prepare_output(
+    candidate: dict[str, Any],
+    existing: dict[str, Any] | None,
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    summary: dict[str, Any] = {
+        "mode": args.mode,
+        "written": False,
+        "added_items": [],
+        "unchanged_items": [],
+        "changed_items": [],
+        "possibly_stale_items": [],
+    }
+    if existing is None:
+        summary["action"] = (
+            "suggest_create" if args.mode == "suggest" else "replace" if args.mode == "replace" else "create"
+        )
+        summary["added_items"] = _item_names(candidate["items"])
+        return candidate, summary
+
+    reconciled, reconciliation = _reconcile(candidate, existing, explicit_status=args.status)
+    summary["action"] = "suggest_reconcile" if args.mode == "suggest" else "reconcile"
+    summary.update(reconciliation)
+    return reconciled, summary
+
+
+def _reconcile(
+    candidate: dict[str, Any],
+    existing: dict[str, Any],
+    *,
+    explicit_status: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    existing_items_by_name = _items_by_name(existing["items"])
+    candidate_items_by_name = _items_by_name(candidate["items"])
+    items: list[dict[str, Any]] = []
+    unchanged_items: list[str] = []
+    changed_items: list[str] = []
+    possibly_stale_items: list[str] = []
+    added_items: list[str] = []
+
+    for item in existing["items"]:
+        name = item["name"]
+        candidate_item = candidate_items_by_name.get(name)
+        if candidate_item is None:
+            possibly_stale_items.append(name)
+        elif candidate_item == item:
+            unchanged_items.append(name)
+        else:
+            changed_items.append(name)
+        items.append(item)
+
+    for item in candidate["items"]:
+        name = item["name"]
+        if name not in existing_items_by_name:
+            added_items.append(name)
+            items.append(item)
+
+    return (
+        {
+            "schema": candidate["schema"],
+            "agent": candidate["agent"],
+            "sources": _reconcile_sources(candidate.get("sources", []), existing.get("sources", [])),
+            "status": explicit_status or existing["status"],
+            "items": items,
+        },
+        {
+            "added_items": added_items,
+            "unchanged_items": unchanged_items,
+            "changed_items": changed_items,
+            "possibly_stale_items": possibly_stale_items,
+        },
+    )
+
+
+def _reconcile_sources(
+    candidate_sources: list[dict[str, Any]], existing_sources: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    candidate_by_name = {source["name"]: source for source in candidate_sources}
+    seen: set[str] = set()
+    sources: list[dict[str, Any]] = []
+    for source in existing_sources:
+        name = source["name"]
+        if name in candidate_by_name:
+            sources.append({**source, **candidate_by_name[name]})
+        else:
+            sources.append(source)
+        seen.add(name)
+    sources.extend(source for source in candidate_sources if source["name"] not in seen)
+    return sources
+
+
+def _items_by_name(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {item["name"]: item for item in items}
+
+
+def _item_names(items: list[dict[str, Any]]) -> list[str]:
+    return [item["name"] for item in items]
+
+
 def _agent_name(ethos_text: str, ethos_path: Path, yaml: Any) -> str:
     if ethos_text.startswith("---\n"):
         parts = ethos_text.split("---\n", 2)
@@ -108,14 +241,13 @@ def _source_path(source: Path, out: Path) -> str:
     return Path(os.path.relpath(source.resolve(), start=out.parent.resolve())).as_posix()
 
 
-def _render(spec: dict[str, Any], yaml: Any) -> str:
-    created = datetime.now(timezone.utc).isoformat(timespec="seconds")
+def _render_full(spec: dict[str, Any], yaml: Any) -> str:
     yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=False)
     source_path = spec["sources"][0]["path"]
     return (
         f"# Audit: {spec['agent']}\n\n"
-        f"Generated from `{source_path}` at {created}.\n\n"
-        "This file defines the finite coverage denominator generated from `ETHOS.md`.\n"
+        f"Generated from `{source_path}`.\n\n"
+        "This file defines the finite coverage denominator for audit measurement.\n"
         "Generated and hand-edited content is allowed outside the marked block; scripts\n"
         "validate only the block between the markers.\n\n"
         f"{BEGIN_MARKER}\n"
@@ -124,6 +256,16 @@ def _render(spec: dict[str, Any], yaml: Any) -> str:
         "```\n"
         f"{END_MARKER}\n"
     )
+
+
+def _render_reconciled(path: Path, spec: dict[str, Any], yaml: Any) -> str:
+    text = path.read_text(encoding="utf-8")
+    matches = list(_MARKED_BLOCK_RE.finditer(text))
+    if len(matches) != 1:
+        raise AuditMarkdownError(f"{path} must contain exactly one marked audit block")
+    match = matches[0]
+    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=False)
+    return text[: match.end("begin")] + "```yaml\n" + yaml_body + "```\n" + text[match.start("end") :]
 
 
 if __name__ == "__main__":
