@@ -85,7 +85,7 @@ class ColumnMeasurements:
     errors: list[Evidence]
 
 
-class ColumnFold:
+class RowFold:
     """The per-column accumulators for one partition, fed batch by batch.
 
     Each column is isolated. A value no detector anticipated -- a chat message whose ``role`` is a
@@ -169,10 +169,10 @@ class ColumnFold:
 def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
     """Measure every top-level column over rows already in hand.
 
-    The whole partition as a single batch. :class:`ColumnFold` is the same measurement taken as the
+    The whole partition as a single batch. :class:`RowFold` is the same measurement taken as the
     rows arrive; this is the shape for a caller that has them all anyway.
     """
-    fold = ColumnFold(features)
+    fold = RowFold(features)
     fold.update(rows)
     return fold.finalize()
 
@@ -561,10 +561,10 @@ class DeferredAccumulator(ColumnAccumulator):
         return None
 
 
-class InferredColumnFold:
+class InferredRowFold:
     """A partition's columns, discovered as they appear and typed once they have all gone by.
 
-    The counterpart to :class:`ColumnFold` for data that declares no schema. Columns are created on
+    The counterpart to :class:`RowFold` for data that declares no schema. Columns are created on
     first sight and back-filled with the rows they were absent for, which is what makes the result
     identical to inferring the schema first and measuring second -- a row without the key genuinely
     holds a null for it.
