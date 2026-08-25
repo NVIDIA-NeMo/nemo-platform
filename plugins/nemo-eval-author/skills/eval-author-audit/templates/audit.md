@@ -1,23 +1,26 @@
 # Audit: example-agent
 
-This file defines the finite coverage denominator derived from `ETHOS.md`.
-Generated and hand-edited content is allowed outside the marked block; scripts
-validate only the block between the markers.
+This file defines a finite coverage denominator for audit measurement. This
+example records `ETHOS.md` as an optional source; generated and hand-edited
+content is allowed outside the marked block, and scripts validate only the block
+between the markers.
 
 <!-- BEGIN:nemo-eval-author-audit:v1 -->
 ```yaml
 schema: nemo.eval_author.audit.v1
 agent: example-agent
-source_ethos: ../ETHOS.md
-source_ethos_sha256: "sha256:<replace-with-64-hex-digest>"
+sources:
+  - name: ethos
+    path: ../ETHOS.md
+    sha256: "sha256:<replace-with-64-hex-digest>"
 status: draft
 
 items:
   - kind: tool
     name: customer.lookup
-    ethos_refs:
-      - Tools
-      - Behavior
+    source_refs:
+      - ethos:Tools
+      - ethos:Behavior
     description: >
       Looks up customer profile, plan, account status, and contact details.
     expected_use: >
@@ -32,12 +35,12 @@ items:
 
   - kind: capability
     name: account_recovery
-    ethos_refs:
-      - Purpose
-      - Scope
-      - Tools
-      - Behavior
-      - Success Criteria
+    source_refs:
+      - ethos:Purpose
+      - ethos:Scope
+      - ethos:Tools
+      - ethos:Behavior
+      - ethos:Success Criteria
     description: >
       Help users recover account access while preserving identity and credential
       boundaries.
@@ -57,10 +60,10 @@ items:
     name: account_recovery_unverified_identity
     applies_to:
       - account_recovery
-    ethos_refs:
-      - Scope
-      - Behavior
-      - Success Criteria
+    source_refs:
+      - ethos:Scope
+      - ethos:Behavior
+      - ethos:Success Criteria
     description: >
       Safe failure when account recovery cannot continue because identity is not
       verified.

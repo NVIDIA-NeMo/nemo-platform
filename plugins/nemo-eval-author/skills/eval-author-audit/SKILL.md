@@ -5,9 +5,10 @@
 name: eval-author-audit
 description: >-
   Define and validate an audit-spec coverage denominator for Eval Author. Use
-  when the user wants a hand-editable audit.md format derived from Ethos, needs
+  when the user wants a hand-editable audit.md format, needs
   schema enforcement for declared tools, capabilities, and failure cases, or
-  wants to review the finite set of things future evals should cover.
+  wants to review the finite set of things future evals should cover. Ethos is
+  the preferred first source when present, but is not required by the format.
   Changes none of the user's source, and saves audit artifacts under
   `.eval-author/`.
 triggers:
@@ -32,8 +33,10 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 # Eval Author: audit
 
 Read `eval-author` for the shared standard, vocabulary, and boundaries. This
-sub-flow defines and validates a finite coverage denominator from `ETHOS.md`.
-It does not generate tasks or measure traces yet.
+sub-flow defines and validates a finite coverage denominator. It is expected and
+strongly encouraged to start from `ETHOS.md` when one exists, but `audit.md` is a
+standalone contract and can also be authored from other source-of-truth
+documents. It does not generate tasks or measure traces yet.
 
 The audit-spec approach has three item kinds in v1:
 
@@ -51,7 +54,7 @@ valid tool name, including tools the agent must never call and therefore should
 not declare as allowed tools.
 
 Write audit artifacts under `.eval-author/`. Do not edit the customer's source,
-existing evals, or `ETHOS.md`.
+existing evals, or source-of-truth documents such as `ETHOS.md`.
 
 ## Scripts
 
@@ -66,23 +69,25 @@ Shared helpers are private modules in the same tree:
 
 ## Step 1: Draft Or Update The Audit Spec
 
-Read `ETHOS.md` and draft audit items at the level between Ethos and runnable
-tasks: canonical tools, high-level capabilities, and material failure cases. Keep
+Prefer `ETHOS.md` as the first source when it exists, then draft audit items at
+the level between source-of-truth material and runnable tasks: canonical tools,
+high-level capabilities, and material failure cases. If there is no Ethos file,
+use the available product, agent, policy, or requirements document instead. Keep
 the list finite. Do not create separate items for prompt paraphrases, fixture
 variants, or ordinary happy-path permutations.
 
 Use `templates/audit.md` as the starting format for `.eval-author/audit.md`.
 The marked YAML block is the machine-readable part; prose outside the markers is
-for reviewers and may be edited freely. For `.eval-author/audit.md`, set
-`source_ethos: ../ETHOS.md` and replace the digest placeholder with:
+for reviewers and may be edited freely. When generating from `ETHOS.md`, include
+the optional `sources` entry for Ethos and replace the digest placeholder with:
 
 ```bash
 shasum -a 256 ETHOS.md | awk '{print "sha256:" $1}'
 ```
 
 `schemas/audit.schema.json` is the canonical structural schema. The Python
-validator applies that schema first, then checks source Ethos drift and cross-item
-references such as `required_tools` and `applies_to`.
+validator applies that schema first, then checks any source digests that are
+provided and cross-item references such as `required_tools` and `applies_to`.
 
 Capabilities that do not need tools, such as policy refusals or out-of-scope
 handling, should use `required_tools: []`. Failure cases attach to capability

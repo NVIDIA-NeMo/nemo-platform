@@ -20,7 +20,7 @@ from _markdown import extract_schema_block
 AUDIT_SCHEMA = "nemo.eval_author.audit.v1"
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "audit.schema.json"
 ITEM_KINDS = frozenset({"tool", "capability", "failure_case"})
-_ZERO_SOURCE_ETHOS_DIGEST = "sha256:" + ("0" * 64)
+_ZERO_SOURCE_DIGEST = "sha256:" + ("0" * 64)
 
 
 class AuditSpecError(ValueError):
@@ -42,7 +42,7 @@ def validate_audit_spec(payload: Any, *, audit_path: Path | None = None) -> dict
     _validate_json_schema(payload)
     if not isinstance(payload, dict):
         raise AuditSpecError("audit spec must be a mapping")
-    _validate_source_ethos(payload, audit_path=audit_path)
+    _validate_sources(payload, audit_path=audit_path)
     return _validate_semantics(payload)
 
 
@@ -73,9 +73,17 @@ def _validate_json_schema(payload: Any) -> None:
 def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     items = payload["items"]
+    source_names: set[str] = set()
     item_names: set[str] = set()
     tool_names: set[str] = set()
     capability_names: set[str] = set()
+
+    for index, source in enumerate(payload.get("sources", [])):
+        name = _check_name(f"audit.sources[{index}].name", source.get("name"), errors)
+        if name is not None:
+            if name in source_names:
+                errors.append(f"audit.sources[{index}].name {name!r} is duplicated")
+            source_names.add(name)
 
     for index, item in enumerate(items):
         path = f"audit.items[{index}]"
@@ -112,25 +120,33 @@ def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _validate_source_ethos(payload: dict[str, Any], *, audit_path: Path | None) -> None:
-    digest = payload["source_ethos_sha256"]
-    if digest == _ZERO_SOURCE_ETHOS_DIGEST:
-        raise AuditSpecError("audit.source_ethos_sha256 must not be the all-zero placeholder digest")
-    if audit_path is None:
-        return
+def _validate_sources(payload: dict[str, Any], *, audit_path: Path | None) -> None:
+    errors: list[str] = []
+    for index, source in enumerate(payload.get("sources", [])):
+        digest = source.get("sha256")
+        if digest is None:
+            continue
+        path = f"audit.sources[{index}].sha256"
+        if digest == _ZERO_SOURCE_DIGEST:
+            errors.append(f"{path} must not be the all-zero placeholder digest")
+            continue
+        if audit_path is None:
+            continue
 
-    source_ethos = Path(payload["source_ethos"])
-    if not source_ethos.is_absolute():
-        source_ethos = audit_path.parent / source_ethos
-    try:
-        with source_ethos.open("rb") as stream:
-            actual = f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
-    except OSError as exc:
-        raise AuditSpecError(f"audit.source_ethos could not be read at {source_ethos}: {exc}") from exc
-    if actual != digest:
-        raise AuditSpecError(
-            f"audit.source_ethos_sha256 does not match {source_ethos}: expected {digest}, got {actual}"
-        )
+        source_path = Path(source["path"])
+        if not source_path.is_absolute():
+            source_path = audit_path.parent / source_path
+        try:
+            with source_path.open("rb") as stream:
+                actual = f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
+        except OSError as exc:
+            errors.append(f"audit.sources[{index}].path could not be read at {source_path}: {exc}")
+            continue
+        if actual != digest:
+            errors.append(f"{path} does not match {source_path}: expected {digest}, got {actual}")
+
+    if errors:
+        raise AuditSpecError("\n".join(errors))
 
 
 def _check_name(path: str, value: Any, errors: list[str]) -> str | None:
