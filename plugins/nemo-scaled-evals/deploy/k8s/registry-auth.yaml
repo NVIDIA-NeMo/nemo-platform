@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Empty placeholder so the API and build worker can mount the volume before the
+# first refresh has run. The CronJob replaces the contents; nothing here is a
+# credential.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: scaled-evals-gar-registry-auth
+type: kubernetes.io/dockerconfigjson
+stringData:
+  .dockerconfigjson: '{"auths":{}}'
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scaled-evals-gar-registry-auth-refresh
+spec:
+  # GAR access tokens last an hour.
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: task-image-registry-auth
+        spec:
+          restartPolicy: Never
+          serviceAccountName: scaled-evals-gar-registry-auth
+          containers:
+            - name: refresh
+              image: python:3.13-slim-bookworm
+              command: ["python3", "/opt/refresh/registry-auth-refresh.py"]
+              env:
+                - name: REGISTRY_HOST
+                  value: us-central1-docker.pkg.dev
+                - name: REGISTRY_USERNAME
+                  value: oauth2accesstoken
+                - name: REGISTRY_AUTH_SECRET_NAME
+                  value: scaled-evals-gar-registry-auth
+                - name: REGISTRY_AUTH_SECRET_KEY
+                  value: .dockerconfigjson
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 65532
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - name: script
+                  mountPath: /opt/refresh
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: scaled-evals-registry-auth-script

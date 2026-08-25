@@ -1,0 +1,254 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Phase-1 compose stack: the NeMo Platform API serving the scaled-evals plugin,
+# plus the two scaled-evals workers and the substrate they need.
+#
+# Run it from this directory (`docker compose up -d`); the build context is the
+# repo root, resolved relative to this file.
+#
+# Trimmed against the standalone scaled-evals compose stack. Four of its
+# services are gone because the plugin now does the work itself:
+#
+#   schema-migrate  -> the plugin migrates on startup (see migrations.py)
+#   rustfs-init     -> the plugin creates its bucket on startup (s3.ensure_bucket)
+#   postgres certs  -> no TLS locally; the DSN only sets sslmode when a root
+#                      cert is configured, so plain postgres needs no cert step
+#   harbor/gym-runner -> evaluation runtimes are out of Phase 1 scope
+#
+# The Postgres here belongs to scaled-evals. The plugin runs inside the platform
+# process but keeps its own database: no platform config is read, and the DSN is
+# passed explicitly below.
+
+name: nemo-scaled-evals
+
+# Every scaled-evals process reads the same configuration, so the API and both
+# workers share one block.
+x-scaled-evals-env: &scaled-evals-env
+  # scaled-evals' own database, named explicitly. The API reads this rather than
+  # the platform's DATABASE_* variables, so the two never share a database even
+  # though they share a process.
+  SCALED_EVALS_DATABASE_URL: postgresql://${POSTGRES_USER:-scaled_evals}:${POSTGRES_PASSWORD:-scaled_evals}@postgres:5432/${POSTGRES_DB:-scaled_evals}
+
+  # Required, with no fallback on purpose. A committed default would mean any
+  # stack that forgets to override it encrypts BYOK credentials under a key
+  # published in this repository's history. Generate one with (stdlib only):
+  #   python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?generate a Fernet key and set it in .env}
+
+  S3_ENDPOINT: http://rustfs:9000
+  # `rustfs:9000` does not resolve on the host, and SigV4 signs the Host header,
+  # so presigned URLs handed to a client must name the published port instead.
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-scaledevals}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-scaledevals-dev-secret}
+  S3_BUCKET: ${S3_BUCKET:-scaled-evals}
+
+  BUILDKIT_ADDR: unix:///run/buildkit/buildkitd.sock
+  BUILD_WORKER_REQUIRED: "true"
+
+  IMAGE_REGISTRY: ${IMAGE_REGISTRY:-registry:5000}
+  REGISTRY_INSECURE: ${REGISTRY_INSECURE:-true}
+  TASK_IMAGE_VALIDATION_MODE: ${TASK_IMAGE_VALIDATION_MODE:-resolve}
+  TASK_IMAGE_ALLOWED_REGISTRIES: ${TASK_IMAGE_ALLOWED_REGISTRIES:-registry:5000}
+  TASK_IMAGE_REGISTRY_INSECURE: ${TASK_IMAGE_REGISTRY_INSECURE:-true}
+  # Empty means "build for the host arch". The setting defaults to linux/amd64
+  # for cluster parity, which on an arm64 laptop makes every sample build go
+  # through QEMU. Set it explicitly when the image must run on amd64 nodes.
+  IMAGE_BUILD_PLATFORM: ${IMAGE_BUILD_PLATFORM-}
+
+x-app-build: &app-build
+  context: ../../../..
+  dockerfile: plugins/nemo-scaled-evals/deploy/compose/Dockerfile
+  args:
+    # harbor resolves from PyPI but sandbox-k8s is not published there, so with
+    # the default empty value the image's harbor stage cannot resolve it and the
+    # build fails. Point this at an index carrying both to build from source.
+    # Empty means PyPI only, so a build opts in rather than inheriting somebody
+    # else's index.
+    HARBOR_EXTRA_INDEX_URL: ${HARBOR_EXTRA_INDEX_URL-}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scaled_evals}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scaled_evals}
+      POSTGRES_DB: ${POSTGRES_DB:-scaled_evals}
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rustfs-data-init:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:latest}
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown 10001:10001 /data && chmod 0750 /data"]
+    volumes:
+      - type: volume
+        source: rustfs-data
+        target: /data
+        volume:
+          nocopy: true
+
+  rustfs:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:latest}
+    depends_on:
+      rustfs-data-init:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-scaledevals}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-scaledevals-dev-secret}
+      RUSTFS_CORS_ALLOWED_ORIGINS: "*"
+    ports:
+      # Published because presigned upload/download URLs are used by clients on
+      # the host, not just by the API.
+      - "${RUSTFS_BIND_ADDRESS:-127.0.0.1}:9000:9000"
+    volumes:
+      - type: volume
+        source: rustfs-data
+        target: /data
+        volume:
+          nocopy: true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  buildkit:
+    # Builder for task Dockerfiles. Publishes no host port; the API and build
+    # worker reach it only over the shared socket volume.
+    #
+    # Privileged, not the rootless variant the standalone stack uses. Rootless
+    # buildkitd needs to create an unprivileged user namespace, which the host
+    # kernel may forbid — Ubuntu 24.04 (and Colima's VM, which runs it) ships
+    # `kernel.apparmor_restrict_unprivileged_userns=1`, and rootlesskit then
+    # dies with `fork/exec /proc/self/exe: permission denied`. Working around
+    # that needs an AppArmor profile installed on the host, which is not
+    # something a dev stack should require. Keep the version in step with the
+    # buildctl baked into the app image (see Dockerfile).
+    image: ${BUILDKIT_IMAGE:-moby/buildkit:v0.31.1}
+    privileged: true
+    command:
+      - --addr
+      - unix:///run/buildkit/buildkitd.sock
+      - --oci-max-parallelism
+      - ${BUILDKIT_MAX_PARALLELISM:-2}
+      - --config
+      - /etc/buildkit/buildkitd.toml
+    volumes:
+      - ./buildkitd.toml:/etc/buildkit/buildkitd.toml:ro
+      - buildkit-socket:/run/buildkit
+      - buildkit-state:/var/lib/buildkit
+    networks:
+      - default
+      - buildkit-egress
+    healthcheck:
+      test: ["CMD", "buildctl", "--addr", "unix:///run/buildkit/buildkitd.sock", "debug", "workers"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  registry:
+    # Local stand-in for NGC: BuildKit pushes finalized task images here over
+    # plain HTTP (REGISTRY_INSECURE=true) and a runner pulls them later.
+    image: ${REGISTRY_IMAGE:-registry:2}
+    ports:
+      - "${REGISTRY_BIND_ADDRESS:-127.0.0.1}:5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    networks:
+      - default
+      - buildkit-egress
+
+  api:
+    image: ${APP_IMAGE:-nemo-scaled-evals:dev}
+    build: *app-build
+    # The plugin declares no service dependencies, so the platform can serve it
+    # alone. Add services here to bring more of the platform up alongside it.
+    command:
+      - nemo
+      - services
+      - run
+      - --services
+      - scaled-evals
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    environment: *scaled-evals-env
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      buildkit:
+        condition: service_healthy
+      registry:
+        condition: service_started
+    volumes:
+      - buildkit-socket:/run/buildkit
+    healthcheck:
+      # curl is not in the image; python is.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8080/apis/scaled-evals/healthz")
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  build-worker:
+    image: ${APP_IMAGE:-nemo-scaled-evals:dev}
+    build: *app-build
+    command: ["scaled-evals-build-worker"]
+    environment: *scaled-evals-env
+    depends_on:
+      # Not postgres-healthy but api-healthy: the API owns schema creation, and
+      # a worker that starts first would query tables that do not exist yet.
+      api:
+        condition: service_healthy
+      buildkit:
+        condition: service_healthy
+      registry:
+        condition: service_started
+    volumes:
+      - buildkit-socket:/run/buildkit
+
+  dispatch-worker:
+    image: ${APP_IMAGE:-nemo-scaled-evals:dev}
+    build: *app-build
+    command: ["scaled-evals-dispatch-worker"]
+    environment: *scaled-evals-env
+    depends_on:
+      api:
+        condition: service_healthy
+      registry:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  rustfs-data:
+  registry-data:
+  buildkit-socket:
+  buildkit-state:
+
+networks:
+  # Build steps need outbound access for base images and registry pushes, but
+  # must not share the control-plane service network.
+  buildkit-egress:
