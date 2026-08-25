@@ -6,10 +6,16 @@ import { Flex, Stack } from '@nvidia/foundations-react-core';
 import { AgentTraceStatistics } from '@studio/components/AgentTraceStatistics';
 import type { TraceStatisticsRange } from '@studio/components/AgentTraceStatistics/types';
 import { bucketAdverbForRange } from '@studio/components/AgentTraceStatistics/utils';
-import { INTAKE_ENABLED } from '@studio/constants/environment';
+import { INTAKE_ENABLED, OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { AgentSummaryPanel } from '@studio/routes/agents/AgentDetailRoute/overview/AgentSummaryPanel';
+import { OpenInsightsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightsPanel';
 import { useAgentTraceMetrics } from '@studio/routes/agents/AgentDetailRoute/overview/useAgentTraceMetrics';
-import { getIntakeTracesRoute } from '@studio/routes/utils';
+import { useOpenInsights } from '@studio/routes/agents/AgentDetailRoute/overview/useOpenInsights';
+import {
+  getIntakeTracesRoute,
+  getOptimizerInsightRoute,
+  getOptimizerRoute,
+} from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -42,6 +48,12 @@ export const OverviewTab: FC<OverviewTabProps> = ({
     range,
     enabled: INTAKE_ENABLED,
   });
+  const {
+    insights,
+    totalCount: insightCount,
+    isPending: insightsPending,
+    error: insightsError,
+  } = useOpenInsights({ workspace, agent: agent?.name, enabled: OPTIMIZER_ENABLED });
 
   if (!INTAKE_ENABLED) {
     return (
@@ -65,9 +77,19 @@ export const OverviewTab: FC<OverviewTabProps> = ({
           caption={bucketAdverbForRange(range)}
         />
       </Stack>
-      <div className="w-full shrink-0 lg:w-80">
+      <Stack gap="density-2xl" className="w-full shrink-0 lg:w-90">
         <AgentSummaryPanel agent={agent} modelNames={modelNames} />
-      </div>
+        {OPTIMIZER_ENABLED && (
+          <OpenInsightsPanel
+            insights={insights}
+            totalCount={insightCount}
+            isPending={insightsPending}
+            error={insightsError}
+            onOpenInsight={(insight) => navigate(getOptimizerInsightRoute(workspace, insight.id))}
+            onViewAll={() => navigate(getOptimizerRoute(workspace))}
+          />
+        )}
+      </Stack>
     </Flex>
   );
 };
