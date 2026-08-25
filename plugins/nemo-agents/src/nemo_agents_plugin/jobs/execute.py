@@ -166,10 +166,10 @@ class ExecuteAgentStepConfig(BaseModel):
     workdir: AgentWorkdir | None = None
     # Immutable snapshot of the resolved AgentEnvironment, mirroring
     # AgentDeployment. ``agent.config`` already holds the merged config;
-    # ``compute`` and ``secrets`` are snapshotted for the executor. ``environment``
-    # retains the raw request value for provenance. Once created, the job is not
-    # kept in sync with the underlying environment entities.
-    environment: str | AgentEnvironmentInline | None = None
+    # ``compute`` and ``secrets`` are snapshotted for the executor. The raw
+    # request environment (a ref or inline) is retained for provenance on
+    # ``request.environment`` — no separate field is needed here. Once created,
+    # the job is not kept in sync with the underlying environment entities.
     compute: ComputeSpecInline | None = None
     secrets: dict[str, str] = Field(default_factory=dict)
 
@@ -256,7 +256,6 @@ class ExecuteAgentJob(NemoJob):
                 config_format=agent.config_format,
             ),
             workdir=workdir,
-            environment=request.environment,
             compute=resolved_env.compute_spec,
             secrets=merged.secrets,
         )

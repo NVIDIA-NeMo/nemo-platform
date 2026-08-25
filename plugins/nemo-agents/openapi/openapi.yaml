@@ -5486,13 +5486,6 @@ components:
           $ref: '#/components/schemas/ResolvedAgentConfig'
         workdir:
           $ref: '#/components/schemas/AgentWorkdir'
-        environment:
-          anyOf:
-          - type: string
-            title: Reference
-            description: A reference to AgentEnvironmentInline.
-          - $ref: '#/components/schemas/AgentEnvironmentInline'
-          title: Environment
         compute:
           $ref: '#/components/schemas/ComputeSpecInline'
         secrets:

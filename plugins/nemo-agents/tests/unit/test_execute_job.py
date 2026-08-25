@@ -517,8 +517,8 @@ async def test_to_spec_snapshots_resolved_environment_ref() -> None:
     )
 
     step_config = ExecuteAgentStepConfig.model_validate(spec)
-    # Raw environment retained for provenance.
-    assert step_config.environment == "default/prod"
+    # Raw environment retained for provenance on the stored request.
+    assert step_config.request.environment == "default/prod"
     # Secret refs collected from the EnvironmentSpec top-level secrets.
     assert step_config.secrets == {"OPENAI_API_KEY": "default/openai-key"}
     # Compute spec snapshotted (k8s-style resource maps preserved as-is).
@@ -624,7 +624,7 @@ async def test_to_spec_with_no_environment_leaves_snapshot_empty() -> None:
     )
 
     step_config = ExecuteAgentStepConfig.model_validate(spec)
-    assert step_config.environment is None
+    assert step_config.request.environment is None
     assert step_config.compute is None
     assert step_config.secrets == {}
 
