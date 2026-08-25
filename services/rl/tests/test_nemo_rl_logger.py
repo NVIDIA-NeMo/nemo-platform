@@ -781,6 +781,15 @@ def test_run_facts_are_optional(callback: _RecordingCallback) -> None:
     assert callback.training_starts[0]["run_facts"] == {}
 
 
+def test_run_facts_reach_the_report_intact(callback: _RecordingCallback) -> None:
+    """Whatever the driver states is forwarded as-is; nothing filters it here."""
+    NemoRLLogger.for_schedule(
+        max_steps=30, num_epochs=1, run_facts={"training_type": "grpo", "rollouts_per_step": 128}
+    ).log_hyperparams({})
+
+    assert callback.training_starts[0]["run_facts"] == {"training_type": "grpo", "rollouts_per_step": 128}
+
+
 def test_one_dataset_keeps_the_bare_metric_names(callback: _RecordingCallback) -> None:
     """NeMo-RL names the dataloader even when there is only one, so val_loss must survive."""
     logger = _make_logger()

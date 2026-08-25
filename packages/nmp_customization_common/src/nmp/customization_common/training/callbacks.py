@@ -544,14 +544,27 @@ class TrainingProgressCallback:
                 which algorithm, how many rollouts a step generates. Sent once
                 and never restated, which works for the same reason the omissions
                 above do: a key left out of a later report keeps the value it
-                already has. These share the flat ``status_details`` namespace
-                with the metrics, so a name used here cannot also be a metric.
+                already has.
+
+                They share the flat ``status_details`` namespace with everything
+                else reported, so a name here can collide. Most collisions are
+                self-correcting: ``phase``, ``step``, ``epoch``, ``metrics`` and
+                every metric name go out again on the next report, so the real
+                value lands within an interval. ``max_steps`` and ``num_epochs``
+                are the exception -- this is the only method that writes them, so
+                a collision would stand for the whole run. Hence the ordering
+                below rather than a note here.
         """
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
+        # Schedule last, so a run fact cannot shadow it. The same two numbers went
+        # to configure_progress_tracking above, and `percentage_done` is derived
+        # from those and not from the keys below -- so a shadowed `max_steps` would
+        # leave the two disagreeing, rendering as `step 30 / 999` at 100% with
+        # nothing raised and the wrong-looking number being the correct one.
         details: dict[str, object] = {
+            **(run_facts or {}),
             "max_steps": max_steps,
             "num_epochs": num_epochs,
-            **(run_facts or {}),
         }
         self._send("training", details, backend)
 

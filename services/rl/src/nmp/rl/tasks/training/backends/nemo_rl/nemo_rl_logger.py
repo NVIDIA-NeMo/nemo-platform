@@ -245,7 +245,9 @@ class NemoRLLogger(LoggerInterface):
                 which algorithm it is, how many rollouts a step generates. Sent
                 once with the training-start report and never restated. The
                 driver supplies them because it is the only place that has read
-                the compiled config.
+                the compiled config. Not for anything the run reports
+                repeatedly -- see ``report_training_start`` for why the schedule
+                in particular must not appear here.
             time_series_metrics: Qualified metric names or glob patterns to
                 record as a series, from the job config. None takes
                 ``default_time_series_metrics`` -- absent means "the algorithm's
