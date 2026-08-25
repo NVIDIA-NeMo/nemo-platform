@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import type { InsightListItem } from '@studio/api/optimizer';
 import type { FC } from 'react';
 
@@ -19,7 +19,9 @@ export const OpenInsightRow: FC<OpenInsightRowProps> = ({ insight, onOpen }) => 
   const traceCount = insight.trace_refs?.length ?? 0;
 
   return (
-    <button
+    <Button
+      kind="tertiary"
+      size="small"
       type="button"
       onClick={() => onOpen(insight)}
       className="w-full cursor-pointer border-0 bg-transparent px-4 py-3.5 text-left hover:bg-surface-hover"
@@ -40,6 +42,6 @@ export const OpenInsightRow: FC<OpenInsightRowProps> = ({ insight, onOpen }) => 
           ) : null}
         </Stack>
       </Flex>
-    </button>
+    </Button>
   );
 };
