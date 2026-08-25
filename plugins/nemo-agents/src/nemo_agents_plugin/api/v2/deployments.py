@@ -110,6 +110,7 @@ async def create_deployment(
         config=merged.config,
         environment=body.environment,
         compute=resolved_environment.compute_spec,
+        sandbox=resolved_environment.sandbox_spec,
         secrets=merged.secrets,
         status="pending",
         deployment_mode=body.deployment_mode,

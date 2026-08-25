@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from nemo_agents_plugin.entities import ComputeResources, DeploymentMode, DeploymentStatus, Endpoint
+from nemo_agents_plugin.entities import ComputeResources, DeploymentMode, DeploymentStatus, Endpoint, SandboxSpecInline
 
 
 @dataclass(frozen=True)
@@ -99,6 +99,7 @@ class RunnerBackend(ABC):
         created_by: str | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
+        sandbox: SandboxSpecInline | None = None,
     ) -> DeploymentInfo:
         """Start the agent process; returns status="starting".
 
@@ -117,6 +118,11 @@ class RunnerBackend(ABC):
         resolved environment. Container backends compile these into secret-backed
         container env vars (never plaintext); the deployments-plugin substrate
         materializes/mounts them. Subprocess mode ignores it.
+
+        ``sandbox`` is the resolved sandbox spec (provider + provider_config)
+        from the deployment's snapshotted environment. Container backends compile
+        it into the DeploymentConfig's backend_config for sandbox providers
+        (e.g. openshell). Subprocess mode ignores it.
         """
         ...
 
