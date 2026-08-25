@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { GUARDRAILS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { GUARDRAIL_CHECKS_DEFAULT_SUB_TAB } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { gateGuardrailsRoutes, getGuardrailsRoute } from '@studio/routes/utils';
-import { ShieldKeyhole } from 'lucide-react';
 import { lazy } from 'react';
 import { Navigate, type RouteObject } from 'react-router';
 
@@ -66,12 +66,14 @@ export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.guardrails;
+
 export const getGuardrailsSideNavItems = (workspace: string) =>
   GUARDRAILS_ENABLED
     ? [
         {
           id: 'guardrails',
-          slotIcon: <ShieldKeyhole className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Guardrails',
           href: getGuardrailsRoute(workspace),
         },

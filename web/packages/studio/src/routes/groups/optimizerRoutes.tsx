@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { gateOptimizerRoutes, getOptimizerRoute } from '@studio/routes/utils';
-import { Lightbulb } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -43,12 +43,14 @@ export const optimizerRoutes: RouteObject[] = gateOptimizerRoutes(
     : []
 );
 
+const NavIcon = ENTITY_ICONS.optimizerInsights;
+
 export const getOptimizerSideNavItems = (workspace: string) =>
   OPTIMIZER_ENABLED
     ? [
         {
           id: 'optimizer',
-          slotIcon: <Lightbulb className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Insights',
           href: getOptimizerRoute(workspace),
         },

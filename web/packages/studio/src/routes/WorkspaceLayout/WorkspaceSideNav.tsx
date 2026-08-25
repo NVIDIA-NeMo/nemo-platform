@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { logger } from '@nemo/common/src/utils/logger';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import type {
@@ -38,9 +39,15 @@ import {
   getVirtualModelsSideNavItems,
 } from '@studio/routes/groups';
 import { getAgentsListRoute, getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
-import { Bot, Boxes, Database } from 'lucide-react';
+import { Database } from 'lucide-react';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router';
+
+// The parent rows stand for the entity their landing page lists, so they take
+// that entity's canonical glyph. `Datasets` has no entity of its own — it only
+// groups the data jobs — so it keeps a local glyph.
+const AgentsIcon = ENTITY_ICONS.agents;
+const ModelsIcon = ENTITY_ICONS.baseModels;
 
 /** Whether the path is on, or nested under, one of these items. */
 const isUnder = (pathname: string, items: { href?: string }[]) =>
@@ -124,7 +131,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ? [
             {
               id: 'agents-group',
-              slotIcon: <Bot className={iconColorClass} />,
+              slotIcon: <AgentsIcon className={iconColorClass} />,
               slotLabel: 'Agents',
               href: agentsHref,
               subItems: agentItems,
@@ -135,7 +142,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ? [
             {
               id: 'models-group',
-              slotIcon: <Boxes className={iconColorClass} />,
+              slotIcon: <ModelsIcon className={iconColorClass} />,
               slotLabel: 'Models',
               href: modelsHref,
               subItems: modelSubItems,

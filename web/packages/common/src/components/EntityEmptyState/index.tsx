@@ -5,6 +5,7 @@ import {
   ENTITY_EMPTY_STATES,
   type EntityKey,
 } from '@nemo/common/src/components/EntityEmptyState/registry';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   Button,
@@ -46,7 +47,8 @@ export type EntityEmptyStateProps = EntityEmptyStateBaseProps &
 
 /**
  * The single canonical empty state for Studio lists, tables, and panels. Copy,
- * iconography, CLI command, and skill prompt come from the entity registry; the
+ * CLI command, and skill prompt come from the entity registry, and the glyph
+ * from the canonical `ENTITY_ICONS` map; the
  * variant selects which affordances render. See the `ui-design` skill's
  * `empty-states` reference.
  */
@@ -78,7 +80,8 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
     );
   }
 
-  const { icon: Icon, heading, subheading, createAction, cliCommand, skillPrompt } = descriptor;
+  const { heading, subheading, createAction, cliCommand, skillPrompt } = descriptor;
+  const Icon = ENTITY_ICONS[entity];
   const handleCreate =
     onCreate ?? (createAction?.to ? () => navigate(createAction.to as string) : undefined);
 
