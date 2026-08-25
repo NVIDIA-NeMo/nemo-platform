@@ -49,62 +49,72 @@ const RailRow: FC<RailRowProps> = ({ rail, data, onChange }) => {
   const canDiscard = !enabled && rail.hasStoredSettings(data);
 
   return (
-    <Flex
+    // A grid, not nested Flex: the switch needs to center against the title row's own
+    // height (driven by the tallest of the label, badges, and settings button), while the
+    // description sits a full row below, column-aligned with the title rather than the
+    // switch. A single flex row can't express "center with row 1, but only row 1" once a
+    // second row is added underneath.
+    <div
       role="listitem"
-      align="center"
-      gap="density-lg"
-      className="border-border-subtle border-b py-density-md last:border-b-0"
+      className="border-border-subtle grid grid-cols-[auto_1fr] items-start gap-x-density-lg gap-y-density-xs border-b py-density-md last:border-b-0"
     >
       <Switch
+        className="col-start-1 row-start-1 self-center"
         checked={enabled}
         onCheckedChange={(next) => onChange(rail.setEnabled(data, next))}
         attributes={{ SwitchInput: { 'aria-label': rail.label } }}
       />
 
-      <Text kind="label/bold/md" className="w-[180px] shrink-0">
-        {rail.label}
-      </Text>
+      <Flex align="center" justify="between" gap="density-lg" className="col-start-2 row-start-1">
+        <Text kind="label/bold/md">{rail.label}</Text>
 
-      {/*
-        Every stage the rail can run at, coloured by whether it currently does. Both are
-        always listed — a rail running on input only has to be distinguishable from one
-        running on both, and that difference is the whole point of the rail, so it must be
-        legible without opening the settings panel.
+        {/*
+          Right-aligned so the stage badges sit next to the settings gear rather than
+          drifting toward the label — the two controls act together (badges show what the
+          gear configures).
 
-        Read-only: the switches that change this live in the rail's own settings.
-      */}
-      <Flex align="center" gap="density-md" wrap="wrap" className="flex-1">
-        {rail.scopes.map((scope) => {
-          const scopeEnabled = rail.isScopeEnabled(data, scope);
-          return (
-            <Badge
-              key={scope}
-              kind="solid"
-              color={scopeEnabled ? 'green' : 'gray'}
-              // The visible text is the stage name either way, so the state is colour-only
-              // without this.
-              aria-label={`${SCOPE_LABELS[scope]} ${scopeEnabled ? 'enabled' : 'disabled'}`}
-            >
-              {SCOPE_LABELS[scope]}
-            </Badge>
-          );
-        })}
+          Read-only: the switches that change this live in the rail's own settings.
+        */}
+        <Flex align="center" gap="density-md" wrap="wrap">
+          {rail.scopes.map((scope) => {
+            const scopeEnabled = rail.isScopeEnabled(data, scope);
+            return (
+              <Badge
+                key={scope}
+                kind="solid"
+                color={scopeEnabled ? 'green' : 'gray'}
+                // The visible text is the stage name either way, so the state is
+                // colour-only without this.
+                aria-label={`${SCOPE_LABELS[scope]} ${scopeEnabled ? 'enabled' : 'disabled'}`}
+              >
+                {SCOPE_LABELS[scope]}
+              </Badge>
+            );
+          })}
+
+          {canDiscard ? (
+            <Tooltip slotContent={`Discard saved ${rail.label} settings`}>
+              <Button
+                kind="tertiary"
+                color="neutral"
+                onClick={() => onChange(rail.clearSettings(data))}
+                aria-label={`Discard saved ${rail.label} settings`}
+              >
+                <Trash2 size={16} />
+              </Button>
+            </Tooltip>
+          ) : null}
+
+          {rail.renderSettings?.({ data, onChange })}
+        </Flex>
       </Flex>
 
-      {canDiscard ? (
-        <Tooltip slotContent={`Discard saved ${rail.label} settings`}>
-          <Button
-            kind="tertiary"
-            color="neutral"
-            onClick={() => onChange(rail.clearSettings(data))}
-            aria-label={`Discard saved ${rail.label} settings`}
-          >
-            <Trash2 size={16} />
-          </Button>
-        </Tooltip>
-      ) : null}
-
-      {rail.renderSettings?.({ data, onChange })}
-    </Flex>
+      <Text
+        kind="body/regular/sm"
+        className="col-start-2 row-start-2 max-w-[560px] text-text-secondary"
+      >
+        {rail.description}
+      </Text>
+    </div>
   );
 };
