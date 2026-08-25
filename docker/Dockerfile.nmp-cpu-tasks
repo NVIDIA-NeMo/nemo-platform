@@ -37,36 +37,37 @@ RUN mkdir -p /app/.runtime-home/nvs
 
 # Job steps and plugin tasks may shell out to small POSIX utilities. Keep the
 # runtime distroless while preserving that command surface in one final layer.
+# NVIDIA distroless maps /bin to /usr/bin, so merge utilities into /usr/bin.
 FROM scratch AS cpu-task-runtime-tools
-COPY --from=root-busybox /bin/chmod /bin/chmod
-COPY --from=root-busybox /bin/sh /bin/sh
-COPY --from=root-busybox /bin/ls /bin/ls
-COPY --from=root-busybox /bin/mkdir /bin/mkdir
-COPY --from=root-busybox /bin/ln /bin/ln
-COPY --from=root-busybox /bin/rm /bin/rm
-COPY --from=root-busybox /bin/cp /bin/cp
-COPY --from=root-busybox /bin/wget /bin/wget
-COPY --from=root-busybox /bin/tar /bin/tar
-COPY --from=root-busybox /bin/mv /bin/mv
-COPY --from=root-busybox /bin/cat /bin/cat
-COPY --from=root-busybox /bin/head /bin/head
-COPY --from=root-busybox /bin/tail /bin/tail
-COPY --from=root-busybox /bin/grep /bin/grep
-COPY --from=root-busybox /bin/sed /bin/sed
-COPY --from=root-busybox /bin/tee /bin/tee
-COPY --from=root-busybox /bin/echo /bin/echo
-COPY --from=root-busybox /bin/sleep /bin/sleep
-COPY --from=root-busybox /bin/dirname /bin/dirname
-COPY --from=root-busybox /bin/basename /bin/basename
-COPY --from=root-busybox /bin/find /bin/find
-COPY --from=builder /bin/bash /bin/bash
-COPY --from=builder /bin/uv /bin/uv
+COPY --from=root-busybox /bin/chmod /usr/bin/chmod
+COPY --from=root-busybox /bin/sh /usr/bin/sh
+COPY --from=root-busybox /bin/ls /usr/bin/ls
+COPY --from=root-busybox /bin/mkdir /usr/bin/mkdir
+COPY --from=root-busybox /bin/ln /usr/bin/ln
+COPY --from=root-busybox /bin/rm /usr/bin/rm
+COPY --from=root-busybox /bin/cp /usr/bin/cp
+COPY --from=root-busybox /bin/wget /usr/bin/wget
+COPY --from=root-busybox /bin/tar /usr/bin/tar
+COPY --from=root-busybox /bin/mv /usr/bin/mv
+COPY --from=root-busybox /bin/cat /usr/bin/cat
+COPY --from=root-busybox /bin/head /usr/bin/head
+COPY --from=root-busybox /bin/tail /usr/bin/tail
+COPY --from=root-busybox /bin/grep /usr/bin/grep
+COPY --from=root-busybox /bin/sed /usr/bin/sed
+COPY --from=root-busybox /bin/tee /usr/bin/tee
+COPY --from=root-busybox /bin/echo /usr/bin/echo
+COPY --from=root-busybox /bin/sleep /usr/bin/sleep
+COPY --from=root-busybox /bin/dirname /usr/bin/dirname
+COPY --from=root-busybox /bin/basename /usr/bin/basename
+COPY --from=root-busybox /bin/find /usr/bin/find
+COPY --from=builder /bin/bash /usr/bin/bash
+COPY --from=builder /bin/uv /usr/bin/uv
 COPY --from=builder /usr/bin/env /usr/bin/env
-COPY docker/scripts/cve-cleanup.sh /bin/cve-cleanup.sh
+COPY docker/scripts/cve-cleanup.sh /usr/bin/cve-cleanup.sh
 
 FROM ${NMP_CPU_TASKS_RUNTIME_BASE} AS runtime
 
-COPY --from=cpu-task-runtime-tools / /
+COPY --from=cpu-task-runtime-tools /usr/bin/ /usr/bin/
 
 ENV USERNAME=nvs \
     HOME=/home/nvs
