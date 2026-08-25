@@ -2116,15 +2116,16 @@ nemo inference deployments create [OPTIONS] [NAME]
 * `--input-file`: Path to JSON file (use '-' for stdin)
 * `--input-data`: Input data for the request (JSON or YAML)
 
+**Lifecycle Options:**
+
+* `--wait`: Wait for the created deployment to be up and running
+* `--watch`: Watch the created deployment until it is stable while streaming status updates
+* `--timeout <INTEGER RANGE>`: Maximum time to wait or watch in seconds [default: 1200]
+* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
+
 **Output Options:**
 
 * `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
-
-**Wait Options:**
-
-* `--wait`: Wait for the created deployment to reach a terminal state
-* `--timeout <INTEGER RANGE>`: Maximum time to wait in seconds [default: 1200]
-* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
 
 ##### nemo inference deployments delete
 
@@ -3919,6 +3920,7 @@ nemo jobs [OPTIONS] COMMAND [ARGS]...
 * `resume`: Resume a paused platform job.
 * `get`: Get a platform job by name.
 * `update-status-details`: Update the status details of a platform job.
+* `watch`: Watch a platform job until it reaches a terminal status.
 * `results`: Manage results
 * `steps`: Manage steps
 * `tasks`: Manage tasks
@@ -3994,6 +3996,13 @@ nemo jobs create [OPTIONS] [NAME]
 
 * `--input-file`: Path to JSON file (use '-' for stdin)
 * `--input-data`: Input data for the request (JSON or YAML)
+
+**Lifecycle Options:**
+
+* `--wait`: Wait for the created job to reach a terminal state without streaming logs
+* `--watch`: Watch the created job to a terminal state
+* `--timeout <INTEGER RANGE>`: Maximum time to wait or watch in seconds
+* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
 
 **Output Options:**
 
@@ -4271,6 +4280,35 @@ nemo jobs update-status-details [OPTIONS] NAME
 **Output Options:**
 
 * `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs watch
+
+Watch a platform job until it reaches a terminal status.
+
+**Usage:**
+
+```shell
+nemo jobs watch [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the platform job to watch
+
+**Options:**
+
+* `--workspace`: Workspace containing the job
+* `--attempt-id <INTEGER>`: Filter logs to an attempt ID
+* `--step-id`: Filter logs to a step ID
+* `--task-id`: Filter logs to a task ID
+* `--limit <INTEGER RANGE>`: Maximum logs to fetch per page
+* `--timeout <INTEGER RANGE>`: Maximum watch time in seconds
+* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
+* `--history, --no-history`: Include logs already present before watching
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
 
 #### nemo jobs results
 

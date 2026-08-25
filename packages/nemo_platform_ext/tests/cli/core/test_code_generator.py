@@ -98,26 +98,104 @@ def test_generate_python_code_multiline_format():
     assert any("namespace=" in line and line.strip().startswith("namespace=") for line in lines)
 
 
-def test_generate_python_code_with_platform_job_wait():
+def test_generate_python_code_with_platform_job_watch():
     code = generate_python_code(
         resource_path=["customization", "jobs"],
         method="create",
         args={"workspace": "default", "name": "job-a", "spec": {"training_type": "sft"}},
-        wait_config={"type": "platform_job", "resource_label": "customization job"},
+        watch_config={"type": "platform_job", "resource_label": "customization job"},
+        watch_options={"timeout": 42, "poll_interval": 7},
+    )
+
+    assert "import time" not in code
+    assert "from nemo_platform.jobs.watch import watch_job" not in code
+    assert "from nemo_platform_plugin.client.adapter import client_from_platform" in code
+    assert "from nemo_platform_plugin.jobs.client import JobsClient" in code
+    assert "jobs_client = client_from_platform(client, JobsClient)" in code
+    assert "response = client.customization.jobs.create" in code
+    assert 'resource_name = getattr(response, "name", None) or "job-a"' in code
+    assert 'raise RuntimeError("Unable to determine created resource name for --watch")' in code
+    assert "jobs_client.watch_job(" in code
+    assert 'workspace="default"' in code
+    assert "timeout=42" in code
+    assert "poll_interval=7" in code
+    assert "print(event)" in code
+    assert "get_status" not in code
+    assert "time.sleep" not in code
+    assert "print(response)" not in code
+    compile(code, "<generated-code>", "exec")
+
+
+def test_generate_python_code_with_platform_job_watch_has_no_default_timeout():
+    code = generate_python_code(
+        resource_path=["customization", "jobs"],
+        method="create",
+        args={"workspace": "default", "name": "job-a", "spec": {"training_type": "sft"}},
+        watch_config={"type": "platform_job", "resource_label": "customization job"},
+        watch_options={"poll_interval": 7},
+    )
+
+    assert "timeout=None" in code
+    assert "deadline = time.monotonic()" not in code
+    assert "poll_interval=7" in code
+    compile(code, "<generated-code>", "exec")
+
+
+def test_generate_python_code_with_platform_job_wait():
+    code = generate_python_code(
+        resource_path=["jobs"],
+        method="create",
+        args={"workspace": "default", "name": "job-a", "spec": {"training_type": "sft"}},
+        wait_config={"type": "platform_job", "resource_label": "job"},
         wait_options={"timeout": 42, "poll_interval": 7},
     )
 
-    assert "import time" in code
-    assert "response = client.customization.jobs.create" in code
-    assert 'resource_name = getattr(response, "name", None) or "job-a"' in code
+    assert "import time" not in code
+    for symbol in ("JobStatusEvent", "JobWatchTimeoutError", "JobsClient", "NeMoPlatform"):
+        assert symbol in code
+    assert "from nemo_platform_plugin.jobs.watch_types import JobStatusEvent, JobWatchTimeoutError" in code
+    assert "jobs_client = client_from_platform(client, JobsClient)" in code
+    assert "APIConnectionError" not in code
+    assert "APIStatusError" not in code
+    assert "APITimeoutError" not in code
+    assert "NotFoundError" not in code
     assert 'raise RuntimeError("Unable to determine created resource name for --wait")' in code
-    assert "deadline = time.monotonic() + 42" in code
-    assert 'client.customization.jobs.get_status(resource_name, workspace="default")' in code
-    assert 'status = str(status_response.status or "").lower()' in code
-    assert "response = status_response" in code
-    assert code.rindex("print(response)") > code.index("response = status_response")
-    assert "time.sleep(min(7, remaining))" in code
+    assert "deadline = time.monotonic()" not in code
+    assert "get_status" not in code
+    assert "jobs_client.watch_job(" in code
+    assert "include_logs=False" in code
+    assert 'resource_label = "job"' in code
+    assert "isinstance(event, JobStatusEvent)" in code
+    assert 'f"{resource_label.title()} {resource_name!r} ended with status {event.status!r}"' in code
+    assert "except JobWatchTimeoutError as exc:" in code
+    assert "time.sleep" not in code
+    assert "print(response)" not in code
     compile(code, "<generated-code>", "exec")
+
+
+def test_generate_python_code_with_platform_job_wait_requires_timeout():
+    with pytest.raises(ValueError, match=r"wait 'platform_job' lifecycle code generation requires timeout"):
+        generate_python_code(
+            resource_path=["jobs"],
+            method="create",
+            args={"workspace": "default", "name": "job-a", "spec": {"training_type": "sft"}},
+            wait_config={"type": "platform_job", "resource_label": "job"},
+            wait_options={"poll_interval": 7},
+        )
+
+
+def test_generate_python_code_with_platform_job_wait_requires_resource_label():
+    with pytest.raises(
+        ValueError,
+        match=r"wait 'platform_job' lifecycle code generation requires a non-empty resource_label",
+    ):
+        generate_python_code(
+            resource_path=["jobs"],
+            method="create",
+            args={"workspace": "default", "name": "job-a", "spec": {"training_type": "sft"}},
+            wait_config={"type": "platform_job"},
+            wait_options={"timeout": 42, "poll_interval": 7},
+        )
 
 
 def test_generate_python_code_with_inference_deployment_wait():
@@ -149,21 +227,55 @@ def test_generate_python_code_with_inference_deployment_wait():
     compile(code, "<generated-code>", "exec")
 
 
-def test_generate_python_code_escapes_platform_job_wait_label():
+def test_generate_python_code_with_inference_deployment_watch():
+    code = generate_python_code(
+        resource_path=["inference", "deployments"],
+        method="create",
+        args={"workspace": "default", "name": "deployment-a", "config": "deployment-config"},
+        watch_config={"type": "inference_deployment", "resource_label": "deployment"},
+        watch_options={"timeout": 90, "poll_interval": 10},
+    )
+
+    assert "import time" in code
+    for symbol in ("APIConnectionError", "APIStatusError", "APITimeoutError", "NeMoPlatform", "NotFoundError"):
+        assert symbol in code
+    assert "deadline = time.monotonic() + 90" in code
+    assert 'resource_name = getattr(response, "name", None) or "deployment-a"' in code
+    assert 'raise RuntimeError("Unable to determine created resource name for --watch")' in code
+    assert 'client.inference.deployments.retrieve(resource_name, workspace="default")' in code
+    assert "client.inference.gateway.provider.ready(provider_name, workspace=provider_workspace)" in code
+    assert "response = deployment" in code
+    assert code.rindex("print(response)") > code.index("response = deployment")
+    assert "time.sleep(min(10, remaining))" in code
+    compile(code, "<generated-code>", "exec")
+
+
+def test_generate_python_code_with_inference_deployment_wait_requires_timeout():
+    with pytest.raises(ValueError, match=r"wait 'inference_deployment' lifecycle code generation requires timeout"):
+        generate_python_code(
+            resource_path=["inference", "deployments"],
+            method="create",
+            args={"workspace": "default", "name": "deployment-a", "config": "deployment-config"},
+            wait_config={"type": "inference_deployment", "resource_label": "deployment"},
+            wait_options={"poll_interval": 10},
+        )
+
+
+def test_generate_python_code_with_platform_job_watch_ignores_label_formatting():
     code = generate_python_code(
         resource_path=["customization", "jobs"],
         method="create",
         args={"workspace": "default", "name": "job-a"},
-        wait_config={"type": "platform_job", "resource_label": 'customization "job" {label}'},
-        wait_options={"timeout": 42, "poll_interval": 7},
+        watch_config={"type": "platform_job", "resource_label": 'customization "job" {label}'},
+        watch_options={"timeout": 42, "poll_interval": 7},
     )
 
     compile(code, "<generated-code>", "exec")
-    assert '"customization \\"job\\" {label}" + f" {resource_name!r}' in code
+    assert 'raise RuntimeError("Unable to determine created resource name for --watch")' in code
 
 
-def test_generate_python_code_rejects_unknown_wait_type():
-    with pytest.raises(ValueError, match="Unsupported wait config type: 'unknown'"):
+def test_generate_python_code_rejects_unknown_lifecycle_type():
+    with pytest.raises(ValueError, match="Unsupported lifecycle config type: 'unknown'"):
         generate_python_code(
             resource_path=["customization", "jobs"],
             method="create",

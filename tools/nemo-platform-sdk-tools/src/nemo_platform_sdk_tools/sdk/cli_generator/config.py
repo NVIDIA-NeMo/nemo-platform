@@ -13,6 +13,7 @@ import yaml
 from nemo_platform_sdk_tools.sdk.core.common import get_project_dir
 
 VALID_WAIT_CONFIG_TYPES = {"inference_deployment", "platform_job"}
+VALID_WATCH_CONFIG_TYPES = {"inference_deployment", "platform_job"}
 
 
 def get_cli_generator_root() -> Path:
@@ -210,39 +211,63 @@ class CLIConfig:
 
     def get_wait_config(self, resource_path: list[str], method_name: str) -> dict[str, object] | None:
         """Get inline wait configuration for a generated command."""
+        return self._get_lifecycle_config(
+            resource_path,
+            method_name,
+            config_key="wait",
+            valid_types=VALID_WAIT_CONFIG_TYPES,
+        )
+
+    def get_watch_config(self, resource_path: list[str], method_name: str) -> dict[str, object] | None:
+        """Get inline watch configuration for a generated command."""
+        return self._get_lifecycle_config(
+            resource_path,
+            method_name,
+            config_key="watch",
+            valid_types=VALID_WATCH_CONFIG_TYPES,
+        )
+
+    def _get_lifecycle_config(
+        self,
+        resource_path: list[str],
+        method_name: str,
+        *,
+        config_key: str,
+        valid_types: set[str],
+    ) -> dict[str, object] | None:
         if method_config := self.get_method_config(resource_path, method_name):
-            wait_config = method_config.get("wait")
-            if wait_config is None:
+            lifecycle_config = method_config.get(config_key)
+            if lifecycle_config is None:
                 return None
             resource = ".".join(resource_path)
-            if not isinstance(wait_config, dict):
+            if not isinstance(lifecycle_config, dict):
                 raise ValueError(
-                    f"Invalid wait config for {resource}.{method_name}. Expected a mapping, got "
-                    f"{type(wait_config).__name__}."
+                    f"Invalid {config_key} config for {resource}.{method_name}. Expected a mapping, got "
+                    f"{type(lifecycle_config).__name__}."
                 )
 
-            wait_type = wait_config.get("type")
-            valid_types = ", ".join(sorted(VALID_WAIT_CONFIG_TYPES))
+            lifecycle_type = lifecycle_config.get("type")
+            valid_types_list = ", ".join(sorted(valid_types))
             try:
-                wait_type_is_valid = wait_type in VALID_WAIT_CONFIG_TYPES
+                lifecycle_type_is_valid = lifecycle_type in valid_types
             except TypeError as exc:
                 raise ValueError(
-                    f"Invalid wait config wait_type={wait_type!r} for resource_path={resource_path!r}, "
-                    f"method_name={method_name!r}. Expected one of VALID_WAIT_CONFIG_TYPES: {valid_types}"
+                    f"Invalid {config_key} config type={lifecycle_type!r} for resource_path={resource_path!r}, "
+                    f"method_name={method_name!r}. Expected one of: {valid_types_list}"
                 ) from exc
 
-            if not wait_type_is_valid:
+            if not lifecycle_type_is_valid:
                 raise ValueError(
-                    f"Invalid wait config type {wait_type!r} for {resource}.{method_name}. "
-                    f"Expected one of: {valid_types}"
+                    f"Invalid {config_key} config type {lifecycle_type!r} for {resource}.{method_name}. "
+                    f"Expected one of: {valid_types_list}"
                 )
-            resource_label = wait_config.get("resource_label")
+            resource_label = lifecycle_config.get("resource_label")
             if not isinstance(resource_label, str) or not resource_label.strip():
                 raise ValueError(
-                    f"Invalid wait config resource_label {resource_label!r} for {resource}.{method_name}. "
+                    f"Invalid {config_key} config resource_label {resource_label!r} for {resource}.{method_name}. "
                     "Expected a non-empty string."
                 )
-            return wait_config
+            return lifecycle_config
         return None
 
     def get_examples(self, resource_path: list[str], method_name: str) -> list[str] | None:
