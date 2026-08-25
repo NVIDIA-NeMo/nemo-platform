@@ -49,7 +49,8 @@ import {
 export const ENTITY_ICONS = {
   // Agents
   agents: Bot,
-  agentMonitorRuns: Bot,
+  // Monitor runs are agent telemetry, so they share the span glyph.
+  agentMonitorRuns: Logs,
 
   // Models
   baseModels: Boxes,
