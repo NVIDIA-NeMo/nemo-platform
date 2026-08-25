@@ -68,6 +68,12 @@ Shared helpers are private modules in the same tree:
 
 ## Step 1: Draft Or Update Audit Items
 
+Before drafting or updating `.eval-author/audit-items.yaml`, read
+`templates/audit.md` and `schemas/audit.schema.json`. Use the template as the
+worked example and the JSON Schema descriptions as the field definitions. Do not
+use validation as the primary way to discover the format; validation is the
+enforcement and repair step after drafting.
+
 Read `ETHOS.md` and draft audit items at the level between Ethos and runnable
 tasks: canonical tools, high-level capabilities, and material failure cases. Keep
 the list finite. Do not create separate items for prompt paraphrases, fixture

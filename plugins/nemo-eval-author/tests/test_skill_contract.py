@@ -376,6 +376,18 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
 
 
+def test_audit_skill_reads_schema_before_drafting_items() -> None:
+    """The schema should guide authoring, not emerge from validator retries."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    step_one = body.split("## Step 2:", 1)[0]
+    normalized_step = re.sub(r"\s+", " ", step_one)
+
+    assert "Before drafting or updating" in step_one
+    assert "templates/audit.md" in step_one
+    assert "schemas/audit.schema.json" in step_one
+    assert "Do not use validation as the primary way to discover the format" in normalized_step
+
+
 def test_audit_json_schema_is_valid() -> None:
     from jsonschema import Draft202012Validator
 
