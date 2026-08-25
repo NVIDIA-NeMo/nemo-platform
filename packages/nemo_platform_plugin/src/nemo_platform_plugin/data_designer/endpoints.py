@@ -27,16 +27,12 @@ from nemo_platform_plugin.data_designer.types import (
 )
 from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage, PlatformJobStatusResponse
 
-_DD = "/apis/data-designer/v2/workspaces/{workspace}"
-_JOBS = f"{_DD}/jobs/create"
-
-
 # ---------------------------------------------------------------------------
 # Preview (streaming NDJSON)
 # ---------------------------------------------------------------------------
 
 
-@post(f"{_DD}/preview")
+@post("/apis/data-designer/v2/workspaces/{workspace}/preview")
 @abstractmethod
 def preview(*, workspace: str | None = None, body: PreviewRequest) -> Stream[PreviewFrameData]: ...
 
@@ -46,34 +42,34 @@ def preview(*, workspace: str | None = None, body: PreviewRequest) -> Stream[Pre
 # ---------------------------------------------------------------------------
 
 
-@post(_JOBS)
+@post("/apis/data-designer/v2/workspaces/{workspace}/jobs/create")
 @abstractmethod
 def create_job(*, workspace: str | None = None, body: DataDesignerJobRequest) -> DataDesignerJobResponse: ...
 
 
-@get(_JOBS)
+@get("/apis/data-designer/v2/workspaces/{workspace}/jobs/create")
 @abstractmethod
 def list_jobs(
     *, workspace: str | None = None, query_params: ListDataDesignerJobsQueryParams | None = None
 ) -> Paginated[DataDesignerJobResponse]: ...
 
 
-@get(f"{_JOBS}/{{name}}")
+@get("/apis/data-designer/v2/workspaces/{workspace}/jobs/create/{name}")
 @abstractmethod
 def get_job(*, workspace: str | None = None, name: str) -> DataDesignerJobResponse: ...
 
 
-@delete(f"{_JOBS}/{{name}}")
+@delete("/apis/data-designer/v2/workspaces/{workspace}/jobs/create/{name}")
 @abstractmethod
 def delete_job(*, workspace: str | None = None, name: str) -> None: ...
 
 
-@get(f"{_JOBS}/{{name}}/status")
+@get("/apis/data-designer/v2/workspaces/{workspace}/jobs/create/{name}/status")
 @abstractmethod
 def get_job_status(*, workspace: str | None = None, name: str) -> PlatformJobStatusResponse: ...
 
 
-@get(f"{_JOBS}/{{name}}/logs")
+@get("/apis/data-designer/v2/workspaces/{workspace}/jobs/create/{name}/logs")
 @abstractmethod
 def get_job_logs(
     *, workspace: str | None = None, name: str, query_params: DataDesignerJobLogsQueryParams | None = None

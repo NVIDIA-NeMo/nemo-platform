@@ -10,7 +10,6 @@ auditor resource from ``nemo_auditor.sdk``.
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
 
 from nemo_platform_plugin.auditor.types import (
     AuditConfig,
@@ -127,7 +126,7 @@ def submit_audit(*, workspace: str | None = None, body: SubmitAuditRequest) -> A
 @abstractmethod
 def list_audit_jobs(
     *, workspace: str | None = None, query_params: ListAuditJobsQueryParams | None = None
-) -> dict[str, Any]: ...
+) -> Paginated[AuditJobResponse]: ...
 
 
 @get(f"{_JOBS}/{{name}}")

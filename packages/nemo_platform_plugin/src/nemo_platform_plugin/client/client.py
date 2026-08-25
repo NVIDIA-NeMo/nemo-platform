@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import email.utils
-import inspect
 import json
 import logging
 import os
@@ -37,6 +36,8 @@ from nemo_platform_plugin.client.auth import (
     AsyncTokenProvider,
     StaticToken,
     TokenProvider,
+    TokenProviderAuth,
+    resolve_token_async,
 )
 from nemo_platform_plugin.client.errors import (
     NemoResponseValidationError,
@@ -72,6 +73,11 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 60.0
+
+# Instance-dict slot holding lazily discovered plugin SDK resources. Each
+# resource is bound to the client that built it, so ``with_options()`` drops
+# this slot on the clone rather than handing out originals.
+_RESOURCE_CACHE_ATTR = "_discovered_resources"
 
 
 @cache
@@ -272,34 +278,41 @@ class _InferenceNamespace:
     :class:`ModelsClient` and virtual_models on :class:`VirtualModelsClient`.
     This namespace dispatches accordingly so existing ``sdk.inference.<x>``
     call sites keep working while callers migrate to ``sdk.models.<method>``.
+
+    Each accessor picks the sync or async resource client to match the owning
+    client, so an :class:`AsyncNemoClient` never routes its ``httpx.AsyncClient``
+    through a synchronous ``send()``.
     """
 
     def __init__(self, client: "BaseNemoClient") -> None:
         self._client = client
 
-    @property
-    def providers(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
+    def _models_client(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
 
-        return ModelsClient.from_client(self._client)
-
-    @property
-    def deployments(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
-
-        return ModelsClient.from_client(self._client)
+        if isinstance(self._client, AsyncNemoClient):
+            return AsyncModelsClient.from_client(self._client)
+        return ModelsClient.from_client(cast(NemoClient, self._client))
 
     @property
-    def deployment_configs(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
-
-        return ModelsClient.from_client(self._client)
+    def providers(self) -> NemoClient | AsyncNemoClient:
+        return self._models_client()
 
     @property
-    def virtual_models(self) -> NemoClient:
-        from nemo_platform_plugin.virtual_models.client import VirtualModelsClient
+    def deployments(self) -> NemoClient | AsyncNemoClient:
+        return self._models_client()
 
-        return VirtualModelsClient.from_client(self._client)
+    @property
+    def deployment_configs(self) -> NemoClient | AsyncNemoClient:
+        return self._models_client()
+
+    @property
+    def virtual_models(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.virtual_models.client import AsyncVirtualModelsClient, VirtualModelsClient
+
+        if isinstance(self._client, AsyncNemoClient):
+            return AsyncVirtualModelsClient.from_client(self._client)
+        return VirtualModelsClient.from_client(cast(NemoClient, self._client))
 
 
 class BaseNemoClient:
@@ -358,20 +371,18 @@ class BaseNemoClient:
         """
         from nemo_platform_plugin.discovery import discover_sdk
 
-        plugins = discover_sdk()
-        if name not in plugins:
+        resources = discover_sdk().get(name)
+        if resources is None:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
 
-        if isinstance(self, AsyncNemoClient):
-            resource_cls = getattr(plugins[name], "async_resource", None)
-        else:
-            resource_cls = getattr(plugins[name], "sync_resource", None)
+        resource_cls = resources.async_resource if isinstance(self, AsyncNemoClient) else resources.sync_resource
         if resource_cls is None:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
 
-        instance = resource_cls(self)
-        self.__dict__[name] = instance
-        return instance
+        cache = self.__dict__.setdefault(_RESOURCE_CACHE_ATTR, {})
+        if name not in cache:
+            cache[name] = resource_cls(self)
+        return cache[name]
 
     @property
     def workspace(self) -> str | None:
@@ -444,6 +455,10 @@ class BaseNemoClient:
             client.with_options(timeout=300).update_fileset(...)
         """
         clone = copy.copy(self)
+        # Discovered resources are bound to the client that created them, so a
+        # shallow copy must not inherit them: the clone re-resolves each one
+        # against itself and picks up the overrides below.
+        clone.__dict__.pop(_RESOURCE_CACHE_ATTR, None)
         if headers:
             clone._default_headers = {**self._default_headers, **headers}
         if retry is not None:
@@ -594,6 +609,7 @@ class NemoClient(BaseNemoClient):
         self._http = http_client or httpx.Client(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout if timeout is not None else DEFAULT_TIMEOUT,
+            auth=TokenProviderAuth(self._auth) if self._auth else None,
         )
 
     @classmethod
@@ -845,6 +861,7 @@ class AsyncNemoClient(BaseNemoClient):
         self._http = http_client or httpx.AsyncClient(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout if timeout is not None else DEFAULT_TIMEOUT,
+            auth=TokenProviderAuth(self._auth) if self._auth else None,
         )
 
     @classmethod
@@ -927,20 +944,8 @@ class AsyncNemoClient(BaseNemoClient):
         if headers:
             request = request.with_headers(headers)
 
-        # Inject auth header. Three cases, in priority order:
-        # 1. Provider has get_access_token_async() (e.g. OIDCTokenProvider) — use it.
-        # 2. Provider.get_access_token() is a coroutine function — await it.
-        # 3. Provider.get_access_token() is sync — run in a thread to avoid
-        #    blocking the event loop during IO (e.g. token refresh HTTP calls).
         if self._auth:
-            get_async = getattr(self._auth, "get_access_token_async", None)
-            if get_async is not None and callable(get_async):
-                token = await get_async()
-            elif inspect.iscoroutinefunction(self._auth.get_access_token):
-                token = await self._auth.get_access_token()
-            else:
-                token = await asyncio.to_thread(self._auth.get_access_token)
-            request = request.with_headers({"Authorization": f"Bearer {token}"})
+            request = request.with_headers({"Authorization": f"Bearer {await resolve_token_async(self._auth)}"})
 
         url = self._resolve_path(request)
         req_headers = self._request_headers(request)
