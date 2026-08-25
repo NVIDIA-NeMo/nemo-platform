@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -523,6 +524,14 @@ class TestDiscoverSDK:
     def test_rejects_container_without_sync_or_async_resource(self) -> None:
         with pytest.raises(ValueError, match="At least one"):
             NemoPluginSDKResources()
+
+    def test_skips_entry_that_is_not_a_container(self) -> None:
+        bad = _make_ep("bad", SimpleNamespace(sync_resource=object))
+        good = _make_ep("good", NemoPluginSDKResources(sync_resource=object))  # ty: ignore[invalid-argument-type]
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
+            result = discover_sdk()
+        assert "bad" not in result
+        assert "good" in result
 
 
 # ---------------------------------------------------------------------------
