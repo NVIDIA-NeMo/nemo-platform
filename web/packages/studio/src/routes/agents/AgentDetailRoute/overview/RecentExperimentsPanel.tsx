@@ -2,7 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { formatEvaluatorScore } from '@nemo/common/src/utils/formatters';
-import { Button, Card, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import {
+  Anchor,
+  Block,
+  Button,
+  Card,
+  Flex,
+  Stack,
+  StatusMessage,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { MetricTrendPanel } from '@studio/components/charts/MetricTrendPanel';
 import { StackedSkeleton } from '@studio/components/StackedSkeleton';
 import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
@@ -10,6 +19,7 @@ import {
   DELTA_COMPARISON_LABEL,
   type RecentExperiment,
 } from '@studio/routes/agents/AgentDetailRoute/overview/recentExperiments';
+import { FlaskConical } from 'lucide-react';
 import type { FC } from 'react';
 
 interface RecentExperimentsPanelProps {
@@ -49,26 +59,25 @@ export const RecentExperimentsPanel: FC<RecentExperimentsPanelProps> = ({
       <StackedSkeleton count={2} height={180} className="w-full" />
     ) : experiments.length === 0 ? (
       <Card>
-        <Flex justify="center" padding="density-2xl">
+        <Flex justify="center" align="center" padding="density-2xl">
           <StatusMessage
-            slotHeading="No experiments"
+            size="small"
+            slotHeading="Measure agent performance"
             slotSubheading={
-              <>
-                {'Review changes and compare multiple evaluation runs with experiments. '}
-                <a
-                  href={LINK_DOCS_EXPERIMENTS_CLI}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-brand underline"
-                >
+              <Block className="max-w-[650px]">
+                {
+                  'Run evaluations for agents, models, and components with NeMo Evaluator and compare evaluations in Experiments. '
+                }
+                <Anchor href={LINK_DOCS_EXPERIMENTS_CLI} target="_blank">
                   Learn more
-                </a>
+                </Anchor>
                 .
-              </>
+              </Block>
             }
             slotFooter={
               onRunEvaluation ? (
-                <Button color="brand" onClick={onRunEvaluation}>
+                <Button kind="tertiary" onClick={onRunEvaluation}>
+                  <FlaskConical size={16} className="text-brand" aria-hidden />
                   Run evaluation
                 </Button>
               ) : null

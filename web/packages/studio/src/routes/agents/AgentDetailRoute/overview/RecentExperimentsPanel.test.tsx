@@ -93,7 +93,7 @@ describe('RecentExperimentsPanel', () => {
       />
     );
 
-    expect(screen.getByText('No experiments')).toBeInTheDocument();
+    expect(screen.getByText('Measure agent performance')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Run evaluation' }));
 
     expect(onRunEvaluation).toHaveBeenCalled();
