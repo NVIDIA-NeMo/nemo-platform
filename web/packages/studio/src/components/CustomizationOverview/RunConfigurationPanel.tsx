@@ -3,11 +3,11 @@
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
-import type { RlGRPOTraining, RlJobOutput } from '@nemo/sdk/generated/customizer/schema';
 import { Button, Flex, Grid, Panel, Stack, Text } from '@nvidia/foundations-react-core';
+import { GrpoRunConfigPairs } from '@studio/components/CustomizationOverview/GrpoRunConfigPairs';
 import type { CustomizationTrainingTelemetry } from '@studio/types/customization';
 import { isGrpoJob, type CustomizationJob } from '@studio/util/customizationBackend';
-import { getBaseModel, getGrpoRunConfig } from '@studio/util/customizations';
+import { getBaseModel } from '@studio/util/customizations';
 import { Cog } from 'lucide-react';
 import type { FC } from 'react';
 
@@ -87,18 +87,3 @@ export const RunConfigurationPanel: FC<Props> = ({
     </Stack>
   </Panel>
 );
-
-/** A fragment, not its own grid, so these share the columns the rows above them are aligned to. */
-const GrpoRunConfigPairs: FC<{ spec: RlJobOutput & { training: RlGRPOTraining } }> = ({ spec }) => {
-  const config = getGrpoRunConfig(spec);
-  return (
-    <>
-      <KVPair orientation="vertical" label="Environment" value={config.environment} truncate />
-      <KVPair orientation="vertical" label="Prompt Dataset" value={config.promptDataset} truncate />
-      <KVPair orientation="vertical" label="Training Backend" value={config.trainingBackend} />
-      <KVPair orientation="vertical" label="Parallelism" value={config.parallelism} />
-      <KVPair orientation="vertical" label="Generation" value={config.generation} />
-      <KVPair orientation="vertical" label="Sequence Packing" value={config.sequencePacking} />
-    </>
-  );
-};
