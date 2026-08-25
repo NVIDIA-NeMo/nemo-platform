@@ -8,8 +8,9 @@ description: >-
   from a supported trace source. Owns the evidence standard that every Eval
   Author sub-flow follows. Use when the user asks "help me with my evals",
   "what's the state of the eval suite here?", "what happened in this trace?", or
-  when you need to pick between the Eval Author sub-flows. Routes to a sub-flow,
-  changes none of the user's source, and saves findings under `.eval-author/`.
+  when you need to pick between the Eval Author sub-flows. Routes to a sub-flow
+  and changes none of the user's source. The sub-flow it picks runs the scripts
+  and saves its findings under `.eval-author/`.
 triggers:
   - help me with the evals in this repo
   - what is the state of the eval suite here
