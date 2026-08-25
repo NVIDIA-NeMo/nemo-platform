@@ -6,9 +6,16 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException, Request
-from scaled_evals.api.auth import CurrentPrincipal, current_principal
-from scaled_evals.api.settings import settings
+
+# This plugin is absent from `enabled-plugins`, so a default sync leaves it and its database
+# driver uninstalled and the repo-wide test run still sweeps this directory. Skip rather than
+# error there; the job that owns these tests installs the `scaled-evals` group first.
+try:
+    from fastapi import HTTPException, Request
+    from scaled_evals.api.auth import CurrentPrincipal, current_principal
+    from scaled_evals.api.settings import settings
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 
 def _request(**state: object) -> Request:

@@ -9,6 +9,12 @@ import os
 import subprocess
 import sys
 
+import pytest
+
+# These boot the plugin in a child process, so guard the module instead: a default sync leaves
+# it uninstalled and the repo-wide run still sweeps here.
+pytest.importorskip("scaled_evals", reason="scaled-evals plugin not installed")
+
 
 def _fixture_dsn(role: str, host: str, database: str) -> str:
     """Build a throwaway DSN whose password is just the role name.

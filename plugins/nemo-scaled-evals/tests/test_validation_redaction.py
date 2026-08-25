@@ -5,10 +5,18 @@
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-from nemo_scaled_evals_plugin.service import ScaledEvalsService
-from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
-from scaled_evals.api.db import get_db
+import pytest
+
+# This plugin is absent from `enabled-plugins`, so a default sync leaves it and its database
+# driver uninstalled and the repo-wide test run still sweeps this directory. Skip rather than
+# error there; the job that owns these tests installs the `scaled-evals` group first.
+try:
+    from fastapi.testclient import TestClient
+    from nemo_scaled_evals_plugin.service import ScaledEvalsService
+    from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
+    from scaled_evals.api.db import get_db
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 SECRET = "sk-do-not-echo-this-value"
 

@@ -11,20 +11,27 @@ import uuid
 from unittest import mock
 from urllib.parse import quote, urlsplit, urlunsplit
 
-import psycopg
 import pytest
 from cryptography.fernet import Fernet
-from nemo_scaled_evals_plugin import migrations
-from nemo_scaled_evals_plugin.migrations import (
-    _CONNECT_RETRY_INTERVAL_SECONDS,
-    _ensure_schema,
-    apply_sql,
-    sql_root,
-)
-from nemo_scaled_evals_plugin.service import ScaledEvalsService
-from psycopg.sql import SQL, Identifier
-from scaled_evals.api.repositories.ops_repository import OperationsRepository
-from scaled_evals.api.settings import Settings, settings
+
+# This plugin is absent from `enabled-plugins`, so a default sync leaves it and its database
+# driver uninstalled and the repo-wide test run still sweeps this directory. Skip rather than
+# error there; the job that owns these tests installs the `scaled-evals` group first.
+try:
+    import psycopg
+    from nemo_scaled_evals_plugin import migrations
+    from nemo_scaled_evals_plugin.migrations import (
+        _CONNECT_RETRY_INTERVAL_SECONDS,
+        _ensure_schema,
+        apply_sql,
+        sql_root,
+    )
+    from nemo_scaled_evals_plugin.service import ScaledEvalsService
+    from psycopg.sql import SQL, Identifier
+    from scaled_evals.api.repositories.ops_repository import OperationsRepository
+    from scaled_evals.api.settings import Settings, settings
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 # Set to a throwaway database to run the real-Postgres check:
 #   docker run -d --name se-pg -e POSTGRES_PASSWORD=pw -p 5433:5432 postgres:16

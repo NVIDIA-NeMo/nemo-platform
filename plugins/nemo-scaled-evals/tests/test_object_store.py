@@ -9,9 +9,16 @@ import asyncio
 from typing import Any
 
 import pytest
-from botocore.exceptions import ClientError
-from nemo_scaled_evals_plugin.service import ScaledEvalsService
-from scaled_evals.api import s3
+
+# This plugin is absent from `enabled-plugins`, so a default sync leaves it and its database
+# driver uninstalled and the repo-wide test run still sweeps this directory. Skip rather than
+# error there; the job that owns these tests installs the `scaled-evals` group first.
+try:
+    from botocore.exceptions import ClientError
+    from nemo_scaled_evals_plugin.service import ScaledEvalsService
+    from scaled_evals.api import s3
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 
 class _FakeS3:

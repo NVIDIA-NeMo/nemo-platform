@@ -11,7 +11,12 @@ inside a live sandbox — so pin the substitution here.
 
 from __future__ import annotations
 
+import pytest
 import yaml
+
+# The imports this exercises happen inside the test body, so guard the module instead: a
+# default sync leaves this plugin uninstalled and the repo-wide run still sweeps here.
+pytest.importorskip("scaled_evals", reason="scaled-evals plugin not installed")
 
 DIGEST = "sha256:" + "a" * 64
 BUNDLE = {
