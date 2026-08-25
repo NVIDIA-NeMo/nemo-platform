@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: nemo-explore
-description: Captures what a NeMo Platform agent should do before any code or YAML. Explores the user's codebase and docs first, fills in every Ethos field it can infer, then asks the user only for the gaps — including the intent it cannot read from source, such as constraints, trade-offs, and principles. Output feeds nemo-ethos. Use over generic brainstorming for any NeMo Platform agent design conversation.
+description: Captures what a NeMo Platform agent should do before any code or YAML. Explores the user's codebase and docs first, then asks one intent question at a time for what source cannot supply. Output feeds nemo-ethos. Use over generic brainstorming for any NeMo Platform agent design conversation.
 triggers:
   - design my agent
   - what should my agent do
@@ -22,7 +22,7 @@ not-for:
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
 preconditions:
   - nemo_cli_available
-compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-ethos.
+compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); one intent question per message after the codebase scan; safe under any sandbox; works offline; output is a structured conversation handed to nemo-ethos.
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -38,27 +38,30 @@ the durable contract that downstream optimization agents read as their primary
 context. Underspecified input here directly degrades the quality of generated
 Insights and PRs downstream.
 
-This skill is **explore-first, gap-fill second**. You do not interview the
-user from scratch. You scan the codebase and docs, infer what you can against
-the Ethos schema below, present what you found, and ask the user only for the
-fields you could not fill.
+This skill is **explore first, then a mandatory intent interview.** Scan the
+codebase and docs, infer implementation-shaped fields, then ask the user for
+intent source cannot own. Do not skip the interview because the scan looked
+complete. Do not dump the draft Ethos until that interview has asked at least
+one question and received a reply.
 
 The division of labor is: **infer implementation, ask for intent.** Almost
 everything about what the agent *is* can be read from source. Nothing about what
-the developer *wants* can be. Constraints, trade-offs, and principles are never in
-the code, so they are the questions worth spending the user's attention on.
+the developer *wants* can be. Constraints, trade-offs, principles, mission, and
+change permissions live in the user's head, so they are the questions worth
+spending attention on.
 
 ## The schema you are filling
 
-The Ethos has five front-matter fields and fifteen body sections, tiered by how
-badly a consumer needs them. One section is a hard requirement: handoff to
-`nemo-ethos` is blocked until `Role` is concrete.
+The Ethos has five front-matter fields and fifteen body sections. Every body
+section is required. One field is a quality gate for handoff: `nemo-ethos` is
+blocked until `Role` is concrete. For any other section with nothing to say,
+write `_(none)_` rather than dropping the heading.
 
 **Front matter**
 
 | Field | Required | Guidance |
 | :---- | :---- | :---- |
-| `schema_version` | yes | Always `2` for new files. `nemo-ethos` fills this at write time. |
+| `schema_version` | yes | Always `1` for new files. `nemo-ethos` fills this at write time. |
 | `name` | yes | Canonical agent name. Use the directory or workflow name if obvious; ask if not. |
 | `created_timestamp` | yes | ISO 8601 timestamp for when the Ethos is created. `nemo-ethos` fills this at write time. |
 | `author` | yes | Human or agent that created the Ethos. `nemo-ethos` fills this from the current author context when known; ask only if ambiguous. |
@@ -66,26 +69,23 @@ badly a consumer needs them. One section is a hard requirement: handoff to
 
 **Body sections** (in canonical order)
 
-Tier legend: **core** fails to parse when missing, **intent** warns and blocks
-strict optimizer runs, **optional** can be omitted silently.
-
-| # | Section | Tier | What "good" looks like |
-| :---- | :---- | :---- | :---- |
-| 1 | Role | **core** | One concrete sentence describing the role this agent plays. Example: "answer IT helpdesk questions about VPN, password reset, and software access." Vague answers ("help with stuff") are useless downstream. |
-| 2 | Purpose & Outcomes | core | Two labeled parts. **Mission:** why the agent exists, what user value it provides, and the product or workflow context it serves — not a restatement of implementation mechanics. **Outcome:** the external result it is accountable for, with the measurable target and who owns that number. A mission with no outcome cannot be optimized; an outcome with no mission gets optimized in the wrong direction. Say so plainly when the agent is internal tooling with no business metric. |
-| 3 | Scope | core | Audience, 3-6 task categories, expected in-scope work, and explicit out-of-scope work/non-goals. |
-| 4 | Tools | core | Tools, APIs, and knowledge sources the agent can use, or "Prompt-only." Group related helpers by capability or source. Capture only behaviorally important purpose, credentials/scopes, side effects, freshness, and expected failures. |
-| 5 | Harness | optional | Describe the selected or likely harness, the source framework where one exists, and the behavior the harness owns: loop, tool dispatch, context/state, guardrails, observability, verification, and runtime. Record a framework as an observation, not as proof of lifecycle compatibility. Use `_(none)_` if selection should wait until config authoring. |
-| 6 | Behavior | core | Behavioral rules and boundaries: refusal/escalation policy, tone, safety/compliance requirements, accepted limitations, and known non-goals. Hard external limits belong in `Constraints`. |
-| 7 | Principles | intent | How the agent should decide when no rule in `Behavior` covers the case: which way to err on an ambiguous request, what it protects even at some cost to the answer, and whose interest wins when the user and the business disagree. Two or three concrete judgment calls. "Helpful, harmless, and honest" is not an answer — it is true of every agent. |
-| 8 | Success Criteria | core | What good production behavior looks like, independent of current evals: mission-level outcomes, quality standards, escalation quality, accuracy expectations, and examples of success. Rank them when some matter more. |
-| 9 | Trade-offs | intent | How to choose when two improvements conflict. Needs three things: hard gates never traded away, a priority order over the rest (quality, latency, cost, reliability), and regressions that are unacceptable even alongside a headline win. "Balance quality and cost" is not an answer. |
-| 10 | Constraints | intent | Hard external bounds no change may cross: approved providers/models/regions, data residency and handling, compliance obligations, production cost ceilings and latency SLOs, and changes that need human sign-off. Give the current measured figure next to a ceiling when you know it. Usually organizational, which is why the code cannot supply them. |
-| 11 | Evaluation Setup | intent | Current validation setup: how to run it, what datasets/checks it uses, what scorers/metrics measure, pass/fail thresholds, and known coverage gaps relative to the success criteria. If no eval suite exists, say so explicitly. |
-| 12 | Metric Semantics | optional | What ambiguous or load-bearing metric and telemetry field names actually mean, and which claims they do not support. Only worth filling when a name could be misread. |
-| 13 | Change Scope | core | A permissions list — what the optimization loop may modify. Each lever takes `yes`, `no`, or `with-approval`. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the Ethos itself. |
-| 14 | Vision | optional | Where the agent is headed: an intention beyond today's job, plus one or two concrete use cases it should grow into but does not serve yet. That last part marks what `Scope` excludes *for now* rather than on principle. Omit rather than pasting a dated backlog. |
-| 15 | Open Questions | optional | Open facts that affect safe use, evaluation, or modification of the agent. Remove once answered. |
+| # | Section | What "good" looks like |
+| :---- | :---- | :---- |
+| 1 | Role | One concrete sentence describing the role this agent plays. Example: "answer IT helpdesk questions about VPN, password reset, and software access." Vague answers ("help with stuff") are useless downstream. |
+| 2 | Purpose & Outcomes | Two labeled parts. **Mission:** why the agent exists, what user value it provides, and the product or workflow context it serves — not a restatement of implementation mechanics. **Outcome:** the external result it is accountable for, with the measurable target and who owns that number. A mission with no outcome cannot be optimized; an outcome with no mission gets optimized in the wrong direction. Say so plainly when the agent is internal tooling with no business metric. |
+| 3 | Scope | Audience, 3-6 task categories, expected in-scope work, and explicit out-of-scope work/non-goals. |
+| 4 | Tools | Tools, APIs, and knowledge sources the agent can use, or "Prompt-only." Group related helpers by capability or source. Capture only behaviorally important purpose, credentials/scopes, side effects, freshness, and expected failures. |
+| 5 | Harness | How this agent actually runs: the loop, tool use, and runtime. Write what is true of this agent. Do not pick a named platform harness, and do not treat a framework import as a requirement. Write `_(none)_` if you cannot describe how it runs. |
+| 6 | Behavior | Behavioral rules and boundaries: refusal/escalation policy, tone, safety/compliance requirements, accepted limitations, and known non-goals. Hard external limits belong in `Constraints`. |
+| 7 | Principles | How the agent should decide when no rule in `Behavior` covers the case: which way to err on an ambiguous request, what it protects even at some cost to the answer, and whose interest wins when the user and the business disagree. Two or three concrete judgment calls. "Helpful, harmless, and honest" is not an answer — it is true of every agent. Write `_(none)_` if there is no judgment call beyond `Behavior`. |
+| 8 | Success Criteria | What good production behavior looks like, independent of current evals: mission-level outcomes, quality standards, escalation quality, accuracy expectations, and examples of success. Rank them when some matter more. |
+| 9 | Trade-offs | How to choose when two improvements conflict. Needs three things: hard gates never traded away, a priority order over the rest (quality, latency, cost, reliability), and regressions that are unacceptable even alongside a headline win. "Balance quality and cost" is not an answer. Write `_(none)_` if the user cannot rank them. |
+| 10 | Constraints | Hard external bounds no change may cross: approved providers/models/regions, data residency and handling, compliance obligations, production cost ceilings and latency SLOs, and changes that need human sign-off. Give the current measured figure next to a ceiling when you know it. Usually organizational, which is why the code cannot supply them. Write `_(none)_` if unconstrained. |
+| 11 | Evaluation Setup | Current validation setup: how to run it, what datasets/checks it uses, what scorers/metrics measure, pass/fail thresholds, and known coverage gaps relative to the success criteria. If no eval suite exists, say so explicitly. |
+| 12 | Metric Semantics | What ambiguous or load-bearing metric and telemetry field names actually mean, and which claims they do not support. Write `_(none)_` when every name means exactly what it says. |
+| 13 | Change Scope | A permissions list — what may be modified. Each lever takes `yes`, `no`, or `with-approval`. Name levers that exist on this agent. Do not copy a platform catalog. The loop never edits the Ethos itself. |
+| 14 | Vision | Where the agent is headed: an intention beyond today's job, plus one or two concrete use cases it should grow into but does not serve yet. That last part marks what `Scope` excludes *for now* rather than on principle. Write `_(none)_` rather than pasting a dated backlog. |
+| 15 | Open Questions | Open facts that affect safe use, evaluation, or modification of the agent. Write `_(none)_` when there are none. Remove items once answered. |
 
 Known issues / failure patterns are tracked as first-class Insight entities by
 the insights plugin — do not duplicate them into the Ethos.
@@ -100,23 +100,36 @@ over. If they want to edit, route to `nemo-ethos` directly.
 ls agents/*-ethos/ETHOS.md 2>/dev/null || echo "no ethos yet"
 ```
 
-If you find a legacy `agents/*-spec/AGENT-SPEC.md` instead, the agent predates
-the rename. Tell the user to run `nemo agents ethos migrate`, then continue from
-the migrated file rather than starting over.
+If `agents/<name>-spec/AGENT-SPEC.md` exists, the agent still has a spec
+package. Read that file as prior answers. Scan the codebase, then still run
+the intent interview for anything the spec never answered. Hand those
+answers to `nemo-ethos` so it writes `agents/<name>-ethos/ETHOS.md`.
 
 ```bash
-ls agents/*-spec/AGENT-SPEC.md 2>/dev/null && echo "legacy contract — run: nemo agents ethos migrate"
+ls agents/*-spec/AGENT-SPEC.md 2>/dev/null && echo "spec package present"
 ```
+
+After the Ethos is uploaded and the user confirms it, copy remaining package
+files such as `agent.yaml` into `agents/<name>-ethos/`. Do that when those
+files still live only in the spec package. Confirm, then delete
+`agents/<name>-spec/` and the `<name>-spec` Fileset:
+
+```bash
+nemo files filesets delete "${NAME}-spec"
+```
+
+Do not start a greenfield explore unless the spec is missing answers you
+still need.
 
 ## Step 1 — Explore the codebase
 
 Time-box this to ~5 minutes of tool use. Read first, ask second. Greenfield
-projects will turn up nothing here, which is fine — move to step 2 and ask
-the user the full set of unfilled fields.
+projects will turn up nothing here, which is fine — move to the intent
+interview and ask for Role first.
 
 1. **Find agent definitions and entry points.** Look for Platform
-   `agent.yaml`, NAT workflow YAMLs, supported harness configuration, Python
-   agent builders, system prompts, skills, and tool definitions:
+   `agent.yaml`, NAT workflow YAMLs, Python agent builders, system prompts,
+   skills, and tool definitions:
 
    ```bash
    find . -maxdepth 5 -type f -name "agent.yaml" 2>/dev/null
@@ -125,9 +138,9 @@ the user the full set of unfilled fields.
    ```
 
    Then use `Glob` / `Grep` to find `nemo-agents-spec-v1`,
-   `default_harness`, `codex`, `hermes`, `deepagents`, `claude`, `langgraph`,
-   `StateGraph`, `create_react_agent`, `system_prompt`, skills, MCP servers,
-   and tool definitions.
+   `langgraph`, `StateGraph`, `create_react_agent`, `system_prompt`, skills,
+   MCP servers, and tool definitions. Treat any harness or framework name you
+   find as a clue about how the agent runs, not as a value the Ethos must pick.
 
 2. **Find design context.** Look for `README.md`, `AGENTS.md`,
    product/design/planning docs, launch notes, and anything in `docs/`. Read
@@ -166,17 +179,17 @@ the user the full set of unfilled fields.
      `create_react_agent(tools=[...])`, retrieval/corpus config, or API clients.
      Group low-level helpers when they share credentials, side effects,
      freshness, and failure modes.
-   - **Harness** — infer from `default_harness` and `harnesses` in
-     `agent.yaml`, adapter configuration, NAT workflow YAML, service
-     entrypoints, CLI commands, Dockerfiles, notebooks, or deployment configs.
-     Capture behaviorally relevant capabilities, not low-level settings. If
-     there is no selection yet, leave it unresolved for `nemo-agent-config`.
+   - **Harness** — infer from how the agent actually runs: adapter
+     configuration, workflow YAML, service entrypoints, CLI commands,
+     Dockerfiles, notebooks, or deployment configs. Capture behaviorally
+     relevant capabilities, not a catalog name. If you cannot see how it runs,
+     write `_(none)_`.
    - **Behavior** — system prompt rules ("never give medical advice"),
      refusal/escalation policy, tone, accepted limitations, and non-goals.
    - **Success Criteria** — desired production outcomes, product goals,
      quality standards, escalation quality, accuracy expectations, and examples
      of successful behavior.
-   - **Trade-offs** — not in the code; ask the user in step 1.5.
+   - **Trade-offs** — not in the code; ask in the intent interview.
    - **Constraints** — mostly not in the code, but scan for partial evidence
      worth confirming: a pinned gateway base URL or provider allowlist, region
      settings, redaction or PII middleware, timeout and token ceilings, and
@@ -186,118 +199,159 @@ the user the full set of unfilled fields.
      metric definitions, thresholds, and coverage notes.
    - **Metric Semantics** — from scorer definitions, metric names in eval
      configs, and telemetry field names. Fill only the entries whose meaning is
-     genuinely ambiguous from the name.
+     genuinely ambiguous from the name. Write `_(none)_` when every name is
+     obvious.
    - **Change Scope** — not in the code; ask the user.
-   - **Principles** — not in the code; ask the user in step 1.5. A prompt may
+   - **Principles** — not in the code; ask in the intent interview. A prompt may
      hint at one, but a prompt is the implementation, not the intent behind it.
    - **Vision** — not in the code. Roadmap docs, design notes, or a README's
-     future-work section sometimes carry it. Omit rather than guessing.
+     future-work section sometimes carry it. Write `_(none)_` rather than
+     guessing.
    - **Open Questions** — TODOs / FIXMEs in agent-adjacent code that
      affect safe use, evaluation, or modification.
 
-## Step 1.5 — The intent round
+## Step 2 — Ask intent questions
 
-The code told you what the agent is. It cannot tell you what the developer
-wants, and the intent-tier sections exist precisely to capture what no scan can
-recover. This is the one place where asking is mandatory rather than a fallback.
+The scan told you what the agent is. It cannot tell you what the developer
+wants. Run a real interview for that intent before you show a draft Ethos.
 
-Ask these four questions in **a single message**, and say up front why you are
-asking: an optimizer that does not know the constraints will spend real money
-proposing changes the user cannot ship.
+This step is a hard gate. Do not present the full draft, and do not hand off
+to `nemo-ethos`, until you have asked at least one question and received a
+reply. "The scan filled everything" is not a reason to skip it.
 
-> "The code told me what your agent does. Four things it can't tell me, and
-> they're what stop an optimizer from proposing changes you can't ship:
+### What to ask
+
+After the scan, split fields into two piles:
+
+- **Inferred** — implementation-shaped fields you can draft from source:
+  `Tools`, `Harness`, `Evaluation Setup`, `Behavior` copied from prompts,
+  `Metric Semantics` from scorer names.
+- **Intent** — fields source cannot own: `Purpose & Outcomes` when the
+  mission is only inferred from code, `Constraints`, `Trade-offs`,
+  `Principles`, `Change Scope`, `Vision`, and a ranked `Success Criteria`
+  when the repo only has eval wiring.
+
+Walk the intent pile. Skip a topic only when this conversation already
+answered it, or when a cited user-owned doc states it clearly. Keep every
+other unanswered intent topic on the list. Greenfield work adds `Role`,
+`Scope`, and whether the agent is prompt-only before that intent list.
+
+Question count is variable. A documented repository might need two or three
+intent questions. A greenfield project might need more. You always ask at
+least one. Prefer fewer sharp questions over a long checklist.
+
+Ask about these topics in this order, skipping any you can already fill:
+
+1. Concrete `Role` when the scan is missing or vague.
+2. Outside context for `Purpose & Outcomes` when the mission is
+   implementation-only.
+3. `Constraints` — hard bounds no change may cross.
+4. `Trade-offs` — hard gates, then a ranking.
+5. `Principles` — the judgment call when `Behavior` runs out.
+6. `Change Scope` — which levers on this agent may move.
+7. `Vision` when docs have no destination beyond today's job.
+
+Do not collect run limits. A per-experiment spend cap belongs to the
+optimizer. If the user volunteers one, keep the standing policy and drop
+the number.
+
+### How to ask
+
+Follow this Q&A pattern:
+
+- **One question per message.** If a topic needs more depth, ask a
+  follow-up in the next message. Do not batch four intent questions.
+- **Prefer multiple choice.** Ground the options in what you found.
+  Always include a way to reject the list (`Something else` or `I don't
+  know`). Open-ended is fine when a lettered list would fake certainty.
+- **Wait for the reply** before the next question.
+- **Accept "I don't know"** and move on. Write `_(none)_` and record the
+  gap in `Open Questions`. A fabricated constraint is worse than a missing
+  one.
+- **Confirm inferred bounds.** If the scan found a pinned gateway or
+  redaction middleware, show it and ask whether it is a real boundary.
+
+Example (one message, then stop):
+
+> The scan shows a pinned NVIDIA gateway and no cost ceiling in docs.
 >
-> 1. **Outside context** — is there anything explaining the goals, users,
->    success bar, or business motivation that isn't in the repo? Paste or link
->    it, or tell me there isn't any.
-> 2. **Hard constraints** — anything that's off the table no matter how well it
->    performs? Approved model providers or regions, data that can't leave a
->    boundary, compliance rules, a cost-per-run or latency ceiling in
->    production, changes that need sign-off.
-> 3. **Trade-offs** — when two improvements conflict, how should I choose? What
->    can never be traded away, and how would you rank quality, latency, and cost
->    after that?
-> 4. **Principles** — when a request doesn't fit any rule you've written, which
->    way should the agent err? Ask, assume, or refuse? And is there anything it
->    should protect even when that makes the answer worse?"
+> Which hard bounds should `Constraints` record?
+>
+> A. Keep the gateway pin; no other bounds
+> B. Gateway pin plus a production cost or latency ceiling (tell me the number)
+> C. No hard bounds — write `_(none)_`
+> D. Something else
 
-Rules for this round:
+Reject generic virtues for `Principles`. "Helpful, harmless, and honest"
+gives a downstream reader nothing. Ask for the judgment call: what does
+this agent do that a careless version of it would not? If nothing comes
+back, write `_(none)_`.
 
-- **One message, four questions.** Do not serialize them into an interview.
-- **Accept "I don't know" and move on.** Write the honest gap into `Open
-  Questions` rather than inventing a plausible constraint. A fabricated
-  constraint is worse than a missing one: it silently removes good candidates.
-- **Reject generic virtues for `Principles`.** "Helpful, harmless, and honest"
-  is true of every agent and gives a downstream reader nothing. Ask for the
-  judgment call instead: what does this agent do that a careless version of it
-  would not? If nothing comes back, leave the section out.
-- **Do not collect run limits.** A per-experiment spend cap or wall-clock limit
-  configures one optimization run and belongs to the tool running it, not to a
-  durable contract. If the user volunteers one, keep the standing policy behind
-  it — a production cost ceiling goes in `Constraints`, an approver goes in
-  `Constraints` or `Change Scope` — and drop the number.
-- **Push once on a non-answer for trade-offs.** "Balance quality and cost" is
-  not decidable. One concrete follow-up ("if a change cut cost 30% but lost 2
-  points of accuracy, would you take it?") usually produces a usable ranking.
-  If it does not, record the ambiguity and move on.
-- **Confirm, do not assume, anything you inferred for `Constraints`.** If the
-  scan found a pinned gateway or a redaction middleware, show it and ask whether
-  it is a real boundary or an implementation detail.
+Push once on a non-answer for `Trade-offs`. "Balance quality and cost" is
+not decidable. One concrete follow-up usually produces a ranking. If it
+does not, record the ambiguity and move on.
 
-If the user provides outside context, read it and update the inferred draft
-before the review pass.
+If the user provides outside context, read it and update the inferred
+draft before the next question.
 
-## Step 2 — One review pass, not a Q&A loop
+### Red flags — stop and ask
 
-Keep onboarding lightweight. The codebase scan and the intent round should have
-filled most fields already. Your goal here is **one review round-trip with the
-user**, not a per-field interview.
+These mean you skipped the interview:
 
-Present the entire Ethos at once — every field, with inferred values shown
-inline and any required-but-missing fields called out. Pick a sensible
-default for every optional field rather than asking. Then ask the user a
-single question:
+- You are about to paste the full Ethos and have not asked a question yet
+- Several intent questions in one message
+- Handing off to `nemo-ethos` with no Q&A reply in this conversation
 
-> "Here's the full Ethos I'd write. Tell me what to change — especially if
-> there's outside context I missed — and I need the two missing required fields
-> below before I can hand off to `nemo-ethos`."
+| Excuse | Reality |
+| --- | --- |
+| The scan filled everything | Code never owns intent. Ask at least one intent question. |
+| Batching questions saves turns | One question gets a real answer. A dump gets shallow ones. |
+| The draft review can collect intent | Review is for corrections. Ask intent first. |
+| The user looks busy | One short multiple-choice question is enough to start. |
 
-Show the rendered Ethos inline in markdown (one `##` section per field, same
-shape as the on-disk file). For fields you defaulted, note the default in
-parentheses so the user knows they can override:
+## Step 3 — Present the draft Ethos
+
+After the interview, present the entire Ethos at once — every field, with
+inferred values shown inline and remaining gaps as `_(none)_`. Then ask
+one question:
+
+> "Here's the full Ethos I'd write. Tell me what to change, and I need a
+> concrete Role before I can hand off to `nemo-ethos`."
+
+Show the rendered Ethos inline in markdown (one `##` section per field,
+same shape as the on-disk file). For fields you defaulted, note the
+default in parentheses so the user knows they can override:
 
 - `Tools: Prompt-only.` *(default — say so if the agent needs tools)*
-- `Purpose & Outcomes` / `Success Criteria` inferred from implementation *(say
-  so if there is outside context to incorporate)*
-- `Change Scope:` all defaults on, fine-tuning off *(default — call out
-  anything you want to lock down, or mark it `with-approval`)*
+- `Purpose & Outcomes` / `Success Criteria` inferred from implementation
+  *(say so if there is outside context to incorporate)*
+- `Change Scope:` name the parts of this agent a change may touch
+  *(default — call out anything you want to lock down, or mark it
+  `with-approval`)*
 
-Mark any intent-tier section the user could not answer as an explicit gap, not a
-default. Say "`Constraints`: none given — the optimizer will treat every provider
-and cost as fair game" so the consequence is visible while it is still cheap to
-fix.
+When the user could not answer a section, write `_(none)_` and add the
+gap to `Open Questions`. Say "`Constraints`: _(none)_ — a later optimizer
+might treat every provider and cost as fair game" so the consequence is
+visible while it is still cheap to fix.
 
-**Do not** walk the schema field by field. **Do not** ask for confirmation on
-high-confidence inferences. **Do not** ask one question at a time. The whole
-point of this skill is that the codebase scan paid for the right to skip the
-interrogation.
+Do not walk the schema field by field in this review. Do not restart the
+intent interview here unless the reply surfaces a contradiction.
 
 Do not use public-facing shorthand like `AUT` or "agent under test" in the
-rendered Ethos. Use "this agent" for the agent being specified. Use "target
-agent" only where the agent's purpose is explicitly to inspect or modify
-another agent, and name optimizer helper agents only when they are part of the
-actual product workflow.
+rendered Ethos. Use "this agent" for the agent being specified. Use
+"target agent" only where the agent's purpose is explicitly to inspect or
+modify another agent, and name optimizer helper agents only when they are
+part of the actual product workflow.
 
-Allowed exceptions where a follow-up question is justified:
+Allowed follow-ups after the draft:
 
-1. The **hard-required** `Role` is missing or vague — ask for it in the same
-   single round-trip.
-2. The user's reply to the review block surfaces a contradiction that needs
-   one targeted clarification (e.g. they say "drop the search tool" but the
+1. The **hard-required** `Role` is missing or vague — ask for it before
+   handoff.
+2. The user's reply surfaces a contradiction that needs one targeted
+   clarification (for example they say "drop the search tool" but the
    codebase shows the agent depends on it).
 
-## Step 3 — Hand off
+## Step 4 — Hand off
 
 After the user's reply, apply the corrections and check the one hard
 precondition:
@@ -308,11 +362,11 @@ If it is still unresolved, ask for it in one final message and stop until the
 user provides it. Do not hand off with `Role` blank — the artifact is useless
 downstream even though the parser accepts it.
 
-Intent-tier gaps do **not** block handoff. Carry them through as gaps so
-`nemo-ethos` can surface the parser warnings, and note them in `Open Questions`
-when they affect safe optimization.
+Every body section heading must be present before handoff. Write `_(none)_`
+for honest gaps, and note them in `Open Questions` when they affect safe
+optimization. Do not drop a heading.
 
-If both hard requirements are satisfied, announce the handoff in one line
+If the Role quality gate is satisfied, announce the handoff in one line
 ("Handing off to `nemo-ethos` to write `agents/<name>-ethos/ETHOS.md` and upload
 the canonical copy to Filesets") and trigger it.
 
@@ -326,10 +380,12 @@ the canonical copy to Filesets") and trigger it.
 - **They keep changing their mind on Role.** Stop. Tell them the agent will
   not be useful until they can write one concrete sentence and offer to
   come back later. Do not loop on rewording.
-- **They skip the intent round entirely.** Proceed, but say once what it costs:
-  the optimizer will treat any provider, any cost, and any latency as
-  acceptable, so its suggestions may be unshippable. Then write the Ethos with
-  the gaps recorded and move on. Do not re-ask.
+- **They skip remaining intent questions.** You already asked at least
+  one. Treat skipped topics as `I don't know`: write `_(none)_`, record
+  them in `Open Questions`, and say once what it costs. Then present the
+  draft. Do not re-open the full interview.
+- **They say "just write it" before any question.** Ask one intent
+  question anyway. After they answer or decline that one, continue.
 
 ## Gotchas
 
@@ -351,29 +407,30 @@ the canonical copy to Filesets") and trigger it.
   chance to supply the missing outside context.
 - **Never infer a constraint you cannot verify.** A guessed provider allowlist
   or cost ceiling silently deletes good candidates and looks authoritative doing
-  it. Ask, or leave the section empty and record the gap.
+  it. Ask, or write `_(none)_` and record the gap in `Open Questions`.
 - **Trade-offs are the highest-leverage question you will ask.** Without a
   priority order, every candidate that improves one metric and regresses another
   is undecidable, and the optimizer either stalls or picks arbitrarily.
 - **"No behavior constraints" usually means "I haven't thought about it."** Probe
   once: "Anything that should never appear — names, phone numbers, competitor
   mentions?" One probe, then move on.
-- **Do not skip the codebase scan even when the user seems eager to dive
-  into questions.** Spending the first five minutes reading earns the right
-  to ask shorter, sharper questions. Asking something the codebase already
+- **Do not skip the codebase scan even when the user seems eager to
+  answer questions.** Spending the first five minutes reading makes the
+  interview shorter and sharper. Asking something the codebase already
   answers loses trust immediately.
-- **A framework import does not prove harness compatibility.** Record the source
-  framework in `Harness` as an observation, not as a promise that a supported
-  harness can own the lifecycle. Imports such as `langchain`, `langgraph`,
-  `crewai`, `autogen`, or `pydantic_ai` say nothing about that.
+- **Do not skip the intent interview even when the scan looks complete.**
+  Ask at least one question. One at a time. Multiple choice when you can.
+- **A framework import is not a harness.** Describe how the agent runs. Do not
+  map an import onto a platform harness name. Imports such as `langchain`,
+  `langgraph`, `crewai`, `autogen`, or `pydantic_ai` say nothing about that.
 - **Keep Platform terminology at the design boundary.** Record the desired
   harness behavior and artifacts without exposing Fabric SDK types or asking
   the user to design a raw runtime config. `nemo-agent-config` owns the
   machine-readable Platform YAML after the Ethos is approved.
-- **Change Scope is a permissions list, not a wishlist.** It controls
-  what the experimentalist agent will edit. Walk the defaults explicitly so
+- **Change Scope is a permissions list, not a wishlist.** It controls what
+  later optimization may edit. Walk the levers that exist on this agent so
   the user knows what they're consenting to. Offer `with-approval` for levers
-  the user wants available but not automatic.
+  the user wants available but not automatic. Do not copy a platform catalog.
 - **Do not invent Known Issues fields.** Known issues / recurring failure
   patterns live in the Insights plugin as first-class entities, not in the
   Ethos.

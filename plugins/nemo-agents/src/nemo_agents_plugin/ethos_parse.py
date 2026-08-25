@@ -7,10 +7,8 @@ This module intentionally does not model every markdown section as structured
 Python. It validates the machine-readable front matter and the required section
 outline, then returns raw markdown sections for humans and agents to consume.
 
-Validation is tiered for schema version 2. Core-tier gaps raise; intent-tier
-gaps are collected on ``Ethos.warnings`` so a partially onboarded contract stays
-usable, and become errors under ``strict`` for callers that refuse to optimize
-against an under-specified contract.
+A missing body section raises. ``strict`` turns remaining warnings into
+errors, which today means an unversioned file that was parsed as version 1.
 """
 
 from __future__ import annotations
@@ -22,7 +20,6 @@ from typing import Any
 import yaml
 from nemo_agents_plugin.ethos import (
     ETHOS_SCHEMA_VERSION,
-    INTENT_SECTION_TITLES,
     Ethos,
     required_sections,
 )
@@ -41,12 +38,12 @@ def parse_ethos(markdown: str, *, strict: bool = False) -> Ethos:
 
     Args:
         markdown: Full ETHOS.md contents, including front matter.
-        strict: Treat intent-tier warnings as errors. Use this when the caller
-            cannot act sensibly on an incomplete contract.
+        strict: Turn remaining warnings into errors. Use this when the caller
+            cannot act on an unversioned contract.
 
     Raises:
-        EthosParseError: Front matter is missing or malformed, a required
-            section is absent, or ``strict`` is set and a warning was raised.
+        EthosParseError: Front matter is missing or malformed, a section
+            heading is absent, or ``strict`` is set and a warning was raised.
     """
 
     front_match = _FRONT_MATTER_RE.match(markdown)
@@ -64,19 +61,15 @@ def parse_ethos(markdown: str, *, strict: bool = False) -> Ethos:
         if title not in sections:
             raise EthosParseError(f"missing section: ## {title}")
 
-    # Version 2 dropped ``Framework``: nothing read its value, and the container's
-    # framework label comes from ``agent.yaml`` instead. Version 1 still requires it,
-    # so keep the resolution gate for any file that carries the section.
+    # Version 1 dropped ``Framework``: nothing read its value, and the container's
+    # framework label comes from ``agent.yaml`` instead. A leftover heading must
+    # still be resolved if it is present.
     if "Framework" in sections:
         framework = sections["Framework"].strip()
         if not framework or framework == "_(none)_":
             raise EthosParseError("framework section must be resolved")
 
     warnings = [*version_warnings]
-    if version >= 2:
-        warnings.extend(
-            f"missing intent section: ## {title}" for title in INTENT_SECTION_TITLES if title not in sections
-        )
 
     if strict and warnings:
         raise EthosParseError("; ".join(warnings))
@@ -98,9 +91,7 @@ def _schema_version(front: dict[str, Any]) -> tuple[int, list[str]]:
     raw = front.get("schema_version")
     if raw is None:
         return 1, [
-            "front matter has no 'schema_version'; parsed as version 1. "
-            f"Add 'schema_version: {ETHOS_SCHEMA_VERSION}' and the intent sections "
-            "so optimizers can read the developer's intent."
+            f"front matter has no 'schema_version'; parsed as version 1. Add 'schema_version: {ETHOS_SCHEMA_VERSION}'."
         ]
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise EthosParseError("front matter field 'schema_version' must be an integer")

@@ -80,7 +80,9 @@ NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
    it before continuing. Do not require `ETHOS.md` or an Ethos fileset.
 5. For the default Platform-managed path, confirm
    `agents/$AGENT_NAME-ethos/ETHOS.md` exists. If it does not, route through
-   `nemo-explore` and `nemo-ethos` first.
+   `nemo-explore` and `nemo-ethos` first. If
+   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists instead, route to
+   `nemo-explore`.
 6. Read the Ethos and extract the agent name, instructions, capabilities,
    model requirements, tools, constraints, and success criteria.
 7. Confirm the canonical Ethos fileset exists:

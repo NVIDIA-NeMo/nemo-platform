@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-schema_version: 2
+schema_version: 1
 name: nemo-studio-assistant
 created_timestamp: 2026-07-28T20:09:49Z
 updated_timestamp: 2026-08-24T00:00:00Z
@@ -169,4 +169,4 @@ Manual Studio validation is documented in `agents/nemo-studio-assistant/tests/sm
 - Which mutation categories require an explicit confirmation step even when the target is unambiguous?
 - What maximum model-call count and wall-clock limit should apply to the complex path?
 - Which mutation categories should stay permanently out of scope rather than gated on approval?
-- What numeric developer-time target should `Business Objectives` carry?
+- What numeric developer-time target should `Purpose & Outcomes` carry?

@@ -70,22 +70,13 @@ ref from `(workspace, agent_name)` via
 
 ## Schema version
 
-Write `schema_version: 2`. Version 2 tiers its sections:
+Write `schema_version: 1`. Every body section is required. The parser rejects a
+file missing any heading. When you have nothing to say, write `_(none)_`
+rather than dropping the section.
 
-* **Core** — `Role`, `Purpose & Outcomes`, `Scope`, `Tools`, `Behavior`,
-  `Success Criteria`, `Change Scope`. Required. The parser rejects
-  a file missing any of them.
-* **Intent** — `Principles`, `Trade-offs`, `Constraints`,
-  `Evaluation Setup`. The parser warns rather than failing, and
-  strict callers refuse to optimize without them. These carry the developer's
-  intent and cannot be inferred from source code, so ask rather than guess.
-* **Optional** — `Harness`, `Metric Semantics`, `Vision`, `Open Questions`.
-  Omit when there is nothing to say.
-
-Write every section you have an answer for, including optional ones. Do not
-invent intent-tier content to silence a warning: an empty `Constraints` section
-is honest, while a fabricated one actively misleads the optimizer. If the user
-has no answer yet, record the gap in `Open Questions` and move on.
+Do not invent content to look complete: `_(none)_` in `Constraints` is honest,
+while a fabricated bound actively misleads the optimizer. If the user has no
+answer yet, write `_(none)_`, record the gap in `Open Questions`, and move on.
 
 Ethos holds durable intent, so keep run-scoped configuration out of it. A spend
 ceiling, an experiment count, or a wall-clock limit for a single optimization
@@ -121,10 +112,6 @@ and then helps nobody.
    ls "agents/${NAME}-ethos/ETHOS.md" 2>/dev/null && echo "ethos_exists" || echo "ethos_new"
    ```
 
-   If a legacy `agents/${NAME}-spec/AGENT-SPEC.md` exists instead, do not
-   hand-rename it. Run `nemo agents ethos migrate` and continue from the
-   migrated file.
-
 3. **Pre-flight: check the Fileset.** If the canonical copy exists, surface
    it before overwriting (it may be ahead of the local file).
 
@@ -154,13 +141,15 @@ and then helps nobody.
      anything, ask for the ranking rather than writing a platitude.
    - `Constraints` must be checkable. Prefer "models must come from the
      internal gateway" over "use approved models." This is also where the
-     permitted model and provider set lives; version 2 has no `Model` section,
+     permitted model and provider set lives; there is no `Model` section,
      because the config already records the model in use and it changes without
      touching this file.
-   - `Tools` and `Harness` should be concise. Group related helpers by
-     capability/source when they share credentials, side effects, freshness,
-     and failure modes. Keep only details that change how downstream agents
-     evaluate behavior.
+   - `Tools` and `Harness` should be concise. For `Harness`, describe how this
+     agent actually runs. Do not pick a named platform harness, and do not
+     treat a framework import as a requirement. Group related helpers in
+     `Tools` by capability or source when they share credentials, side
+     effects, freshness, and failure modes. Keep only details that change how
+     downstream agents evaluate behavior.
    - Avoid public shorthand like `AUT` or "agent under test." Use "this agent"
      for the agent being specified. Use "target agent" only when this agent's
      job is explicitly to inspect or modify another agent.
@@ -168,7 +157,7 @@ and then helps nobody.
 5. **Render the Ethos.** Use the template at
    `references/templates/ethos.md` as the starting point. Substitute
    every section from the `nemo-explore` answers. Set front matter as:
-   `schema_version` = `2`, `name` = the canonical agent name,
+   `schema_version` = `1`, `name` = the canonical agent name,
    `created_timestamp` = current UTC timestamp in ISO 8601 form, and `author` =
    the human or coding agent creating the file. Add `owner` when a human or
    team is accountable for the approvals named in `Constraints`.
@@ -256,12 +245,11 @@ all print, and the user has confirmed the contents.
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `local_missing` after write | Wrong working directory or permission denied | Run `pwd`; check the user is in the cloned repo |
-| `ethos_parse_invalid` | Ethos malformed — missing front matter, missing core section, duplicate section, or bad schema version | Read the parser error; fix the named section in place; do not silently work around |
+| `ethos_parse_invalid` | Ethos malformed — missing front matter, missing required section, duplicate section, or bad schema version | Read the parser error; fix the named section in place; do not silently work around |
 | `fileset_missing` after upload | Files service down or auth missing | Check `nemo workspaces list`; if that fails, the platform is unreachable — re-upload after `nemo-status` clears |
 | User says "this is wrong" | Ethos captured the wrong answers | Edit the relevant section in place; re-validate; re-upload |
 | Name validation keeps failing | User keeps proposing names with underscores or capitals | Pin the regex `[a-z][a-z0-9-]*` and show one example that passes |
 | `nemo-explore` was skipped | User invoked `nemo-ethos` cold | Route back to `nemo-explore` and return here when the conversation is done |
-| Legacy `AGENT-SPEC.md` found | Agent predates the Ethos rename | Run `nemo agents ethos migrate`, then continue from the migrated file |
 
 ## What this skill is not
 
@@ -279,7 +267,7 @@ optimizer's job, not this file's.
 
 - **The template is the source of truth for structure.** Keep the required
   section headings intact. The parser in `nemo_agents_plugin.ethos_parse`
-  rejects missing or duplicate core sections, but section bodies remain
+  rejects missing or duplicate required sections, but section bodies remain
   markdown for humans and agents to read directly.
 - **Ethos lives next to the implementation config.** Keep `ETHOS.md`,
   Platform `agent.yaml`, and their relative artifacts under
@@ -296,9 +284,9 @@ optimizer's job, not this file's.
   `[a-z][a-z0-9-]*`.
 - **Role is a hard requirement.** Do not write the Ethos without a concrete
   one. Route back to `nemo-explore` for that field only.
-- **Intent-tier warnings are signal, not noise.** A file that warns on
-  `Constraints` or `Trade-offs` will get optimization candidates the user cannot
-  ship. Surface the warnings; do not swallow them.
+- **Honest empty answers belong in the section.** Write `_(none)_` for
+  `Constraints` or `Trade-offs` when the user has no answer. Do not invent a
+  bound. Record the gap in `Open Questions` as well.
 - **`Purpose & Outcomes` cannot be implementation-only by accident.** If goal
   context was not found in the codebase and the user did not provide outside
   context, make that provenance clear instead of letting implementation details

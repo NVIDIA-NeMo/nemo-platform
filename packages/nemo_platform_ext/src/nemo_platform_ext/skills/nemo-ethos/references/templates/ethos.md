@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-schema_version: 2
+schema_version: 1
 name: <canonical-agent-name>
 created_timestamp: <ISO 8601 creation timestamp, e.g. 2026-06-02T20:00:00Z>
 updated_timestamp: <ISO 8601 timestamp of the last edit; omit on first write>
@@ -26,15 +26,9 @@ owner: <accountable human or team for the approvals named below; omit if unowned
 > say so. The code already shows what the agent does; this file is the only place
 > that records what it is supposed to do.
 >
-> Section tiers:
->
-> - **Core** (`Role`, `Purpose & Outcomes`, `Scope`, `Tools`, `Behavior`,
->   `Success Criteria`, `Change Scope`): required. Parsing fails
->   without them.
-> - **Intent** (`Principles`, `Trade-offs`, `Constraints`, `Evaluation Setup`): strongly recommended. Parsing warns
->   without them, and strict callers refuse to optimize. These are the sections
->   no coding agent can infer from your source.
-> - **Optional** (`Harness`, `Metric Semantics`, `Vision`, `Open Questions`): omit when you have nothing to say.
+> Every body section is required. Parsing fails if a `##` heading is missing.
+> When you have nothing to say, write `_(none)_` rather than dropping the
+> section. An honest empty answer is better than a fabricated one.
 >
 > This file records durable intent, so keep run-specific settings out of it. A
 > spend ceiling or experiment count for one optimization run belongs in that
@@ -44,12 +38,14 @@ owner: <accountable human or team for the approvals named below; omit if unowned
 >
 > - **Bullet sections** (`Open Questions`): list items only. If the list
 >   is empty, write `_(none)_` instead of leaving the section blank.
-> - **Labeled-bullet sections** (`Scope`, `Harness`, `Change Scope`):
+> - **Labeled-bullet sections** (`Scope`, `Change Scope`):
 >   `- Label: value` lines only. No prose, no blank-line-separated paragraphs.
 >   For list-valued labels inside `Scope`, separate items with semicolons, or
->   write `_(none)_`.
-> - **Free-form sections** (`Role`, `Purpose & Outcomes`, `Tools`, `Behavior`,
->   `Principles`, `Success Criteria`, `Trade-offs`, `Constraints`,
+>   write `_(none)_`. For `Change Scope`, name levers that exist on this agent
+>   and do not copy a platform catalog. Each lever value is `yes`, `no`, or
+>   `with-approval`.
+> - **Free-form sections** (`Role`, `Purpose & Outcomes`, `Tools`, `Harness`,
+>   `Behavior`, `Principles`, `Success Criteria`, `Trade-offs`, `Constraints`,
 >   `Evaluation Setup`, `Metric Semantics`, `Vision`): any markdown. `Tools`
 >   accepts a markdown table or the literal string `Prompt-only.`
 
@@ -104,20 +100,20 @@ bad agent behavior or a normal tool/source limitation.>
 
 ## Harness
 
-- Selection: <codex | hermes | deepagents | claude | nat | unresolved>
-- Source framework: <framework or implementation style when known; e.g. `config-driven`, `langgraph`, `deepagents`, `custom service`; use `_(none)_` when not applicable>
-- Description: <the extra-model layer that makes the model behave as an agent: loop, tools, context, state, constraints, observation, and validation; summarize rather than inventory every constructor/config detail>
-- Agent loop: <how model calls, tool calls, observations, retries, and stop conditions are orchestrated; omit if unknown or unimportant>
-- Tool dispatch: <how tool calls are validated, routed, executed, and returned to the model; omit if unknown or unimportant>
-- Context management: <how prompts, history, retrieval, compaction, and context windows are managed; omit if unknown or unimportant>
-- State management: <how session state, memory, artifacts, or durable workspace state are stored and reused; omit if unknown or unimportant>
-- Guardrails: <permission, safety, policy, sandboxing, or middleware controls around agent actions; omit if unknown or unimportant>
-- Observability: <tracing, logging, metrics, replay, or audit data emitted by the harness; omit if unknown or unimportant>
-- Verification: <checks, validators, tests, self-verification, or recovery loops run before work is accepted; omit if unknown or unimportant>
-- Runtime: <execution environment, e.g. NAT workflow, FastAPI service, hosted vendor agent, CLI command, notebook; omit if unknown or unimportant>
-- Notes: <caveats, recovery behavior, budget controls, or other harness details; use `_(none)_` if there are none>
+<how this agent actually runs. Describe the loop, how it calls tools, and where
+it executes. Write what is true of this agent. Do not pick a name from a
+platform catalog, and do not treat a framework import as a requirement.
 
-Use `_(none)_` for this whole section if the harness details are unknown.
+Useful things to cover when they apply:
+
+- How model turns, tool calls, and stop conditions are orchestrated
+- How tools are chosen, executed, and returned
+- How context, memory, and session state are kept
+- Safety, sandbox, or permission controls around actions
+- How you observe and verify a run
+- The runtime, such as a service, CLI, notebook, hosted agent, or workflow
+
+Write `_(none)_` if you cannot describe how this agent runs.>
 
 ## Behavior
 
@@ -144,7 +140,8 @@ Two or three of these is plenty. Good candidates:
 - Whose interest wins when the user's request and the business goal disagree.
 
 Keep concrete rules in `Behavior` and metric weighting in `Trade-offs`. This
-section is only for judgment where neither applies.>
+section is only for judgment where neither applies. Write `_(none)_` if there
+is no judgment call beyond those two.>
 
 ## Success Criteria
 
@@ -238,18 +235,11 @@ Use `_(none)_` if every metric name means exactly what it says.
 
 ## Change Scope
 
-- System prompt: yes
-- Tools: yes
-- Middleware: yes
-- Inference params: yes
-- Model swap (within mode): yes
-- Skills: yes
-- Fine-tuning: no
+- <part of the agent>: <yes | no | with-approval>
 - Notes: <vetoes, exceptions, or other scope clarifications; use `_(none)_` if there are none>
 
-Each lever takes `yes`, `no`, or `with-approval`. Use `with-approval` when a
-change is permitted but must not ship unattended, and name the approver in
-`Constraints` or `Notes`.
+Use `with-approval` when a change is permitted but must not ship unattended.
+Name the approver in `Constraints` or `Notes`.
 
 ## Vision
 
@@ -267,9 +257,9 @@ a change from hardcoding around a direction you already know is coming.>
 - <future use case>
 
 Keep this durable. A dated backlog belongs in your tracker, because a roadmap
-that goes stale makes the whole file less trusted. Omit the section entirely
-rather than filling it with next quarter's tickets.>
+that goes stale makes the whole file less trusted. Write `_(none)_` rather than
+filling this with next quarter's tickets.>
 
 ## Open Questions
 
-- <optional unresolved fact that affects safe use, evaluation, or modification of the agent; remove once answered>
+- <unresolved fact that affects safe use, evaluation, or modification of the agent; remove once answered>

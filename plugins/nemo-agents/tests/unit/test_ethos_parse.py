@@ -7,12 +7,10 @@ from __future__ import annotations
 
 import pytest
 from nemo_agents_plugin.ethos import (
-    CORE_SECTION_TITLES,
+    ETHOS_SCHEMA_VERSION,
     ETHOS_SECTION_TITLES,
-    ETHOS_V1_SECTION_TITLES,
-    INTENT_SECTION_TITLES,
-    OPTIONAL_SECTION_TITLES,
     RETIRED_SECTION_TITLES,
+    required_sections,
 )
 from nemo_agents_plugin.ethos_parse import EthosParseError, parse_ethos
 
@@ -24,16 +22,12 @@ _DEFAULT_OVERRIDES = {
 
 def _ethos_md(
     *,
-    version: int | None = 2,
+    version: int | None = 1,
     titles: tuple[str, ...] | None = None,
     extra_front: str = "",
     sections: dict[str, str] | None = None,
 ) -> str:
-    titles = (
-        titles
-        if titles is not None
-        else (ETHOS_SECTION_TITLES if version and version >= 2 else ETHOS_V1_SECTION_TITLES)
-    )
+    titles = titles if titles is not None else ETHOS_SECTION_TITLES
     front_lines = ["name: it-helpdesk", "created_timestamp: '2026-01-02T03:04:05+00:00'", "author: agent-1"]
     if version is not None:
         front_lines.append(f"schema_version: {version}")
@@ -54,62 +48,37 @@ def test_valid_ethos_parses_to_metadata_and_sections() -> None:
     assert ethos.name == "it-helpdesk"
     assert ethos.author == "agent-1"
     assert ethos.role == "help users with IT issues"
-    assert ethos.schema_version == 2
+    assert ethos.schema_version == 1
     assert ethos.warnings == ()
 
 
 def test_missing_required_section_rejected() -> None:
-    md = _ethos_md(version=1).replace("## Purpose\n\nPurpose content\n\n", "")
+    md = _ethos_md().replace("## Purpose & Outcomes\n\nPurpose & Outcomes content\n\n", "")
 
-    with pytest.raises(EthosParseError, match=r"missing section: ## Purpose"):
+    with pytest.raises(EthosParseError, match=r"missing section: ## Purpose & Outcomes"):
         parse_ethos(md)
 
 
-def test_v1_file_parses_without_intent_sections() -> None:
-    """A version 1 contract keeps working untouched, warnings and all."""
-    ethos = parse_ethos(_ethos_md(version=1))
-
-    assert ethos.schema_version == 1
-    assert ethos.warnings == ()
-    assert "Business Objectives" not in ethos.sections
-
-
 def test_absent_version_parses_as_v1_and_warns() -> None:
-    ethos = parse_ethos(_ethos_md(version=None, titles=ETHOS_V1_SECTION_TITLES))
+    ethos = parse_ethos(_ethos_md(version=None))
 
     assert ethos.schema_version == 1
     assert len(ethos.warnings) == 1
     assert "no 'schema_version'" in ethos.warnings[0]
 
 
-def test_v2_missing_core_section_is_an_error() -> None:
+def test_missing_section_is_an_error() -> None:
     titles = tuple(t for t in ETHOS_SECTION_TITLES if t != "Success Criteria")
 
     with pytest.raises(EthosParseError, match=r"missing section: ## Success Criteria"):
         parse_ethos(_ethos_md(titles=titles))
 
 
-def test_v2_missing_intent_section_warns_but_parses() -> None:
+def test_missing_principles_is_an_error() -> None:
     titles = tuple(t for t in ETHOS_SECTION_TITLES if t != "Principles")
 
-    ethos = parse_ethos(_ethos_md(titles=titles))
-
-    assert ethos.warnings == ("missing intent section: ## Principles",)
-
-
-def test_v2_missing_intent_section_errors_under_strict() -> None:
-    titles = tuple(t for t in ETHOS_SECTION_TITLES if t != "Principles")
-
-    with pytest.raises(EthosParseError, match=r"missing intent section: ## Principles"):
-        parse_ethos(_ethos_md(titles=titles), strict=True)
-
-
-def test_v2_optional_section_may_be_omitted_silently() -> None:
-    titles = tuple(t for t in ETHOS_SECTION_TITLES if t != "Metric Semantics")
-
-    ethos = parse_ethos(_ethos_md(titles=titles))
-
-    assert ethos.warnings == ()
+    with pytest.raises(EthosParseError, match=r"missing section: ## Principles"):
+        parse_ethos(_ethos_md(titles=titles))
 
 
 def test_unsupported_future_version_rejected() -> None:
@@ -145,35 +114,28 @@ def test_change_scope_levers_recognize_with_approval() -> None:
     }
 
 
-def test_v2_drops_optimizer_run_configuration() -> None:
+def test_schema_drops_optimizer_run_configuration() -> None:
     """Budget was cut: Ethos records durable intent, not per-run limits."""
     assert "Budget" not in ETHOS_SECTION_TITLES
 
 
-def test_v2_tiers_partition_the_section_list() -> None:
-    """Every v2 section sits in exactly one tier, and the tiers add nothing extra."""
-    tiered = CORE_SECTION_TITLES + INTENT_SECTION_TITLES + OPTIONAL_SECTION_TITLES
-
-    assert len(tiered) == len(set(tiered))
-    assert set(tiered) == set(ETHOS_SECTION_TITLES)
+def test_schema_requires_every_section() -> None:
+    """The parser requires the full section list."""
+    assert required_sections(ETHOS_SCHEMA_VERSION) == ETHOS_SECTION_TITLES
 
 
-def test_v2_retirements_are_declared() -> None:
-    """Whatever v2 gives up is listed, so a drop can't happen silently."""
-    assert set(ETHOS_V1_SECTION_TITLES) - set(ETHOS_SECTION_TITLES) == set(RETIRED_SECTION_TITLES)
-
-
-def test_retired_sections_are_gone_from_v2() -> None:
-    assert not set(RETIRED_SECTION_TITLES) & set(ETHOS_SECTION_TITLES)
+def test_retired_headings_are_declared() -> None:
+    """Retired AGENT-SPEC headings stay listed so a drop cannot happen silently."""
+    assert set(RETIRED_SECTION_TITLES).isdisjoint(ETHOS_SECTION_TITLES)
 
 
 def test_purpose_merged_into_outcomes() -> None:
-    """v1's Purpose became Purpose & Outcomes, so mission and result stay together."""
+    """Purpose became Purpose & Outcomes, so mission and result stay together."""
     assert "Purpose" not in ETHOS_SECTION_TITLES
-    assert "Purpose & Outcomes" in CORE_SECTION_TITLES
+    assert "Purpose & Outcomes" in ETHOS_SECTION_TITLES
 
 
-def test_v2_tolerates_leftover_retired_sections() -> None:
+def test_tolerates_leftover_retired_sections() -> None:
     """A file mid-upgrade keeps parsing: retired sections are carried, not rejected."""
     at = ETHOS_SECTION_TITLES.index("Tools") + 1
     titles = ETHOS_SECTION_TITLES[:at] + RETIRED_SECTION_TITLES + ETHOS_SECTION_TITLES[at:]
@@ -188,19 +150,22 @@ def test_v2_tolerates_leftover_retired_sections() -> None:
     assert ethos.sections["Signals"] == "Signals content"
 
 
-def test_vision_is_optional() -> None:
-    titles = tuple(t for t in ETHOS_SECTION_TITLES if t != "Vision")
+def test_none_answers_still_require_the_heading() -> None:
+    """An honest empty answer keeps the heading; dropping it fails to parse."""
+    ethos = parse_ethos(_ethos_md(sections={"Open Questions": "_(none)_", "Vision": "_(none)_"}))
 
-    assert parse_ethos(_ethos_md(titles=titles), strict=True).warnings == ()
+    assert ethos.sections["Open Questions"].strip() == "_(none)_"
+    assert ethos.sections["Vision"].strip() == "_(none)_"
 
 
-def test_v2_drops_framework() -> None:
+def test_framework_is_retired() -> None:
     """Nothing read the section's value; the container label comes from agent.yaml."""
     assert "Framework" not in ETHOS_SECTION_TITLES
-    assert "Framework" in ETHOS_V1_SECTION_TITLES
+    assert "Framework" in RETIRED_SECTION_TITLES
 
 
-def test_v1_still_enforces_resolved_framework() -> None:
-    """v1 behavior is unchanged, including the resolution gate."""
+def test_leftover_framework_must_be_resolved() -> None:
+    """A leftover Framework heading still has to be resolved."""
+    titles = ETHOS_SECTION_TITLES + ("Framework",)
     with pytest.raises(EthosParseError, match="framework section must be resolved"):
-        parse_ethos(_ethos_md(version=1, sections={"Framework": "_(none)_"}))
+        parse_ethos(_ethos_md(titles=titles, sections={"Framework": "_(none)_"}))
