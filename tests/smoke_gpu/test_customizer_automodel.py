@@ -35,6 +35,7 @@ DALI_FILE_REMOVALS = {
 MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "bitsandbytes": "0.49.2",
     "mamba-ssm": "2.3.0",
+    "peft": "0.20.0",
     "wandb": "0.28.2",
 }
 
@@ -94,6 +95,27 @@ def test_transformers_audio_backend_probe_is_off():
     from transformers.utils.import_utils import is_soundfile_available
 
     assert not is_soundfile_available()
+
+
+@pytest.mark.smoke_nmp_automodel_training
+def test_peft_lora_dispatch_matches_installed_torchao():
+    """PEFT's torchao dispatcher must import against the torchao in this image.
+
+    ``merge_lora_adapter`` attaches the adapter with ``PeftModel.from_pretrained``, and
+    injection runs every dispatcher in ``_create_new_module`` against each target layer.
+    ``dispatch_torchao`` is gated on ``is_torchao_available()`` -- ``find_spec("torchao")``,
+    file presence rather than API compatibility -- and only then imports torchao symbols.
+    torchao is supplied by the NGC base image instead of the venv (``uv-pytorch.toml``
+    overrides it to an impossible marker), so a peft expecting a retired torchao API fails
+    ``merge=true`` jobs at injection, after training has already succeeded.
+    """
+    import torch
+    from peft import LoraConfig
+    from peft.tuners.lora.torchao import dispatch_torchao
+
+    # A plain Linear holds no torchao tensor subclass, so the dispatcher must decline by
+    # returning None rather than raise ImportError while probing for one.
+    assert dispatch_torchao(torch.nn.Linear(8, 8), "default", LoraConfig()) is None
 
 
 @pytest.mark.smoke_nmp_automodel_training

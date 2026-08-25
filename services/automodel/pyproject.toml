@@ -21,6 +21,14 @@ dependencies = [
 version = "0.0.0"
 
 [project.optional-dependencies]
+# HF PEFT is imported by tasks/training/backends/checkpoints.py to merge LoRA adapters
+# into base weights, so it is only reachable inside the training container. Kept out of
+# the base deps so plugin discovery and the compiler stay torch-free.
+#
+# The floor is load-bearing: peft < 0.20 dispatches LoRA through torchao's
+# LinearActivationQuantizedTensor, which the torchao shipped by the NGC PyTorch base
+# image no longer exports. 0.20+ dispatches on TorchAOBaseTensor instead.
+training = ["peft>=0.20.0"]
 dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "pytest-mock>=3.14.0"]
 
 [project.scripts]
