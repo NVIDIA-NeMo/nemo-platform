@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -13,6 +14,11 @@ from nemo_platform_ext.cli.telemetry.handler import TelemetryHandler, _telemetry
 from nemo_platform_ext.cli.telemetry.session import get_session_id
 
 logger = logging.getLogger(__name__)
+_TELEMETRY_SUPPRESSED_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    Exception,
+    KeyboardInterrupt,
+    asyncio.CancelledError,
+)
 
 _invocation_opt_out = False
 
@@ -74,7 +80,7 @@ def emit_event(event: PlatformTelemetryEvent) -> None:
         handler = TelemetryHandler(source_client_version=_client_version(), session_id=get_session_id(), max_retries=0)
         handler.enqueue(event)
         handler.stop()
-    except Exception:
+    except _TELEMETRY_SUPPRESSED_EXCEPTIONS:  # noqa: BLE001
         logger.debug("Failed to emit telemetry event", exc_info=True)
 
 

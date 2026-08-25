@@ -1247,6 +1247,26 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
     } == {}
 
 
+def test_build_studio_link_result_returns_virtual_model_chat_link():
+    result = studio_links.build_studio_link_result(
+        "default",
+        None,
+        {"destination": "virtual_model_chat", "name": "demo guarded"},
+        enabled_destinations={"virtual_model_chat": studio_links.STUDIO_LINK_DESTINATIONS["virtual_model_chat"]},
+    )
+
+    assert result == {
+        "workspace": "default",
+        "destination": "virtual_model_chat",
+        "path": "/workspaces/default/virtual-models?virtualModel=demo%20guarded&tab=chat",
+        "url": None,
+        "markdown": (
+            "[Chat with VirtualModel demo guarded]"
+            "(/workspaces/default/virtual-models?virtualModel=demo%20guarded&tab=chat)"
+        ),
+    }
+
+
 def test_mcp_studio_link_returns_agents_page_markdown(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
@@ -2350,8 +2370,10 @@ async def test_stream_assistant_flushes_tool_events_before_final_response(monkey
         owner_id="local-user",
     )
     await entity_store.create(conversation)
+    invoked_messages: list[dict[str, str]] = []
 
     async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        invoked_messages.extend(messages)
         queue = assistant._session_streams[studio_session_id]
         # Two tool events queued in the same turn the invocation completes: the
         # loop can consume at most one, so the drain must flush the remainder.
@@ -2382,6 +2404,10 @@ async def test_stream_assistant_flushes_tool_events_before_final_response(monkey
     # Both tool-use events survive and are emitted before the final assistant message.
     assert first_tool < final
     assert second_tool < final
+    contextual_message = invoked_messages[-1]["content"]
+    assert "For any deploy_guardrail call for this request, pass deployment_run_id='" in contextual_message
+    deployment_run_id = contextual_message.split("deployment_run_id='", 1)[1].split("'", 1)[0]
+    assert str(uuid.UUID(deployment_run_id)) == deployment_run_id
     assert [message.content for message in conversation.messages] == ["hello", "final answer"]
 
 

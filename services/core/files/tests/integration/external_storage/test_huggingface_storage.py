@@ -18,9 +18,9 @@ import time
 import uuid
 
 import pytest
+from filesets import FilesetFileSystem
 from huggingface_hub import snapshot_download
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient

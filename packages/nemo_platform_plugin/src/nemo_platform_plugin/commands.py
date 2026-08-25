@@ -328,6 +328,12 @@ def _register_job_subgroup(
     cli: NemoCLI | None = None,
 ) -> None:
     """Register a ``<job-name>`` sub-group with run / submit / explain verbs."""
+    if not job_cls.generate_legacy_verbs:
+        _add_submit_command(cli_app, job_cls, scheduler, cli=cli, command_name=job_cls.name, rich_help_panel="Jobs")
+        if cli is not None:
+            cli.update_job_cli(job_cls, cli_app)
+        return
+
     job_group = typer.Typer(
         name=job_cls.name,
         help=job_cls.description or f"Manage the {job_cls.name} job.",
@@ -441,7 +447,7 @@ def _add_run_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = "Run locally, in-process."
-    _run.__signature__ = _build_job_run_signature(leaves)  # type: ignore[attr-defined]
+    setattr(_run, "__signature__", _build_job_run_signature(leaves))
     group.command(name="run", help=help_text)(_run)
 
 
@@ -530,6 +536,8 @@ def _add_submit_command(
     scheduler: NemoJobScheduler,
     *,
     cli: NemoCLI | None = None,
+    command_name: str = "submit",
+    rich_help_panel: str | None = None,
 ) -> None:
     """Register the ``submit`` verb. Generates per-field flags + static submit flags.
 
@@ -618,8 +626,8 @@ def _add_submit_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = "Submit to a cluster."
-    _submit.__signature__ = _build_job_submit_signature(leaves)  # type: ignore[attr-defined]
-    group.command(name="submit", help=help_text)(_submit)
+    setattr(_submit, "__signature__", _build_job_submit_signature(leaves))
+    group.command(name=command_name, help=help_text, rich_help_panel=rich_help_panel)(_submit)
 
 
 def _build_job_submit_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
@@ -866,6 +874,12 @@ def _register_function_subgroup(
     cli: NemoCLI | None = None,
 ) -> None:
     """Register a ``<fn-name>`` sub-group with run / submit verbs."""
+    if not fn_cls.generate_legacy_verbs:
+        _add_function_submit_command(cli_app, fn_cls, cli=cli, command_name=fn_cls.name, rich_help_panel="Functions")
+        if cli is not None:
+            cli.update_function_cli(fn_cls, cli_app)
+        return
+
     fn_group = typer.Typer(
         name=fn_cls.name,
         help=fn_cls.description or f"Manage the {fn_cls.name} function.",
@@ -960,7 +974,7 @@ def _add_function_run_command(
 
     help_text = f"Run {fn_cls.name} locally, in-process."
     epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function")
-    _run.__signature__ = _build_function_run_signature(leaves)  # type: ignore[attr-defined]
+    setattr(_run, "__signature__", _build_function_run_signature(leaves))
     group.command(name="run", help=help_text, epilog=epilog)(_run)
 
 
@@ -1102,6 +1116,8 @@ def _add_function_submit_command(
     fn_cls: type[NemoFunction],
     *,
     cli: NemoCLI | None = None,
+    command_name: str = "submit",
+    rich_help_panel: str | None = None,
 ) -> None:
     """Register the ``submit`` verb. Generates per-field flags + static submit flags.
 
@@ -1113,12 +1129,12 @@ def _add_function_submit_command(
 
     def _submit(typer_ctx: typer.Context, **kwargs: object) -> None:
         original_kwargs = dict(kwargs)
-        spec_str: str = kwargs.pop("spec", "{}")  # type: ignore[assignment]
-        spec_file: Path | None = kwargs.pop("spec_file", None)  # type: ignore[assignment]
-        cluster: str | None = kwargs.pop("cluster", None)  # type: ignore[assignment]
-        base_url: str | None = kwargs.pop("base_url", None)  # type: ignore[assignment]
-        workspace: str = kwargs.pop("workspace", "default")  # type: ignore[assignment]
-        request_id: str | None = kwargs.pop("request_id", None)  # type: ignore[assignment]
+        spec_str: str = cast(str, kwargs.pop("spec", "{}"))
+        spec_file: Path | None = cast("Path | None", kwargs.pop("spec_file", None))
+        cluster: str | None = cast("str | None", kwargs.pop("cluster", None))
+        base_url: str | None = cast("str | None", kwargs.pop("base_url", None))
+        workspace: str = cast(str, kwargs.pop("workspace", "default"))
+        request_id: str | None = cast("str | None", kwargs.pop("request_id", None))
 
         base = _load_spec(spec_str, spec_file)
         overlay = build_overlay(leaves, kwargs, unset_sentinel=UNSET)
@@ -1164,8 +1180,8 @@ def _add_function_submit_command(
 
     help_text = f"Submit {fn_cls.name} over HTTP."
     epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function")
-    _submit.__signature__ = _build_function_submit_signature(leaves)  # type: ignore[attr-defined]
-    group.command(name="submit", help=help_text, epilog=epilog)(_submit)
+    setattr(_submit, "__signature__", _build_function_submit_signature(leaves))
+    group.command(name=command_name, help=help_text, epilog=epilog, rich_help_panel=rich_help_panel)(_submit)
 
 
 def _build_function_submit_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
@@ -1303,7 +1319,7 @@ def _post_function_submit(
 
 def _resolve_cluster_name_to_base_url(cluster_name: str) -> str:
     """Resolve a configured cluster name to its base URL."""
-    from nemo_platform.config.config import Config
+    from nemo_platform_ext.config.config import Config
 
     config = Config.load()
     for cluster in config.get_config_file().clusters:

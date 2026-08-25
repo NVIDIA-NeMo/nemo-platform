@@ -3470,7 +3470,7 @@ paths:
       tags:
       - Agent Sessions
       summary: List Sessions
-      description: List sessions in a workspace, optionally filtered by deployment
+      description: List the current principal's sessions, optionally filtered by deployment
         ID.
       operationId: list_sessions_apis_agents_v2_workspaces__workspace__sessions_get
       parameters:

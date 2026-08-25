@@ -23,8 +23,8 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from filesets.resources import FilesResource
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets.resources import FilesResource
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.client import FilesClient
@@ -971,7 +971,7 @@ class TestListFilesResponseCacheStatus:
         Priority order: caching > not_cached > cached > not_cacheable
         Returns None for empty list or when all files have None status.
         """
-        from nemo_platform.filesets import ListFilesResponse
+        from filesets import ListFilesResponse
 
         files = [
             FilesetFileOutput(

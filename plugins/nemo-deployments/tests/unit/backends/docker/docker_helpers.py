@@ -37,6 +37,7 @@ def config_files_config(
     *,
     path: str = "/tmp/nemo/config.yaml",
     content: str = "workflow:\n  _type: react_agent\n",
+    mode: int = 0o644,
     restart_policy: RestartPolicy = "Always",
 ) -> DeploymentConfig:
     """Single-container config that declares a ``config_files`` entry.
@@ -55,7 +56,7 @@ def config_files_config(
                 args=[path],
             )
         ],
-        config_files=[ConfigFile(path=path, content=content)],  # ty: ignore[unknown-argument]
+        config_files=[ConfigFile(path=path, content=content, mode=mode)],  # ty: ignore[unknown-argument]
         restart_policy=restart_policy,  # ty: ignore[unknown-argument]
     )
 

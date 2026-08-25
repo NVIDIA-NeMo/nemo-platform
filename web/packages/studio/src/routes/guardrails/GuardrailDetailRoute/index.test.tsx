@@ -58,15 +58,20 @@ describe('GuardrailDetailRoute', () => {
     // The index route redirects to `config`; react-router v7 runs that navigation
     // inside startTransition, so the tab content resolves asynchronously.
     expect(
-      await screen.findByText('Blocks PII in user inputs and outputs', undefined, {
+      await screen.findByText('Guardrail Configuration', undefined, {
         timeout: XL_SELECTOR_TIMEOUT,
       })
     ).toBeInTheDocument();
-    // pii-filter has 2 models and 4 rail flows (2 input + 2 output).
-    expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(1);
-    // Structured config viewer renders the pipeline section.
-    expect(screen.getByText('Pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Self Checks')).toBeInTheDocument();
+
+    // pii-filter uses rails Studio cannot configure yet; they stay visible in the JSON
+    // rather than disappearing because no rail definition claims them. CodeMirror splits
+    // each line into syntax-coloured spans, so read the editor's text rather than
+    // matching nodes.
+    expect(screen.getByText('Configuration JSON')).toBeInTheDocument();
+    const json = screen.getByTestId('nv-code-editor-root').textContent ?? '';
+    expect(json).toContain('check toxicity');
+    expect(json).toContain('text-embedding-ada-002');
   });
 
   it('hides the draft actions until there are edits', async () => {
@@ -85,7 +90,7 @@ describe('GuardrailDetailRoute', () => {
     await user.type(
       await screen.findByRole(
         'textbox',
-        { name: 'General instruction' },
+        { name: 'General Instructions' },
         { timeout: XL_SELECTOR_TIMEOUT }
       ),
       'Be concise.'
@@ -97,7 +102,7 @@ describe('GuardrailDetailRoute', () => {
     await user.click(reset);
 
     expect(screen.queryByRole('button', { name: 'Save Guardrail' })).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'General instruction' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'General Instructions' })).toHaveValue('');
   });
 
   it('shows a loading state while fetching', async () => {
@@ -132,7 +137,7 @@ describe('GuardrailDetailRoute', () => {
     await user.type(
       await screen.findByRole(
         'textbox',
-        { name: 'General instruction' },
+        { name: 'General Instructions' },
         { timeout: XL_SELECTOR_TIMEOUT }
       ),
       'Be concise.'

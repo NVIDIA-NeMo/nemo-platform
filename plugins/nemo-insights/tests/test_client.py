@@ -4,7 +4,7 @@
 from unittest.mock import MagicMock, patch
 
 from nemo_insights_plugin.client import make_client
-from nemo_platform.auth.helpers import NMPOIDCConfig
+from nemo_platform_ext.auth.helpers import NMPOIDCConfig
 
 REMOTE_URL = "https://nemo-platform.example.com"
 

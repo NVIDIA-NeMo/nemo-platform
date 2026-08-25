@@ -235,7 +235,7 @@ describe('GuardrailChecksTab', () => {
       await user.type(
         await screen.findByRole(
           'textbox',
-          { name: 'General instruction' },
+          { name: 'General Instructions' },
           { timeout: XL_SELECTOR_TIMEOUT }
         ),
         'Be extremely cautious.'
@@ -281,6 +281,79 @@ describe('GuardrailChecksTab', () => {
       });
 
       expect(recordedCheckRequests[0]?.guardrails).toEqual({ config_ids: ['pii-filter'] });
+    });
+  });
+
+  describe('main model gate', () => {
+    const CONFIG_URL = `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs/:name`;
+
+    /** Serve `pii-filter` stripped of its `main` entry, keeping the task LLM. */
+    const withoutMainModel = () =>
+      server.use(
+        http.get(CONFIG_URL, () =>
+          HttpResponse.json({
+            id: 'cfg-1',
+            entity_id: 'cfg-1',
+            parent: 'ws-default',
+            db_version: 1,
+            name: 'pii-filter',
+            workspace: WORKSPACE,
+            description: 'Blocks PII in user inputs and outputs',
+            created_at: '2026-04-12T10:00:00.000Z',
+            created_by: 'user@example.com',
+            updated_at: '2026-04-12T10:00:00.000Z',
+            updated_by: 'user@example.com',
+            data: {
+              models: [{ type: 'embeddings', engine: 'openai', model: 'text-embedding-ada-002' }],
+              rails: { input: { flows: ['check pii'] } },
+            },
+          })
+        )
+      );
+
+    it('disables Run and explains why when the config has no main model', async () => {
+      withoutMainModel();
+      renderChecks('pii-filter');
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      const run = screen.getByRole('button', { name: /Run 2 Tests/ });
+      expect(run).toBeDisabled();
+      expect(run).toHaveAttribute(
+        'title',
+        'Set a main model on the Configuration tab to run tests'
+      );
+    });
+
+    it('enables Run once the config declares one', async () => {
+      renderChecks('pii-filter');
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      const run = screen.getByRole('button', { name: /Run 2 Tests/ });
+      expect(run).toBeEnabled();
+      expect(run).not.toHaveAttribute('title');
+    });
+
+    // The gate reads whichever config the target names, so an edit that leaves the model
+    // alone must not change the verdict on either target.
+    it('stays enabled on both targets when a dirty draft keeps the main model', async () => {
+      const user = userEvent.setup();
+      renderChecks('pii-filter', getGuardrailConfigRoute(WORKSPACE, 'pii-filter'));
+      await user.type(
+        await screen.findByRole(
+          'textbox',
+          { name: 'General Instructions' },
+          { timeout: XL_SELECTOR_TIMEOUT }
+        ),
+        'Be extremely cautious.'
+      );
+      await user.click(screen.getByRole('tab', { name: 'Test and Validate' }));
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      expect(screen.getByRole('radio', { name: 'Draft' })).toBeChecked();
+      expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeEnabled();
+
+      await user.click(screen.getByRole('radio', { name: 'Saved' }));
+      expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeEnabled();
     });
   });
 

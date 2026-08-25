@@ -11,8 +11,8 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
+from filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
-from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError

@@ -1772,10 +1772,15 @@ async def _stream_assistant(
 
     queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
     _session_streams[session_id] = queue
+    deployment_run_id = str(uuid.uuid4())
     contextual_message = "\n\n".join(
         [
             "<nemo_studio_context>",
             studio_system_prompt,
+            (
+                f"For any deploy_guardrail call for this request, pass deployment_run_id='{deployment_run_id}'. "
+                "Use it exactly once and do not invent or substitute another value."
+            ),
             "</nemo_studio_context>",
             "User request:",
             message,

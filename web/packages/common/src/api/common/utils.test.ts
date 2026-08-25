@@ -288,10 +288,16 @@ describe('getErrorMessage', () => {
       expect(getErrorMessage(error)).toBe('Something went wrong');
     });
 
-    it('returns fallback message when provided', () => {
-      const error = new Error('Internal error');
+    it('prefers the error message over the fallback', () => {
+      const error = new Error('boom');
 
-      expect(getErrorMessage(error, 'Failed to load data')).toBe('Failed to load data');
+      expect(getErrorMessage(error, 'fallback')).toBe('boom');
+    });
+
+    it('falls back only when the error carries no message', () => {
+      const error = new Error('');
+
+      expect(getErrorMessage(error, 'fallback')).toBe('fallback');
     });
   });
 });
