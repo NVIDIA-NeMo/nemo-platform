@@ -576,7 +576,7 @@ def test_profile_classifies_roles_type_and_verifiability(tmp_path):
     assert partition.classification.verifiability.coverage == 1.0
 
 
-def test_profile_sharegpt_dataset_is_a_chat_dataset(tmp_path):
+def test_profile_from_value_dataset_is_a_chat_dataset(tmp_path):
     # End to end: {from, value} must reach the messages dtype, carry stats, and classify as chat
     # rather than falling through to `unknown` with nothing measured.
     conversation = [{"from": "human", "value": "hi"}, {"from": "gpt", "value": "hello"}]

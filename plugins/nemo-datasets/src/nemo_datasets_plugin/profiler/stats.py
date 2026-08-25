@@ -717,7 +717,7 @@ class _LengthHistogram:
 # --- messages ------------------------------------------------------------------------------------
 
 # Role strings that mean "the turn the model is trained to produce". Matching only the literal
-# "assistant" made every chat dataset using another convention (ShareGPT's gpt, or bot/model) look
+# "assistant" made every chat dataset using another convention (`gpt`, `bot`, `model`) look
 # like it ended on a user turn, which classification reads as a prompt-only dataset with no training
 # target — a false negative over a large slice of public chat data.
 _ASSISTANT_ROLES = {"assistant", "gpt", "bot", "model", "chatbot", "ai"}
@@ -800,9 +800,9 @@ class ColumnProbes:
 def _probe_text(value: Any) -> str | None:
     """The text a probe reads from one cell: the string itself, or a chat column's final turn.
 
-    The final turn is read through :func:`_message_field`, so ShareGPT's ``{from, value}`` spelling
-    works like ``{role, content}``. Both are handled everywhere else in this module and in schema
-    derivation; missing it here cost every ShareGPT-shaped dataset its verifiability.
+    The final turn is read through :func:`_message_field`, so the ``{from, value}`` spelling works
+    like ``{role, content}``. Both are handled everywhere else in this module and in schema
+    derivation; missing it here cost every dataset spelled that way its verifiability.
     """
     if isinstance(value, str):
         return value

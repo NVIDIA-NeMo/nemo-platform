@@ -324,7 +324,7 @@ def test_a_named_completion_still_decides_where_to_look():
     assert classify_rows(features, {}, rows).verifiability is None
 
 
-def test_verifiability_reads_a_sharegpt_conversational_completion():
+def test_verifiability_reads_a_from_value_conversational_completion():
     features = [_f("prompt", "string"), _f("completion", "messages")]
     rows = [{"prompt": "q", "completion": [{"from": "human", "value": "q"}, {"from": "gpt", "value": "#### 4"}]}]
     result = classify_rows(features, {}, rows)
