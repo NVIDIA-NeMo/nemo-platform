@@ -564,6 +564,28 @@ class ArchitectureSkill(Skill):
     It helps discern what is agent-pertinent and what is not.
     If ETHOS.md is absent, infer all of the above from source code.
 
+    Two sections bound what you may change, not just what you document:
+
+    - `Constraints` lists hard external limits — approved model providers
+      and regions, data handling rules, compliance obligations, production
+      cost and latency ceilings, and changes that require human approval.
+      Never write a change that breaches one, however well it would score.
+    - `Change Scope` says which levers are editable. Each lever reads
+      `yes`, `no`, or `with-approval`. Treat `no` as forbidden, and
+      `with-approval` as forbidden for autonomous edits — surface it as a
+      recommendation instead of applying it.
+
+    `Trade-offs` records the author's priority order over quality, latency,
+    cost, and reliability, plus the qualities that are hard gates and the
+    regressions that are never acceptable. Use it to choose between changes
+    that pull in different directions rather than defaulting to whatever
+    improves the headline metric.
+
+    `Principles` records how the agent decides when no rule covers the case.
+    Preserve that behavior. A change that strips a clarifying question, a
+    refusal, or an uncertainty signal called for there is a regression even
+    when the metric improves, because the metric does not measure it.
+
     ---
 
     ## Writing architecture.md

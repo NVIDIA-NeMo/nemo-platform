@@ -263,6 +263,15 @@ class Rationalizer(Agent):
         equipment — the AUT does not discover it at runtime, so the rationale
         must NOT contain steps that rediscover or re-derive it.
 
+        This includes the intent sections. `Constraints` is a given: the AUT
+        operates inside those bounds and does not deliberate about them, so do
+        not emit steps that check whether a provider is approved or a cost
+        ceiling applies. `Trade-offs` is likewise given: where a task forces a
+        choice between quality, latency, and cost, the rationale reflects the
+        Ethos priority order as settled rather than reasoning its way to it.
+        `Principles` is given too: when a step turns on ambiguity, the rationale
+        applies the stated disposition rather than deriving one.
+
         Concretely, do NOT emit steps that:
         - locate or identify the runtime container / endpoint (the access
           method is Ethos-given),

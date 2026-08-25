@@ -31,8 +31,8 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `nemo-skill-selection`: entry point. Use when the user's intent is broad or unclear.
 - `setup`: verifies that NeMo Platform is installed and running. If install is missing, tells the user how to run the CLI install (`make bootstrap` + `nemo setup`). **Install itself is CLI-only.** Do not attempt to install NeMo via skill-driven pip; the workspace dependency graph and credential handling are not reliably automatable inside a sandbox.
 - `nemo-explore`: design conversation that feeds into a spec.
-- `nemo-spec`: writes an agent spec from explore output.
-- `nemo-build-agent`: scaffolds NAT workflow YAML from the spec and deploys.
+- `nemo-ethos`: writes an agent Ethos from explore output.
+- `nemo-build-agent`: scaffolds NAT workflow YAML from the Ethos and deploys.
 - `nemo-try-agent`: test a deployed agent or chat with a model.
 - `nemo-intake`: instrument agents, choose an ingest format, upload/query telemetry, and attach evaluator results.
 - `nemo-experiments-upload`: publish named evaluation runs and scores to the Experiments leaderboard.

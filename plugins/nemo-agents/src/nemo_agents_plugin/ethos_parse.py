@@ -6,6 +6,11 @@
 This module intentionally does not model every markdown section as structured
 Python. It validates the machine-readable front matter and the required section
 outline, then returns raw markdown sections for humans and agents to consume.
+
+Validation is tiered for schema version 2. Core-tier gaps raise; intent-tier
+gaps are collected on ``Ethos.warnings`` so a partially onboarded contract stays
+usable, and become errors under ``strict`` for callers that refuse to optimize
+against an under-specified contract.
 """
 
 from __future__ import annotations
@@ -15,7 +20,12 @@ from datetime import datetime
 from typing import Any
 
 import yaml
-from nemo_agents_plugin.ethos import ETHOS_SECTION_TITLES, Ethos
+from nemo_agents_plugin.ethos import (
+    ETHOS_SCHEMA_VERSION,
+    INTENT_SECTION_TITLES,
+    Ethos,
+    required_sections,
+)
 
 
 class EthosParseError(ValueError):
@@ -26,8 +36,18 @@ _FRONT_MATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _SECTION_RE = re.compile(r"^## +(.+?)\s*$", re.MULTILINE)
 
 
-def parse_ethos(markdown: str) -> Ethos:
-    """Parse ETHOS.md into front matter plus raw markdown sections."""
+def parse_ethos(markdown: str, *, strict: bool = False) -> Ethos:
+    """Parse ETHOS.md into front matter plus raw markdown sections.
+
+    Args:
+        markdown: Full ETHOS.md contents, including front matter.
+        strict: Treat intent-tier warnings as errors. Use this when the caller
+            cannot act sensibly on an incomplete contract.
+
+    Raises:
+        EthosParseError: Front matter is missing or malformed, a required
+            section is absent, or ``strict`` is set and a warning was raised.
+    """
 
     front_match = _FRONT_MATTER_RE.match(markdown)
     if front_match is None:
@@ -37,19 +57,61 @@ def parse_ethos(markdown: str) -> Ethos:
     if not isinstance(front, dict):
         raise EthosParseError("YAML front matter must be a mapping")
 
+    version, version_warnings = _schema_version(front)
     sections = _split_sections(markdown[front_match.end() :])
-    _validate_required_sections(sections)
 
-    framework = sections["Framework"].strip()
-    if not framework or framework == "_(none)_":
-        raise EthosParseError("framework section must be resolved")
+    for title in required_sections(version):
+        if title not in sections:
+            raise EthosParseError(f"missing section: ## {title}")
+
+    # Version 2 dropped ``Framework``: nothing read its value, and the container's
+    # framework label comes from ``agent.yaml`` instead. Version 1 still requires it,
+    # so keep the resolution gate for any file that carries the section.
+    if "Framework" in sections:
+        framework = sections["Framework"].strip()
+        if not framework or framework == "_(none)_":
+            raise EthosParseError("framework section must be resolved")
+
+    warnings = [*version_warnings]
+    if version >= 2:
+        warnings.extend(
+            f"missing intent section: ## {title}" for title in INTENT_SECTION_TITLES if title not in sections
+        )
+
+    if strict and warnings:
+        raise EthosParseError("; ".join(warnings))
 
     return Ethos(
         name=_required_str(front, "name"),
         created_timestamp=_required_datetime(front, "created_timestamp"),
         author=_required_str(front, "author"),
         sections=sections,
+        schema_version=version,
+        updated_timestamp=_optional_datetime(front, "updated_timestamp"),
+        owner=_optional_str(front, "owner"),
+        warnings=tuple(warnings),
     )
+
+
+def _schema_version(front: dict[str, Any]) -> tuple[int, list[str]]:
+    """Resolve ``schema_version``, defaulting to 1 for pre-versioning files."""
+    raw = front.get("schema_version")
+    if raw is None:
+        return 1, [
+            "front matter has no 'schema_version'; parsed as version 1. "
+            f"Add 'schema_version: {ETHOS_SCHEMA_VERSION}' and the intent sections "
+            "so optimizers can read the developer's intent."
+        ]
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise EthosParseError("front matter field 'schema_version' must be an integer")
+    if raw < 1:
+        raise EthosParseError("front matter field 'schema_version' must be 1 or greater")
+    if raw > ETHOS_SCHEMA_VERSION:
+        raise EthosParseError(
+            f"ETHOS.md declares schema version {raw}, but this tooling supports "
+            f"up to {ETHOS_SCHEMA_VERSION}. Upgrade nemo-platform to read it."
+        )
+    return raw, []
 
 
 def _required_str(front: dict[str, Any], key: str) -> str:
@@ -59,8 +121,16 @@ def _required_str(front: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
-def _required_datetime(front: dict[str, Any], key: str) -> datetime:
+def _optional_str(front: dict[str, Any], key: str) -> str | None:
     value = front.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise EthosParseError(f"front matter field {key!r} must be a non-empty string when present")
+    return value.strip()
+
+
+def _coerce_datetime(value: Any, key: str) -> datetime:
     if isinstance(value, datetime):
         return value
     if not isinstance(value, str) or not value.strip():
@@ -69,6 +139,15 @@ def _required_datetime(front: dict[str, Any], key: str) -> datetime:
         return datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError as exc:
         raise EthosParseError(f"front matter field {key!r} must be an ISO 8601 datetime") from exc
+
+
+def _required_datetime(front: dict[str, Any], key: str) -> datetime:
+    return _coerce_datetime(front.get(key), key)
+
+
+def _optional_datetime(front: dict[str, Any], key: str) -> datetime | None:
+    value = front.get(key)
+    return None if value is None else _coerce_datetime(value, key)
 
 
 def _split_sections(body: str) -> dict[str, str]:
@@ -82,9 +161,3 @@ def _split_sections(body: str) -> dict[str, str]:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
         sections[header] = body[start:end].strip("\n")
     return sections
-
-
-def _validate_required_sections(sections: dict[str, str]) -> None:
-    for title in ETHOS_SECTION_TITLES:
-        if title not in sections:
-            raise EthosParseError(f"missing section: ## {title}")

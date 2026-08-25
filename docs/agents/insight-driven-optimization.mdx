@@ -217,6 +217,30 @@ Insights and evidence appended to existing ones. Give the Analyst an optional
 Ethos (`--ethos ETHOS.md`) so it can flag divergence from
 intended behavior.
 
+The Ethos does more than describe the agent. Its intent sections steer how the
+Analyst ranks and words its findings:
+
+- `Constraints` violations become the highest-severity findings, and the Analyst
+  will not propose a fix that breaches one.
+- `Trade-offs` sets the ranking order, so a cost or latency finding can outrank
+  an accuracy finding when the Ethos says it should.
+- `Metric Semantics` overrides the conventional reading of a metric or telemetry
+  field name, which stops confident misreadings of fields like `score`. A field
+  described there as broken or noisy is not treated as evidence.
+- `Principles` marks judgment calls as intended behavior, so an agent that asks
+  a clarifying question or refuses on principle is not filed as a failure.
+- `Behavior` lists accepted limitations and non-goals, which are by design.
+- `Vision` names future work, so an anticipated gap is not filed as a defect.
+
+The Analyst owns how it reads evidence, including the recurrence bar a pattern
+must clear before it is filed. That is the consumer's configuration rather than
+the agent's intent, so the Ethos does not carry it.
+
+Sections you omit fall back to the Analyst's own judgment, and it reports which
+missing section would have sharpened the analysis. The `nemo-ethos` skill writes
+these sections for you; its template lists every one with guidance on what good
+content looks like.
+
 ### Experimenter
 
 The Experimenter turns an Insight into an empirically validated candidate.

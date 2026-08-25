@@ -63,7 +63,7 @@ Surface, in this order, with counts:
 - **Deployed agents** — names + statuses. These stop with the platform regardless of option.
 - **Filesets** — eval datasets, eval results (look for names ending `-eval`, `-eval-out-*`, `-kb`, `-artifacts`), uploaded data. **These live in the data directory and are destroyed by options 2 and 3.**
 - **Jobs** — completed or in-flight eval jobs, optimizer runs. Run history also lives in the data directory.
-- **Local files** — list `agents/*-spec/AGENT-SPEC.md`, `agents/*.yml`, `agents/*.dd.py`, `agents/*.json`. These are in the working folder and survive options 1 and 2; option 3 deletes them.
+- **Local files** — list `agents/*-ethos/ETHOS.md`, `agents/*.yml`, `agents/*.dd.py`, `agents/*.json`. These are in the working folder and survive options 1 and 2; option 3 deletes them.
 - **Data directory location.** If `$NMP_DATA_DIR` is set, use that. Otherwise default to `~/.local/share/nemo`. Echo the path explicitly so the user can confirm before any wipe.
 - **ClickHouse data directory location.** Surface whether it is inside the platform data directory and will be deleted by options 2/3, or is an explicit external path that teardown preserves.
 - **CLI config (separate file).** `~/.config/nmp/config.yaml` holds the CLI's locally-cached admin email, default model, and `local_services.data_dir`. It is NOT inside the data directory. **None of the three options touches it by default** — a follow-up `nemo setup` reuses the existing config. If the user wants a full clean slate (e.g. switching admin email or data-dir path), surface this file as a fourth optional wipe target during Step 3.
@@ -78,7 +78,7 @@ Present these three. If the user says "you decide," pick option 1 and announce i
 
 **Option 2: Stop and delete platform data.** Service processes go down and the Intake-managed local ClickHouse container is removed before its default data is deleted. **The data directory at `${NMP_DATA_DIR:-~/.local/share/nemo}` is removed — this destroys the entity-store DB, encryption key, filesets, eval results, job history, secrets, registered providers, deployed-agent definitions, ClickHouse traces stored under that directory, and any data uploaded to the Files service. An explicitly configured `NMP_INTAKE_CLICKHOUSE_DATA_DIR` outside the platform data directory is preserved.** Local files under `agents/` and the venv stay on disk. Next `nemo setup` reconfigures from scratch. If managed ClickHouse state exists, Docker must be running so teardown can remove its container safely. **Pick this only if the snapshot above has nothing you care about, or you've already exported what you need.**
 
-**Option 3: Full cleanup.** Same as option 2, including removal of the Intake-managed local ClickHouse container, plus removes the venv and the local `agents/` directory. Local spec files, generated YAMLs, DD configs, and downloaded eval results in `agents/` are also destroyed.
+**Option 3: Full cleanup.** Same as option 2, including removal of the Intake-managed local ClickHouse container, plus removes the venv and the local `agents/` directory. Local Ethos files, generated YAMLs, DD configs, and downloaded eval results in `agents/` are also destroyed.
 
 ### Exporting before option 2 or 3
 
