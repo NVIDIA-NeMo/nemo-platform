@@ -20,6 +20,7 @@ from nmp.rl.app.jobs.training.schemas import (
 )
 from nmp.rl.entities.values import FinetuningType, TrainingType
 from nmp.rl.tasks.training.backends.nemo_rl.grpo_config import compile_grpo_config
+from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import DEFAULT_ROLLOUT_CHUNK_SIZE
 
 
 @pytest.fixture
@@ -968,3 +969,37 @@ def test_compiled_config_carries_the_progress_reporting_extras(
     assert grpo["steps_per_epoch"] >= 1
     assert "progress_time_series_metrics" in grpo
     assert "progress_min_report_interval_seconds" in grpo
+
+
+def test_rollout_chunk_size_defaults_to_the_upstream_value(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset carries NeMo-RL's own default, so an undeclared knob changes no behaviour.
+
+    Same shape as ttl_s: the mirror holds a non-null default, so the key is always emitted
+    and only its value tracks whether the operator declared one.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    assert step.gym.sandbox_rollout_chunk_size is None
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_chunk_size"] == DEFAULT_ROLLOUT_CHUNK_SIZE
+
+
+def test_operator_can_pin_the_rollout_chunk_size(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Long generations can make one chunk outlive the sandbox proxy's per-request cap.
+
+    That cap is fixed by the OpenSandbox server build, not exposed in its config, so the
+    workable chunk size is deployment-specific and has to be declarable.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+
+    step.gym.sandbox_rollout_chunk_size = 2
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_chunk_size"] == 2

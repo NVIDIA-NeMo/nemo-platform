@@ -319,6 +319,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             sandbox_server_protocol=config.sandbox_server_protocol,
             sandbox_resources=config.sandbox_resources,
             sandbox_ttl_s=config.sandbox_ttl_s,
+            sandbox_rollout_chunk_size=config.sandbox_rollout_chunk_size,
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
