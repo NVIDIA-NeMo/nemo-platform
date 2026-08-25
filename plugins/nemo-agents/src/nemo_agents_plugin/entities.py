@@ -26,7 +26,26 @@ class SessionStatus(StrEnum):
     """Lifecycle status of an agent session."""
 
     ACTIVE = "active"
+    EXPIRED = "expired"
+    LOST = "lost"
     CLOSED = "closed"
+
+    def can_transition_to(self, new_status: SessionStatus) -> bool:
+        """Return whether transitioning to *new_status* is allowed."""
+        if self == new_status:
+            return True
+
+        valid_transitions = {
+            SessionStatus.ACTIVE: {
+                SessionStatus.EXPIRED,
+                SessionStatus.LOST,
+                SessionStatus.CLOSED,
+            },
+            SessionStatus.EXPIRED: {SessionStatus.CLOSED},
+            SessionStatus.LOST: {SessionStatus.CLOSED},
+            SessionStatus.CLOSED: set(),
+        }
+        return new_status in valid_transitions[self]
 
 
 # Runtime backend for an AgentDeployment. ``subprocess`` (the default) runs the
@@ -452,11 +471,13 @@ class AgentSession(NemoEntity, entity_type="agent_session"):
     )
     status: SessionStatus = Field(
         default=SessionStatus.ACTIVE,
-        description="Lifecycle status: active | closed.",
+        description="Lifecycle status: active | expired | lost | closed.",
     )
     last_active_at: datetime | None = Field(
         default=None,
-        description="UTC timestamp of the last activity in the session.",
+        description=(
+            "UTC timestamp of the last activity in the session; null until a runtime has successfully attached."
+        ),
         json_schema_extra={"nullable": True},
     )
     expires_at: datetime | None = Field(

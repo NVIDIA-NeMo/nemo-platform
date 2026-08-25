@@ -438,7 +438,7 @@ async def _resolve_request_session(
     if session.status is not SessionStatus.ACTIVE:
         raise HTTPException(
             status_code=409,
-            detail=f"Session ID '{session_id}' is closed and cannot be invoked.",
+            detail=(f"Session ID '{session_id}' has status '{session.status.value}' and cannot be invoked."),
         )
     return session
 

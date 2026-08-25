@@ -178,6 +178,12 @@ async def close_session(
         await _cleanup_fabric_runtime(entity_client, session)
         return session
 
+    if not session.status.can_transition_to(SessionStatus.CLOSED):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session '{name}' cannot transition from '{session.status}' to 'closed'.",
+        )
+
     session.status = SessionStatus.CLOSED
     try:
         updated_session = await entity_client.update(session)

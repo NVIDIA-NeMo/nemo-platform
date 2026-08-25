@@ -568,10 +568,17 @@ class TestSessionAwareRouting:
             filter_obj={"id": "session-1", "created_by": OWNER_PRINCIPAL_ID},
         )
 
-    def test_closed_session_returns_409(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        mock_entity_client.find_one = AsyncMock(
-            return_value=_make_session(session_id="session-1", status=SessionStatus.CLOSED)
-        )
+    @pytest.mark.parametrize(
+        "status",
+        [SessionStatus.EXPIRED, SessionStatus.LOST, SessionStatus.CLOSED],
+    )
+    def test_non_active_session_returns_409(
+        self,
+        status: SessionStatus,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+    ) -> None:
+        mock_entity_client.find_one = AsyncMock(return_value=_make_session(session_id="session-1", status=status))
 
         resp = client.post(
             "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
@@ -580,7 +587,7 @@ class TestSessionAwareRouting:
         )
 
         assert resp.status_code == 409
-        assert "closed" in resp.json()["detail"].lower()
+        assert resp.json()["detail"] == (f"Session ID 'session-1' has status '{status.value}' and cannot be invoked.")
 
     def test_empty_session_header_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         resp = client.post(

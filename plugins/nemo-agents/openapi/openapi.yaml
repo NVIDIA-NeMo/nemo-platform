@@ -4259,11 +4259,12 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/SessionStatus'
-          description: 'Lifecycle status: active | closed.'
+          description: 'Lifecycle status: active | expired | lost | closed.'
           default: active
         last_active_at:
           title: Last Active At
-          description: UTC timestamp of the last activity in the session.
+          description: UTC timestamp of the last activity in the session; null until
+            a runtime has successfully attached.
           nullable: true
           type: string
           format: date-time
@@ -6826,6 +6827,8 @@ components:
       type: string
       enum:
       - active
+      - expired
+      - lost
       - closed
       title: SessionStatus
       description: Lifecycle status of an agent session.

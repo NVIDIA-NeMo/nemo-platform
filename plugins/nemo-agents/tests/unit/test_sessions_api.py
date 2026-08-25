@@ -231,8 +231,17 @@ class TestGetSession:
 
 
 class TestCloseSession:
-    def test_close_active_session(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        mock_entity_client.get.return_value = _make_session()
+    @pytest.mark.parametrize(
+        "status",
+        [SessionStatus.ACTIVE, SessionStatus.EXPIRED, SessionStatus.LOST],
+    )
+    def test_close_session(
+        self,
+        status: SessionStatus,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+    ) -> None:
+        mock_entity_client.get.return_value = _make_session(status=status)
         mock_entity_client.update.side_effect = lambda session: session
 
         with patch.object(sessions_router_module, "_cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:

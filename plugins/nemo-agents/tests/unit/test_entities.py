@@ -209,15 +209,56 @@ class TestAgentSessionEntity:
         assert session.last_active_at is None
         assert session.expires_at is None
 
-    def test_closed_status(self) -> None:
+    @pytest.mark.parametrize("status", list(SessionStatus))
+    def test_lifecycle_status(self, status: SessionStatus) -> None:
         session = AgentSession(
             name="session",
             workspace="default",
             deployment_id="deployment-id",
-            status=SessionStatus.CLOSED,
+            status=status,
         )
 
-        assert session.status is SessionStatus.CLOSED
+        assert session.status is status
+
+    @pytest.mark.parametrize(
+        ("current_status", "new_status"),
+        [
+            (SessionStatus.ACTIVE, SessionStatus.EXPIRED),
+            (SessionStatus.ACTIVE, SessionStatus.LOST),
+            (SessionStatus.ACTIVE, SessionStatus.CLOSED),
+            (SessionStatus.EXPIRED, SessionStatus.CLOSED),
+            (SessionStatus.LOST, SessionStatus.CLOSED),
+        ],
+    )
+    def test_allowed_status_transitions(
+        self,
+        current_status: SessionStatus,
+        new_status: SessionStatus,
+    ) -> None:
+        assert current_status.can_transition_to(new_status)
+
+    @pytest.mark.parametrize("status", list(SessionStatus))
+    def test_same_status_transition_is_idempotent(self, status: SessionStatus) -> None:
+        assert status.can_transition_to(status)
+
+    @pytest.mark.parametrize(
+        ("current_status", "new_status"),
+        [
+            (SessionStatus.EXPIRED, SessionStatus.ACTIVE),
+            (SessionStatus.EXPIRED, SessionStatus.LOST),
+            (SessionStatus.LOST, SessionStatus.ACTIVE),
+            (SessionStatus.LOST, SessionStatus.EXPIRED),
+            (SessionStatus.CLOSED, SessionStatus.ACTIVE),
+            (SessionStatus.CLOSED, SessionStatus.EXPIRED),
+            (SessionStatus.CLOSED, SessionStatus.LOST),
+        ],
+    )
+    def test_disallowed_status_transitions(
+        self,
+        current_status: SessionStatus,
+        new_status: SessionStatus,
+    ) -> None:
+        assert not current_status.can_transition_to(new_status)
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
