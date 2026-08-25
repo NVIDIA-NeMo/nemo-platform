@@ -4,14 +4,14 @@
 # NeMo Eval Author
 
 Three skills help an agent work on repository-owned evaluation suites and
-understand traces from supported sources. This directory builds no package.
-A customer points their agent at `skills/`, and nothing gets installed.
+understand traces from NeMo Intake. This directory builds no package. A
+customer points their agent at `skills/`, and nothing gets installed.
 
 | Skill | Role |
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
-| [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Explains one source-qualified trace without presuming that it failed. |
+| [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Explains one Intake trace without presuming that it failed. |
 
 ## Where findings go
 
@@ -20,37 +20,30 @@ JSON as front matter so a later model reads the verdict without Harbor. It is
 visible and worth committing: a teammate who reads it skips the discovery pass.
 
 `eval-author-inspect-trace` leaves one report per trace under
-`.eval-author/traces/`. The front matter carries the source identity, the
-deterministic overview, and the command that rebuilds the full evidence. Its
-findings use `behavior`, `issue`, `recovery`, and `uncertainty` categories.
+`.eval-author/traces/`. The front matter carries Intake source metadata and the
+exact read commands. Findings use `behavior`, `issue`, `recovery`, and
+`uncertainty` categories.
 
-The scripts write no files. They report to stdout and the skill tells the agent
-where to save because that is a judgment about someone's repository.
+The discovery scripts write no files. They report to stdout, and the skill tells
+the agent where to save its report. Trace inspection contains instructions only.
 
 ## Why skills instead of an agent
 
 Harbor tasks live in the customer's repository, so an agent that proposes changes
 has to write to that repository. Customers were unwilling to grant that, sandboxed
 or not. A skill inverts the arrangement: the customer's own agent does the work,
-and this directory only supplies the instructions and the deterministic scripts.
+and this directory supplies instructions and deterministic discovery scripts.
 
 ## Dependencies
 
-The trace entry point and source adapters use only the Python standard library.
-The Harbor validation ladder also imports Harbor and its transitive
-dependencies. The discovery flow asks Harbor to judge each configuration
-instead of guessing from file layout.
+Trace inspection requires the supported `nemo` CLI, an explicit workspace, and
+read access to a configured local or remote NeMo Platform instance. It uses
+read-only `nemo intake` commands. The CLI handles its contexts, authentication,
+transport, filters, pagination, and errors.
 
-Intake is the first supported trace source. Its adapter reads `NMP_BASE_URL` and
-`NMP_ACCESS_TOKEN`. It permits HTTP only for loopback targets, rejects
-redirects, and makes read-only requests under
-`/apis/intake/v2/workspaces/{workspace}`.
+Discovery scripts use the Python standard library. The Harbor validation ladder
+also imports Harbor and its transitive dependencies. The discovery flow asks
+Harbor to judge each configuration instead of guessing from file layout.
 
-`tests/test_skill_contract.py` enforces the same dependency boundary.
-`tests/test_intake_scripts.py` tests the HTTP client against a local fake server.
-Neither test module imports the Platform. The five Harbor integration tests skip
-when Harbor is absent.
-
-Adding a runtime dependency to a bundled script is a breaking change for anyone who
-copied the skill, so the contract test walks each script's imports and fails on
-anything outside the standard library, a sibling module, or Harbor.
+`tests/test_skill_contract.py` enforces the discovery dependency boundary. The
+Harbor integration tests skip when Harbor is absent.

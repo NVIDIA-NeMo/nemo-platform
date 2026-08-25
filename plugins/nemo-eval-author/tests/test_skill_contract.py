@@ -3,39 +3,17 @@
 
 """Contract tests for the bundled Eval Author skills.
 
-``eval-author`` is the core skill: it owns the standard, the vocabulary, the
-boundaries, and the routing. ``eval-author-discover`` and
-``eval-author-inspect-trace`` are sub-flows that carry the steps and defer the
-standard to the core. Trace-source adapters belong to the inspection sub-flow.
-All three ship as directories customers copy into their own repository, so
-nothing at runtime enforces their promises.
-These tests are that enforcement:
+``eval-author`` owns the standard and routes to its sub-flows.
+``eval-author-discover`` bundles scripts, and ``eval-author-inspect-trace`` uses
+the provider's supported commands. Both sub-flows defer to the core standard.
 
-- The frontmatter of each skill carries every field ``docs/contributing/skills-spec.mdx`` requires.
-- The core routes to every sub-flow, and each sub-flow points back at the core
-  rather than restating the standard, which is how the two would drift.
-- Only the sub-flow can execute. The core routes, so it gets no Bash.
-- The bundled scripts depend on the standard library and Harbor only. Harbor is acceptable
-  because a repository holding Harbor evaluations has Harbor by construction; a
-  NeMo import would not be, and that is the boundary these tests defend.
-- ``_ladder.py`` stays out of module scope in ``discover.py``, so a repository
-  without Harbor gets an inventory instead of an ImportError.
-- No bundled directory is named after a provider package. ``scripts/harbor/``
-  would be importable as ``harbor``, which makes ``find_spec`` succeed on a
-  machine with no Harbor and the probe claim an install that is not there.
-- Discovery reports a valid suite runnable and names the rung a broken one fails.
-- The bundled scripts write no files. ``SKILL.md`` tells the agent where to save
-  the report, because where a file belongs in someone's repository is a judgement
-  rather than a fact about their evals.
+These tests enforce front matter, routing, permissions, report boundaries, and
+the discovery script contract. Discovery scripts use only the standard library,
+Harbor, and Harbor's dependencies. They ask Harbor to judge runnability and
+write no files.
 
-These tests compare the skill against this repository, never against Harbor's
-rules. The skill reimplements no Harbor rule: it asks Harbor for every verdict,
-so a Harbor change that tightens a rule flows through without a test change here.
-
-Nothing here imports the platform, for the same reason the bundled scripts do not:
-these skills are copied into someone else's repository and have to stand alone. The
-tests that make Harbor judge a fixture suite skip when Harbor is absent, so the whole
-file runs against nothing but pytest and PyYAML.
+Tests that ask Harbor to judge a fixture skip when Harbor is absent. The
+remaining tests require only pytest and PyYAML.
 """
 
 import ast
@@ -57,8 +35,6 @@ _INSPECT_FLOW_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
 _SKILL_DIRS = (_CORE_DIR, _DISCOVER_FLOW_DIR, _INSPECT_FLOW_DIR)
 _SUB_FLOW_DIRS = (_DISCOVER_FLOW_DIR, _INSPECT_FLOW_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_FLOW_DIR / "scripts"
-_INSPECT_SCRIPTS_DIR = _INSPECT_FLOW_DIR / "scripts"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _INSPECT_SCRIPTS_DIR)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 
@@ -111,20 +87,13 @@ def _frontmatter_and_body(skill_dir: Path) -> tuple[dict, str]:
 
 def _bundled_scripts() -> list[Path]:
     """Return every bundled module, including the ones under providers/."""
-    return sorted(
-        path
-        for scripts_dir in _SCRIPT_DIRS
-        if scripts_dir.exists()
-        for path in scripts_dir.rglob("*.py")
-        if "__pycache__" not in path.parts
-    )
+    return sorted(path for path in _DISCOVER_SCRIPTS_DIR.rglob("*.py") if "__pycache__" not in path.parts)
 
 
-def _local_roots(path: Path) -> set[str]:
-    """Return the names a bundled module can import from its scripts directory."""
-    scripts_dir = next(root for root in _SCRIPT_DIRS if path.is_relative_to(root))
-    return {item.stem if item.is_file() else item.name for item in scripts_dir.iterdir()} | {
-        item.stem for item in scripts_dir.rglob("*.py")
+def _local_roots() -> set[str]:
+    """Return names that a discovery module can import from its scripts directory."""
+    return {item.stem if item.is_file() else item.name for item in _DISCOVER_SCRIPTS_DIR.iterdir()} | {
+        item.stem for item in _DISCOVER_SCRIPTS_DIR.rglob("*.py")
     }
 
 
@@ -240,7 +209,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     for skill_dir in _SUB_FLOW_DIRS:
         tools = set(_frontmatter_and_body(skill_dir)[0]["allowed-tools"])
-        assert {"Bash", "Write"} <= tools, f"{skill_dir.name} runs a script and saves a report; it has {sorted(tools)}"
+        assert {"Bash", "Write"} <= tools, (
+            f"{skill_dir.name} runs provider commands and saves a report; it has {sorted(tools)}"
+        )
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -250,39 +221,16 @@ def test_the_core_names_every_sub_flow() -> None:
         assert skill_dir.name in body, f"the core does not route to {skill_dir.name}"
 
 
-def test_the_core_treats_trace_sources_as_pluggable() -> None:
-    frontmatter, body = _frontmatter_and_body(_CORE_DIR)
-    core_text = json.dumps(frontmatter) + body
+def test_inspect_flow_is_only_a_cli_driven_skill() -> None:
+    _, body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
 
-    assert "trace source" in core_text.lower()
-    assert "Intake" not in core_text
-
-
-def test_inspect_flow_selects_source_guidance_from_a_qualified_reference() -> None:
-    frontmatter, body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
-    inspect_text = json.dumps(frontmatter) + body
-    lower_body = body.lower()
-
-    assert "source-qualified" in inspect_text
-    assert "`references/intake.md`" in body
-    assert "bare trace" in lower_body and "reject" in lower_body
-
-
-def test_the_entry_point_owns_no_source_specific_arguments_or_internals() -> None:
-    """The entry point names one adapter function; the source owns its own flags and client."""
-    entry_point = (_INSPECT_SCRIPTS_DIR / "inspect_trace.py").read_text(encoding="utf-8")
-
-    forbidden = (
-        "--workspace",
-        "NMP_BASE_URL",
-        "NMP_ACCESS_TOKEN",
-        "IntakeClient",
-        "IntakeError",
-        "read_overview",
-        "read_spans",
-    )
-    for detail in forbidden:
-        assert detail not in entry_point
+    assert {path.name for path in _INSPECT_FLOW_DIR.iterdir()} == {"SKILL.md"}
+    for command in (
+        "nemo intake traces",
+        "nemo intake spans",
+        "nemo intake evaluator-results",
+    ):
+        assert command in body
 
 
 @pytest.mark.parametrize("skill_dir", _SUB_FLOW_DIRS, ids=lambda path: path.name)
@@ -309,91 +257,30 @@ def test_skill_body_stays_within_the_line_budget(skill_dir: Path) -> None:
     )
 
 
-def test_inspect_flow_requires_neutral_evidence_based_reporting() -> None:
-    _, body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
-
-    for value in ("`success`", "`failure`", "`unknown`"):
-        assert value in body
-    for category in ("`behavior`", "`issue`", "`recovery`", "`uncertainty`"):
-        assert category in body
-    for requirement in ("span ID", "path and symbol", '"overview"', "`report_path`", ".eval-author/traces/"):
-        assert requirement in body
-    assert "invent an" in body
-
-
-def test_every_bundled_path_the_skill_names_exists() -> None:
-    expected = (
-        (
-            _DISCOVER_FLOW_DIR,
-            _DISCOVER_FLOW_DIR / "SKILL.md",
-            (
-                "scripts/discover.py",
-                "scripts/_checks.py",
-                "scripts/providers/harbor/_probe.py",
-                "scripts/providers/harbor/_inventory.py",
-                "scripts/providers/harbor/_ladder.py",
-            ),
-        ),
-        (
-            _INSPECT_FLOW_DIR,
-            _INSPECT_FLOW_DIR / "SKILL.md",
-            (
-                "scripts/inspect_trace.py",
-                "scripts/overview.py",
-                "references/intake.md",
-            ),
-        ),
-        (
-            _INSPECT_FLOW_DIR,
-            _INSPECT_FLOW_DIR / "references" / "intake.md",
-            (
-                "scripts/sources/intake/adapter.py",
-                "scripts/sources/intake/_http.py",
-                "scripts/sources/intake/traces.py",
-                "scripts/sources/intake/reader.py",
-            ),
-        ),
+def test_every_discovery_path_the_skill_names_exists() -> None:
+    paths = (
+        "scripts/discover.py",
+        "scripts/_checks.py",
+        "scripts/providers/harbor/_probe.py",
+        "scripts/providers/harbor/_inventory.py",
+        "scripts/providers/harbor/_ladder.py",
     )
-    for skill_dir, document, paths in expected:
-        body = document.read_text(encoding="utf-8")
-        for relative in paths:
-            assert relative in body, f"{document.relative_to(skill_dir)} no longer documents {relative}"
-            assert (skill_dir / relative).exists(), f"{document.relative_to(skill_dir)} names missing {relative}"
+    document = _DISCOVER_FLOW_DIR / "SKILL.md"
+    body = document.read_text(encoding="utf-8")
+    for relative in paths:
+        assert relative in body, f"SKILL.md no longer documents {relative}"
+        assert (_DISCOVER_FLOW_DIR / relative).exists(), f"SKILL.md names missing {relative}"
 
 
-def test_no_document_names_a_script_that_was_deleted() -> None:
-    """Catch the other direction of drift: a document naming a file that no longer exists.
-
-    Listing the expected paths only proves the ones we remembered to list. A script
-    that gets folded into another one leaves its name behind in the prose, and the
-    agent then runs a command that cannot work.
-    """
-    named = re.compile(r"`(scripts/[A-Za-z0-9_/]+\.py)`")
-    missing: dict[str, set[str]] = {}
-    for skill_dir in _SKILL_DIRS:
-        for document in sorted(skill_dir.rglob("*.md")):
-            absent = {
-                relative
-                for relative in named.findall(document.read_text(encoding="utf-8"))
-                if not (skill_dir / relative).exists()
-            }
-            if absent:
-                missing[str(document.relative_to(skill_dir.parent))] = absent
-    assert not missing, f"documents name scripts that do not exist: {missing}"
-
-
-def test_bundled_scripts_respect_each_flow_dependency_boundary() -> None:
-    """Only discovery can use Harbor packages; trace-source scripts stay dependency-free."""
+def test_discovery_scripts_respect_the_dependency_boundary() -> None:
     offenders: dict[str, set[str]] = {}
     for path in _bundled_scripts():
-        permitted = _local_roots(path) | sys.stdlib_module_names
-        if path.is_relative_to(_DISCOVER_SCRIPTS_DIR):
-            permitted.update(_PERMITTED_THIRD_PARTY)
+        permitted = _local_roots() | sys.stdlib_module_names | _PERMITTED_THIRD_PARTY
         found = {root for root in _imported_roots(path) if root not in permitted}
         if found:
             offenders[path.name] = found
     assert not offenders, (
-        "Bundled scripts exceeded their standard-library, local-module, or discovery-provider boundary: "
+        "Discovery scripts exceeded their standard-library, local-module, or provider boundary: "
         + "; ".join(f"{filename} imports {sorted(names)}" for filename, names in sorted(offenders.items()))
     )
 
@@ -406,13 +293,7 @@ def test_no_bundled_directory_is_named_after_a_provider_package() -> None:
     succeed, so the probe reports an install that is not there and the ladder then
     fails on import. Provider code sits one level down for exactly this reason.
     """
-    collisions = {
-        root
-        for scripts_dir in _SCRIPT_DIRS
-        if scripts_dir.exists()
-        for root in _local_roots(next(scripts_dir.rglob("*.py"), scripts_dir))
-        if root in _PERMITTED_THIRD_PARTY
-    }
+    collisions = _local_roots() & _PERMITTED_THIRD_PARTY
     assert not collisions, (
         f"{sorted(collisions)} shadows a package the skill imports; "
         "keep it under scripts/providers/ rather than directly in scripts/"

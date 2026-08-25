@@ -5,12 +5,12 @@
 name: eval-author
 description: >-
   Work on evaluation suites in a user's repository or understand an agent run
-  from a supported trace source. Owns the evidence standard that every Eval
-  Author sub-flow follows. Use when the user asks "help me with my evals",
+  from NeMo Intake. Owns the evidence standard that every Eval Author sub-flow
+  follows. Use when the user asks "help me with my evals",
   "what's the state of the eval suite here?", "what happened in this trace?", or
   when you need to pick between the Eval Author sub-flows. Routes to a sub-flow
-  and changes none of the user's source. The sub-flow it picks runs the scripts
-  and saves its findings under `.eval-author/`.
+  and changes none of the user's source. The selected sub-flow uses the
+  provider's supported tools and saves its findings under `.eval-author/`.
 triggers:
   - help me with the evals in this repo
   - what is the state of the eval suite here
@@ -20,12 +20,12 @@ triggers:
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
-  - eval-author-inspect-trace (use to understand one trace from a supported source)
+  - eval-author-inspect-trace (use to understand one Intake trace)
   - nemo-experimentalist (use to run insight-driven optimization end to end)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: >-
   Reading only. Discovery uses the local checkout. Trace inspection requires
-  read access to the selected trace source. Each sub-flow states its runtime needs.
+  the nemo CLI, an explicit workspace, and read access to configured Intake.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -48,9 +48,8 @@ The authority depends on the sub-flow:
 
 - For suite discovery, Harbor's validators judge runnability. A file's presence
   doesn't prove that Harbor accepts it.
-- For trace inspection, the selected trace source establishes what happened.
-  Local source code can explain behavior, but it can't replace recorded trace
-  evidence.
+- For trace inspection, Intake establishes what happened. Local source code can
+  explain behavior, but it can't replace recorded trace evidence.
 
 No sub-flow reimplements a provider's rules. When evidence can't settle a claim,
 the report marks the claim unproven or uncertain.
@@ -67,7 +66,6 @@ The sub-flows share this language, and reports use it verbatim.
 | Rung | One step of a provider's validation ladder, ordered so a lower rung's failure often clears once a higher one is fixed |
 | Proven | A provider judged this check. An unproven check is an observation and never evidence |
 | Provider | The evaluation framework that owns the rules. Harbor today |
-| Trace source | The system identified by a trace reference that supplies recorded runtime evidence |
 | Finding | One trace claim categorized as `behavior`, `issue`, `recovery`, or `uncertainty`, with evidence IDs |
 | Outcome | The trace assessment: `success`, `failure`, or `unknown` |
 
@@ -79,7 +77,7 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
-| `eval-author-inspect-trace` | Understand one source-qualified trace without presuming that the trace contains a failure |
+| `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure |
 
 Authoring new tasks and verifier metrics is not built yet. When a user asks for
 that, say so plainly rather than improvising a task layout by hand. A task written
@@ -103,10 +101,10 @@ user, not to you.
 - **Trusted repositories only.** Validating a config can execute repository code,
   because an agent named by import path gets imported. If the repository is not
   trusted, say so and stop.
-- **Trace-source reads are narrow.** Only `eval-author-inspect-trace` reads a
-  trace source. It selects the source from an explicit URI and follows that
-  source's read-only guide. No sub-flow discovers accounts, ingests data,
-  uploads files, or changes a remote resource.
+- **Intake reads are narrow.** Only `eval-author-inspect-trace` reads Intake. It
+  uses read-only `nemo intake` commands against the configured instance and
+  workspace. No sub-flow discovers accounts, ingests data, uploads files, or
+  changes a remote resource.
 
 ## Reporting
 
