@@ -14,7 +14,10 @@ END_MARKER = "<!-- END:nemo-eval-author-audit:v1 -->"
 
 _BEGIN_MARKER_RE = re.compile(rf"(?m)^[ \t]*{re.escape(BEGIN_MARKER)}[ \t]*$")
 _END_MARKER_RE = re.compile(rf"(?m)^[ \t]*{re.escape(END_MARKER)}[ \t]*$")
-_YAML_BLOCK_RE = re.compile(r"```(?:yaml|yml)\s*\n(?P<body>.*?)\n```", re.DOTALL)
+_YAML_BLOCK_RE = re.compile(
+    r"^[ \t]*```(?:yaml|yml)[ \t]*\n(?P<body>.*?)\n[ \t]*```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
 
 
 class AuditMarkdownError(ValueError):

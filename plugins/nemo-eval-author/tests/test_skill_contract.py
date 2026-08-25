@@ -671,6 +671,16 @@ def test_audit_validation_rejects_multiple_yaml_blocks(tmp_path: Path) -> None:
     assert "must contain one fenced yaml block" in report["error"]
 
 
+def test_audit_validation_rejects_prefixed_yaml_fence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, lambda text: text.replace("```yaml\n", "prefix ```yaml\n", 1))
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "must contain one fenced yaml block" in report["error"]
+
+
 def test_bundled_scripts_never_import_the_platform() -> None:
     """The boundary that makes the skill copyable: Harbor is fine, NeMo is not."""
     offenders: dict[str, set[str]] = {}

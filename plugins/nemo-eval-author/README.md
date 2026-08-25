@@ -4,9 +4,13 @@
 # NeMo Eval Author
 
 Three skills that an agent reads to work on the evaluation suites in a user's own
-repository. There is no CLI, no service, and no importable code, so this directory
-builds no package at all. A customer points their agent at `skills/` and nothing
-gets installed.
+repository. This directory provides no installed public package or service, so a
+customer points their agent at `skills/` and nothing gets installed.
+
+The audit sub-flow also ships a bundled validator CLI at
+[`skills/eval-author-audit/scripts/audit_spec/validate.py`](skills/eval-author-audit/scripts/audit_spec/validate.py)
+and private helper modules under `scripts/audit_spec/`. They are invoked from the
+copied skill tree, not published as a package API.
 
 ## Prerequisites
 
