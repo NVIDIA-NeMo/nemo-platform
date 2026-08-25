@@ -153,9 +153,20 @@ def _run_discover(repo: Path, *args: str, with_harbor: bool = True) -> tuple[int
     return result.returncode, json.loads(result.stdout)
 
 
-def _run_json_script(script: Path, *args: str) -> tuple[int, dict, str]:
+def _run_json_script(
+    script: Path,
+    *args: str,
+    python_args: tuple[str, ...] = (),
+    env: dict[str, str] | None = None,
+) -> tuple[int, dict, str]:
     """Run an audit script that emits JSON on stdout."""
-    result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [sys.executable, *python_args, str(script), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
     assert result.stdout, f"{script.name} printed nothing; stderr:\n{result.stderr}"
     return result.returncode, json.loads(result.stdout), result.stderr
 
@@ -342,12 +353,28 @@ def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> Non
     assert report["item_counts"] == {"capability": 1, "failure_case": 1, "tool": 1}
 
 
-def test_audit_file_without_sources_validates(tmp_path: Path) -> None:
+def test_audit_file_without_sources_allows_source_refs_as_notes(tmp_path: Path) -> None:
     audit = _write_audit(
         tmp_path,
         lambda text: re.sub(
             r"sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n",
             "",
+            text,
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_file_with_empty_sources_validates(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n",
+            "sources: []\n",
             text,
         ),
     )
@@ -366,6 +393,41 @@ def test_audit_validation_compact_output(tmp_path: Path) -> None:
     assert code == 0, stderr or report
     assert report["valid"] is True
     assert report["item_count"] == 3
+
+
+def test_audit_validation_marks_missing_pyyaml_as_environment_error(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit), python_args=("-S",))
+
+    assert code == 2
+    assert report["valid"] is None
+    assert report["error_type"] == "environment"
+    assert "PyYAML is required" in report["error"]
+
+
+def test_audit_validation_marks_missing_jsonschema_as_environment_error(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "jsonschema.py").write_text('raise ImportError("simulated missing jsonschema")\n', encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(tmp_path) if not env.get("PYTHONPATH") else f"{tmp_path}{os.pathsep}{env['PYTHONPATH']}"
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit), "--compact", env=env)
+
+    assert code == 2
+    assert report["valid"] is None
+    assert report["error_type"] == "environment"
+    assert "jsonschema is required" in report["error"]
+
+
+def test_audit_schema_load_failure_is_environment_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.syspath_prepend(str(_AUDIT_SPEC_DIR))
+    import _schema
+
+    monkeypatch.setattr(_schema, "SCHEMA_PATH", tmp_path / "missing.schema.json")
+
+    with pytest.raises(_schema.AuditEnvironmentError, match="could not load audit JSON Schema"):
+        _schema.validate_audit_spec({})
 
 
 def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None:

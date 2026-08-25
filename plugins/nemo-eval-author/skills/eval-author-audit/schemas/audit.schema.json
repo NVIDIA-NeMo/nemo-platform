@@ -23,7 +23,6 @@
     "sources": {
       "description": "Optional provenance records for source-of-truth material used to author this audit spec, such as ETHOS.md, policy docs, product requirements, or generated agent specs.",
       "type": "array",
-      "minItems": 1,
       "items": {
         "$ref": "#/$defs/source"
       }
@@ -79,7 +78,7 @@
       },
       "properties": {
         "name": {
-          "description": "Stable source key used by source_refs, for example ethos or product_requirements.",
+          "description": "Stable source key for this provenance record, for example ethos or product_requirements.",
           "$ref": "#/$defs/itemName"
         },
         "path": {
@@ -127,7 +126,7 @@
       }
     },
     "sourceRefs": {
-      "description": "Optional item-level provenance pointers into sources, for example ethos:Tools or policy.md#refunds.",
+      "description": "Optional free-form provenance notes for item authors and reviewers, for example ethos:Tools or policy.md#refunds. The v1 validator preserves these strings but does not resolve them against sources.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -223,7 +222,7 @@
           "$ref": "#/$defs/itemName"
         },
         "source_refs": {
-          "description": "Optional provenance pointers showing where this tool expectation came from.",
+          "description": "Optional provenance notes showing where this tool expectation came from.",
           "$ref": "#/$defs/sourceRefs"
         },
         "description": {
@@ -266,7 +265,7 @@
           "$ref": "#/$defs/itemName"
         },
         "source_refs": {
-          "description": "Optional provenance pointers showing where this capability expectation came from.",
+          "description": "Optional provenance notes showing where this capability expectation came from.",
           "$ref": "#/$defs/sourceRefs"
         },
         "description": {
@@ -314,7 +313,7 @@
           "$ref": "#/$defs/capabilityRefList"
         },
         "source_refs": {
-          "description": "Optional provenance pointers showing where this failure expectation came from.",
+          "description": "Optional provenance notes showing where this failure expectation came from.",
           "$ref": "#/$defs/sourceRefs"
         },
         "description": {
