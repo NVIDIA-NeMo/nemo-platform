@@ -1028,12 +1028,36 @@ name = "example"
     assert "entry-points" not in wrapper_updated["project"]
 
 
-def test_replace_client_methods_updates_init_and_getattr(tmp_path: Path) -> None:
+def test_replace_client_methods_updates_init_and_getattr(tmp_path: Path, monkeypatch) -> None:
     sdk_path = tmp_path / "sdk/python/nemo-platform"
     client_path = sdk_path / "src/nemo_platform/_client.py"
     source_path = tmp_path / "packages/nemo_platform_ext/src/nemo_platform_ext/client/enhanced.py"
     client_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.parent.mkdir(parents=True, exist_ok=True)
+    plugin_client_path = tmp_path / "nemo_platform_plugin/client"
+    plugin_client_path.mkdir(parents=True)
+    (client_path.parent / "__init__.py").write_text("", encoding="utf-8")
+    (client_path.parent / "_base_client.py").write_text(
+        """
+class DefaultAsyncHttpxClient:
+    pass
+
+
+class DefaultHttpxClient:
+    pass
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "nemo_platform_plugin/__init__.py").write_text("", encoding="utf-8")
+    (plugin_client_path / "__init__.py").write_text("", encoding="utf-8")
+    (plugin_client_path / "constants.py").write_text(
+        'WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR = "NMP_WORKLOAD_IDENTITY_TOKEN_FILE"\n',
+        encoding="utf-8",
+    )
+    (plugin_client_path / "tls.py").write_text(
+        "def client_verify_from_env() -> bool:\n    return True\n",
+        encoding="utf-8",
+    )
 
     client_path.write_text(
         """
@@ -1108,3 +1132,41 @@ class AsyncNeMoPlatform:
     assert updated.count("def __getattr__(self, name: str) -> Any:") == 2
     assert "self.value = 1" not in updated
     assert "self.value = 2" not in updated
+
+    class BlockNemoPlatformExt:
+        def find_spec(
+            self,
+            fullname: str,
+            path: object | None = None,
+            target: object | None = None,
+        ) -> None:
+            del path, target
+            if fullname == "nemo_platform_ext" or fullname.startswith("nemo_platform_ext."):
+                raise ModuleNotFoundError("nemo_platform_ext must not be imported")
+            return None
+
+    blocked_finder = BlockNemoPlatformExt()
+    module_names = (
+        "nemo_platform",
+        "nemo_platform._base_client",
+        "nemo_platform._client",
+        "nemo_platform_plugin",
+        "nemo_platform_plugin.client",
+        "nemo_platform_plugin.client.constants",
+        "nemo_platform_plugin.client.tls",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.syspath_prepend(str(sdk_path / "src"))
+    sys.meta_path.insert(0, blocked_finder)
+    try:
+        for module_name in module_names:
+            sys.modules.pop(module_name, None)
+
+        generated_client = import_module("nemo_platform._client")
+
+        assert generated_client.NeMoPlatform(config_path=Path("config.yaml")).should_bootstrap is True
+    finally:
+        if blocked_finder in sys.meta_path:
+            sys.meta_path.remove(blocked_finder)
+        for module_name in module_names:
+            sys.modules.pop(module_name, None)
