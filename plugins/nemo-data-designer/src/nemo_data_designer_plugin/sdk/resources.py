@@ -361,7 +361,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         *,
         workspace: str | None = None,
     ) -> ValidationReport:
-        """Validate a Data Designer config against one or every execution context.
+        """Validate a Data Designer config.
 
         This runs the same client-side checks ``preview`` / ``create`` perform
         internally, but never short-circuits — every detectable problem is
@@ -375,8 +375,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
                 client's default workspace, then to ``"default"``.
 
         Returns:
-            A :class:`ValidationReport` whose ``ok`` property is true iff
-            every requested context validated cleanly.
+            A :class:``ValidationReport``
         """
         resolved_workspace = workspace or self._platform.workspace or "default"
         return validate_config_sync(
