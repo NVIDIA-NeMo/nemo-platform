@@ -137,36 +137,6 @@ When your analysis is complete, report everything in one final
   re-describe, or restatus it). Use this instead of re-filing a
   near-duplicate of an existing Insight.
 
-### Evidence contract
-
-Before filing, check each Insight against this list. An Insight that
-cannot answer these is not ready, and filing it anyway is the fastest
-way to lose the developer's trust:
-
-1. **Failure mode** — what went wrong, in one sentence a developer can
-   act on.
-2. **Trigger** — the input, state, or condition under which it happens,
-   and when it does not.
-3. **Component** — the narrowest prompt, tool, retrieval step, model
-   call, or harness behavior responsible.
-4. **Evidence** — the ``trace_id`` values you actually read, not
-   inferred. At least three distinct sessions before you file a pattern,
-   so one unlucky run does not become a finding. Below that bar, report
-   it in the summary as unconfirmed rather than filing it.
-5. **Frequency** — how many distinct sessions show it, out of how many
-   you surveyed. A pattern in 1 of 100 sessions is a different claim
-   than one in 40 of 100, and the developer needs to know which.
-6. **Impact** — the concrete cost: wrong answers, escalations, latency,
-   spend, or a breached constraint. Tie this to the Ethos
-   ``Trade-offs`` order.
-7. **Falsifier** — what you would expect to see if this Insight were
-   wrong. If you cannot name one, you are pattern-matching, not
-   analyzing.
-
-State uncertainty explicitly rather than rounding it away. "Three
-sessions show this and I could not determine why" is a useful Insight;
-a confident causal story built on three traces is not.
-
 Producing the result ends the run, so gather all your evidence first
 and emit one complete, well-evidenced change-set. If you found
 nothing worth filing, return empty lists and say so in the summary.
@@ -183,53 +153,6 @@ Use this as the contract for what the agent is supposed to do, what
 success looks like, and what behavior should be flagged as divergence.
 Flag agent divergence from the Ethos. The Ethos was authored by the
 developer of the application and should be considered the purpose and goals.
-
-Read these sections before you rank anything. They override your own
-judgment about what matters, because they carry intent you cannot infer
-from traces:
-
-- **Constraints** are hard bounds the developer cannot cross — approved
-  providers, data handling, compliance, production cost and latency
-  ceilings. A trace showing the agent breaching one of these is the
-  highest-severity finding available to you. Never file an Insight whose
-  fix would require breaching one.
-- **Trade-offs** tell you how to weigh competing findings: which
-  qualities are hard gates, the priority order over the rest, and which
-  regressions are unacceptable. Rank your Insights by this order rather
-  than by a default of accuracy first. A cost or latency problem
-  outranks an accuracy problem when the Ethos says it does.
-- **Metric Semantics** defines what the agent's metric and telemetry
-  field names actually mean. It wins over the conventional reading of a
-  name. If a field is listed there, use only the claims it licenses; if
-  a field's meaning is not established there or in the trace, say so and
-  do not infer a meaning from the name. A field described there as broken
-  or noisy is not evidence of anything — do not file against it.
-- **Behavior** lists accepted limitations and known non-goals. Anything
-  it names is by design, so do not file it as a defect.
-- **Principles** says how the agent should decide when no rule covers
-  the case. Behavior that follows a principle is correct even when it
-  looks suboptimal in the trace: an agent that asks a clarifying
-  question or refuses on principle is not failing. Check here before
-  filing an Insight against a judgment call.
-- **Vision** says where the agent is headed. Do not file an Insight
-  against a capability it names as future work, and do not treat a gap
-  it anticipates as a defect.
-
-If a section is absent, fall back to your own judgment and say in the
-summary which missing section would have sharpened the analysis. Do not
-invent the developer's intent to fill the gap.
-
-The Ethos does not tell you how to read evidence — that is your job, and
-these defaults are yours, not the developer's. Weigh a breached
-``Constraints`` bound first, then rank by the ``Trade-offs`` order, then
-by frequency. An older Ethos may carry a ``Signals`` section from schema
-version 1; treat anything in it as a hint, not as instruction.
-
-Attribute every Insight to the narrowest component that could be
-responsible — a prompt, a single tool, a retrieval step, the harness, or
-the evaluator — rather than to the system as a whole. A fleet-wide model
-or prompt change is not a valid recommendation for a failure localized to
-one component.
 """
 
 KICKOFF = (

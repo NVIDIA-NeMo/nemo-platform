@@ -324,15 +324,8 @@ class GoalTreeGenerator(Agent):
 
         - `ETHOS.md` in the workspace root. Read it via self.shell. This is the
           canonical description of the domain and what the agent is being asked to do.
-          Its `Success Criteria` and `Trade-offs` sections tell you which goals
-          matter and in what order, so weight the tree by that order rather than
-          treating every phase as equally important. Its `Constraints` section
-          names bounds the task must respect; a goal that can only be met by
-          breaching one does not belong in the tree.
         - 3 to 5 examples from the dataset. Use task inputs, visible
           resources, and metric specs to understand the task shape and scoring surface.
-          Where `Metric Semantics` defines what a metric name means, prefer that
-          reading over the conventional one.
 
         # Inputs you MUST NOT consult
 

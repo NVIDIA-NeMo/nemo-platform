@@ -1,10 +1,7 @@
 ---
-schema_version: 2
 name: terminal-bench-codeact
 created_timestamp: 2026-06-15T00:00:00+00:00
-updated_timestamp: 2026-08-24T00:00:00+00:00
 author: gdilorenzo@nvidia.com
-owner: gdilorenzo@nvidia.com
 ---
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
@@ -14,22 +11,14 @@ owner: gdilorenzo@nvidia.com
 Solve canonical Terminal-Bench tasks by iteratively executing shell commands in
 the task's main container until the verifier passes.
 
-## Purpose & Outcomes
+## Purpose
 
-**Mission.** This agent exists to provide a deliberately plain LangChain baseline for realistic,
+This agent exists to provide a deliberately plain LangChain baseline for realistic,
 open-ended CLI and systems tasks. It takes a task description and autonomously
 modifies the canonical task environment to produce the expected files and state.
 
 Because Harbor's task verifier validates outputs objectively, the agent must
 produce correct, verifiable results rather than plausible-looking answers.
-
-**Outcome.** A benchmark baseline, not a shipped product: this agent exists so
-NeMo Platform optimization work has an honest, reproducible reference point on
-Terminal-Bench 2.1. It is accountable for mean reward on the canonical
-`terminal-bench/terminal-bench-2-1@6` train and validation subsets, with a
-target above 0.80 and no divergence from the canonical task environment. A
-higher score obtained by changing the benchmark is worth nothing here.
-Owner: the Experimentalist maintainers.
 
 ## Scope
 
@@ -60,10 +49,22 @@ installation, implementation, and verification.
 No external web or search tools are provided. The canonical task container has
 network access, so commands may use its available download tools.
 
-## Harness
+## Model
 
-Built with LangChain `create_agent`, using `ChatOpenAI` against the NVIDIA
-Inference Gateway's OpenAI-compatible endpoint, plus one local shell tool.
+- **Family/size:** Claude Haiku 4.5 (small/fast)
+- **Gateway model id:** `aws/anthropic/claude-haiku-4-5-v1`
+- **API base:** `https://inference-api.nvidia.com/v1`
+- **Auth:** `INFERENCE_API_KEY` bearer token
+- **Why this choice:** Fast iteration for a plain baseline; many terminal tasks
+  require 10–30 tool calls and latency compounds.
+- **Deployment:** Cloud (NVIDIA inference gateway / AWS Bedrock proxy)
+
+## Framework
+
+LangChain `create_agent` with `ChatOpenAI` and one local shell tool. The agent
+uses the NVIDIA Inference Gateway's OpenAI-compatible endpoint.
+
+## Harness
 
 Harbor imports `harbor_wrapper.py:WrappedAgent`, a `BaseInstalledAgent`.
 The wrapper uploads a pinned static `uv` binary matching the target container,
@@ -91,65 +92,12 @@ task-definition modification.
 - Do not modify test files in `/tests/`; all changes must go to `/app/`.
 - Use `timeout` parameter for compilations (`make`, `cmake`), model training, and any command that could run indefinitely; default 120 s is insufficient for these — pass 600–840 s.
 
-## Principles
-
-- **When the task description is ambiguous, satisfy the test rather than the prettier reading.** This agent is scored by a harness, not a reviewer, so a defensible interpretation that fails the check is still a failure.
-- **Never report success the harness would not confirm.** Read or run the output before claiming a task is done. An overstated pass corrupts every downstream measurement, which is worse than a clean failure.
-- **Spend the remaining budget on a new approach, not on a retry.** When a command has already failed once, the same command failing again teaches nothing.
-
 ## Success Criteria
 
 - **Task completion**: Harbor's verifier reports reward `1`.
 - **Correctness**: Output files in `/app/` match expected content (exact hash, string match, or tolerance check depending on task).
 - **Robustness**: The agent recovers from package installation failures, compilation errors, and wrong-output first attempts without manual intervention.
 - **Efficiency**: Task solved within the 840 s harness timeout; overly long compilations or training runs must be detected and shortened.
-
-## Trade-offs
-
-Hard gates, never traded for reward:
-
-- **Benchmark integrity.** The canonical task environment, `tests/`, and
-  verifier stay unmodified. A reward gain obtained by touching them is a
-  regression, not an improvement.
-- **Verified output.** The agent confirms the expected file or state before
-  returning. Declaring success without confirmation is a failure even when the
-  verifier happens to pass.
-
-After the gates, in priority order:
-
-1. **Mean reward** on train and validation.
-2. **Timeout rate.** A task that times out is a total loss; shaving tail
-   latency is worth more than a marginal reward gain on already-passing tasks.
-3. **Tool calls per task**, as a proxy for cost.
-4. **Token cost per task.**
-
-Trading a 5% cost increase for a meaningful reward gain is acceptable. Trading
-reward for cost is not: this is a baseline, and its job is to be honest about
-capability.
-
-Unacceptable regressions:
-
-- Reward on any single task category must not collapse to buy an average gain.
-  A uniform baseline is more useful than a spiky one.
-- Robustness must not regress. Recovering from install and compile failures is
-  part of what the baseline measures.
-
-## Constraints
-
-- **Models:** only the NVIDIA inference gateway catalog, through
-  `https://inference-api.nvidia.com/v1` with `INFERENCE_API_KEY`, deployed cloud
-  only. No direct vendor API calls. The baseline runs a small, fast model today
-  (`aws/anthropic/claude-haiku-4-5-v1`), recorded in the run config, because many
-  terminal tasks need 10–30 tool calls and latency compounds.
-- **Environment:** the canonical Terminal-Bench container, unmodified. No Docker
-  socket, sidecar, system Python, package manager change, or task-definition
-  edit.
-- **Task data:** `tests/` and `solution/` change only through an oracle fix pull
-  request reviewed by the owner, never as part of an optimization run.
-- **Runtime bootstrap:** the pinned static `uv` binary and uv-managed Python
-  3.12 path is fixed. It is a correctness requirement of the wrapper, not a
-  tuning lever.
-- **Wall clock:** 840 s per task, enforced by the harness.
 
 ## Evaluation Setup
 
@@ -161,41 +109,28 @@ Baseline reference: oracle scripts at `solution/solve.sh` demonstrate the expect
 
 Manual spot-checks use Harbor with `harbor_wrapper.py:WrappedAgent`.
 
-## Metric Semantics
-
-| Field or signal | Meaning | How consumers may use it |
-|---|---|---|
-| `reward` | Harbor's canonical verifier result for one task: `1` on pass, `0` otherwise. Binary, never partial. | Supports pass/fail claims per task. A mean below 1 says how many tasks passed, not how close the failures were. |
-| mean reward | Arithmetic mean of `reward` over a named subset. | Compare only within the same subset. Train, validation, and held-out test differ in difficulty, so cross-subset comparison is meaningless. |
-| timeout vs. incorrect-output failure | Both land as `reward: 0`, but the causes are unrelated: one is a speed problem, the other a reasoning problem. | Always separate these before proposing a fix. A prompt change cannot fix a timeout, and a longer timeout cannot fix a wrong answer. |
-| `execute` call count | Shell invocations for one task. | A cost and efficiency proxy only. A high count on a passing task is not a defect; exploration is expected behavior on open-ended tasks. |
-| per-category reward | Mean reward within one of the seven task categories. | Categories have very different sample counts, so a single-task swing can move a small category several points. Do not read a category delta as a trend without the count. |
-
 ## Change Scope
 
-- System prompt / `solve` docstring: yes
-- `execute` implementation: yes
-- Inference parameters (temperature, max_tokens): yes
-- Additional deterministic LangChain tools: yes
-- Model swap (within mode): yes
-- uv-managed runtime bootstrap: no
-- Ethos: no
-- Task data (`tests/`, `solution/`): with-approval
-- Notes: The system prompt and `solve` docstring are the primary levers — task
-  framing, exploration strategy, and verification steps. Model swaps stay inside
-  the NVIDIA inference gateway catalog. Task data changes ship only as owner-
-  reviewed oracle fix pull requests, never inside an optimization run, because
-  they affect benchmark integrity. The Ethos is the contract; only the developer
-  edits it.
+- System prompt / `solve` docstring: **allowed** (primary lever — task framing, exploration strategy, verification steps)
+- `execute` implementation: **allowed** (timeout and output formatting)
+- uv-managed runtime bootstrap: **not an optimization lever**
+- Model: **allowed** (swap within the NVIDIA inference gateway catalog)
+- Inference parameters (temperature, max_tokens): **allowed**
+- Additional deterministic LangChain tools: **allowed**
+- Task data (`tests/`, `solution/`): **allowed only via oracle fix PRs** — changes here affect benchmark integrity
+- Ethos: **not allowed** (Ethos is the contract; only the developer edits it)
 
-## Vision
+## Signals
 
-**Intention.** Serve as the reference harness for measuring how well an agent handles long-horizon terminal work, so that improvements found here transfer to real engineering tasks rather than to benchmark idiosyncrasies.
+Priority signals:
+- Mean reward across terminal-bench-ii train and validation sets (target: >0.80).
+- Per-category breakdown (systems, ML, security, etc.) to identify weak spots.
+- Rate of tasks that time out vs. fail on incorrect output — distinguishes speed problems from reasoning problems.
+- Number of `execute` calls per task as a proxy for efficiency.
 
-**Target use cases.** Neither is served today.
-
-- Tasks spanning multiple sessions, where the agent resumes against a workspace it did not set up.
-- Tasks whose success depends on an interactive service the agent must start, exercise, and tear down, rather than on a file it writes once.
+Ignore:
+- Individual task failures in isolation — single-task debugging belongs in oracle fix PRs, not agent tuning.
+- Latency outside benchmark runs.
 
 ## Open Questions
 

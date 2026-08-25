@@ -27,7 +27,7 @@ worse than a missing one: it trains readers to skim. Four sections came out.
   the first model swap. Which models are *allowed* is a ``Constraints`` entry;
   whether the loop may swap them is a ``Change Scope`` lever.
 - ``Signals`` was a single consumer's configuration wearing a schema section.
-  The Analyst now carries its own evidence defaults.
+  How a consumer reads evidence belongs in that consumer, not in this file.
 - ``Purpose`` merged into ``Purpose & Outcomes``.
 
 The same rule retired a drafted ``Budget`` section before it shipped: anything
