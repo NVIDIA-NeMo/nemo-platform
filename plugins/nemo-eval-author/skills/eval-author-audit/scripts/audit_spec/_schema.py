@@ -78,6 +78,7 @@ def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
     tool_names: set[str] = set()
     capability_names: set[str] = set()
 
+    # Source records must have unique names so provenance references are unambiguous.
     for index, source in enumerate(payload.get("sources", [])):
         name = _check_name(f"audit.sources[{index}].name", source.get("name"), errors)
         if name is not None:
@@ -85,6 +86,7 @@ def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
                 errors.append(f"audit.sources[{index}].name {name!r} is duplicated")
             source_names.add(name)
 
+    # Item names must be globally unique because name is the stable coverage key.
     for index, item in enumerate(items):
         path = f"audit.items[{index}]"
         kind = item.get("kind")
@@ -101,16 +103,20 @@ def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
     if errors:
         raise AuditSpecError("\n".join(errors))
 
+    # Cross-item references must resolve after tool and capability namespaces are known.
     for index, item in enumerate(items):
         path = f"audit.items[{index}]"
+        # Required and expected tools must reference declared tool items.
         for field in ("required_tools", "expected_tools"):
             _check_known_tools(f"{path}.{field}", item.get(field), tool_names, errors)
+        # Evidence tool references must reference declared tool items.
         for evidence_index, evidence in enumerate(item["evidence_required"]):
             if "tool" in evidence:
                 _check_known_tools(
                     f"{path}.evidence_required[{evidence_index}].tool", [evidence["tool"]], tool_names, errors
                 )
         if item["kind"] == "failure_case":
+            # Failure cases must apply only to declared capability items.
             for ref in item["applies_to"]:
                 if ref not in capability_names:
                     errors.append(f"{path}.applies_to references unknown capability name {ref!r}")
