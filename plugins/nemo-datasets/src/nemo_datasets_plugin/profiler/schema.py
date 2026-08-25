@@ -6,8 +6,7 @@
 Derive the ``features`` tree (a list of :class:`FeatureSchema`) de novo from the data. Parquet
 carries a declared schema, so it is converted directly; formats without one (jsonl) are inferred
 from the sampled rows by resolving each column's dtype. A list of ``{role, content}`` structs — or
-ShareGPT's ``{from, value}`` spelling of the same thing — is recognized as the ``messages`` dtype,
-and a list of ``{role, content}`` structs is recognized as the ``messages`` dtype.
+the ``{from, value}`` spelling of the same thing — is recognized as the ``messages`` dtype.
 """
 
 from __future__ import annotations
@@ -18,9 +17,9 @@ import pyarrow as pa
 from nemo_platform_plugin.files.dataset_profile import FeatureSchema
 
 # A list element carrying at least one of these key sets is treated as a chat message (the messages
-# dtype). ShareGPT-style data spells the same structure `{from, value}`; recognizing only
-# `{role, content}` left a large slice of public chat data typed as a plain `list`, which then failed
-# the `messages` dtype gate in classification and profiled as `unknown` with no stats at all.
+# dtype). The same structure is also spelled `{from, value}`; recognizing only `{role, content}` left
+# a large slice of public chat data typed as a plain `list`, which then failed the `messages` dtype
+# gate in classification and profiled as `unknown` with no stats at all.
 _MESSAGE_KEY_SETS = ({"role", "content"}, {"from", "value"})
 
 

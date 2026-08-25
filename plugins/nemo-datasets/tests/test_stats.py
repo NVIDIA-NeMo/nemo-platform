@@ -145,7 +145,7 @@ def test_message_ends_with_user_turn_is_prompt_only_signal():
     assert stats.messages.ends_with_assistant_rate == 0.0
 
 
-def test_message_stats_read_sharegpt_from_value():
+def test_message_stats_read_the_from_value_spelling():
     rows = [{"m": [{"from": "human", "value": "hi"}, {"from": "gpt", "value": "hello there"}]}]
     stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.roles_seen == ["human", "gpt"]  # verbatim, not normalized
@@ -221,9 +221,9 @@ def test_probes_read_the_final_turn_of_a_chat_column():
     assert probes["m"].extractable_answer == 1
 
 
-def test_probes_read_the_sharegpt_message_spelling():
+def test_probes_read_the_from_value_message_spelling():
     # {from, value} is handled in schema derivation and message stats; reading only {role, content}
-    # here cost every ShareGPT-shaped dataset its verifiability.
+    # here cost every dataset spelled that way its verifiability.
     rows = [{"m": [{"from": "human", "value": "q"}, {"from": "gpt", "value": "steps #### 7"}]}]
     probes = _probes([_feature("m", "messages")], rows)
     assert probes["m"].texts == 1

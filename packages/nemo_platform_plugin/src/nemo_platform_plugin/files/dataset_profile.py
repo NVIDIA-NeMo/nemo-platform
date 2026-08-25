@@ -171,7 +171,7 @@ class MessageStats(BaseModel):
         default_factory=list,
         description=(
             'The distinct role strings actually present in the sampled rows, verbatim — e.g. ["system", '
-            '"user", "assistant", "tool"], but equally ShareGPT\'s ["human", "gpt"] or a house convention. '
+            '"user", "assistant", "tool"], but equally ["human", "gpt"] or a house convention. '
             "A measurement of row content, not a vocabulary the profiler picks from, so it is deliberately "
             "not an enum: an unexpected role is the finding worth reporting, and normalizing or dropping it "
             "would hide exactly what a consumer needs to see before choosing a chat template. "
