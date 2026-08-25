@@ -1,0 +1,441 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://developer.nvidia.com/nemo/eval-author/audit_measurement.schema.json",
+  "title": "NeMo Eval Author audit measurement report",
+  "description": "Per-trace coverage measurement result for one audit spec and one eval trace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "audit",
+    "subject",
+    "method",
+    "trace",
+    "summary",
+    "items"
+  ],
+  "properties": {
+    "schema": {
+      "description": "Version marker for the audit measurement report format.",
+      "const": "nemo.eval_author.audit_measurement.v1"
+    },
+    "audit": {
+      "description": "Audit spec metadata for the denominator used by this measurement.",
+      "$ref": "#/$defs/audit"
+    },
+    "subject": {
+      "description": "The task or trial trace measured by this report.",
+      "$ref": "#/$defs/subject"
+    },
+    "method": {
+      "description": "Measurement method selected for this report.",
+      "$ref": "#/$defs/method"
+    },
+    "trace": {
+      "description": "Trace-level facts extracted for measurement.",
+      "$ref": "#/$defs/traceFacts"
+    },
+    "summary": {
+      "description": "Counts and item names grouped by measurement status.",
+      "$ref": "#/$defs/summary"
+    },
+    "items": {
+      "description": "Per-audit-item measurement results.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/itemResult"
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "description": "String value that must contain at least one non-whitespace character.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "itemName": {
+      "description": "Stable machine-readable audit item or tool name.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+    },
+    "pathString": {
+      "description": "Local file or directory path recorded as a string.",
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "statusCounts": {
+      "description": "Counts keyed by item measurement status.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "covered",
+        "partial",
+        "not_covered",
+        "unmeasured"
+      ],
+      "properties": {
+        "covered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_covered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmeasured": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "statusNameLists": {
+      "description": "Audit item names grouped by item measurement status.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "covered",
+        "partial",
+        "not_covered",
+        "unmeasured"
+      ],
+      "properties": {
+        "covered": {
+          "$ref": "#/$defs/nameList"
+        },
+        "partial": {
+          "$ref": "#/$defs/nameList"
+        },
+        "not_covered": {
+          "$ref": "#/$defs/nameList"
+        },
+        "unmeasured": {
+          "$ref": "#/$defs/nameList"
+        }
+      }
+    },
+    "nameList": {
+      "description": "List of audit item names.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/itemName"
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema",
+        "agent",
+        "status",
+        "item_count",
+        "item_counts"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/pathString"
+        },
+        "schema": {
+          "const": "nemo.eval_author.audit.v1"
+        },
+        "agent": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "approved"
+          ]
+        },
+        "item_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "item_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "capability",
+            "failure_case",
+            "tool"
+          ],
+          "properties": {
+            "capability": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failure_case": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "tool": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace",
+        "trace_format",
+        "task_id"
+      ],
+      "properties": {
+        "trace": {
+          "$ref": "#/$defs/pathString"
+        },
+        "trace_format": {
+          "const": "atif"
+        },
+        "task_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "trial_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "harbor_trial_dir": {
+          "$ref": "#/$defs/pathString"
+        },
+        "harbor_result": {
+          "$ref": "#/$defs/pathString"
+        }
+      }
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "supported_evidence_kinds"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/itemName"
+        },
+        "supported_evidence_kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/itemName"
+          }
+        }
+      }
+    },
+    "traceFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "session_id",
+        "trajectory_id",
+        "tool_call_count",
+        "tool_call_counts"
+      ],
+      "properties": {
+        "schema_version": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trajectory_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_call_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tool_call_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_items",
+        "items_by_status",
+        "items_by_kind_and_status",
+        "item_names_by_status"
+      ],
+      "properties": {
+        "total_items": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "items_by_status": {
+          "$ref": "#/$defs/statusCounts"
+        },
+        "items_by_kind_and_status": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/statusCounts"
+          }
+        },
+        "item_names_by_status": {
+          "$ref": "#/$defs/statusNameLists"
+        }
+      }
+    },
+    "itemResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "status",
+        "covered",
+        "evidence"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/itemName"
+        },
+        "kind": {
+          "enum": [
+            "tool",
+            "capability",
+            "failure_case"
+          ]
+        },
+        "status": {
+          "enum": [
+            "covered",
+            "partial",
+            "not_covered",
+            "unmeasured"
+          ]
+        },
+        "covered": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/toolCallEvidenceResult"
+              },
+              {
+                "$ref": "#/$defs/unmeasuredEvidenceResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "toolCallEvidenceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description",
+        "status",
+        "measured",
+        "tool",
+        "matches"
+      ],
+      "properties": {
+        "kind": {
+          "const": "tool_call"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "status": {
+          "enum": [
+            "covered",
+            "not_covered"
+          ]
+        },
+        "measured": {
+          "const": true
+        },
+        "tool": {
+          "$ref": "#/$defs/itemName"
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolCallMatch"
+          }
+        }
+      }
+    },
+    "unmeasuredEvidenceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description",
+        "status",
+        "measured",
+        "reason"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/itemName"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "status": {
+          "const": "unmeasured"
+        },
+        "measured": {
+          "const": false
+        },
+        "reason": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "toolCallMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "trajectory_path"
+      ],
+      "properties": {
+        "tool": {
+          "$ref": "#/$defs/itemName"
+        },
+        "trajectory_path": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "step_id": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "tool_call_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "trajectory_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    }
+  }
+}
