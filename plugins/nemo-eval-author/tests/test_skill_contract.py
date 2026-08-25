@@ -63,6 +63,7 @@ _SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
+_AUDIT_GENERATE = _AUDIT_SPEC_DIR / "generate.py"
 _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 
@@ -192,6 +193,11 @@ def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) 
         text = transform(text)
     audit.write_text(text, encoding="utf-8")
     return audit
+
+
+def _run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a bundled script and return the completed process."""
+    return subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
 
 
 def _write_task(task_dir: Path, *, name: str = "smoke/generated") -> None:
@@ -333,6 +339,7 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
 def test_every_audit_spec_path_the_skill_names_exists() -> None:
     _, body = _frontmatter_and_body(_AUDIT_DIR)
     for relative in (
+        "scripts/audit_spec/generate.py",
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
@@ -679,6 +686,43 @@ def test_audit_validation_rejects_prefixed_yaml_fence(tmp_path: Path) -> None:
     assert code == 1
     assert report["valid"] is False
     assert "must contain one fenced yaml block" in report["error"]
+
+
+def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text(
+        "---\nname: support-agent\ncreated_timestamp: '2026-08-25T00:00:00+00:00'\nauthor: tester\n---\n"
+        "\n# Ethos: support-agent\n",
+        encoding="utf-8",
+    )
+    block = re.search(
+        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
+        r"<!-- END:nemo-eval-author-audit:v1 -->",
+        _AUDIT_TEMPLATE.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None
+    items = tmp_path / "items.yaml"
+    items.write_text(yaml.safe_dump({"items": yaml.safe_load(block.group("body"))["items"]}), encoding="utf-8")
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    result = _run_script(_AUDIT_GENERATE, "--ethos", str(ethos), "--items", str(items), "--out", str(out))
+    assert result.returncode == 0, result.stderr
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(out))
+    generated = re.search(
+        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
+        r"<!-- END:nemo-eval-author-audit:v1 -->",
+        out.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert generated is not None
+    payload = yaml.safe_load(generated.group("body"))
+
+    assert code == 0, stderr or report
+    assert report["agent"] == "support-agent"
+    assert payload["sources"] == [{"name": "ethos", "path": "../ETHOS.md", "sha256": _digest(ethos)}]
+    assert "source_ethos" not in payload
+    assert "source_ethos_sha256" not in payload
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
