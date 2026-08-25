@@ -84,6 +84,6 @@ RUN --mount=type=bind,source=docker/scripts/remove-listed-files.py,target=/tmp/r
     --mount=type=bind,source=docker/removals/files/base/cve-cleanup-runtime.txt,target=/tmp/file-removals.txt,readonly \
     sh /bin/cve-cleanup.sh && \
     python /tmp/remove-listed-files.py /tmp/file-removals.txt
-ENTRYPOINT ["nemo-platform"]
+ENTRYPOINT ["/app/.venv/bin/nemo-platform"]
 # Override CMD with "run" in orchestration (e.g., Helm, docker-compose)
 CMD ["--help"]

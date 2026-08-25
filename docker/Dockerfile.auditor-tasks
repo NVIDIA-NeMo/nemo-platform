@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ENV PYTHONPATH=/app/plugins/nemo-auditor/src:/app/packages/nmp_common/src:/app/sdk/python/nemo-platform/src
 ENV PATH="/app/.venv/bin:$PATH"
 
-RUN uv venv --no-project /app/.garak_venv
+RUN uv venv --no-project --python /usr/local/bin/python /app/.garak_venv
 # CVE remediation for garak venv (transitive deps pinned by garak that are below safe versions)
 # litellm: CVE-2026-35029 (affects <1.83.0)
 # langchain-core: CVE-2025-68664 (affects <1.2.5) + GHSA-qh6h-p6c9-ff54 (affects <1.2.22)
@@ -210,14 +210,13 @@ WORKDIR /app/plugins/nemo-auditor
 
 # Set environment variables for auditor service
 ARG CACHE_HOME
-ENV AUDITOR_HOST="0.0.0.0" \
-    AUDITOR_PORT="5000" \
-    CACHE_HOME=${CACHE_HOME}
+ENV CACHE_HOME=${CACHE_HOME}
 
 # Start the application
 EXPOSE 5000
 
-CMD ["sh", "-c", "python -m uvicorn src.auditor.server:app --host $AUDITOR_HOST --port $AUDITOR_PORT"]
+ENTRYPOINT ["python", "-m", "uvicorn", "src.auditor.server:app"]
+CMD ["--host", "0.0.0.0", "--port", "5000"]
 
 FROM core-final AS release
 
@@ -225,11 +224,10 @@ WORKDIR /app/plugins/nemo-auditor
 
 # Set environment variables for auditor service
 ARG CACHE_HOME
-ENV AUDITOR_HOST="0.0.0.0" \
-    AUDITOR_PORT="5000" \
-    CACHE_HOME=${CACHE_HOME}
+ENV CACHE_HOME=${CACHE_HOME}
 
 # Start the application
 EXPOSE 5000
 
-CMD ["sh", "-c", "python -m uvicorn src.auditor.server:app --host $AUDITOR_HOST --port $AUDITOR_PORT"]
+ENTRYPOINT ["python", "-m", "uvicorn", "src.auditor.server:app"]
+CMD ["--host", "0.0.0.0", "--port", "5000"]
