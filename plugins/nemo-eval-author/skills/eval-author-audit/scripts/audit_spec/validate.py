@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _markdown import AuditMarkdownError  # noqa: E402
-from _schema import AuditSpecError, item_counts, load_audit_spec  # noqa: E402
+from _schema import AuditEnvironmentError, AuditSpecError, item_counts, load_audit_spec  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,8 +25,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         spec = load_audit_spec(args.audit)
+    except AuditEnvironmentError as exc:
+        _print({"valid": None, "error_type": "environment", "error": str(exc)}, compact=args.compact)
+        return 2
     except (AuditMarkdownError, AuditSpecError) as exc:
-        _print({"valid": False, "error": str(exc)}, compact=args.compact)
+        _print({"valid": False, "error_type": "audit_spec", "error": str(exc)}, compact=args.compact)
         return 1
 
     _print(

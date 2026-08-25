@@ -8,13 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-import yaml
 from _markdown import extract_schema_block
 
 AUDIT_SCHEMA = "nemo.eval_author.audit.v1"
@@ -27,9 +25,18 @@ class AuditSpecError(ValueError):
     """Raised when an audit spec fails schema validation."""
 
 
+class AuditEnvironmentError(RuntimeError):
+    """Raised when the validator cannot load required local dependencies."""
+
+
 def load_audit_spec(path: Path) -> dict[str, Any]:
     """Load and validate an ``audit.md`` file."""
     block = extract_schema_block(path)
+    try:
+        import yaml
+    except ImportError as exc:
+        raise AuditEnvironmentError("PyYAML is required to parse audit specs") from exc
+
     try:
         payload = yaml.safe_load(block)
     except yaml.YAMLError as exc:
@@ -55,15 +62,19 @@ def item_counts(spec: dict[str, Any]) -> dict[str, int]:
 def _validate_json_schema(payload: Any) -> None:
     try:
         from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import SchemaError
     except ImportError as exc:
-        raise AuditSpecError("jsonschema is required to validate audit specs") from exc
+        raise AuditEnvironmentError("jsonschema is required to validate audit specs") from exc
 
     try:
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise AuditSpecError(f"could not load audit JSON Schema from {SCHEMA_PATH}: {exc}") from exc
+        raise AuditEnvironmentError(f"could not load audit JSON Schema from {SCHEMA_PATH}: {exc}") from exc
 
-    Draft202012Validator.check_schema(schema)
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        raise AuditEnvironmentError(f"bundled audit JSON Schema is invalid: {exc.message}") from exc
     validator = Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(payload), key=lambda error: (list(error.absolute_path), error.message))
     if errors:
@@ -156,8 +167,8 @@ def _validate_sources(payload: dict[str, Any], *, audit_path: Path | None) -> No
 
 
 def _check_name(path: str, value: Any, errors: list[str]) -> str | None:
-    if not isinstance(value, str) or not re.fullmatch(r"^[A-Za-z][A-Za-z0-9_.:/-]*$", value):
-        errors.append(f"{path} must be a non-empty identifier matching ^[A-Za-z][A-Za-z0-9_.:/-]*$")
+    if not isinstance(value, str):
+        errors.append(f"{path} must be a string")
         return None
     return value
 

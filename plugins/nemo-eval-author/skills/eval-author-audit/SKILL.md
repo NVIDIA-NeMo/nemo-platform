@@ -66,9 +66,11 @@ Shared helpers are private modules in the same tree:
 ## Input
 
 Expect `.eval-author/audit.md` to exist before this skill runs. If it is missing,
-stop and say audit generation is future work for a separate sub-flow. `ETHOS.md`
-is the expected first source for generated audit specs when present, but the
-audit schema does not require Ethos.
+stop and say audit generation is future work for a separate sub-flow. A
+hand-author can copy `templates/audit.md` as a starting format, but this
+validation skill should not populate missing items. `ETHOS.md` is the expected
+first source for generated audit specs when present, but the audit schema does
+not require Ethos.
 
 Use `templates/audit.md` and `schemas/audit.schema.json` only as format
 references when explaining validation failures. The marked YAML block is the
@@ -83,6 +85,9 @@ shasum -a 256 ETHOS.md | awk '{print "sha256:" $1}'
 `schemas/audit.schema.json` is the canonical structural schema. The Python
 validator applies that schema first, then checks any source digests that are
 provided and cross-item references such as `required_tools` and `applies_to`.
+`source_refs` are advisory provenance notes in v1; the validator preserves them
+but does not resolve them against `sources` until a future generator or grammar
+defines that reference format.
 
 Capabilities that do not need tools, such as policy refusals or out-of-scope
 handling, should use `required_tools: []`. Failure cases attach to capability
