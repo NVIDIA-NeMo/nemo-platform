@@ -128,10 +128,8 @@ export const MetricTrendPanel: FC<Props> = ({
       </PanelHeader>
 
       <PanelContent>
-        {/* The chart bleeds into the panel's right and bottom padding; the value column
-            pads itself back so it stays optically centered against the trendline. */}
         <Flex align="center" gap="density-2xl" className="-mb-density-2xl -mr-density-2xl">
-          <Stack gap="density-xs" className="shrink-0 pb-density-2xl">
+          <Stack gap="density-xs" className="shrink-0 pb-density-2xl text-center">
             <Text kind="display/lg">{active ? formatValue(active.value) : '—'}</Text>
 
             {delta !== undefined && (
@@ -146,19 +144,11 @@ export const MetricTrendPanel: FC<Props> = ({
                   )}
                   {formatDelta(delta)}
                 </Tag>
-                {comparisonLabel && (
-                  <Text kind="body/regular/md" className="text-secondary">
-                    {comparisonLabel}
-                  </Text>
-                )}
+                {comparisonLabel && <Text kind="body/regular/md">{comparisonLabel}</Text>}
               </Flex>
             )}
 
-            {valueLabel && (
-              <Text kind="body/regular/md" className="text-secondary">
-                {valueLabel}
-              </Text>
-            )}
+            {valueLabel && <Text kind="body/regular/md">{valueLabel}</Text>}
           </Stack>
 
           <Stack gap="density-sm" className="min-w-0 flex-1">
