@@ -71,7 +71,11 @@ describe('fillBucketGaps', () => {
     });
 
     afterAll(() => {
-      process.env.TZ = originalTz;
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
     });
 
     it('keeps daily buckets on local midnight when the clocks spring forward', () => {
