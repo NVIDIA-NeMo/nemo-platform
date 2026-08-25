@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Harbor-on-K8s: OpenThoughts-TBLite broken-python with claude-code (non-oracle).
+# Same task as harbor_oracle_k8s.yaml; ANTHROPIC_* materialized at dispatch.
+#
+# ${...} filled by dispatch (envsubst from targets/<target>.env).
+job_name: broken-python-claude-code
+jobs_dir: jobs/sandbox-k8s
+n_attempts: 1
+n_concurrent_trials: 1
+timeout_multiplier: 1.0
+
+retry:
+  max_retries: 2
+  include_exceptions:
+    - EnvironmentStartTimeoutError
+    - SandboxCreationError
+    - SandboxExecutionError
+    - SandboxNotFoundError
+    - SandboxTimeoutError
+    - DownloadVerifierDirError
+    - AddTestsDirError
+
+environment:
+  import_path: sandbox_k8s.harbor:K8sSandboxEnvironment
+  delete: true
+  env:
+    HOME: /app
+    PIP_USER: "1"
+  kwargs:
+    namespace: ${SANDBOX_NAMESPACE}
+    kubeconfig_path: ${HOME}/.kube/config
+    context: ${SANDBOX_CONTEXT}
+    # Sandbox readiness only. Harbor trial and command timeouts are separate.
+    timeout: 600
+    # FOOTGUN: working_dir is ALSO the mount point of the writable emptyDir
+    # ("workspace") volume the K8s adapter mounts, so it SHADOWS whatever the
+    # image ships at this path. The pod runs readOnlyRootFilesystem,
+    # so this emptyDir is the task's writable scratch dir. /app is correct here
+    # because python:slim's /app is empty and the task needs it writable for
+    # `pip install --user`. Images that ship CONTENT at /app (e.g. a NeMo base
+    # with a venv under /app/.venv) must instead use the adapter default
+    # working_dir: /workspace — otherwise that content vanishes at runtime.
+    working_dir: /app
+    image: ${TASK_IMAGE}
+    image_pull_policy: Always
+    run_as_user: 1000
+    run_as_group: 1000
+    fs_group: 1000
+    # MR !40 binds the private finalize-built task image onto image: via
+    # spec.image_ref, so the namespace pull secret must be forwarded (mirrors
+    # harbor_oracle_k8s.yaml) — without it the pod pulls anonymously and the
+    # GitLab registry returns 403 (ImagePullBackOff).
+    image_pull_secrets: ${TASK_IMAGE_PULL_SECRET}
+    verify_ssl: ${VERIFY_SSL}
+    # agentic01 OCP rejects sandbox_k8s namespace_selector/ip_block peers (422).
+    # Real-agent egress is provided by the namespace-level additive
+    # NetworkPolicy in examples/agent-sandbox/k8s/egress-allow-networkpolicy.yaml
+    # (DNS + 443, and TCP/4000 to per-run Switchyard pods when enabled).
+    network_policy:
+      egress:
+        - {}
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+agents:
+  - name: claude-code
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    env:
+      HOME: /tmp/agent-home
+
+tasks:
+  - path: ${BROKEN_PYTHON_TASK_PATH}
