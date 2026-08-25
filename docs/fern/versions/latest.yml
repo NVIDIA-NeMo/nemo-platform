@@ -281,8 +281,6 @@ navigation:
       - section: Design Synthetic Data
         path: ../../data-designer/index.mdx
         contents:
-          - page: Execution Modes
-            path: ../../data-designer/execution-modes.mdx
           - page: CLI
             path: ../../data-designer/cli.mdx
           - section: Tutorials

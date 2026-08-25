@@ -22,8 +22,7 @@ from nemo_platform import (
 )
 from nemo_platform._base_client import AsyncAPIClient, SyncAPIClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_plugin.client.tls import client_verify_from_env
 
 
 def _should_bootstrap_config(

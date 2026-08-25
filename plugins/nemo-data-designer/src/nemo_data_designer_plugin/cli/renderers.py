@@ -30,6 +30,8 @@ import pandas as pd
 import typer
 from data_designer.cli.ui import console, print_error, print_header, print_success, wait_for_navigation_key
 from data_designer.cli.utils.sample_records_pager import PAGER_FILENAME, create_sample_records_pager
+from data_designer.config.analysis.dataset_profiler import DatasetProfilerResults
+from data_designer.config.dataset_metadata import DatasetMetadata
 from data_designer.config.preview_results import PreviewResults
 from data_designer.errors import DataDesignerError
 from data_designer_nemo.errors import NDDError
@@ -75,8 +77,8 @@ class PreviewRenderer(CLIRenderer):
 
     def __init__(self) -> None:
         self._records: list[dict[str, Any]] = []
-        self._dataset_metadata: object | None = None
-        self._analysis: object | None = None
+        self._dataset_metadata: DatasetMetadata | None = None
+        self._analysis: DatasetProfilerResults | None = None
         self._processor_outputs: dict[str, list[dict]] = {}
         self._error_message: str | None = None
         self._log_levels_seen: set[str] = set()
@@ -144,8 +146,8 @@ class PreviewRenderer(CLIRenderer):
             return PreviewResults(
                 config_builder=builder,
                 dataset=df,
-                dataset_metadata=self._dataset_metadata,  # type: ignore[arg-type]
-                analysis=self._analysis,  # type: ignore[arg-type]
+                dataset_metadata=self._dataset_metadata,
+                analysis=self._analysis,
                 processor_artifacts=self._processor_outputs or None,
             )
         except Exception as exc:  # pragma: no cover - defensive
@@ -170,7 +172,7 @@ class PreviewRenderer(CLIRenderer):
         if analysis is not None and hasattr(analysis, "to_report"):
             try:
                 console.print()
-                analysis.to_report()  # ty: ignore[call-non-callable]
+                analysis.to_report()
             except Exception as exc:  # pragma: no cover - defensive
                 console.print(f"[yellow]Could not render analysis report: {exc}[/yellow]")
 
@@ -202,7 +204,7 @@ class PreviewRenderer(CLIRenderer):
         analysis = self._analysis
         if analysis is not None and hasattr(analysis, "to_report"):
             try:
-                analysis.to_report(save_path=results_dir / "report.html")  # ty: ignore[call-non-callable]
+                analysis.to_report(save_path=results_dir / "report.html")
             except Exception as exc:  # pragma: no cover - defensive
                 console.print(f"[yellow]Could not save analysis report: {exc}[/yellow]")
 
@@ -264,8 +266,7 @@ class CreateRenderer(CLIRenderer):
     """
 
     def on_start(self, *, ctx: RendererContext) -> None:
-        verb_label = "Create" if ctx.is_local else "Submit"
-        print_header(f"Data Designer {verb_label}")
+        print_header("Data Designer Create")
 
     def on_frame(self, frame: Any, *, ctx: RendererContext) -> None:
         # Jobs are non-streaming; on_frame fires exactly once with the
