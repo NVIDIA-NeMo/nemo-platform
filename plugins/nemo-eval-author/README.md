@@ -12,7 +12,7 @@ gets installed.
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
-| [`eval-author-audit`](skills/eval-author-audit/SKILL.md) | Sub-flow. Defines and validates the finite coverage denominator derived from Ethos. |
+| [`eval-author-audit`](skills/eval-author-audit/SKILL.md) | Sub-flow. Validates an existing finite `audit.md` coverage denominator. |
 
 ## Where findings go
 
