@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://developer.nvidia.com/nemo/eval-author/audit.schema.json",
+  "title": "NeMo Eval Author audit spec",
+  "description": "A finite coverage denominator derived from ETHOS.md for Eval Author audit measurement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "agent",
+    "source_ethos",
+    "source_ethos_sha256",
+    "status",
+    "items"
+  ],
+  "properties": {
+    "schema": {
+      "const": "nemo.eval_author.audit.v1"
+    },
+    "agent": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "source_ethos": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "source_ethos_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "approved"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/toolItem"
+          },
+          {
+            "$ref": "#/$defs/capabilityItem"
+          },
+          {
+            "$ref": "#/$defs/failureCaseItem"
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "itemName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+    },
+    "toolId": {
+      "type": "string",
+      "pattern": "^TOOL-[0-9]{3,}$"
+    },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^CAP-[0-9]{3,}$"
+    },
+    "failureCaseId": {
+      "type": "string",
+      "pattern": "^FAIL-[0-9]{3,}$"
+    },
+    "toolList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/itemName"
+      }
+    },
+    "optionalToolList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/itemName"
+      }
+    },
+    "optionalStringList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "capabilityRefList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/capabilityId"
+      }
+    },
+    "ethosSection": {
+      "enum": [
+        "Behavior",
+        "Change Scope",
+        "Evaluation Setup",
+        "Framework",
+        "Harness",
+        "Model",
+        "Open Questions",
+        "Purpose",
+        "Role",
+        "Scope",
+        "Signals",
+        "Success Criteria",
+        "Tools"
+      ]
+    },
+    "ethosRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/ethosSection"
+      }
+    },
+    "evidenceKind": {
+      "enum": [
+        "environment_state",
+        "outcome",
+        "output",
+        "policy_boundary",
+        "state_change",
+        "tool_call",
+        "trace_span",
+        "user_intent",
+        "verifier"
+      ]
+    },
+    "evidenceRequired": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "description"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/$defs/evidenceKind"
+          },
+          "description": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "tool": {
+            "$ref": "#/$defs/itemName"
+          }
+        }
+      }
+    },
+    "toolItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "name",
+        "ethos_refs",
+        "description",
+        "expected_use",
+        "expected_failure_behavior",
+        "evidence_required"
+      ],
+      "properties": {
+        "kind": {
+          "const": "tool"
+        },
+        "id": {
+          "$ref": "#/$defs/toolId"
+        },
+        "name": {
+          "$ref": "#/$defs/itemName"
+        },
+        "ethos_refs": {
+          "$ref": "#/$defs/ethosRefs"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expected_use": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expected_failure_behavior": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "evidence_required": {
+          "$ref": "#/$defs/evidenceRequired"
+        }
+      }
+    },
+    "capabilityItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "name",
+        "ethos_refs",
+        "description",
+        "required_tools",
+        "expected_behavior",
+        "evidence_required"
+      ],
+      "properties": {
+        "kind": {
+          "const": "capability"
+        },
+        "id": {
+          "$ref": "#/$defs/capabilityId"
+        },
+        "name": {
+          "$ref": "#/$defs/itemName"
+        },
+        "ethos_refs": {
+          "$ref": "#/$defs/ethosRefs"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "required_tools": {
+          "$ref": "#/$defs/toolList"
+        },
+        "expected_behavior": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "evidence_required": {
+          "$ref": "#/$defs/evidenceRequired"
+        }
+      }
+    },
+    "failureCaseItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "name",
+        "applies_to",
+        "ethos_refs",
+        "description",
+        "trigger",
+        "expected_behavior",
+        "evidence_required"
+      ],
+      "properties": {
+        "kind": {
+          "const": "failure_case"
+        },
+        "id": {
+          "$ref": "#/$defs/failureCaseId"
+        },
+        "name": {
+          "$ref": "#/$defs/itemName"
+        },
+        "applies_to": {
+          "$ref": "#/$defs/capabilityRefList"
+        },
+        "ethos_refs": {
+          "$ref": "#/$defs/ethosRefs"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "trigger": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expected_behavior": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expected_tools": {
+          "$ref": "#/$defs/optionalToolList"
+        },
+        "prohibited_tools": {
+          "$ref": "#/$defs/optionalToolList"
+        },
+        "prohibited_outputs": {
+          "$ref": "#/$defs/optionalStringList"
+        },
+        "evidence_required": {
+          "$ref": "#/$defs/evidenceRequired"
+        }
+      }
+    }
+  }
+}

@@ -20,9 +20,9 @@ not-for:
   - eval-author-discover (use to prove whether a Harbor suite is runnable)
   - nemo-experimentalist (use to optimize an agent from Insights or explicit datasets)
 compatibility: >-
-  Python 3.11 or later. PyYAML must be importable by the interpreter that runs
-  the bundled scripts. Validation reads local audit files only; it does not
-  start Harbor jobs or call platform services.
+  Python 3.11 or later. PyYAML and jsonschema must be importable by the
+  interpreter that runs the bundled scripts. Validation reads local audit files
+  only; it does not start Harbor jobs or call platform services.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -66,7 +66,9 @@ variants, or ordinary happy-path permutations.
 
 Use `templates/audit.md` as the starting format for `.eval-author/audit.md`.
 The marked YAML block is the machine-readable part; prose outside the markers is
-for reviewers and may be edited freely.
+for reviewers and may be edited freely. `schemas/audit.schema.json` is the
+canonical structural schema. The Python validator applies that schema first,
+then checks cross-item references such as `required_tools` and `applies_to`.
 
 ## Step 2: Validate
 

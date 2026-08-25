@@ -33,7 +33,7 @@ so a Harbor change that tightens a rule flows through without a test change here
 Nothing here imports the platform, for the same reason the bundled scripts do not:
 these skills are copied into someone else's repository and have to stand alone. The
 tests that make Harbor judge a fixture suite skip when Harbor is absent, so the whole
-file runs against nothing but pytest and PyYAML.
+file runs against nothing but pytest, PyYAML, and jsonschema.
 """
 
 import ast
@@ -61,6 +61,7 @@ _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
 _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
+_AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -92,9 +93,9 @@ _needs_unreadable_files = pytest.mark.skipif(
     reason="this user can read a file whatever its mode, so unreadability cannot be staged",
 )
 
-# Harbor brings these in, so a bundled script may name them. Nothing else outside
-# the standard library may appear.
-_PERMITTED_THIRD_PARTY = frozenset({"harbor", "pydantic", "yaml"})
+# Bundled scripts may name only these third-party roots. Anything else would
+# become a hidden dependency for repositories that copy the skill.
+_PERMITTED_THIRD_PARTY = frozenset({"harbor", "jsonschema", "pydantic", "yaml"})
 
 
 def _not_for_names(frontmatter: dict) -> set[str]:
@@ -294,10 +295,17 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
+        "schemas/audit.schema.json",
         "templates/audit.md",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
         assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_audit_json_schema_is_valid() -> None:
+    from jsonschema import Draft202012Validator
+
+    Draft202012Validator.check_schema(json.loads(_AUDIT_JSON_SCHEMA.read_text(encoding="utf-8")))
 
 
 def test_audit_template_validates() -> None:
@@ -323,6 +331,23 @@ def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None
     assert code == 1
     assert report["valid"] is False
     assert "unknown tool name 'ticket.create'" in report["error"]
+
+
+def test_audit_validation_rejects_unknown_schema_field(tmp_path: Path) -> None:
+    audit = tmp_path / "audit.md"
+    audit.write_text(
+        _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
+            "status: draft\n",
+            "status: draft\nunexpected: true\n",
+        ),
+        encoding="utf-8",
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "unexpected" in report["error"]
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
