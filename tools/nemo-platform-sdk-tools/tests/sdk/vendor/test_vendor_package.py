@@ -1038,6 +1038,7 @@ def test_replace_client_methods_updates_init_and_getattr(tmp_path: Path) -> None
     client_path.write_text(
         """
 from typing import Any
+from nemo_platform_ext.client.tls import client_verify_from_env
 
 
 def _should_bootstrap_config(config_path: object | None = None) -> bool:
@@ -1096,8 +1097,9 @@ class AsyncNeMoPlatform:
 
     assert "from pathlib import Path" in updated
     assert "from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient" in updated
-    assert "from nemo_platform_ext.client.tls import client_verify_from_env" in updated
     assert "from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR" in updated
+    assert "from nemo_platform_plugin.client.tls import client_verify_from_env" in updated
+    assert "from nemo_platform_ext.client.tls import client_verify_from_env" not in updated
     assert "def _should_bootstrap_config(config_path: Path | None = None) -> bool:" in updated
     assert "return config_path is not None" in updated
     assert "return False" not in updated
