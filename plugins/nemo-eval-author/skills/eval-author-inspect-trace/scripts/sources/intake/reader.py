@@ -108,6 +108,36 @@ def _bounded(span: dict[str, Any], max_chars: Optional[int]) -> dict[str, Any]:
     return bounded
 
 
+def _stop_once_found(wanted: Sequence[str]) -> Callable[[list[dict[str, Any]]], bool]:
+    """End a page drain as soon as every named span has been seen."""
+    remaining = set(wanted)
+
+    def stop_when(rows: list[dict[str, Any]]) -> bool:
+        remaining.difference_update(row.get("span_id") for row in rows)
+        return not remaining
+
+    return stop_when
+
+
+def _present_span_ids(client: IntakeClient, query: dict[str, Any], wanted: Sequence[str]) -> set[str]:
+    """Report which of the named spans this selection contains, before detail is spent.
+
+    A named read has to page until it finds its spans, because Intake filters no span
+    by ID. An ID the selection does not contain never satisfies that search, so left to
+    the ``detailed`` drain it pages to the end of the trace at 82x the size: one typo
+    costs the whole read this two-pass split exists to avoid. Summary mode settles the
+    same question against the same filter, and makes a reported absence provable.
+    """
+    rows, _ = client.drain(
+        "spans",
+        {"filter": query, "sort": "started_at", "mode": "summary", "page_size": PAGE_SIZE},
+        limit=None,
+        stop_when=_stop_once_found(wanted),
+    )
+    named = set(wanted)
+    return {row["span_id"] for row in rows if row.get("span_id") in named}
+
+
 def read_spans(
     client: IntakeClient,
     ref: str,
@@ -123,7 +153,9 @@ def read_spans(
 
     Intake accepts neither ``$eq`` nor ``$in`` on a span ``id``, so an explicit
     ``span_ids`` selection is applied here rather than server-side. Pairing it with
-    ``status`` or ``kind`` narrows the fetch before it reaches this filter.
+    ``status`` or ``kind`` narrows the fetch before it reaches this filter. A named
+    selection is confirmed in summary mode first, so an ID this trace does not hold
+    costs a cheap read rather than every detailed page behind it.
     """
     trace_id = _trace_id(ref)
     query: dict[str, Any] = {"trace_id": trace_id}
@@ -134,29 +166,26 @@ def read_spans(
     if parent_span_id:
         query["parent_span_id"] = parent_span_id
 
-    wanted = list(dict.fromkeys(span_ids))
-    stop_when: Optional[Callable[[list[dict[str, Any]]], bool]] = None
-    if wanted:
-        remaining = set(wanted)
+    named = list(dict.fromkeys(span_ids))
+    present = _present_span_ids(client, query, named) if named else set()
+    wanted = [span_id for span_id in named if span_id in present]
 
-        def stop_when(rows: list[dict[str, Any]]) -> bool:
-            remaining.difference_update(row.get("span_id") for row in rows)
-            return not remaining
-
-    rows, truncated = client.drain(
-        "spans",
-        {"filter": query, "sort": "started_at", "mode": "detailed", "page_size": PAGE_SIZE},
-        limit=None if wanted else limit,
-        stop_when=stop_when,
-    )
-    if wanted:
+    rows: list[dict[str, Any]] = []
+    truncated = False
+    if wanted or not named:
+        rows, truncated = client.drain(
+            "spans",
+            {"filter": query, "sort": "started_at", "mode": "detailed", "page_size": PAGE_SIZE},
+            limit=None if wanted else limit,
+            stop_when=_stop_once_found(wanted) if wanted else None,
+        )
+    if named:
         by_id = {row.get("span_id"): row for row in rows}
         selected = [by_id[span_id] for span_id in wanted if span_id in by_id]
-        missing = [span_id for span_id in wanted if span_id not in by_id]
         truncated = False
     else:
         selected = _sorted_spans(rows)
-        missing = []
+    missing = [span_id for span_id in named if span_id not in {span.get("span_id") for span in selected}]
 
     result: dict[str, Any] = {
         "trace_ref": trace_ref(trace_id),
@@ -167,7 +196,9 @@ def read_spans(
                 ("status", status),
                 ("kind", kind),
                 ("parent_span_id", parent_span_id),
-                ("span_ids", wanted or None),
+                # Every ID the caller named, so the selection stays readable beside
+                # the spans it returned and the ones it reports missing.
+                ("span_ids", named or None),
             )
             if value is not None
         },

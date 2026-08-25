@@ -23,6 +23,19 @@ class _ArgumentParser(argparse.ArgumentParser):
         raise ValueError(f"Intake source arguments are invalid: {message}")
 
 
+def _bound(value: str) -> int:
+    """Accept only a positive bound, because the alternatives fail silently.
+
+    A negative ``--max-chars`` slices a payload from the end and still marks the field
+    truncated, so the caller quotes mangled evidence as if it were the leading text. A
+    non-positive ``--limit`` selects nothing and reads as an empty trace.
+    """
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be 1 or greater, not {number}")
+    return number
+
+
 def _client(arguments: list[str], build: Any) -> tuple[IntakeClient, argparse.Namespace]:
     parser = _ArgumentParser(add_help=False)
     parser.add_argument("--workspace", required=True)
@@ -49,7 +62,7 @@ def list_traces(arguments: list[str]) -> tuple[dict[str, Any], dict[str, Any]]:
     def build(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--agent")
         parser.add_argument("--since")
-        parser.add_argument("--limit", type=int, default=DEFAULT_TRACE_LIMIT)
+        parser.add_argument("--limit", type=_bound, default=DEFAULT_TRACE_LIMIT)
 
     client, args = _client(arguments, build)
     try:
@@ -82,8 +95,8 @@ def spans(trace_ref: str, arguments: list[str]) -> tuple[dict[str, Any], dict[st
         parser.add_argument("--kind")
         parser.add_argument("--parent")
         parser.add_argument("--span-id", action="append", default=[], dest="span_ids")
-        parser.add_argument("--limit", type=int, default=DEFAULT_SPAN_LIMIT)
-        parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
+        parser.add_argument("--limit", type=_bound, default=DEFAULT_SPAN_LIMIT)
+        parser.add_argument("--max-chars", type=_bound, default=DEFAULT_MAX_CHARS)
         parser.add_argument("--full", action="store_true")
 
     client, args = _client(arguments, build)

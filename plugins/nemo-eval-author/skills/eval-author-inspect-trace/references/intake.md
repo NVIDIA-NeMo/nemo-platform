@@ -76,14 +76,21 @@ Select the spans with any combination of these:
 
 `--status`, `--kind`, and `--parent` narrow the query on the server. `--span-id`
 is applied after the fetch, because Intake supports no equality operator on a
-span `id`. Reading stops as soon as every named span is found, so pairing
-`--span-id` with `--kind` or `--status` makes the read cheaper on a long trace.
+span `id`. A named selection is confirmed in the compact form first, so an ID this
+selection doesn't hold comes back in `missing_span_ids` without paying for the
+detailed pages behind it. Reading then stops as soon as every named span is found,
+so pairing `--span-id` with `--kind` or `--status` makes both passes cheaper on a
+long trace.
 
 Each of `input`, `output`, and `raw_attributes` is shortened to `--max-chars`
 characters, 2000 by default. A shortened field sets `FIELD_truncated` and records
 the whole length in `FIELD_length`. Pass `--full` to shorten nothing, and expect
 megabytes when you do. The result repeats `max_chars` at the top level, where
 `null` means the payloads are whole.
+
+`--limit` and `--max-chars` accept 1 or greater. The command rejects anything
+lower, because an empty selection and a payload sliced from its end both read as
+facts about the trace.
 
 ## Filters Intake accepts
 

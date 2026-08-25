@@ -491,12 +491,16 @@ def test_read_spans_stops_paging_once_the_named_spans_are_found() -> None:
     http, _, reader, _ = _modules()
     with _api() as (base_url, scenario):
         scenario.respond(_page([{"span_id": "span-1"}], page=1, total_pages=9, total_results=900))
+        scenario.respond(_page([{"span_id": "span-1"}], page=1, total_pages=9, total_results=900))
         scenario.respond(_page([{"span_id": "span-2"}], page=2, total_pages=9, total_results=900))
 
         result = reader.read_spans(http.IntakeClient(base_url, "default"), "trace-1", span_ids=["span-1"])
 
     assert [span["span_id"] for span in result["spans"]] == ["span-1"]
-    assert len(scenario.requests) == 1, "found on page 1, so pages 2 through 9 were never fetched"
+    assert [_query(request)["mode"] for request in scenario.requests] == [["summary"], ["detailed"]], (
+        "one compact page confirmed the span and one detailed page returned it, "
+        "so pages 2 through 9 were never fetched in either mode"
+    )
     assert result["truncated"] is False
     assert "missing_span_ids" not in result
 
@@ -504,6 +508,7 @@ def test_read_spans_stops_paging_once_the_named_spans_are_found() -> None:
 def test_read_spans_names_the_span_ids_it_could_not_find() -> None:
     http, _, reader, _ = _modules()
     with _api() as (base_url, scenario):
+        scenario.respond(_page([{"span_id": "span-1"}]))
         scenario.respond(_page([{"span_id": "span-1"}]))
 
         result = reader.read_spans(
@@ -513,7 +518,31 @@ def test_read_spans_names_the_span_ids_it_could_not_find() -> None:
         )
 
     assert result["missing_span_ids"] == ["span-404"]
+    assert result["selection"]["span_ids"] == ["span-1", "span-404"], "the selection echoes every ID named"
     assert result["count"] == 1
+
+
+def test_read_spans_rules_out_an_unknown_span_id_before_spending_detail() -> None:
+    """One wrong ID must not drain the whole trace in the mode that measured 82x larger.
+
+    A named ID that the selection does not contain never satisfies the search that
+    stops the read, so the detailed drain would page to the end of the trace. The
+    compact pass settles the absence instead, and proves it rather than reporting
+    where the read gave up.
+    """
+    http, _, reader, _ = _modules()
+    with _api() as (base_url, scenario):
+        for page in (1, 2, 3):
+            scenario.respond(_page([{"span_id": f"span-{page}"}], page=page, total_pages=3, total_results=3))
+
+        result = reader.read_spans(http.IntakeClient(base_url, "default"), "trace-1", span_ids=["span-404"])
+
+    assert result["missing_span_ids"] == ["span-404"]
+    assert result["count"] == 0
+    assert "not an error" in result["note"]
+    assert [_query(request)["mode"] for request in scenario.requests] == [["summary"]] * 3, (
+        "the trace was ruled out in compact form, so no detailed page was fetched"
+    )
 
 
 def test_read_spans_keeps_payloads_whole_when_no_cap_is_given() -> None:
@@ -972,3 +1001,41 @@ def test_the_spans_verb_reports_the_selection_it_was_given() -> None:
     assert report["max_chars"] == 8
     assert report["spans"][0]["input_length"] == 40
     assert report["source"]["trace_ref"] == "intake://traces/trace-1"
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [("--max-chars", "-5"), ("--max-chars", "0"), ("--limit", "0")],
+    ids=("negative-cap", "zero-cap", "zero-limit"),
+)
+def test_the_spans_verb_rejects_a_bound_below_one(flag: str, value: str) -> None:
+    """A bound under one fails silently rather than loudly, so the flag rejects it.
+
+    A negative ``--max-chars`` slices a payload from its end and still marks the field
+    truncated, which hands the caller mangled text to quote as evidence. A zero bound
+    returns nothing and reads as a fact about the trace.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(_INSPECT),
+            "spans",
+            "--trace",
+            "intake://traces/trace-1",
+            "--workspace",
+            "default",
+            flag,
+            value,
+            "--compact",
+        ],
+        env={**os.environ, "NMP_BASE_URL": "https://platform.invalid"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    assert flag in report["error"]
+    assert "1 or greater" in report["error"]
