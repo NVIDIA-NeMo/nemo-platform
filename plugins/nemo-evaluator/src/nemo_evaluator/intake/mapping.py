@@ -134,6 +134,11 @@ def trial_to_atif_ingest(
         "steps": [step],
         "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
+    if trial.error is not None:
+        error: dict[str, object] = {"type": trial.error.type}
+        if trial.error.message is not None:
+            error["message"] = trial.error.message
+        body["extra"] = {"error": error}
     if final_metrics is not None:
         body["final_metrics"] = final_metrics
     return body
