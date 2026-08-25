@@ -37,11 +37,13 @@ file runs against nothing but pytest, PyYAML, and jsonschema.
 """
 
 import ast
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -156,6 +158,28 @@ def _run_json_script(script: Path, *args: str) -> tuple[int, dict, str]:
     result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
     assert result.stdout, f"{script.name} printed nothing; stderr:\n{result.stderr}"
     return result.returncode, json.loads(result.stdout), result.stderr
+
+
+def _digest(path: Path) -> str:
+    with path.open("rb") as stream:
+        return f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
+
+
+def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) -> Path:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n", encoding="utf-8")
+
+    audit_dir = tmp_path / ".eval-author"
+    audit_dir.mkdir()
+    audit = audit_dir / "audit.md"
+    text = _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
+        'source_ethos_sha256: "sha256:<replace-with-64-hex-digest>"',
+        f"source_ethos_sha256: {_digest(ethos)}",
+    )
+    if transform is not None:
+        text = transform(text)
+    audit.write_text(text, encoding="utf-8")
+    return audit
 
 
 def _write_task(task_dir: Path, *, name: str = "smoke/generated") -> None:
@@ -308,22 +332,33 @@ def test_audit_json_schema_is_valid() -> None:
     Draft202012Validator.check_schema(json.loads(_AUDIT_JSON_SCHEMA.read_text(encoding="utf-8")))
 
 
-def test_audit_template_validates() -> None:
-    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(_AUDIT_TEMPLATE))
+def test_audit_file_with_matching_ethos_digest_validates(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
 
     assert code == 0, stderr or report
     assert report["valid"] is True
     assert report["item_counts"] == {"capability": 1, "failure_case": 1, "tool": 1}
 
 
+def test_audit_validation_compact_output(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit), "--compact")
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+    assert report["item_count"] == 3
+
+
 def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None:
-    audit = tmp_path / "audit.md"
-    audit.write_text(
-        _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
             "    required_tools:\n      - customer.lookup\n",
             "    required_tools:\n      - ticket.create\n",
         ),
-        encoding="utf-8",
     )
 
     code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
@@ -334,13 +369,12 @@ def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None
 
 
 def test_audit_validation_rejects_unknown_schema_field(tmp_path: Path) -> None:
-    audit = tmp_path / "audit.md"
-    audit.write_text(
-        _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
             "status: draft\n",
             "status: draft\nunexpected: true\n",
         ),
-        encoding="utf-8",
     )
 
     code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
@@ -348,6 +382,163 @@ def test_audit_validation_rejects_unknown_schema_field(tmp_path: Path) -> None:
     assert code == 1
     assert report["valid"] is False
     assert "unexpected" in report["error"]
+
+
+def test_audit_validation_rejects_all_zero_source_digest(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"source_ethos_sha256: sha256:[0-9a-f]{64}",
+            "source_ethos_sha256: sha256:" + ("0" * 64),
+            text,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "all-zero placeholder" in report["error"]
+
+
+def test_audit_validation_rejects_stale_source_digest(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"source_ethos_sha256: sha256:[0-9a-f]{64}",
+            "source_ethos_sha256: sha256:" + ("1" * 64),
+            text,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "does not match" in report["error"]
+
+
+def test_audit_validation_allows_unknown_prohibited_tool(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    prohibited_tools: []\n",
+            "    prohibited_tools:\n      - admin.reset_password\n",
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_requires_tool_for_tool_call_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "      - kind: tool_call\n        tool: customer.lookup\n        description:",
+            "      - kind: tool_call\n        description:",
+            1,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "tool" in report["error"]
+
+
+def test_audit_validation_rejects_tool_on_non_tool_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "      - kind: user_intent\n        description:",
+            "      - kind: user_intent\n        tool: customer.lookup\n        description:",
+            1,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "tool" in report["error"]
+
+
+def test_audit_validation_rejects_duplicate_names(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    name: account_recovery_unverified_identity\n",
+            "    name: account_recovery\n",
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "duplicated" in report["error"]
+
+
+def test_audit_validation_rejects_unknown_capability_reference(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "      - account_recovery\n",
+            "      - account_closure\n",
+            1,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "unknown capability name 'account_closure'" in report["error"]
+
+
+def test_audit_validation_allows_toolless_capability(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools: []\n",
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_allows_marker_mentions_in_prose(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: (
+            "The literal <!-- BEGIN:nemo-eval-author-audit:v1 --> marker can be discussed in prose.\n\n"
+            + text
+            + "\nThe literal <!-- END:nemo-eval-author-audit:v1 --> marker can be discussed too.\n"
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_rejects_missing_marker(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, lambda text: text.replace("<!-- END:nemo-eval-author-audit:v1 -->", ""))
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "must contain exactly one" in report["error"]
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:

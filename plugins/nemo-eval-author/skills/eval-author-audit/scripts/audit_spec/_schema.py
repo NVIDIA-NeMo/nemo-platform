@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import Counter
@@ -19,6 +20,7 @@ from _markdown import extract_schema_block
 AUDIT_SCHEMA = "nemo.eval_author.audit.v1"
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "audit.schema.json"
 ITEM_KINDS = frozenset({"tool", "capability", "failure_case"})
+_ZERO_SOURCE_ETHOS_DIGEST = "sha256:" + ("0" * 64)
 
 
 class AuditSpecError(ValueError):
@@ -32,27 +34,15 @@ def load_audit_spec(path: Path) -> dict[str, Any]:
         payload = yaml.safe_load(block)
     except yaml.YAMLError as exc:
         raise AuditSpecError(f"audit YAML does not parse: {exc}") from exc
-    return validate_audit_spec(payload)
+    return validate_audit_spec(payload, audit_path=path)
 
 
-def load_items_file(path: Path) -> list[dict[str, Any]]:
-    """Load a YAML items file accepted by ``generate.py``."""
-    try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise AuditSpecError(f"could not load items from {path}: {exc}") from exc
-    if isinstance(payload, dict):
-        payload = payload.get("items")
-    if not isinstance(payload, list):
-        raise AuditSpecError(f"{path} must contain an item list or a mapping with an 'items' list")
-    return payload
-
-
-def validate_audit_spec(payload: Any) -> dict[str, Any]:
+def validate_audit_spec(payload: Any, *, audit_path: Path | None = None) -> dict[str, Any]:
     """Return *payload* when it satisfies the audit spec."""
     _validate_json_schema(payload)
     if not isinstance(payload, dict):
         raise AuditSpecError("audit spec must be a mapping")
+    _validate_source_ethos(payload, audit_path=audit_path)
     return _validate_semantics(payload)
 
 
@@ -83,35 +73,29 @@ def _validate_json_schema(payload: Any) -> None:
 def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     items = payload["items"]
-    item_ids: set[str] = set()
+    item_names: set[str] = set()
     tool_names: set[str] = set()
-    capability_ids: set[str] = set()
-    names_by_kind: dict[str, set[str]] = {kind: set() for kind in ITEM_KINDS}
+    capability_names: set[str] = set()
 
     for index, item in enumerate(items):
         path = f"audit.items[{index}]"
         kind = item.get("kind")
-        item_id = item["id"]
-        if item_id in item_ids:
-            errors.append(f"{path}.id {item_id!r} is duplicated")
-        item_ids.add(item_id)
-        if kind == "capability":
-            capability_ids.add(item_id)
-
         name = _check_name(f"{path}.name", item.get("name"), errors)
         if name is not None:
-            if name in names_by_kind[kind]:
-                errors.append(f"{path}.name {name!r} is duplicated for kind {kind!r}")
-            names_by_kind[kind].add(name)
+            if name in item_names:
+                errors.append(f"{path}.name {name!r} is duplicated")
+            item_names.add(name)
             if kind == "tool":
                 tool_names.add(name)
+            elif kind == "capability":
+                capability_names.add(name)
 
     if errors:
         raise AuditSpecError("\n".join(errors))
 
     for index, item in enumerate(items):
         path = f"audit.items[{index}]"
-        for field in ("required_tools", "expected_tools", "prohibited_tools"):
+        for field in ("required_tools", "expected_tools"):
             _check_known_tools(f"{path}.{field}", item.get(field), tool_names, errors)
         for evidence_index, evidence in enumerate(item["evidence_required"]):
             if "tool" in evidence:
@@ -120,12 +104,33 @@ def _validate_semantics(payload: dict[str, Any]) -> dict[str, Any]:
                 )
         if item["kind"] == "failure_case":
             for ref in item["applies_to"]:
-                if ref not in capability_ids:
-                    errors.append(f"{path}.applies_to references unknown capability id {ref!r}")
+                if ref not in capability_names:
+                    errors.append(f"{path}.applies_to references unknown capability name {ref!r}")
 
     if errors:
         raise AuditSpecError("\n".join(errors))
     return payload
+
+
+def _validate_source_ethos(payload: dict[str, Any], *, audit_path: Path | None) -> None:
+    digest = payload["source_ethos_sha256"]
+    if digest == _ZERO_SOURCE_ETHOS_DIGEST:
+        raise AuditSpecError("audit.source_ethos_sha256 must not be the all-zero placeholder digest")
+    if audit_path is None:
+        return
+
+    source_ethos = Path(payload["source_ethos"])
+    if not source_ethos.is_absolute():
+        source_ethos = audit_path.parent / source_ethos
+    try:
+        with source_ethos.open("rb") as stream:
+            actual = f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
+    except OSError as exc:
+        raise AuditSpecError(f"audit.source_ethos could not be read at {source_ethos}: {exc}") from exc
+    if actual != digest:
+        raise AuditSpecError(
+            f"audit.source_ethos_sha256 does not match {source_ethos}: expected {digest}, got {actual}"
+        )
 
 
 def _check_name(path: str, value: Any, errors: list[str]) -> str | None:
@@ -161,8 +166,12 @@ def _matching_kind_context_errors(error: Any) -> Iterable[Any]:
     return (
         context
         for context in error.context
-        if context.schema.get("properties", {}).get("kind", {}).get("const") == kind
+        if _schema_kind_matches(context.schema.get("properties", {}).get("kind", {}), kind)
     )
+
+
+def _schema_kind_matches(kind_schema: dict[str, Any], kind: str) -> bool:
+    return kind_schema.get("const") == kind or kind in kind_schema.get("enum", [])
 
 
 def _json_path(parts: Iterable[Any]) -> str:

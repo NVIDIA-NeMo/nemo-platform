@@ -8,13 +8,12 @@ validate only the block between the markers.
 ```yaml
 schema: nemo.eval_author.audit.v1
 agent: example-agent
-source_ethos: ETHOS.md
-source_ethos_sha256: sha256:0000000000000000000000000000000000000000000000000000000000000000
+source_ethos: ../ETHOS.md
+source_ethos_sha256: "sha256:<replace-with-64-hex-digest>"
 status: draft
 
 items:
   - kind: tool
-    id: TOOL-001
     name: customer.lookup
     ethos_refs:
       - Tools
@@ -32,7 +31,6 @@ items:
         description: Trace shows a customer.lookup call for a relevant request.
 
   - kind: capability
-    id: CAP-001
     name: account_recovery
     ethos_refs:
       - Purpose
@@ -56,10 +54,9 @@ items:
         description: Agent grounds the request in customer profile data.
 
   - kind: failure_case
-    id: FAIL-001
     name: account_recovery_unverified_identity
     applies_to:
-      - CAP-001
+      - account_recovery
     ethos_refs:
       - Scope
       - Behavior
