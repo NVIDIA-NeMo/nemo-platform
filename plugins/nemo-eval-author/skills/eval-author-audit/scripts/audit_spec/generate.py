@@ -41,6 +41,12 @@ def main(argv: list[str] | None = None) -> int:
             "reconcile existing audit.md by stable item name, replace it completely, or suggest changes without writing"
         ),
     )
+    parser.add_argument(
+        "--items-mode",
+        choices=("partial", "full"),
+        default="partial",
+        help=("treat --items as incremental additions/edits, or as the full denominator for stale-item reporting"),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -131,10 +137,13 @@ def _prepare_output(
     summary: dict[str, Any] = {
         "mode": args.mode,
         "written": False,
+        "items_mode": args.items_mode,
         "added_items": [],
         "unchanged_items": [],
-        "changed_items": [],
+        "conflicting_items": [],
+        "conflicting_items_applied": True,
         "possibly_stale_items": [],
+        "agent_change": None,
     }
     if existing is None:
         summary["action"] = (
@@ -143,7 +152,13 @@ def _prepare_output(
         summary["added_items"] = _item_names(candidate["items"])
         return candidate, summary
 
-    reconciled, reconciliation = _reconcile(candidate, existing, explicit_status=args.status)
+    reconciled, reconciliation = _reconcile(
+        candidate,
+        existing,
+        explicit_status=args.status,
+        explicit_agent=args.agent,
+        items_mode=args.items_mode,
+    )
     summary["action"] = "suggest_reconcile" if args.mode == "suggest" else "reconcile"
     summary.update(reconciliation)
     return reconciled, summary
@@ -154,24 +169,28 @@ def _reconcile(
     existing: dict[str, Any],
     *,
     explicit_status: str | None,
+    explicit_agent: str | None,
+    items_mode: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     existing_items_by_name = _items_by_name(existing["items"])
     candidate_items_by_name = _items_by_name(candidate["items"])
     items: list[dict[str, Any]] = []
     unchanged_items: list[str] = []
-    changed_items: list[str] = []
+    conflicting_items: list[str] = []
     possibly_stale_items: list[str] = []
     added_items: list[str] = []
+    agent, agent_change = _reconcile_agent(candidate, existing, explicit_agent=explicit_agent)
 
     for item in existing["items"]:
         name = item["name"]
         candidate_item = candidate_items_by_name.get(name)
         if candidate_item is None:
-            possibly_stale_items.append(name)
+            if items_mode == "full":
+                possibly_stale_items.append(name)
         elif candidate_item == item:
             unchanged_items.append(name)
         else:
-            changed_items.append(name)
+            conflicting_items.append(name)
         items.append(item)
 
     for item in candidate["items"]:
@@ -180,20 +199,42 @@ def _reconcile(
             added_items.append(name)
             items.append(item)
 
+    status = explicit_status or existing["status"]
+    if explicit_status is None and (added_items or conflicting_items or possibly_stale_items or agent_change):
+        status = "draft"
+
     return (
         {
             "schema": candidate["schema"],
-            "agent": candidate["agent"],
+            "agent": agent,
             "sources": _reconcile_sources(candidate.get("sources", []), existing.get("sources", [])),
-            "status": explicit_status or existing["status"],
+            "status": status,
             "items": items,
         },
         {
             "added_items": added_items,
             "unchanged_items": unchanged_items,
-            "changed_items": changed_items,
+            "conflicting_items": conflicting_items,
+            "conflicting_items_applied": not conflicting_items,
             "possibly_stale_items": possibly_stale_items,
+            "agent_change": agent_change,
         },
+    )
+
+
+def _reconcile_agent(
+    candidate: dict[str, Any],
+    existing: dict[str, Any],
+    *,
+    explicit_agent: str | None,
+) -> tuple[str, dict[str, Any] | None]:
+    if candidate["agent"] == existing["agent"]:
+        return existing["agent"], None
+
+    applied = explicit_agent is not None
+    return (
+        candidate["agent"] if applied else existing["agent"],
+        {"from": existing["agent"], "to": candidate["agent"], "applied": applied},
     )
 
 
@@ -242,7 +283,7 @@ def _source_path(source: Path, out: Path) -> str:
 
 
 def _render_full(spec: dict[str, Any], yaml: Any) -> str:
-    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=False)
+    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
     source_path = spec["sources"][0]["path"]
     return (
         f"# Audit: {spec['agent']}\n\n"
@@ -264,7 +305,7 @@ def _render_reconciled(path: Path, spec: dict[str, Any], yaml: Any) -> str:
     if len(matches) != 1:
         raise AuditMarkdownError(f"{path} must contain exactly one marked audit block")
     match = matches[0]
-    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=False)
+    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
     return text[: match.end("begin")] + "```yaml\n" + yaml_body + "```\n" + text[match.start("end") :]
 
 

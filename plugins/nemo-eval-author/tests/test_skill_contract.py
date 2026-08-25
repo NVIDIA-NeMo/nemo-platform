@@ -22,9 +22,8 @@ These tests are that enforcement:
   would be importable as ``harbor``, which makes ``find_spec`` succeed on a
   machine with no Harbor and the probe claim an install that is not there.
 - Discovery reports a valid suite runnable and names the rung a broken one fails.
-- The bundled scripts write no files. ``SKILL.md`` tells the agent where to save
-  the report, because where a file belongs in someone's repository is a judgement
-  rather than a fact about their evals.
+- Discovery scripts write no files, and audit generation writes only the requested
+  audit output under ``.eval-author/``.
 
 These tests compare the skill against this repository, never against Harbor's
 rules. The skill reimplements no Harbor rule: it asks Harbor for every verdict,
@@ -204,6 +203,23 @@ def _write_audit_items(path: Path, items: list[dict]) -> None:
     path.write_text(yaml.safe_dump({"items": items}), encoding="utf-8")
 
 
+def _ticket_tool_item() -> dict:
+    return {
+        "kind": "tool",
+        "name": "ticket.create",
+        "description": "Creates a support ticket for issues requiring human follow-up.",
+        "expected_use": "Used when self-service resolution cannot proceed.",
+        "expected_failure_behavior": "If ticket creation fails, the agent explains the failure and avoids duplicates.",
+        "evidence_required": [
+            {
+                "kind": "tool_call",
+                "tool": "ticket.create",
+                "description": "Trace shows a ticket.create call for an escalation.",
+            }
+        ],
+    }
+
+
 def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) -> Path:
     ethos = tmp_path / "ETHOS.md"
     ethos.write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n", encoding="utf-8")
@@ -293,9 +309,9 @@ def test_frontmatter_carries_every_required_field(skill_dir: Path) -> None:
 def test_no_skill_can_edit_what_it_did_not_write(skill_dir: Path) -> None:
     """Eval Author creates its own report and changes nothing that was already there.
 
-    ``Write`` covers the discovery report, which is the one artifact a sub-flow
-    leaves behind. ``Edit`` would let it rewrite files that predate it, which is the
-    permission customers declined to grant and the reason these ship as skills.
+    ``Write`` covers sub-flow artifacts under ``.eval-author/``. ``Edit`` would let
+    it rewrite files that predate it, which is the permission customers declined to
+    grant and the reason these ship as skills.
     """
     frontmatter, _ = _frontmatter_and_body(skill_dir)
     tools = set(frontmatter["allowed-tools"])
@@ -314,8 +330,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     assert {"Bash", "Write"} <= discover_tools, (
         f"{_DISCOVER_DIR.name} runs a script and saves a report; it has {sorted(discover_tools)}"
     )
-    assert "Bash" in audit_tools, f"{_AUDIT_DIR.name} runs a validation script; it has {sorted(audit_tools)}"
-    assert "Write" not in audit_tools, f"{_AUDIT_DIR.name} validates only; {sorted(audit_tools)} is too broad"
+    assert {"Bash", "Write"} <= audit_tools, (
+        f"{_AUDIT_DIR.name} generates and validates audit files; it has {sorted(audit_tools)}"
+    )
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -746,7 +763,10 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
     assert code == 0, stderr or report
     assert summary["mode"] == "reconcile"
     assert summary["action"] == "create"
+    assert summary["items_mode"] == "partial"
     assert summary["written"] is True
+    assert summary["conflicting_items"] == []
+    assert summary["conflicting_items_applied"] is True
     assert report["agent"] == "support-agent"
     assert payload["sources"] == [{"name": "ethos", "path": "../ETHOS.md", "sha256": _digest(ethos)}]
     assert "source_ethos" not in payload
@@ -768,22 +788,7 @@ def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> 
     )
     (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
     items_payload = _template_payload()["items"]
-    items_payload.append(
-        {
-            "kind": "tool",
-            "name": "ticket.create",
-            "description": "Creates a support ticket for issues requiring human follow-up.",
-            "expected_use": "Used when self-service resolution cannot proceed.",
-            "expected_failure_behavior": "If ticket creation fails, the agent explains the failure and avoids duplicates.",
-            "evidence_required": [
-                {
-                    "kind": "tool_call",
-                    "tool": "ticket.create",
-                    "description": "Trace shows a ticket.create call for an escalation.",
-                }
-            ],
-        }
-    )
+    items_payload.append(_ticket_tool_item())
     items = tmp_path / "items.yaml"
     _write_audit_items(items, items_payload)
 
@@ -808,7 +813,8 @@ def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> 
     assert summary["action"] == "reconcile"
     assert summary["written"] is True
     assert summary["added_items"] == ["ticket.create"]
-    assert summary["changed_items"] == ["customer.lookup"]
+    assert summary["conflicting_items"] == ["customer.lookup"]
+    assert summary["conflicting_items_applied"] is False
     assert summary["possibly_stale_items"] == []
     assert payload["sources"][0]["sha256"] == _digest(tmp_path / "ETHOS.md")
     assert items_by_name["customer.lookup"]["description"] == "Hand reviewed lookup tool description.\n"
@@ -821,22 +827,7 @@ def test_audit_generate_suggests_without_writing(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     before = audit.read_bytes()
     items_payload = _template_payload()["items"]
-    items_payload.append(
-        {
-            "kind": "tool",
-            "name": "ticket.create",
-            "description": "Creates a support ticket for issues requiring human follow-up.",
-            "expected_use": "Used when self-service resolution cannot proceed.",
-            "expected_failure_behavior": "If ticket creation fails, the agent explains the failure and avoids duplicates.",
-            "evidence_required": [
-                {
-                    "kind": "tool_call",
-                    "tool": "ticket.create",
-                    "description": "Trace shows a ticket.create call for an escalation.",
-                }
-            ],
-        }
-    )
+    items_payload.append(_ticket_tool_item())
     items = tmp_path / "items.yaml"
     _write_audit_items(items, items_payload)
 
@@ -860,6 +851,124 @@ def test_audit_generate_suggests_without_writing(tmp_path: Path) -> None:
     assert summary["action"] == "suggest_reconcile"
     assert summary["written"] is False
     assert summary["added_items"] == ["ticket.create"]
+    assert summary["conflicting_items"] == []
+    assert summary["possibly_stale_items"] == []
+
+
+def test_audit_generate_partial_update_does_not_report_stale_items(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, [_ticket_tool_item()])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+
+    assert summary["items_mode"] == "partial"
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["possibly_stale_items"] == []
+    assert {item["name"] for item in payload["items"]} == {
+        "customer.lookup",
+        "account_recovery",
+        "account_recovery_unverified_identity",
+        "ticket.create",
+    }
+
+
+def test_audit_generate_full_items_mode_reports_stale_items(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, [_ticket_tool_item()])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+        "--items-mode",
+        "full",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+
+    assert summary["items_mode"] == "full"
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["possibly_stale_items"] == [
+        "customer.lookup",
+        "account_recovery",
+        "account_recovery_unverified_identity",
+    ]
+
+
+def test_audit_generate_demotes_approved_audit_when_reconcile_adds_items(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, lambda text: text.replace("status: draft\n", "status: approved\n", 1))
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, [_ticket_tool_item()])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+
+    assert summary["status"] == "draft"
+    assert payload["status"] == "draft"
+
+
+def test_audit_generate_preserves_existing_agent_unless_explicit(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "ETHOS.md").write_text("---\nname: other-agent\n---\n# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+
+    assert payload["agent"] == "example-agent"
+    assert summary["agent"] == "example-agent"
+    assert summary["agent_change"] == {"from": "example-agent", "to": "other-agent", "applied": False}
 
 
 def test_audit_generate_replace_mode_overwrites_existing_audit(tmp_path: Path) -> None:

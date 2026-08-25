@@ -27,7 +27,7 @@ compatibility: >-
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
-allowed-tools: [Bash, Read, Grep, Glob]
+allowed-tools: [Bash, Read, Write, Grep, Glob]
 ---
 
 # Eval Author: audit
@@ -84,9 +84,9 @@ file may be either a mapping with an `items` key or the item list itself. It
 should use the same item shape shown in `templates/audit.md` and enforced by
 `schemas/audit.schema.json`.
 
-For an initial audit, this file should contain the full proposed denominator.
-For an update, it may contain only the proposed additions or edits. Existing
-reviewed `audit.md` items remain the source of truth in reconcile mode.
+For an initial audit, this file should contain the full proposed denominator. For
+an update, it may contain only the proposed additions or edits. Existing reviewed
+`audit.md` items remain the source of truth in reconcile mode.
 
 Capabilities that do not need tools, such as policy refusals or out-of-scope
 handling, should use `required_tools: []`. Failure cases attach to capability
@@ -109,8 +109,14 @@ The default mode is `reconcile`. If `.eval-author/audit.md` does not exist, it
 creates the file. If it already exists, the generator parses the existing marked
 block, updates source metadata such as the Ethos digest, preserves existing item
 bodies by stable `name`, appends new proposed items, and reports proposed edits
-or possibly stale items without silently rewriting them. Hand-authored prose
-outside the marked block is preserved.
+without silently rewriting them. Hand-authored prose outside the marked block is
+preserved.
+
+By default, the generator treats `.eval-author/audit-items.yaml` as a partial
+update proposal. Missing existing items are not stale in that mode, because the
+items file may contain only additions or edits. Use `--items-mode full` only when
+the items file is intended to be the complete denominator; then existing items
+omitted from the proposal are reported as `possibly_stale_items`.
 
 Use the explicit modes when the default is not what the user wants:
 
@@ -125,7 +131,8 @@ python <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
-  --mode reconcile
+  --mode reconcile \
+  --items-mode full
 
 python <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
@@ -135,21 +142,27 @@ python <skill_dir>/scripts/audit_spec/generate.py \
 ```
 
 `suggest` performs the same comparison as `reconcile` but writes nothing.
-`replace` rewrites the whole output from the item proposal file and should be
-used only when the user wants to discard the existing generated audit file.
+`replace` rewrites the whole file from the item proposal file, including prose
+outside the marked block, and should be used only when the user wants to discard
+the existing generated audit file.
 
 The generator prints a JSON summary containing `written`, `added_items`,
-`changed_items`, and `possibly_stale_items`. Treat `changed_items` as items where
-the proposal differs from the reviewed audit item; reconcile mode preserves the
-reviewed item and leaves the change for the user to accept manually or through a
-future editor.
+`conflicting_items`, `conflicting_items_applied`, and `possibly_stale_items`.
+Treat `conflicting_items` as items where the proposal differs from the reviewed
+audit item; reconcile mode preserves the reviewed item and reports
+`conflicting_items_applied: false` so the user can accept the change manually or
+through a future editor. If reconcile adds items, finds conflicts, reports stale
+items in full mode, or detects an agent-name change, an approved audit is
+demoted to `status: draft` unless the user passes `--status approved`.
 
 The generator adds an optional `sources` entry for Ethos with `name: ethos`, a
 path relative to `audit.md`, and a real `sha256` digest. It uses the frontmatter
-`name` from `ETHOS.md` when `--agent` is omitted. `source_refs` are advisory
-provenance notes in v1; the validator preserves them but does not resolve them
-against `sources` until a future generator or grammar defines that reference
-format.
+`name` from `ETHOS.md` when `--agent` is omitted. If that inferred name differs
+from the existing audit's `agent`, reconcile preserves the reviewed audit name
+and reports `agent_change` unless the user passes `--agent` explicitly.
+`source_refs` are advisory provenance notes in v1; the validator preserves them
+but does not resolve them against `sources` until a future generator or grammar
+defines that reference format.
 
 ## Step 3: Validate
 

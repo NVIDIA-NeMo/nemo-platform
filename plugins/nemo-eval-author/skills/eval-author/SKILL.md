@@ -96,9 +96,10 @@ These hold for every sub-flow. They exist because the repository belongs to the
 user, not to you.
 
 - **Propose, never mutate.** Read the user's source and report on it. Do not edit,
-  move, or reformat any of it, including its `.gitignore`. The one thing you add is
-  your own report under `.eval-author/`, which is theirs to commit or ignore. The
-  bundled scripts write nothing at all; saving is your job, not theirs.
+  move, or reformat any of it, including its `.gitignore`. The only files you add
+  belong under `.eval-author/`, which is theirs to commit or ignore.
+  `eval-author-discover` scripts write nothing; `eval-author-audit` writes only
+  the audit output path the user explicitly requested.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
