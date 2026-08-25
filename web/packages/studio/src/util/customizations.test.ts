@@ -42,8 +42,16 @@ const unslothJob = (spec: Record<string, unknown>): CustomizationJob =>
   ({ spec: { hardware: {}, ...spec } }) as unknown as CustomizationJob;
 
 /** Minimal RL job (no `parallelism`/`hardware` at the spec root, and a `training.type`). */
-const rlJob = (spec: Record<string, unknown>): CustomizationJob =>
-  ({ spec: { training: { type: 'grpo' }, ...spec } }) as unknown as CustomizationJob;
+const rlJob = (spec: Partial<RlJobOutput>): CustomizationJob => ({
+  name: 'rl-job',
+  spec: {
+    model: '',
+    dataset: '',
+    training: { type: 'grpo' },
+    output: { name: '', fileset: '' },
+    ...spec,
+  },
+});
 
 describe('getFormattedTrainingType', () => {
   it('Returns the correctly formatted training type', () => {
