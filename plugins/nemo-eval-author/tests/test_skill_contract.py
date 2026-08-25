@@ -47,6 +47,7 @@ import sys
 from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -65,8 +66,10 @@ _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
 _AUDIT_GENERATE = _AUDIT_SPEC_DIR / "generate.py"
+_AUDIT_MEASURE = _AUDIT_SPEC_DIR / "measure.py"
 _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
+_AUDIT_MEASUREMENT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_measurement.schema.json"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -208,6 +211,51 @@ def _template_payload() -> dict:
 
 def _write_audit_items(path: Path, items: list[dict]) -> None:
     path.write_text(yaml.safe_dump({"items": items}), encoding="utf-8")
+
+
+def _write_atif_trace(
+    path: Path, *, tool_calls: list[str] | None = None, embedded_tool_calls: list[str] | None = None
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "session-1",
+        "trajectory_id": "root-trajectory",
+        "agent": {"name": "example-agent", "version": "1.0.0"},
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "Help me recover my account."},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "I will inspect the account.",
+                "tool_calls": [
+                    {"tool_call_id": f"root-call-{index}", "function_name": name, "arguments": {}}
+                    for index, name in enumerate(tool_calls or [], start=1)
+                ],
+            },
+        ],
+    }
+    if embedded_tool_calls:
+        payload["subagent_trajectories"] = [
+            {
+                "schema_version": "ATIF-v1.7",
+                "session_id": "session-1",
+                "trajectory_id": "sub-trajectory",
+                "agent": {"name": "helper-agent", "version": "1.0.0"},
+                "steps": [
+                    {
+                        "step_id": 1,
+                        "source": "agent",
+                        "message": "Looking up the account.",
+                        "tool_calls": [
+                            {"tool_call_id": f"sub-call-{index}", "function_name": name, "arguments": {}}
+                            for index, name in enumerate(embedded_tool_calls, start=1)
+                        ],
+                    }
+                ],
+            }
+        ]
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _ticket_tool_item() -> dict:
@@ -451,10 +499,14 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
     _, body = _frontmatter_and_body(_AUDIT_DIR)
     for relative in (
         "scripts/audit_spec/generate.py",
+        "scripts/audit_spec/measure.py",
         "scripts/audit_spec/validate.py",
+        "scripts/audit_spec/_atif.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
+        "scripts/audit_spec/measurements/tool_calls.py",
         "schemas/audit.schema.json",
+        "schemas/audit_measurement.schema.json",
         "templates/audit.md",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
@@ -497,6 +549,12 @@ def test_audit_json_schema_is_valid() -> None:
     from jsonschema import Draft202012Validator
 
     Draft202012Validator.check_schema(json.loads(_AUDIT_JSON_SCHEMA.read_text(encoding="utf-8")))
+
+
+def test_audit_measurement_json_schema_is_valid() -> None:
+    from jsonschema import Draft202012Validator
+
+    Draft202012Validator.check_schema(json.loads(_AUDIT_MEASUREMENT_JSON_SCHEMA.read_text(encoding="utf-8")))
 
 
 def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
@@ -1187,6 +1245,137 @@ def test_audit_generate_replace_mode_overwrites_existing_audit(tmp_path: Path) -
     assert summary["written"] is True
     assert "Manual reviewer notes should be discarded by replace mode." not in text
     assert items_by_name["customer.lookup"]["description"].startswith("Looks up customer profile")
+
+
+def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, embedded_tool_calls=["customer.lookup"])
+    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--out",
+        str(out),
+    )
+
+    assert code == 0, stderr or summary
+    report = json.loads(out.read_text(encoding="utf-8"))
+    items = {item["name"]: item for item in report["items"]}
+
+    assert summary["written"] is True
+    assert summary["summary"]["items_by_status"] == {
+        "covered": 1,
+        "partial": 1,
+        "not_covered": 0,
+        "unmeasured": 1,
+    }
+    assert report["schema"] == "nemo.eval_author.audit_measurement.v1"
+    assert report["subject"]["task_id"] == "account-recovery"
+    assert report["method"]["name"] == "tool_calls"
+    assert report["trace"]["tool_call_counts"] == {"customer.lookup": 1}
+    assert items["customer.lookup"]["status"] == "covered"
+    assert items["customer.lookup"]["evidence"][0]["matches"] == [
+        {
+            "step_id": 1,
+            "tool": "customer.lookup",
+            "tool_call_id": "sub-call-1",
+            "trajectory_id": "sub-trajectory",
+            "trajectory_path": "$.subagent_trajectories[0]",
+        }
+    ]
+    assert items["account_recovery"]["status"] == "partial"
+    assert [evidence["status"] for evidence in items["account_recovery"]["evidence"]] == ["unmeasured", "covered"]
+    assert items["account_recovery_unverified_identity"]["status"] == "unmeasured"
+
+
+def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["ticket.create"])
+    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--out",
+        str(out),
+    )
+
+    assert code == 0, stderr or summary
+    report = json.loads(out.read_text(encoding="utf-8"))
+    names_by_status = report["summary"]["item_names_by_status"]
+
+    assert names_by_status["covered"] == []
+    assert names_by_status["not_covered"] == ["customer.lookup", "account_recovery"]
+    assert names_by_status["unmeasured"] == ["account_recovery_unverified_identity"]
+
+
+def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trial_dir = tmp_path / "job" / "account-recovery__abc"
+    _write_atif_trace(trial_dir / "agent" / "trajectory.json", tool_calls=["customer.lookup"])
+    (trial_dir / "result.json").write_text(
+        json.dumps({"task_name": "account-recovery", "trial_name": "account-recovery__abc"}),
+        encoding="utf-8",
+    )
+    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trial-dir",
+        str(trial_dir),
+        "--out",
+        str(out),
+    )
+
+    assert code == 0, stderr or summary
+    report = json.loads(out.read_text(encoding="utf-8"))
+
+    assert summary["task_id"] == "account-recovery"
+    assert report["subject"]["task_id"] == "account-recovery"
+    assert report["subject"]["trial_id"] == "account-recovery__abc"
+    assert report["subject"]["harbor_trial_dir"] == str(trial_dir)
+    assert report["subject"]["harbor_result"] == str(trial_dir / "result.json")
+
+
+def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    trace.write_text("{}", encoding="utf-8")
+    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--out",
+        str(out),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "trace"
+    assert "not an ATIF trajectory" in report["error"]
+    assert not out.exists()
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
