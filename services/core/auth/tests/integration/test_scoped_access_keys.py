@@ -36,17 +36,21 @@ def _wait_for_authorization_response(
     *,
     expected_status_code: int,
 ) -> Response:
+    return _wait_for_condition(request, lambda response: response.status_code == expected_status_code)
+
+
+def _wait_for_condition(
+    request: Callable[[], Response],
+    condition: Callable[[Response], bool],
+) -> Response:
     deadline = monotonic() + AUTHZ_PROPAGATION_TIMEOUT_SECONDS
     response = request()
-    while response.status_code != expected_status_code and monotonic() < deadline:
+    while not condition(response) and monotonic() < deadline:
         sleep(AUTHZ_PROPAGATION_POLL_INTERVAL_SECONDS)
         response = request()
 
-    if response.status_code != expected_status_code:
-        raise AssertionError(
-            f"Timed out waiting for authorization response {expected_status_code}; "
-            f"last response {response.status_code}: {response.text}"
-        )
+    if not condition(response):
+        raise AssertionError(f"Timed out waiting for expected authorization response: {response.text}")
     return response
 
 
@@ -91,6 +95,48 @@ def _auth_configs(private_key_file: str) -> tuple[AuthConfig, AuthServiceConfig]
         admin_email="admin@example.com",
     )
     return shared_config, service_config
+
+
+def test_legacy_access_key_without_identity_fields_is_listed_as_user(tmp_path: Path) -> None:
+    private_key_file = tmp_path / "legacy-access-key-private.pem"
+    _write_private_key(private_key_file)
+    shared_config, service_config = _auth_configs(str(private_key_file))
+    principal = f"legacy-access-key-{uuid.uuid4().hex[:8]}@example.com"
+    jti = f"ak_legacy_{uuid.uuid4().hex}"
+    user_headers = {
+        "X-NMP-Principal-Id": principal,
+        "X-NMP-Principal-Email": principal,
+    }
+
+    with create_test_client(
+        client_type=TestClient,
+        auth_enabled=True,
+        service_configs={AuthConfig: shared_config, AuthServiceConfig: service_config},
+    ) as client:
+        legacy_data = {
+            "key_name": "legacy-key",
+            "description": "Pre-migration access key",
+            "principal": principal,
+            "issuer": "http://testserver/apis/auth",
+            "audiences": ["nemo-platform-access-key"],
+            "issued_at": "2026-08-25T00:00:00Z",
+            "expires_at": "2030-01-01T00:00:00Z",
+            "status": "ACTIVE",
+        }
+        assert "entity_type" not in legacy_data
+        assert "subject_principal" not in legacy_data
+        created = client.post(
+            "/apis/entities/v2/workspaces/system/entities/access_key",
+            json={"name": jti, "data": legacy_data},
+            headers=SERVICE_HEADERS,
+        )
+        assert created.status_code == 201, created.text
+
+        listed = client.get(ACCESS_KEYS_PATH, headers=user_headers)
+
+        assert listed.status_code == 200, listed.text
+        legacy_key = next(key for key in listed.json()["data"] if key["jti"] == jti)
+        assert legacy_key["entity_type"] == "USER"
 
 
 def test_scoped_access_key_created_by_auth_service_authenticates_platform_requests(tmp_path: Path) -> None:
@@ -223,3 +269,106 @@ def test_scoped_access_key_created_by_auth_service_authenticates_platform_reques
             assert revoked_workspace_response.status_code == 401, revoked_workspace_response.text
         finally:
             client.delete(f"{WORKSPACES_PATH}/{workspace}", headers=SERVICE_HEADERS)
+
+
+def test_platform_admin_creates_service_bound_key_with_independent_identity(tmp_path: Path) -> None:
+    private_key_file = tmp_path / "service-access-key-private.pem"
+    _write_private_key(private_key_file)
+    shared_config, service_config = _auth_configs(str(private_key_file))
+    admin_headers = {
+        "X-NMP-Principal-Id": "admin@example.com",
+        "X-NMP-Principal-Email": "admin@example.com",
+    }
+    user_headers = {
+        "X-NMP-Principal-Id": "user@example.com",
+        "X-NMP-Principal-Email": "user@example.com",
+    }
+
+    with create_test_client(
+        client_type=TestClient,
+        auth_enabled=True,
+        service_configs={AuthConfig: shared_config, AuthServiceConfig: service_config},
+    ) as client:
+        denied = client.post(
+            ACCESS_KEYS_PATH,
+            json={"service_account_id": "otel-collector"},
+            headers=user_headers,
+        )
+        assert denied.status_code == 403, denied.text
+
+        created = client.post(
+            ACCESS_KEYS_PATH,
+            json={"name": "otel", "service_account_id": "otel-collector"},
+            headers=admin_headers,
+        )
+        assert created.status_code == 200, created.text
+        body = created.json()
+        assert body["principal"] == "service-account:otel-collector"
+        assert body["entity_type"] == "SERVICE_ACCOUNT"
+
+        jwks = {"keys": [public_jwk_from_private_key_pem(shared_config)]}
+
+        async def validate_with_local_jwks(config: AuthConfig, token: str) -> TokenClaims | None:
+            return await validate_access_key_token(config, token, jwks_override=jwks)
+
+        with patch("nmp.common.auth.access_keys.validate_access_key_token", validate_with_local_jwks):
+            authenticated = client.get(
+                "/apis/auth/authenticate",
+                headers={"Authorization": f"Bearer {body['token']}"},
+            )
+        assert authenticated.status_code == 200, authenticated.text
+        assert authenticated.json()["principal"] == "service-account:otel-collector"
+
+        workspace = f"service-key-scope-{uuid.uuid4().hex[:8]}"
+        create_workspace = client.post(
+            WORKSPACES_PATH,
+            json={"name": workspace, "description": "Service-bound key scope check"},
+            headers=SERVICE_HEADERS,
+        )
+        assert create_workspace.status_code in {200, 201}, create_workspace.text
+
+        def get_workspace_with_service_key() -> Response:
+            with patch("nmp.common.auth.access_keys.validate_access_key_token", validate_with_local_jwks):
+                return client.get(
+                    f"{WORKSPACES_PATH}/{workspace}",
+                    headers={"Authorization": f"Bearer {body['token']}"},
+                )
+
+        assert get_workspace_with_service_key().status_code == 403
+        role_binding = client.post(
+            IAM_ROLE_BINDINGS_PATH,
+            json={"principal": body["principal"], "role": "Viewer", "workspace": workspace},
+            headers=SERVICE_HEADERS,
+        )
+        assert role_binding.status_code in {200, 201}, role_binding.text
+        _wait_for_authorization_response(get_workspace_with_service_key, expected_status_code=200)
+
+        listed = client.get(ACCESS_KEYS_PATH, headers=admin_headers)
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["data"][0]["principal"] == "service-account:otel-collector"
+
+        # Service-bound keys are platform-owned, not creator-owned (AIRCORE-986): a second
+        # PlatformAdmin who did not create this key must still see it in their own listing,
+        # not just be able to look it up by jti.
+        other_admin_headers = {
+            "X-NMP-Principal-Id": "admin2@example.com",
+            "X-NMP-Principal-Email": "admin2@example.com",
+        }
+        other_admin_role_binding = client.post(
+            IAM_ROLE_BINDINGS_PATH,
+            json={"principal": "admin2@example.com", "role": "PlatformAdmin", "workspace": "system"},
+            headers=SERVICE_HEADERS,
+        )
+        assert other_admin_role_binding.status_code in {200, 201}, other_admin_role_binding.text
+        other_admin_listed = _wait_for_condition(
+            lambda: client.get(ACCESS_KEYS_PATH, headers=other_admin_headers),
+            lambda response: (
+                response.status_code == 200
+                and any(key["principal"] == "service-account:otel-collector" for key in response.json()["data"])
+            ),
+        )
+        assert other_admin_listed.status_code == 200, other_admin_listed.text
+
+        revoked = client.delete(f"{ACCESS_KEYS_PATH}/{body['jti']}", headers=admin_headers)
+        assert revoked.status_code == 200, revoked.text
+        client.delete(f"{WORKSPACES_PATH}/{workspace}", headers=SERVICE_HEADERS)

@@ -278,7 +278,7 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
-* `create`: Create a Scoped Access Key for the currently...
+* `create`: Create a user-bound or service-bound Scoped Access Key.
 * `list`: List Scoped Access Keys owned by the currently...
 * `revoke`: Revoke a Scoped Access Key owned by the currently...
 * `suspend`: Temporarily suspend a Scoped Access Key owned by the...
@@ -286,7 +286,7 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 
 ##### nemo auth access-keys create
 
-Create a Scoped Access Key for the currently authenticated user.
+Create a user-bound or service-bound Scoped Access Key.
 
 **Usage:**
 
@@ -299,6 +299,7 @@ nemo auth access-keys create [OPTIONS]
 * `--name, -n`: Optional human-readable label for the Scoped Access Key.
 * `--description, -d`: Optional description for the Scoped Access Key.
 * `--expires-in`: Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.
+* `--service-account`: Bind the key to a non-human service account (PlatformAdmin only).
 
 **Help:**
 
@@ -307,6 +308,9 @@ nemo auth access-keys create [OPTIONS]
 ##### nemo auth access-keys list
 
 List Scoped Access Keys owned by the currently authenticated user.
+
+PlatformAdmins also see every service-bound Scoped Access Key, not just the
+ones they personally created.
 
 **Usage:**
 
