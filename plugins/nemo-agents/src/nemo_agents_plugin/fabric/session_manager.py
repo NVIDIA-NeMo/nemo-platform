@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from nemo_agents_plugin.agent_config import AgentConfig
@@ -44,6 +45,18 @@ class FabricSessionStopError(RuntimeError):
     """Raised when a Fabric runtime cannot be stopped for a Platform session."""
 
 
+@dataclass(frozen=True, slots=True)
+class FabricSessionActivity:
+    """One persisted activity timestamp update for a Platform session."""
+
+    session_id: str
+    last_active_at: datetime
+    expires_at: datetime
+
+
+SessionActivityCallback = Callable[[FabricSessionActivity], Awaitable[None]]
+
+
 @dataclass(slots=True)
 class _SessionCreationGate:
     """Per-session runtime-start lock and its current holder/waiter count."""
@@ -63,14 +76,22 @@ class FabricSessionManager:
         session_registry: FabricSessionRegistry,
         fabric: Fabric | None = None,
         max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS,
+        idle_session_timeout_seconds: float = DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
+        activity_callback: SessionActivityCallback | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if max_concurrent_invocations < 0:
             raise ValueError("max_concurrent_invocations must be greater than or equal to zero.")
+        if idle_session_timeout_seconds <= 0:
+            raise ValueError("idle_session_timeout_seconds must be greater than zero.")
 
         self._agent_config = agent_config
         self._base_dir = base_dir
         self._session_registry = session_registry
         self._fabric = fabric
+        self._idle_session_timeout = timedelta(seconds=idle_session_timeout_seconds)
+        self._activity_callback = activity_callback
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._session_creation_gates: dict[str, _SessionCreationGate] = {}
         self._closed_session_ids: set[str] = set()
         self._invocation_semaphore = (
@@ -95,10 +116,15 @@ class FabricSessionManager:
         except FabricError as error:
             raise FabricSessionStartError(f"Fabric runtime startup failed: {error}") from error
 
+        registered_session: FabricRuntimeSession | None = None
         try:
-            return await self._session_registry.register(runtime, session_id=session_id)
+            registered_session = await self._session_registry.register(runtime, session_id=session_id)
+            await self._report_activity(registered_session)
+            return registered_session
         except BaseException:
             # A started runtime must not leak if registration fails or is cancelled.
+            if registered_session is not None:
+                await self._session_registry.remove(registered_session.session_id)
             try:
                 await runtime.stop()
             except FabricError:
@@ -141,13 +167,20 @@ class FabricSessionManager:
         async with session.invocation_lock:
             if session.closing:
                 raise FabricSessionNotFoundError(f"Fabric session '{session.session_id}' was not found.")
+            invocation_started = False
             try:
                 if self._invocation_semaphore is None:
+                    await self._report_activity(session)
+                    invocation_started = True
                     return await invoke_fabric_runtime(session.runtime, request)
                 async with self._invocation_semaphore:
+                    await self._report_activity(session)
+                    invocation_started = True
                     return await invoke_fabric_runtime(session.runtime, request)
             finally:
                 await self._session_registry.refresh_activity(session)
+                if invocation_started:
+                    await self._report_activity(session)
 
     @asynccontextmanager
     async def stream_session(
@@ -159,14 +192,21 @@ class FabricSessionManager:
         async with session.invocation_lock:
             if session.closing:
                 raise FabricSessionNotFoundError(f"Fabric session '{session.session_id}' was not found.")
+            invocation_started = False
             try:
                 if self._invocation_semaphore is None:
+                    await self._report_activity(session)
+                    invocation_started = True
                     yield stream_fabric_runtime(session.runtime, request)
                 else:
                     async with self._invocation_semaphore:
+                        await self._report_activity(session)
+                        invocation_started = True
                         yield stream_fabric_runtime(session.runtime, request)
             finally:
                 await self._session_registry.refresh_activity(session)
+                if invocation_started:
+                    await self._report_activity(session)
 
     async def close_session(self, session_id: str) -> None:
         """Remove a session and stop its runtime after any active turn finishes."""
@@ -239,6 +279,23 @@ class FabricSessionManager:
                 await session.runtime.stop()
             except FabricError as error:
                 raise FabricSessionStopError(f"Fabric runtime shutdown failed: {error}") from error
+
+    async def _report_activity(self, session: FabricRuntimeSession) -> None:
+        """Report one timezone-aware UTC activity update when reporting is configured."""
+        if self._activity_callback is None:
+            return
+
+        last_active_at = self._clock()
+        if last_active_at.tzinfo is None or last_active_at.utcoffset() is None:
+            raise ValueError("The Fabric session activity clock must return a timezone-aware datetime.")
+        last_active_at = last_active_at.astimezone(UTC)
+        await self._activity_callback(
+            FabricSessionActivity(
+                session_id=session.session_id,
+                last_active_at=last_active_at,
+                expires_at=last_active_at + self._idle_session_timeout,
+            )
+        )
 
 
 def _prepare_serving_fabric_config(fabric_config: FabricConfig) -> FabricConfig:
