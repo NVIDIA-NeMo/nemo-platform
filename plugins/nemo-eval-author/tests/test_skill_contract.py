@@ -50,12 +50,17 @@ import yaml
 
 _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
-_FLOW_DIR = _SKILLS_DIR / "eval-author-discover"
-_SKILL_DIRS = (_CORE_DIR, _FLOW_DIR)
-_SUB_FLOW_DIRS = (_FLOW_DIR,)
-_SCRIPTS_DIR = _FLOW_DIR / "scripts"
-_DISCOVER = _SCRIPTS_DIR / "discover.py"
-_LADDER = _SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
+_DISCOVER_DIR = _SKILLS_DIR / "eval-author-discover"
+_AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
+_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR)
+_DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
+_AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
+_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
+_DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
+_LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
+_AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
+_AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -104,15 +109,16 @@ def _frontmatter_and_body(skill_dir: Path) -> tuple[dict, str]:
     return yaml.safe_load(frontmatter), body
 
 
-def _bundled_scripts() -> list[Path]:
+def _bundled_scripts(scripts_dir: Path | None = None) -> list[Path]:
     """Return every bundled module, including the ones under providers/."""
-    return sorted(path for path in _SCRIPTS_DIR.rglob("*.py") if "__pycache__" not in path.parts)
+    roots = _SCRIPT_DIRS if scripts_dir is None else (scripts_dir,)
+    return sorted(path for root in roots for path in root.rglob("*.py") if "__pycache__" not in path.parts)
 
 
-def _local_roots() -> set[str]:
+def _local_roots(scripts_dir: Path) -> set[str]:
     """Return the top-level names a bundled module can import from scripts/."""
-    return {path.stem if path.is_file() else path.name for path in _SCRIPTS_DIR.iterdir()} | {
-        path.stem for path in _bundled_scripts()
+    return {path.stem if path.is_file() else path.name for path in scripts_dir.iterdir()} | {
+        path.stem for path in _bundled_scripts(scripts_dir)
     }
 
 
@@ -142,6 +148,13 @@ def _run_discover(repo: Path, *args: str, with_harbor: bool = True) -> tuple[int
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     assert result.stdout, f"discover.py printed nothing; stderr:\n{result.stderr}"
     return result.returncode, json.loads(result.stdout)
+
+
+def _run_json_script(script: Path, *args: str) -> tuple[int, dict, str]:
+    """Run an audit script that emits JSON on stdout."""
+    result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
+    assert result.stdout, f"{script.name} printed nothing; stderr:\n{result.stderr}"
+    return result.returncode, json.loads(result.stdout), result.stderr
 
 
 def _write_task(task_dir: Path, *, name: str = "smoke/generated") -> None:
@@ -263,7 +276,7 @@ def test_skill_body_stays_within_the_line_budget(skill_dir: Path) -> None:
 
 
 def test_every_bundled_path_the_skill_names_exists() -> None:
-    _, body = _frontmatter_and_body(_FLOW_DIR)
+    _, body = _frontmatter_and_body(_DISCOVER_DIR)
     for relative in (
         "scripts/discover.py",
         "scripts/_checks.py",
@@ -272,17 +285,55 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
         "scripts/providers/harbor/_ladder.py",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
-        assert (_FLOW_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+        assert (_DISCOVER_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_every_audit_spec_path_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    for relative in (
+        "scripts/audit_spec/validate.py",
+        "scripts/audit_spec/_schema.py",
+        "scripts/audit_spec/_markdown.py",
+        "templates/audit.md",
+    ):
+        assert relative in body, f"SKILL.md no longer documents {relative}"
+        assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_audit_template_validates() -> None:
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(_AUDIT_TEMPLATE))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+    assert report["item_counts"] == {"capability": 1, "failure_case": 1, "tool": 1}
+
+
+def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None:
+    audit = tmp_path / "audit.md"
+    audit.write_text(
+        _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools:\n      - ticket.create\n",
+        ),
+        encoding="utf-8",
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "unknown tool name 'ticket.create'" in report["error"]
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
     """The boundary that makes the skill copyable: Harbor is fine, NeMo is not."""
-    permitted = _local_roots() | sys.stdlib_module_names | _PERMITTED_THIRD_PARTY
     offenders: dict[str, set[str]] = {}
-    for path in _bundled_scripts():
-        found = {root for root in _imported_roots(path) if root not in permitted}
-        if found:
-            offenders[path.name] = found
+    for scripts_dir in _SCRIPT_DIRS:
+        permitted = _local_roots(scripts_dir) | sys.stdlib_module_names | _PERMITTED_THIRD_PARTY
+        for path in _bundled_scripts(scripts_dir):
+            found = {root for root in _imported_roots(path) if root not in permitted}
+            if found:
+                offenders[path.relative_to(scripts_dir).as_posix()] = found
     assert not offenders, (
         "Bundled scripts may import the standard library, a sibling, or "
         f"{sorted(_PERMITTED_THIRD_PARTY)}, found: "
@@ -298,21 +349,22 @@ def test_no_bundled_directory_is_named_after_a_provider_package() -> None:
     succeed, so the probe reports an install that is not there and the ladder then
     fails on import. Provider code sits one level down for exactly this reason.
     """
-    collisions = _local_roots() & _PERMITTED_THIRD_PARTY
-    assert not collisions, (
-        f"{sorted(collisions)} shadows a package the skill imports; "
-        "keep it under scripts/providers/ rather than directly in scripts/"
-    )
+    for scripts_dir in _SCRIPT_DIRS:
+        collisions = _local_roots(scripts_dir) & _PERMITTED_THIRD_PARTY
+        assert not collisions, (
+            f"{sorted(collisions)} shadows a package the skill imports; "
+            "keep it under scripts/providers/ rather than directly in scripts/"
+        )
 
 
 def test_only_the_ladder_imports_harbor() -> None:
     """Every other module must keep working when Harbor is absent."""
     assert "harbor" in _imported_roots(_LADDER), "the ladder is the Harbor boundary and must import Harbor"
-    for path in _bundled_scripts():
+    for path in _bundled_scripts(_DISCOVER_SCRIPTS_DIR):
         if path == _LADDER:
             continue
         assert "harbor" not in _imported_roots(path), (
-            f"{path.relative_to(_SCRIPTS_DIR)} imports Harbor; move that call behind the probe"
+            f"{path.relative_to(_DISCOVER_SCRIPTS_DIR)} imports Harbor; move that call behind the probe"
         )
 
 

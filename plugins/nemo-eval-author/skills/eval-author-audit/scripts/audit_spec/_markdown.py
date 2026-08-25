@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Markdown extraction helpers for audit-spec documents."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+BEGIN_MARKER = "<!-- BEGIN:nemo-eval-author-audit:v1 -->"
+END_MARKER = "<!-- END:nemo-eval-author-audit:v1 -->"
+
+_YAML_BLOCK_RE = re.compile(r"```(?:yaml|yml)\s*\n(?P<body>.*?)\n```", re.DOTALL)
+
+
+class AuditMarkdownError(ValueError):
+    """Raised when the audit-spec block cannot be extracted from Markdown."""
+
+
+def extract_schema_block(path: Path) -> str:
+    """Return the YAML block between the audit markers in *path*."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise AuditMarkdownError(f"could not read {path}: {exc}") from exc
+
+    starts = [match.start() for match in re.finditer(re.escape(BEGIN_MARKER), text)]
+    ends = [match.start() for match in re.finditer(re.escape(END_MARKER), text)]
+    if len(starts) != 1 or len(ends) != 1:
+        raise AuditMarkdownError(f"{path} must contain exactly one {BEGIN_MARKER!r} and one {END_MARKER!r}")
+    start = starts[0] + len(BEGIN_MARKER)
+    end = ends[0]
+    if start >= end:
+        raise AuditMarkdownError(f"{path} has audit markers in the wrong order")
+
+    match = _YAML_BLOCK_RE.search(text[start:end])
+    if match is None:
+        raise AuditMarkdownError("audit marker block must contain one fenced yaml block")
+    return match.group("body")
