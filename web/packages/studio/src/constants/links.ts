@@ -46,9 +46,9 @@ export const LINK_EVAL_DOCS_METRICS = `${DOCS_BASE_URL}evaluate-models/metrics`;
 export const LINK_EVAL_DOCS_APPROACHES = `${DOCS_BASE_URL}evaluate-models/dataset-driven-vs-task-driven-evaluation`;
 export const LINK_EVAL_DOCS_BENCHMARKS = `${DOCS_BASE_URL}evaluate-models`;
 export const LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY = `${DOCS_BASE_URL}evaluate-models`;
-// NeMo Evaluator's own docs site — intentionally not DOCS_BASE_URL (platform docs); the
-// built-in-runner / Harbor / Gym details this links to live in the standalone Evaluator docs.
-export const LINK_EVAL_DOCS_NEMO_EVALUATOR = 'https://docs.nvidia.com/nemo/evaluator/nightly';
+// Base evaluation docs landing. (The Gym runner named in the eval modal copy is not yet
+// documented in platform docs — only Harbor is — so this page lags the copy pending a docs update.)
+export const LINK_EVAL_DOCS = `${DOCS_BASE_URL}evaluate-models`;
 
 // Jobs documentation links
 export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;

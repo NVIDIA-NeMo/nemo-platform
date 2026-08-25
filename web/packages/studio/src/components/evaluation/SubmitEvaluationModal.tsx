@@ -51,7 +51,7 @@ import {
   MODE_EXPERIMENT,
   parseEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
-import { LINK_EVAL_DOCS_NEMO_EVALUATOR } from '@studio/constants/links';
+import { LINK_EVAL_DOCS } from '@studio/constants/links';
 import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
@@ -542,12 +542,12 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         <Stack gap="density-xl">
           {agentProp ? (
             <Text kind="body/regular/md">
-              Run evaluation via NeMo Evaluator&apos;s built in runner. Evaluator also supports
+              Run evaluation via NeMo Evaluator&apos;s built-in runner. Evaluator also supports
               Harbor and Gym as runners.{' '}
               <Anchor
                 kind="inline"
                 textKind="body/regular/md"
-                href={LINK_EVAL_DOCS_NEMO_EVALUATOR}
+                href={LINK_EVAL_DOCS}
                 target="_blank"
                 rel="noreferrer"
               >
