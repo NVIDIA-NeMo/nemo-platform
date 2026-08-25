@@ -8,6 +8,19 @@ repository. There is no CLI, no service, and no importable code, so this directo
 builds no package at all. A customer points their agent at `skills/` and nothing
 gets installed.
 
+## Prerequisites
+
+Discovery imports nothing beyond the standard library and Harbor itself, so it
+runs on whatever Python the customer already has. Audit validation needs PyYAML
+to read the marked YAML block and jsonschema to enforce
+`schemas/audit.schema.json`.
+
+`tests/test_skill_contract.py` holds to the same boundary and imports nothing
+from the platform, so `pytest`, `pyyaml`, and `jsonschema` are enough to run it.
+The five tests that make Harbor judge a fixture suite skip when Harbor is absent,
+which is why this directory declares no dependencies and appears in no dependency
+group.
+
 | Skill | Role |
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
@@ -35,18 +48,16 @@ The Eval Author agent that Experimentalist insight mode still uses lives in
 
 ## Dependencies
 
-The scripts under `skills/*/scripts/` keep dependencies narrow. Discovery imports
-nothing beyond the standard library and Harbor itself, so it runs on whatever
-Python the customer already has. Audit validation needs PyYAML to read the marked
-YAML block and jsonschema to enforce `schemas/audit.schema.json`.
-
-`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
-the platform, so `pytest`, `pyyaml`, and `jsonschema` are enough to run it. The
-five tests that make Harbor judge a fixture suite skip when Harbor is absent,
-which is why this directory declares no dependencies and appears in no dependency
-group.
-
 Adding a runtime dependency to a bundled script is a breaking change for anyone who
 copied the skill, so the contract test walks each script's imports and fails on
 anything outside the standard library, a sibling module, or the explicitly allowed
 third-party validators.
+
+## Next Steps
+
+- Start with [`eval-author`](skills/eval-author/SKILL.md) to select the right
+  sub-flow and apply the shared evaluation standard.
+- Use [`eval-author-discover`](skills/eval-author-discover/SKILL.md) to check
+  whether a Harbor suite can run.
+- Use [`eval-author-audit`](skills/eval-author-audit/SKILL.md) to validate an
+  existing finite `audit.md` coverage denominator.

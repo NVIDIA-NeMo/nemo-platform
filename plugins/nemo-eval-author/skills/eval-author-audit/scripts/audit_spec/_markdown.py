@@ -37,7 +37,7 @@ def extract_schema_block(path: Path) -> str:
     if start >= end:
         raise AuditMarkdownError(f"{path} has audit markers in the wrong order")
 
-    match = _YAML_BLOCK_RE.search(text[start:end])
-    if match is None:
+    matches = list(_YAML_BLOCK_RE.finditer(text[start:end]))
+    if len(matches) != 1:
         raise AuditMarkdownError("audit marker block must contain one fenced yaml block")
-    return match.group("body")
+    return matches[0].group("body")

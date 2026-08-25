@@ -275,10 +275,15 @@ def test_no_skill_can_edit_what_it_did_not_write(skill_dir: Path) -> None:
 def test_the_core_routes_and_the_sub_flow_executes() -> None:
     """The core only picks a sub-flow, so it neither runs nor saves anything."""
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
+    discover_tools = set(_frontmatter_and_body(_DISCOVER_DIR)[0]["allowed-tools"])
+    audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
+
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
-    for skill_dir in _SUB_FLOW_DIRS:
-        tools = set(_frontmatter_and_body(skill_dir)[0]["allowed-tools"])
-        assert {"Bash", "Write"} <= tools, f"{skill_dir.name} runs a script and saves a report; it has {sorted(tools)}"
+    assert {"Bash", "Write"} <= discover_tools, (
+        f"{_DISCOVER_DIR.name} runs a script and saves a report; it has {sorted(discover_tools)}"
+    )
+    assert "Bash" in audit_tools, f"{_AUDIT_DIR.name} runs a validation script; it has {sorted(audit_tools)}"
+    assert "Write" not in audit_tools, f"{_AUDIT_DIR.name} validates only; {sorted(audit_tools)} is too broad"
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -648,6 +653,22 @@ def test_audit_validation_rejects_missing_marker(tmp_path: Path) -> None:
     assert code == 1
     assert report["valid"] is False
     assert "must contain exactly one" in report["error"]
+
+
+def test_audit_validation_rejects_multiple_yaml_blocks(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "```\n<!-- END:nemo-eval-author-audit:v1 -->",
+            "```\n\n```yaml\nschema: conflicting.audit.v1\n```\n<!-- END:nemo-eval-author-audit:v1 -->",
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "must contain one fenced yaml block" in report["error"]
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
