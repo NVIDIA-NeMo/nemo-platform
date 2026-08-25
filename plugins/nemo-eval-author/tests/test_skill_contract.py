@@ -38,6 +38,7 @@ file runs against nothing but pytest, PyYAML, and jsonschema.
 
 import ast
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -422,12 +423,12 @@ def test_audit_validation_marks_missing_jsonschema_as_environment_error(tmp_path
 
 def test_audit_schema_load_failure_is_environment_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.syspath_prepend(str(_AUDIT_SPEC_DIR))
-    import _schema
+    schema_module = importlib.import_module("_schema")
 
-    monkeypatch.setattr(_schema, "SCHEMA_PATH", tmp_path / "missing.schema.json")
+    monkeypatch.setattr(schema_module, "SCHEMA_PATH", tmp_path / "missing.schema.json")
 
-    with pytest.raises(_schema.AuditEnvironmentError, match="could not load audit JSON Schema"):
-        _schema.validate_audit_spec({})
+    with pytest.raises(schema_module.AuditEnvironmentError, match="could not load audit JSON Schema"):
+        schema_module.validate_audit_spec({})
 
 
 def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None:
