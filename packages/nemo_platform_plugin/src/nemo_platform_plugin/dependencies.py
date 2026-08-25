@@ -65,6 +65,18 @@ def get_nemo_client() -> AsyncNemoClient:
     )
 
 
+def get_effective_principal_id() -> str:
+    """FastAPI dependency for getting the request's effective principal ID.
+
+    This is a placeholder — the actual principal ID is injected via
+    app.dependency_overrides in Service.create_app().
+    """
+    raise RuntimeError(
+        "get_effective_principal_id() was called without being overridden. "
+        "Ensure your Service subclass calls super().create_app()."
+    )
+
+
 def get_entity_client() -> "EntityClient":
     """FastAPI dependency for getting the EntityClient.
 
