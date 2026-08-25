@@ -949,10 +949,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "--environment",
             "-e",
             help=(
-                "AgentEnvironment to deploy under, as a 'workspace/name' ref "
-                "(e.g. 'default/repo-research-ben'). Its EnvironmentSpec is merged "
-                "into the agent config and its ComputeSpec/secret refs are "
-                "snapshotted onto the deployment at create time."
+                'AgentEnvironment for this deployment: a "workspace/name" ref string, or inline JSON '
+                '(e.g. \'{"environment_spec": ..., "sandbox_spec": ..., "compute_spec": ...}\'). '
+                "Resolved and snapshotted at create time."
             ),
         ),
         wait: bool = typer.Option(
@@ -1008,8 +1007,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
             payload["name"] = name
         if image:
             payload["image"] = image
-        if environment is not None:
-            payload["environment"] = environment
+        if environment:
+            payload["environment"] = _parse_environment_arg(environment)
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
@@ -1921,6 +1920,29 @@ def _resolve_timestamp_format(ctx: typer.Context) -> str | None:
         except Exception:
             logger.debug("Failed to resolve global timestamp format for agents list", exc_info=True)
     return None
+
+
+def _parse_environment_arg(raw: str) -> str | dict[str, Any]:
+    """Parse ``--environment`` into a ref string or inline dict.
+
+    If *raw* looks like a qualified name (contains '/'), treat it as an
+    AgentEnvironment ref. Otherwise attempt JSON decode; if that fails,
+    treat it as a bare environment name (single-word ref in the default
+    workspace).
+    """
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    # "workspace/name" → ref string
+    if "/" in stripped:
+        return stripped
+    # Try inline JSON first
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    # Fallback: bare name → ref in default workspace
+    return stripped
 
 
 def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, Any] | None = None) -> Any:
