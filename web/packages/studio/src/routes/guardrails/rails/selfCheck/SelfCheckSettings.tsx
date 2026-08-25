@@ -12,7 +12,11 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import { PromptScopeSection } from '@studio/routes/guardrails/rails/components/PromptScopeSection';
-import { findPrompt, withPromptContent } from '@studio/routes/guardrails/rails/configOps';
+import {
+  findPrompt,
+  withPromptContent,
+  withPromptFields,
+} from '@studio/routes/guardrails/rails/configOps';
 import {
   SELF_CHECK_SCOPE_ORDER,
   SELF_CHECK_SCOPES,
@@ -113,6 +117,22 @@ export const SelfCheckSettings: FC<RailSettingsProps> = ({ data, onChange }) => 
                     setDraft(withPromptContent(draft, binding.task, content))
                   }
                   variables={binding.variables}
+                  maxTokens={findPrompt(draft, binding.task)?.max_tokens}
+                  onMaxTokensChange={(max_tokens) =>
+                    setDraft(withPromptFields(draft, binding.task, { max_tokens }))
+                  }
+                  maxLength={findPrompt(draft, binding.task)?.max_length}
+                  onMaxLengthChange={(max_length) =>
+                    setDraft(withPromptFields(draft, binding.task, { max_length }))
+                  }
+                  stop={findPrompt(draft, binding.task)?.stop ?? []}
+                  onStopChange={(stop) =>
+                    setDraft(
+                      withPromptFields(draft, binding.task, {
+                        stop: stop.length ? stop : undefined,
+                      })
+                    )
+                  }
                 />
               </Fragment>
             );
