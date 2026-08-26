@@ -188,6 +188,11 @@ def _audit_payload(path: Path) -> dict:
     return yaml.safe_load(block.group("body"))
 
 
+def _assert_literal_block_scalar(text: str, field: str, first_line: str) -> None:
+    pattern = rf"(?:^|\n)(?:\s*-\s+|\s+){re.escape(field)}: \|[-+]?\n\s+{re.escape(first_line)}"
+    assert re.search(pattern, text), text
+
+
 def _template_payload() -> dict:
     block = re.search(
         r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
@@ -751,7 +756,11 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     items = tmp_path / "items.yaml"
-    _write_audit_items(items, _template_payload()["items"])
+    items_payload = _template_payload()["items"]
+    items_payload[0]["expected_use"] = (
+        "Used when account-specific information is required.\nDo not use for unrelated billing questions."
+    )
+    _write_audit_items(items, items_payload)
     out = tmp_path / ".eval-author" / "audit.md"
 
     result = _run_script(_AUDIT_GENERATE, "--ethos", str(ethos), "--items", str(items), "--out", str(out))
@@ -759,6 +768,7 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
     code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(out))
     summary = json.loads(result.stdout)
     payload = _audit_payload(out)
+    text = out.read_text(encoding="utf-8")
 
     assert code == 0, stderr or report
     assert summary["mode"] == "reconcile"
@@ -771,6 +781,13 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
     assert payload["sources"] == [{"name": "ethos", "path": "../ETHOS.md", "sha256": _digest(ethos)}]
     assert "source_ethos" not in payload
     assert "source_ethos_sha256" not in payload
+    _assert_literal_block_scalar(text, "description", "Looks up customer profile, plan, account status")
+    _assert_literal_block_scalar(text, "expected_use", "Used when account-specific information is required.")
+    _assert_literal_block_scalar(
+        text,
+        "expected_behavior",
+        "The agent grounds recovery in customer identity and routes to an approved recovery path.",
+    )
 
 
 def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> None:
@@ -821,6 +838,7 @@ def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> 
     assert items_by_name["ticket.create"]["kind"] == "tool"
     assert "Manual reviewer notes must stay outside the block." in text
     assert "Manual footer must stay too." in text
+    _assert_literal_block_scalar(text, "description", "Hand reviewed lookup tool description.")
 
 
 def test_audit_generate_suggests_without_writing(tmp_path: Path) -> None:

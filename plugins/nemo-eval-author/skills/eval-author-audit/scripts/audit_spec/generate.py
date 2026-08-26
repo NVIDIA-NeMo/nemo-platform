@@ -282,8 +282,21 @@ def _source_path(source: Path, out: Path) -> str:
     return Path(os.path.relpath(source.resolve(), start=out.parent.resolve())).as_posix()
 
 
+def _dump_audit_yaml(spec: dict[str, Any], yaml: Any) -> str:
+    class AuditDumper(yaml.SafeDumper):
+        def increase_indent(self, flow: bool = False, indentless: bool = False) -> Any:
+            return super().increase_indent(flow=flow, indentless=False)
+
+    def represent_str(dumper: Any, value: str) -> Any:
+        style = "|" if "\n" in value else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+    AuditDumper.add_representer(str, represent_str)
+    return yaml.dump(spec, Dumper=AuditDumper, sort_keys=False, allow_unicode=True)
+
+
 def _render_full(spec: dict[str, Any], yaml: Any) -> str:
-    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
+    yaml_body = _dump_audit_yaml(spec, yaml)
     source_path = spec["sources"][0]["path"]
     return (
         f"# Audit: {spec['agent']}\n\n"
@@ -305,7 +318,7 @@ def _render_reconciled(path: Path, spec: dict[str, Any], yaml: Any) -> str:
     if len(matches) != 1:
         raise AuditMarkdownError(f"{path} must contain exactly one marked audit block")
     match = matches[0]
-    yaml_body = yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
+    yaml_body = _dump_audit_yaml(spec, yaml)
     return text[: match.end("begin")] + "```yaml\n" + yaml_body + "```\n" + text[match.start("end") :]
 
 
