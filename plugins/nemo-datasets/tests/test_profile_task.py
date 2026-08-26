@@ -63,7 +63,7 @@ def test_task_profiles_a_directory_and_publishes_the_profile(tmp_path, monkeypat
     assert published["name"] == "profile"
     profile = published["profile"]
     assert profile["partitions"][0]["file_formats"] == ["parquet"]
-    assert profile["sampling"]["files_read"] == 1
+    assert profile["coverage"]["files_read"] == 1
 
 
 def test_task_prefers_the_step_configs_workspace_over_the_environment(tmp_path, monkeypatch):
@@ -89,8 +89,8 @@ def test_task_reads_everything_by_default(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"path": str(data)})
 
     assert run_mod.run(_SDK) == 0
-    sampling = published["profile"]["sampling"]
-    assert sampling["rows_scanned"] == sampling["rows_present"]  # nothing left unread
+    coverage = published["profile"]["coverage"]
+    assert coverage["rows_scanned"] == coverage["rows_present"]  # nothing left unread
 
 
 def test_task_honours_an_explicit_row_budget(tmp_path, monkeypatch):
@@ -98,8 +98,8 @@ def test_task_honours_an_explicit_row_budget(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": 5})
 
     assert run_mod.run(_SDK) == 0
-    assert published["profile"]["sampling"]["rows_scanned"] == 5
-    assert published["profile"]["sampling"]["rows_scanned"] == 5
+    assert published["profile"]["coverage"]["rows_scanned"] == 5
+    assert published["profile"]["coverage"]["rows_scanned"] == 5
 
 
 def test_row_budget_zero_asks_for_every_row(tmp_path, monkeypatch):
@@ -107,8 +107,8 @@ def test_row_budget_zero_asks_for_every_row(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": 0})
 
     assert run_mod.run(_SDK) == 0
-    sampling = published["profile"]["sampling"]
-    assert sampling["rows_scanned"] == sampling["rows_present"]  # 0 means "all of them"
+    coverage = published["profile"]["coverage"]
+    assert coverage["rows_scanned"] == coverage["rows_present"]  # 0 means "all of them"
     assert published["profile"]["partitions"][0]["rows_complete"] is True
 
 

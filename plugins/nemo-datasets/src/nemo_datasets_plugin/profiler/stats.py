@@ -71,7 +71,7 @@ _QUOTABLE_ROLES = frozenset({"label", "provenance", "meta", "rank"})
 
 
 @dataclass(frozen=True)
-class ColumnMeasurements:
+class PartitionMeasurements:
     """Everything one pass over a partition's columns produced.
 
     A named result rather than a tuple because the vocabularies joined it: they are not part of the
@@ -117,7 +117,7 @@ class RowFold:
         # None means the partition declared no schema. It is not the same as an empty list, which is
         # a declared schema that happens to have no columns and must not then discover any.
         self._infer = features is None
-        self._accumulators: dict[str, DeferredAccumulator] = {}
+        self._accumulators: dict[str, RoutedAccumulator] = {}
         self._declared: dict[str, FeatureSchema] = {}
         self._order: list[str] = []
         self._failed: dict[str, Evidence] = {}
@@ -129,7 +129,7 @@ class RowFold:
             if feature.name in self._accumulators:
                 continue
             self._declared[feature.name] = feature
-            self._accumulators[feature.name] = DeferredAccumulator(feature.name, feature)
+            self._accumulators[feature.name] = RoutedAccumulator(feature.name, feature)
             self._order.append(feature.name)
 
     def update(self, rows: list[dict[str, Any]]) -> None:
@@ -151,7 +151,7 @@ class RowFold:
             for name in row:
                 if name in self._accumulators or len(self._accumulators) >= MAX_COLUMNS:
                     continue
-                accumulator = DeferredAccumulator(name)
+                accumulator = RoutedAccumulator(name)
                 accumulator.backfill_nulls(self._rows_seen)
                 self._accumulators[name] = accumulator
                 self._order.append(name)
@@ -162,7 +162,7 @@ class RowFold:
         column = f"column {name!r}" + (f" ({declared.dtype})" if declared is not None else "")
         return f"{column} could not be {verb}: {type(exc).__name__}: {exc}"
 
-    def finalize(self) -> tuple[list[FeatureSchema], ColumnMeasurements]:
+    def finalize(self) -> tuple[list[FeatureSchema], PartitionMeasurements]:
         """The schema that was measured, and the measurements.
 
         The features come back rather than being assumed from what was handed in, because they are
@@ -198,10 +198,10 @@ class RowFold:
                 vocabularies[name] = vocabulary
             if column is not None:
                 stats[name] = column
-        return features, ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+        return features, PartitionMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
 
 
-def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
+def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> PartitionMeasurements:
     """Measure every top-level column over rows already in hand.
 
     The whole partition as a single batch. :class:`RowFold` is the same measurement taken as the
@@ -536,7 +536,7 @@ def _measurement_for(dtype: str) -> str | None:
     return dtype if dtype in _MEASUREMENTS else None
 
 
-class DeferredAccumulator(ColumnAccumulator):
+class RoutedAccumulator(ColumnAccumulator):
     """A column measured by every shape its values take, reporting the one its dtype selects.
 
     An accumulator used to be chosen *by* dtype, which a declared schema gives up front and an

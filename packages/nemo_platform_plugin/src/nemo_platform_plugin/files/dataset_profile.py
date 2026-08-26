@@ -393,7 +393,7 @@ class SplitProfile(BaseModel):
             "reading, so a file that failed mid-read still contributes its size. Bytes as stored — "
             "compressed, and several times this once decoded into memory. Covers only files a "
             "partition grouped; a format with no reader never reaches a split, so weigh the whole "
-            "fileset with `SamplingInfo.bytes_present`."
+            "fileset with `Coverage.bytes_present`."
         ),
     )
     num_examples: int | None = Field(
@@ -479,8 +479,8 @@ class PartitionProfile(BaseModel):
 # ---- envelope ----------------------------------------------------------------------------------
 
 
-class SamplingInfo(BaseModel):
-    """How much of the data the profile is based on — coverage, stated as numbers.
+class Coverage(BaseModel):
+    """How much of the data the profile is based on, stated as numbers rather than as a verdict.
 
     Deliberately carries no ``exhaustive`` flag. That bit was answering two questions at once: "are
     these measurements facts or estimates?", which is a property of each measurement and is now
@@ -566,7 +566,7 @@ class DatasetProfile(BaseModel):
         default_factory=dict,
         description="Free-form profiler metadata (name, version, git sha, timings).",
     )
-    sampling: SamplingInfo = Field(description="How much data the profile is based on.")
+    coverage: Coverage = Field(description="How much data the profile is based on.")
     partitions: list[PartitionProfile] = Field(
         description="Single partition in the common homogeneous case; there is no fileset-level rollup.",
     )

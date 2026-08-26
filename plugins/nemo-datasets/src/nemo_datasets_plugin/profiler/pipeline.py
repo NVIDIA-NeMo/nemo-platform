@@ -5,7 +5,7 @@
 
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
 splits, reads them, and assembles a ``DatasetProfile``. It produces the structural envelope —
-partitions, splits with their counts and sizes, the files it could not use, and the sampling figures
+partitions, splits with their counts and sizes, the files it could not use, and the coverage figures
 — along with the derived row schema (``features``), per-column ``stats``, and the full
 ``classification`` (roles, format, prompt form, dataset type, and verifiability).
 
@@ -52,13 +52,13 @@ from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_split
 from nemo_datasets_plugin.profiler.stats import RowFold, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
+    Coverage,
     DatasetProfile,
     Evidence,
     FeatureSchema,
     FileError,
     PartitionClassification,
     PartitionProfile,
-    SamplingInfo,
     SplitProfile,
 )
 
@@ -157,7 +157,7 @@ def profile(
     if file_errors:
         rows_present = None
 
-    sampling = SamplingInfo(
+    coverage = Coverage(
         rows_scanned=rows_scanned,
         rows_present=rows_present,
         files_read=files_read,  # files actually opened and read, not files merely listed
@@ -172,7 +172,7 @@ def profile(
     return DatasetProfile(
         created_at=created_at,
         profiler_info={"name": PROFILER_NAME, "version": PROFILER_VERSION},
-        sampling=sampling,
+        coverage=coverage,
         partitions=partitions,
         # Sorted so a reader scanning for trouble sees it in a stable order, whatever partition it
         # came from; partitions contribute theirs as they are profiled.
@@ -231,7 +231,7 @@ def _unify_schemas(schemas: list[pa.Schema]) -> pa.Schema | None:
 
 @dataclass(frozen=True)
 class _PartitionOutcome:
-    """One partition plus what it contributes to the dataset-level sampling envelope."""
+    """One partition plus what it contributes to the dataset-level coverage envelope."""
 
     partition: PartitionProfile
     rows_scanned: int
