@@ -41,6 +41,62 @@ class ParallelismParams(RlSchema):
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
+class RewardShapingParams(RlSchema):
+    """DAPO-style reward shaping (NeMo-RL ``grpo.reward_shaping``).
+
+    Both penalties act on responses the generation cap cut off, which score zero on a
+    verifier that needs a complete answer. ``overlong_*`` ramps a penalty in over the last
+    ``overlong_buffer_length`` tokens before ``max_response_length``; ``stop_properly_penalty_coef``
+    scales the reward of anything truncated outright.
+    """
+
+    overlong_buffer_length: int | None = Field(
+        default=None,
+        gt=0,
+        description="Tokens before max_response_length over which the penalty ramps to full.",
+    )
+    overlong_buffer_penalty: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Penalty applied at the end of the buffer.",
+    )
+    max_response_length: int | None = Field(
+        default=None,
+        gt=0,
+        description="Length beyond which a response is penalised. Usually the generation cap.",
+    )
+    stop_properly_penalty_coef: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Scale factor on the reward of a truncated response. 0 zeroes it, 1 is no penalty.",
+    )
+
+    @model_validator(mode="after")
+    def _overlong_penalty_is_fully_specified(self) -> Self:
+        """The three overlong fields are only meaningful together.
+
+        NeMo-RL reads them independently and would silently skip the penalty if one were
+        missing, which looks identical to shaping being off.
+        """
+        overlong = (
+            self.overlong_buffer_length,
+            self.overlong_buffer_penalty,
+            self.max_response_length,
+        )
+        if any(v is not None for v in overlong) and not all(v is not None for v in overlong):
+            raise ValueError(
+                "reward_shaping needs overlong_buffer_length, overlong_buffer_penalty and "
+                "max_response_length together, or none of them."
+            )
+        if all(v is None for v in overlong) and self.stop_properly_penalty_coef is None:
+            raise ValueError(
+                "reward_shaping is enabled but specifies no penalty. Set the overlong_* trio, "
+                "stop_properly_penalty_coef, or omit reward_shaping entirely."
+            )
+        return self
+
+
 class LoRAParams(RlSchema):
     """LoRA hyperparameters for GRPO (DTensor ``lora_cfg``). No merge-at-export."""
 
@@ -265,6 +321,59 @@ class GRPOTraining(_TrainingBase):
     )
     max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
 
+    # --- Truncated importance sampling (DAPO) ---
+    truncated_importance_sampling_type: Literal["tis", "icepop", "seq-mask-tis"] | None = Field(
+        default=None,
+        description="Bound the rollout-vs-training importance weights, so a policy that has drifted "
+        "from the one that generated the batch cannot dominate the update. Watch "
+        "`token_mult_prob_error`: a value climbing past ~1.05 is the drift this corrects. "
+        "`tis` clamps weights into the range; `icepop` zeroes out-of-range tokens "
+        "(reference bounds 0.5-5); `seq-mask-tis` zeroes whole sequences by their geometric-mean "
+        "ratio (reference bounds 0.999-1.002). None leaves it off, which is NeMo-RL's default.",
+    )
+    truncated_importance_sampling_ratio: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Upper bound on the importance weight. Required whenever "
+        "`truncated_importance_sampling_type` is set.",
+    )
+    truncated_importance_sampling_ratio_min: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Lower bound on the importance weight. Required for `icepop` and `seq-mask-tis`; "
+        "optional for `tis`, which floors at 0 when unset.",
+    )
+
+    # --- Dynamic sampling (DAPO) ---
+    use_dynamic_sampling: bool = Field(
+        default=False,
+        description="Discard prompt groups whose rewards have zero standard deviation, and keep "
+        "generating until the step has a full batch of groups that do not. Those groups contribute "
+        "exactly no gradient, so on a dataset the model finds too hard (or too easy) most of a step "
+        "is otherwise wasted -- watch `baseline_reward/pct_mixed` for how much. Costs roughly "
+        "`1 / pct_mixed` times the generation per step.",
+    )
+    dynamic_sampling_max_gen_batches: int = Field(
+        default=10,
+        gt=0,
+        description="How many generation batches one step may consume trying to fill itself before "
+        "the run fails. Only read when `use_dynamic_sampling` is true.",
+    )
+    batch_multiplier: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Over-generate each step by this factor so dynamic sampling has candidates to "
+        "filter. Set it near `1 / pct_mixed`. Rejected above 1.0 unless `use_dynamic_sampling` is "
+        "true, which is what NeMo-RL asserts at startup.",
+    )
+
+    # --- Reward shaping (DAPO) ---
+    reward_shaping: RewardShapingParams | None = Field(
+        default=None,
+        description="Penalise over-long and improperly-terminated responses before the loss sees "
+        "the reward. None leaves shaping off.",
+    )
+
     # --- Per-architecture backend settings ---
     automodel_kwargs: dict[str, Any] | None = Field(
         default=None,
@@ -298,6 +407,52 @@ class GRPOTraining(_TrainingBase):
             self.lora = LoRAParams()
         if self.finetuning_type == "all_weights" and self.lora is not None:
             raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
+
+    @model_validator(mode="after")
+    def _truncated_importance_sampling_is_usable(self) -> Self:
+        """Mirror the asserts ClippedPGLossFn makes at startup.
+
+        Each of these otherwise fails inside the driver after the model is loaded and the
+        first rollout batch has been generated, which is an expensive way to learn about a
+        typo in the job spec.
+        """
+        tis_type = self.truncated_importance_sampling_type
+        ratio, ratio_min = (
+            self.truncated_importance_sampling_ratio,
+            self.truncated_importance_sampling_ratio_min,
+        )
+        if tis_type is None:
+            if ratio is not None or ratio_min is not None:
+                raise ValueError(
+                    "truncated_importance_sampling_ratio/_min are ignored unless "
+                    "truncated_importance_sampling_type is set."
+                )
+            return self
+        if not self.use_importance_sampling_correction:
+            raise ValueError("truncated importance sampling requires use_importance_sampling_correction=true.")
+        if ratio is None:
+            raise ValueError(
+                f"truncated_importance_sampling_ratio is required when "
+                f"truncated_importance_sampling_type is {tis_type!r}."
+            )
+        if tis_type in ("icepop", "seq-mask-tis") and ratio_min is None:
+            raise ValueError(
+                f"truncated_importance_sampling_ratio_min is required when "
+                f"truncated_importance_sampling_type is {tis_type!r}."
+            )
+        if ratio_min is not None and ratio_min > ratio:
+            raise ValueError(
+                "truncated_importance_sampling_ratio_min must not exceed truncated_importance_sampling_ratio."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _batch_multiplier_requires_dynamic_sampling(self) -> Self:
+        # NeMo-RL asserts exactly this at startup; without dynamic sampling the extra
+        # prompts are generated and then trained on, silently changing the batch size.
+        if self.batch_multiplier != 1.0 and not self.use_dynamic_sampling:
+            raise ValueError("batch_multiplier may only be set when use_dynamic_sampling is true.")
         return self
 
     @model_validator(mode="after")

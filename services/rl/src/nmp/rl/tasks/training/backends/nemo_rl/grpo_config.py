@@ -366,16 +366,18 @@ def compile_grpo_config(
         "max_val_samples": val_samples if val_samples else None,
         "val_batch_size": val_samples if val_samples else num_prompts,
         "seed": customizer_config.seed,
-        # These three are the only transforms NeMo-RL applies between the rollout's
-        # reward and the one the loss sees. With all three off, grpo.py's `reward`
-        # metric and the NeMo-Gym aggregator's `total_reward/mean` are the same
-        # number, which is why nemo_rl_logger's GRPO series set keeps only the
-        # former. Exposing any of these as a knob should add `*total_reward/mean`
-        # back alongside it -- that is when raw-verifier and post-transform reward
-        # stop coinciding and two curves start saying different things.
-        "use_dynamic_sampling": False,
-        "batch_multiplier": 1,
-        "reward_shaping": {"enabled": False},
+        # These are the transforms NeMo-RL applies between the rollout's reward and the one
+        # the loss sees. All default off, so an unstated job still has grpo.py's `reward`
+        # equal to the NeMo-Gym aggregator's `total_reward/mean`; enabling any of them
+        # separates the two, which is why nemo_rl_logger's GRPO series carries both.
+        "use_dynamic_sampling": grpo_hp.use_dynamic_sampling,
+        "dynamic_sampling_max_gen_batches": grpo_hp.dynamic_sampling_max_gen_batches,
+        "batch_multiplier": grpo_hp.batch_multiplier,
+        # `enabled` is what NeMo-RL branches on; the penalty fields are only read when it is
+        # true, so an absent reward_shaping compiles to the same disabled block as before.
+        "reward_shaping": (
+            {"enabled": True, **grpo_hp.reward_shaping} if grpo_hp.reward_shaping else {"enabled": False}
+        ),
         "reward_scaling": {"enabled": False},
         "async_grpo": {"enabled": False, "max_trajectory_age_steps": 1},
     }
@@ -392,6 +394,12 @@ def compile_grpo_config(
         "use_importance_sampling_correction": grpo_hp.use_importance_sampling_correction,
         "sequence_level_importance_ratios": False,
         "token_level_loss": True,
+        # Truncated importance sampling. ClippedPGLossFn gates the whole block on the type
+        # being non-null, so leaving these three absent is how TIS stays off -- and
+        # sequence_level_importance_ratios is already False above, which seq-mask-tis requires.
+        "truncated_importance_sampling_type": grpo_hp.truncated_importance_sampling_type,
+        "truncated_importance_sampling_ratio": grpo_hp.truncated_importance_sampling_ratio,
+        "truncated_importance_sampling_ratio_min": grpo_hp.truncated_importance_sampling_ratio_min,
     }
 
     cfg["checkpointing"] = {

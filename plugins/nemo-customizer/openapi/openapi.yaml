@@ -2529,6 +2529,64 @@ components:
           title: Max Grad Norm
           description: Maximum gradient norm for clipping.
           default: 1.0
+        truncated_importance_sampling_type:
+          title: Truncated Importance Sampling Type
+          description: 'Bound the rollout-vs-training importance weights, so a policy
+            that has drifted from the one that generated the batch cannot dominate
+            the update. Watch `token_mult_prob_error`: a value climbing past ~1.05
+            is the drift this corrects. `tis` clamps weights into the range; `icepop`
+            zeroes out-of-range tokens (reference bounds 0.5-5); `seq-mask-tis` zeroes
+            whole sequences by their geometric-mean ratio (reference bounds 0.999-1.002).
+            None leaves it off, which is NeMo-RL''s default.'
+          type: string
+          enum:
+          - tis
+          - icepop
+          - seq-mask-tis
+        truncated_importance_sampling_ratio:
+          title: Truncated Importance Sampling Ratio
+          description: Upper bound on the importance weight. Required whenever `truncated_importance_sampling_type`
+            is set.
+          type: number
+          exclusiveMinimum: 0.0
+        truncated_importance_sampling_ratio_min:
+          title: Truncated Importance Sampling Ratio Min
+          description: Lower bound on the importance weight. Required for `icepop`
+            and `seq-mask-tis`; optional for `tis`, which floors at 0 when unset.
+          type: number
+          minimum: 0.0
+        use_dynamic_sampling:
+          type: boolean
+          title: Use Dynamic Sampling
+          description: Discard prompt groups whose rewards have zero standard deviation,
+            and keep generating until the step has a full batch of groups that do
+            not. Those groups contribute exactly no gradient, so on a dataset the
+            model finds too hard (or too easy) most of a step is otherwise wasted
+            -- watch `baseline_reward/pct_mixed` for how much. Costs roughly `1 /
+            pct_mixed` times the generation per step.
+          default: false
+        dynamic_sampling_max_gen_batches:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Dynamic Sampling Max Gen Batches
+          description: How many generation batches one step may consume trying to
+            fill itself before the run fails. Only read when `use_dynamic_sampling`
+            is true.
+          default: 10
+        batch_multiplier:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Batch Multiplier
+          description: Over-generate each step by this factor so dynamic sampling
+            has candidates to filter. Set it near `1 / pct_mixed`. Rejected above
+            1.0 unless `use_dynamic_sampling` is true, which is what NeMo-RL asserts
+            at startup.
+          default: 1.0
+        reward_shaping:
+          allOf:
+          - $ref: '#/components/schemas/RlRewardShapingParams'
+          description: Penalise over-long and improperly-terminated responses before
+            the loss sees the reward. None leaves shaping off.
         automodel_kwargs:
           title: Automodel Kwargs
           description: 'Passed to policy.dtensor_cfg.automodel_kwargs; selects the
@@ -2921,6 +2979,47 @@ components:
       type: object
       title: RlParallelismParams
       description: Distributed training parallelism configuration.
+    RlRewardShapingParams:
+      properties:
+        overlong_buffer_length:
+          title: Overlong Buffer Length
+          description: Tokens before max_response_length over which the penalty ramps
+            to full.
+          type: integer
+          exclusiveMinimum: 0.0
+        overlong_buffer_penalty:
+          title: Overlong Buffer Penalty
+          description: Penalty applied at the end of the buffer.
+          type: number
+          minimum: 0.0
+        max_response_length:
+          title: Max Response Length
+          description: Length beyond which a response is penalised. Usually the generation
+            cap.
+          type: integer
+          exclusiveMinimum: 0.0
+        stop_properly_penalty_coef:
+          title: Stop Properly Penalty Coef
+          description: Scale factor on the reward of a truncated response. 0 zeroes
+            it, 1 is no penalty.
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+      additionalProperties: false
+      type: object
+      title: RlRewardShapingParams
+      description: 'DAPO-style reward shaping (NeMo-RL ``grpo.reward_shaping``).
+
+
+        Both penalties act on responses the generation cap cut off, which score zero
+        on a
+
+        verifier that needs a complete answer. ``overlong_*`` ramps a penalty in over
+        the last
+
+        ``overlong_buffer_length`` tokens before ``max_response_length``; ``stop_properly_penalty_coef``
+
+        scales the reward of anything truncated outright.'
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$

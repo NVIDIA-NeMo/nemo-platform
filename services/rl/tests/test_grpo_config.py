@@ -1037,3 +1037,64 @@ def test_operator_can_pin_the_rollout_max_in_flight(
     step.gym.sandbox_rollout_max_in_flight = 64
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert sandbox["rollout_max_in_flight"] == 64
+def test_dapo_components_default_off(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unstated job must compile to the same NeMo-RL config as before these knobs existed."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    cfg = compile_grpo_config(step, job_ctx)
+    assert cfg["grpo"]["use_dynamic_sampling"] is False
+    assert cfg["grpo"]["batch_multiplier"] == 1.0
+    assert cfg["grpo"]["reward_shaping"] == {"enabled": False}
+    # ClippedPGLossFn gates the whole TIS block on the type being non-null.
+    assert cfg["loss_fn"]["truncated_importance_sampling_type"] is None
+
+
+def test_truncated_importance_sampling_reaches_the_loss_fn(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TIS bounds the rollout-vs-training importance weights, which is what stops a run
+    whose ``token_mult_prob_error`` is climbing from training against a policy that no
+    longer generated its data. It only takes effect through ``loss_fn``.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            truncated_importance_sampling_type="icepop",
+            truncated_importance_sampling_ratio=5.0,
+            truncated_importance_sampling_ratio_min=0.5,
+        ),
+    )
+
+    loss_fn = compile_grpo_config(step, job_ctx)["loss_fn"]
+    assert loss_fn["truncated_importance_sampling_type"] == "icepop"
+    assert loss_fn["truncated_importance_sampling_ratio"] == 5.0
+    assert loss_fn["truncated_importance_sampling_ratio_min"] == 0.5
+    # seq-mask-tis asserts against this, and NeMo-RL reads it from the same block.
+    assert loss_fn["sequence_level_importance_ratios"] is False
+    assert loss_fn["use_importance_sampling_correction"] is True
+
+
+def test_dynamic_sampling_and_reward_shaping_reach_grpo(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both live on the grpo block, and reward_shaping is gated on its own ``enabled``."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            use_dynamic_sampling=True,
+            batch_multiplier=4.0,
+            dynamic_sampling_max_gen_batches=6,
+            reward_shaping={"stop_properly_penalty_coef": 0.0},
+        ),
+    )
+
+    grpo = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo["use_dynamic_sampling"] is True
+    assert grpo["batch_multiplier"] == 4.0
+    assert grpo["dynamic_sampling_max_gen_batches"] == 6
+    assert grpo["reward_shaping"] == {"enabled": True, "stop_properly_penalty_coef": 0.0}
