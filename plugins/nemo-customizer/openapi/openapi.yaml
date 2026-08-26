@@ -2587,6 +2587,13 @@ components:
           - $ref: '#/components/schemas/RlRewardShapingParams'
           description: Penalise over-long and improperly-terminated responses before
             the loss sees the reward. None leaves shaping off.
+        reward_scaling:
+          allOf:
+          - $ref: '#/components/schemas/RlRewardScalingParams'
+          description: Linearly rescale each reward before advantages are computed.
+            None leaves scaling off. The DAPO recipes set target_min to -1.0, which
+            turns a binary verifier's 0 into a negative reward instead of a merely
+            smaller positive one.
         automodel_kwargs:
           title: Automodel Kwargs
           description: 'Passed to policy.dtensor_cfg.automodel_kwargs; selects the
@@ -2979,6 +2986,42 @@ components:
       type: object
       title: RlParallelismParams
       description: Distributed training parallelism configuration.
+    RlRewardScalingParams:
+      properties:
+        source_min:
+          type: number
+          title: Source Min
+          description: Low end of the incoming reward range.
+          default: 0.0
+        source_max:
+          type: number
+          title: Source Max
+          description: High end of the incoming reward range.
+          default: 1.0
+        target_min:
+          type: number
+          title: Target Min
+          description: Low end of the rescaled range.
+          default: 0.0
+        target_max:
+          type: number
+          title: Target Max
+          description: High end of the rescaled range.
+          default: 1.0
+      additionalProperties: false
+      type: object
+      title: RlRewardScalingParams
+      description: 'Linear reward rescaling (NeMo-RL ``grpo.reward_scaling``).
+
+
+        Each reward is clamped to ``[source_min, source_max]`` and mapped onto
+
+        ``[target_min, target_max]``. The DAPO recipes use it to move a binary verifier''s
+
+        ``[0, 1]`` onto ``[-1, 1]``, so a wrong answer carries negative reward rather
+        than
+
+        merely less positive reward.'
     RlRewardShapingParams:
       properties:
         overlong_buffer_length:

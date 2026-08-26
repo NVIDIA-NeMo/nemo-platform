@@ -91,6 +91,7 @@ class GRPOConfig(BaseModel):
     dynamic_sampling_max_gen_batches: int = Field(default=10, gt=0)
     batch_multiplier: float = Field(default=1.0, gt=0.0)
     reward_shaping: dict[str, Any] | None = None
+    reward_scaling: dict[str, Any] | None = None
     # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
     automodel_kwargs: dict[str, Any] | None = None
     router_aux_loss_coef: float | None = Field(default=None, ge=0.0)

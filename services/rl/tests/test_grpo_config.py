@@ -1098,3 +1098,29 @@ def test_dynamic_sampling_and_reward_shaping_reach_grpo(
     assert grpo["batch_multiplier"] == 4.0
     assert grpo["dynamic_sampling_max_gen_batches"] == 6
     assert grpo["reward_shaping"] == {"enabled": True, "stop_properly_penalty_coef": 0.0}
+
+
+def test_reward_scaling_reaches_grpo(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The DAPO recipes map a binary verifier's [0,1] onto [-1,1] before advantages.
+
+    Unlike shaping, every bound has a non-null default, so the block is always emitted and
+    only ``enabled`` decides whether NeMo-RL applies it.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4))
+    assert compile_grpo_config(step, job_ctx)["grpo"]["reward_scaling"] == {"enabled": False}
+
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            reward_scaling={"source_min": 0.0, "source_max": 1.0, "target_min": -1.0, "target_max": 1.0},
+        ),
+    )
+    assert compile_grpo_config(step, job_ctx)["grpo"]["reward_scaling"] == {
+        "enabled": True,
+        "source_min": 0.0,
+        "source_max": 1.0,
+        "target_min": -1.0,
+        "target_max": 1.0,
+    }
