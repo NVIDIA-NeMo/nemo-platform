@@ -11,8 +11,11 @@ Use OpenSandbox for **sandboxed GRPO / NeMo Gym**: untrusted custom environment
 FileSets run in isolated pods, not in the training container. It does **not**
 sandbox the rest of the platform (API, DPO, SFT, inference). The default path
 is **shared-kernel** (cluster default OCI runtime: often runc on containerd, or
-crun on CRI-O including OKE/OpenShift). **Kata is not required**; use Kata only
-when those Gym/GRPO sandbox pods must be isolated from the host kernel (QEMU VM).
+crun on CRI-O including OKE/OpenShift). **A kernel-isolated runtime is not
+required.** Use Kata (or another isolated runtime) only when those Gym/GRPO
+sandbox pods must be isolated from the host kernel. The documented example is
+Kata QEMU because it runs each sandbox in a VM with its own guest kernel; other
+isolated runtimes may work but have not been tested.
 
 Full procedure: [OpenSandbox](https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox)
 and [OpenSandbox with Kata](https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata)

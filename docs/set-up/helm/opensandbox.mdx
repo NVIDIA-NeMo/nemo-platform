@@ -11,7 +11,7 @@ The NeMo Platform Helm chart does **not** install [OpenSandbox](https://github.c
 
 Install OpenSandbox when you run **sandboxed GRPO / NeMo Gym**: untrusted custom environment FileSets run in isolated pods, not in the training container. It does **not** sandbox the rest of the platform (API, DPO, SFT, inference).
 
-This page is the **shared-kernel** path: sandbox pods use the cluster default OCI runtime. That is often **runc** (containerd) or **crun** (CRI-O, including OKE and OpenShift). **Kata is not required.** Use [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) only when those Gym/GRPO sandbox pods must be isolated from the host kernel (QEMU VM). Example Helm values live in [`k8s/helm/examples/opensandbox/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox).
+This page is the **shared-kernel** path: sandbox pods use the cluster default OCI runtime. That is often **runc** (containerd) or **crun** (CRI-O, including OKE and OpenShift). **A kernel-isolated runtime is not required.** Use [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) when those Gym/GRPO sandbox pods must be isolated from the host kernel. The documented path is Kata QEMU because it gives each sandbox its own guest kernel; other isolated runtimes may work but have not been tested. Example Helm values live in [`k8s/helm/examples/opensandbox/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox).
 
 OpenSandbox `[secure_runtime]` is **server-global**. One OpenSandbox server cannot mix shared-kernel and Kata, so point the platform at **one** Service DNS. The cluster keeps its default OCI runtime for every other workload.
 
