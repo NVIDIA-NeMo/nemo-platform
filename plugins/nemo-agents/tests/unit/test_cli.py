@@ -395,7 +395,7 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
     assert uploaded["sdk_base_url"] == "http://test"
 
 
-def test_collect_text_agent_artifacts_allows_small_agent_root(tmp_path) -> None:
+def test_collect_text_agent_artifacts_allows_small_agent_root(tmp_path: Path) -> None:
     (tmp_path / "agent.yaml").write_text("name: a\n")
     (tmp_path / "skills").mkdir()
     (tmp_path / "skills" / "SKILL.md").write_text("# skill\n")
@@ -440,14 +440,45 @@ def test_upload_ethos_fileset_replaces_stale_runtime_artifacts(tmp_path: Path) -
     assert uploaded == {"agent.yaml", "skills/review/SKILL.md"}
 
 
-def test_collect_text_agent_artifacts_rejects_oversized_agent_root(tmp_path) -> None:
+def test_upload_ethos_fileset_preserves_remote_ethos_over_local(tmp_path: Path) -> None:
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    (agent_root / "agent.yaml").write_text("name: fabric-agent\n", encoding="utf-8")
+    (agent_root / "ETHOS.md").write_text("# Local Ethos\n", encoding="utf-8")
+    remote = {"ETHOS.md": b"# Remote Ethos\n"}
+    files = _FakeEthosFiles(list(remote))
+    sdk = SimpleNamespace(files=files)
+
+    def _capture_upload(local_dir: Path, **_: Any) -> None:
+        remote.update(
+            (path.relative_to(local_dir).as_posix(), path.read_bytes())
+            for path in local_dir.rglob("*")
+            if path.is_file()
+        )
+
+    with (
+        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", _capture_upload),
+    ):
+        _upload_ethos_fileset(
+            agent_name="fabric-agent",
+            workspace="default",
+            agent_root=agent_root,
+            base_url="http://test",
+        )
+
+    assert remote == {"ETHOS.md": b"# Remote Ethos\n", "agent.yaml": b"name: fabric-agent\n"}
+    assert files.deleted == []
+
+
+def test_collect_text_agent_artifacts_rejects_oversized_agent_root(tmp_path: Path) -> None:
     (tmp_path / "big.bin").write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
 
     with pytest.raises(ValueError, match="byte limit for container config delivery"):
         _collect_text_agent_artifacts(tmp_path)
 
 
-def test_collect_text_agent_artifacts_rejects_too_many_files(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_too_many_files(tmp_path: Path) -> None:
     for index in range(MAX_ETHOS_STAGED_FILES + 1):
         (tmp_path / f"f{index}.txt").write_text("x")
 
@@ -455,7 +486,7 @@ def test_collect_text_agent_artifacts_rejects_too_many_files(tmp_path) -> None:
         _collect_text_agent_artifacts(tmp_path)
 
 
-def test_collect_text_agent_artifacts_rejects_file_symlink(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_file_symlink(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.bin"
     outside.write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
     agent_root = tmp_path / "agent"
@@ -467,7 +498,7 @@ def test_collect_text_agent_artifacts_rejects_file_symlink(tmp_path) -> None:
         _collect_text_agent_artifacts(agent_root)
 
 
-def test_collect_text_agent_artifacts_rejects_directory_symlink(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_directory_symlink(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside"
     outside.mkdir()
     (outside / "a.txt").write_text("x")
