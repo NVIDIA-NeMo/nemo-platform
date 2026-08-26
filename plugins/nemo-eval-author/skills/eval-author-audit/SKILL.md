@@ -61,6 +61,9 @@ existing evals, source-of-truth documents, or `ETHOS.md`.
 
 Audit-spec mechanics live under `scripts/audit_spec/`:
 
+Read `scripts/audit_spec/README.md` for the current measurement assumptions:
+ATIF input, Harbor trajectory parsing, and v1 `tool_calls` coverage only.
+
 | Script | Use it to |
 |---|---|
 | `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
