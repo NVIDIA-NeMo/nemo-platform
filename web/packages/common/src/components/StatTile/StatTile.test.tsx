@@ -39,6 +39,30 @@ describe('StatTile', () => {
     expect(screen.getByText('entropy collapse risk')).toHaveClass('text-placeholder');
   });
 
+  it('uses the metric variant styling for the label and trailing unit', () => {
+    render(<StatTile label="Sessions" value="0" trailingLabel="avg / week" variant="metric" />);
+
+    expect(screen.getByText('Sessions')).toHaveClass('text-secondary');
+    expect(screen.getByText('avg / week')).toHaveClass('text-secondary');
+    expect(screen.getByTestId('stat-tile-surface')).toHaveClass('w-full');
+  });
+
+  it('still statuses the trailing label in the metric variant', () => {
+    render(
+      <StatTile
+        label="Cost"
+        value="$1.20"
+        trailingLabel="up 12%"
+        trailingLabelStatus="warning"
+        variant="metric"
+      />
+    );
+
+    expect(screen.getByText('up 12%')).toHaveClass(
+      'text-[color:var(--text-color-feedback-warning)]'
+    );
+  });
+
   it('renders the hint only when provided', () => {
     const { rerender } = render(
       <StatTile label="Final training loss" value="0.1234" hint="-0.05 from start" />
