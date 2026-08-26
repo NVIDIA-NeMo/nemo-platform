@@ -28,7 +28,9 @@ data:
           # Sandbox pods are built from this template by the OpenSandbox server
           # not by the jobs controller, so neither the jobs controller's
           # image_pull_secrets nor the chart's top-level imagePullSecrets reaches them.
-          # The Secret must exist in the sandbox namespace.
+          # This name is required as written. If your pull Secret is named
+          # differently, change it here before kubectl apply. The Secret must
+          # exist in the sandbox / job namespace.
           imagePullSecrets:
             - name: nvcrimagepullsecret
           # Example nodeSelector matching kata-deploy on H100 + NFD VMX nodes.

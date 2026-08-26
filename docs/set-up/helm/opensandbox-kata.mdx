@@ -80,6 +80,7 @@ sed -i.bak "s/REPLACE_WITH_RELEASE_NAMESPACE/${NMP_NAMESPACE}/g" \
   "${EXAMPLES}/opensandbox-server-kata-qemu.yaml"
 
 # Adjust batchsandbox-template-kata-qemu.yaml nodeSelector to match kata-deploy.
+# imagePullSecrets.name is nvcrimagepullsecret; edit it if your Secret differs.
 kubectl apply -f "${EXAMPLES}/batchsandbox-template-kata-qemu.yaml"
 
 kubectl create secret generic opensandbox-server-kata-api-key \

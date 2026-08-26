@@ -35,8 +35,8 @@ Replace `REPLACE_WITH_RELEASE_NAMESPACE` in the server values before install.
 | `opensandbox-controller.yaml` | Shared controller (snapshots unused on CRI-O) |
 | `opensandbox-server.yaml` | Shared-kernel server (no `[secure_runtime]`) |
 | `opensandbox-server-kata-qemu.yaml` | Kata QEMU server (`[secure_runtime] type=kata`) |
-| `batchsandbox-template.yaml` | ConfigMap — exclude control-plane; soft-avoid GPU/Kata |
-| `batchsandbox-template-kata-qemu.yaml` | ConfigMap — example Kata node selectors |
+| `batchsandbox-template.yaml` | ConfigMap — exclude control-plane; pull Secret name `nvcrimagepullsecret` |
+| `batchsandbox-template-kata-qemu.yaml` | ConfigMap — example Kata node selectors; same pull Secret name |
 
 `[secure_runtime]` is server-global. Install **one** server for production
 (shared-kernel **or** Kata). Dual releases are only for proving both paths.
@@ -69,7 +69,10 @@ kubectl get secret opensandbox-server-api-key -n opensandbox-system -o json \
   | jq 'del(.metadata.uid,.metadata.resourceVersion,.metadata.creationTimestamp,.metadata.namespace)' \
   | kubectl apply -n "${NMP_NAMESPACE}" -f -
 
-# Image pull secret for sandbox pods must also exist in the job namespace
+# Image pull: templates hard-code imagePullSecrets.name: nvcrimagepullsecret.
+# That Secret must exist in the job namespace. If yours has a different name,
+# edit imagePullSecrets in batchsandbox-template.yaml (and the Kata template)
+# before applying.
 kubectl get secret nvcrimagepullsecret -n "${NMP_NAMESPACE}"
 
 helm upgrade --install opensandbox-controller \
