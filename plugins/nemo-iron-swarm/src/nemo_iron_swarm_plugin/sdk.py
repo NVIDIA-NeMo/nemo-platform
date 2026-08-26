@@ -118,9 +118,9 @@ def _list_newest(platform: NeMoPlatform, entity_type: str, *, workspace: str, li
             workspace=workspace,
             query_params=ListEntitiesQueryParams(sort="-created_at", page_size=limit),
         )
-        .data()
+        .page()
     )
-    return [_run_to_dict(item) for item in itertools.islice(page, limit)]
+    return [_run_to_dict(item) for item in itertools.islice(page.items, limit)]
 
 
 class _RunsResource:

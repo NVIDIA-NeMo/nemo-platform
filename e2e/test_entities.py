@@ -87,7 +87,7 @@ def test_entity_crud_lifecycle(entity_store_sdk: NeMoPlatform, workspace: str):
     assert entity.workspace == workspace
     assert entity.entity_type == ENTITY_TYPE
     assert entity.data["key"] == "initial-value"
-    assert entity.data["nested"]["field"] == 123  # ty: ignore[not-subscriptable]
+    assert entity.data["nested"]["field"] == 123
 
     try:
         # Retrieve by name
@@ -110,7 +110,7 @@ def test_entity_crud_lifecycle(entity_store_sdk: NeMoPlatform, workspace: str):
         ).data()
         assert updated.name == entity_name
         assert updated.data["key"] == "updated-value"
-        assert updated.data["nested"]["field"] == 456  # ty: ignore[not-subscriptable]
+        assert updated.data["nested"]["field"] == 456
         assert updated.data["new_field"] is True
 
         # Verify update persisted
@@ -258,8 +258,8 @@ def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str)
         response = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        ).data()
-        listed_names = {e.name for e in response}
+        )
+        listed_names = {e.name for e in response.items()}
         for name in entity_names:
             assert name in listed_names
 
@@ -268,8 +268,8 @@ def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str)
             entity_type=ENTITY_TYPE,
             workspace=workspace,
             query_params=ListEntitiesQueryParams(sort="-created_at"),
-        ).data()
-        desc_names = [e.name for e in response_desc if e.name in entity_names]
+        )
+        desc_names = [e.name for e in response_desc.items() if e.name in entity_names]
         assert desc_names == list(reversed(entity_names))
 
         # Test ascending sort by created_at (oldest first)
@@ -277,8 +277,8 @@ def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str)
             entity_type=ENTITY_TYPE,
             workspace=workspace,
             query_params=ListEntitiesQueryParams(sort="created_at"),
-        ).data()
-        asc_names = [e.name for e in response_asc if e.name in entity_names]
+        )
+        asc_names = [e.name for e in response_asc.items() if e.name in entity_names]
         assert asc_names == entity_names
 
         # Test sort by name
@@ -286,8 +286,8 @@ def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str)
             entity_type=ENTITY_TYPE,
             workspace=workspace,
             query_params=ListEntitiesQueryParams(sort="name"),
-        ).data()
-        name_sorted = [e.name for e in response_by_name if e.name in entity_names]
+        )
+        name_sorted = [e.name for e in response_by_name.items() if e.name in entity_names]
         assert name_sorted == sorted(entity_names)
 
     finally:
@@ -339,8 +339,8 @@ def test_entity_search_filter(entity_store_sdk: NeMoPlatform, workspace: str):
             entity_type=ENTITY_TYPE,
             workspace=workspace,
             query_params=ListEntitiesQueryParams(filter=filter_query),
-        ).data()
-        response_list = list(response)
+        )
+        response_list = list(response.items())
         assert len(response_list) == 1
         assert response_list[0].name == entity_alpha
 
@@ -350,8 +350,8 @@ def test_entity_search_filter(entity_store_sdk: NeMoPlatform, workspace: str):
             entity_type=ENTITY_TYPE,
             workspace=workspace,
             query_params=ListEntitiesQueryParams(filter=filter_query),
-        ).data()
-        found_names = {e.name for e in response}
+        )
+        found_names = {e.name for e in response.items()}
         assert entity_alpha in found_names
         assert entity_beta in found_names
 
@@ -361,8 +361,8 @@ def test_entity_search_filter(entity_store_sdk: NeMoPlatform, workspace: str):
             entity_type=ENTITY_TYPE,
             workspace=workspace,
             query_params=ListEntitiesQueryParams(filter=filter_query),
-        ).data()
-        response_list = list(response)
+        )
+        response_list = list(response.items())
         assert len(response_list) == 1
         assert response_list[0].name == entity_beta
 
@@ -403,8 +403,7 @@ def test_entity_rename(entity_store_sdk: NeMoPlatform, workspace: str):
             name=old_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            body=EntityUpdate(data=entity.data),
-            new_name=new_name,
+            body=EntityUpdate(data=entity.data, new_name=new_name),
         ).data()
         assert renamed.name == new_name
         assert renamed.id == entity.id

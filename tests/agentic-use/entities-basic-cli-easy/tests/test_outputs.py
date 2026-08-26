@@ -29,8 +29,8 @@ def client() -> NeMoPlatform:
 
 def test_harbor_test_model_deleted(client: NeMoPlatform) -> None:
     """Test that harbor-test-model was deleted after CRUD operations."""
-    response = client_from_platform(client, EntitiesClient).list_entities(entity_type="model").data()
-    entity_names = [e.name for e in response.data]
+    response = client_from_platform(client, EntitiesClient).list_entities(entity_type="model")
+    entity_names = [e.name for e in response.page().items]
     assert "harbor-test-model" not in entity_names, (
         f"Entity 'harbor-test-model' should have been deleted but still exists! Found: {entity_names}"
     )
