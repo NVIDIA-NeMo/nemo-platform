@@ -94,6 +94,41 @@ class RewardShapingParams(RlSchema):
                 "reward_shaping is enabled but specifies no penalty. Set the overlong_* trio, "
                 "stop_properly_penalty_coef, or omit reward_shaping entirely."
             )
+        # apply_reward_shaping takes the stop_properly branch first and returns from it, so the
+        # overlong parameters are read only when that coefficient is unset. NeMo-RL logs which
+        # ones it ignored and carries on, which is a quiet way to run without the shaping the
+        # job asked for.
+        if self.stop_properly_penalty_coef is not None and any(v is not None for v in overlong):
+            raise ValueError(
+                "reward_shaping accepts either stop_properly_penalty_coef or the overlong_* "
+                "parameters, not both: NeMo-RL applies the stop-properly penalty and ignores "
+                "the overlong ones."
+            )
+        return self
+
+
+class RewardScalingParams(RlSchema):
+    """Linear reward rescaling (NeMo-RL ``grpo.reward_scaling``).
+
+    Each reward is clamped to ``[source_min, source_max]`` and mapped onto
+    ``[target_min, target_max]``. The DAPO recipes use it to move a binary verifier's
+    ``[0, 1]`` onto ``[-1, 1]``, so a wrong answer carries negative reward rather than
+    merely less positive reward.
+    """
+
+    source_min: float = Field(default=0.0, description="Low end of the incoming reward range.")
+    source_max: float = Field(default=1.0, description="High end of the incoming reward range.")
+    target_min: float = Field(default=0.0, description="Low end of the rescaled range.")
+    target_max: float = Field(default=1.0, description="High end of the rescaled range.")
+
+    @model_validator(mode="after")
+    def _ranges_are_non_degenerate(self) -> Self:
+        # A zero-width source collapses every reward onto one value, which zeroes the
+        # advantage and stalls the run without raising anywhere downstream.
+        if self.source_min >= self.source_max:
+            raise ValueError("reward_scaling.source_min must be below source_max.")
+        if self.target_min >= self.target_max:
+            raise ValueError("reward_scaling.target_min must be below target_max.")
         return self
 
 
@@ -372,6 +407,12 @@ class GRPOTraining(_TrainingBase):
         default=None,
         description="Penalise over-long and improperly-terminated responses before the loss sees "
         "the reward. None leaves shaping off.",
+    )
+    reward_scaling: RewardScalingParams | None = Field(
+        default=None,
+        description="Linearly rescale each reward before advantages are computed. None leaves "
+        "scaling off. The DAPO recipes set target_min to -1.0, which turns a binary verifier's "
+        "0 into a negative reward instead of a merely smaller positive one.",
     )
 
     # --- Per-architecture backend settings ---

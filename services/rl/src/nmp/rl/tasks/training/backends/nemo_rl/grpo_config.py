@@ -378,7 +378,11 @@ def compile_grpo_config(
         "reward_shaping": (
             {"enabled": True, **grpo_hp.reward_shaping} if grpo_hp.reward_shaping else {"enabled": False}
         ),
-        "reward_scaling": {"enabled": False},
+        # Unlike shaping, every scaling bound has a non-null default, so the whole block is
+        # emitted and only `enabled` decides whether NeMo-RL applies it.
+        "reward_scaling": (
+            {"enabled": True, **grpo_hp.reward_scaling} if grpo_hp.reward_scaling else {"enabled": False}
+        ),
         "async_grpo": {"enabled": False, "max_trajectory_age_steps": 1},
     }
 

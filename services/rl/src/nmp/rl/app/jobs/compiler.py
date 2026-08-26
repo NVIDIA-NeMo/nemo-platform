@@ -353,6 +353,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 # exclude_none: RewardShapingConfig reads each penalty field independently, so a
                 # null would land as an explicit "no penalty" rather than leaving its default.
                 reward_shaping=(t.reward_shaping.model_dump(exclude_none=True) if t.reward_shaping else None),
+                reward_scaling=(t.reward_scaling.model_dump() if t.reward_scaling else None),
                 automodel_kwargs=t.automodel_kwargs,
                 router_aux_loss_coef=t.router_aux_loss_coef,
                 vllm_tensor_parallel_size=t.vllm_tensor_parallel_size,
