@@ -45,6 +45,11 @@ dependencies = [
   "nmp-common",
 ]
 
+[project.urls]
+Homepage = "https://github.com/NVIDIA-NeMo/nemo-platform"
+Documentation = "https://docs.nvidia.com/nemo-platform"
+Source = "https://github.com/NVIDIA-NeMo/nemo-platform"
+
 [project.optional-dependencies]
 all = ["nemo-platform[services]"]
 
