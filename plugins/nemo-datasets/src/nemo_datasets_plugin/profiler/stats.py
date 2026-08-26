@@ -88,6 +88,14 @@ class ColumnMeasurements:
 class RowFold:
     """The per-column accumulators for one partition, fed batch by batch.
 
+    A declared schema names the columns before the first batch; without one they are discovered as
+    they appear and back-filled with the rows they were absent for, which is what makes the result
+    identical to inferring the schema first and measuring second -- a row without the key genuinely
+    holds a null for it. Both then measure through the same accumulator, which routes a value to the
+    measurement that fits it rather than being chosen for one in advance. What a declared schema buys
+    is the schema itself, and knowing which measurement reports the column; it no longer buys a
+    different mechanism, which is what two folds used to be for.
+
     Each column is isolated. A value no detector anticipated -- a chat message whose ``role`` is a
     number, a float where a string was declared -- costs that column its measurements and nothing
     else, where previously it cost the partition every measurement it had. The failure is reported
@@ -105,73 +113,92 @@ class RowFold:
     :func:`quote_enumerations` adds them afterwards, from the vocabulary this kept.
     """
 
-    def __init__(self, features: list[FeatureSchema]) -> None:
-        self._accumulators: dict[str, ColumnAccumulator] = {}
-        self._features: list[FeatureSchema] = []
+    def __init__(self, features: list[FeatureSchema] | None = None) -> None:
+        # None means the partition declared no schema. It is not the same as an empty list, which is
+        # a declared schema that happens to have no columns and must not then discover any.
+        self._infer = features is None
+        self._accumulators: dict[str, DeferredAccumulator] = {}
+        self._declared: dict[str, FeatureSchema] = {}
+        self._order: list[str] = []
         self._failed: dict[str, Evidence] = {}
-        for feature in features:
+        self._rows_seen = 0
+        for feature in features or []:
             # Parquet permits duplicate field names, and every map here is keyed by name. Measuring
             # the first and skipping the rest makes which one wins deterministic instead of
             # "whichever came last", and keeps stats and probes agreeing on the same one.
             if feature.name in self._accumulators:
                 continue
-            self._accumulators[feature.name] = _accumulator_for(feature)
-            self._features.append(feature)
+            self._declared[feature.name] = feature
+            self._accumulators[feature.name] = DeferredAccumulator(feature.name, feature)
+            self._order.append(feature.name)
 
     def update(self, rows: list[dict[str, Any]]) -> None:
         """Fold one batch of rows into every column's accumulator."""
-        for feature in self._features:
-            if feature.name in self._failed:
+        if self._infer:
+            self._discover(rows)
+        for name in self._order:
+            if name in self._failed:
                 continue
             try:
-                self._accumulators[feature.name].update([row.get(feature.name) for row in rows])
+                self._accumulators[name].update([row.get(name) for row in rows])
             except Exception as exc:
-                self._failed[feature.name] = Evidence(
-                    kind="error",
-                    detail=(
-                        f"column {feature.name!r} ({feature.dtype}) could not be measured: {type(exc).__name__}: {exc}"
-                    ),
-                )
+                self._failed[name] = Evidence(kind="error", detail=self._detail(name, "measured", exc))
+        self._rows_seen += len(rows)
+
+    def _discover(self, rows: list[dict[str, Any]]) -> None:
+        """Open an accumulator for every column this batch is the first to mention."""
+        for row in rows:
+            for name in row:
+                if name in self._accumulators or len(self._accumulators) >= MAX_COLUMNS:
+                    continue
+                accumulator = DeferredAccumulator(name)
+                accumulator.backfill_nulls(self._rows_seen)
+                self._accumulators[name] = accumulator
+                self._order.append(name)
+
+    def _detail(self, name: str, verb: str, exc: Exception) -> str:
+        """Why a column dropped out, naming its declared dtype when it had one."""
+        declared = self._declared.get(name)
+        column = f"column {name!r}" + (f" ({declared.dtype})" if declared is not None else "")
+        return f"{column} could not be {verb}: {type(exc).__name__}: {exc}"
 
     def finalize(self) -> tuple[list[FeatureSchema], ColumnMeasurements]:
         """The schema that was measured, and the measurements.
 
         The features come back rather than being assumed from what was handed in, because they are
         not the same list: duplicate names were dropped in the constructor, so a caller holding its
-        own copy would describe a column that no accumulator ever measured. Returning the same pair
-        :meth:`InferredRowFold.finalize` does also spares the caller an ``isinstance`` to find out
-        which of the two it is holding.
+        own copy would describe a column that no accumulator ever measured. An inferred column has no
+        other source for its schema at all.
         """
+        features: list[FeatureSchema] = []
         stats: dict[str, ColumnStats] = {}
         probes: dict[str, ColumnProbes] = {}
         vocabularies: dict[str, set[Any]] = {}
         errors: list[Evidence] = []
-        for feature in self._features:
-            failure = self._failed.get(feature.name)
+        for name in self._order:
+            failure = self._failed.get(name)
             if failure is not None:
+                # A declared column exists whether or not it could be measured, so it is still
+                # described. An inferred one was never typed, and there is nothing to describe.
+                declared = self._declared.get(name)
+                if declared is not None:
+                    features.append(declared)
                 errors.append(failure)
                 continue
-            accumulator = self._accumulators[feature.name]
+            accumulator = self._accumulators[name]
             try:
+                features.append(accumulator.feature())
                 column, probe = accumulator.finalize()
             except Exception as exc:
-                errors.append(
-                    Evidence(
-                        kind="error",
-                        detail=(
-                            f"column {feature.name!r} ({feature.dtype}) could not be summarised: "
-                            f"{type(exc).__name__}: {exc}"
-                        ),
-                    )
-                )
+                errors.append(Evidence(kind="error", detail=self._detail(name, "summarised", exc)))
                 continue
-            probes[feature.name] = probe
+            probes[name] = probe
             vocabulary = accumulator.vocabulary()
             if vocabulary is not None:
-                vocabularies[feature.name] = vocabulary
+                vocabularies[name] = vocabulary
             if column is not None:
-                stats[feature.name] = column
-        return self._features, ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+                stats[name] = column
+        return features, ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
 
 
 def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
@@ -489,153 +516,96 @@ class MessageAccumulator(ColumnAccumulator):
         }
 
 
-def _accumulator_for(feature: FeatureSchema) -> ColumnAccumulator:
-    """The accumulator that knows how to measure this column, dispatched once on its dtype."""
-    if feature.dtype == "string":
-        return StringAccumulator()
-    if feature.dtype == "bool":
-        return BoolAccumulator()
-    if feature.dtype == "messages":
-        return MessageAccumulator()
-    if _is_numeric(feature.dtype):
-        return NumericAccumulator()
-    return ColumnAccumulator()
+# The one place a dtype becomes a measurement. It used to be written three times -- to choose an
+# accumulator up front, to pick the blocks to report, and to pick the vocabulary -- and the three had
+# to agree or a column was measured as one shape and reported as another. Naming the measurement
+# rather than constructing it is what collapses them: the caller looks the name up and decides for
+# itself whether to build one, reuse one, or skip.
+_MEASUREMENTS: dict[str, type[ColumnAccumulator]] = {
+    "string": StringAccumulator,
+    "numeric": NumericAccumulator,
+    "bool": BoolAccumulator,
+    "messages": MessageAccumulator,
+}
+
+
+def _measurement_for(dtype: str) -> str | None:
+    """Which measurement reports a column of this dtype, or None for a dtype with no statistics."""
+    if _is_numeric(dtype):
+        return "numeric"
+    return dtype if dtype in _MEASUREMENTS else None
 
 
 class DeferredAccumulator(ColumnAccumulator):
-    """A column whose dtype is not known until the last row has gone by.
+    """A column measured by every shape its values take, reporting the one its dtype selects.
 
-    An accumulator is normally chosen *by* dtype, which a declared schema gives up front. An inferred
-    one does not: the observed types are unioned over the whole column and a disagreement widens to
-    ``json``, so the choice cannot be made while the choosing still matters. Deferring it is the only
-    resolution that neither reads the data twice nor decides from a prefix and hopes.
+    An accumulator used to be chosen *by* dtype, which a declared schema gives up front and an
+    inferred one does not: the observed types are unioned over the whole column and a disagreement
+    widens to ``json``, so the choice cannot be made while making it still matters. Deferring it is
+    the only resolution that neither reads the data twice nor decides from a prefix and hopes.
 
-    So every shape is measured at once and the answer picked at the end. It costs no more per value
-    than choosing would have -- a string only ever reaches the string state, an int only the numeric
-    -- and the state it costs is four bounded structures per column rather than one. A column that
-    resolves to a shape nothing measured, or to ``json``, simply has no blocks, which is what the
-    dispatch would have produced for it anyway.
+    So every value is routed to the measurement that fits it and which measurement *answers* is
+    settled at the end. A declared column takes the same route; it just knows the answer already,
+    which spares it folding a schema it was handed. Measuring this way costs no more per value than
+    choosing would have -- a string only ever reaches the string state, an int only the numeric.
+
+    Measurements are built on first sight of a value that needs one, so a column of a single type
+    pays for a single one. Building all of them up front charged every column for every shape the
+    profiler knows whether or not its values ever reached them, which is a bill that grows as shapes
+    are added rather than with what the data actually holds.
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, declared: FeatureSchema | None = None) -> None:
         super().__init__()
-        self._schema = SchemaFold(name)
-        self._string = StringAccumulator()
-        self._numeric = NumericAccumulator()
-        self._bool = BoolAccumulator()
-        self._messages = MessageAccumulator()
+        self._name = name
+        self._declared = declared
+        # A declared column was typed before the first batch. Folding its schema again would charge
+        # every value for an answer already in hand.
+        self._schema = SchemaFold(name) if declared is None else None
+        self._measurements: dict[str, ColumnAccumulator] = {}
+
+    def _measurement(self, key: str) -> ColumnAccumulator:
+        """The named measurement, built if this is the first value to call for it."""
+        accumulator = self._measurements.get(key)
+        if accumulator is None:
+            accumulator = self._measurements[key] = _MEASUREMENTS[key]()
+        return accumulator
 
     def _observe(self, present: list[Any]) -> None:
-        self._schema.update(present)
+        if self._schema is not None:
+            self._schema.update(present)
         # Routed by python type. Where a dtype resolves to something measurable, every present value
         # is of that type by construction -- `_resolve_scalar` only returns `string` when the whole
         # column was strings -- so this sees exactly what the chosen accumulator would have seen.
         strings = [value for value in present if isinstance(value, str)]
         if strings:
-            self._string._observe(strings)
+            self._measurement("string")._observe(strings)
         numbers = [value for value in present if isinstance(value, (int, float)) and not isinstance(value, bool)]
         if numbers:
-            self._numeric._observe(numbers)
+            self._measurement("numeric")._observe(numbers)
         bools = [value for value in present if isinstance(value, bool)]
         if bools:
-            self._bool._observe(bools)
+            self._measurement("bool")._observe(bools)
         lists = [value for value in present if isinstance(value, list)]
         if lists:
-            self._messages._observe(lists)
+            self._measurement("messages")._observe(lists)
 
     def feature(self) -> FeatureSchema:
-        """The column's schema, as folded."""
-        return self._schema.finalize()
+        """The column's schema -- declared before the fold, or folded out of the values."""
+        if self._declared is not None:
+            return self._declared
+        return (self._schema or SchemaFold(self._name)).finalize()
 
     def _blocks(self) -> dict[str, Any]:
-        dtype = self.feature().dtype
-        if dtype == "string":
-            return self._string._blocks()
-        if dtype == "bool":
-            return self._bool._blocks()
-        if dtype == "messages":
-            return self._messages._blocks()
-        if _is_numeric(dtype):
-            return self._numeric._blocks()
-        return {}
+        key = _measurement_for(self.feature().dtype)
+        # Built here when no value ever called for it, so an all-null string column still reports the
+        # empty text and cardinality blocks a chosen StringAccumulator would have reported, rather
+        # than the nothing an absent measurement would.
+        return self._measurement(key)._blocks() if key is not None else {}
 
     def vocabulary(self) -> set[Any] | None:
-        dtype = self.feature().dtype
-        if dtype == "string":
-            return self._string.vocabulary()
-        if dtype == "bool":
-            return self._bool.vocabulary()
-        if _is_numeric(dtype):
-            return self._numeric.vocabulary()
-        return None
-
-
-class InferredRowFold:
-    """A partition's columns, discovered as they appear and typed once they have all gone by.
-
-    The counterpart to :class:`RowFold` for data that declares no schema. Columns are created on
-    first sight and back-filled with the rows they were absent for, which is what makes the result
-    identical to inferring the schema first and measuring second -- a row without the key genuinely
-    holds a null for it.
-    """
-
-    def __init__(self) -> None:
-        self._accumulators: dict[str, DeferredAccumulator] = {}
-        self._order: list[str] = []
-        self._failed: dict[str, Evidence] = {}
-        self._rows_seen = 0
-
-    def update(self, rows: list[dict[str, Any]]) -> None:
-        for row in rows:
-            for name in row:
-                if name in self._accumulators or len(self._accumulators) >= MAX_COLUMNS:
-                    continue
-                accumulator = DeferredAccumulator(name)
-                accumulator.backfill_nulls(self._rows_seen)
-                self._accumulators[name] = accumulator
-                self._order.append(name)
-        for name in self._order:
-            if name in self._failed:
-                continue
-            try:
-                self._accumulators[name].update([row.get(name) for row in rows])
-            except Exception as exc:
-                self._failed[name] = Evidence(
-                    kind="error",
-                    detail=f"column {name!r} could not be measured: {type(exc).__name__}: {exc}",
-                )
-        self._rows_seen += len(rows)
-
-    def finalize(self) -> tuple[list[FeatureSchema], ColumnMeasurements]:
-        features: list[FeatureSchema] = []
-        stats: dict[str, ColumnStats] = {}
-        probes: dict[str, ColumnProbes] = {}
-        vocabularies: dict[str, set[Any]] = {}
-        errors: list[Evidence] = []
-        for name in self._order:
-            failure = self._failed.get(name)
-            if failure is not None:
-                errors.append(failure)
-                continue
-            accumulator = self._accumulators[name]
-            try:
-                features.append(accumulator.feature())
-                column, probe = accumulator.finalize()
-            except Exception as exc:
-                errors.append(
-                    Evidence(
-                        kind="error",
-                        detail=f"column {name!r} could not be summarised: {type(exc).__name__}: {exc}",
-                    )
-                )
-                continue
-            probes[name] = probe
-            vocabulary = accumulator.vocabulary()
-            if vocabulary is not None:
-                vocabularies[name] = vocabulary
-            if column is not None:
-                stats[name] = column
-        return features, ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+        key = _measurement_for(self.feature().dtype)
+        return self._measurement(key).vocabulary() if key is not None else None
 
 
 def _is_numeric(dtype: str) -> bool:

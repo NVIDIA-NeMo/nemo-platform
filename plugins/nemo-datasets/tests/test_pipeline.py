@@ -645,17 +645,14 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
     # dataset type -- survives it.
     from nemo_datasets_plugin.profiler import stats as stats_module
 
-    real_accumulator_for = stats_module._accumulator_for
+    real_observe = stats_module.DeferredAccumulator._observe
 
-    class Boom(stats_module.ColumnAccumulator):
-        def _observe(self, present):
+    def boom(self, present):
+        if self._name == "completion":
             raise RuntimeError("boom")
+        return real_observe(self, present)
 
-    monkeypatch.setattr(
-        stats_module,
-        "_accumulator_for",
-        lambda feature: Boom() if feature.name == "completion" else real_accumulator_for(feature),
-    )
+    monkeypatch.setattr(stats_module.DeferredAccumulator, "_observe", boom)
     _write_parquet(tmp_path / "train.parquet", [{"prompt": "q", "completion": "a"}])
 
     part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
@@ -873,6 +870,25 @@ def test_a_duplicate_column_name_is_described_once(tmp_path):
     assert set(part.stats) == {f.name for f in part.features}
 
 
+def test_a_declared_dtype_is_answered_only_by_its_own_measurement(tmp_path):
+    # The other half of duplicate field names: `to_pylist` collapses the pair to the *last* one's
+    # values, so the schema says `string` while the rows hold ints. Each value is measured by the
+    # measurement that fits it, and the declared dtype picks which one answers -- so the ints are
+    # measured as numbers and the string column reports having seen no strings. Reporting their
+    # cardinality under a `string` dtype, as choosing one accumulator up front did, conflated the
+    # type the file declared with the values it actually holds.
+    schema = pa.schema([pa.field("prompt", pa.string()), pa.field("prompt", pa.int64())])
+    table = pa.Table.from_arrays([pa.array(["a", "b"]), pa.array([1, 2])], schema=schema)
+    pq.write_table(table, tmp_path / "train.parquet")
+
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert [(f.name, f.dtype) for f in part.features] == [("prompt", "string")]
+    categorical = part.stats["prompt"].categorical
+    assert part.stats["prompt"].text is None  # no string was ever seen
+    assert categorical is not None and categorical.distinct_count == 0
+
+
 def test_rows_completeness_is_per_partition(tmp_path):
     # A corrupt shard in one partition says nothing about the measurements in another, but a
     # fileset-wide flag downgraded every partition to the worst one. It was never even the value
@@ -893,7 +909,7 @@ def test_rows_completeness_is_per_partition(tmp_path):
 
 
 def test_dataset_wide_completeness_is_one_expression(tmp_path):
-    # SamplingInfo no longer carries `exhaustive`; the contract documents this derivation in its
+    # Coverage no longer carries `exhaustive`; the contract documents this derivation in its
     # place. It has to keep working, or dropping the flag cost consumers something -- and it now
     # says *which* half failed, which the single bit could not.
     _write_parquet(tmp_path / "train.parquet", [{"a": 1}])

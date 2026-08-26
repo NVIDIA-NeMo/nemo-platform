@@ -99,29 +99,32 @@ Different columns want different questions asked, so there are four kinds:
 | `BoolAccumulator` | true/false | how many of each |
 | `MessageAccumulator` | chat logs | turns, roles seen, whether it ends on the assistant |
 
-### Which notepad to bring — and why there are two folds
+### Which notepad answers
 
-**Parquet says in advance.** The footer declares that `messages` is a list of `{role, content}`,
-and it is read before the belt starts. So exactly the right notepad is chosen up front.
-
-→ `RowFold`. Notepads picked from the declared schema. Straightforward.
-
-**JSONL says nothing.** It is lines of text with no header. What the `messages` column *is* cannot be
-known until the last row has gone by — row 900,000 may hold a number and make the whole column
-mixed. Three options, two of them bad:
+**JSONL says nothing about its columns.** It is lines of text with no header. What the `messages`
+column *is* cannot be known until the last row has gone by — row 900,000 may hold a number and make
+the whole column mixed. Three options, two of them bad:
 
 - read the file twice — too slow;
 - decide from the first N rows and hope — wrong sometimes, and silently;
-- **bring all four notepads, mark whichever fits each value, and pick at the end.**
+- **mark each value on whichever notepad fits it, and decide at the end which notepad answers.**
 
-→ `InferredRowFold` driving one `DeferredAccumulator` per column. `DeferredAccumulator` is not
-clever — it is four notepads held at once, plus a fifth (`SchemaFold`) tracking which types have
-been seen. When the belt empties, `SchemaFold` says what the column was and only that notepad is
-read out.
+**Parquet does say in advance** — its footer declares that `messages` is a list of `{role, content}`,
+read before the belt starts. That does not call for a different mechanism, only for skipping the
+guess: the same notepads are used, and the declared dtype picks which one answers instead of the
+observed types picking.
 
-It costs less than it sounds. A string is only ever marked on the string notepad, an int only on the
-numeric one, so it is the same work on more paper — measured at ~2.9× the memory of choosing up
-front, and flat whether the file holds 10,000 rows or 1,000,000.
+→ one `RowFold`, driving one `DeferredAccumulator` per column. `DeferredAccumulator` is not clever —
+it is a notepad per shape, plus a `SchemaFold` (inferred columns only) tracking which types have
+been seen.
+
+A notepad is opened **the first time a value needs it**, so a column of one type pays for one. That
+matters more as shapes are added: building all of them up front billed every column for every shape
+the profiler knows, whether or not its values ever reached them.
+
+It also costs less per value than it sounds. A string is only ever marked on the string notepad, an
+int only on the numeric one — the same work, just filed by shape. State stays flat whether the file
+holds 10,000 rows or 1,000,000.
 
 ### The histogram: how to answer "median length" without keeping the lengths
 
@@ -239,9 +242,10 @@ Not top to bottom. In this order:
 1. `ColumnAccumulator` — the base notepad. Everything else is this plus specifics.
 2. `StringAccumulator` — the simplest real one, barely 20 lines.
 3. `_LengthHistogram` and `_Vocabulary` — the two tricks above.
-4. `RowFold` — the easy fold.
-5. `DeferredAccumulator`, then `InferredRowFold` — the hard fold, which by now reads as the easy one
-   times four.
+4. `_MEASUREMENTS` and `_measurement_for` — five lines, and the only place a dtype becomes a
+   measurement.
+5. `DeferredAccumulator` — one column, measured by shape.
+6. `RowFold` — the columns of a partition, declared or discovered.
 
 ## Architecture
 
@@ -263,8 +267,8 @@ flowchart TD
 
     BRANCH -->|"yes — parquet"| UNI["_unify_schemas<br/><i>order-independent across shards</i>"]
     UNI --> DERIVE["derive_features<br/><i>arrow types to dtypes</i>"]
-    DERIVE --> CF["RowFold(features)"]
-    BRANCH -->|"no — jsonl"| ICF["InferredRowFold()"]
+    DERIVE --> CF["RowFold(features)<br/><i>columns named up front</i>"]
+    BRANCH -->|"no — jsonl"| ICF["RowFold(None)<br/><i>columns discovered as they appear</i>"]
 
     CF --> SPLITS
     ICF --> SPLITS["resolve_splits<br/><i>from paths, format-agnostic</i>"]
@@ -294,7 +298,7 @@ flowchart LR
 
     subgraph FOLD["_PartitionFolds — state constant in rows"]
         direction TB
-        COL["<b>RowFold</b> / <b>InferredRowFold</b><br/>one accumulator per column"]
+        COL["<b>RowFold</b><br/>one DeferredAccumulator per column"]
         PRE["<b>PrefixPairFold</b><br/>relational: chosen vs rejected<br/><i>same row, two columns</i>"]
     end
 
@@ -318,12 +322,8 @@ until classification assigns them.
 
 ```mermaid
 flowchart TD
-    FIN{"which fold?"}
-    FIN -->|"RowFold"| F1["finalize() → (features, measured)<br/><i>schema was an input, de-duplicated</i>"]
-    FIN -->|"InferredRowFold"| F2["finalize() → (features, measured)<br/><i>schema is an output here</i>"]
-
-    F1 --> M["measured:<br/>stats · probes · vocabularies · errors<br/><i>features: the schema actually measured</i>"]
-    F2 --> M
+    FIN["RowFold.finalize() → (features, measured)"]
+    FIN --> M["measured:<br/>stats · probes · vocabularies · errors<br/><i>features: declared, de-duplicated — or folded</i>"]
 
     M --> CLS["classify(features, stats, probes, prefix_pair)<br/><i>reads no rows</i>"]
     CLS --> ROLES["assigns semantic_role onto features"]
