@@ -16,6 +16,7 @@ import yaml
 from nemo_platform_plugin.files.dataset_profile import (
     PROFILE_SCHEMA_VERSION,
     ColumnStats,
+    Coverage,
     DatasetProfile,
     Evidence,
     FeatureSchema,
@@ -24,7 +25,6 @@ from nemo_platform_plugin.files.dataset_profile import (
     PartitionClassification,
     PartitionProfile,
     Quantiles,
-    SamplingInfo,
     SplitProfile,
     Verifiability,
 )
@@ -35,7 +35,7 @@ OPENMATHREASONING = """
 profile_schema_version: "1.0"
 created_at: 2026-07-08T22:05:12Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
-sampling: {rows_scanned: 2112, rows_present: 3201061,
+coverage: {rows_scanned: 2112, rows_present: 3201061,
            files_read: 33, files_present: 33, bytes_present: 31821490182}
 partitions:
   - name: ""
@@ -76,7 +76,7 @@ HH_RLHF_HELPFUL_BASE = """
 profile_schema_version: "1.0"
 created_at: 2026-07-08T22:41:37Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
-sampling: {rows_scanned: 1024, rows_present: 46189,
+coverage: {rows_scanned: 1024, rows_present: 46189,
            files_read: 2, files_present: 2, bytes_present: 27055195}
 partitions:
   - name: ""
@@ -117,7 +117,7 @@ HELPSTEER2 = """
 profile_schema_version: "1.0"
 created_at: 2026-07-09T10:12:45Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
-sampling: {rows_scanned: 1024, rows_present: 21362,
+coverage: {rows_scanned: 1024, rows_present: 21362,
            files_read: 2, files_present: 2, bytes_present: 19459677}
 partitions:
   - name: ""
@@ -168,7 +168,7 @@ def _build_profile() -> DatasetProfile:
     return DatasetProfile(
         created_at=datetime(2026, 7, 13, 12, 0, 0),
         profiler_info={"name": "nemo-dataset-profiler", "version": "0.1.0"},
-        sampling=SamplingInfo(
+        coverage=Coverage(
             rows_scanned=1024,
             rows_present=2048,
             files_read=2,
@@ -261,7 +261,7 @@ def test_split_sizes_account_for_the_whole_fileset(name):
     profile = DatasetProfile.model_validate(yaml.safe_load(FIXTURES[name]))
     assert not profile.file_errors
     from_splits = sum(split.size_bytes for part in profile.partitions for split in part.splits)
-    assert from_splits == profile.sampling.bytes_present
+    assert from_splits == profile.coverage.bytes_present
 
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))

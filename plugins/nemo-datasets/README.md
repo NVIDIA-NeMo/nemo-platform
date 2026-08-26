@@ -13,7 +13,7 @@ One artifact, described by `nemo_platform_plugin.files.dataset_profile.DatasetPr
 
 | Block | Answers |
 |---|---|
-| `sampling` | how much of the dataset the profile is based on — rows scanned vs present, files read vs present, bytes |
+| `coverage` | how much of the dataset the profile is based on — rows scanned vs present, files read vs present, bytes |
 | `partitions[].splits[]` | the splits, their exact row counts, and a glob that selects each one's files |
 | `partitions[].features[]` | the row schema, with a `semantic_role` assigned per column |
 | `partitions[].stats{}` | per-column measurements — length distributions, numeric ranges, chat structure, null rates |
@@ -114,7 +114,7 @@ read before the belt starts. That does not call for a different mechanism, only 
 guess: the same notepads are used, and the declared dtype picks which one answers instead of the
 observed types picking.
 
-→ one `RowFold`, driving one `DeferredAccumulator` per column. `DeferredAccumulator` is not clever —
+→ one `RowFold`, driving one `RoutedAccumulator` per column. `RoutedAccumulator` is not clever —
 it is a notepad per shape, plus a `SchemaFold` (inferred columns only) tracking which types have
 been seen.
 
@@ -244,7 +244,7 @@ Not top to bottom. In this order:
 3. `_LengthHistogram` and `_Vocabulary` — the two tricks above.
 4. `_MEASUREMENTS` and `_measurement_for` — five lines, and the only place a dtype becomes a
    measurement.
-5. `DeferredAccumulator` — one column, measured by shape.
+5. `RoutedAccumulator` — one column, measured by shape.
 6. `RowFold` — the columns of a partition, declared or discovered.
 
 ## Architecture
@@ -278,7 +278,7 @@ flowchart TD
     MEASURE --> PP["PartitionProfile"]
 
     PP --> LOOP
-    LOOP -->|"done"| ASM["DatasetProfile<br/>sampling + partitions + file_errors"]
+    LOOP -->|"done"| ASM["DatasetProfile<br/>coverage + partitions + file_errors"]
     UNSUP --> ASM
 ```
 
@@ -298,7 +298,7 @@ flowchart LR
 
     subgraph FOLD["_PartitionFolds — state constant in rows"]
         direction TB
-        COL["<b>RowFold</b><br/>one DeferredAccumulator per column"]
+        COL["<b>RowFold</b><br/>one RoutedAccumulator per column"]
         PRE["<b>PrefixPairFold</b><br/>relational: chosen vs rejected<br/><i>same row, two columns</i>"]
     end
 
@@ -433,7 +433,7 @@ print(profile(LocalFileSource(d)).model_dump_json(indent=2))
 
 > **Note:** `snapshot_download` writes a `.cache/huggingface/` tree alongside the data, and the
 > profiler does not skip dotted directories. Its bookkeeping `.json` files are reported as
-> `FileError`s, which makes `sampling.rows_present` unknown for the whole dataset. Delete `.cache/`
+> `FileError`s, which makes `coverage.rows_present` unknown for the whole dataset. Delete `.cache/`
 > or point `LocalFileSource` at the data subdirectory.
 
 ### `openai/gsm8k` — verifiable reasoning, two configs
