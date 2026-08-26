@@ -286,11 +286,19 @@ Monitor GRPO on **reward**, not loss. The GRPO surrogate loss oscillates near ze
 
 | Metric | Read it for |
 | --- | --- |
-| `train_reward`, `val_reward` | The curves that matter |
+| `train_reward` | Mean reward over the step's rollouts. The headline. |
+| `val_accuracy` | The validation pass's mean reward. NeMo-RL names it `accuracy`; it is not an accuracy in the classifier sense, and there is no `val_reward`. |
 | `train_truncation_rate` | Rising truncation is a common reason reward stops improving |
 | `train_baseline_reward/pct_mixed` | Share of prompt groups whose responses disagreed. Falling toward zero means there is no gradient left to learn from |
 | `train_approx_entropy` | Entropy collapse — responses degenerate while reward still looks acceptable |
-| `train_token_mult_prob_error` | Drift between the sampling policy and the training policy |
+| `train_token_mult_prob_error`, `train_sampling_importance_ratio` | Drift between the sampling policy and the training policy. Both sit near 1 on a healthy run. |
+| `train_timing/total_step_time` | Wall clock per training step, in seconds |
+
+`status_details` also carries two constants stated once when training starts: `training_type` (`grpo` or `dpo` — `backend` is `nemo_rl` for both) and `rollouts_per_step`, so the rollouts generated so far is `step × rollouts_per_step`.
+
+<Warning>
+`train_total_reward/stddev`, `/p25` and `/p75` describe reward spread, but they are close to uninformative when the environment returns a binary 0/1 reward — which most verifier environments do. On a Bernoulli reward, `stddev` is a deterministic function of the mean and adds nothing to `train_reward`, and the quartiles collapse to three states: `[0, 0]` below mean reward 0.25, `[0, 1]` between 0.25 and 0.75, `[1, 1]` above. A `p25` pinned at 0 for a whole run is correct, not a bug. Use `baseline_reward/pct_0` / `pct_1` / `pct_mixed` as the spread for binary rewards; keep the dispersion series for continuous or multi-component rewards.
+</Warning>
 
 ## Troubleshooting
 

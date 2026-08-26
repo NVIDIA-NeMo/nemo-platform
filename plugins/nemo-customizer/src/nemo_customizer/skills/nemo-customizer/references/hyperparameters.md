@@ -24,7 +24,7 @@ All three schemas use `extra="forbid"` — unknown keys raise validation errors.
 | **`hyperparameters-rl.md`** | NeMo-RL (DPO + GRPO) job JSON layout, shared knobs, DPO-specific (`ref_policy_kl_penalty` = β), GRPO-specific (`num_generations_per_prompt`, environment FileSet), convert CLI |
 | **`batch-sizing.md`** | ≥48 GB VRAM batch tables, multi-GPU (data vs tensor parallel), OOM / throughput tuning (automodel + unsloth) |
 | **Integrations** (below) | W&B / MLflow `integrations` object — all three backends (automodel, unsloth, rl) |
-| **Source of truth** (below) | Schema source files, compiler mappings, fixtures per backend |
+| **Source of truth** (below) | What is authoritative for a field, and what is only an example |
 
 ---
 
@@ -68,7 +68,7 @@ All three schemas use `extra="forbid"` — unknown keys raise validation errors.
 | `mlflow.name` | MLflow run name; defaults to job ID. Legacy `run_name` is accepted with a deprecation warning. |
 | `mlflow.tags` / `mlflow.description` | Optional run metadata. |
 
-Set `"integrations": null` or omit the field when tracking is not needed. Fixtures per backend: automodel → `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`; unsloth → `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`; rl → `plugins/nemo-rl/tests/fixtures/integrations_wandb_mlflow.json`.
+Set `"integrations": null` or omit the field when tracking is not needed. For the payload shape only — the field set is `IntegrationsSpec`, above — automodel → `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`; unsloth → `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`; rl → `plugins/nemo-rl/tests/fixtures/integrations_wandb_mlflow.json`.
 
 **Local setup (MLflow server, `docker0` tracking URI, jobs-launcher, W&B secret) — Docker-runtime (automodel / unsloth):** `references/integrations-setup.md`.
 
@@ -80,6 +80,27 @@ Set `"integrations": null` or omit the field when tracking is not needed. Fixtur
 
 # Source of truth
 
+**A test fixture is not the schema.** Fixtures are inputs to smoke tests: they carry
+whatever made a test run fast and cheap, they exercise one path rather than the field
+set, and nothing fails when the schema gains a field they never set. Reading one to
+answer "what fields exist" or "what is the default" gives an answer that is wrong in
+the direction of *too small* — `max_steps: 20` and a 0.6B model are test scaffolding,
+not recommendations.
+
+Order to trust, highest first:
+
+| Rank | Ask | Why it wins |
+|------|-----|-------------|
+| 1 | `nemo customization <plugin> explain` | The live schema of the installed build. Cannot drift from what the server accepts. |
+| 2 | The schema source files below | The same contract, with field descriptions and validators. Use when the CLI is unavailable or you need the *why*. |
+| 3 | This reference and its per-backend files | Curated, but written by hand and can lag a schema change. |
+| 4 | Fixtures, READMEs, design docs | Illustrative only. Copy the *shape*, never the values, and never infer absence from them. |
+
+If a fixture and the live schema disagree, the schema is right and the fixture is
+stale. Say so rather than following the fixture.
+
+## Authoritative
+
 | Resource | Path | Use for |
 |----------|------|---------|
 | **Batch / multi-GPU / 48 GB LoRA (automodel)** | `batch-sizing.md` § Batch sizing — automodel, § Multi-GPU | Choosing `micro`, GBS, LR, TP vs data parallel |
@@ -90,13 +111,25 @@ Set `"integrations": null` or omit the field when tracking is not needed. Fixtur
 | Submit schema (unsloth) | `plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py` | Allowed JSON fields (`UnslothJobInput`) |
 | Canonical schema (unsloth) | `services/unsloth/src/nmp/unsloth/schemas.py` | Post-`to_spec` shape; what `train_sft` consumes |
 | Training driver (unsloth) | `services/unsloth/src/nmp/unsloth/tasks/training/backends/unsloth_sft.py` | Field → call-site mapping (FastLanguageModel.from_pretrained, SFTTrainer, save_pretrained{,_merged}) |
-| JSON examples (automodel) | `plugins/nemo-automodel/tests/fixtures/*.json` | Copy-paste templates (ignore fixture `max_steps` in prod) |
-| JSON example (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` | Smoke-test template (ignore `max_steps` for real runs) |
-| Full spec doc (automodel) | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) | Design notes |
-| Plugin README (unsloth) | `plugins/nemo-unsloth/README.md` | Submit-only CLI, 4-step container job, GPU selection |
 | Submit schema (rl / DPO) | `plugins/nemo-rl/src/nemo_rl_plugin/schema.py` | Allowed JSON fields (`RlJobInput` / `DPOTraining`) |
 | Canonical schema (rl / DPO) | `services/rl/src/nmp/rl/schemas.py` | Post-transform shape (`RlJobOutput`); divisibility validator |
 | DPO config builder (rl) | `services/rl/src/nmp/rl/tasks/training/backends/nemo_rl/dpo_config.py` | Field → NeMo-RL YAML mapping |
-| JSON fixture (rl / DPO) | `plugins/nemo-rl/tests/fixtures/minimal_dpo.json` | Minimal template (ignore `max_steps` for real runs) |
-| Plugin README (rl / DPO) | `plugins/nemo-rl/README.md` | Submit-only CLI, Kubernetes/Ray runtime, constraints |
-| Plugin design doc (rl / DPO) | `docs/customizer/nemo-rl-dpo-plugin-design.md` | Architecture, 4-step job, image split |
+
+## Illustrative — shape only, never the contract
+
+Nothing here is authoritative. Read it for orientation, then confirm every field
+against `explain` or a schema file above.
+
+| Resource | Path | Read it for | Do not read it for |
+|----------|------|-------------|--------------------|
+| JSON fixtures (automodel) | `plugins/nemo-automodel/tests/fixtures/*.json` | Where a block sits in the payload | Field set, defaults, sensible values |
+| JSON fixture (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` | Same | Same |
+| JSON fixture (rl / DPO) | `plugins/nemo-rl/tests/fixtures/minimal_dpo.json` | Same | Same |
+| Full spec doc (automodel) | `plugins/nemo-automodel/SCOPE.md` | Design intent | Current field set |
+| Plugin README (unsloth) | `plugins/nemo-unsloth/README.md` | Submit-only CLI, 4-step container job, GPU selection | Field reference |
+| Plugin README (rl) | `plugins/nemo-rl/README.md` | Submit-only CLI, Kubernetes/Ray runtime, constraints | Field reference |
+| Plugin design doc (rl) | `docs/customizer/nemo-rl-dpo-plugin-design.md` | Architecture, 4-step job, image split | Field reference |
+
+Every fixture above sets `max_steps` so a smoke test finishes in a minute. That is the
+clearest case of the rule: it is the single most-copied wrong value in this repo, and
+it caps a real run mid-epoch.
