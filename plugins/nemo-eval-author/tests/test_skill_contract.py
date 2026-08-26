@@ -221,6 +221,36 @@ def test_the_core_names_every_sub_flow() -> None:
         assert skill_dir.name in body, f"the core does not route to {skill_dir.name}"
 
 
+def test_inspect_flow_is_reached_only_through_eval_author() -> None:
+    """Generic Intake questions must not match the inspect-trace sub-flow.
+
+    ``nemo-intake`` already owns instrumentation, ingest, and query. If this
+    sub-flow stays user-invocable and repeats those phrases, an agent with both
+    skills loaded cannot tell which one to start.
+    """
+    inspect_frontmatter, inspect_body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
+    core_frontmatter, _ = _frontmatter_and_body(_CORE_DIR)
+    overlapping = (
+        "inspect this agent trace",
+        "what happened in this agent trace",
+        "explain this production agent run",
+        "did this trace succeed",
+        "why did this trace fail",
+        "inspecting agent runs",
+    )
+
+    assert inspect_frontmatter["user-invocable"] is False
+    assert "eval-author has routed" in inspect_frontmatter["description"]
+    assert "nemo-intake" in inspect_frontmatter["description"]
+    assert "nemo-intake" in _not_for_names(inspect_frontmatter)
+    assert "nemo-intake" in _not_for_names(core_frontmatter)
+    assert "what happened in this agent trace" in core_frontmatter["triggers"]
+    for phrase in overlapping:
+        assert phrase not in inspect_frontmatter["triggers"]
+        assert phrase not in inspect_frontmatter["description"]
+    assert "after `eval-author` selects it" in inspect_body
+
+
 def test_inspect_flow_is_only_a_cli_driven_skill() -> None:
     _, body = _frontmatter_and_body(_INSPECT_FLOW_DIR)
 

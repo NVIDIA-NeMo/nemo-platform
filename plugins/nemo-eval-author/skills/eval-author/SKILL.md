@@ -20,7 +20,8 @@ triggers:
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
-  - eval-author-inspect-trace (use to understand one Intake trace)
+  - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
+  - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - nemo-experimentalist (use to run insight-driven optimization end to end)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: >-
@@ -77,7 +78,7 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
-| `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure |
+| `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
 
 Authoring new tasks and verifier metrics is not built yet. When a user asks for
 that, say so plainly rather than improvising a task layout by hand. A task written

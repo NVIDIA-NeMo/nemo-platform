@@ -4,35 +4,34 @@
 
 name: eval-author-inspect-trace
 description: >-
-  Understand one agent trace from NeMo Intake without presuming that the trace
-  failed. Reports evidence-backed behavior, issues, recoveries, and
-  uncertainties tied to span IDs. Use when the user asks "what happened in this
-  trace?", "inspect this trace", "explain this agent run", "did this trace
-  succeed?", or "why did this production trace fail?". Optionally reads relevant
-  local agent source, but changes none of it.
+  Use when eval-author has routed to this sub-flow for one Intake trace. Do not
+  use for instrumenting agents, ingesting telemetry, importing a trace store,
+  verifying ingest, or querying Intake outside Eval Author; those belong to
+  nemo-intake.
 triggers:
-  - inspect this agent trace
-  - what happened in this agent trace
-  - explain this production agent run
-  - did this trace succeed
-  - why did this trace fail
+  - eval-author routed to inspect-trace
+  - inspect the intake trace eval-author named
+  - continue eval-author intake trace inspection
 not-for:
   - eval-author (use for the standard, the boundaries, and to pick a sub-flow)
   - eval-author-discover (use to establish whether a repository's Harbor suite is runnable)
+  - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - nemo-experimentalist (use for an optimization experiment across many trials)
 compatibility: >-
   A working nemo CLI invocation, an explicit workspace, and read access to
   Intake on a configured local or remote NeMo Platform instance.
 maturity: alpha
 license: Apache-2.0
-user-invocable: true
+user-invocable: false
 allowed-tools: [Bash, Read, Write, Grep, Glob]
 ---
 
 # Eval Author: inspect an Intake trace
 
 Read one Intake trace, explain its trajectory, and save an evidence-backed
-report. Read `eval-author` for the shared standard and boundaries.
+report. Start this sub-flow only after `eval-author` selects it. For
+instrumentation, ingest, or a general Intake query, use `nemo-intake`. Read
+`eval-author` for the shared standard and boundaries.
 
 ## Requirements
 
