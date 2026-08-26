@@ -11,7 +11,7 @@ import {
 import {
   getDataDesignerJobDetailsRoute,
   getEvaluationResultDetailsRoute,
-  getSafeSynthesizerJobRoute,
+  getGenerateJobRoute,
   getWorkspaceCustomizationJobDetailsRoute,
   getWorkspaceJobDetailRoute,
 } from '@studio/routes/utils';
@@ -35,7 +35,7 @@ const SOURCE_DETAIL_ROUTE: Record<
   },
   [JOB_SOURCE.SAFE_SYNTHESIZER]: {
     enabled: SAFE_SYNTHESIZER_ENABLED,
-    getRoute: getSafeSynthesizerJobRoute,
+    getRoute: getGenerateJobRoute,
   },
   [JOB_SOURCE.EVALUATOR_METRICS]: {
     enabled: EVALUATOR_ENABLED,

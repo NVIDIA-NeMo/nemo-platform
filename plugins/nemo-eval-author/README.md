@@ -3,15 +3,33 @@
 
 # NeMo Eval Author
 
-Two skills that an agent reads to work on the evaluation suites in a user's own
-repository. There is no CLI, no service, and no importable code, so this directory
-builds no package at all. A customer points their agent at `skills/` and nothing
-gets installed.
+Three skills that an agent reads to work on the evaluation suites in a user's own
+repository. This directory provides no installed public package or service, so a
+customer points their agent at `skills/` and nothing gets installed.
+
+The audit sub-flow also ships a bundled validator CLI at
+[`skills/eval-author-audit/scripts/audit_spec/validate.py`](skills/eval-author-audit/scripts/audit_spec/validate.py)
+and private helper modules under `scripts/audit_spec/`. They are invoked from the
+copied skill tree, not published as a package API.
+
+## Prerequisites
+
+Discovery imports nothing beyond the standard library and Harbor itself, so it
+runs on whatever Python the customer already has. Audit validation needs PyYAML
+to read the marked YAML block and jsonschema to enforce
+`schemas/audit.schema.json`.
+
+`tests/test_skill_contract.py` holds to the same boundary and imports nothing
+from the platform, so `pytest`, `pyyaml`, and `jsonschema` are enough to run it.
+The five tests that make Harbor judge a fixture suite skip when Harbor is absent,
+which is why this directory declares no dependencies and appears in no dependency
+group.
 
 | Skill | Role |
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
+| [`eval-author-audit`](skills/eval-author-audit/SKILL.md) | Sub-flow. Validates an existing finite `audit.md` coverage denominator. |
 
 ## Where findings go
 
@@ -34,17 +52,16 @@ The Eval Author agent that Experimentalist insight mode still uses lives in
 
 ## Dependencies
 
-The scripts under `skills/*/scripts/` import nothing beyond the standard library and
-Harbor itself, so they run on whatever Python the customer already has. Where a real
-answer needs a provider, the skill defers to the provider's own validators rather
-than guessing from file layout, which is why `eval-author-discover` probes for an
-installed Harbor and asks Harbor to judge each config.
-
-`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
-the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that
-make Harbor judge a fixture suite skip when Harbor is absent, which is why this
-directory declares no dependencies and appears in no dependency group.
-
 Adding a runtime dependency to a bundled script is a breaking change for anyone who
 copied the skill, so the contract test walks each script's imports and fails on
-anything outside the standard library, a sibling module, or Harbor.
+anything outside the standard library, a sibling module, or the explicitly allowed
+third-party validators.
+
+## Next Steps
+
+- Start with [`eval-author`](skills/eval-author/SKILL.md) to select the right
+  sub-flow and apply the shared evaluation standard.
+- Use [`eval-author-discover`](skills/eval-author-discover/SKILL.md) to check
+  whether a Harbor suite can run.
+- Use [`eval-author-audit`](skills/eval-author-audit/SKILL.md) to validate an
+  existing finite `audit.md` coverage denominator.

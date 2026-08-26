@@ -320,6 +320,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             sandbox_resources=config.sandbox_resources,
             sandbox_ttl_s=config.sandbox_ttl_s,
             sandbox_rollout_chunk_size=config.sandbox_rollout_chunk_size,
+            sandbox_rollout_max_in_flight=config.sandbox_rollout_max_in_flight,
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,

@@ -5,13 +5,13 @@ import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
 import {
-  type SafeSynthesizerJob,
+  type GenerateJob,
   type SafeSynthesizerSummary,
 } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { SafeSynthesizerJobDetailsRoute } from '@studio/routes/SafeSynthesizerJobDetailsRoute';
+import { GenerateJobDetailsRoute } from '@studio/routes/SafeSynthesizerJobDetailsRoute';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -34,7 +34,7 @@ vi.mock('@studio/components/SafeSynthesizerNavigation', () => ({
 
 // Mock JobDetailsPanel component
 vi.mock('@studio/routes/SafeSynthesizerJobDetailsRoute/components/JobDetailsPanel', () => ({
-  JobDetailsPanel: ({ job, errorMessage }: { job: SafeSynthesizerJob; errorMessage?: string }) => (
+  JobDetailsPanel: ({ job, errorMessage }: { job: GenerateJob; errorMessage?: string }) => (
     <div data-testid="job-details-panel">
       <span data-testid="panel-job-id">{job.id}</span>
       <span data-testid="panel-job-name">{job.name}</span>
@@ -102,7 +102,7 @@ const createWrapper = () => {
 };
 
 // Helper function to create mock job
-const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizerJob =>
+const createMockJob = (overrides?: Partial<GenerateJob>): GenerateJob =>
   ({
     id: 'test-job-123',
     name: 'Test Job',
@@ -118,11 +118,11 @@ const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizer
       },
     },
     ...overrides,
-  }) as SafeSynthesizerJob;
+  }) as GenerateJob;
 
 // Helper function to mock API hooks
 const mockApiHooks = (
-  job: SafeSynthesizerJob,
+  job: GenerateJob,
   summary: SafeSynthesizerSummary | undefined = undefined
 ) => {
   vi.spyOn(safeSynthesizerApi, 'useSafeSynthesizerGetJobSuspense').mockImplementation(
@@ -133,7 +133,7 @@ const mockApiHooks = (
   );
 };
 
-describe('SafeSynthesizerJobDetailsRoute - Feature Flag', () => {
+describe('GenerateJobDetailsRoute - Feature Flag', () => {
   beforeEach(() => {
     vi.resetModules();
   });
@@ -145,8 +145,8 @@ describe('SafeSynthesizerJobDetailsRoute - Feature Flag', () => {
     }));
 
     const module = await import('./index');
-    expect(module.SafeSynthesizerJobDetailsRoute).toBeDefined();
-    expect(module.SafeSynthesizerJobDetailsRoute).not.toBeNull();
+    expect(module.GenerateJobDetailsRoute).toBeDefined();
+    expect(module.GenerateJobDetailsRoute).not.toBeNull();
   });
 
   it('should be null when feature flag is disabled', async () => {
@@ -156,11 +156,11 @@ describe('SafeSynthesizerJobDetailsRoute - Feature Flag', () => {
     }));
 
     const module = await import('./index');
-    expect(module.SafeSynthesizerJobDetailsRoute).toBeNull();
+    expect(module.GenerateJobDetailsRoute).toBeNull();
   });
 });
 
-describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
+describe('GenerateJobDetailsRoute - Rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -179,7 +179,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
   });
 
   it('should render all main components', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -187,7 +187,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
     const mockJob = createMockJob();
     mockApiHooks(mockJob);
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     // Verify all main components are rendered
     expect(screen.getByTestId('safe-synthesizer-navigation')).toBeInTheDocument();
@@ -197,7 +197,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
   });
 
   it('should render navigation with correct selection', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -205,14 +205,14 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
     const mockJob = createMockJob();
     mockApiHooks(mockJob);
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     expect(screen.getByTestId('navigation-selected')).toHaveTextContent('summary');
     expect(screen.getByTestId('navigation-job-id')).toHaveTextContent('test-job-123');
   });
 
   it('should not fetch summary for running jobs', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -220,14 +220,14 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
     const mockJob = createMockJob({ status: PlatformJobStatus.active });
     mockApiHooks(mockJob);
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     const reportPanel = screen.getByTestId('report-summary-panel');
     expect(within(reportPanel).getByTestId('panel-has-summary')).toHaveTextContent('no-summary');
   });
 
   it('should fetch and display summary for completed jobs', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -242,14 +242,14 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
     } as SafeSynthesizerSummary;
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     const reportPanel = screen.getByTestId('report-summary-panel');
     expect(within(reportPanel).getByTestId('panel-has-summary')).toHaveTextContent('has-summary');
   });
 
   it('should not fetch summary for error jobs', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -257,14 +257,14 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
     const mockJob = createMockJob({ status: PlatformJobStatus.error });
     mockApiHooks(mockJob);
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     const reportPanel = screen.getByTestId('report-summary-panel');
     expect(within(reportPanel).getByTestId('panel-has-summary')).toHaveTextContent('no-summary');
   });
 
   it('should set up breadcrumbs correctly', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -272,7 +272,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
     const mockJob = createMockJob();
     mockApiHooks(mockJob);
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     // Verify breadcrumbs were called with correct items
     expect(mockUseBreadcrumbs).toHaveBeenCalledWith(
@@ -290,7 +290,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
   });
 
   it('should extract and display error message from logs when job status is error', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -332,7 +332,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
       refetch: vi.fn(),
     });
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     // Verify error message is displayed
     const errorMessage = screen.getByTestId('job-details-error-message');
@@ -340,7 +340,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
   });
 
   it('should not display error message when job status is not error', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -368,14 +368,14 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
       refetch: vi.fn(),
     });
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     // Verify error message is not displayed
     expect(screen.queryByTestId('job-details-error-message')).not.toBeInTheDocument();
   });
 
   it('should not display error message when no ERROR level logs exist', () => {
-    if (!SafeSynthesizerJobDetailsRoute) {
+    if (!GenerateJobDetailsRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -407,7 +407,7 @@ describe('SafeSynthesizerJobDetailsRoute - Rendering', () => {
       refetch: vi.fn(),
     });
 
-    render(<SafeSynthesizerJobDetailsRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobDetailsRoute />, { wrapper: createWrapper() });
 
     // Verify error message is not displayed
     expect(screen.queryByTestId('job-details-error-message')).not.toBeInTheDocument();

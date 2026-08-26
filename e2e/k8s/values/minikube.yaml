@@ -48,5 +48,3 @@ platformConfig:
             additional_volume_mounts:
               - name: nmp-additional-volume
                 mount_path: /mnt/additional_storage
-  safe_synthesizer:
-    job_mode: container

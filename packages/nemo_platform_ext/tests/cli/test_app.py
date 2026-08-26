@@ -447,13 +447,13 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
     from nemo_platform_ext.cli.app import _build_top_level_lazy_entries
 
     plugin_entry_points = {
-        "safe-synthesizer": SimpleNamespace(value="nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"),
+        "custom-plugin": SimpleNamespace(value="nemo_custom_plugin.cli:CustomPluginCLI"),
     }
     api_entries = (
         TopLevelEntry(
-            import_path="nemo_platform_ext.cli.commands.api.safe_synthesizer:app",
-            name="safe-synthesizer",
-            help="Safe Synthesizer operations.",
+            import_path="nemo_platform_ext.cli.commands.api.custom_plugin:app",
+            name="custom-plugin",
+            help="Custom plugin operations.",
             panel="Functional plugins",
             kind="group",
         ),
@@ -477,9 +477,9 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
         entries = _build_top_level_lazy_entries()
 
     by_name = {entry.name: entry for entry in entries}
-    assert set(by_name) == {"files", "safe-synthesizer"}
+    assert set(by_name) == {"files", "custom-plugin"}
     assert by_name["files"].source == "module"
-    assert by_name["safe-synthesizer"].source == "plugin"
+    assert by_name["custom-plugin"].source == "plugin"
 
 
 def test_plugin_entry_point_name_collision_is_skipped(caplog):
@@ -529,7 +529,11 @@ def test_evaluator_plugin_entry_point_has_deliberate_order_before_unknown_plugin
     assert [entry.name for entry in visible_entries] == ["evaluator", "aardvark", "zeta"]
 
 
-@pytest.mark.parametrize("entry", TOP_LEVEL_ENTRIES, ids=lambda entry: entry.name)
+@pytest.mark.parametrize(
+    "entry",
+    [e for e in TOP_LEVEL_ENTRIES if e.source != "plugin"],
+    ids=lambda entry: entry.name,
+)
 def test_manifest_help_matches_loaded_manual_entry(entry):
     loader = lazy_group_loader(entry.import_path) if entry.kind == "group" else lazy_command_loader(entry.import_path)
 

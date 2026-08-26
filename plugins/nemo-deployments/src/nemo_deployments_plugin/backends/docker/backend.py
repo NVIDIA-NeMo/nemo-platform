@@ -287,6 +287,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         docker_cfg = parse_docker_backend_config(backend_config)
         if config.backend_config.docker is not None:
             docker_cfg = config.backend_config.docker
+        if docker_cfg.network is None and self._executor_config.network is not None:
+            docker_cfg = docker_cfg.model_copy(update={"network": self._executor_config.network})
 
         dep_key = deployment_key(workspace, name)
         gpu_pool = self._gpu_pool
@@ -429,7 +431,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                     status_message=f"Failed to start sidecar {sidecar.name}: {exc}",
                 )
 
-        endpoints = self._build_endpoints(container_spec, host_ports)
+        endpoints = self._build_endpoints(container_spec, host_ports, target_name=c_name)
         if config.restart_policy in _ONE_SHOT_RESTART_POLICIES:
             return await self._observe_one_shot_primary_after_create(
                 workspace=workspace,
@@ -730,7 +732,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         state = container.status
         container_id = (container.id or "")[:12]
         host_ports = self._extract_host_ports(container)
-        endpoints = self._endpoints_from_container_ports(container, host_ports)
+        endpoints = self._endpoints_from_container_ports(host_ports, target_name=c_name)
 
         if state in ("created", "restarting"):
             return map_docker_state_to_starting(container_id, state)
@@ -740,7 +742,8 @@ class DockerDeploymentBackend(DeploymentBackend):
             # it must see only TCP mappings: a UDP-only workload has no TCP listener and
             # would otherwise be gated STARTING forever. Endpoints still carry every port.
             tcp_host_ports = self._extract_host_ports(container, protocol="tcp")
-            host_url = self._primary_host_url(tcp_host_ports)
+            host_url = self._primary_host_url(tcp_host_ports, target_name=c_name)
+            probe_ports = self._probe_ports(tcp_host_ports)
             config = await self._load_config_from_labels(workspace, labels)
             probe = None
             if config is not None and config.containers:
@@ -749,7 +752,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 container=container,
                 probe=probe,
                 host_url=host_url,
-                host_ports=tcp_host_ports,
+                host_ports=probe_ports,
             )
             if ready and restart_policy == "Always":
                 sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name, config)
@@ -1253,42 +1256,76 @@ class DockerDeploymentBackend(DeploymentBackend):
                 result[container_port] = int(host_port)
         return result
 
-    def _primary_host_url(self, host_ports: dict[int, int]) -> str | None:
+    def _url_for_port(
+        self,
+        *,
+        target_name: str,
+        container_port: int,
+        host_port: int | None,
+        scheme: str = "http",
+    ) -> str | None:
+        if self._executor_config.endpoint_mode == "network":
+            return host_url_for_port(target_name, container_port, scheme=scheme)
+        if host_port is None:
+            return None
+        host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])
+        return host_url_for_port(host, host_port, scheme=scheme)
+
+    def _primary_host_url(self, host_ports: dict[int, int], *, target_name: str) -> str | None:
         if not host_ports:
             return None
-        host_port = next(iter(host_ports.values()))
-        host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])
-        return host_url_for_port(host, host_port)
+        container_port, host_port = next(iter(host_ports.items()))
+        return self._url_for_port(target_name=target_name, container_port=container_port, host_port=host_port)
 
-    def _build_endpoints(self, container_spec: Container, host_ports: dict[int, int]) -> list[Endpoint]:
+    def _probe_ports(self, host_ports: dict[int, int]) -> dict[int, int]:
+        if self._executor_config.endpoint_mode == "network":
+            return {container_port: container_port for container_port in host_ports}
+        return host_ports
+
+    def _build_endpoints(
+        self,
+        container_spec: Container,
+        host_ports: dict[int, int],
+        *,
+        target_name: str,
+    ) -> list[Endpoint]:
         endpoints: list[Endpoint] = []
-        host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])
         for port_spec in container_spec.ports:
             host_port = host_ports.get(port_spec.container_port)
-            if host_port is None:
+            endpoint_url = self._url_for_port(
+                target_name=target_name,
+                container_port=port_spec.container_port,
+                host_port=host_port,
+            )
+            if endpoint_url is None:
                 continue
             endpoint_name = port_spec.name or f"port-{port_spec.container_port}"
             protocol = "tcp" if port_spec.protocol == "UDP" else "http"
-            scheme = "http"
             endpoints.append(
                 Endpoint(
                     name=endpoint_name,
-                    url=host_url_for_port(host, host_port, scheme=scheme),
+                    url=endpoint_url,
                     protocol=protocol,
                 )
             )
         return endpoints
 
-    def _endpoints_from_container_ports(self, container: DockerContainer, host_ports: dict[int, int]) -> list[Endpoint]:
+    def _endpoints_from_container_ports(self, host_ports: dict[int, int], *, target_name: str) -> list[Endpoint]:
         if not host_ports:
             return []
-        host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])
         endpoints: list[Endpoint] = []
         for container_port, host_port in host_ports.items():
+            endpoint_url = self._url_for_port(
+                target_name=target_name,
+                container_port=container_port,
+                host_port=host_port,
+            )
+            if endpoint_url is None:
+                continue
             endpoints.append(
                 Endpoint(
                     name=f"port-{container_port}",
-                    url=host_url_for_port(host, host_port),
+                    url=endpoint_url,
                     protocol="http",
                 )
             )

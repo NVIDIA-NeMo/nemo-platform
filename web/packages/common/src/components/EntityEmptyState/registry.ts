@@ -214,9 +214,9 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     subheading: 'Generate a private version of a sensitive tabular dataset.',
     createAction: { label: 'Synthesize Data' },
     cliCommand:
-      'nemo safe-synthesizer run-local --workspace <workspace> --spec-file <job-spec>.json --data-source <input.csv> --output-dir <output-dir>',
+      'nemo safe-synthesizer generate --workspace <workspace> --spec-file <job-spec>.json',
     skillPrompt:
-      'Help me create my first Safe Synthesizer run with the nemo-safe-synthesizer skill',
+      'Help me create my first Safe Synthesizer job with the nemo-safe-synthesizer skill',
   },
   agentEvaluations: {
     icon: FlaskConical,

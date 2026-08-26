@@ -6,7 +6,7 @@
    role or text, so verifying their geometry means reading the rendered nodes directly. */
 
 import { RangeBand } from '@studio/components/charts/RangeBand';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { cloneElement, type ReactElement } from 'react';
 
 /** `ResponsiveContainer` measures the DOM, which jsdom reports as 0×0 — pin a size instead. */
@@ -110,6 +110,52 @@ describe('RangeBand geometry', () => {
     expect(lineD.match(/M/g)).toHaveLength(2);
   });
 
+  it('bridges a gap for a series that opted into connectNulls, marking only the real points', () => {
+    // The gaps belong to the axis, not the curve, so the line spans them while the markers stay
+    // on the steps a validation pass actually ran.
+    const { container } = renderChart(
+      [
+        {
+          id: 'validation',
+          label: 'Validation',
+          data: [0.2, null, null, 0.5, null],
+          lower: [],
+          upper: [],
+          connectNulls: true,
+        },
+      ],
+      [0, 1, 2, 3, 4]
+    );
+
+    const lineD = container.querySelector('.recharts-line-curve')?.getAttribute('d') ?? '';
+    expect(lineD.match(/M/g)).toHaveLength(1);
+    expect(container.querySelectorAll('.recharts-line-dot')).toHaveLength(2);
+  });
+
+  it('lets a sparse series turn its own markers on, whatever the chart-level default', () => {
+    // The chart-level default measures the padded array, so a bridged series loses its markers
+    // exactly when they are the only thing showing how rarely it was sampled.
+    const { container } = render(
+      <RangeBand
+        series={[
+          {
+            id: 'validation',
+            label: 'Validation',
+            data: [0.2, null, null, 0.5, null],
+            lower: [],
+            upper: [],
+            connectNulls: true,
+            showMarks: true,
+          },
+        ]}
+        xAxis={[0, 1, 2, 3, 4]}
+        curve="linear"
+      />
+    );
+
+    expect(container.querySelectorAll('.recharts-line-dot')).toHaveLength(2);
+  });
+
   it('renders shared reference lines into the plot', () => {
     // Guards the cross-package render helper: recharts dispatches chart children by element
     // type, so if `renderReferenceLines` ever became a component the line would silently vanish.
@@ -124,6 +170,24 @@ describe('RangeBand geometry', () => {
     );
 
     expect(container.querySelector('.recharts-reference-line')).toBeInTheDocument();
+  });
+
+  it('drops a reference line the axis does not reach, and draws it once the caller makes room', () => {
+    // Recharts discards a line outside the data-fitted domain, so a threshold needs the caller to
+    // widen the axis; `extendDomain` cannot, as the explicit `domain` wins and the line escapes.
+    const series = [{ id: 'a', label: 'A', data: [0.0001, 0.0005], lower: [], upper: [] }];
+    const threshold = [{ y: 0.001, label: 'threshold 1e-3' }];
+
+    const { container, rerender } = render(
+      <RangeBand series={series} xAxis={[0, 1]} referenceLines={threshold} />
+    );
+    expect(container.querySelector('.recharts-reference-line')).toBeNull();
+
+    rerender(
+      <RangeBand series={series} xAxis={[0, 1]} referenceLines={threshold} yAxisMax={0.0011} />
+    );
+    expect(container.querySelector('.recharts-reference-line')).toBeInTheDocument();
+    expect(screen.getByText('threshold 1e-3')).toBeInTheDocument();
   });
 
   it('draws no center line for a band-only series', () => {

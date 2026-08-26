@@ -3,7 +3,7 @@
 
 import { triggerDownload } from '@nemo/common/src/utils/file';
 import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
-import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
+import type { GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { OverviewPanel } from '@studio/routes/SafeSynthesizerJobReportRoute/components/OverviewPanel';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
@@ -18,7 +18,7 @@ vi.mock('lucide-react', async () => {
 
 // Mock SafeSynthesizerFilesetPreview component
 vi.mock('@studio/components/SafeSynthesizerFilesetPreview', () => ({
-  SafeSynthesizerFilesetPreview: ({ job }: { job: SafeSynthesizerJob }) => (
+  SafeSynthesizerFilesetPreview: ({ job }: { job: GenerateJob }) => (
     <div data-testid="fileset-preview">{job.name}</div>
   ),
 }));
@@ -48,7 +48,7 @@ const createWrapper = () => {
 };
 
 // Helper function to create mock job
-const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizerJob =>
+const createMockJob = (overrides?: Partial<GenerateJob>): GenerateJob =>
   ({
     id: 'test-job-id',
     name: 'Test Job',
@@ -56,10 +56,10 @@ const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizer
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T01:00:00Z',
     ...overrides,
-  }) as SafeSynthesizerJob;
+  }) as GenerateJob;
 
 // Helper function to mock API hooks
-const mockApiHooks = (job: SafeSynthesizerJob, report: string | undefined = undefined) => {
+const mockApiHooks = (job: GenerateJob, report: string | undefined = undefined) => {
   vi.spyOn(safeSynthesizerApi, 'useSafeSynthesizerGetJobSuspense').mockImplementation(
     vi.fn().mockReturnValue({ data: job })
   );

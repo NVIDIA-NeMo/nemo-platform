@@ -544,17 +544,14 @@ export const getNewSafeSynthesizerRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizerNew, { workspace });
 };
 
-export const getSafeSynthesizerJobRoute = (workspace: string, safeSynthesizerJobName: string) => {
+export const getGenerateJobRoute = (workspace: string, safeSynthesizerJobName: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizerJob, {
     workspace,
     safeSynthesizerJobName,
   });
 };
 
-export const getSafeSynthesizerJobReportRoute = (
-  workspace: string,
-  safeSynthesizerJobName: string
-) => {
+export const getGenerateJobReportRoute = (workspace: string, safeSynthesizerJobName: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizerJobReport, {
     workspace,
     safeSynthesizerJobName,

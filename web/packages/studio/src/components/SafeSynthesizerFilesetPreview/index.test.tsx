@@ -8,7 +8,7 @@ import {
   useSafeSynthesizerDownloadJobResultSyntheticData,
   useSafeSynthesizerListJobResults,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
-import { type SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
+import { type GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerFilesetPreview } from '@studio/components/SafeSynthesizerFilesetPreview';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
@@ -126,7 +126,7 @@ const createWrapper = () => {
 };
 
 // Mock data - all jobs now use fileset:// URLs
-const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizerJob => ({
+const createMockJob = (overrides?: Partial<GenerateJob>): GenerateJob => ({
   id: 'test-job-id',
   name: 'test-job',
   workspace: 'test-workspace',
@@ -141,9 +141,7 @@ const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizer
   ...overrides,
 });
 
-const createMockJobWithFilesetUrl = (
-  overrides?: Partial<SafeSynthesizerJob>
-): SafeSynthesizerJob => ({
+const createMockJobWithFilesetUrl = (overrides?: Partial<GenerateJob>): GenerateJob => ({
   id: 'test-job-id',
   name: 'test-job',
   workspace: 'test-workspace',

@@ -21,6 +21,9 @@ class GymHostEgressRule(BaseModel):
 
 #: NeMo-RL's ``DEFAULT_ROLLOUT_CHUNK_SIZE`` (``environments/sandbox/host/models.py``).
 DEFAULT_ROLLOUT_CHUNK_SIZE = 8
+#: NeMo-RL's ``DEFAULT_ROLLOUT_MAX_IN_FLIGHT``. Concurrent POSTs; effective in-flight
+#: rollouts are ``rollout_chunk_size * rollout_max_in_flight``.
+DEFAULT_ROLLOUT_MAX_IN_FLIGHT = 8
 
 
 class SandboxNetworkPolicy(BaseModel):
@@ -62,6 +65,9 @@ class SandboxConfig(BaseModel):
     # its rollouts ask for, and the OpenSandbox proxy caps how long one request may stay open,
     # so long generations can need a smaller chunk than NeMo-RL's default.
     rollout_chunk_size: int = Field(default=DEFAULT_ROLLOUT_CHUNK_SIZE, gt=0)
+    # Concurrent chunk POSTs. Lowering rollout_chunk_size without raising this throttles
+    # the step: in-flight rollouts are the product of the two.
+    rollout_max_in_flight: int = Field(default=DEFAULT_ROLLOUT_MAX_IN_FLIGHT, gt=0)
     network_policy: SandboxNetworkPolicy = Field(default_factory=SandboxNetworkPolicy)
     resources: dict[str, str] | None = None
     # Forwarded verbatim to NeMo-RL's host provider constructor (connection / create /
