@@ -61,8 +61,10 @@ kubectl get secret opensandbox-server-api-key -n opensandbox-system -o json \
   | jq 'del(.metadata.uid,.metadata.resourceVersion,.metadata.creationTimestamp,.metadata.namespace)' \
   | kubectl apply -n "$NMP_NAMESPACE" -f -
 
-# Sandbox pods are built from the BatchSandbox template, not the jobs controller.
-# nvcrimagepullsecret (or your pull secret) must exist in $NMP_NAMESPACE.
+# The BatchSandbox template hard-codes imagePullSecrets.name: nvcrimagepullsecret.
+# That Secret must exist in $NMP_NAMESPACE. If yours has a different name, edit
+# imagePullSecrets in batchsandbox-template.yaml (and batchsandbox-template-kata-qemu.yaml
+# if you use Kata) before kubectl apply.
 kubectl get secret nvcrimagepullsecret -n "$NMP_NAMESPACE"
 
 helm upgrade --install opensandbox-controller \
