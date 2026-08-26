@@ -24,8 +24,8 @@ def _get_client() -> NeMoPlatform:
 def test_workspace_exists() -> None:
     """Test that the harbor-auth-test workspace was created."""
     client = _get_client()
-    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
-    workspace_names = [ws.name for ws in response.data]
+    response = client_from_platform(client, WorkspacesClient).list_workspaces()
+    workspace_names = [ws.name for ws in response.items()]
 
     assert "harbor-auth-test" in workspace_names, (
         f"Workspace 'harbor-auth-test' was not created! Found workspaces: {workspace_names}"

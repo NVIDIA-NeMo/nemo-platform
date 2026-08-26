@@ -48,8 +48,8 @@ def http() -> httpx.Client:
 
 def test_workspace_exists(nmp_client: NeMoPlatform) -> None:
     """Test that the intake-export-workspace was created."""
-    response = client_from_platform(nmp_client, WorkspacesClient).list_workspaces().data()
-    workspace_names = [ws.name for ws in response.data]
+    response = client_from_platform(nmp_client, WorkspacesClient).list_workspaces()
+    workspace_names = [ws.name for ws in response.items()]
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found! Found: {workspace_names}"
 
 

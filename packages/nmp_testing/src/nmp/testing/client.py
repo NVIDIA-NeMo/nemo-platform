@@ -351,7 +351,6 @@ def create_test_client(
             for req in entity_requests:
                 assert req.principal_id == "test@example.com"
     """
-    entities = client_from_platform(async_sdk, AsyncEntitiesClient)
     selected_client_type: type[object] = client_type or NeMoPlatform
     with ExitStack() as stack:
         # Create temp directory if not provided
@@ -496,7 +495,7 @@ def create_test_client(
         async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
-        entity_client = EntityClient(entities)
+        entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
 
         # Inject ASGI-transport clients into each service's DependencyProvider.
         # This is critical for services that call dependency_provider.get_sdk_client()

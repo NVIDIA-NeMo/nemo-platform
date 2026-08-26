@@ -1615,7 +1615,6 @@ class TestTrustRemoteCodePermission:
 
     def test_update_model_new_fileset_not_trusted_raises_permission_error(self, sdk: NeMoPlatform):
         """Update model (created with valid trust_remote_code) to a new fileset not on allow list returns 403 when principal lacks models.trust-remote-code.set."""
-        files = client_from_platform(admin_sdk, FilesClient)
         with patched_authz_data(_real_build_authorization_data):
             workspace = short_unique_name("trc-newfs")
             user_email = unique_email("editor")
@@ -1624,6 +1623,7 @@ class TestTrustRemoteCodePermission:
             new_fs = short_unique_name("fs2")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+            files = client_from_platform(admin_sdk, FilesClient)
             client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
                 body=CreateWorkspaceRequest(name=workspace)
             ).data()

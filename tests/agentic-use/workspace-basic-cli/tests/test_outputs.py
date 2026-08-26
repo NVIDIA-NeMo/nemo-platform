@@ -22,10 +22,10 @@ def test_workspace_created() -> None:
 
     # Create SDK client and list workspaces
     client = NeMoPlatform(base_url=nmp_base_url)
-    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
+    response = client_from_platform(client, WorkspacesClient).list_workspaces()
 
     # Extract workspace names from the SDK response
-    workspace_names = [ws.name for ws in response.data]
+    workspace_names = [ws.name for ws in response.items()]
 
     # Verify that harbor-test-workspace EXISTS
     assert "harbor-test-workspace" in workspace_names, (

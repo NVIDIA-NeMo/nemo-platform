@@ -36,7 +36,7 @@ from nemo_platform_plugin.models.types import (
     FinetuningType,
 )
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
-from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceQueryParams, CreateWorkspaceRequest
 from nmp.core.files.service import FilesService
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.service import SecretsService
@@ -144,13 +144,16 @@ class TestWorkspaceIamIsolationSDK:
         workspaces = client_from_platform(admin, WorkspacesClient)
 
         workspaces.create_workspace(
-            wait_role_propagation=True, body=CreateWorkspaceRequest(name=ws_a, description="user-a only")
+            query_params=CreateWorkspaceQueryParams(wait_role_propagation=True),
+            body=CreateWorkspaceRequest(name=ws_a, description="user-a only"),
         ).data()
         workspaces.create_workspace(
-            wait_role_propagation=True, body=CreateWorkspaceRequest(name=ws_b, description="user-b only")
+            query_params=CreateWorkspaceQueryParams(wait_role_propagation=True),
+            body=CreateWorkspaceRequest(name=ws_b, description="user-b only"),
         ).data()
         workspaces.create_workspace(
-            wait_role_propagation=True, body=CreateWorkspaceRequest(name=ws_c, description="shared via group")
+            query_params=CreateWorkspaceQueryParams(wait_role_propagation=True),
+            body=CreateWorkspaceRequest(name=ws_c, description="shared via group"),
         ).data()
 
         as_user(sdk, owner_d).workspaces.create(

@@ -103,7 +103,6 @@ def restrict_workspace_creation_to_named_users(sdk: NeMoPlatform) -> None:
         client_from_platform(sdk, WorkspacesClient).update_workspace_member(
             principal_id="*",
             workspace="system",
-            wait_role_propagation=True,
             body=UpdateWorkspaceMemberRequest(roles=["Viewer"]),
         ).data()
 
@@ -164,8 +163,8 @@ class TestWorkspaceCRUDWithAuth:
             assert system_ws.description == "Platform-provided resources (read-only for users)"
 
             # Verify regular user can see public workspaces when listing
-            result = workspaces.list_workspaces().data()
-            workspace_names = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            workspace_names = [ws.name for ws in result.items()]
             assert "default" in workspace_names, "Regular user should see 'default' workspace in list"
             assert "system" in workspace_names, "Regular user should see 'system' workspace in list"
 
@@ -233,7 +232,6 @@ class TestWorkspaceCRUDWithAuth:
             with as_service(sdk, "auth"):
                 workspaces.create_workspace_member(
                     workspace="system",
-                    wait_role_propagation=True,
                     body=CreateWorkspaceMemberRequest(principal=creator_email, roles=["Viewer", "WorkspaceCreator"]),
                 ).data()
 
@@ -266,7 +264,6 @@ class TestWorkspaceCRUDWithAuth:
                 workspaces.update_workspace_member(
                     principal_id="*",
                     workspace="system",
-                    wait_role_propagation=True,
                     body=UpdateWorkspaceMemberRequest(roles=seeded_wildcard_roles),
                 ).data()
 
@@ -337,13 +334,12 @@ class TestWorkspaceCRUDWithAuth:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
             workspaces.create_workspace_member(
                 workspace=workspace_name,
-                wait_role_propagation=True,
                 body=CreateWorkspaceMemberRequest(principal=member_email, roles=["Editor"]),
             ).data()
 
         with as_user_with_id_and_email(sdk, member_id, member_email):
-            result = workspaces.list_workspaces().data()
-            names = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            names = [ws.name for ws in result.items()]
 
         assert workspace_name in names
 
@@ -359,13 +355,12 @@ class TestWorkspaceCRUDWithAuth:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
             workspaces.create_workspace_member(
                 workspace=workspace_name,
-                wait_role_propagation=True,
                 body=CreateWorkspaceMemberRequest(principal=group_principal, roles=["Editor"]),
             ).data()
 
         with as_user_with_id_and_groups(sdk, member_user_id, [group_principal]):
-            result = workspaces.list_workspaces().data()
-            names = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            names = [ws.name for ws in result.items()]
 
         assert workspace_name in names
 
@@ -381,14 +376,14 @@ class TestWorkspaceCRUDWithAuth:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # User1 should see the workspace
-            result = workspaces.list_workspaces().data()
-            user1_workspaces = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            user1_workspaces = [ws.name for ws in result.items()]
             assert workspace_name in user1_workspaces
 
         # User2 should NOT see the workspace (no role binding)
         with as_user(sdk, user2_email):
-            result = workspaces.list_workspaces().data()
-            user2_workspaces = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            user2_workspaces = [ws.name for ws in result.items()]
             assert workspace_name not in user2_workspaces
 
     def test_user_without_role_cannot_access_workspace(self, sdk: NeMoPlatform):
@@ -446,7 +441,6 @@ class TestWorkspaceCRUDWithAuth:
             # Add updater as Admin so they can update
             workspaces.create_workspace_member(
                 workspace=workspace_name,
-                wait_role_propagation=True,
                 body=CreateWorkspaceMemberRequest(principal=updater_email, roles=["Admin"]),
             ).data()
 
@@ -473,7 +467,6 @@ class TestWorkspaceCRUDWithAuth:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
             workspaces.create_workspace_member(
                 workspace=workspace_name,
-                wait_role_propagation=True,
                 body=CreateWorkspaceMemberRequest(principal=viewer_email, roles=["Viewer"]),
             ).data()
 
@@ -510,8 +503,8 @@ class TestWorkspaceCRUDWithAuth:
         # Verify workspace is deleted by checking it's not in the list
         # (after deletion, user no longer has access so we check via list)
         with as_user(sdk, admin_email):
-            ws_list = workspaces.list_workspaces().data()
-            workspace_names = [ws.name for ws in ws_list.data]
+            ws_list = workspaces.list_workspaces()
+            workspace_names = [ws.name for ws in ws_list.items()]
             assert workspace_name not in workspace_names
 
     def test_cannot_remove_last_admin_via_member_delete(self, sdk: NeMoPlatform):
@@ -566,7 +559,6 @@ class TestWorkspaceCRUDWithAuth:
             # Add admin2 as another Admin
             workspaces.create_workspace_member(
                 workspace=workspace_name,
-                wait_role_propagation=True,
                 body=CreateWorkspaceMemberRequest(principal=admin2_email, roles=["Admin"]),
             ).data()
 

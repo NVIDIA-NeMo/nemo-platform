@@ -117,7 +117,6 @@ class TestJobCreationWithSecretsAccess:
 
     def test_create_job_with_secret_user_lacks_access_fails(self, sdk: NeMoPlatform):
         """When the user does not have access to the secret (other workspace), job creation fails."""
-        workspaces = client_from_platform(admin_sdk, WorkspacesClient)
         workspace_own = short_unique_name("user-ws")
         workspace_other = short_unique_name("other-ws")
         secret_name = short_unique_name("other-secret")
@@ -125,6 +124,7 @@ class TestJobCreationWithSecretsAccess:
         user_email = unique_email("user")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        workspaces = client_from_platform(admin_sdk, WorkspacesClient)
         workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_own)).data()
         workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_other)).data()
         grant_workspace_role(

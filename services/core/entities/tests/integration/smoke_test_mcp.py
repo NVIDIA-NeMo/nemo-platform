@@ -54,9 +54,9 @@ class TestEntitiesMCPServerSmoke:
 
     def test_nmp_connection(self, nemo_sdk: NeMoPlatform) -> None:
         """Verify we can connect to NeMo Platform instance."""
-        response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces().data()
+        response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces()
         assert response is not None
-        assert hasattr(response, "data")
+        assert response.page().items is not None
 
     def test_mcp_server_created(self, mcp_server: FastMCP) -> None:
         """Verify MCP server instance is created."""
@@ -81,8 +81,8 @@ class TestEntitiesMCPServerSmoke:
         import json
 
         # Get workspaces via SDK
-        sdk_response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces().data()
-        sdk_workspace_ids = {ws.id for ws in sdk_response.data}
+        sdk_response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces()
+        sdk_workspace_ids = {ws.id for ws in sdk_response.items()}
 
         # Get workspaces via MCP tool
         tool_result = await mcp_server.call_tool("list_workspaces", {})
@@ -98,8 +98,8 @@ class TestEntitiesMCPServerSmoke:
         )
 
         # Verify counts match
-        assert mcp_result["total"] == len(sdk_response.data), (
-            f"MCP total {mcp_result['total']} should match SDK count {len(sdk_response.data)}"
+        assert mcp_result["total"] == sdk_response.page().metadata["total_results"], (
+            f"MCP total {mcp_result['total']} should match SDK count {sdk_response.page().metadata['total_results']}"
         )
 
     @pytest.mark.asyncio

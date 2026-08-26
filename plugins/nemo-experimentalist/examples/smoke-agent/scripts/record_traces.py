@@ -28,7 +28,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 AGENT_NAME = "smoke-agent"
@@ -112,14 +112,12 @@ async def run(args: argparse.Namespace) -> dict[str, str]:
 
     client = make_client(args.base_url)
     try:
-        await (
-            client_from_platform(client, WorkspacesClient)
-            .create_workspace(
+        (
+            await client_from_platform(client, AsyncWorkspacesClient).create_workspace(
                 exist_ok=True,
                 body=CreateWorkspaceRequest(name=args.workspace, description="smoke-agent traces for Insights"),
             )
-            .data()
-        )
+        ).data()
         options = HarborEvaluatorConfig(
             job_name=f"smoke-{args.group}-{args.split}-record",
             jobs_dir=Path("results"),

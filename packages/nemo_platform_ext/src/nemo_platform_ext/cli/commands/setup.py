@@ -2171,7 +2171,6 @@ def setup_command(
       nemo setup --no-install-skills --no-deploy-agent
       nemo --base-url http://localhost:8080 setup
     """
-    workspaces = client_from_platform(client, WorkspacesClient)
     cli_context: CLIContext = ctx.obj
     base_url = cli_context.get_base_url() or DEFAULT_BASE_URL
 
@@ -2223,6 +2222,7 @@ def setup_command(
     cli_context.reset_sdk_context()
 
     client = cli_context.get_client()
+    workspaces = client_from_platform(client, WorkspacesClient)
 
     try:
         workspaces.get_workspace(name=workspace).data()

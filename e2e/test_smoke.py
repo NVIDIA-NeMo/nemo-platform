@@ -41,6 +41,6 @@ def test_create_and_delete_workspace(sdk: NeMoPlatform):
 
 def test_list_workspaces(sdk: NeMoPlatform, workspace: str):
     """Listing workspaces returns at least the test workspace."""
-    page = client_from_platform(sdk, WorkspacesClient).list_workspaces().data()
-    names = [w.name for w in page.data]
+    page = client_from_platform(sdk, WorkspacesClient).list_workspaces()
+    names = [w.name for w in page.items()]
     assert workspace in names

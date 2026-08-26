@@ -25,8 +25,8 @@ def _get_client() -> NeMoPlatform:
 def test_workspace_exists():
     """Verify the benchmark-eval-workspace was created."""
     client = _get_client()
-    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
-    workspace_names = [ws.name for ws in response.data]
+    response = client_from_platform(client, WorkspacesClient).list_workspaces()
+    workspace_names = [ws.name for ws in response.items()]
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found. Found: {workspace_names}"
 
 

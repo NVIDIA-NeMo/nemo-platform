@@ -23,7 +23,7 @@ from typing import Any
 from nemo_experimentalist_plugin.eval_author import traces
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
 DISCOVERY_SPAN_BUDGET = 200
 
@@ -51,7 +51,7 @@ class Report:
 async def discover(client: AsyncNeMoPlatform) -> tuple[str, str] | None:
     """Find the workspace with the most agent-scoped spans, and its busiest agent."""
     best: tuple[int, str, str] | None = None
-    async for workspace in client_from_platform(client, WorkspacesClient).list_workspaces().data():
+    async for workspace in (await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()).items():
         counts: dict[str, int] = {}
         scanned = 0
         try:

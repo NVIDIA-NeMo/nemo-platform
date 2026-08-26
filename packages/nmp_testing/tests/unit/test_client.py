@@ -116,7 +116,7 @@ def test_create_test_client_creates_default_workspace():
     """Test that create_test_client creates default workspace."""
     with create_test_client(EntitiesService, client_type=ClientContext) as ctx:
         # Default workspace should exist
-        workspace = client_from_platform(ctx.client, WorkspacesClient).get_workspace(name="default").data()
+        workspace = client_from_platform(ctx.sdk, WorkspacesClient).get_workspace(name="default").data()
         assert workspace.name == "default"
 
 

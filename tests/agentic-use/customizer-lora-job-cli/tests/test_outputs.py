@@ -62,8 +62,8 @@ def _list_automodel_jobs(client: NeMoPlatform) -> list[dict[str, Any]]:
 
 def test_workspace_exists(client: NeMoPlatform):
     """Verify the lora-training-workspace exists."""
-    response = client_from_platform(client, WorkspacesClient).list_workspaces().data()
-    workspace_names = [ws.name for ws in response.data]
+    response = client_from_platform(client, WorkspacesClient).list_workspaces()
+    workspace_names = [ws.name for ws in response.items()]
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found. Found: {workspace_names}"
 
 

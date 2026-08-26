@@ -116,9 +116,9 @@ class TestWorkspaceCRUD:
         workspace_name = short_unique_name("list-ws")
         created = workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
-        result = workspaces.list_workspaces().data()
+        result = workspaces.list_workspaces()
 
-        workspace_ids = [ws.id for ws in result.data]
+        workspace_ids = [ws.id for ws in result.items()]
         assert created.id in workspace_ids
 
     def test_list_workspaces_with_pagination(self, sdk: NeMoPlatform):
@@ -130,11 +130,12 @@ class TestWorkspaceCRUD:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
 
         # List with pagination
-        result = workspaces.list_workspaces(query_params=ListWorkspacesQueryParams(page=1, page_size=2)).data()
+        result = workspaces.list_workspaces(query_params=ListWorkspacesQueryParams(page=1, page_size=2))
+        page = result.page()
 
-        assert result.pagination is not None
-        assert result.pagination.page == 1
-        assert result.pagination.page_size == 2
+        assert page.metadata is not None
+        assert page.metadata["page"] == 1
+        assert page.metadata["page_size"] == 2
 
     def test_update_workspace(self, sdk: NeMoPlatform):
         """Test updating a workspace description."""

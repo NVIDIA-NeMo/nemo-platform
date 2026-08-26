@@ -81,13 +81,13 @@ class TestViewerSecretsAccess:
 
     def test_viewer_can_list_secrets(self, sdk: NeMoPlatform):
         """Test that a Viewer can list secrets in the workspace."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         # Setup: platform admin creates workspace and secret
         workspace_name = short_unique_name("vw-list")
         secret_name = short_unique_name("secret")
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -113,12 +113,12 @@ class TestViewerSecretsAccess:
 
     def test_viewer_can_get_secret_metadata(self, sdk: NeMoPlatform):
         """Test that a Viewer can get secret metadata."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("vw-get")
         secret_name = short_unique_name("secret")
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -143,12 +143,12 @@ class TestViewerSecretsAccess:
 
     def test_viewer_cannot_access_secret_value(self, sdk: NeMoPlatform):
         """Test that a Viewer cannot access the secret value via /access endpoint."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("vw-acc")
         secret_name = short_unique_name("secret")
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -195,12 +195,12 @@ class TestViewerSecretsAccess:
 
     def test_viewer_cannot_update_secret(self, sdk: NeMoPlatform):
         """Test that a Viewer cannot update secrets."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("vw-upd")
         secret_name = short_unique_name("secret")
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -227,12 +227,12 @@ class TestViewerSecretsAccess:
 
     def test_viewer_cannot_delete_secret(self, sdk: NeMoPlatform):
         """Test that a Viewer cannot delete secrets."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("vw-del")
         secret_name = short_unique_name("secret")
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -618,8 +618,8 @@ class TestPlatformAdminSecretsAccess:
         The rotate-encryption-keys endpoint re-encrypts all secrets with the current
         encryption provider. This is an admin-only operation for key rotation scenarios.
         """
-        secrets = client_from_platform(admin_sdk, SecretsClient)
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(admin_sdk, SecretsClient)
         admin_secrets = secrets
 
         # Create some secrets to ensure there's data to potentially rotate
@@ -646,8 +646,8 @@ class TestServiceCredentialsSecretsAccess:
 
     def test_service_credentials_can_access_secret_value(self, sdk: NeMoPlatform):
         """Test that service credentials can access the secret value via /access endpoint."""
-        secrets = client_from_platform(admin_sdk, SecretsClient)
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(admin_sdk, SecretsClient)
         admin_secrets = secrets
         secret_name = short_unique_name("svc-sec")
         secret_value = "service-accessible-secret"
@@ -771,7 +771,6 @@ class TestDelegatedSecretAccess:
         Only service principals can call the /access endpoint. PlatformAdmin is denied
         direct access by OPA policy, so delegation must use a service principal as caller.
         """
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("del-vw")
         secret_name = short_unique_name("secret")
         secret_value = "delegated-secret-value"
@@ -779,6 +778,7 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace, add viewer, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -807,7 +807,6 @@ class TestDelegatedSecretAccess:
 
     def test_service_principal_can_access_on_behalf_of_group_bound_viewer(self, sdk: NeMoPlatform):
         """Test delegated access succeeds when the delegated user's group has Viewer."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("del-grp")
         secret_name = short_unique_name("secret")
         secret_value = "delegated-group-secret"
@@ -815,6 +814,7 @@ class TestDelegatedSecretAccess:
         delegated_group = f"group-{short_unique_name('vw')}"
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -849,7 +849,6 @@ class TestDelegatedSecretAccess:
 
     def test_platform_admin_cannot_access_on_behalf_of_non_member(self, sdk: NeMoPlatform):
         """Test platform admin accessing secret on behalf of a non-member user."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("del-nm")
         secret_name = short_unique_name("secret")
         secret_value = "delegated-secret-value"
@@ -857,6 +856,7 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace and secret, but don't add the user as a member
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -873,7 +873,6 @@ class TestDelegatedSecretAccess:
 
     def test_service_principal_denies_on_behalf_of_user_missing_group_bound_role(self, sdk: NeMoPlatform):
         """Test delegated access fails when the delegated user lacks the bound group."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("del-grp-no")
         secret_name = short_unique_name("secret")
         delegated_email = unique_email("viewer")
@@ -881,6 +880,7 @@ class TestDelegatedSecretAccess:
         other_group = f"group-{short_unique_name('other')}"
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -909,7 +909,6 @@ class TestDelegatedSecretAccess:
 
     def test_service_principal_can_access_on_behalf_of_editor(self, sdk: NeMoPlatform):
         """Test service principal accessing secret on behalf of an Editor."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("del-ed")
         secret_name = short_unique_name("secret")
         secret_value = "service-delegated-secret"
@@ -917,6 +916,7 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace, add editor, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -949,13 +949,13 @@ class TestDelegatedSecretAccess:
         PlatformAdmin cannot directly access secret values (denied by OPA policy).
         Service principals can access directly without delegation.
         """
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("no-del")
         secret_name = short_unique_name("secret")
         secret_value = "non-delegated-secret"
 
         # Setup: create workspace and secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -981,7 +981,6 @@ class TestDelegatedSecretAccess:
 
     def test_service_can_access_on_behalf_of_service(self, sdk: NeMoPlatform):
         """Test service principal accessing secret on behalf of another service."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("svc-del")
         secret_name = short_unique_name("secret")
         secret_value = "service-to-service-secret"
@@ -989,6 +988,7 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace and secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
@@ -1011,7 +1011,6 @@ class TestDelegatedSecretAccess:
 
     def test_editor_cannot_access_on_behalf_of_non_member(self, sdk: NeMoPlatform):
         """Test that an Editor cannot access secrets on behalf of a non-member."""
-        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         workspace_name = short_unique_name("ed-del")
         secret_name = short_unique_name("secret")
         secret_value = "editor-delegated-secret"
@@ -1020,6 +1019,7 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace, add editor, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
         client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
             body=CreateWorkspaceRequest(name=workspace_name)
         ).data()
