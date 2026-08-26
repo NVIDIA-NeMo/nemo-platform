@@ -18,6 +18,12 @@ Current assumptions:
 - Harbor is a required dependency for measurement. Use `requirements.txt` when
   running `measure.py` outside a repository environment that already provides
   Harbor.
+- Harbor's current `Trajectory` model is treated as the reader for now, but it
+  may prove too strict for measurement if valid evaluator traces include producer
+  extensions, omit fields that coverage does not consume, or move to a newer ATIF
+  version before Harbor models are updated. If that happens, prefer contributing
+  or adopting a permissive Harbor consumer reader before maintaining a local ATIF
+  parser here.
 - The only implemented measurement method is `tool_calls`. It covers audit items
   with `kind: tool` by matching each tool item `name` against Harbor trajectory
   `ToolCall.function_name` values.
