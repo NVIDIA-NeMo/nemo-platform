@@ -40,7 +40,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import sys
 import tempfile
 import time
@@ -66,6 +65,7 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
+    ETHOS_FILENAME,
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
@@ -1667,32 +1667,50 @@ def _platform_sdk(base_url: str) -> Any:
     return NeMoPlatform(base_url=base_url)
 
 
-def _check_agent_root_bounds(agent_root: Path) -> None:
-    """Reject an agent root too large to deliver into a container deployment.
+def _collect_text_agent_artifacts(
+    agent_root: Path,
+    *,
+    excluded_paths: set[Path] | None = None,
+    warn_on_binary: bool = False,
+) -> list[tuple[Path, bytes]]:
+    """Return the UTF-8 files that can be delivered as Fabric config files.
 
-    The upload is recursive with no server-side filtering, so an ``agent.yaml``
-    sitting in a source checkout would ship the whole tree and then fail at
-    container start when the ConfigMap/env payload is built. Fail here instead,
-    naming the limit that was exceeded.
+    Container deployments carry agent artifacts as text-only ``ConfigFile``
+    values. Binary neighbors such as ``__pycache__/*.pyc`` and wheels are not
+    agent configuration, so omit them from the fileset instead of making agent
+    creation fail later during container staging.
 
     Symlinks are rejected rather than skipped: the upload enumerates them and
-    ships their target content, so skipping one here would both stage files from
-    outside *agent_root* and let them evade the limits below.
+    would otherwise ship target content from outside *agent_root*.
     """
+    excluded_paths = excluded_paths or set()
     total_bytes = 0
     file_count = 0
-    for path in agent_root.rglob("*"):
+    artifacts: list[tuple[Path, bytes]] = []
+    for path in sorted(agent_root.rglob("*")):
+        relative_path = path.relative_to(agent_root)
         if path.is_symlink():
             raise ValueError(
                 f"agent directory {str(agent_root)!r} contains symlink "
-                f"{path.relative_to(agent_root).as_posix()!r}; the fileset upload follows "
+                f"{relative_path.as_posix()!r}; the fileset upload follows "
                 "symlinks, which would stage content from outside the agent directory. "
                 "Replace it with a regular file or move the target inside the agent directory"
             )
-        if not path.is_file():
+        if not path.is_file() or relative_path in excluded_paths:
+            continue
+        try:
+            content = path.read_bytes()
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            if warn_on_binary:
+                typer.echo(
+                    f"Warning: skipping non-UTF-8 agent artifact {relative_path.as_posix()!r}; "
+                    "Fabric fileset staging supports text files only.",
+                    err=True,
+                )
             continue
         file_count += 1
-        total_bytes += path.stat().st_size
+        total_bytes += len(content)
         if file_count > MAX_ETHOS_STAGED_FILES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} holds more than "
@@ -1705,6 +1723,40 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
                 f"{MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery; "
                 "point --agent-config at a directory containing only the agent's own artifacts"
             )
+        artifacts.append((relative_path, content))
+    return artifacts
+
+
+def _clear_existing_ethos_artifacts(
+    *,
+    sdk: Any,
+    fileset: str,
+    workspace: str,
+    preserve_legacy_contract: bool,
+) -> None:
+    """Remove the previous executable snapshot while preserving durable Ethos."""
+    from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
+    from nemo_platform import NotFoundError as PlatformNotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
+    preserved = {ETHOS_FILENAME}
+    if preserve_legacy_contract:
+        preserved.add(LEGACY_CONTRACT_FILENAME)
+
+    try:
+        existing = sdk.files.list(fileset=fileset, workspace=workspace).data
+    except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+        return
+
+    for artifact in existing:
+        remote_path = artifact.path
+        if remote_path in preserved:
+            continue
+        try:
+            sdk.files.delete(remote_path=remote_path, fileset=fileset, workspace=workspace)
+        except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+            # Another client may have removed the same stale file after the list.
+            continue
 
 
 def _upload_ethos_fileset(
@@ -1715,49 +1767,49 @@ def _upload_ethos_fileset(
     base_url: str,
     omit_legacy_contract: bool = False,
 ) -> None:
-    """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
+    """Replace the executable snapshot in the conventional Ethos fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
-    Agent YAML must live in a dedicated agent root so sibling artifacts
-    (skills, prompts) upload without shipping an unrelated checkout tree. A
-    legacy contract is omitted so the explicit migration can complete the
-    target Fileset without a conflict.
+    UTF-8 sibling artifacts such as skills and prompts are uploaded; binary
+    neighbors are skipped because deployment ``ConfigFile`` values are text.
+    Existing runtime artifacts are removed first so recreating an agent cannot
+    reuse a stale bundle. Durable ``ETHOS.md`` is preserved, as is the legacy
+    contract unless an explicit migration requests its removal.
     """
+    from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
-    _check_agent_root_bounds(agent_root)
+    excluded_paths = {Path(LEGACY_CONTRACT_FILENAME)} if omit_legacy_contract else set()
+    artifacts = _collect_text_agent_artifacts(
+        agent_root,
+        excluded_paths=excluded_paths,
+        warn_on_binary=True,
+    )
     fileset = ethos_fileset_name(agent_name)
     sdk = _platform_sdk(base_url)
-    if omit_legacy_contract:
-        from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
-        from nemo_platform import NotFoundError as PlatformNotFoundError
-        from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+    with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
+        staged = Path(directory) / agent_root.name
+        staged.mkdir()
+        for relative_path, content in artifacts:
+            destination = staged / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
 
-        with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
-            staged = Path(directory) / agent_root.name
-            shutil.copytree(agent_root, staged)
-            (staged / LEGACY_CONTRACT_FILENAME).unlink()
-            upload_to_fileset(
-                staged,
-                fileset=fileset,
-                workspace=workspace,
-                sdk=sdk,
-            )
-        try:
-            sdk.files.delete(
-                remote_path=LEGACY_CONTRACT_FILENAME,
-                fileset=fileset,
-                workspace=workspace,
-            )
-        except (PlatformNotFoundError, PluginNotFoundError):
-            pass
-        return
-    upload_to_fileset(
-        agent_root,
-        fileset=fileset,
-        workspace=workspace,
-        sdk=sdk,
-    )
+        # Validate and stage the complete replacement before touching the remote
+        # fileset. The durable Ethos contract survives even when it is absent
+        # from this executable snapshot.
+        _clear_existing_ethos_artifacts(
+            sdk=sdk,
+            fileset=fileset,
+            workspace=workspace,
+            preserve_legacy_contract=not omit_legacy_contract,
+        )
+        upload_to_fileset(
+            staged,
+            fileset=fileset,
+            workspace=workspace,
+            sdk=sdk,
+        )
 
 
 def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:

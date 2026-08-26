@@ -8,6 +8,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -17,7 +18,8 @@ from nemo_agents_plugin.cli import (
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     AgentsCLI,
-    _check_agent_root_bounds,
+    _collect_text_agent_artifacts,
+    _upload_ethos_fileset,
 )
 from nemo_agents_plugin.ethos_migrate import (
     LEGACY_CONTRACT_FILENAME,
@@ -327,6 +329,11 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         uploaded["sdk_base_url"] = sdk.base_url
 
     class FakeFiles:
+        def list(self, *, fileset: str, workspace: str) -> SimpleNamespace:
+            assert fileset == "fabric-agent-ethos"
+            assert workspace == "default"
+            return SimpleNamespace(data=[SimpleNamespace(path=LEGACY_CONTRACT_FILENAME)])
+
         def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
             uploaded["deleted"] = (remote_path, fileset, workspace)
             from nemo_platform import NotFoundError
@@ -359,30 +366,122 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
     assert uploaded["sdk_base_url"] == "http://test"
 
 
-def test_check_agent_root_bounds_allows_small_agent_root(tmp_path) -> None:
+def test_collect_text_agent_artifacts_allows_small_agent_root(tmp_path) -> None:
     (tmp_path / "agent.yaml").write_text("name: a\n")
     (tmp_path / "skills").mkdir()
     (tmp_path / "skills" / "SKILL.md").write_text("# skill\n")
 
-    _check_agent_root_bounds(tmp_path)
+    _collect_text_agent_artifacts(tmp_path)
 
 
-def test_check_agent_root_bounds_rejects_oversized_agent_root(tmp_path) -> None:
+def test_upload_ethos_fileset_skips_non_utf8_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    (agent_root / "agent.yaml").write_text("name: fabric-agent\n", encoding="utf-8")
+    cache = agent_root / "__pycache__"
+    cache.mkdir()
+    (cache / "tool.pyc").write_bytes(b"\xff\xfe\x00binary")
+
+    uploaded: dict[str, Any] = {}
+
+    def fake_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
+        uploaded["files"] = {path.relative_to(local_dir).as_posix() for path in local_dir.rglob("*") if path.is_file()}
+        uploaded["fileset"] = fileset
+        uploaded["workspace"] = workspace
+
+    class FakeFiles:
+        def list(self, *, fileset: str, workspace: str) -> SimpleNamespace:
+            del fileset, workspace
+            return SimpleNamespace(data=[])
+
+        def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
+            raise AssertionError(f"unexpected delete of {workspace}/{fileset}#{remote_path}")
+
+    sdk = SimpleNamespace(files=FakeFiles())
+    with (
+        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
+    ):
+        _upload_ethos_fileset(
+            agent_name="fabric-agent",
+            workspace="default",
+            agent_root=agent_root,
+            base_url="http://test",
+        )
+
+    assert uploaded == {
+        "files": {"agent.yaml"},
+        "fileset": "fabric-agent-ethos",
+        "workspace": "default",
+    }
+    assert "skipping non-UTF-8 agent artifact '__pycache__/tool.pyc'" in capsys.readouterr().err
+
+
+def test_upload_ethos_fileset_replaces_stale_runtime_artifacts(tmp_path: Path) -> None:
+    agent_root = tmp_path / "agent"
+    skill = agent_root / "skills" / "review"
+    skill.mkdir(parents=True)
+    (agent_root / "agent.yaml").write_text("name: fabric-agent\n", encoding="utf-8")
+    (skill / "SKILL.md").write_text("# Review\n", encoding="utf-8")
+
+    deleted: list[str] = []
+    uploaded: set[str] = set()
+
+    def fake_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
+        del fileset, workspace, sdk
+        uploaded.update(path.relative_to(local_dir).as_posix() for path in local_dir.rglob("*") if path.is_file())
+
+    class FakeFiles:
+        def list(self, *, fileset: str, workspace: str) -> SimpleNamespace:
+            assert fileset == "fabric-agent-ethos"
+            assert workspace == "default"
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(path="ETHOS.md"),
+                    SimpleNamespace(path=LEGACY_CONTRACT_FILENAME),
+                    SimpleNamespace(path="agent.yaml"),
+                    SimpleNamespace(path="skills/old/SKILL.md"),
+                    SimpleNamespace(path="__pycache__/tool.pyc"),
+                ]
+            )
+
+        def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
+            assert fileset == "fabric-agent-ethos"
+            assert workspace == "default"
+            deleted.append(remote_path)
+
+    sdk = SimpleNamespace(files=FakeFiles())
+    with (
+        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
+    ):
+        _upload_ethos_fileset(
+            agent_name="fabric-agent",
+            workspace="default",
+            agent_root=agent_root,
+            base_url="http://test",
+        )
+
+    assert deleted == ["agent.yaml", "skills/old/SKILL.md", "__pycache__/tool.pyc"]
+    assert uploaded == {"agent.yaml", "skills/review/SKILL.md"}
+
+
+def test_collect_text_agent_artifacts_rejects_oversized_agent_root(tmp_path) -> None:
     (tmp_path / "big.bin").write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
 
     with pytest.raises(ValueError, match="byte limit for container config delivery"):
-        _check_agent_root_bounds(tmp_path)
+        _collect_text_agent_artifacts(tmp_path)
 
 
-def test_check_agent_root_bounds_rejects_too_many_files(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_too_many_files(tmp_path) -> None:
     for index in range(MAX_ETHOS_STAGED_FILES + 1):
         (tmp_path / f"f{index}.txt").write_text("x")
 
     with pytest.raises(ValueError, match="more than"):
-        _check_agent_root_bounds(tmp_path)
+        _collect_text_agent_artifacts(tmp_path)
 
 
-def test_check_agent_root_bounds_rejects_file_symlink(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_file_symlink(tmp_path) -> None:
     outside = tmp_path.parent / "outside.bin"
     outside.write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
     agent_root = tmp_path / "agent"
@@ -391,10 +490,10 @@ def test_check_agent_root_bounds_rejects_file_symlink(tmp_path) -> None:
     (agent_root / "link.bin").symlink_to(outside)
 
     with pytest.raises(ValueError, match="contains symlink 'link.bin'"):
-        _check_agent_root_bounds(agent_root)
+        _collect_text_agent_artifacts(agent_root)
 
 
-def test_check_agent_root_bounds_rejects_directory_symlink(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_directory_symlink(tmp_path) -> None:
     outside = tmp_path.parent / "outside"
     outside.mkdir()
     (outside / "a.txt").write_text("x")
@@ -404,7 +503,7 @@ def test_check_agent_root_bounds_rejects_directory_symlink(tmp_path) -> None:
     (agent_root / "linkdir").symlink_to(outside, target_is_directory=True)
 
     with pytest.raises(ValueError, match="contains symlink 'linkdir'"):
-        _check_agent_root_bounds(agent_root)
+        _collect_text_agent_artifacts(agent_root)
 
 
 def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> None:
