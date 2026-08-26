@@ -17,8 +17,12 @@ telemetry actually means (``Metric Semantics``), and where the agent is
 headed (``Vision``). Mission and the result the agent is accountable for live
 together in ``Purpose & Outcomes``.
 
-Every body section is required. When a section has nothing to say, keep the
-heading and write ``_(none)_`` rather than dropping it.
+Every canonical body section is required. When a section has nothing to say,
+keep the heading and write ``_(none)_`` rather than dropping it.
+
+Additional ``##`` headings and extra YAML front-matter keys are allowed. The
+parser keeps unknown body sections and does not fail on unknown front-matter
+keys. The fifteen headings are a floor, not a closed schema.
 
 Four headings from the earlier AGENT-SPEC outline are retired rather than
 required:
@@ -67,9 +71,10 @@ ETHOS_SECTION_TITLES: tuple[str, ...] = (
     "Vision",
     "Open Questions",
 )
-"""Every ``##`` heading, in canonical reading order. All are required.
+"""Every canonical ``##`` heading, in reading order. All of these are required.
 
-The order tells a story: who the agent is, what it is today, how to judge it,
+Additional headings are allowed and stored in :attr:`Ethos.sections`. The
+order below tells a story: who the agent is, what it is today, how to judge it,
 what may change, and where it is going. ``Principles`` follows ``Behavior``
 because the pair reads as the concrete rules and then what to do when the rules
 run out. ``Vision`` follows ``Change Scope`` so today's permissions and

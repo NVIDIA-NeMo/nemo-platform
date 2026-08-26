@@ -26,9 +26,14 @@ owner: <accountable human or team for the approvals named below; omit if unowned
 > say so. The code already shows what the agent does; this file is the only place
 > that records what it is supposed to do.
 >
-> Every body section is required. Parsing fails if a `##` heading is missing.
-> When you have nothing to say, write `_(none)_` rather than dropping the
-> section. An honest empty answer is better than a fabricated one.
+> Every canonical body section is required. Parsing fails if a required `##`
+> heading is missing. When you have nothing to say, write `_(none)_` rather
+> than dropping the section. An honest empty answer is better than a
+> fabricated one.
+>
+> Extra `##` headings and extra YAML front-matter keys are allowed. Add them
+> when your use case needs a field this outline does not cover. The parser
+> does not reject custom keys. Do not delete them to look strict.
 >
 > This file records durable intent, so keep run-specific settings out of it. A
 > spend ceiling or experiment count for one optimization run belongs in that

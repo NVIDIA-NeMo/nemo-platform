@@ -7,8 +7,10 @@ This module intentionally does not model every markdown section as structured
 Python. It validates the machine-readable front matter and the required section
 outline, then returns raw markdown sections for humans and agents to consume.
 
-A missing body section raises. ``strict`` turns remaining warnings into
-errors, which today means an unversioned file that was parsed as version 1.
+A missing canonical body section raises. Extra ``##`` headings are kept.
+Unknown YAML front-matter keys are ignored and do not fail the parse.
+``strict`` turns remaining warnings into errors, which today means an
+unversioned file that was parsed as version 1.
 """
 
 from __future__ import annotations
@@ -39,11 +41,13 @@ def parse_ethos(markdown: str, *, strict: bool = False) -> Ethos:
     Args:
         markdown: Full ETHOS.md contents, including front matter.
         strict: Turn remaining warnings into errors. Use this when the caller
-            cannot act on an unversioned contract.
+            cannot act on an unversioned contract. Extra headings and extra
+            front-matter keys are still allowed.
 
     Raises:
-        EthosParseError: Front matter is missing or malformed, a section
-            heading is absent, or ``strict`` is set and a warning was raised.
+        EthosParseError: Front matter is missing or malformed, a required
+            section heading is absent, or ``strict`` is set and a warning was
+            raised. Unknown headings are not an error.
     """
 
     front_match = _FRONT_MATTER_RE.match(markdown)

@@ -22,7 +22,7 @@ not-for:
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
 preconditions:
   - nemo_cli_available
-compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); one intent question per message after the codebase scan; safe under any sandbox; works offline; output is a structured conversation handed to nemo-ethos.
+compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); one intent question per message after the codebase scan; at least three questions covering Purpose & Outcomes, Principles, and Vision; safe under any sandbox; works offline; output is a structured conversation handed to nemo-ethos.
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -41,8 +41,9 @@ Insights and PRs downstream.
 This skill is **explore first, then a mandatory intent interview.** Scan the
 codebase and docs, infer implementation-shaped fields, then ask the user for
 intent source cannot own. Do not skip the interview because the scan looked
-complete. Do not dump the draft Ethos until that interview has asked at least
-one question and received a reply.
+complete, and do not skip a question because you think you already know the
+answer. Do not dump the draft Ethos until that interview has asked at least
+three questions and received a reply to each.
 
 The division of labor is: **infer implementation, ask for intent.** Almost
 everything about what the agent *is* can be read from source. Nothing about what
@@ -54,8 +55,12 @@ spending attention on.
 
 The Ethos has five front-matter fields and fifteen body sections. Every body
 section is required. One field is a quality gate for handoff: `nemo-ethos` is
-blocked until `Role` is concrete. For any other section with nothing to say,
-write `_(none)_` rather than dropping the heading.
+blocked until `Role` is concrete. For any other canonical section with nothing
+to say, write `_(none)_` rather than dropping the heading.
+
+The fifteen headings are a floor, not a ceiling. Extra `##` headings and extra
+YAML front-matter keys are allowed. Keep them if the user adds them. Do not
+strip custom sections to make the file look "strict."
 
 **Front matter**
 
@@ -169,10 +174,9 @@ interview and ask for Role first.
    - **Role** — first paragraph of README, system prompt preamble, or
      top-level docstring. Often partial; usually needs user confirmation.
    - **Purpose & Outcomes** — mission from product docs, README motivation,
-     system prompt preamble, or workflow context; prefer explicit goal context
-     over implementation-only inference. The outcome is rarely in code, so look
-     for OKR or launch notes, dashboards, and README motivation that name a
-     metric, and ask when the scan turns up nothing.
+     system prompt preamble, or workflow context. Treat that as a draft to
+     confirm, never as a skip. The outcome (the business objective) is rarely
+     in code; even when a README names a metric, ask the user to confirm it.
    - **Scope** — audience from docs or prompts; categories from enumerated
      capabilities or named tool clusters; in/out boundaries from prompt rules.
    - **Tools** — from `@tool` decorators, NAT tool registry,
@@ -202,11 +206,12 @@ interview and ask for Role first.
      genuinely ambiguous from the name. Write `_(none)_` when every name is
      obvious.
    - **Change Scope** — not in the code; ask the user.
-   - **Principles** — not in the code; ask in the intent interview. A prompt may
-     hint at one, but a prompt is the implementation, not the intent behind it.
+   - **Principles** — not in the code; ask in the intent interview even if a
+     prompt hints at one. A prompt is the implementation, not the intent
+     behind it.
    - **Vision** — not in the code. Roadmap docs, design notes, or a README's
-     future-work section sometimes carry it. Write `_(none)_` rather than
-     guessing.
+     future-work section are speculative until the user confirms them. Ask.
+     Write `_(none)_` rather than guessing.
    - **Open Questions** — TODOs / FIXMEs in agent-adjacent code that
      affect safe use, evaluation, or modification.
 
@@ -216,8 +221,9 @@ The scan told you what the agent is. It cannot tell you what the developer
 wants. Run a real interview for that intent before you show a draft Ethos.
 
 This step is a hard gate. Do not present the full draft, and do not hand off
-to `nemo-ethos`, until you have asked at least one question and received a
-reply. "The scan filled everything" is not a reason to skip it.
+to `nemo-ethos`, until you have asked at least three questions and received a
+reply to each. "The scan filled everything" and "asking feels unnecessary"
+are not reasons to skip it.
 
 ### What to ask
 
@@ -226,30 +232,45 @@ After the scan, split fields into two piles:
 - **Inferred** — implementation-shaped fields you can draft from source:
   `Tools`, `Harness`, `Evaluation Setup`, `Behavior` copied from prompts,
   `Metric Semantics` from scorer names.
-- **Intent** — fields source cannot own: `Purpose & Outcomes` when the
-  mission is only inferred from code, `Constraints`, `Trade-offs`,
-  `Principles`, `Change Scope`, `Vision`, and a ranked `Success Criteria`
-  when the repo only has eval wiring.
+- **Intent** — fields source cannot own: `Purpose & Outcomes`, `Principles`,
+  and `Vision` always; then `Constraints`, `Trade-offs`, `Change Scope`, and
+  a ranked `Success Criteria` when the repo only has eval wiring.
 
-Walk the intent pile. Skip a topic only when this conversation already
-answered it, or when a cited user-owned doc states it clearly. Keep every
-other unanswered intent topic on the list. Greenfield work adds `Role`,
-`Scope`, and whether the agent is prompt-only before that intent list.
+Walk the intent pile. Skip a topic only when **this conversation** already
+answered it. A README, prompt, or roadmap is not a substitute for a user
+reply on the always-ask topics below. Keep every other unanswered intent
+topic on the list. Greenfield work adds `Role`, `Scope`, and whether the
+agent is prompt-only before that intent list.
 
-Question count is variable. A documented repository might need two or three
-intent questions. A greenfield project might need more. You always ask at
-least one. Prefer fewer sharp questions over a long checklist.
+Question count is at least three, then however many remaining intent topics
+still need a reply. Prefer fewer sharp questions over a long checklist, but
+never go below three.
 
-Ask about these topics in this order, skipping any you can already fill:
+### Always ask these three
 
-1. Concrete `Role` when the scan is missing or vague.
-2. Outside context for `Purpose & Outcomes` when the mission is
-   implementation-only.
-3. `Constraints` — hard bounds no change may cross.
-4. `Trade-offs` — hard gates, then a ranking.
-5. `Principles` — the judgment call when `Behavior` runs out.
-6. `Change Scope` — which levers on this agent may move.
-7. `Vision` when docs have no destination beyond today's job.
+Code and docs can look like they already answered them. They did not, until
+the user says so. Ask even when you have a high-confidence draft. Confirming
+an inference counts; silently filling the section does not.
+
+1. **`Purpose & Outcomes`** (business objective). Confirm the mission and the
+   result the agent is accountable for. If you inferred a metric from a
+   README, show it and ask whether that is the target.
+2. **`Principles`**. The judgment call when `Behavior` runs out. Reject
+   generic virtues. Ask what this agent should do that a careless version
+   of it would not.
+3. **`Vision`**. Where the agent is headed, or an explicit `_(none)_`. Do
+   not copy a future-work section into Vision without asking. Speculative
+   vision is the usual failure.
+
+If `Role` is missing or vague, ask that first so the rest of the interview
+is grounded. It does not replace one of the three always-ask topics.
+
+Ask about remaining topics in this order, skipping any this conversation
+already answered:
+
+1. `Constraints` — hard bounds no change may cross.
+2. `Trade-offs` — hard gates, then a ranking.
+3. `Change Scope` — which levers on this agent may move.
 
 Do not collect run limits. A per-experiment spend cap belongs to the
 optimizer. If the user volunteers one, keep the standing policy and drop
@@ -270,8 +291,21 @@ Follow this Q&A pattern:
   one.
 - **Confirm inferred bounds.** If the scan found a pinned gateway or
   redaction middleware, show it and ask whether it is a real boundary.
+- **Confirm inferred intent.** If the scan produced a plausible `Purpose &
+  Outcomes`, `Principles`, or `Vision`, show the draft as an option. Do not
+  treat that draft as the answer.
 
 Example (one message, then stop):
+
+> The README says this agent exists to "cut ticket volume." Is that the
+> business objective I should record in `Purpose & Outcomes`?
+>
+> A. Yes — ticket volume is the outcome (tell me the target if you have one)
+> B. Close, but the real objective is … (tell me)
+> C. No business metric — internal tooling
+> D. I don't know
+
+A later Constraints example:
 
 > The scan shows a pinned NVIDIA gateway and no cost ceiling in docs.
 >
@@ -298,13 +332,19 @@ draft before the next question.
 
 These mean you skipped the interview:
 
-- You are about to paste the full Ethos and have not asked a question yet
+- You are about to paste the full Ethos and have asked fewer than three
+  questions
+- You filled `Purpose & Outcomes`, `Principles`, or `Vision` from the scan
+  without a user reply
 - Several intent questions in one message
-- Handing off to `nemo-ethos` with no Q&A reply in this conversation
+- Handing off to `nemo-ethos` with fewer than three Q&A replies in this
+  conversation
 
 | Excuse | Reality |
 | --- | --- |
-| The scan filled everything | Code never owns intent. Ask at least one intent question. |
+| The scan filled everything | Code never owns intent. Ask at least three questions. |
+| I already know Purpose / Principles / Vision | Those answers belong to the user. Confirm the draft. |
+| Asking feels unnecessary | Unnecessary-looking questions are the ones that catch speculative Vision. |
 | Batching questions saves turns | One question gets a real answer. A dump gets shallow ones. |
 | The draft review can collect intent | Review is for corrections. Ask intent first. |
 | The user looks busy | One short multiple-choice question is enough to start. |
@@ -381,11 +421,13 @@ the canonical copy to Filesets") and trigger it.
   not be useful until they can write one concrete sentence and offer to
   come back later. Do not loop on rewording.
 - **They skip remaining intent questions.** You already asked at least
-  one. Treat skipped topics as `I don't know`: write `_(none)_`, record
-  them in `Open Questions`, and say once what it costs. Then present the
-  draft. Do not re-open the full interview.
-- **They say "just write it" before any question.** Ask one intent
-  question anyway. After they answer or decline that one, continue.
+  three, including `Purpose & Outcomes`, `Principles`, and `Vision`. Treat
+  skipped topics as `I don't know`: write `_(none)_`, record them in
+  `Open Questions`, and say once what it costs. Then present the draft. Do
+  not re-open the full interview.
+- **They say "just write it" before three questions.** Ask the next
+  always-ask question anyway. After they answer or decline each of the
+  three, continue.
 
 ## Gotchas
 
@@ -403,8 +445,9 @@ the canonical copy to Filesets") and trigger it.
   differences an optimizer or evaluator needs to know.
 - **Mission before mechanics.** An Ethos that only says how the current code is
   wired is not good enough. If goal context cannot be found in the codebase or
-  docs, say the mission is inferred from implementation and give the user one
-  chance to supply the missing outside context.
+  docs, say the mission is inferred from implementation and still ask the user
+  to confirm `Purpose & Outcomes`. A guessed business objective is worse than
+  `_(none)_`.
 - **Never infer a constraint you cannot verify.** A guessed provider allowlist
   or cost ceiling silently deletes good candidates and looks authoritative doing
   it. Ask, or write `_(none)_` and record the gap in `Open Questions`.
@@ -419,7 +462,11 @@ the canonical copy to Filesets") and trigger it.
   interview shorter and sharper. Asking something the codebase already
   answers loses trust immediately.
 - **Do not skip the intent interview even when the scan looks complete.**
-  Ask at least one question. One at a time. Multiple choice when you can.
+  Ask at least three questions. Always ask `Purpose & Outcomes`,
+  `Principles`, and `Vision`, even when you think you already know. One at
+  a time. Multiple choice when you can.
+- **Do not invent Vision from a backlog.** A future-work bullet is
+  speculative until the user confirms it. Ask, or write `_(none)_`.
 - **A framework import is not a harness.** Describe how the agent runs. Do not
   map an import onto a platform harness name. Imports such as `langchain`,
   `langgraph`, `crewai`, `autogen`, or `pydantic_ai` say nothing about that.

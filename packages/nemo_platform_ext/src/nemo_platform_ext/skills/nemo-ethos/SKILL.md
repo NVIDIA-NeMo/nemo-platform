@@ -70,9 +70,15 @@ ref from `(workspace, agent_name)` via
 
 ## Schema version
 
-Write `schema_version: 1`. Every body section is required. The parser rejects a
-file missing any heading. When you have nothing to say, write `_(none)_`
-rather than dropping the section.
+Write `schema_version: 1`. Every canonical body section is required. The parser
+rejects a file missing any of those headings. When you have nothing to say,
+write `_(none)_` rather than dropping the section.
+
+The schema is a floor, not a ceiling. Extra `##` headings and extra YAML
+front-matter keys are allowed. The parser keeps unknown body sections and
+does not fail on unknown front-matter keys. If the user already added custom
+sections, preserve them on rewrite. Do not strip custom content to make the
+file look strict.
 
 Do not invent content to look complete: `_(none)_` in `Constraints` is honest,
 while a fabricated bound actively misleads the optimizer. If the user has no
@@ -163,9 +169,12 @@ and then helps nobody.
    team is accountable for the approvals named in `Constraints`.
    Set `updated_timestamp` on edits, not on first write. Evaluation commands
    live in `Evaluation Setup`, not in front matter. Keep the required section
-   headers exactly — the file is lightly validated by
-   `nemo_agents_plugin.ethos_parse.parse_ethos`, which checks front matter,
-   schema version, required sections, and duplicate sections. Section bodies stay markdown for agents and humans to read directly.
+   headers exactly so the file stays parseable. Extra `##` headings after
+   (or among) the canonical fifteen are allowed — keep them. The file is
+   lightly validated by `nemo_agents_plugin.ethos_parse.parse_ethos`, which
+   checks front matter, schema version, required sections, and duplicate
+   sections. It does not reject unknown headings. Section bodies stay markdown
+   for agents and humans to read directly.
 
 6. **Write the file.** Path: `agents/<name>-ethos/ETHOS.md`. Create the
    `agents/<name>-ethos/` directory if it does not exist.
@@ -201,9 +210,26 @@ and then helps nobody.
    `ethos_file_ref(workspace, name)` to compute
    `<workspace>/<name>-ethos#ETHOS.md` when they need it.
 
-9. **Show the Ethos to the user.** Print the full file contents and ask:
-   "Does this match what we agreed? Edit anything you want to change." If
-   the user edits, repeat steps 6–8.
+9. **Show a gut-check, then the file.** Before asking the user to read fifteen
+   sections, state your impression of this agent in a short paragraph that
+   combines `Role`, `Purpose & Outcomes`, `Scope`, and (when they are not
+   `_(none)_`) `Principles` and `Vision`. This is a thin slice so the user can
+   tell quickly whether the write got the agent right. Do not use shorthand
+   like `AUT` or "agent under test."
+
+   Shape:
+
+   > **Gut check.** This is a [role] that exists to [mission / outcome]. It
+   > serves [audience] on [in-scope work] and stays out of [out of scope].
+   > When the rules run out, it [principle or none]. It is heading toward
+   > [vision or none].
+   >
+   > If that is the wrong agent, say so. Then we can edit before treating
+   > this file as signed off.
+
+   Then print the full file contents and ask: "Does this match what we
+   agreed? Edit anything you want to change." If the user edits, repeat
+   steps 6–9, including a fresh gut-check.
 
 10. **Hand off.** Once confirmed, tell the user the next skill:
 
@@ -238,7 +264,8 @@ nemo files list "${NAME}-ethos" 2>/dev/null | grep -q ETHOS.md \
 ```
 
 Do not announce success until `local_ok`, `ethos_parse_ok`, **and** `fileset_ok`
-all print, and the user has confirmed the contents.
+all print, the gut-check has been shown, and the user has confirmed the
+contents.
 
 ## If verification fails
 
@@ -265,10 +292,12 @@ optimizer's job, not this file's.
 
 ## Gotchas
 
-- **The template is the source of truth for structure.** Keep the required
-  section headings intact. The parser in `nemo_agents_plugin.ethos_parse`
-  rejects missing or duplicate required sections, but section bodies remain
-  markdown for humans and agents to read directly.
+- **The template is the source of truth for the canonical outline.** Keep the
+  required section headings intact. Extra `##` headings are allowed and must
+  be preserved. The parser in `nemo_agents_plugin.ethos_parse`
+  rejects missing or duplicate required sections, but it does not reject
+  custom headings. Section bodies remain markdown for humans and agents to
+  read directly.
 - **Ethos lives next to the implementation config.** Keep `ETHOS.md`,
   Platform `agent.yaml`, and their relative artifacts under
   `agents/<name>-ethos/` so local and Filesets consumers share one package root.

@@ -150,6 +150,26 @@ def test_tolerates_leftover_retired_sections() -> None:
     assert ethos.sections["Signals"] == "Signals content"
 
 
+def test_custom_sections_are_preserved() -> None:
+    """Extra headings are part of the contract, not a parse error."""
+    titles = ETHOS_SECTION_TITLES + ("Team Runbook",)
+    ethos = parse_ethos(
+        _ethos_md(titles=titles, sections={"Team Runbook": "Page the on-call before expanding tools."}),
+        strict=True,
+    )
+
+    assert ethos.sections["Team Runbook"] == "Page the on-call before expanding tools."
+    assert ethos.warnings == ()
+
+
+def test_unknown_front_matter_keys_do_not_fail() -> None:
+    """Extra YAML keys are allowed; the parser does not enforce a closed map."""
+    ethos = parse_ethos(_ethos_md(extra_front="team: growth"), strict=True)
+
+    assert ethos.name == "it-helpdesk"
+    assert ethos.warnings == ()
+
+
 def test_none_answers_still_require_the_heading() -> None:
     """An honest empty answer keeps the heading; dropping it fails to parse."""
     ethos = parse_ethos(_ethos_md(sections={"Open Questions": "_(none)_", "Vision": "_(none)_"}))
