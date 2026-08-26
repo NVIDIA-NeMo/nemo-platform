@@ -43,7 +43,7 @@ The mission is grounded in the current deployment proof of concept and its imple
 ## Model
 
 - Mode: cloud
-- Family: NVIDIA Nemotron 3 Super 120B A12B
+- Family: Meta Muse Glimmer 30B
 
 ## Framework
 
@@ -58,7 +58,7 @@ The mission is grounded in the current deployment proof of concept and its imple
 - Context management: Fabric receives OpenAI-compatible chat messages and supplies the system prompt and packaged skills to Deep Agents
 - State management: Fabric owns runtime session state, workspace files, and artifacts
 - Guardrails: API-only operation; no CLI or arbitrary subprocess route; ambiguous workspace or destructive target requires clarification
-- Observability: Structured application logs for fast-path selection, tool failures, model requests, retries, health probes, and final workflow errors; agent-specific telemetry exporters are disabled
+- Observability: NeMo Relay captures complete ATIF trajectories locally and sends them to NeMo Intake with the stable `nemo-studio-assistant` agent name; structured application logs remain available for deployment and export failures
 - Verification: Consequential multi-step requests should read back final state when the SDK supports it; unit tests validate config translation, MCP exposure, and mutation approval
 - Runtime: NeMo Fabric server using the Deep Agents adapter, consumed through OpenAI-compatible chat completions
 - Notes: Fabric does not preserve the former NAT-only deterministic fast path or `/generate/full` evaluation contract
@@ -108,7 +108,7 @@ Manual Studio validation is documented in `agents/nemo-studio-assistant/tests/sm
 
 ## Signals
 
-Prioritize fast-path hit rate, per-request model-call count, tool-error repetition, total latency, upstream decode timeouts, retry count, clarification quality, and verified task completion. Treat repeated identical SDK errors or dozens of model calls for a simple request as runaway behavior. Routine container health probes are operational noise and should not be interpreted as user traffic. Until a dedicated agent telemetry pipeline is added, use container and platform logs for diagnosis.
+Prioritize fast-path hit rate, per-request model-call count, tool-error repetition, total latency, upstream decode timeouts, retry count, clarification quality, and verified task completion. Treat repeated identical SDK errors or dozens of model calls for a simple request as runaway behavior. Routine container health probes are operational noise and should not be interpreted as user traffic. Use Intake's session, trace, and span hierarchy for completed assistant trajectories, with container and platform logs as the fallback for startup or telemetry-export failures.
 
 ## Open Questions
 
