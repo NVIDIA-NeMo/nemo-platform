@@ -71,7 +71,7 @@
       "description": "Observed tool call counts keyed by tool name.",
       "type": "object",
       "propertyNames": {
-        "$ref": "#/$defs/itemName"
+        "$ref": "#/$defs/nonEmptyString"
       },
       "additionalProperties": {
         "type": "integer",
@@ -184,7 +184,7 @@
       ],
       "properties": {
         "tool": {
-          "$ref": "#/$defs/itemName"
+          "$ref": "#/$defs/nonEmptyString"
         },
         "trajectory_path": {
           "$ref": "#/$defs/nonEmptyString"

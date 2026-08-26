@@ -15,7 +15,6 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _atif import AtifTraceError, AtifTraceFacts, load_atif_trace  # noqa: E402
 from _markdown import AuditMarkdownError  # noqa: E402
 from _schema import AuditEnvironmentError, AuditSpecError, load_audit_spec  # noqa: E402
 from measurements import tool_calls  # noqa: E402
@@ -78,9 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         audit = load_audit_spec(args.audit)
         subject_info = _subject(args)
-        trace = load_atif_trace(subject_info.trace_path)
+        trajectory = _load_harbor_trajectory(subject_info.trace_path)
         coverage, details = _measure(
-            audit=audit, audit_path=args.audit, trace=trace, subject=subject_info, method_name=args.method
+            audit=audit, audit_path=args.audit, trajectory=trajectory, subject=subject_info, method_name=args.method
         )
         _validate_report(coverage, schema_path=COVERAGE_SCHEMA_PATH, label="audit coverage")
         _validate_report(
@@ -100,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     except (AuditMarkdownError, AuditSpecError) as exc:
         _print({"valid": False, "written": False, "error_type": "audit_spec", "error": str(exc)}, compact=args.compact)
         return 1
-    except (AuditMeasurementError, AtifTraceError) as exc:
+    except AuditMeasurementError as exc:
         _print({"valid": True, "written": False, "error_type": "trace", "error": str(exc)}, compact=args.compact)
         return 1
 
@@ -181,16 +180,34 @@ def _load_harbor_result(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _load_harbor_trajectory(path: Path) -> Any:
+    try:
+        from harbor.models.trajectories import Trajectory
+    except ImportError as exc:
+        raise AuditEnvironmentError(
+            "harbor is required to read ATIF traces; install the skill dependencies from requirements.txt"
+        ) from exc
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise AuditMeasurementError(f"could not read Harbor ATIF trajectory at {path}: {exc}") from exc
+    try:
+        return Trajectory.model_validate_json(text)
+    except ValueError as exc:
+        raise AuditMeasurementError(f"{path} is not an ATIF trajectory accepted by Harbor: {exc}") from exc
+
+
 def _measure(
     *,
     audit: dict[str, Any],
     audit_path: Path,
-    trace: AtifTraceFacts,
+    trajectory: Any,
     subject: Subject,
     method_name: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     method = METHODS[method_name]
-    measurement = method.measure(audit, trace)
+    measurement = method.measure(audit, trajectory)
     audit_info = _audit_info(audit, audit_path)
     subject_info = subject.to_json()
     method_info = {"name": method.METHOD_NAME}

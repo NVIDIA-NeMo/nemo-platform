@@ -23,10 +23,10 @@ not-for:
   - eval-author-inspect-trace (use after eval-author selects an Intake trace)
   - nemo-experimentalist (use to optimize an agent from Insights or explicit datasets)
 compatibility: >-
-  Python 3.11 or later. PyYAML and jsonschema must be importable by the
-  interpreter that runs the bundled scripts. Generation, validation, and
-  measurement read local files only; they do not start Harbor jobs or call
-  platform services.
+  Python 3.11 or later for generation and validation; Python 3.12 or later for
+  Harbor trace measurement. Dependencies are listed in requirements.txt.
+  Generation, validation, and measurement read local files only; they do not
+  start Harbor jobs or call platform services.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -69,15 +69,16 @@ Audit-spec mechanics live under `scripts/audit_spec/`:
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
-`scripts/audit_spec/_schema.py`, `scripts/audit_spec/_markdown.py`, and
-`scripts/audit_spec/_atif.py`. Measurement methods live under
-`scripts/audit_spec/measurements/`; v1 ships
+`scripts/audit_spec/_schema.py` and `scripts/audit_spec/_markdown.py`.
+Measurement uses Harbor's `harbor.models.trajectories.Trajectory` to read ATIF
+files. Measurement methods live under `scripts/audit_spec/measurements/`; v1 ships
 `scripts/audit_spec/measurements/tool_calls.py`.
 Shared coverage output is defined by `schemas/audit_coverage.schema.json`.
 Tool-call debug output is defined by
 `schemas/audit_tool_calls_details.schema.json`.
 Concrete instances live under `examples/schemas/tool_calls.coverage.json` and
 `examples/schemas/tool_calls.details.json`.
+Runtime dependencies are listed in `requirements.txt`.
 
 ## Step 1: Draft Or Update Audit Items
 
@@ -204,7 +205,8 @@ complete or correct.
 After validation, measure one completed Harbor trial or one ATIF trajectory file:
 
 ```bash
-python <skill_dir>/scripts/audit_spec/measure.py \
+uv run --with-requirements <skill_dir>/requirements.txt \
+  python <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trial-dir <harbor-job-dir>/<trial-dir> \
   --out-dir .eval-author/audit-measurements
@@ -215,7 +217,8 @@ do not emit ATIF may not have that file. When the trace file is already known,
 pass it directly and stamp the task explicitly:
 
 ```bash
-python <skill_dir>/scripts/audit_spec/measure.py \
+uv run --with-requirements <skill_dir>/requirements.txt \
+  python <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trace <path-to>/trajectory.json \
   --task-id <task-id> \
