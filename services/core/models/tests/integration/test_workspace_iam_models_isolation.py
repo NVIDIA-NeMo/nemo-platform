@@ -185,8 +185,8 @@ class TestWorkspaceIamIsolationSDK:
         admin_files = client_from_platform(admin, FilesClient)
         admin_files.create_fileset(workspace=ws_c, body=CreateFilesetRequest(name=fs_c))
         admin_files.create_fileset(workspace=ws_d, body=CreateFilesetRequest(name=fs_d))
-        admin.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_c, workspace=ws_c)
-        admin.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_d, workspace=ws_d)
+        admin_files.upload_file(workspace=ws_c, name=fs_c, path="a.txt", content=b"x")
+        admin_files.upload_file(workspace=ws_d, name=fs_d, path="a.txt", content=b"x")
 
         # 13: adapter in C with a fileset in D is denied (no access to D fileset)
         with pytest.raises(PermissionDeniedError):
@@ -376,8 +376,8 @@ class TestWorkspaceIamIsolationHttpRequests:
         files = client_from_platform(admin_sdk, FilesClient)
         files.create_fileset(workspace=ws_c, body=CreateFilesetRequest(name=fs_c))
         files.create_fileset(workspace=ws_d, body=CreateFilesetRequest(name=fs_d))
-        admin_sdk.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_c, workspace=ws_c)
-        admin_sdk.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_d, workspace=ws_d)
+        files.upload_file(workspace=ws_c, name=fs_c, path="a.txt", content=b"x")
+        files.upload_file(workspace=ws_d, name=fs_d, path="a.txt", content=b"x")
 
         # 13
         r13 = post(

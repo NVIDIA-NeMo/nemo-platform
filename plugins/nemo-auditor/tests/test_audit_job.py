@@ -782,10 +782,40 @@ class TestCollectReportArtifacts:
 
 
 def _mock_sdk(uri: str = "https://igw.example.invalid/v1") -> MagicMock:
-    """Return a MagicMock that mimics the SDK calls _rewrite_options_uris uses."""
+    """Return a MagicMock that mimics the SDK calls _rewrite_options_uris uses.
+
+    The mock exposes ``models_client``, the typed ``ModelsClient`` that
+    ``client_from_platform(sdk, ModelsClient)`` returns in production. Its
+    ``get_provider`` returns a ``.data()``-bearing provider, and
+    ``get_provider_route_openai_url`` returns ``uri``.
+    """
     sdk = MagicMock()
-    sdk.models.get_provider_route_openai_url.return_value = uri
+
+    class _Resp:
+        def __init__(self, value):
+            self._value = value
+
+        def data(self):
+            return self._value
+
+    provider = MagicMock()
+
+    models_client = MagicMock()
+    models_client.get_provider.return_value = _Resp(provider)
+    models_client.get_provider_route_openai_url.return_value = uri
+    sdk.models_client = models_client
     return sdk
+
+
+@pytest.fixture(autouse=True)
+def _patch_client_from_platform():
+    """Route ``client_from_platform(sdk, ModelsClient)`` in ``audit`` back to
+    ``sdk.models_client`` so tests control the typed client directly."""
+    with patch(
+        "nemo_auditor.jobs.audit.client_from_platform",
+        side_effect=lambda sdk_or_async, _cls: sdk_or_async.models_client,
+    ):
+        yield
 
 
 class TestRewriteOptionsUris:
@@ -811,7 +841,7 @@ class TestRewriteOptionsUris:
                 "uri": "https://replaced-url",
             }
         }
-        sdk.inference.providers.retrieve.assert_called_once_with(workspace="default", name="build")
+        sdk.models_client.get_provider.assert_called_once_with(workspace="default", name="build")
 
     def test_replaces_at_nested_openai_compatible(self) -> None:
         options = {
@@ -844,14 +874,14 @@ class TestRewriteOptionsUris:
                 "uri": "https://dont-replace-me",
             }
         }
-        sdk.inference.providers.retrieve.assert_not_called()
+        sdk.models_client.get_provider.assert_not_called()
 
     def test_no_sdk_calls_when_options_have_no_sentinel_at_all(self) -> None:
         options = {"a": {"b": {"c": "leaf"}}, "d": "string"}
         sdk = _mock_sdk()
         _rewrite_options_uris(options, sdk)
         assert options == {"a": {"b": {"c": "leaf"}}, "d": "string"}
-        sdk.inference.providers.retrieve.assert_not_called()
+        sdk.models_client.get_provider.assert_not_called()
 
     def test_raises_on_missing_provider(self) -> None:
         options = {"nim": {"nmp_uri_spec": {"inference_gateway": {"workspace": "default"}}}}
@@ -912,17 +942,18 @@ class TestRewriteOptionsUris:
             }
         }
         async_sdk = MagicMock()
-        async_sdk.inference.providers.retrieve = AsyncMock(return_value=MagicMock())
-        async_sdk.models.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
+        async_sdk.models_client = MagicMock()
+        async_sdk.models_client.get_provider = AsyncMock(return_value=MagicMock(data=lambda: MagicMock()))
+        async_sdk.models_client.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
 
         _rewrite_options_uris(options, sdk=None, async_sdk=async_sdk)
 
         assert options == {"nim": {"max_tokens": 32, "uri": "https://igw-async.example/v1"}}
-        async_sdk.inference.providers.retrieve.assert_called_once_with(workspace="default", name="nvidia-inference-api")
+        async_sdk.models_client.get_provider.assert_called_once_with(workspace="default", name="nvidia-inference-api")
 
     def test_wraps_sdk_lookup_failure_in_runtimeerror(self) -> None:
-        sdk = MagicMock()
-        sdk.inference.providers.retrieve.side_effect = LookupError("no such provider")
+        sdk = _mock_sdk()
+        sdk.models_client.get_provider.side_effect = LookupError("no such provider")
         options = {
             "nim": {
                 "nmp_uri_spec": {
@@ -1006,8 +1037,9 @@ class TestAuditJobIGW:
         spec = _make_spec_dict(target=target)
 
         async_sdk = MagicMock()
-        async_sdk.inference.providers.retrieve = AsyncMock(return_value=MagicMock())
-        async_sdk.models.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
+        async_sdk.models_client = MagicMock()
+        async_sdk.models_client.get_provider = AsyncMock(return_value=MagicMock(data=MagicMock()))
+        async_sdk.models_client.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
