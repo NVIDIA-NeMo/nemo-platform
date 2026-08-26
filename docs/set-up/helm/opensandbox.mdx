@@ -17,6 +17,12 @@ OpenSandbox `[secure_runtime]` is **server-global**. One OpenSandbox server cann
 
 Upstream Helm, TOML, and SDK documentation: [Kubernetes deployment](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/kubernetes/deployment.md), [configuration](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/getting-started/configuration.md), [server configuration reference](https://github.com/opensandbox-group/OpenSandbox/blob/main/server/configuration.md).
 
+## Prerequisites
+
+- A local [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) checkout with Helm charts under `kubernetes/charts/`, or a published chart tarball
+- `kubectl` access to the cluster
+- The NeMo Platform Helm release namespace (jobs run here; it is also `[kubernetes] namespace` in the server values)
+
 ## Namespace rule
 
 OpenSandbox `config.toml` `[kubernetes] namespace` **must be the same namespace the platform jobs run in** (the Helm release namespace). Control-plane Deployments, Services, and template ConfigMaps can stay in `opensandbox-system`. Sandbox pods remount the job-storage PVC by claim name and resolve image-pull secrets in their own namespace, so a dedicated `opensandbox` workload namespace will fail PVC remounts and image pulls.
@@ -38,7 +44,7 @@ Gym sample YAML uses `OPENSANDBOX_DOMAIN` / `OPENSANDBOX_API_KEY`. NeMo Platform
 
 ## Install the shared-kernel server
 
-You need a local OpenSandbox checkout (charts under `kubernetes/charts/`) or a published chart tarball. Replace `NMP_NAMESPACE` with the platform release namespace.
+Replace `NMP_NAMESPACE` with the platform release namespace.
 
 ```sh
 export NMP_NAMESPACE=nemo-platform
