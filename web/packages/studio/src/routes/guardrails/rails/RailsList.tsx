@@ -63,7 +63,12 @@ const RailRow: FC<RailRowProps> = ({ rail, data, onChange }) => {
       role="listitem"
       className="border-border-subtle grid-cols-[auto_1fr] items-start gap-x-density-lg gap-y-density-xs border-b py-density-md last:border-b-0"
     >
-      <GridItem colStart={1} rowStart={1} className="self-center">
+      {/*
+        `flex`, not the default block: the switch's root is `inline-flex`, and a block box
+        wrapping inline content picks up baseline-gap space below it, which throws off
+        `self-center` by a few px against the other row-1 items.
+      */}
+      <GridItem colStart={1} rowStart={1} className="flex self-center">
         <Switch
           checked={enabled}
           onCheckedChange={(next) => onChange(rail.setEnabled(data, next))}
