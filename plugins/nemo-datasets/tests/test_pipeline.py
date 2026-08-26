@@ -764,6 +764,32 @@ def test_profile_tolerates_non_object_jsonl_lines(tmp_path):
     assert result.partitions[0].rows_complete is True
 
 
+def test_a_json_array_saved_as_jsonl_is_not_an_empty_dataset(tmp_path):
+    # The other side of the tolerance above. A stray non-object line costs nothing while some line
+    # is a row; when none is, the file is not a dataset with no rows -- it is a file this reader
+    # could not use, and saying nothing made the two indistinguishable. A pretty-printed JSON array
+    # is exactly that file, on one line, and it profiled as valid and empty with no error at all.
+    (tmp_path / "train.jsonl").write_text('[{"a": 1}, {"a": 2}]\n')
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.coverage.rows_present is None
+    assert result.partitions[0].splits[0].num_examples is None
+    assert result.partitions[0].rows_complete is False
+    assert "not be line-delimited JSON" in result.file_errors[0].error
+
+
+def test_an_empty_file_is_still_an_empty_dataset(tmp_path):
+    # And the case the check must not catch: nothing to read is not the same as nothing usable.
+    (tmp_path / "train.jsonl").write_text("")
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.coverage.rows_present == 0
+    assert result.partitions[0].rows_complete is True
+    assert result.file_errors == []
+
+
 def test_profile_survives_a_hostile_directory(tmp_path):
     """Everything that can go wrong at once must still yield a profile that says what went wrong.
 

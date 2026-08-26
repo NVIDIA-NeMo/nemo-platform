@@ -19,7 +19,7 @@ _BATCH_ROWS = 1024
 # Signatures of the formats a `.jsonl` most often turns out to be. Only *binary* ones are listed,
 # which is the discipline: none of these bytes can begin a text file, so the check cannot produce a
 # false positive. A file that is text but not line-delimited objects -- a pretty-printed array, a
-# file of bare scalars -- is left to `_records`, which reports "skipped N unparseable line(s)".
+# file of bare scalars -- is left to `_records`, which reports "skipped N line(s)".
 _BINARY_MAGIC: tuple[tuple[bytes, str], ...] = (
     (b"PAR1", "a parquet file"),
     (b"\x1f\x8b", "a gzip archive"),
@@ -51,9 +51,12 @@ def _check_magic(stream: BinaryIO) -> None:
 def _records(stream) -> Iterator[tuple[dict | None, str | None]]:
     """Each line of the stream as either a record or a reason it was not one.
 
+    Three outcomes, not two. A record; a failure, with the reason; or ``(None, None)`` for a line
+    that parsed but is not a row -- a stray scalar or array. Blank lines are separator and are not
+    reported at all.
+
     Shared by :meth:`JsonlReader.read` and :meth:`JsonlReader.batches` so the two cannot disagree
-    on what counts as a row: a blank line, a stray scalar and a truncated line are three different
-    things, and only one is an error.
+    on what counts as a row.
     """
     for line_number, raw_line in enumerate(stream, start=1):
         stripped = raw_line.strip()
@@ -66,9 +69,9 @@ def _records(stream) -> Iterator[tuple[dict | None, str | None]]:
             # would erase its row count and every column it was the only witness for.
             yield None, f"line {line_number}: {exc}"
             continue
-        if isinstance(record, dict):
-            yield record, None
-        # a record is a column map; stray scalars/arrays are skipped rather than crash downstream
+        # A row is a column map. A stray scalar or array is not one, and is not a failure either --
+        # it is simply not a row of this dataset, so it costs nothing and the count stays exact.
+        yield (record, None) if isinstance(record, dict) else (None, None)
 
 
 class JsonlReader:
@@ -97,13 +100,17 @@ class JsonlReader:
         """
         rows: list[dict] = []
         scanned = 0
-        unparseable = 0
+        unusable = 0
+        not_rows = 0
         first_failure: str | None = None
         with source.open(entry.path) as stream:
             _check_magic(stream)
             for record, failure in _records(stream):
                 if record is None:
-                    unparseable += 1
+                    if failure is None:
+                        not_rows += 1
+                        continue
+                    unusable += 1
                     if first_failure is None:
                         first_failure = failure
                     continue
@@ -116,12 +123,20 @@ class JsonlReader:
                     break
         if rows:
             yield rows
-        if unparseable and errors is not None:
-            errors.append(f"skipped {unparseable} unparseable line(s); first at {first_failure}")
+        if errors is not None:
+            if unusable:
+                errors.append(f"skipped {unusable} line(s); first at {first_failure}")
+            # Lines that were not rows cost nothing while *some* line was one. When none was, this is
+            # not an empty dataset -- it is a file this reader could not use, and saying nothing would
+            # make it indistinguishable from a dataset that really is empty. A pretty-printed JSON
+            # array saved as `.jsonl` is exactly one such file, on one line.
+            elif not_rows and not scanned:
+                errors.append(f"no JSON object rows in {not_rows} line(s); this may not be line-delimited JSON")
 
     def read(self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None) -> ReadResult:
         rows: list[dict] = []
-        unparseable = 0
+        unusable = 0
+        not_rows = 0
         first_failure: str | None = None
         hit_cap = False
         with source.open(entry.path) as stream:
@@ -130,7 +145,10 @@ class JsonlReader:
                 # Branch on the record, not the failure: the two are exclusive, and this narrows the
                 # type without an ignore comment standing in for the reasoning.
                 if record is None:
-                    unparseable += 1
+                    if failure is None:
+                        not_rows += 1
+                        continue
+                    unusable += 1
                     if first_failure is None:
                         first_failure = failure
                     continue
@@ -141,12 +159,14 @@ class JsonlReader:
 
         # `num_rows` counts records the reader could parse. A line of valid JSON that is not a row (a
         # stray scalar) is not a row of this dataset, so it leaves the count exact and sets no error;
-        # an unparseable line is data we failed to read, so it is reported and the pipeline uses
+        # an unusable line is data we failed to read, so it is reported and the pipeline uses
         # `error` to decide the file was not exhaustively scanned. A cap costs the exact count only
         # when it actually stopped the read -- a file smaller than the cap was read to EOF and keeps
         # an exact count, which lets a capped profile of a small dataset stay exhaustive.
         num_rows = None if hit_cap else len(rows)
-        error = f"skipped {unparseable} unparseable line(s); first at {first_failure}" if unparseable else None
+        error = f"skipped {unusable} line(s); first at {first_failure}" if unusable else None
+        if error is None and not_rows and not rows:
+            error = f"no JSON object rows in {not_rows} line(s); this may not be line-delimited JSON"
         return ReadResult(rows=rows, rows_scanned=len(rows), num_rows=num_rows, arrow_schema=None, error=error)
 
 
