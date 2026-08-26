@@ -34,6 +34,7 @@ class OptimizeSpec(BaseModel):
     )
     agent: str | None = Field(
         default=None,
+        min_length=1,
         description="Optional platform agent reference ('name' or 'workspace/name'). "
         "When omitted, the optimization config must include an inline Fabric agent package.",
     )
@@ -70,9 +71,12 @@ def is_fileset_relative(config_path: str) -> bool:
     the task host is Linux, so a POSIX-only check would let ``C:\\bundle\\optimize.yaml``
     through, and a POSIX-only ``..`` scan would miss ``..\\escape.yaml``.  ``~`` is rejected
     too: it is not absolute to ``PurePath``, but it expands to a client home directory
-    that does not exist on the task host.
+    that does not exist on the task host.  A bare drive letter (``D:optimize.yml``) is
+    rejected too: ``PureWindowsPath`` treats it as drive-relative rather than absolute, but
+    it is still anchored to a drive's current directory on the client host, not the fileset
+    root.
     """
     if config_path.startswith("~"):
         return False
     flavours = (PurePosixPath(config_path), PureWindowsPath(config_path))
-    return not any(path.is_absolute() or ".." in path.parts for path in flavours)
+    return not any(path.is_absolute() or ".." in path.parts or path.drive for path in flavours)

@@ -196,7 +196,7 @@ def test_rejects_absolute_output_directories(tmp_path: Path) -> None:
         preflight_bundle(tmp_path, "optimize.yml")
 
 
-@pytest.mark.parametrize("config_path", ["../optimize.yml", "/abs/optimize.yml"])
+@pytest.mark.parametrize("config_path", ["../optimize.yml", "/abs/optimize.yml", "D:optimize.yml"])
 def test_rejects_a_config_path_outside_the_source(tmp_path: Path, config_path: str) -> None:
     make_bundle(tmp_path, full_config(), files={"dataset.json": DATASET})
 

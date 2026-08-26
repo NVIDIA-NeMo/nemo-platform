@@ -386,7 +386,7 @@ def _publish_results(
             "request.  This is a platform-run-only feature; drop 'output' for local runs."
         ) from exc
 
-    if not artifacts.is_dir():
+    if not artifacts.is_dir() or not any(path.is_file() for path in artifacts.rglob("*")):
         raise FileNotFoundError(
             f"Optimize study reported success but wrote no artifacts to {artifacts}; nothing to publish."
         )

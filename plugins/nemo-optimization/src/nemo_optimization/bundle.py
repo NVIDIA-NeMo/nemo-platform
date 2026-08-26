@@ -104,7 +104,7 @@ def _load_config(source: Path, optimize_config: str) -> dict[str, Any]:
 
 def _agent_problems(config: Mapping[str, Any], *, agent: str | None) -> Iterator[str]:
     """The study needs an Agent under Test: inline in the config, or a platform ``--agent``."""
-    if is_fabric_agent_config(config) or agent is not None:
+    if is_fabric_agent_config(config) or bool(agent):
         return
     if looks_like_nat_config(config):
         yield (
