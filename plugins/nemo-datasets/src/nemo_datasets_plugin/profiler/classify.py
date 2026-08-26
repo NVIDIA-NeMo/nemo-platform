@@ -82,6 +82,13 @@ _SCORE_ALIASES = {
     "reward",
 }
 
+# Every role this profiler can assign. Derived from the alias table rather than written out, so the
+# two cannot drift; `score` is the one role reached by its own alias set rather than by that table.
+# A declared role outside this set is a typo, not a vocabulary the caller is ahead of us on: nothing
+# downstream reads it, so storing it would put an out-of-vocabulary value in the profile and report
+# a match that never happened.
+_KNOWN_ROLES = frozenset(_ALIAS_ROLES.values()) | {"score"}
+
 _TEXT_DTYPES = {"string", "messages"}
 # A verification target is naturally a container: test_cases (list), verification_info (struct), or a
 # plain string answer — but never a bare scalar/number, which is far more likely a label or score.
@@ -151,26 +158,37 @@ def _assign_roles(
     """Stack roles onto ``features`` in place; return evidence for any hint the data could not support.
 
     A declared role wins over the name-alias table, since the caller knows their schema and the
-    table is ~35 English names. It still has to pass the dtype gate, and a rejected hint is reported
-    rather than dropped.
+    table is ~35 English names. It still has to name a role this profiler assigns and pass the dtype
+    gate, and a hint rejected on either count is reported rather than dropped.
     """
     rejected: list[Evidence] = []
     for feature in features:
         declared = column_roles.get(feature.name)
         if declared is not None:
-            if _dtype_allows(feature, declared, stats):
+            if declared not in _KNOWN_ROLES:
+                rejected.append(
+                    Evidence(
+                        kind="user_hint",
+                        detail=(
+                            f"hint '{feature.name} -> {declared}' rejected: not a role this profiler "
+                            f"assigns; falling back to detection"
+                        ),
+                    )
+                )
+            elif _dtype_allows(feature, declared, stats):
                 feature.semantic_role = declared
                 feature.semantic_role_source = "declared"
                 continue
-            rejected.append(
-                Evidence(
-                    kind="user_hint",
-                    detail=(
-                        f"hint '{feature.name} -> {declared}' rejected: a {feature.dtype} column "
-                        f"cannot carry that role; falling back to detection"
-                    ),
+            else:
+                rejected.append(
+                    Evidence(
+                        kind="user_hint",
+                        detail=(
+                            f"hint '{feature.name} -> {declared}' rejected: a {feature.dtype} column "
+                            f"cannot carry that role; falling back to detection"
+                        ),
+                    )
                 )
-            )
         role = _role_for(feature, stats)
         if role is not None:
             feature.semantic_role = role
