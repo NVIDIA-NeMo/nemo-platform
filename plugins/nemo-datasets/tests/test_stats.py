@@ -4,6 +4,7 @@
 """Tests for per-column statistics."""
 
 from nemo_datasets_plugin.profiler.stats import (
+    _MAX_ROLE_CHARS,
     _MAX_VOCABULARY_BYTES,
     _MAX_VOCABULARY_VALUE_CHARS,
     _MAX_VOCABULARY_VALUES,
@@ -143,6 +144,19 @@ def test_message_ends_with_user_turn_is_prompt_only_signal():
     rows = [{"m": [{"role": "user", "content": "solve"}]}]
     stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.ends_with_assistant_rate == 0.0
+
+
+def test_a_role_too_long_to_be_a_role_is_truncated():
+    # `roles_seen` is fed straight from row content and was the one place unbounded row values
+    # reached the profile -- outside the role gate the contract calls its only exception, and with
+    # no per-value cap where `_Vocabulary` has one. A mis-shaped export put whole message bodies in
+    # it. Truncated rather than dropped: the length is itself the finding.
+    rows = _rows("messages", [[{"role": "u" * 3200, "content": "hi"}, {"role": "assistant", "content": "yo"}]])
+    stats = _stats([_feature("messages", "messages")], rows)
+
+    roles = stats["messages"].messages.roles_seen
+    assert max(len(role) for role in roles) == _MAX_ROLE_CHARS
+    assert "assistant" in roles  # a real role is untouched
 
 
 def test_message_stats_read_the_from_value_spelling():

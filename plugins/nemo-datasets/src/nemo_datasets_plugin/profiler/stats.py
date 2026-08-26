@@ -447,6 +447,7 @@ class MessageAccumulator(ColumnAccumulator):
                     # Coerced to str for the contract, but reported verbatim: an unexpected role is
                     # the finding worth surfacing, not something to normalize away.
                     role = role if isinstance(role, str) else str(role)
+                    role = role[:_MAX_ROLE_CHARS]
                     if role not in self._roles_seen and len(self._roles_seen) < _MAX_ROLES_SEEN:
                         self._roles_seen.append(role)
                 total_content += _content_len(_message_field(message, "content", "value"))
@@ -652,6 +653,13 @@ _ASSISTANT_ROLES = {"assistant", "gpt", "bot", "model", "chatbot", "ai"}
 # so without a bound one malformed column holds a string per message -- quadratic, since membership is
 # checked against the list. A column with more roles than this is not a chat column.
 _MAX_ROLES_SEEN = 64
+
+# Characters of a role string that reach the profile. A role is a short token by nature -- `user`,
+# `assistant`, `gpt` -- so this only ever truncates a value that is not one, and the truncation is
+# itself the finding: something that long is not a chat role and the column is not a chat column.
+# Without it the only unbounded row content in the profile was here, outside the role gate the
+# contract calls its one exception, and a mis-shaped export put whole message bodies in `roles_seen`.
+_MAX_ROLE_CHARS = 64
 
 
 def _message_field(message: dict, *names: str) -> Any:
