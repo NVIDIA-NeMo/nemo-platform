@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from nemo_agents_plugin.sdk import AgentsResource
+from nemo_agents_plugin.sdk import AgentsResource, AsyncAgentsResource, agents_sdk_resources
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 
 
@@ -250,3 +250,96 @@ def test_compute_specs_get_and_delete() -> None:
     assert got == {"name": "big"}
     assert ("GET", "/apis/agents/v2/workspaces/team-a/compute-specs/big") in captured["calls"]
     assert ("DELETE", "/apis/agents/v2/workspaces/team-a/compute-specs/big") in captured["calls"]
+
+
+class _RecordingPlatform:
+    """Stand-in for the platform client's request pipeline.
+
+    The job resources deliberately go through ``platform.post`` / ``platform.get``
+    rather than a bare ``httpx`` client, so the caller's auth headers, base URL,
+    and retry policy are applied. Recording those calls is enough to pin the
+    request shape.
+    """
+
+    def __init__(self, response: Any = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._response = response if response is not None else {"name": "execute-a1b2"}
+
+    def post(self, path: str, *, body: Any = None, cast_to: Any = None) -> Any:
+        self.calls.append({"method": "POST", "path": path, "body": body, "cast_to": cast_to})
+        return self._response
+
+    def get(self, path: str, *, cast_to: Any = None) -> Any:
+        self.calls.append({"method": "GET", "path": path, "cast_to": cast_to})
+        return self._response
+
+
+def test_execute_job_create_posts_spec_to_job_collection() -> None:
+    platform = _RecordingPlatform()
+    resource = AgentsResource(platform)
+
+    result = resource.jobs.execute.create(spec={"agent": "calc", "input": "2+2"}, workspace="team-a")
+
+    assert result == {"name": "execute-a1b2"}
+    assert platform.calls == [
+        {
+            "method": "POST",
+            "path": "/apis/agents/v2/workspaces/team-a/jobs/execute",
+            "body": {"spec": {"agent": "calc", "input": "2+2"}},
+            "cast_to": dict[str, Any],
+        }
+    ]
+
+
+def test_execute_job_create_omits_name_when_unset() -> None:
+    """An omitted name lets the Jobs service generate a unique one."""
+    platform = _RecordingPlatform()
+
+    AgentsResource(platform).jobs.execute.create(spec={"agent": "calc", "input": "hi"})
+
+    assert "name" not in platform.calls[0]["body"]
+
+
+def test_execute_job_create_includes_name_and_description_when_given() -> None:
+    platform = _RecordingPlatform()
+
+    AgentsResource(platform).jobs.execute.create(
+        spec={"agent": "calc", "input": "hi"}, name="run-1", description="demo"
+    )
+
+    assert platform.calls[0]["body"]["name"] == "run-1"
+    assert platform.calls[0]["body"]["description"] == "demo"
+
+
+def test_execute_job_get_and_list_results_paths() -> None:
+    platform = _RecordingPlatform()
+    jobs = AgentsResource(platform).jobs.execute
+
+    jobs.get("execute-a1b2", workspace="team-a")
+    jobs.list_results("execute-a1b2", workspace="team-a")
+
+    assert [call["path"] for call in platform.calls] == [
+        "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2",
+        "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2/results",
+    ]
+
+
+async def test_async_execute_job_create_mirrors_sync_shape() -> None:
+    class _AsyncRecordingPlatform(_RecordingPlatform):
+        async def post(self, path: str, *, body: Any = None, cast_to: Any = None) -> Any:
+            return super().post(path, body=body, cast_to=cast_to)
+
+    platform = _AsyncRecordingPlatform()
+
+    result = await AsyncAgentsResource(platform).jobs.execute.create(
+        spec={"agent": "calc", "input": "2+2"}, workspace="team-a"
+    )
+
+    assert result == {"name": "execute-a1b2"}
+    assert platform.calls[0]["path"] == "/apis/agents/v2/workspaces/team-a/jobs/execute"
+    assert platform.calls[0]["body"] == {"spec": {"agent": "calc", "input": "2+2"}}
+
+
+def test_agents_sdk_resources_registers_both_sync_and_async() -> None:
+    assert agents_sdk_resources.sync_resource is AgentsResource
+    assert agents_sdk_resources.async_resource is AsyncAgentsResource

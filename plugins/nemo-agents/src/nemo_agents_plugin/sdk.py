@@ -43,12 +43,21 @@ Usage (once the SDK hub is wired up)::
         session_id="session-entity-id",
         input="Continue",
     )
+
+    # agents.execute jobs
+    job = nemo.agents.jobs.execute.create(spec={"agent": "calculator", "input": "What is 2+2?"})
+    job = nemo.agents.jobs.execute.get(job["name"])
+    results = nemo.agents.jobs.execute.list_results(job["name"])
+
+An async namespace is mounted as ``client.agents`` on ``AsyncNeMoPlatform``.
+It currently exposes ``jobs`` only — agent CRUD, deployments, and ``invoke``
+remain sync-only.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any, List
+from typing import Any, List, Mapping
 
 import httpx
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
@@ -85,6 +94,7 @@ class AgentsResource:
         self._environments: _EnvironmentResource | None = None
         self._environment_specs: _EnvironmentSpecResource | None = None
         self._compute_specs: _ComputeSpecResource | None = None
+        self._jobs: _JobsResource | None = None
 
     # ------------------------------------------------------------------
     # Agent CRUD
@@ -173,6 +183,13 @@ class AgentsResource:
         if self._compute_specs is None:
             self._compute_specs = _ComputeSpecResource(self)
         return self._compute_specs
+
+    @property
+    def jobs(self) -> "_JobsResource":
+        """Sub-resource for agents job collections."""
+        if self._jobs is None:
+            self._jobs = _JobsResource(self._platform)
+        return self._jobs
 
     # ------------------------------------------------------------------
     # Invocation and evaluation
@@ -486,4 +503,147 @@ class _ComputeSpecResource:
         self._parent._delete(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs/{name}")
 
 
-agents_sdk_resources = NemoPluginSDKResources(sync_resource=AgentsResource)
+# ----------------------------------------------------------------------
+# Job sub-resources
+# ----------------------------------------------------------------------
+#
+# Unlike the resources above, these route through the platform client's own
+# request pipeline (``platform.post`` / ``platform.get``) rather than a bare
+# ``httpx`` client, so the caller's auth headers, base URL, and retry policy
+# are applied. A ``NemoJob`` subclass gets CLI and HTTP routes for free but no
+# SDK surface, so each job collection needs a resource like this one.
+
+
+def _execute_jobs_base(workspace: str) -> str:
+    return f"/apis/agents/v2/workspaces/{workspace}/jobs/execute"
+
+
+def _execute_job_body(
+    spec: Mapping[str, Any],
+    name: str | None,
+    description: str | None,
+) -> dict[str, Any]:
+    """Build the create-job request body.
+
+    ``name`` is omitted when not supplied so the Jobs service generates a
+    unique one; sending a fixed name makes the second submission collide.
+    """
+    body: dict[str, Any] = {"spec": dict(spec)}
+    if name is not None:
+        body["name"] = name
+    if description is not None:
+        body["description"] = description
+    return body
+
+
+class _ExecuteJobsResource:
+    """Sync ``client.agents.jobs.execute`` — the ``agents.execute`` job collection."""
+
+    def __init__(self, platform: Any) -> None:
+        self._platform = platform
+
+    def create(
+        self,
+        *,
+        spec: Mapping[str, Any],
+        name: str | None = None,
+        description: str | None = None,
+        workspace: str = _DEFAULT_WORKSPACE,
+    ) -> dict[str, Any]:
+        """Submit an execute-agent job. *spec* is an ``ExecuteAgentJobConfig``."""
+        return self._platform.post(
+            _execute_jobs_base(workspace),
+            body=_execute_job_body(spec, name, description),
+            cast_to=dict[str, Any],
+        )
+
+    def get(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+        """Get one execute-agent job by name."""
+        return self._platform.get(f"{_execute_jobs_base(workspace)}/{name}", cast_to=dict[str, Any])
+
+    def list_results(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+        """List the named results a finished execute-agent job saved."""
+        return self._platform.get(f"{_execute_jobs_base(workspace)}/{name}/results", cast_to=dict[str, Any])
+
+
+class _AsyncExecuteJobsResource:
+    """Async ``client.agents.jobs.execute``."""
+
+    def __init__(self, platform: Any) -> None:
+        self._platform = platform
+
+    async def create(
+        self,
+        *,
+        spec: Mapping[str, Any],
+        name: str | None = None,
+        description: str | None = None,
+        workspace: str = _DEFAULT_WORKSPACE,
+    ) -> dict[str, Any]:
+        """Submit an execute-agent job. *spec* is an ``ExecuteAgentJobConfig``."""
+        return await self._platform.post(
+            _execute_jobs_base(workspace),
+            body=_execute_job_body(spec, name, description),
+            cast_to=dict[str, Any],
+        )
+
+    async def get(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+        """Get one execute-agent job by name."""
+        return await self._platform.get(f"{_execute_jobs_base(workspace)}/{name}", cast_to=dict[str, Any])
+
+    async def list_results(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+        """List the named results a finished execute-agent job saved."""
+        return await self._platform.get(f"{_execute_jobs_base(workspace)}/{name}/results", cast_to=dict[str, Any])
+
+
+class _JobsResource:
+    """Sync ``client.agents.jobs`` namespace."""
+
+    def __init__(self, platform: Any) -> None:
+        self._platform = platform
+        self._execute: _ExecuteJobsResource | None = None
+
+    @property
+    def execute(self) -> _ExecuteJobsResource:
+        if self._execute is None:
+            self._execute = _ExecuteJobsResource(self._platform)
+        return self._execute
+
+
+class _AsyncJobsResource:
+    """Async ``client.agents.jobs`` namespace."""
+
+    def __init__(self, platform: Any) -> None:
+        self._platform = platform
+        self._execute: _AsyncExecuteJobsResource | None = None
+
+    @property
+    def execute(self) -> _AsyncExecuteJobsResource:
+        if self._execute is None:
+            self._execute = _AsyncExecuteJobsResource(self._platform)
+        return self._execute
+
+
+class AsyncAgentsResource:
+    """Async SDK namespace for ``nemo.agents.*``.
+
+    Only ``jobs`` is implemented. Agent CRUD, deployments, and ``invoke``
+    remain sync-only on :class:`AgentsResource`.
+    """
+
+    def __init__(self, platform: Any) -> None:
+        self._platform = platform
+        self._jobs: _AsyncJobsResource | None = None
+
+    @property
+    def jobs(self) -> _AsyncJobsResource:
+        """Sub-resource for agents job collections."""
+        if self._jobs is None:
+            self._jobs = _AsyncJobsResource(self._platform)
+        return self._jobs
+
+
+agents_sdk_resources = NemoPluginSDKResources(
+    sync_resource=AgentsResource,
+    async_resource=AsyncAgentsResource,
+)
