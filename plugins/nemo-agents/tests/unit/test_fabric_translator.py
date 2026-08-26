@@ -196,7 +196,15 @@ class TestTranslateAgentConfig:
                     "transport": "stdio",
                     "url": "repo-mcp --root .",
                     "exposure": "fabric_managed",
-                }
+                    "allowed_tools": ["read_file", "search_files"],
+                    "blocked_tools": ["write_file"],
+                },
+                "disabled": {
+                    "transport": "streamable-http",
+                    "url": "https://mcp.example.com",
+                    "allowed_tools": [],
+                    "custom_headers": {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"},
+                },
             }
         }
         payload["tools"] = {"blocked": ["shell", "browser"]}
@@ -214,6 +222,10 @@ class TestTranslateAgentConfig:
         assert mcp.servers["repo"].transport == "stdio"
         assert mcp.servers["repo"].url == "repo-mcp --root ."
         assert mcp.servers["repo"].exposure == "fabric_managed"
+        assert mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
+        assert mcp.servers["repo"].blocked_tools == ["write_file"]
+        assert mcp.servers["disabled"].allowed_tools == []
+        assert mcp.servers["disabled"].custom_headers == {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"}
         assert tools.blocked == ["shell", "browser"]
 
     def test_top_level_prompts_rejected_until_shared_prompt_contract_exists(self) -> None:
@@ -384,3 +396,44 @@ class TestTranslateAgentConfig:
                 "field_name_policy": "preserve",
             },
         ]
+
+    def test_relay_opentelemetry_export_translates_to_fabric(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "full",
+                    "endpoint": "http://otel-collector:4317",
+                    "transport": "grpc",
+                    "header_env": {"Authorization": "OTEL_AUTH_HEADER"},
+                    "resource_attributes": {"deployment.environment": "test"},
+                },
+                {
+                    "type": "gen_ai",
+                    "endpoint": "http://shared-collector:4318/v1/traces",
+                    "service_name": "shared-agent-service",
+                },
+            ],
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        opentelemetry = observability.opentelemetry
+        assert opentelemetry is not None
+        assert opentelemetry.enabled is True
+        assert len(opentelemetry.endpoints) == 2
+        endpoint = opentelemetry.endpoints[0]
+        assert endpoint.type == "full"
+        assert endpoint.endpoint == "http://otel-collector:4317"
+        assert endpoint.transport == "grpc"
+        assert endpoint.header_env == {"Authorization": "OTEL_AUTH_HEADER"}
+        assert endpoint.resource_attributes == {"deployment.environment": "test"}
+        assert endpoint.service_name == "example-agent"
+        assert opentelemetry.endpoints[1].service_name == "shared-agent-service"

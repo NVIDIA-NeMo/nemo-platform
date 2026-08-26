@@ -28,10 +28,14 @@ Per trial, Harbor writes result files (typically `result.json` and `agent/trajec
 | `evaluation_context.evaluation_name` | the target Evaluation (constant across the whole run) |
 | `evaluation_context.test_case_name` | the task name (constant across that task's trials) |
 | `extra.verifier_result.rewards` | the verifier's per-criterion scores → one evaluator score row each |
+| `extra.error.{type,message}` | a terminal agent execution error from the trial result → root span error status/details |
 
 **Cost/tokens are pass-through.** NeMo does not recompute cost — it sums the per-call `cost_usd` /
 token values Harbor recorded. If Harbor didn't record a cost for a run, that run simply has no cost
 (null, not zero).
+
+See the shared `../../nemo-intake/references/ingest-formats.md` reference for the exact
+`extra.error` shape and root-span behavior.
 
 ## Minimal per-trial payload
 

@@ -16,6 +16,7 @@ import { deploymentsHandlers } from '@studio/mocks/handlers/deployments';
 import { evaluatorHandlers } from '@studio/mocks/handlers/evaluator';
 import { filesetsHandlers } from '@studio/mocks/handlers/filesets';
 import { guardrailsHandlers } from '@studio/mocks/handlers/guardrails';
+import { insightsHandlers } from '@studio/mocks/handlers/insights';
 import { modelsHandlers } from '@studio/mocks/handlers/models';
 import { sampleDatasetsHandlers } from '@studio/mocks/handlers/sampleDatasets';
 import { secretsHandlers } from '@studio/mocks/handlers/secrets';
@@ -759,6 +760,7 @@ export const handlers = [
   ...secretsHandlers,
   ...filesetsHandlers,
   ...guardrailsHandlers,
+  ...insightsHandlers,
 ];
 
 // Re-export EvaluateJob so consumers of this module that previously relied on

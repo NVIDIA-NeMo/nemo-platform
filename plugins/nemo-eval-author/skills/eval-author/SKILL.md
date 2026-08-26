@@ -21,6 +21,7 @@ triggers:
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
+  - eval-author-audit (use to validate existing audit.md coverage denominators)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: Reading only. Each sub-flow states its own runtime needs.
@@ -80,11 +81,14 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
+| `eval-author-audit` | Validate an existing finite `audit.md` coverage denominator |
 
-Authoring new tasks and verifier metrics is not built yet. When a user asks for
-that, say so plainly rather than improvising a task layout by hand. A task written
-against a guessed convention scores nothing and costs a full evaluation run to
-discover.
+Authoring or generating audit specs, runnable tasks, and verifier metrics is not
+built yet. `eval-author-audit` works one level above tasks: it validates the
+coverage denominator that future generation, task authoring, and measurement can
+target. When a user asks for new runnable tasks, say so plainly rather than
+improvising a task layout by hand. A task written against a guessed convention
+scores nothing and costs a full evaluation run to discover.
 
 ## Boundaries
 

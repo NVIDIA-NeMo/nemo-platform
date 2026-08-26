@@ -5,8 +5,8 @@ import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
-  useSafeSynthesizerDownloadJobResultSummary as useDownloadJobResultSummaryV1beta1SafeSynthesizerJobsJobIdResultsSummaryDownloadGet,
-  useSafeSynthesizerGetJobSuspense as useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense,
+  useSafeSynthesizerDownloadJobResultSummary as useDownloadJobResultSummaryV1beta1GenerateJobsJobIdResultsSummaryDownloadGet,
+  useSafeSynthesizerGetJobSuspense as useGetJobV1beta1GenerateJobsJobIdGetSuspense,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Grid, Stack } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerNavigation } from '@studio/components/SafeSynthesizerNavigation';
@@ -23,14 +23,14 @@ import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams'
 import { isJobSuccessful, isJobTerminated } from '@studio/util/safeSynthesizer';
 import { FC, useMemo } from 'react';
 
-export const SafeSynthesizerJobDetailsRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
+export const GenerateJobDetailsRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
   ? () => {
       const workspace = useWorkspaceFromPath();
 
       const { safeSynthesizerJobName } = useRequiredPathParams([
         ROUTE_PARAMS.safeSynthesizerJobName,
       ]);
-      const { data: job } = useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense(
+      const { data: job } = useGetJobV1beta1GenerateJobsJobIdGetSuspense(
         workspace,
         safeSynthesizerJobName,
         {
@@ -47,7 +47,7 @@ export const SafeSynthesizerJobDetailsRoute: FC | null = SAFE_SYNTHESIZER_ENABLE
       const isSuccessful = isJobSuccessful(job.status);
 
       const { data: jobResultSummary } =
-        useDownloadJobResultSummaryV1beta1SafeSynthesizerJobsJobIdResultsSummaryDownloadGet(
+        useDownloadJobResultSummaryV1beta1GenerateJobsJobIdResultsSummaryDownloadGet(
           workspace,
           safeSynthesizerJobName || '',
           {

@@ -3,7 +3,7 @@
 
 import { MockToastProvider } from '@nemo/common/src/tests/MockToastProvider';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import { type SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
+import { type GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { JobConfigDrawer } from '@studio/routes/SafeSynthesizerJobDetailsRoute/components/JobConfigDrawer';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -41,7 +41,7 @@ const createWrapper = (theme: 'light' | 'dark' = 'light') => {
 };
 
 // Mock job data
-const mockJob: SafeSynthesizerJob = {
+const mockJob: GenerateJob = {
   id: 'test-job-id',
   name: 'Test Safe Synthesizer Job',
   description: 'Test job description',

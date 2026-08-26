@@ -14,6 +14,7 @@ COPY docker/customizer/no_override_requirements.txt docker/customizer/no_overrid
 COPY docs docs
 COPY openapi openapi
 COPY packages/nmp_build_tools packages/nmp_build_tools
+COPY packages/filesets packages/filesets
 COPY packages/models packages/models
 COPY packages/nmp_common packages/nmp_common
 COPY packages/nmp_customization_common packages/nmp_customization_common

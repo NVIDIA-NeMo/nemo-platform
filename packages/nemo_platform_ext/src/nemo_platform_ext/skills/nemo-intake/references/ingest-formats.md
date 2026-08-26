@@ -37,6 +37,22 @@ Full request schemas for the three intake ingest endpoints. All are under
 criterion → one score row each) or a bare `score` (→ a single `"reward"` row). This happens
 automatically; you don't call `/evaluator-results` separately for Harbor runs.
 
+**Terminal execution errors** attach via `extra.error`. Intake marks the trajectory's root span as
+`error` and promotes string `type` and `message` values into the span's queryable error fields. ATIF
+does not define a standard trajectory-level error field; this is NeMo's documented root-`extra`
+convention. Omit it for trajectories without a terminal execution error.
+
+```json
+{
+  "extra": {
+    "error": {
+      "type": "AgentTimeoutError",
+      "message": "Agent execution timed out after 900.0 seconds"
+    }
+  }
+}
+```
+
 ```json
 {
   "schema_version": "ATIF-v1.5",
@@ -66,6 +82,8 @@ automatically; you don't call `/evaluator-results` separately for Harbor runs.
   `source_call_id` must resolve to a tool call in the same step.
 - Two rewards under `extra.verifier_result.rewards` → two `evaluator_results` rows named
   `correctness` and `structure`, aggregated per-evaluator on the read model.
+- A root `extra.error` object marks only the trajectory's root span as errored. Failed tool calls
+  remain errors on their own tool spans and do not implicitly fail the trajectory.
 
 See `../../nemo-experiments-upload/references/harbor-quickstart.md` for mapping a Harbor trial result
 to this shape and publishing it as an Evaluation.

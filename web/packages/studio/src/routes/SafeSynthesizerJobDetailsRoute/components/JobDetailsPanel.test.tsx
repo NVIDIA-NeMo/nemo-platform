@@ -4,7 +4,7 @@
 import { formatTimeInSeconds, getDifferenceInMilliseconds } from '@nemo/common/src/utils/date';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
-import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
+import type { GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import * as useDatastoreFileContentModule from '@studio/api/datasets/useDatastoreFileContent';
 import { JobDetailsPanel } from '@studio/routes/SafeSynthesizerJobDetailsRoute/components/JobDetailsPanel';
@@ -149,7 +149,7 @@ const updatedAt = new Date(createdAt);
 updatedAt.setHours(updatedAt.getHours() + 1);
 
 // Mock data
-const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizerJob => ({
+const createMockJob = (overrides?: Partial<GenerateJob>): GenerateJob => ({
   id: 'test-job-id-123',
   name: 'Test Safe Synthesizer Job',
   description: 'A test job for synthetic data generation',

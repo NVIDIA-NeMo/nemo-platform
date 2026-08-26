@@ -284,8 +284,16 @@ that README).
 After `uv sync --package nemo-agents-plugin` (and activating `.venv`), invoke
 `nemo` directly.
 
-`--optimize-config` must be an **absolute** path. Run from the
-`nemo-platform` repo root so dataset / `base_dir` paths resolve.
+`--optimize-config` must be an **absolute** path for `run`, and paths *inside*
+the YAML (`dataset`, `eval.fabric.base_dir`, hook and MCP configs) resolve
+against your current working directory. Keep the config and everything it
+references in one directory — an *optimize bundle* — and run from there. The
+same layout is what [`submit`](#submit-a-study-to-the-platform) needs.
+
+```bash
+export BUNDLE="$(pwd)/plugins/nemo-optimization/examples/hermes-optimize"
+cd "$BUNDLE"
+```
 
 ### Chat-only Hermes (no MCP)
 
@@ -295,7 +303,7 @@ After `uv sync --package nemo-agents-plugin` (and activating `.venv`), invoke
 
 ```bash
 nemo agents optimize run \
-  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly.yaml" \
+  --optimize-config "$BUNDLE/optimize-chatonly.yaml" \
   --workspace default
 ```
 
@@ -333,9 +341,9 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
-optimize_config = Path(
-    "plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly.yaml"
-).resolve()
+bundle = Path("plugins/nemo-optimization/examples/hermes-optimize").resolve()
+optimize_config = bundle / "optimize-chatonly.yaml"
+os.chdir(bundle)  # dataset / base_dir are relative to the bundle
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -377,7 +385,7 @@ export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-
 # These environment variables are templated into optimize-mcp.yaml.
 
 nemo agents optimize run \
-  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-mcp.yaml" \
+  --optimize-config "$BUNDLE/optimize-mcp.yaml" \
   --workspace default
 ```
 
@@ -405,9 +413,9 @@ os.environ.setdefault(
     str(agent_root / ".venv/bin/email-phishing-analyzer-mcp"),
 )
 
-optimize_config = Path(
-    "plugins/nemo-optimization/examples/hermes-optimize/optimize-mcp.yaml"
-).resolve()
+bundle = Path("plugins/nemo-optimization/examples/hermes-optimize").resolve()
+optimize_config = bundle / "optimize-mcp.yaml"
+os.chdir(bundle)  # dataset / base_dir are relative to the bundle
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -438,6 +446,72 @@ workspace agent name (`hermes-optimize-chatonly` or
 (`http://...`, `https://...`, `file://...`) are rejected -- raw HTTP endpoint
 optimize mode was removed. Use a platform-managed agent reference or an inline
 Fabric agent package in `--optimize-config`.
+
+
+## Submit a Study to the Platform
+
+`nemo agents optimize run` executes in your shell. `submit` hands the study to
+the platform's Jobs service, which runs it on the platform host or cluster and
+therefore **cannot read your filesystem**. So `submit` accepts no host paths:
+it takes a fileset holding the whole optimize bundle, plus a config path
+relative to that fileset's root.
+
+### 1. Stage the bundle
+
+```bash
+nemo agents optimize prepare-fileset \
+  --source "$BUNDLE" \
+  --optimize-config optimize-chatonly.yaml \
+  --fileset hermes-optimize-chatonly \
+  --workspace default
+```
+
+`prepare-fileset` validates before it uploads, and prints the matching `submit`
+command on success. It checks that:
+
+- the YAML parses and enables an optimizer with a non-empty search space;
+- there is an Agent under Test — either an inline
+  `schema_version: fabric.agent/v1alpha1` package or a resolvable `--agent`;
+- every path the config references (dataset, `eval.fabric.base_dir`,
+  `eval.run_hook.path` / `agent_src`, MCP `config_paths`) is relative and
+  present under `--source`;
+- no absolute host path would be shipped to the worker.
+
+Use `--dry-run` to validate without uploading, and `--no-check-models` to skip
+resolving the config's models against the platform.
+
+<Note>
+The upload is recursive. Delete local run output (`artifacts/`, `.tmp/`) from
+the bundle before staging.
+</Note>
+
+### 2. Submit
+
+```bash
+nemo agents optimize submit \
+  --optimize-config-fileset default/hermes-optimize-chatonly \
+  --optimize-config optimize-chatonly.yaml \
+  --workspace default
+```
+
+`--optimize-config-fileset` is required: submitting an absolute path fails at
+compile time with a pointer back to `prepare-fileset`. Add
+`--output <fileset-or-dir>` to publish the study's artifacts (optimized config,
+trials dataframe, ATIF evidence) somewhere addressable when it finishes.
+
+### Where the study runs
+
+`OptimizeJob` picks its executor from the execution profiles the platform
+actually registered, for the requested profile (currently always `default`):
+
+| Registered profile | Executor | What the deployment must provide |
+|--------------------|----------|----------------------------------|
+| `subprocess` | Host subprocess running `python -m nemo_optimization.tasks.optimize` | The jobs host venv must carry the optimization and Fabric harness dependencies (and the Docker socket, if trials need it) |
+| `cpu` (docker or `kubernetes_job`) | The `nmp-cpu-tasks` image, same entry point | The task image must carry those dependencies; `nemo-optimization-plugin` is in the `cpu-tasks` dependency group for this reason |
+
+Subprocess wins when both are registered, because a study drives Fabric trials
+that often need the host's Docker daemon and harness adapters. If neither is
+registered under the profile, compile fails and lists what is available.
 
 ## Troubleshooting
 

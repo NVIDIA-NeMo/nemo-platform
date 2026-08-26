@@ -21,14 +21,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SafeSynthesizerJobRequest'
+              $ref: '#/components/schemas/GenerateJobRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SafeSynthesizerJob'
+                $ref: '#/components/schemas/GenerateJob'
         '422':
           description: Validation Error
           content:
@@ -72,7 +72,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/SafeSynthesizerJobsSortField'
+          - $ref: '#/components/schemas/GenerateJobsSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -84,7 +84,7 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/SafeSynthesizerJobsListFilter'
+          $ref: '#/components/schemas/GenerateJobsListFilter'
         description: Filter jobs on various criteria.
       responses:
         '200':
@@ -92,7 +92,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SafeSynthesizerJobsPage'
+                $ref: '#/components/schemas/GenerateJobsPage'
         '422':
           description: Validation Error
           content:
@@ -342,7 +342,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SafeSynthesizerJob'
+                $ref: '#/components/schemas/GenerateJob'
         '422':
           description: Validation Error
           content:
@@ -401,7 +401,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SafeSynthesizerJob'
+                $ref: '#/components/schemas/GenerateJob'
         '422':
           description: Validation Error
           content:
@@ -784,6 +784,147 @@ components:
       enum:
       - fileset
       title: FileStorageType
+    GenerateJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/SafeSynthesizerJobConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: GenerateJob
+    GenerateJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/SafeSynthesizerJobConfig'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: GenerateJobRequest
+    GenerateJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: GenerateJobsListFilter
+      type: object
+    GenerateJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/GenerateJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: GenerateJobsPage
+    GenerateJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: GenerateJobsSortField
     GenerateParameters:
       properties:
         num_records:
@@ -1364,56 +1505,6 @@ components:
       type: object
       title: RowActions
       description: Container for row drop and update operations.
-    SafeSynthesizerJob:
-      properties:
-        id:
-          title: Id
-          type: string
-        name:
-          type: string
-          title: Name
-        description:
-          title: Description
-          type: string
-        project:
-          title: Project
-          type: string
-        workspace:
-          title: Workspace
-          type: string
-        created_at:
-          title: Created At
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          type: string
-          format: date-time
-        spec:
-          $ref: '#/components/schemas/SafeSynthesizerJobConfig'
-        status:
-          $ref: '#/components/schemas/PlatformJobStatus'
-        status_details:
-          title: Status Details
-          additionalProperties: true
-          type: object
-        error_details:
-          title: Error Details
-          additionalProperties: true
-          type: object
-        ownership:
-          title: Ownership
-          additionalProperties: true
-          type: object
-        custom_fields:
-          title: Custom Fields
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - name
-      - spec
-      title: SafeSynthesizerJob
     SafeSynthesizerJobConfig:
       properties:
         data_source:
@@ -1447,97 +1538,6 @@ components:
         Used primarily internally to configure a run submitted to the NeMo Jobs
 
         Microservice.'
-    SafeSynthesizerJobRequest:
-      properties:
-        name:
-          title: Name
-          type: string
-        description:
-          title: Description
-          type: string
-        project:
-          title: Project
-          type: string
-        spec:
-          $ref: '#/components/schemas/SafeSynthesizerJobConfig'
-        ownership:
-          title: Ownership
-          additionalProperties: true
-          type: object
-        custom_fields:
-          title: Custom Fields
-          additionalProperties: true
-          type: object
-        output_location:
-          title: Output Location
-          type: string
-      type: object
-      required:
-      - spec
-      title: SafeSynthesizerJobRequest
-    SafeSynthesizerJobsListFilter:
-      additionalProperties: false
-      properties:
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Jobs created at 'gte' datetime or 'lte' datetime.
-        name:
-          anyOf:
-          - $ref: '#/components/schemas/StringFilter'
-          - type: string
-          description: Name of the job.
-          title: Name
-        workspace:
-          description: Workspace of the job.
-          title: Workspace
-          type: string
-        project:
-          description: Project containing the job.
-          title: Project
-          type: string
-        status:
-          allOf:
-          - $ref: '#/components/schemas/PlatformJobStatus'
-          description: The current status.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Jobs updated at 'gte' datetime or 'lte' datetime.
-      title: SafeSynthesizerJobsListFilter
-      type: object
-    SafeSynthesizerJobsPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/SafeSynthesizerJob'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: SafeSynthesizerJobsPage
-    SafeSynthesizerJobsSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      title: SafeSynthesizerJobsSortField
     SafeSynthesizerParameters:
       properties:
         data:

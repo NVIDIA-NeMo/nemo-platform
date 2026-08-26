@@ -231,41 +231,49 @@ def _build_nemo_gym_env_config(
             dataset_path=customizer_config.dataset.path,
         )
 
+        sandbox = SandboxConfig(
+            image=runtime_image,
+            env_mount_path=SANDBOX_ENVIRONMENT_PATH,
+            dataset_mount_path=SANDBOX_DATASET_PATH,
+            # Sandbox mount is /job/work; ephemeral host work prefers /scratch or /tmp.
+            work_mount_path=SANDBOX_WORK_PATH,
+            allow_internet=gym.allow_internet,
+            network_policy=SandboxNetworkPolicy(
+                # Defaults until the training master resolves live vLLM/broker endpoints.
+                egress_allow=assemble_master_egress_allow(),
+                public_dns_allow=tuple(gym.public_dns_allow),
+            ),
+            # Only emitted when the operator declared it, so an unset value leaves
+            # NeMo-RL's own default in place rather than this compiler asserting one.
+            host_provider_options=(
+                {"connection": {"protocol": gym.sandbox_server_protocol}} if gym.sandbox_server_protocol else {}
+            ),
+            # Same rule: unset leaves the OpenSandbox server's default in place.
+            resources=gym.sandbox_resources or None,
+            environment_pvc_claim=mounts.environment_pvc_claim,
+            environment_sub_path=mounts.environment_sub_path,
+            dataset_pvc_claim=mounts.dataset_pvc_claim,
+            dataset_sub_path=mounts.dataset_sub_path,
+            workspace_pvc_claim=mounts.workspace_pvc_claim,
+            workspace_sub_path=mounts.workspace_sub_path,
+        )
+
+        # Assigned after construction rather than passed in: these three carry non-null
+        # defaults mirroring NeMo-RL's, so handing them None would fail validation and
+        # asserting one here would override upstream on every job.
+        if gym.sandbox_ttl_s is not None:
+            sandbox.ttl_s = gym.sandbox_ttl_s
+        if gym.sandbox_rollout_chunk_size is not None:
+            sandbox.rollout_chunk_size = gym.sandbox_rollout_chunk_size
+        if gym.sandbox_rollout_max_in_flight is not None:
+            sandbox.rollout_max_in_flight = gym.sandbox_rollout_max_in_flight
+
         sandbox_cfg = NemoGymSandboxedConfig(
             sandboxed=True,
             host_provider="opensandbox",
             environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
             job_id=job_ctx.job_id,
-            sandbox=SandboxConfig(
-                image=runtime_image,
-                env_mount_path=SANDBOX_ENVIRONMENT_PATH,
-                dataset_mount_path=SANDBOX_DATASET_PATH,
-                # Sandbox mount is /job/work; ephemeral host work prefers /scratch or /tmp.
-                work_mount_path=SANDBOX_WORK_PATH,
-                allow_internet=gym.allow_internet,
-                network_policy=SandboxNetworkPolicy(
-                    # Defaults until the training master resolves live vLLM/broker endpoints.
-                    egress_allow=assemble_master_egress_allow(),
-                    public_dns_allow=tuple(gym.public_dns_allow),
-                ),
-                # Only emitted when the operator declared it, so an unset value leaves
-                # NeMo-RL's own default in place rather than this compiler asserting one.
-                host_provider_options=(
-                    {"connection": {"protocol": gym.sandbox_server_protocol}} if gym.sandbox_server_protocol else {}
-                ),
-                # Same rule: unset leaves the OpenSandbox server's default in place.
-                resources=gym.sandbox_resources or None,
-                # ttl_s and rollout_chunk_size both have non-null defaults, so they are only
-                # overridden when declared.
-                **({"ttl_s": gym.sandbox_ttl_s} if gym.sandbox_ttl_s else {}),
-                **({"rollout_chunk_size": gym.sandbox_rollout_chunk_size} if gym.sandbox_rollout_chunk_size else {}),
-                environment_pvc_claim=mounts.environment_pvc_claim,
-                environment_sub_path=mounts.environment_sub_path,
-                dataset_pvc_claim=mounts.dataset_pvc_claim,
-                dataset_sub_path=mounts.dataset_sub_path,
-                workspace_pvc_claim=mounts.workspace_pvc_claim,
-                workspace_sub_path=mounts.workspace_sub_path,
-            ),
+            sandbox=sandbox,
         )
         # mode="json", not "python": this dict is written straight to YAML with yaml.dump
         # and read back by OmegaConf's SafeLoader. "python" mode keeps
