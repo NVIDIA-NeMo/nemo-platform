@@ -9,23 +9,21 @@ import {
   useAgentsGetAgent,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
+import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
+import { fetchExperimentsByIds } from '@studio/api/evaluation/experiments';
 import { type EvalJobRow, targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
 import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-
-/** Backend caps page_size at 100. Enough to name the experiments behind a panel's worth of rows. */
-const EXPERIMENT_PAGE_SIZE = 100;
 
 /** Statuses that will not change again, so polling can stop. */
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'error', 'cancelled']);
 
 /** A published evaluation plus the experiment it belongs to — the name its detail route is nested
  *  under, and the description the overview cards label it with. Both are null when the experiment
- *  falls outside the fetched page. */
+ *  could not be resolved. */
 export type AgentEvaluationRow = EvaluationResponse & {
   experimentName: string | null;
   experimentDescription: string | null;
@@ -116,26 +114,32 @@ export const useAgentDetails = ({
     [deploymentsData, agentName]
   );
 
-  const { data: experimentsResponse } = useListExperiments(
-    workspace,
-    { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
-    { query: { enabled: !!agentName && !!workspace } }
-  );
+  const experimentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const evaluation of agentEvalsResponse?.data ?? []) {
+      const id = evaluation.experiment_ids[0];
+      if (id) ids.add(id);
+    }
+    return [...ids].sort();
+  }, [agentEvalsResponse]);
+
+  const { data: experimentsById } = useQuery({
+    queryKey: ['experiments-by-id', workspace, experimentIds] as const,
+    queryFn: ({ signal }) => fetchExperimentsByIds(workspace, experimentIds, signal),
+    enabled: !!workspace && experimentIds.length > 0,
+  });
 
   const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    const byId = new Map(
-      (experimentsResponse?.data ?? []).map((experiment) => [experiment.id, experiment])
-    );
     return (agentEvalsResponse?.data ?? []).map((evaluation) => {
-      const experiment = byId.get(evaluation.experiment_ids[0] ?? '');
+      const experiment = experimentsById?.get(evaluation.experiment_ids[0] ?? '');
       return {
         ...evaluation,
         experimentName: experiment?.name ?? null,
         experimentDescription: experiment?.description ?? null,
       };
     });
-  }, [agentEvalsResponse, experimentsResponse, agentName]);
+  }, [agentEvalsResponse, experimentsById, agentName]);
 
   const agentJobs: EvalJobRow[] = useMemo(() => {
     if (!agentName) return [];
