@@ -210,7 +210,17 @@ def test_merge_top_level_secrets_collected_not_in_config() -> None:
 
 
 def test_merge_mcp_fulfills_declared_server_env_wins_and_secrets_collected() -> None:
-    config = _agent_config(mcp={"servers": {"search": {"transport": "streamable-http", "url": "http://agent-url"}}})
+    config = _agent_config(
+        mcp={
+            "servers": {
+                "search": {
+                    "transport": "streamable-http",
+                    "url": "http://agent-url",
+                    "custom_headers": {"Authorization": "Bearer ${SEARCH_TOKEN}"},
+                }
+            }
+        }
+    )
     spec = EnvironmentSpecInline(
         mcp={
             "search": McpFulfillment(
@@ -227,6 +237,7 @@ def test_merge_mcp_fulfills_declared_server_env_wins_and_secrets_collected() -> 
     # Fulfillment url overrides the Agent's; non-secret env merges in.
     assert servers["search"]["url"] == "http://env-url"
     assert servers["search"]["env"] == {"E": "1"}
+    assert servers["search"]["custom_headers"] == {"Authorization": "Bearer ${SEARCH_TOKEN}"}
     # The secret ref is collected for process-env injection, NOT written into the
     # server config as a literal reference string (env-var-name indirection).
     assert "SEARCH_TOKEN" not in servers["search"]["env"]

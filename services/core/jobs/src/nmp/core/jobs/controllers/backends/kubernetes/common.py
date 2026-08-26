@@ -949,6 +949,32 @@ def build_event_field_selector(kind: str, api_version: str, name: str = "") -> s
     return selector
 
 
+def _opensandbox_job_env(platform_config: Any) -> list[client.V1EnvVar]:
+    """Inject OpenSandbox client env when the cluster has a server installed.
+
+    Domain is a plaintext Service DNS. The API key is a Kubernetes Secret in the
+    job namespace (secretKeyRef cannot read opensandbox-system).
+    """
+    if not getattr(platform_config, "sandbox_cluster_capable", False):
+        return []
+    env: list[client.V1EnvVar] = []
+    domain = getattr(platform_config, "sandbox_server_domain", None)
+    if domain:
+        env.append(client.V1EnvVar(name="OPEN_SANDBOX_DOMAIN", value=domain))
+    secret_name = getattr(platform_config, "sandbox_api_key_secret", None)
+    secret_key = getattr(platform_config, "sandbox_api_key_secret_key", None) or "api-key"
+    if secret_name:
+        env.append(
+            client.V1EnvVar(
+                name="OPEN_SANDBOX_API_KEY",
+                value_from=client.V1EnvVarSource(
+                    secret_key_ref=client.V1SecretKeySelector(name=secret_name, key=secret_key)
+                ),
+            )
+        )
+    return env
+
+
 def create_pod_template_spec(
     step: PlatformJobStepWithContext,
     namespace: str,
@@ -984,6 +1010,7 @@ def create_pod_template_spec(
 
     # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
     env = [client.V1EnvVar(name=name, value=value) for name, value in config.env.items()]
+    env.extend(_opensandbox_job_env(platform_config))
     validate_no_reserved_managed_job_environment_variable_names(
         (envvar.name for envvar in step.step_spec.environment or []),
         source="Job step environment keys",

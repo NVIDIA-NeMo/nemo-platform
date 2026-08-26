@@ -5,6 +5,7 @@
 title: "Install NeMo Platform Helm Chart"
 description: ""
 ---
+
 <a id="install"></a>
 
 <Tip>
@@ -106,12 +107,12 @@ imagePullSecrets:
 
 Review the [NeMo Platform Helm Chart reference](/documentation/self-managed-deployment/helm/helm-reference) before installing. The most common cluster-specific settings are:
 
-| Cluster type | What to configure |
-| --- | --- |
-| `minikube` or `kind` | Use for single-node smoke testing. Provide a StorageClass or static PersistentVolume that can satisfy the chart's shared PVC. Use port-forwarding or a local ingress addon to reach the API. |
-| EKS | Use an RWX storage backend such as Amazon EFS for `core.storage`, a PostgreSQL-ready StorageClass such as `gp3` for embedded PostgreSQL, and IRSA or Kubernetes secrets for S3 credentials if you store files in S3. |
-| AKS, GKE, OKE, or on-prem | Provide an RWX-capable StorageClass for shared jobs storage, configure an ingress or Gateway API route, and install the GPU and network operators required by your node pool. |
-| OpenShift | Add the OpenShift security context overrides from [OpenShift](/documentation/self-managed-deployment/setup/helm/openshift). |
+| Cluster type              | What to configure                                                                                                                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minikube` or `kind`      | Use for single-node smoke testing. Provide a StorageClass or static PersistentVolume that can satisfy the chart's shared PVC. Use port-forwarding or a local ingress addon to reach the API.                         |
+| EKS                       | Use an RWX storage backend such as Amazon EFS for `core.storage`, a PostgreSQL-ready StorageClass such as `gp3` for embedded PostgreSQL, and IRSA or Kubernetes secrets for S3 credentials if you store files in S3. |
+| AKS, GKE, OKE, or on-prem | Provide an RWX-capable StorageClass for shared jobs storage, configure an ingress or Gateway API route, and install the GPU and network operators required by your node pool.                                        |
+| OpenShift                 | Add the OpenShift security context overrides from [OpenShift](/documentation/self-managed-deployment/setup/helm/openshift).                                                                                          |
 
 ### Local single-node clusters
 
@@ -191,17 +192,13 @@ platformConfig:
 
 For multi-node GPU jobs on EKS, also configure EFA networking as described in [Multinode Networking](/documentation/self-managed-deployment/setup/helm/multinode-networking).
 
-## Install Volcano
+## Cluster engines
 
-Install the Volcano scheduler before installing the chart. This is required for customization jobs that leverage multiple nodes.
+The chart does not install these. Install them before the workloads that need them:
 
-```sh
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
-kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
-kubectl rollout status deployment/volcano-admission -n volcano-system
-```
-
-After applying Volcano, wait for the admission webhook to finish initializing before proceeding. The webhook registers immediately with `failurePolicy: Fail`, but TLS certificate generation runs asynchronously. If you proceed before the webhook is ready, pod creation can fail with certificate errors.
+- [Volcano](/documentation/self-managed-deployment/setup/helm/volcano), required for multi-node scheduling
+- [Kyverno](/documentation/self-managed-deployment/setup/helm/multinode-networking), required for multi-node NCCL device injection
+- [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox) required for sandboxed GRPO; [Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) for VM-isolated sandboxes
 
 ## Install the chart
 
@@ -352,31 +349,4 @@ Deleting CRDs removes all custom resources of those types cluster-wide. Only do 
 
 ## Troubleshooting
 
-### Volcano admission webhook blocks pod creation
-
-**Symptom:** Pod creation fails cluster-wide with an error like:
-
-```
-Internal error occurred: failed calling webhook "mutatepod.volcano.sh":
-failed to call webhook: Post "https://volcano-admission-service.volcano-system.svc:443/pods/mutate?timeout=10s":
-tls: failed to verify certificate: x509: certificate signed by unknown authority
-```
-
-**Cause:** The Volcano `MutatingWebhookConfiguration` registers with `failurePolicy: Fail` before the `volcano-admission-init` job finishes generating TLS certificates. This affects all namespaces, not just Volcano workloads.
-
-**Fix:** Wait for the webhook to become functional, then restart the admission deployment to force certificate regeneration:
-
-```sh
-kubectl rollout restart deployment/volcano-admission -n volcano-system
-kubectl rollout status deployment/volcano-admission -n volcano-system
-```
-
-Verify the webhook is accepting requests before retrying your Helm install:
-
-```sh
-until kubectl run volcano-webhook-test --image=busybox --restart=Never --dry-run=server -o yaml 2>/dev/null; do
-  echo "Volcano webhook not ready yet, waiting..."
-  sleep 5
-done
-kubectl delete pod volcano-webhook-test --ignore-not-found=true
-```
+See [Volcano](/documentation/self-managed-deployment/setup/helm/volcano) if the Volcano admission webhook blocks pod creation cluster-wide after you apply the Volcano installer.

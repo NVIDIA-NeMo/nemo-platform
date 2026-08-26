@@ -255,6 +255,116 @@ The `merged_*` methods are only valid when `training.finetuning_type` is `lora`.
 
 ---
 
+## Reinforcement Learning Configuration (DPO and GRPO)
+
+The `rl` backend runs two methods on a Ray cluster, selected by `training.type`. It requires a platform configured with `platform.runtime: kubernetes` and has no local Docker fallback.
+
+| `training.type` | Trains on | Dataset |
+|-----------------|-----------|---------|
+| `"dpo"` | Preference pairs | One fileset holding `training.jsonl` and `validation.jsonl` |
+| `"grpo"` | A reward environment | One dataset fileset of rollout rows, **plus** an environment fileset |
+
+<Note>
+
+`training.type` is required. It is the union discriminator, so a payload that omits it is rejected with `union_tag_not_found` rather than defaulting to one of the two.
+
+</Note>
+
+Unlike the other backends, `model`, `dataset`, and (for GRPO) `environment` are plain string references rather than objects:
+
+```json
+{
+  "model": "default/qwen3-0.6b",
+  "dataset": "default/ascii-tree-dataset",
+  "environment": "default/ascii-tree",
+  "training": { "type": "grpo", "epochs": 1, "batch_size": 32, "num_generations_per_prompt": 8 },
+  "output": { "name": "qwen3-0.6b-ascii-tree" }
+}
+```
+
+### Shared Fields
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `learning_rate` | Peak learning rate. DPO uses a low value (`5e-6`–`1e-5`); GRPO lower still | `1e-4` |
+| `epochs` | Passes over the dataset | `1` |
+| `max_steps` | Global step cap. Caps the run at `min(max_steps, epochs × steps_per_epoch)` | `null` |
+| `batch_size` / `micro_batch_size` | Global batch across all GPUs / per-GPU micro batch | `32` / `1` |
+| `max_seq_length` | Maximum token sequence length | `2048` |
+| `activation_checkpointing` | Recompute activations in the backward pass to cut memory. The first setting to enable on OOM | `false` |
+| `val_check_interval` | Float ≤ 1.0 is a fraction of an epoch; above 1.0 is a step count | `null` |
+| `keep_top_k` | Best checkpoints to retain | `1` |
+
+### DPO Fields
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `ref_policy_kl_penalty` | **β** — how strongly the policy stays tied to the reference model. The main DPO control | `0.05` |
+| `preference_loss_weight` | Weight on the preference loss term | `1.0` |
+| `sft_loss_weight` | Weight on an auxiliary SFT regularization loss. Raise to anchor the policy to the chosen responses | `0.0` |
+
+DPO is full-weight only.
+
+### GRPO Fields
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `num_generations_per_prompt` | Group size. The spread of rewards within a group is the entire learning signal | `8` |
+| `num_prompts_per_step` | Prompts sampled per step. Derived from `batch_size / num_generations_per_prompt` when omitted | `null` |
+| `temperature` | Rollout sampling temperature. Must exceed 0 | `1.0` |
+| `top_k` | Restrict sampling to the k most likely tokens. Unset samples the full distribution | `null` |
+| `max_rollout_turns` | Maximum agent turns per rollout | `1` |
+| `overlong_filtering` | Zero the loss contribution of responses truncated at the generation cap | `false` |
+| `ref_policy_kl_penalty` | KL coefficient against the reference policy | `0.0` |
+| `ratio_clip_min` / `ratio_clip_max` | PPO-style importance ratio clip bounds | `0.2` / `0.28` |
+| `val_at_start` | Run validation before the first step, so baseline and result come from one job | `false` |
+
+Advanced controls, collapsed by default in most workflows:
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `ratio_clip_c` | Dual-clip bound. Puts a floor under the loss for tokens with a negative advantage. Must exceed 1; `3` is typical | `null` |
+| `advantage_clip_low` / `advantage_clip_high` | Bounds applied to advantages after normalization. `low` must be below `high` | `null` |
+| `normalize_rewards` | Divide each group's advantages by their standard deviation | `true` |
+| `use_leave_one_out_baseline` | Compare each response against the mean of the others in its group rather than a mean including itself | `true` |
+| `use_on_policy_kl_approximation` | Estimate KL against the policy that generated the rollouts | `true` |
+| `use_importance_sampling_correction` | Reweight tokens by the likelihood ratio between training and rollout policies | `true` |
+
+### Parameter Efficiency (GRPO)
+
+DPO is full-weight only. GRPO trains either way, selected by `training.finetuning_type`.
+
+| Value | Trains | Produces |
+| --- | --- | --- |
+| `all_weights` (default) | Every weight | A model entity |
+| `lora` | An adapter | An HF PEFT adapter entity, registered against the base model |
+| `lora_merged` | — | Rejected — GRPO does not merge adapters at export |
+
+The output type is inferred from this field; `output` carries only `name`.
+
+| `lora` field | Default | Description |
+| --- | --- | --- |
+| `rank` | `16` | LoRA rank |
+| `alpha` | `32` | Scaling factor. Effective adapter learning-rate multiplier is `alpha / rank` |
+| `dropout` | `0.0` | Dropout applied after the adapter |
+| `target_modules` | `null` | Module names to adapt |
+| `exclude_modules` | `null` | Module name patterns to skip |
+| `use_triton` | `true` | Triton kernels; disabled automatically when `tensor_parallel_size` exceeds 1 |
+
+<Note>
+
+Leaving both `target_modules` and `exclude_modules` unset adapts every linear layer. Setting either one turns that off, so `exclude_modules` alone does not mean "all linear layers except these." Supplying a `lora` block alongside `all_weights` is rejected.
+
+</Note>
+
+<Tip>
+
+GRPO progress is read on **reward**, not loss — the surrogate loss oscillates near zero and says nothing about run quality. See [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments) for environment packaging, dataset format, and the metrics to monitor.
+
+</Tip>
+
+---
+
 ## GPU Memory Guidelines
 
 Estimated GPU requirements by model size:

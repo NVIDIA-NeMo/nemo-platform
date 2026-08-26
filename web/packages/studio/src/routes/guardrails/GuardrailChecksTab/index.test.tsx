@@ -232,13 +232,8 @@ describe('GuardrailChecksTab', () => {
     const dirtyThenOpenChecks = async () => {
       const user = userEvent.setup();
       renderChecks('pii-filter', getGuardrailConfigRoute(WORKSPACE, 'pii-filter'));
-      await user.type(
-        await screen.findByRole(
-          'textbox',
-          { name: 'General Instructions' },
-          { timeout: XL_SELECTOR_TIMEOUT }
-        ),
-        'Be extremely cautious.'
+      await user.click(
+        await screen.findByRole('switch', { name: 'Self Checks' }, { timeout: XL_SELECTOR_TIMEOUT })
       );
       await user.click(screen.getByRole('tab', { name: 'Test and Validate' }));
       await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
@@ -266,8 +261,8 @@ describe('GuardrailChecksTab', () => {
       const [sent] = recordedCheckRequests;
       expect(sent?.guardrails).not.toHaveProperty('config_ids');
       const inline = sent?.guardrails?.config;
-      expect(typeof inline === 'object' ? inline.instructions : undefined).toContainEqual(
-        expect.objectContaining({ content: expect.stringContaining('Be extremely cautious.') })
+      expect(typeof inline === 'object' ? inline.rails?.input?.flows : undefined).toContain(
+        'self check input'
       );
     });
 
@@ -338,13 +333,8 @@ describe('GuardrailChecksTab', () => {
     it('stays enabled on both targets when a dirty draft keeps the main model', async () => {
       const user = userEvent.setup();
       renderChecks('pii-filter', getGuardrailConfigRoute(WORKSPACE, 'pii-filter'));
-      await user.type(
-        await screen.findByRole(
-          'textbox',
-          { name: 'General Instructions' },
-          { timeout: XL_SELECTOR_TIMEOUT }
-        ),
-        'Be extremely cautious.'
+      await user.click(
+        await screen.findByRole('switch', { name: 'Self Checks' }, { timeout: XL_SELECTOR_TIMEOUT })
       );
       await user.click(screen.getByRole('tab', { name: 'Test and Validate' }));
       await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
