@@ -4,15 +4,16 @@
 
 name: eval-author-audit
 description: >-
-  Generate and validate an audit-spec coverage denominator for Eval Author. Use
-  when the user wants a hand-editable audit.md file derived from Ethos, needs
-  schema enforcement for declared tools, capabilities, failure cases, evidence,
-  and references, or wants to review the finite set of things future evals
-  should cover. Changes none of the user's source, and saves audit artifacts
-  under `.eval-author/`.
+  Generate, validate, and measure an audit-spec coverage denominator for Eval
+  Author. Use when the user wants a hand-editable audit.md file derived from
+  Ethos, needs schema enforcement for declared tools, capabilities, failure
+  cases, evidence, and references, or wants to measure which audit items one
+  ATIF trace covers. Changes none of the user's source, and saves audit
+  artifacts under `.eval-author/`.
 triggers:
   - generate audit.md from ETHOS.md
   - validate audit.md coverage schema
+  - measure audit.md coverage against a harbor trace
   - check audit.md coverage denominator
   - what should my evals cover from the agent ethos
   - review the audit coverage denominator
@@ -22,9 +23,10 @@ not-for:
   - eval-author-inspect-trace (use after eval-author selects an Intake trace)
   - nemo-experimentalist (use to optimize an agent from Insights or explicit datasets)
 compatibility: >-
-  Python 3.11 or later. PyYAML and jsonschema must be importable by the
-  interpreter that runs the bundled scripts. Generation and validation read
-  local files only; they do not start Harbor jobs or call platform services.
+  Python 3.11 or later for generation and validation; Python 3.12 or later for
+  ATIF measurement via Harbor's trajectory model. Dependencies are listed in requirements.txt.
+  Generation, validation, and measurement read local files only; they do not
+  start Harbor jobs or call platform services.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -35,7 +37,8 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 
 Read `eval-author` for the shared standard, vocabulary, and boundaries. This
 sub-flow generates and validates a finite coverage denominator from `ETHOS.md`
-and reviewed audit items. It does not generate tasks or measure traces yet.
+and reviewed audit items, then can measure one ATIF trace against it. It
+does not generate tasks or aggregate coverage reports yet.
 
 The audit-spec approach has three item kinds in v1:
 
@@ -59,13 +62,26 @@ existing evals, source-of-truth documents, or `ETHOS.md`.
 
 Audit-spec mechanics live under `scripts/audit_spec/`:
 
+Read `scripts/audit_spec/README.md` for the current measurement assumptions:
+ATIF input, Harbor trajectory parsing, and v1 `tool_calls` coverage only.
+
 | Script | Use it to |
 |---|---|
 | `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
+| `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write coverage/details files for each selected method |
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
 `scripts/audit_spec/_schema.py` and `scripts/audit_spec/_markdown.py`.
+Measurement uses Harbor's `harbor.models.trajectories.Trajectory` to read ATIF
+files. Measurement methods live under `scripts/audit_spec/measurements/`; v1 ships
+`scripts/audit_spec/measurements/tool_calls.py`.
+Shared coverage output is defined by `schemas/audit_coverage.schema.json`.
+Tool-call debug output is defined by
+`schemas/audit_tool_calls_details.schema.json`.
+Concrete instances live under `examples/schemas/tool_calls.coverage.json` and
+`examples/schemas/tool_calls.details.json`.
+Runtime dependencies are listed in `requirements.txt`.
 
 ## Step 1: Draft Or Update Audit Items
 
@@ -185,5 +201,68 @@ validator applies that schema first, then checks any source digests that are
 provided and cross-item references such as `required_tools` and `applies_to`.
 
 Validation proves only structure and references, not that the denominator is
-complete or correct. Treat measurement and coverage-report scripts as future
-work until those scripts exist in this skill.
+complete or correct.
+
+## Step 4: Measure One ATIF Trace
+
+After validation, measure one completed trial directory or one ATIF trajectory
+file. Use `--measure` to select one or more comma-separated measurement methods;
+the default is `tool_calls`.
+
+```bash
+uv run --with-requirements <skill_dir>/requirements.txt \
+  <skill_dir>/scripts/audit_spec/measure.py \
+  --audit .eval-author/audit.md \
+  --trial-dir <harbor-job-dir>/<trial-dir> \
+  --measure tool_calls \
+  --out-dir .eval-author/audit-measurements
+```
+
+The current `--trial-dir` reader supports Harbor-style trial directories that
+normally contain `agent/trajectory.json`; agents that do not emit ATIF may not
+have that file. When the trace file is already known, pass it directly and stamp
+the task explicitly:
+
+```bash
+uv run --with-requirements <skill_dir>/requirements.txt \
+  <skill_dir>/scripts/audit_spec/measure.py \
+  --audit .eval-author/audit.md \
+  --trace <path-to>/trajectory.json \
+  --task-id <task-id> \
+  --run-id <run-id> \
+  --measure tool_calls \
+  --out-dir .eval-author/audit-measurements
+```
+
+`--measure` may be passed more than once or as CSV, for example
+`--measure tool_calls,boundary`. The script loads the trajectory once, then runs
+each selected method against the same parsed Harbor trajectory model. Unknown
+method names fail before the trace is loaded.
+
+The script writes one folder per task, run, and method. Task and run ids are
+encoded as single path components so ids containing `/` cannot create nested or
+escaping paths:
+
+```text
+.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/tool_calls/coverage.json
+.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/tool_calls/details.json
+```
+
+`coverage.json` uses the shared coverage schema and contains only the stable
+audit item names this trace covered plus provider-neutral subject identity
+(`trace`, `trace_format`, `task_id`, and `run_id`). It also records
+`item_kind_count`, the denominator for the measured item kind. Coverage
+aggregation should consume this file and ignore method-specific debug details.
+`details.json` is specific to the selected method and carries traceability data
+for humans.
+
+The only v1 measurement method is `tool_calls`. It covers only audit items whose
+`kind` is `tool` by matching each tool item's `name` against ATIF
+`steps[].tool_calls[].function_name`, including embedded subagent trajectories.
+It does not judge capabilities, failure cases, user intent, output quality, or
+other evidence kinds.
+
+The script validates `coverage.json` against `schemas/audit_coverage.schema.json`
+and validates `details.json` against the selected method's details schema before
+writing. It does not union coverage across tasks; treat coverage aggregation as
+the next audit PR.
