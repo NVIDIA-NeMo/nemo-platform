@@ -10,10 +10,13 @@ membership match against the entity store (mirroring ``experiment_id`` over ``ex
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.intake.api.v2.experiments.dependencies import get_evaluation_rollup_repository
 from nmp.intake.api.v2.experiments.endpoints import _rewrite_facet_filters
+from nmp.intake.config import ClickHouseConfig, IntakeConfig
 from nmp.intake.entities.experiments import Experiment
 from nmp.intake.service import IntakeService
 from nmp.testing import ClientContext, create_test_client
@@ -62,11 +65,16 @@ def test_rewrite_none_passthrough() -> None:
 
 
 @pytest.mark.asyncio
-async def test_filter_by_agent_name_returns_only_matching_evaluations() -> None:
+async def test_filter_by_agent_name_returns_only_matching_evaluations(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(IntakeService, "is_ready", AsyncMock(return_value=True))
+    intake_config = IntakeConfig(
+        clickhouse_config=ClickHouseConfig(url="http://127.0.0.1:1"),
+    )
     with create_test_client(
         IntakeService,
         client_type=ClientContext,
         dependency_overrides={get_evaluation_rollup_repository: lambda: None},
+        service_configs={IntakeService: intake_config},
     ) as ctx:
         tc = ctx.test_client
         group = tc.post(EXPERIMENTS, json={"name": "facet-grp"}).json()
