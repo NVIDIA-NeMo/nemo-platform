@@ -56,9 +56,9 @@ Match the user's intent to one downstream skill. Pick exactly one.
 |---|---|---|
 | "set up", "install", "get started", "try NeMo", "first time" | `setup` | Verify the platform is installed and running. If not, the skill tells the user how to run the CLI install (`make bootstrap` + `nemo setup`). Install itself is CLI-only. |
 | "design an agent", "I want an agent that handles X", "what should my agent do" | `nemo-explore` | Capture the agent's job, audience, categories, tools, model, constraints before any code |
-| "write the spec", "save the design", "capture what we agreed" | `nemo-spec` | Persist the explore answers as `agents/<name>-spec/AGENT-SPEC.md` |
+| "write the ethos", "save the design", "capture what we agreed" | `nemo-ethos` | Persist the explore answers as `agents/<name>-ethos/ETHOS.md` |
 | "write agent.yaml", "validate agent.yaml", "choose a harness", "migrate this NAT YAML", "convert to nemo-agents-spec-v1" | `nemo-agent-config` | Author or migrate the Platform-managed machine-readable config without running the full build |
-| "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Build from the approved spec, default to Platform `agent.yaml`, register, deploy, evaluate, and optionally apply guardrails |
+| "build the agent", "create the agent", "deploy", "scaffold from ethos" | `nemo-build-agent` | Build from the approved Ethos, default to Platform `agent.yaml`, register, deploy, evaluate, and optionally apply guardrails |
 | "ask my agent", "try the agent", "test it", "invoke this agent.yaml" | `nemo-try-agent` | Invoke a named deployment or run a local agent YAML config once |
 | "instrument my agent", "send traces", "use Intake", "agent observability", "query spans or traces" | `nemo-intake` | Choose an ingest path, instrument the source, ingest telemetry, and verify spans, traces, sessions, or evaluator results |
 | "create an experiment", "publish evaluation runs", "evaluation leaderboard" | `nemo-experiments-upload` | Create Experiments and Evaluations, ingest their telemetry and scores, and verify leaderboard rollups |
@@ -123,9 +123,9 @@ If the user's intent doesn't fit any row, do not guess. Read out the available s
 NeMo Platform skills I can route to:
   setup           verify install or get the CLI install command
   nemo-explore    design conversation: capture goal, audience, tools, constraints
-  nemo-spec       write the design to agents/<name>-spec/AGENT-SPEC.md
+  nemo-ethos      write the design to agents/<name>-ethos/ETHOS.md
   nemo-agent-config  author, validate, or migrate Platform agent.yaml
-  nemo-build-agent  build from the spec, register, deploy, evaluate, and sign off
+  nemo-build-agent  build from the Ethos, register, deploy, evaluate, and sign off
   nemo-try-agent  invoke a named deployment or local agent YAML config
   nemo-intake     instrument agents, ingest/query telemetry, attach scores
   nemo-experiments-upload  publish named evaluation runs to an Experiments leaderboard
@@ -168,7 +168,7 @@ What to say:
 - Studio is the NeMo Platform web UI. When the platform is running locally, it serves at `http://localhost:8080/studio`.
 - Documentation: `docs/studio/index.md` in this repo covers the stable views (Agents, Optimizations, Monitor, Workspaces, Datasets). Point users there rather than enumerating features in-conversation — the docs stay up to date, this skill won't.
 - **Honest caveats to flag every time:**
-  - The **Optimizations "Apply suggestion"** flow is **incomplete today**. Suggestions render, but the apply action is not reliable end-to-end. Tell the user to apply optimizer suggestions via the CLI (`nemo agents …`) instead, using the suggestion's `apply` block as the spec — see `agents-optimize`.
+  - The **Optimizations "Apply suggestion"** flow is **incomplete today**. Suggestions render, but the apply action is not reliable end-to-end. Tell the user to apply optimizer suggestions via the CLI (`nemo agents …`) instead, using the suggestion's `apply` block as the source of truth — see `agents-optimize`.
   - Other views may evolve; refer to the docs for the current state rather than promising specific behavior.
 - For local development on Studio itself, the source lives at `web/packages/studio/`. The `studio-dev` skill (if available) covers that workflow.
 

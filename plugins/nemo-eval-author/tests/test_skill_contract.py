@@ -4,9 +4,10 @@
 """Contract tests for the bundled Eval Author skills.
 
 ``eval-author`` is the core skill: it owns the standard, the vocabulary, the
-boundaries, and the routing. ``eval-author-discover`` is a sub-flow that carries
-the steps and defers the standard to the core. Both ship as directories customers
-copy into their own repository, so nothing at runtime enforces their promises.
+boundaries, and the routing. ``eval-author-discover`` and ``eval-author-audit``
+bundle scripts. ``eval-author-inspect-trace`` uses the provider's supported
+commands. Sub-flows defer the standard to the core.
+
 These tests are that enforcement:
 
 - The frontmatter of each skill carries every field ``docs/contributing/skills-spec.mdx`` requires.
@@ -54,8 +55,9 @@ _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
 _DISCOVER_DIR = _SKILLS_DIR / "eval-author-discover"
 _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR)
+_INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
+_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
 _SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
@@ -330,6 +332,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
     discover_tools = set(_frontmatter_and_body(_DISCOVER_DIR)[0]["allowed-tools"])
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
+    inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     assert {"Bash", "Write"} <= discover_tools, (
@@ -338,6 +341,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     assert {"Bash", "Write"} <= audit_tools, (
         f"{_AUDIT_DIR.name} generates and validates audit files; it has {sorted(audit_tools)}"
     )
+    assert {"Bash", "Write"} <= inspect_tools, (
+        f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
+    )
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -345,6 +351,63 @@ def test_the_core_names_every_sub_flow() -> None:
     _, body = _frontmatter_and_body(_CORE_DIR)
     for skill_dir in _SUB_FLOW_DIRS:
         assert skill_dir.name in body, f"the core does not route to {skill_dir.name}"
+
+
+def test_inspect_flow_is_reached_only_through_eval_author() -> None:
+    """Generic Intake questions must not match the inspect-trace sub-flow.
+
+    ``nemo-intake`` already owns instrumentation, ingest, and query. If this
+    sub-flow stays user-invocable and repeats those phrases, an agent with both
+    skills loaded cannot tell which one to start.
+    """
+    inspect_frontmatter, inspect_body = _frontmatter_and_body(_INSPECT_DIR)
+    core_frontmatter, _ = _frontmatter_and_body(_CORE_DIR)
+    overlapping = (
+        "inspect this agent trace",
+        "what happened in this agent trace",
+        "explain this production agent run",
+        "did this trace succeed",
+        "why did this trace fail",
+        "inspecting agent runs",
+    )
+
+    assert inspect_frontmatter["user-invocable"] is False
+    assert "eval-author has routed" in inspect_frontmatter["description"]
+    assert "nemo-intake" in inspect_frontmatter["description"]
+    assert "nemo-intake" in _not_for_names(inspect_frontmatter)
+    assert "nemo-intake" in _not_for_names(core_frontmatter)
+    assert "what happened in this agent trace" in core_frontmatter["triggers"]
+    for phrase in overlapping:
+        assert phrase not in inspect_frontmatter["triggers"]
+        assert phrase not in inspect_frontmatter["description"]
+    assert "after `eval-author` selects it" in inspect_body
+
+
+def test_inspect_flow_is_only_a_cli_driven_skill() -> None:
+    _, body = _frontmatter_and_body(_INSPECT_DIR)
+
+    assert {path.name for path in _INSPECT_DIR.iterdir()} == {"SKILL.md"}
+    for command in (
+        "nemo intake traces",
+        "nemo intake spans",
+        "nemo intake evaluator-results",
+    ):
+        assert command in body
+
+
+def test_inspect_flow_resolves_the_cli_without_changing_the_environment() -> None:
+    """The trace reader must handle installed and source-checkout CLI invocations."""
+    _, body = _frontmatter_and_body(_INSPECT_DIR)
+
+    candidates = (
+        "caller-supplied invocation",
+        "command -v nemo",
+        ".venv/bin/nemo",
+        "uv run --no-sync nemo",
+    )
+    positions = [body.index(candidate) for candidate in candidates]
+    assert positions == sorted(positions), "CLI candidates must appear in priority order"
+    assert "Use the resolved invocation for every command" in body
 
 
 @pytest.mark.parametrize("skill_dir", _SUB_FLOW_DIRS, ids=lambda path: path.name)

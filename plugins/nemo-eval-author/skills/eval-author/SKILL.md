@@ -4,27 +4,31 @@
 
 name: eval-author
 description: >-
-  Work on the evaluation suites that live in a user's own repository: establish
-  whether they run, explain why one fails, and report what it needs. Owns the
-  standard every sub-flow follows, which is that a provider's own validators
-  judge every recorded fact rather than the agent guessing from file layout. Use
-  when the user asks about the evals in their repository without naming a step:
-  "help me with my evals", "what's the state of the eval suite here?", "are these
-  evals any good?", "I inherited this repo and there are Harbor tasks in it", or
-  when you need to pick between the Eval Author sub-flows. Routes to a sub-flow;
-  changes none of your source, and saves what it finds under `.eval-author/`.
+  Work on evaluation suites in a user's repository or understand an agent run
+  from NeMo Intake. Owns the evidence standard that every Eval Author sub-flow
+  follows. Use when the user asks "help me with my evals",
+  "what's the state of the eval suite here?", "what happened in this trace?", or
+  when you need to pick between the Eval Author sub-flows. Routes to a sub-flow
+  and changes none of the user's source. The selected sub-flow uses the
+  provider's supported tools and saves its findings under `.eval-author/`.
 triggers:
   - help me with the evals in this repo
   - what is the state of the eval suite here
   - I inherited a repo with Harbor tasks in it
   - work on my evaluation suite
+  - what happened in this agent trace
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
   - eval-author-audit (use to generate and validate audit.md coverage denominators)
+  - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
+  - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
-compatibility: Reading only. Each sub-flow states its own runtime needs.
+compatibility: >-
+  Reading only. Discovery and audit use the local checkout. Trace inspection
+  requires the nemo CLI, an explicit workspace, and read access to configured
+  Intake.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -33,32 +37,27 @@ allowed-tools: [Read, Grep, Glob]
 
 # Eval Author
 
-Work on the evaluation suites that live in a user's own repository, so a later and
-cheaper model can run them without working out how from scratch.
+Work on repository-owned evaluation suites and understand agent traces. Route
+each request to the narrow sub-flow that owns it.
 
-That last clause is the whole point, and it sets a standard the sub-flows have to
-meet. A report that a downstream model trusts has to be right. A report that is
-merely plausible is worse than no report, because it gets acted on.
+A report that a downstream model trusts has to be right. A plausible report is
+worse than no report when somebody acts on it.
 
 ## The standard
 
-**Every fact you record is one a provider's validators confirmed, not one you
-observed.**
+**Every fact you record comes from authoritative evidence, not a guess.**
 
-The two are easy to confuse and not close to equivalent:
+The authority depends on the sub-flow:
 
-- **Observed.** A `harbor-job.yaml` exists, and a directory holds a `task.toml`.
-  You read the filesystem and described it.
-- **Proven.** Harbor parsed that config, resolved it into tasks, confirmed each
-  task directory is valid, and named the host variables it needs.
+- For suite discovery, Harbor's validators judge runnability. A file's presence
+  doesn't prove that Harbor accepts it.
+- For audit-spec validation, the bundled schema and validator judge the finite
+  `audit.md` coverage denominator.
+- For trace inspection, Intake establishes what happened. Local source code can
+  explain behavior, but it can't replace recorded trace evidence.
 
-Observation cannot substitute for proof. A config file that exists can still name
-a dataset path that is absent, an agent that does not exist, or tasks the provider
-silently drops. Each of those passes every structural check you could invent and
-fails the moment the suite runs.
-
-So no sub-flow reimplements a provider's rules. It asks the provider. Where a
-sub-flow can only observe, it says so and marks the finding unproven.
+No sub-flow reimplements a provider's rules. When evidence can't settle a claim,
+the report marks the claim unproven or uncertain.
 
 ## Vocabulary
 
@@ -72,6 +71,8 @@ The sub-flows share this language, and reports use it verbatim.
 | Rung | One step of a provider's validation ladder, ordered so a lower rung's failure often clears once a higher one is fixed |
 | Proven | A provider judged this check. An unproven check is an observation and never evidence |
 | Provider | The evaluation framework that owns the rules. Harbor today |
+| Finding | One trace claim categorized as `behavior`, `issue`, `recovery`, or `uncertainty`, with evidence IDs |
+| Outcome | The trace assessment: `success`, `failure`, or `unknown` |
 
 ## Sub-flows
 
@@ -82,6 +83,7 @@ and the boundaries; the sub-flow carries the steps.
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
 | `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator from `ETHOS.md` |
+| `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
 
 Runnable tasks and verifier metrics are not built yet. `eval-author-audit` works
 one level above tasks: it generates and validates the coverage denominator that
@@ -108,14 +110,20 @@ user, not to you.
 - **Trusted repositories only.** Validating a config can execute repository code,
   because an agent named by import path gets imported. If the repository is not
   trusted, say so and stop.
-- **No platform services.** Eval Author sub-flows talk to no NeMo service, resolve
-  no workspace, and upload nothing. Everything happens against the local checkout.
+- **Intake reads are narrow.** Only `eval-author-inspect-trace` reads Intake. It
+  uses read-only `nemo intake` commands against the configured instance and
+  workspace. No sub-flow discovers accounts, ingests data, uploads files, or
+  changes a remote resource.
 
 ## Reporting
 
-Lead with the verdict, then the evidence.
+Lead with the verdict or outcome, then the evidence.
 
 State whether the findings are proven, whether the suite is ready, and the names
 of the checks that failed. Never describe a suite as ready while a required check
 fails, and never present an observation as proof. When a sub-flow could not reach
 its provider, the only honest headline is that nothing was proven.
+
+For a trace, use `success`, `failure`, or `unknown`. Tie key moments and findings
+to span IDs, evaluator result IDs, or source symbols. A healthy trace doesn't
+need an issue finding.

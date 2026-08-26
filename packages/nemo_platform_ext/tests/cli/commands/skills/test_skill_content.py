@@ -17,7 +17,7 @@ KNOWN_SKILL_PRECONDITIONS = frozenset(
     {
         "agent_config_exists",
         "agent_design_complete",
-        "agent_spec_exists",
+        "ethos_exists",
         "agents_plugin_available",
         "clickhouse_ready",
         "evaluator_sdk_available",
