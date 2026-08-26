@@ -77,6 +77,18 @@ def test_nmp_customizer_tasks_importable():
 
 
 @pytest.mark.smoke_nmp_customizer_tasks
+def test_sdk_alias_resources_importable():
+    from nemo_platform import NeMoPlatform
+
+    sdk = NeMoPlatform(base_url="http://127.0.0.1:1")
+    try:
+        sdk.files
+        sdk.models
+    finally:
+        sdk.close()
+
+
+@pytest.mark.smoke_nmp_customizer_tasks
 def test_dali_files_removed():
     patterns = [
         pattern

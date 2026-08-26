@@ -325,6 +325,8 @@ class ContainerManager:
         # Configure the models/NIM Docker backend for DonD (Docker-on-Docker) setup.
         # NIMs need to join the same network as the quickstart container so they can
         # communicate via container names (e.g., http://md-workspace-name:8000).
+        env["NEMO_DEPLOYMENTS_DOCKER_NETWORK"] = self.config.network_name
+        env["NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE"] = "network"
         env["MODELS_DOCKER_NETWORKING_MODE"] = "dond"
         env["MODELS_DOCKER_NETWORK"] = self.config.network_name
         # Pass the container name so the Models service can use it for localhost replacement
