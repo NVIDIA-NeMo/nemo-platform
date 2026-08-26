@@ -116,7 +116,7 @@ class OptimizeJob(NemoJob):
             steps=[
                 PlatformJobStep(
                     name="optimize",
-                    executor=await cls._resolve_executor(profile=profile or "default", async_sdk=async_sdk),
+                    executor=await _resolve_executor(profile=profile or "default", async_sdk=async_sdk),
                     config=spec_dict,
                     environment=[
                         EnvironmentVariable(
@@ -126,54 +126,6 @@ class OptimizeJob(NemoJob):
                     ],
                 ),
             ],
-        )
-
-    @staticmethod
-    async def _resolve_executor(*, profile: str, async_sdk: object) -> ExecutorSpec:
-        """Pick the executor for *profile* from the backends the platform actually registered.
-
-        Optimize prefers ``subprocess``: a study drives Fabric trials that may need the host's
-        Docker daemon and a venv carrying the agent's harness adapters.  Deployments that do not
-        register a subprocess backend (Helm / Minikube) get the ``cpu`` provider instead, which the
-        platform maps to whichever backend it registered for that profile (docker or kubernetes_job).
-        """
-        if async_sdk is None:
-            raise _profiles_unavailable(profile)
-
-        try:
-            profiles = (
-                await client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncJobsClient).get_execution_profiles()
-            ).data()
-        except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
-            raise _profiles_unavailable(profile) from exc
-
-        if any(
-            isinstance(candidate, SubprocessJobExecutionProfile) and candidate.profile == profile
-            for candidate in profiles
-        ):
-            return SubprocessExecutionProviderSpec(
-                provider="subprocess",
-                profile=profile,
-                command=[*OPTIMIZE_ENTRYPOINT, *OPTIMIZE_COMMAND],
-            )
-
-        # Jobs keys execution profiles by (provider, profile); "cpu" is whatever container backend
-        # the deployment registered under that name.
-        if any(candidate.provider == "cpu" and candidate.profile == profile for candidate in profiles):
-            return CPUExecutionProviderSpec(
-                provider="cpu",
-                profile=profile,
-                container=ContainerSpec(
-                    image=get_qualified_image(OPTIMIZE_TASK_IMAGE),
-                    entrypoint=OPTIMIZE_ENTRYPOINT,
-                    command=OPTIMIZE_COMMAND,
-                ),
-            )
-
-        available = sorted({f"{candidate.provider}/{candidate.profile}" for candidate in profiles})
-        raise PlatformJobCompilationError(
-            f"No 'subprocess' or 'cpu' execution profile named {profile!r} is registered, so the "
-            f"optimize step has nowhere to run.  Available profiles: {available or ['<none>']}."
         )
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
@@ -213,6 +165,53 @@ def _profiles_unavailable(profile: str) -> PlatformJobDependencyUnavailableError
     return PlatformJobDependencyUnavailableError(
         f"Unable to resolve execution profile '{profile}': the Jobs service is temporarily "
         "unavailable.  Retry the submission."
+    )
+
+
+async def _resolve_executor(*, profile: str, async_sdk: object) -> ExecutorSpec:
+    """Pick the executor for *profile* from the backends the platform actually registered.
+
+    Optimize prefers ``subprocess``: a study drives Fabric trials that may need the host's
+    Docker daemon and a venv carrying the agent's harness adapters.  Deployments that do not
+    register a subprocess backend (Helm / Minikube) get the ``cpu`` provider instead, which the
+    platform maps to whichever backend it registered for that profile (docker or kubernetes_job).
+    """
+    if async_sdk is None:
+        raise _profiles_unavailable(profile)
+
+    try:
+        profiles = (
+            await client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncJobsClient).get_execution_profiles()
+        ).data()
+    except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
+        raise _profiles_unavailable(profile) from exc
+
+    if any(
+        isinstance(candidate, SubprocessJobExecutionProfile) and candidate.profile == profile for candidate in profiles
+    ):
+        return SubprocessExecutionProviderSpec(
+            provider="subprocess",
+            profile=profile,
+            command=[*OPTIMIZE_ENTRYPOINT, *OPTIMIZE_COMMAND],
+        )
+
+    # Jobs keys execution profiles by (provider, profile); "cpu" is whatever container backend
+    # the deployment registered under that name.
+    if any(candidate.provider == "cpu" and candidate.profile == profile for candidate in profiles):
+        return CPUExecutionProviderSpec(
+            provider="cpu",
+            profile=profile,
+            container=ContainerSpec(
+                image=get_qualified_image(OPTIMIZE_TASK_IMAGE),
+                entrypoint=OPTIMIZE_ENTRYPOINT,
+                command=OPTIMIZE_COMMAND,
+            ),
+        )
+
+    available = sorted({f"{candidate.provider}/{candidate.profile}" for candidate in profiles})
+    raise PlatformJobCompilationError(
+        f"No 'subprocess' or 'cpu' execution profile named {profile!r} is registered, so the "
+        f"optimize step has nowhere to run.  Available profiles: {available or ['<none>']}."
     )
 
 

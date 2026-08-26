@@ -6,6 +6,13 @@
 Shared library for Fabric-backed numeric hyperparameter optimization (Optuna)
 and the Agents ``optimize`` job implementation.
 
+## Prerequisites
+
+Install the agents CLI (``uv sync --package nemo-agents-plugin``) and a running
+NeMo Platform instance you have access to (workspace + inference credentials).
+See [examples/hermes-optimize/README.md](examples/hermes-optimize/README.md#one-time-setup-platform)
+for the full one-time setup, including the Hermes harness install.
+
 Primary user surface (Alt 5):
 
 ```bash
@@ -45,3 +52,10 @@ container isolation (not implemented).
 
 This package is intentionally not a Customizer contributor. A future
 Experimentalist / Customizer agent may call the same library.
+
+## Next Steps
+
+* Try the runnable bundle example: [examples/hermes-optimize](examples/hermes-optimize).
+* Stage and submit a study to the platform with ``prepare-fileset`` + ``submit``;
+  see the "Primary user surface" commands above and that example's README for
+  the full ``run`` → ``prepare-fileset`` → ``submit`` workflow.

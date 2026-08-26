@@ -16,6 +16,7 @@ class OptimizeSpec(BaseModel):
     """Spec for an Agents optimize study (``nemo agents optimize``)."""
 
     optimize_config: str = Field(
+        min_length=1,
         description="Location of the Fabric-native optimization YAML.  With optimize_config_fileset "
         "set — required for `submit` — this is a path relative to the fileset root.  Without it "
         "(local `nemo agents optimize run` only) it is an absolute path on the host running the CLI.",

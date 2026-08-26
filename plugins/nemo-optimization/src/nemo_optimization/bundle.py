@@ -15,6 +15,7 @@ path-bearing keys of the config and checking each one against the bundle directo
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
@@ -71,6 +72,7 @@ def preflight_bundle(
         *_agent_problems(config, agent=agent),
         *_optimizer_problems(config),
         *_path_problems(source, config),
+        *_symlink_problems(source),
     ]
     if problems:
         raise BundlePreflightError(
@@ -135,22 +137,42 @@ def _optimizer_problems(config: Mapping[str, Any]) -> Iterator[str]:
 
 def _path_problems(source: Path, config: Mapping[str, Any]) -> Iterator[str]:
     for reference in path_references(config):
-        if "${" in reference.value:
-            # Expanded from the task environment at run time; nothing to resolve here.
-            continue
         if not is_fileset_relative(reference.value):
             yield (
                 f"{reference.location} is an absolute path ({reference.value!r}), which will not "
                 "exist on the platform; make it relative to the bundle root"
             )
             continue
+        if "${" in reference.value:
+            # Relative, expanded from the task environment at run time; nothing to resolve here.
+            continue
         if not reference.must_exist:
             continue
         target = source / reference.value
-        if reference.is_dir and not target.is_dir():
+        if target.is_symlink():
+            yield f"{reference.location} points at {reference.value!r}, which is a symlink; symlinks are not allowed in an optimize bundle"
+        elif reference.is_dir and not target.is_dir():
             yield f"{reference.location} points at {reference.value!r}, which is not a directory under --source"
         elif not reference.is_dir and not target.is_file():
             yield f"{reference.location} points at {reference.value!r}, which is not a file under --source"
+
+
+def _symlink_problems(source: Path) -> Iterator[str]:
+    """Reject every symlink under *source*.
+
+    Upload walks the tree and follows symlinks, so an unreferenced symlink can smuggle files
+    from outside the bundle into the fileset, and a symlinked directory in a referenced path's
+    ancestry can let that reference resolve outside ``--source`` even though the reference
+    itself looks bundle-relative.  ``os.walk(..., followlinks=False)`` never descends into a
+    symlinked directory, so this only reports the symlink itself rather than its (possibly
+    unbounded or external) contents.
+    """
+    for root, dirnames, filenames in os.walk(source, followlinks=False):
+        root_path = Path(root)
+        for name in (*dirnames, *filenames):
+            entry = root_path / name
+            if entry.is_symlink():
+                yield (f"{entry.relative_to(source)} is a symlink, which is not allowed in an optimize bundle")
 
 
 def path_references(config: Mapping[str, Any]) -> Iterator[PathReference]:
