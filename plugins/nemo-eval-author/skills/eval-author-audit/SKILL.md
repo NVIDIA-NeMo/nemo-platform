@@ -211,7 +211,7 @@ the default is `tool_calls`.
 
 ```bash
 uv run --with-requirements <skill_dir>/requirements.txt \
-  python <skill_dir>/scripts/audit_spec/measure.py \
+  <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trial-dir <harbor-job-dir>/<trial-dir> \
   --measure tool_calls \
@@ -225,7 +225,7 @@ the task explicitly:
 
 ```bash
 uv run --with-requirements <skill_dir>/requirements.txt \
-  python <skill_dir>/scripts/audit_spec/measure.py \
+  <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trace <path-to>/trajectory.json \
   --task-id <task-id> \
