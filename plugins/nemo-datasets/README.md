@@ -7,6 +7,15 @@ The dataset profiler. Reads a fileset of dataset files and produces a `DatasetPr
 partitions and splits are there, what the row schema is, per-column statistics, and a classification
 of what kind of training data this is.
 
+A fileset lands in the platform and someone wants to fine-tune on it. To decide anything they need to
+know whether it is trainable, in what shape, at what sequence budget, and which files are the train
+split. Answering that by downloading is O(dataset) per question, per consumer, forever — so the
+profiler reads it once and stores a typed description everyone else reads instead.
+
+The hard part is not *what* gets measured; quantiles and counts are easy. It is measuring them
+**without ever holding the data**. A fileset can be 50 GB and the profiler runs in an ordinary job,
+so folds, bounded accumulators and bucketed histograms are all downstream of that one constraint.
+
 ## What it produces
 
 One artifact, described by `nemo_platform_plugin.files.dataset_profile.DatasetProfile`:
@@ -59,81 +68,112 @@ dataset, which is indistinguishable from a dataset that really is empty.
 ## How the measurement works
 
 The diagrams under [Architecture](#architecture) are the formal version of this. Read this section
-first — `stats.py` is genuinely hard to read top-to-bottom, because `RowFold` is the first class in
-the file and depends on almost everything below it.
+first — `stats.py` is hard to follow top-to-bottom, because `RowFold` is the first class in the file
+and depends on almost everything below it.
 
-### The rule that causes all of it
+### The constraint everything follows from
 
-> You are standing at a conveyor belt. Boxes go past. You may not keep any box. You have a notepad.
-> At the end, someone asks you questions about all the boxes.
+A dataset can be tens of gigabytes. It is read once, and it cannot be held. So every question the
+profile answers has to be answerable from state whose size is bounded by the **schema** rather than
+by the row count.
 
-A dataset can be tens of gigabytes. It is read once and cannot be held. So every question the
-profile answers has to be answerable from a notepad whose size never grows, however many rows go by.
-
-That is all a **fold** is — belt, notepad, rule:
+That is what a *fold* means here:
 
 ```
-update(batch)   # some rows just went past; make your marks
-finalize()      # the belt is empty; answer the questions
+update(batch)   # measure these rows, then release them
+finalize()      # the input is exhausted; report
 ```
 
-Everything that looks strange in `stats.py` is a consequence of that one constraint.
+`update` keeps no reference to the batch it was handed, and splitting a column across many calls
+gives the same answer as one call with all of it. That equivalence is what lets a caller stop
+materialising a partition before measuring it. Everything that looks unusual in `stats.py` follows
+from this one constraint.
 
-### A notepad is an accumulator
+### Accumulators
 
-One notepad per column. A dataset with `messages` and `score` means two notepads, both marked as
-each row goes by. The marks are tallies:
+One accumulator per column, holding tallies rather than values:
 
 ```
-rows seen    ||||||||   8
-nulls                   0
-non-empty    ||||||||   8
+rows seen    8
+nulls        0
+non-empty    8
 ```
 
-Different columns want different questions asked, so there are four kinds:
+Different dtypes call for different measurements, so there are four:
 
-| Notepad | For | What it marks |
+| Accumulator | For | Measures |
 |---|---|---|
 | `StringAccumulator` | text | length distribution, distinct values |
 | `NumericAccumulator` | numbers | min, max, mean, distinct values |
-| `BoolAccumulator` | true/false | how many of each |
+| `BoolAccumulator` | true/false | class balance |
 | `MessageAccumulator` | chat logs | turns, roles seen, whether it ends on the assistant |
 
-### Which notepad answers
+### Choosing which measurement reports
 
-**JSONL says nothing about its columns.** It is lines of text with no header. What the `messages`
-column *is* cannot be known until the last row has gone by — row 900,000 may hold a number and make
-the whole column mixed. Three options, two of them bad:
+**JSONL declares nothing.** It is lines of text with no header, so what the `messages` column *is*
+cannot be known until the last row has been read — row 900,000 may hold a number and make the whole
+column mixed. Three options, two of them unacceptable:
 
 - read the file twice — too slow;
-- decide from the first N rows and hope — wrong sometimes, and silently;
-- **mark each value on whichever notepad fits it, and decide at the end which notepad answers.**
+- decide from the first N rows — silently wrong on exactly the cases that matter;
+- **route each value to the measurement that fits it, and let the resolved dtype decide which one
+  reports.**
 
-**Parquet does say in advance** — its footer declares that `messages` is a list of `{role, content}`,
-read before the belt starts. That does not call for a different mechanism, only for skipping the
-guess: the same notepads are used, and the declared dtype picks which one answers instead of the
-observed types picking.
+**Parquet does declare.** Its footer gives the schema before a row is parsed. That calls not for a
+different mechanism but for skipping the inference: the same measurements run, and the declared dtype
+selects the reporter instead of the observed types.
 
-→ one `RowFold`, driving one `RoutedAccumulator` per column. `RoutedAccumulator` is not clever —
-it is a notepad per shape, plus a `SchemaFold` (inferred columns only) tracking which types have
-been seen.
+So both paths use one `RowFold` driving one `RoutedAccumulator` per column. A `RoutedAccumulator`
+holds a measurement per shape, plus a `SchemaFold` on the inferred path to resolve the dtype.
 
-A notepad is opened **the first time a value needs it**, so a column of one type pays for one. That
-matters more as shapes are added: building all of them up front billed every column for every shape
-the profiler knows, whether or not its values ever reached them.
+Measurements are constructed **on first use**, so a column of a single type pays for one. The
+per-value cost is unchanged either way — a string only ever reaches the string measurement, an int
+only the numeric — and retained state stays flat whether the file holds 10,000 rows or 1,000,000.
 
-It also costs less per value than it sounds. A string is only ever marked on the string notepad, an
-int only on the numeric one — the same work, just filed by shape. State stays flat whether the file
-holds 10,000 rows or 1,000,000.
+### When a column's types disagree
 
-### The histogram: how to answer "median length" without keeping the lengths
+Inference has to answer for the whole column, so `_resolve_scalar` decides what a mixture resolves
+to. Ints and floats widen; **any other disagreement resolves to `json`**:
 
-Writing down 40 million lengths and sorting them is a notepad that weighs as much as the dataset.
-So the page comes **pre-printed with buckets** and lengths are tallied into them.
+| column | values | dtype | stats |
+|---|---|---|---|
+| `widens` | `1, 2, 3.5, 4` | `float64` | `numeric`, `categorical` |
+| `int_str` | `1, 2, "x", 4` | **`json`** | none |
+| `str_list` | `"a", "b", ["a","b"], "c"` | **`json`** | none |
+| `all_null` | all `None` | **`json`** | `null_rate` only |
+| `grows` | `{a}, {a}, {a,b}, {a}` | `struct` | none — keys are unioned |
 
-Below 32, every length has its own line and is recorded **exactly**. Above it the buckets widen with
-the magnitude — 32 slices per doubling — so the width stays a roughly constant *fraction* of the
-value rather than a constant amount:
+`json` is a claim, not a fallback: it says this column holds more than one shape. Nothing further is
+asserted about it, because there is no measurement that would be true of all of its values.
+
+The column is still measured, though. `null_rate` lives on `ColumnStats` itself rather than in a
+dtype block, and the content probes are type-agnostic, so both survive:
+
+```
+ColumnProbes(rows=4, non_empty=4, texts=3, extractable_answer=0, transcript_marker=0)
+stats entry for 'completion': None
+```
+
+**The case to watch** is a role-named column that disagrees. `json` fails the role dtype gates, so
+the column loses its role — and that changes what the dataset is classified as:
+
+```
+completion = "a0", "a1", "a2", "a3"   ->  dtype=string  role=completion  ->  prompt_completion
+completion = "a0", "a1", "a2",  42    ->  dtype=json    role=None        ->  prompt_only
+```
+
+One malformed row in four is enough. The profile is honest — it reports the column as mixed and
+unroled — but nothing in `evidence` flags it as suspicious. Surfacing that is the gap tracked under
+[Limitations](#limitations).
+
+### Length distributions without retaining lengths
+
+Exact quantiles require every length kept and sorted, which is state proportional to the dataset.
+Lengths are tallied into fixed buckets instead.
+
+Below 32 each length has its own counter and is recorded **exactly**. Above it the buckets widen with
+the magnitude — 32 slices per doubling — so a bucket spans a roughly constant *fraction* of the value
+rather than a constant amount:
 
 | value | its bucket | width | relative |
 |---:|---|---:|---:|
@@ -141,30 +181,32 @@ value rather than a constant amount:
 | 1,000 | `[992, 1008)` | 16 | 1.6% |
 | 1,000,000 | `[999424, 1015808)` | 16,384 | 1.6% |
 
-Measured against exact quantiles on real shards: ~2%. And the page never grows.
+The bucket edges are fixed in advance and never adapted to the data, so two runs over the same bytes
+always agree. Measured against exact quantiles on real shards: ~2%.
 
-For a `messages` column holding six 2-turn chats, one 3-turn and one 4-turn, the entire notepad is:
+For a `messages` column holding six 2-turn chats, one 3-turn and one 4-turn, the entire retained
+state is:
 
 ```python
 _turns._counts == {2: 6, 3: 1, 4: 1}
 ```
 
-which is enough to answer "median 2, max 4". Turn counts are small enough to land in the exact
-region, so the buckets are legible by hand; a `content_chars` histogram over real text is the same
-structure with wider buckets at the top end.
+which is enough to report a median of 2 and a max of 4. Turn counts fall in the exact region, so
+these buckets are legible by hand; a `content_chars` histogram over real text has the same structure
+with wider buckets at the top end.
 
-The trade is deliberate. The **count** is exact, because every row was tallied and none sampled;
-only the **value** is rounded. `max` is tracked exactly and separately, since it is the one number a
-reader may treat as a hard bound.
+The trade is deliberate. The **rank** is exact, since every row is counted and none sampled; only the
+**value** is rounded. `max` is tracked exactly and separately, as the one number a reader may treat
+as a hard bound.
 
 → `_LengthHistogram`. See also [Why a histogram and not a reservoir](#why-a-histogram-and-not-a-reservoir).
 
-### The vocabulary: a list that erases itself
+### Cardinality, bounded
 
-Counting distinct values exactly means *remembering* them. For a `label` column of
-`{safe, unsafe}` that is two words. For a column of reasoning traces it is the whole dataset —
-the rule broken. So the notepad watches itself and gives up when the column stops looking like a
-short list:
+Counting distinct values exactly means retaining them. For a `label` column of `{safe, unsafe}` that
+is two strings; for a column of reasoning traces it is the whole dataset, which breaks the
+constraint. So the vocabulary stops accumulating once the column stops resembling a controlled
+vocabulary:
 
 | Bound | Value |
 |---|---|
@@ -172,41 +214,40 @@ short list:
 | characters in any one value | 256 |
 | total bytes | 64 KB |
 
-Giving up means **erasing the page and stopping**, permanently:
+Crossing any bound discards what was held, permanently:
 
 ```
 1,024 distinct values ->  84,548 bytes retained
-1,025 distinct values ->     658 bytes retained, values gone
+1,025 distinct values ->     658 bytes retained, values discarded
 ```
 
-The 256-character bound is the one doing the real work. It does not ask *how many* values there are,
-it asks **what kind of column this is** — a category name is short by nature, so one
-paragraph-length value settles it on sight and free-text columns bail out immediately rather than
-after 1,024 rows.
+The 256-character bound does the real work. It asks not how many values the column holds but what
+kind of column it is: a category name is short by nature, so a single paragraph-length value settles
+the question immediately rather than after 1,024 rows.
 
 → `_Vocabulary`.
 
-### Probes: the yes/no tallies
+### Content probes
 
-Stats measure *how much*. Probes count *whether the tell-tale sign was there*:
+Statistics measure magnitude; probes record whether a marker was present at all:
 
 ```
 rows                 8
 non_empty            8
 texts                8    values readable as text
 extractable_answer   0    contained "####" or "\boxed{}"
-transcript_marker    0    looked like "\n\nHuman:" / "\n\nAssistant:"
+transcript_marker    0    matched "\n\nHuman:" / "\n\nAssistant:"
 ```
 
-These are what later decides whether a dataset is *verifiable* — whether a grading answer is
-embedded that a model's output could be checked against. They are tallied on the **same pass** as
-the stats, because opening the row is the expensive part; once it is open, look for everything.
+These are what decides whether a dataset is *verifiable* — whether an embedded grading answer exists
+that a model's output could be checked against. They run on the same pass as the statistics, because
+reading the row is the expensive part.
 
 → `ColumnProbes`.
 
-### Reading the notepad
+### Classification reads measurements, not rows
 
-When the belt is empty, `classify()` reads **only the notepad** and says what the shipment was:
+`classify()` takes features, stats and probes, and never touches a row:
 
 ```
 dataset_type  = "messages"
@@ -214,23 +255,23 @@ format        = "conversational"
 verifiability = None            # checked; there is nothing to auto-grade
 ```
 
-It never sees a row. That is the payoff of the rule — the rows are long gone and the partition can
-still be described. See [Why absence is a claim](#why-absence-is-a-claim) for why `None` there is an
-answer rather than a gap.
+That is the payoff of the constraint: the rows are long gone and the partition can still be
+described. See [Why absence is a claim](#why-absence-is-a-claim) for why `None` there is an answer
+rather than a gap.
 
-### The one exception, and why the order looks backwards
+### Why quoting runs after classification
 
-For a few roles — `label`, `provenance`, `meta`, `rank` — the actual values are worth putting in the
-report. Knowing a label column is exactly `{safe, unsafe}` is useful.
+For four roles — `label`, `provenance`, `meta`, `rank` — the values themselves belong in the report.
+Knowing a label column is exactly `{safe, unsafe}` is useful; reproducing a prompt column's ten
+thousand distinct prompts is not, and would leak the data the profile exists to describe.
 
-But which columns those are is not known until the classifier has spoken. So:
+Which columns qualify is not known until roles are assigned, so the order is forced:
 
-1. during the pass, `_Vocabulary` quietly keeps the values it has seen;
+1. during the pass, `_Vocabulary` retains the values it has seen;
 2. `classify()` assigns roles;
-3. **then** `quote_enumerations` writes the values for quotable roles and drops the rest.
+3. `quote_enumerations` writes the values for quotable roles and discards the rest.
 
-That is why quoting runs *after* classification rather than during the pass — and it only works
-because the values were held back, since the belt cannot be rewound.
+It only works because the values were held back — the rows cannot be revisited.
 
 → `quote_enumerations`, gated on `_QUOTABLE_ROLES`. See also
 [Why the profile almost never contains row content](#why-the-profile-almost-never-contains-row-content).
@@ -239,13 +280,156 @@ because the values were held back, since the belt cannot be rewound.
 
 Not top to bottom. In this order:
 
-1. `ColumnAccumulator` — the base notepad. Everything else is this plus specifics.
-2. `StringAccumulator` — the simplest real one, barely 20 lines.
-3. `_LengthHistogram` and `_Vocabulary` — the two tricks above.
+1. `ColumnAccumulator` — the base measurement. Everything else is this plus specifics.
+2. `StringAccumulator` — the simplest concrete one, barely 20 lines.
+3. `_LengthHistogram` and `_Vocabulary` — the two bounded structures above.
 4. `_MEASUREMENTS` and `_measurement_for` — five lines, and the only place a dtype becomes a
    measurement.
 5. `RoutedAccumulator` — one column, measured by shape.
 6. `RowFold` — the columns of a partition, declared or discovered.
+
+## End to end: one SFT dataset
+
+[How the measurement works](#how-the-measurement-works) is the mechanism in the abstract. This is the
+same mechanism with real numbers, on a small SFT chat set — a `messages` column, a `source` column,
+two splits:
+
+```
+sft-chat/
+  README.md            11 bytes
+  train.jsonl       2,379,659 bytes   2,400 rows
+  validation.jsonl    303,265 bytes     300 rows
+```
+
+```json
+{"messages": [{"role": "system", "content": "You are a concise technical assistant."},
+              {"role": "user", "content": "Summarise the causes of the 1929 crash."},
+              {"role": "assistant", "content": "the underlying reason worth noting that ..."}],
+ "source": "oasst2"}
+```
+
+Synthetic, so the figures below can be regenerated exactly.
+
+<details>
+<summary>The generator</summary>
+
+```python
+import json, pathlib, random, shutil
+random.seed(7)
+d = pathlib.Path("sft-chat"); shutil.rmtree(d, ignore_errors=True); d.mkdir()
+SOURCES = ["oasst2", "lmsys-chat", "self-instruct"]
+Q = ["How do I reverse a linked list in Python?", "What causes the northern lights?",
+     "Summarise the causes of the 1929 crash.", "Write a regex for an ISO-8601 date.",
+     "Why is my Docker build so slow?", "Explain gradient clipping."]
+def answer(n):
+    return " ".join(random.choice(["The short version is that", "you can think of it as",
+        "in practice this means", "the underlying reason", "a common approach",
+        "worth noting that"]) for _ in range(n))
+rows = []
+for i in range(2700):
+    t = []
+    if i % 8 == 0: t.append({"role": "system", "content": "You are a concise technical assistant."})
+    t.append({"role": "user", "content": random.choice(Q)})
+    t.append({"role": "assistant", "content": answer(random.randint(6, 60))})
+    if i % 5 == 0:
+        t.append({"role": "user", "content": "Can you give an example?"})
+        t.append({"role": "assistant", "content": answer(random.randint(8, 40))})
+    rows.append({"messages": t, "source": SOURCES[i % 3]})
+for split, chunk in (("train", rows[:2400]), ("validation", rows[2400:])):
+    (d / f"{split}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in chunk))
+(d / "README.md").write_text("# sft-chat\n")
+```
+
+</details>
+
+### Batching and the read loop
+
+JSONL declares nothing — no schema, no row count — so `peek()` comes back empty and the reader hands
+rows over in chunks of `_BATCH_ROWS = 1024`. The loop folds each chunk and drops it:
+
+```
+batch 1 of train.jsonl: 1024 rows -> folded, dropped
+batch 2 of train.jsonl: 1024 rows -> folded, dropped
+batch 3 of train.jsonl:  352 rows -> folded, dropped
+train.jsonl       split=train       rows=2400  batches=3  glob='train*.jsonl'
+validation.jsonl  split=validation  rows=300   batches=1  glob='validation*.jsonl'
+```
+
+Measured live — what arrives per batch, against what the fold keeps:
+
+| after batch | rows folded | batch in memory | fold state |
+|---:|---:|---:|---:|
+| 1 | 1,024 | 2,111,743 B | 19,346 B |
+| 2 | 2,048 | 2,130,343 B | 19,878 B |
+| 3 | 2,400 | 731,497 B | **20,018 B** |
+
+~2 MB arrives per batch and is released; ~20 KB is kept, and it barely moves across 2,400 rows. The
+state is bounded by the schema, not the row count.
+
+`num_rows` is exact here **only because the read reached EOF**. Under a row budget it would be
+`None`, and `coverage.rows_present` would go `None` with it — unknown, not zero.
+
+### Which accumulators get built
+
+```
+messages  RoutedAccumulator  built=['messages']  dtype=messages
+source    RoutedAccumulator  built=['string']    dtype=string
+```
+
+One measurement each, and only the one the values called for. The dtype is not known until the last row —
+a column can turn mixed at row 2,399 — so `SchemaFold` unions the observed types as it goes and
+resolves at the end.
+
+### The histogram is accurate enough to act on
+
+Reported `content_chars` against exact quantiles over all 2,700 rows:
+
+| | exact | reported | error |
+|---|---:|---:|---:|
+| p50 | 857 | 856 | 0.12% |
+| p95 | 1,626 | 1,616 | 0.62% |
+| p99 | 1,969 | 1,968 | 0.05% |
+| max | 2,260 | 2,260 | **exact** |
+
+Rank is exact — every row counted, none sampled — so only the value is rounded, and `max` not at all.
+
+### What comes out
+
+```json
+"coverage": {"rows_scanned": 2700, "rows_present": 2700,
+             "files_read": 2, "files_present": 2, "bytes_present": 2682924},
+"splits": [
+  {"name": "train",      "canonical": "train",      "data_files": "train*.jsonl",      "num_examples": 2400},
+  {"name": "validation", "canonical": "validation", "data_files": "validation*.jsonl", "num_examples": 300}],
+"features": [
+  {"name": "messages", "dtype": "messages", "semantic_role": "messages",
+   "items": {"dtype": "struct", "fields": [{"name": "role",    "dtype": "string"},
+                                           {"name": "content", "dtype": "string"}]}},
+  {"name": "source", "dtype": "string", "semantic_role": "provenance"}],
+"stats": {
+  "messages": {"null_rate": 0.0, "messages": {
+      "turns":         {"p50": 2,   "p95": 4,    "p99": 5,    "max": 5},
+      "content_chars": {"p50": 856, "p95": 1616, "p99": 1968, "max": 2260},
+      "roles_seen": ["system", "user", "assistant"],
+      "ends_with_assistant_rate": 1.0, "valid_alternation_rate": 1.0, "has_tool_calls": false}},
+  "source": {"null_rate": 0.0,
+      "text": {"chars": {"p50": 10, "p95": 13, "p99": 13, "max": 13}},
+      "categorical": {"distinct_count": 3,
+                      "values": ["lmsys-chat", "oasst2", "self-instruct"]}}},
+"rows_complete": true,
+"classification": {"modality": "text", "dataset_type": "messages", "format": "conversational",
+                   "prompt_form": "n/a"}
+```
+
+`bytes_present` is 2,379,659 + 303,265. The README's 11 bytes are absent — it is not data, and is
+counted nowhere.
+
+**Reading it.** `content_chars.p99 = 1968` sets a sequence budget and `max = 2260` is the hard cap.
+`turns` shows a mostly 2-turn set with a multi-turn tail. `ends_with_assistant_rate = 1.0` says every
+row has a training target. `roles_seen` is verbatim and unsorted, because an unexpected role is the
+finding. `rows_complete: true` is what licenses treating `source`'s three values as the *complete*
+enumeration rather than a sample — and `source` got its values quoted only because it resolved to the
+`provenance` role; `messages` is not quotable at any cardinality.
 
 ## Architecture
 
@@ -535,6 +719,10 @@ field, which changes how the prompt template should be built.
   point for `max_seq_len`, not a substitute for tokenizing.
 - **Shape, not quality.** No duplication or contamination detection, no content-quality scoring, no
   PII detection — PII belongs to the anonymizer.
+- **It describes, it does not warn.** `evidence` explains what the profile concluded and why, but
+  there is no findings channel for what looks *wrong* — a column whose types disagree and so lost its
+  role, a constant completion column, a label set that is 99% one class. A consumer has to notice
+  those by reading the profile rather than being told.
 - **Dotted directories are not skipped.** See the `snapshot_download` note above.
 - **No file-level sampling.** Every file is opened. A row budget bounds rows per partition, not
   files, so a fileset with very many shards still pays one open per shard.
