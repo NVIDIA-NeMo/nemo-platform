@@ -1114,6 +1114,8 @@ def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path
         str(trace),
         "--task-id",
         "account-recovery",
+        "--measure",
+        "tool_calls,tool_calls",
         "--out-dir",
         str(out_dir),
     )
@@ -1125,10 +1127,17 @@ def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path
     details = json.loads(details_path.read_text(encoding="utf-8"))
 
     assert summary["written"] is True
-    assert summary["coverage"] == str(coverage_path)
-    assert summary["details"] == str(details_path)
-    assert summary["covered"] == ["customer.lookup"]
-    assert summary["covered_count"] == 1
+    assert summary["methods"] == ["tool_calls"]
+    assert summary["measurements"] == [
+        {
+            "method": "tool_calls",
+            "item_kind": "tool",
+            "coverage": str(coverage_path),
+            "details": str(details_path),
+            "covered": ["customer.lookup"],
+            "covered_count": 1,
+        }
+    ]
     assert coverage == {
         "schema": "nemo.eval_author.audit_coverage.v1",
         "audit": {
@@ -1187,7 +1196,7 @@ def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path)
     coverage = json.loads((out_dir / "account-recovery" / "tool_calls" / "coverage.json").read_text(encoding="utf-8"))
     details = json.loads((out_dir / "account-recovery" / "tool_calls" / "details.json").read_text(encoding="utf-8"))
 
-    assert summary["covered"] == []
+    assert summary["measurements"][0]["covered"] == []
     assert coverage["covered"] == []
     assert details["covered"] == []
     assert details["missing"] == ["customer.lookup"]
@@ -1252,6 +1261,32 @@ def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) ->
     assert report["written"] is False
     assert report["error_type"] == "trace"
     assert "not an ATIF trajectory" in report["error"]
+    assert not out_dir.exists()
+
+
+def test_audit_measure_rejects_unknown_measurement_method_before_trace_load(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(tmp_path / "missing.json"),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "tool_calls,boundary",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "unknown measurement method(s): boundary" in report["error"]
     assert not out_dir.exists()
 
 
