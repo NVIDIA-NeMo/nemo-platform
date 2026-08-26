@@ -33,15 +33,18 @@ so a Harbor change that tightens a rule flows through without a test change here
 Nothing here imports the platform, for the same reason the bundled scripts do not:
 these skills are copied into someone else's repository and have to stand alone. The
 tests that make Harbor judge a fixture suite skip when Harbor is absent, so the whole
-file runs against nothing but pytest and PyYAML.
+file runs against nothing but pytest, PyYAML, and jsonschema.
 """
 
 import ast
+import hashlib
+import importlib
 import json
 import os
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -50,12 +53,18 @@ import yaml
 
 _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
-_FLOW_DIR = _SKILLS_DIR / "eval-author-discover"
-_SKILL_DIRS = (_CORE_DIR, _FLOW_DIR)
-_SUB_FLOW_DIRS = (_FLOW_DIR,)
-_SCRIPTS_DIR = _FLOW_DIR / "scripts"
-_DISCOVER = _SCRIPTS_DIR / "discover.py"
-_LADDER = _SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
+_DISCOVER_DIR = _SKILLS_DIR / "eval-author-discover"
+_AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
+_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR)
+_DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
+_AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
+_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
+_DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
+_LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
+_AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
+_AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
+_AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -87,9 +96,9 @@ _needs_unreadable_files = pytest.mark.skipif(
     reason="this user can read a file whatever its mode, so unreadability cannot be staged",
 )
 
-# Harbor brings these in, so a bundled script may name them. Nothing else outside
-# the standard library may appear.
-_PERMITTED_THIRD_PARTY = frozenset({"harbor", "pydantic", "yaml"})
+# Bundled scripts may name only these third-party roots. Anything else would
+# become a hidden dependency for repositories that copy the skill.
+_PERMITTED_THIRD_PARTY = frozenset({"harbor", "jsonschema", "pydantic", "yaml"})
 
 
 def _not_for_names(frontmatter: dict) -> set[str]:
@@ -104,15 +113,16 @@ def _frontmatter_and_body(skill_dir: Path) -> tuple[dict, str]:
     return yaml.safe_load(frontmatter), body
 
 
-def _bundled_scripts() -> list[Path]:
+def _bundled_scripts(scripts_dir: Path | None = None) -> list[Path]:
     """Return every bundled module, including the ones under providers/."""
-    return sorted(path for path in _SCRIPTS_DIR.rglob("*.py") if "__pycache__" not in path.parts)
+    roots = _SCRIPT_DIRS if scripts_dir is None else (scripts_dir,)
+    return sorted(path for root in roots for path in root.rglob("*.py") if "__pycache__" not in path.parts)
 
 
-def _local_roots() -> set[str]:
+def _local_roots(scripts_dir: Path) -> set[str]:
     """Return the top-level names a bundled module can import from scripts/."""
-    return {path.stem if path.is_file() else path.name for path in _SCRIPTS_DIR.iterdir()} | {
-        path.stem for path in _bundled_scripts()
+    return {path.stem if path.is_file() else path.name for path in scripts_dir.iterdir()} | {
+        path.stem for path in _bundled_scripts(scripts_dir)
     }
 
 
@@ -142,6 +152,46 @@ def _run_discover(repo: Path, *args: str, with_harbor: bool = True) -> tuple[int
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     assert result.stdout, f"discover.py printed nothing; stderr:\n{result.stderr}"
     return result.returncode, json.loads(result.stdout)
+
+
+def _run_json_script(
+    script: Path,
+    *args: str,
+    python_args: tuple[str, ...] = (),
+    env: dict[str, str] | None = None,
+) -> tuple[int, dict, str]:
+    """Run an audit script that emits JSON on stdout."""
+    result = subprocess.run(
+        [sys.executable, *python_args, str(script), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.stdout, f"{script.name} printed nothing; stderr:\n{result.stderr}"
+    return result.returncode, json.loads(result.stdout), result.stderr
+
+
+def _digest(path: Path) -> str:
+    with path.open("rb") as stream:
+        return f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
+
+
+def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) -> Path:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n", encoding="utf-8")
+
+    audit_dir = tmp_path / ".eval-author"
+    audit_dir.mkdir()
+    audit = audit_dir / "audit.md"
+    text = _AUDIT_TEMPLATE.read_text(encoding="utf-8").replace(
+        'sha256: "sha256:<replace-with-64-hex-digest>"',
+        f"sha256: {_digest(ethos)}",
+    )
+    if transform is not None:
+        text = transform(text)
+    audit.write_text(text, encoding="utf-8")
+    return audit
 
 
 def _write_task(task_dir: Path, *, name: str = "smoke/generated") -> None:
@@ -225,10 +275,15 @@ def test_no_skill_can_edit_what_it_did_not_write(skill_dir: Path) -> None:
 def test_the_core_routes_and_the_sub_flow_executes() -> None:
     """The core only picks a sub-flow, so it neither runs nor saves anything."""
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
+    discover_tools = set(_frontmatter_and_body(_DISCOVER_DIR)[0]["allowed-tools"])
+    audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
+
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
-    for skill_dir in _SUB_FLOW_DIRS:
-        tools = set(_frontmatter_and_body(skill_dir)[0]["allowed-tools"])
-        assert {"Bash", "Write"} <= tools, f"{skill_dir.name} runs a script and saves a report; it has {sorted(tools)}"
+    assert {"Bash", "Write"} <= discover_tools, (
+        f"{_DISCOVER_DIR.name} runs a script and saves a report; it has {sorted(discover_tools)}"
+    )
+    assert "Bash" in audit_tools, f"{_AUDIT_DIR.name} runs a validation script; it has {sorted(audit_tools)}"
+    assert "Write" not in audit_tools, f"{_AUDIT_DIR.name} validates only; {sorted(audit_tools)} is too broad"
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -263,7 +318,7 @@ def test_skill_body_stays_within_the_line_budget(skill_dir: Path) -> None:
 
 
 def test_every_bundled_path_the_skill_names_exists() -> None:
-    _, body = _frontmatter_and_body(_FLOW_DIR)
+    _, body = _frontmatter_and_body(_DISCOVER_DIR)
     for relative in (
         "scripts/discover.py",
         "scripts/_checks.py",
@@ -272,17 +327,369 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
         "scripts/providers/harbor/_ladder.py",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
-        assert (_FLOW_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+        assert (_DISCOVER_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_every_audit_spec_path_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    for relative in (
+        "scripts/audit_spec/validate.py",
+        "scripts/audit_spec/_schema.py",
+        "scripts/audit_spec/_markdown.py",
+        "schemas/audit.schema.json",
+        "templates/audit.md",
+    ):
+        assert relative in body, f"SKILL.md no longer documents {relative}"
+        assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_audit_json_schema_is_valid() -> None:
+    from jsonschema import Draft202012Validator
+
+    Draft202012Validator.check_schema(json.loads(_AUDIT_JSON_SCHEMA.read_text(encoding="utf-8")))
+
+
+def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+    assert report["item_counts"] == {"capability": 1, "failure_case": 1, "tool": 1}
+
+
+def test_audit_file_without_sources_allows_source_refs_as_notes(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n",
+            "",
+            text,
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_file_with_empty_sources_validates(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n",
+            "sources: []\n",
+            text,
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_compact_output(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit), "--compact")
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+    assert report["item_count"] == 3
+
+
+def test_audit_validation_marks_missing_pyyaml_as_environment_error(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit), python_args=("-S",))
+
+    assert code == 2
+    assert report["valid"] is None
+    assert report["error_type"] == "environment"
+    assert "PyYAML is required" in report["error"]
+
+
+def test_audit_validation_marks_missing_jsonschema_as_environment_error(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "jsonschema.py").write_text('raise ImportError("simulated missing jsonschema")\n', encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(tmp_path) if not env.get("PYTHONPATH") else f"{tmp_path}{os.pathsep}{env['PYTHONPATH']}"
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit), "--compact", env=env)
+
+    assert code == 2
+    assert report["valid"] is None
+    assert report["error_type"] == "environment"
+    assert "jsonschema is required" in report["error"]
+
+
+def test_audit_schema_load_failure_is_environment_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.syspath_prepend(str(_AUDIT_SPEC_DIR))
+    schema_module = importlib.import_module("_schema")
+
+    monkeypatch.setattr(schema_module, "SCHEMA_PATH", tmp_path / "missing.schema.json")
+
+    with pytest.raises(schema_module.AuditEnvironmentError, match="could not load audit JSON Schema"):
+        schema_module.validate_audit_spec({})
+
+
+def test_audit_validation_rejects_unknown_tool_reference(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools:\n      - ticket.create\n",
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "unknown tool name 'ticket.create'" in report["error"]
+
+
+def test_audit_validation_rejects_unknown_schema_field(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "status: draft\n",
+            "status: draft\nunexpected: true\n",
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "unexpected" in report["error"]
+
+
+def test_audit_validation_rejects_all_zero_source_digest(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"sha256: sha256:[0-9a-f]{64}",
+            "sha256: sha256:" + ("0" * 64),
+            text,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "all-zero placeholder" in report["error"]
+
+
+def test_audit_validation_rejects_stale_source_digest(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"sha256: sha256:[0-9a-f]{64}",
+            "sha256: sha256:" + ("1" * 64),
+            text,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "does not match" in report["error"]
+
+
+def test_audit_validation_rejects_source_digest_without_path(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace("    path: ../ETHOS.md\n", ""),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "path" in report["error"]
+
+
+def test_audit_validation_rejects_duplicate_source_names(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: re.sub(
+            r"(sources:\n  - name: ethos\n    path: ../ETHOS.md\n    sha256: sha256:[0-9a-f]{64}\n)",
+            "\\1  - name: ethos\n    description: duplicate\n",
+            text,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "audit.sources[1].name 'ethos' is duplicated" in report["error"]
+
+
+def test_audit_validation_allows_unknown_prohibited_tool(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    prohibited_tools: []\n",
+            "    prohibited_tools:\n      - admin.reset_password\n",
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_requires_tool_for_tool_call_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "      - kind: tool_call\n        tool: customer.lookup\n        description:",
+            "      - kind: tool_call\n        description:",
+            1,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "tool" in report["error"]
+
+
+def test_audit_validation_rejects_tool_on_non_tool_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "      - kind: user_intent\n        description:",
+            "      - kind: user_intent\n        tool: customer.lookup\n        description:",
+            1,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "tool" in report["error"]
+
+
+def test_audit_validation_rejects_duplicate_names(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    name: account_recovery_unverified_identity\n",
+            "    name: account_recovery\n",
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "duplicated" in report["error"]
+
+
+def test_audit_validation_rejects_unknown_capability_reference(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "      - account_recovery\n",
+            "      - account_closure\n",
+            1,
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "unknown capability name 'account_closure'" in report["error"]
+
+
+def test_audit_validation_allows_toolless_capability(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools: []\n",
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_allows_marker_mentions_in_prose(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: (
+            "The literal <!-- BEGIN:nemo-eval-author-audit:v1 --> marker can be discussed in prose.\n\n"
+            + text
+            + "\nThe literal <!-- END:nemo-eval-author-audit:v1 --> marker can be discussed too.\n"
+        ),
+    )
+
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 0, stderr or report
+    assert report["valid"] is True
+
+
+def test_audit_validation_rejects_missing_marker(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, lambda text: text.replace("<!-- END:nemo-eval-author-audit:v1 -->", ""))
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "must contain exactly one" in report["error"]
+
+
+def test_audit_validation_rejects_multiple_yaml_blocks(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "```\n<!-- END:nemo-eval-author-audit:v1 -->",
+            "```\n\n```yaml\nschema: conflicting.audit.v1\n```\n<!-- END:nemo-eval-author-audit:v1 -->",
+        ),
+    )
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "must contain one fenced yaml block" in report["error"]
+
+
+def test_audit_validation_rejects_prefixed_yaml_fence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, lambda text: text.replace("```yaml\n", "prefix ```yaml\n", 1))
+
+    code, report, _ = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+
+    assert code == 1
+    assert report["valid"] is False
+    assert "must contain one fenced yaml block" in report["error"]
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
     """The boundary that makes the skill copyable: Harbor is fine, NeMo is not."""
-    permitted = _local_roots() | sys.stdlib_module_names | _PERMITTED_THIRD_PARTY
     offenders: dict[str, set[str]] = {}
-    for path in _bundled_scripts():
-        found = {root for root in _imported_roots(path) if root not in permitted}
-        if found:
-            offenders[path.name] = found
+    for scripts_dir in _SCRIPT_DIRS:
+        permitted = _local_roots(scripts_dir) | sys.stdlib_module_names | _PERMITTED_THIRD_PARTY
+        for path in _bundled_scripts(scripts_dir):
+            found = {root for root in _imported_roots(path) if root not in permitted}
+            if found:
+                offenders[path.relative_to(scripts_dir).as_posix()] = found
     assert not offenders, (
         "Bundled scripts may import the standard library, a sibling, or "
         f"{sorted(_PERMITTED_THIRD_PARTY)}, found: "
@@ -298,21 +705,22 @@ def test_no_bundled_directory_is_named_after_a_provider_package() -> None:
     succeed, so the probe reports an install that is not there and the ladder then
     fails on import. Provider code sits one level down for exactly this reason.
     """
-    collisions = _local_roots() & _PERMITTED_THIRD_PARTY
-    assert not collisions, (
-        f"{sorted(collisions)} shadows a package the skill imports; "
-        "keep it under scripts/providers/ rather than directly in scripts/"
-    )
+    for scripts_dir in _SCRIPT_DIRS:
+        collisions = _local_roots(scripts_dir) & _PERMITTED_THIRD_PARTY
+        assert not collisions, (
+            f"{sorted(collisions)} shadows a package the skill imports; "
+            "keep it under scripts/providers/ rather than directly in scripts/"
+        )
 
 
 def test_only_the_ladder_imports_harbor() -> None:
     """Every other module must keep working when Harbor is absent."""
     assert "harbor" in _imported_roots(_LADDER), "the ladder is the Harbor boundary and must import Harbor"
-    for path in _bundled_scripts():
+    for path in _bundled_scripts(_DISCOVER_SCRIPTS_DIR):
         if path == _LADDER:
             continue
         assert "harbor" not in _imported_roots(path), (
-            f"{path.relative_to(_SCRIPTS_DIR)} imports Harbor; move that call behind the probe"
+            f"{path.relative_to(_DISCOVER_SCRIPTS_DIR)} imports Harbor; move that call behind the probe"
         )
 
 
