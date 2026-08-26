@@ -13,7 +13,7 @@
     },
     {
       "type": "explicit",
-      "prompt": "Run nemo-model-selection. I'm not sure which model to put in the spec.",
+      "prompt": "Run nemo-model-selection. I'm not sure which model to put in the Ethos.",
       "expected_skill": "nemo-model-selection"
     },
     {
@@ -38,7 +38,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "nemo-explore is finished. The agent does triage, three tools, cloud deploy. What model do I put in the spec?",
+      "prompt": "nemo-explore is finished. The agent does triage, three tools, cloud deploy. What model do I put in the Ethos?",
       "expected_skill": "nemo-model-selection"
     },
     {
@@ -103,12 +103,12 @@
     },
     {
       "type": "negative-control",
-      "prompt": "Write the spec file for the support agent we just designed.",
+      "prompt": "Write the Ethos for the support agent we just designed.",
       "expected_skill_not": "nemo-model-selection"
     },
     {
       "type": "negative-control",
-      "prompt": "Deploy the agent now that the spec is signed off.",
+      "prompt": "Deploy the agent now that the Ethos is signed off.",
       "expected_skill_not": "nemo-model-selection"
     },
     {

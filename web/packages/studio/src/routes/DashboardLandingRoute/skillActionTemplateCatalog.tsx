@@ -84,9 +84,9 @@ export const SKILL_ACTION_TEMPLATES = {
   },
   'nemo-build-agent': {
     title: 'Build an agent',
-    description: 'Scaffold and deploy a NAT workflow from an agent spec.',
+    description: 'Scaffold and deploy a NAT workflow from an agent Ethos.',
     prompt:
-      'Use the nemo-build-agent skill to scaffold and deploy a NeMo agent from an existing spec. Inspect the workspace first and ask for the target spec if needed.',
+      'Use the nemo-build-agent skill to scaffold and deploy a NeMo agent from an existing Ethos. Inspect the workspace first and ask for the target Ethos if needed.',
     icon: <Hammer size={18} />,
     requiredFeatureFlags: ['agentsEnabled'],
   },
@@ -186,11 +186,11 @@ export const SKILL_ACTION_TEMPLATES = {
     icon: <GitBranch size={18} />,
     requiredFeatureFlags: ['agentsEnabled'],
   },
-  'nemo-spec': {
-    title: 'Write an agent spec',
-    description: 'Turn exploration notes into a durable agent specification.',
+  'nemo-ethos': {
+    title: 'Write an agent Ethos',
+    description: 'Turn exploration notes into a durable agent contract.',
     prompt:
-      'Use the nemo-spec skill to turn the current agent design notes into a durable NeMo Platform agent specification.',
+      'Use the nemo-ethos skill to turn the current agent design notes into a durable NeMo Platform agent Ethos.',
     icon: <Hammer size={18} />,
     requiredFeatureFlags: ['agentsEnabled'],
   },
