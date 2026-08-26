@@ -47,4 +47,33 @@ describe('SubmitEvaluationModal', () => {
       expect(filtered!.searchParams.get('filter[agent_name]')).toBe('my-agent');
     });
   });
+
+  // Backdrop and Escape dismissal are deliberately NOT asserted here: jsdom implements
+  // neither native `<dialog>` light-dismiss nor Escape-to-cancel, so such a test passes
+  // whatever `dismissible` is set to. Cancel is a real button, so it is testable — it
+  // guards the half of the contract that would turn the modal into a trap.
+  it('still closes on Cancel while backdrop dismissal is disabled', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderRoute(undefined, {
+      history: `/workspaces/${DEFAULT_WORKSPACE}`,
+      routes: [
+        {
+          path: '/workspaces/:workspace',
+          element: (
+            <SubmitEvaluationModal
+              open
+              onClose={onClose}
+              workspace={DEFAULT_WORKSPACE}
+              agent="my-agent"
+            />
+          ),
+        },
+      ],
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(onClose).toHaveBeenCalled();
+  });
 });

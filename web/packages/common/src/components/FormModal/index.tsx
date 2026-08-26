@@ -49,6 +49,17 @@ export interface FormModalProps {
    * Use this to prevent the user from submitting until the form is valid and dirty.
    * */
   submitDisabled?: boolean;
+  /**
+   * Whether clicking the backdrop or pressing Escape dismisses the modal.
+   *
+   * Set `false` on a form holding work a stray click would discard — uploaded files and
+   * typed-in overrides cannot be recovered once the modal unmounts. The close button and
+   * Cancel still work, so the form is never a trap, and `disabled` still blocks every
+   * route out while a request is in flight.
+   *
+   * Defaults to `true`, which is the dialog convention and what every other caller gets.
+   */
+  dismissible?: boolean;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
   styles?: React.CSSProperties;
@@ -72,6 +83,7 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
   disabled = false,
   loading = false,
   submitDisabled = false,
+  dismissible = true,
   onSubmit,
   onClose,
   children,
@@ -97,7 +109,10 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
 
   return (
     <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose}>
-      <ModalDialog>
+      <ModalDialog
+        closeOnClickOutside={dismissible}
+        onEscapeKeyDown={dismissible ? undefined : (event) => event.preventDefault()}
+      >
         <ModalContent className={`max-h-[90vh] ${className || ''}`}>
           <form className="contents" onSubmit={handleSubmit} noValidate {...attributes?.Form}>
             <ModalHeading>{title}</ModalHeading>

@@ -578,6 +578,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
       submitDisabled={!canSubmit}
+      // An uploaded config and dataset live only in form state; a stray backdrop click
+      // would discard both with nothing to restore them from. Close and Cancel remain.
+      dismissible={false}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
