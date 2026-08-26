@@ -764,6 +764,30 @@ def test_profile_tolerates_non_object_jsonl_lines(tmp_path):
     assert result.partitions[0].rows_complete is True
 
 
+def test_a_footer_count_survives_a_failure_part_way_through_the_data(tmp_path, monkeypatch):
+    # The footer is read before any row is, so a row group that will not decode does not unknow the
+    # count it already gave. Discarding it made a whole split's `num_examples` unknown over one bad
+    # shard, where the contract has it counting every file's rows "whether or not that file was read
+    # to the end" -- and left the fileset reporting an unknown size whose splits each knew theirs.
+    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+
+    _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(5000)])
+
+    def fails_to_decode(self, source, entry, *, row_cap=None, errors=None):
+        raise RuntimeError("row group failed to decode")
+        yield  # pragma: no cover  - makes this a generator, as the protocol requires
+
+    monkeypatch.setattr(parquet_module.ParquetReader, "batches", fails_to_decode)
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.partitions[0].splits[0].num_examples == 5000
+    assert result.coverage.rows_present == 5000  # known, and the envelope agrees with the split
+    assert result.coverage.rows_scanned == 0  # nothing was actually read
+    assert result.partitions[0].rows_complete is False  # which is what says the read fell short
+    assert len(result.file_errors) == 1
+
+
 def test_a_json_array_saved_as_jsonl_is_not_an_empty_dataset(tmp_path):
     # The other side of the tolerance above. A stray non-object line costs nothing while some line
     # is a row; when none is, the file is not a dataset with no rows -- it is a file this reader
