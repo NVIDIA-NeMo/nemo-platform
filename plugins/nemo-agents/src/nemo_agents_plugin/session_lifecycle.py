@@ -29,40 +29,53 @@ def session_expiration_is_due(session: AgentSession, *, at: datetime) -> bool:
     return expires_at <= at.astimezone(UTC)
 
 
+def _log_cleanup_failure(
+    session: AgentSession,
+    reason: str,
+    *,
+    exc_info: bool = False,
+) -> None:
+    """Record a non-blocking runtime-cleanup failure with entity context."""
+    logger.warning(
+        "Fabric runtime cleanup failed for session ID '%s' in workspace '%s' (deployment ID '%s'): %s.",
+        session.id,
+        session.workspace,
+        session.deployment_id,
+        reason,
+        exc_info=exc_info,
+    )
+
+
 async def cleanup_fabric_runtime(
     entity_client: NemoEntitiesClient,
     session: AgentSession,
 ) -> None:
-    """Best-effort removal of a session's process-local Fabric runtime."""
+    """Best-effort removal of a session's process-local Fabric runtime.
+
+    Cleanup never changes the persisted terminal state and never raises. Failures
+    are observable through a contextual warning; Fabric idle eviction or a runtime
+    restart provides eventual cleanup when the immediate request cannot complete.
+    """
     try:
         deployment = await entity_client.find_one(
             AgentDeployment,
             workspace=session.workspace,
             filter_obj={"id": session.deployment_id},
         )
-    except Exception:
-        logger.warning(
-            "Could not resolve deployment ID '%s' while cleaning up session ID '%s'.",
-            session.deployment_id,
-            session.id,
-            exc_info=True,
-        )
+    except Exception as exc:
+        _log_cleanup_failure(session, f"could not resolve deployment: {exc}", exc_info=True)
         return
 
     if deployment.id != session.deployment_id or deployment.workspace != session.workspace:
-        logger.warning(
-            "Resolved deployment did not match session ID '%s'; skipping Fabric runtime cleanup.",
-            session.id,
+        _log_cleanup_failure(
+            session,
+            "resolved deployment did not match the session binding",
         )
         return
 
     endpoint = get_deployment_endpoint(deployment)
     if endpoint is None:
-        logger.warning(
-            "Deployment ID '%s' has no endpoint; skipping cleanup for session ID '%s'.",
-            deployment.id,
-            session.id,
-        )
+        _log_cleanup_failure(session, "deployment has no routable endpoint")
         return
 
     cleanup_url = f"{endpoint.rstrip('/')}/v1/sessions/{quote(session.id, safe='')}"
@@ -72,20 +85,12 @@ async def cleanup_fabric_runtime(
             follow_redirects=False,
         ) as client:
             response = await client.delete(cleanup_url)
-    except Exception:
-        logger.warning(
-            "Fabric runtime cleanup request failed for session ID '%s'.",
-            session.id,
-            exc_info=True,
-        )
+    except Exception as exc:
+        _log_cleanup_failure(session, f"request failed: {exc}", exc_info=True)
         return
 
     # A missing runtime is already clean: the session may never have been invoked or may
     # have expired from the deployment's process-local registry.
     if response.status_code == 404 or 200 <= response.status_code < 300:
         return
-    logger.warning(
-        "Fabric runtime cleanup returned HTTP %s for session ID '%s'.",
-        response.status_code,
-        session.id,
-    )
+    _log_cleanup_failure(session, f"request returned HTTP {response.status_code}")

@@ -378,7 +378,11 @@ class TestFabricRuntimeCleanup:
         assert requests[0].method == "DELETE"
         assert str(requests[0].url) == "http://localhost:9001/v1/sessions/session-session%2Fone-id"
 
-    async def test_cleanup_ignores_missing_runtime(self, mock_entity_client: AsyncMock) -> None:
+    async def test_cleanup_ignores_missing_runtime(
+        self,
+        mock_entity_client: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         deployment = _make_deployment()
         deployment.endpoint = "http://localhost:9001"
         mock_entity_client.find_one.return_value = deployment
@@ -391,15 +395,67 @@ class TestFabricRuntimeCleanup:
         with patch.object(session_lifecycle_module.httpx, "AsyncClient", return_value=cleanup_client):
             await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
 
-    async def test_cleanup_ignores_connection_failure(self, mock_entity_client: AsyncMock) -> None:
+        assert "Fabric runtime cleanup failed" not in caplog.text
+
+    async def test_cleanup_connection_failure_is_observable_and_not_retried(
+        self,
+        mock_entity_client: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         deployment = _make_deployment()
         deployment.endpoint = "http://localhost:9001"
         mock_entity_client.find_one.return_value = deployment
         session = _make_session()
+        attempts = 0
 
         async def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
             raise httpx.ConnectError("refused", request=request)
 
         cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         with patch.object(session_lifecycle_module.httpx, "AsyncClient", return_value=cleanup_client):
             await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
+
+        assert attempts == 1
+        assert (
+            "Fabric runtime cleanup failed for session ID 'session-session-one-id' in workspace 'default' "
+            "(deployment ID 'deployment-id'): request failed: refused."
+        ) in caplog.text
+
+    async def test_cleanup_http_failure_is_observable(
+        self,
+        mock_entity_client: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        deployment = _make_deployment()
+        deployment.endpoint = "http://localhost:9001"
+        mock_entity_client.find_one.return_value = deployment
+        session = _make_session()
+
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503)
+
+        cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(session_lifecycle_module.httpx, "AsyncClient", return_value=cleanup_client):
+            await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
+
+        assert (
+            "Fabric runtime cleanup failed for session ID 'session-session-one-id' in workspace 'default' "
+            "(deployment ID 'deployment-id'): request returned HTTP 503."
+        ) in caplog.text
+
+    async def test_cleanup_entity_lookup_failure_is_observable(
+        self,
+        mock_entity_client: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        mock_entity_client.find_one.side_effect = RuntimeError("entity store unavailable")
+        session = _make_session()
+
+        await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
+
+        assert (
+            "Fabric runtime cleanup failed for session ID 'session-session-one-id' in workspace 'default' "
+            "(deployment ID 'deployment-id'): could not resolve deployment: entity store unavailable."
+        ) in caplog.text
