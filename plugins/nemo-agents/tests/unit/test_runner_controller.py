@@ -23,7 +23,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
+from nemo_agents_plugin.entities import (
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    AgentDeployment,
+    AgentSession,
+    SessionStatus,
+)
 from nemo_agents_plugin.runner import controller as controller_module
 from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
@@ -42,6 +47,8 @@ async def test_controller_startup_adapts_sdk_to_typed_entities_client() -> None:
     sdk = MagicMock()
     typed_client = MagicMock()
     entity_client = MagicMock()
+    empty_page = MagicMock(data=[], pagination=None)
+    entity_client.list = AsyncMock(return_value=empty_page)
 
     with (
         patch("nemo_agents_plugin.config.AgentsConfig.get", return_value=AgentsConfig()),
@@ -58,6 +65,21 @@ async def test_controller_startup_adapts_sdk_to_typed_entities_client() -> None:
     mock_adapter.assert_called_once_with(sdk, AsyncEntitiesClient)
     mock_entity_client.assert_called_once_with(typed_client)
     assert controller._entities is entity_client
+    assert controller._startup_sessions_reconciled is True
+
+
+@pytest.mark.asyncio
+async def test_startup_session_reconciliation_retries_after_entity_list_failure() -> None:
+    ctrl, _ = _make_controller()
+    empty_page = MagicMock(data=[], pagination=None)
+    ctrl.entities.list = AsyncMock(side_effect=[RuntimeError("unavailable"), empty_page])
+    ctrl._startup_sessions_reconciled = False
+
+    await ctrl._reconcile_sessions_after_controller_start()
+    assert ctrl._startup_sessions_reconciled is False
+
+    await ctrl._reconcile_sessions_after_controller_start()
+    assert ctrl._startup_sessions_reconciled is True
 
 
 def _make_controller() -> tuple[AgentDeploymentController, Any]:
@@ -77,6 +99,7 @@ def _make_controller() -> tuple[AgentDeploymentController, Any]:
     ctrl._registry = registry
     ctrl._entities = MagicMock()
     ctrl._controller_config = ControllerConfig(health_check_timeout_seconds=120)
+    ctrl._startup_sessions_reconciled = True
     ctrl._save = AsyncMock()  # type: ignore[method-assign]
     return ctrl, cast(Any, backend)
 
@@ -84,18 +107,39 @@ def _make_controller() -> tuple[AgentDeploymentController, Any]:
 def _make_session(
     *,
     name: str = "session-one",
+    deployment_id: str = "deployment-id",
+    last_active_at: datetime | None = None,
     expires_at: datetime | None = None,
     status: SessionStatus = SessionStatus.ACTIVE,
 ) -> AgentSession:
     session = AgentSession(
         name=name,
         workspace="default",
-        deployment_id="deployment-id",
+        deployment_id=deployment_id,
         status=status,
+        last_active_at=last_active_at,
         expires_at=expires_at,
     )
     session._id = f"{name}-id"
     return session
+
+
+def _make_fabric_deployment(
+    *,
+    name: str = "fabric-deployment",
+    status: str = "running",
+    deployment_id: str = "deployment-id",
+) -> AgentDeployment:
+    deployment = AgentDeployment(
+        name=name,
+        workspace="default",
+        agent="calc",
+        status=cast(Any, status),
+        endpoint="http://localhost:9001",
+        config={"config_format": NEMO_AGENTS_SPEC_CONFIG_FORMAT},
+    )
+    deployment._id = deployment_id
+    return deployment
 
 
 @pytest.mark.asyncio
@@ -111,6 +155,180 @@ async def test_reconcile_runs_expiration_after_isolated_deployment_failures() ->
 
     assert ctrl.reconcile_one.await_args_list == [call(first), call(second)]
     ctrl._reconcile_expired_sessions.assert_awaited_once_with()
+
+
+# ---------------------------------------------------------------------------
+# Runtime restart reconciliation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_restart_reconciliation_expires_loses_and_preserves_never_invoked_sessions() -> None:
+    ctrl, _ = _make_controller()
+    lost = _make_session(
+        name="lost",
+        last_active_at=EXPIRATION_NOW - timedelta(minutes=5),
+        expires_at=EXPIRATION_NOW + timedelta(minutes=25),
+    )
+    expired = _make_session(
+        name="expired",
+        last_active_at=EXPIRATION_NOW - timedelta(minutes=31),
+        expires_at=EXPIRATION_NOW - timedelta(minutes=1),
+    )
+    never_invoked = _make_session(name="never-invoked")
+    ctrl._list_active_sessions = AsyncMock(  # type: ignore[method-assign]
+        return_value=[lost, expired, never_invoked]
+    )
+    ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
+
+    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+        reconciled = await ctrl._reconcile_sessions_after_restart(at=EXPIRATION_NOW)
+
+    assert reconciled is True
+    assert lost.status is SessionStatus.LOST
+    assert expired.status is SessionStatus.EXPIRED
+    assert never_invoked.status is SessionStatus.ACTIVE
+    assert ctrl.entities.update.await_args_list == [call(lost), call(expired)]
+    assert cleanup.await_args_list == [call(ctrl.entities, lost), call(ctrl.entities, expired)]
+
+
+@pytest.mark.asyncio
+async def test_restart_wins_activity_conflict_for_refetched_invoked_session() -> None:
+    ctrl, _ = _make_controller()
+    stale = _make_session(
+        last_active_at=EXPIRATION_NOW - timedelta(minutes=2),
+        expires_at=EXPIRATION_NOW + timedelta(minutes=28),
+    )
+    refreshed = _make_session(
+        last_active_at=EXPIRATION_NOW,
+        expires_at=EXPIRATION_NOW + timedelta(minutes=30),
+    )
+    ctrl.entities.update = AsyncMock(side_effect=[NemoEntityConflictError("conflict"), refreshed])
+    ctrl.entities.get_by_id = AsyncMock(return_value=refreshed)
+
+    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+        result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
+
+    assert result is refreshed
+    assert refreshed.status is SessionStatus.LOST
+    assert ctrl.entities.update.await_count == 2
+    cleanup.assert_awaited_once_with(ctrl.entities, refreshed)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("terminal_status", [SessionStatus.EXPIRED, SessionStatus.LOST, SessionStatus.CLOSED])
+async def test_terminal_state_wins_restart_conflict(terminal_status: SessionStatus) -> None:
+    ctrl, _ = _make_controller()
+    stale = _make_session(
+        last_active_at=EXPIRATION_NOW - timedelta(minutes=2),
+        expires_at=EXPIRATION_NOW + timedelta(minutes=28),
+    )
+    terminal = _make_session(status=terminal_status)
+    ctrl.entities.update = AsyncMock(side_effect=NemoEntityConflictError("conflict"))
+    ctrl.entities.get_by_id = AsyncMock(return_value=terminal)
+
+    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+        result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
+
+    assert result is terminal
+    assert terminal.status is terminal_status
+    ctrl.entities.update.assert_awaited_once_with(stale)
+    cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_instance_change_reconciles_bound_sessions() -> None:
+    ctrl, _ = _make_controller()
+    deployment = _make_fabric_deployment()
+    ctrl._read_runtime_instance_id = AsyncMock(  # type: ignore[method-assign]
+        side_effect=["runtime-1", "runtime-1", "runtime-2"]
+    )
+    ctrl._reconcile_deployment_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
+        return_value=True
+    )
+
+    await ctrl._observe_runtime_instance(deployment)
+    await ctrl._observe_runtime_instance(deployment)
+    await ctrl._observe_runtime_instance(deployment)
+
+    assert ctrl._runtime_instance_ids[(deployment.workspace, deployment.name)] == "runtime-2"
+    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(deployment)
+
+
+@pytest.mark.asyncio
+async def test_runtime_instance_change_is_retained_until_reconciliation_succeeds() -> None:
+    ctrl, _ = _make_controller()
+    deployment = _make_fabric_deployment()
+    key = (deployment.workspace, deployment.name)
+    ctrl._runtime_instance_ids[key] = "runtime-1"
+    ctrl._read_runtime_instance_id = AsyncMock(return_value="runtime-2")  # type: ignore[method-assign]
+    ctrl._reconcile_deployment_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[False, True]
+    )
+
+    await ctrl._observe_runtime_instance(deployment)
+    assert ctrl._runtime_instance_ids[key] == "runtime-1"
+
+    await ctrl._observe_runtime_instance(deployment)
+    assert ctrl._runtime_instance_ids[key] == "runtime-2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"runtime_instance_id": "runtime-1"}, "runtime-1"),
+        ({"runtime_instance_id": ""}, None),
+        ({"runtime_instance_id": 1}, None),
+        ({}, None),
+    ],
+)
+async def test_read_runtime_instance_id_validates_health_response(
+    payload: dict[str, object],
+    expected: str | None,
+) -> None:
+    ctrl, _ = _make_controller()
+    deployment = _make_fabric_deployment()
+    response = MagicMock()
+    response.json.return_value = payload
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+    ctrl._runtime_health_client = client
+
+    assert await ctrl._read_runtime_instance_id(deployment) == expected
+    client.get.assert_awaited_once_with("http://localhost:9001/health")
+    response.raise_for_status.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_failed_restart_reconciliation_is_queued_and_retried() -> None:
+    ctrl, _ = _make_controller()
+    deployment = _make_fabric_deployment()
+    ctrl._reconcile_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[False, True]
+    )
+
+    reconciled = await ctrl._reconcile_deployment_sessions_after_restart(deployment)
+    assert reconciled is False
+    assert deployment.id in ctrl._pending_restart_deployment_ids
+
+    await ctrl._retry_pending_restart_reconciliations()
+    assert deployment.id not in ctrl._pending_restart_deployment_ids
+
+
+@pytest.mark.asyncio
+async def test_backend_runtime_disappearance_reconciles_sessions_before_restart() -> None:
+    ctrl, backend = _make_controller()
+    deployment = _make_fabric_deployment()
+    backend.get_deployment_status = AsyncMock(return_value=None)
+    ctrl._reconcile_deployment_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
+        return_value=True
+    )
+
+    await ctrl._verify_running(deployment)
+
+    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(deployment)
+    assert deployment.status == "pending"
 
 
 # ---------------------------------------------------------------------------

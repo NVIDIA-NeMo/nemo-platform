@@ -28,8 +28,16 @@ import time
 from datetime import UTC, datetime
 from typing import ClassVar, cast
 
+import httpx
 from nemo_agents_plugin.config import ControllerConfig
-from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus, is_container_deployment_mode
+from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
+from nemo_agents_plugin.entities import (
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    AgentDeployment,
+    AgentSession,
+    SessionStatus,
+    is_container_deployment_mode,
+)
 from nemo_agents_plugin.runner.backend import RunnerBackend
 from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
 from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
@@ -43,6 +51,11 @@ from nemo_platform_plugin.entity_client import (
 logger = logging.getLogger(__name__)
 
 _SESSION_LIST_PAGE_SIZE = 100
+_RUNTIME_HEALTH_TIMEOUT_SECONDS = 5.0
+
+
+def _is_fabric_deployment(dep: AgentDeployment) -> bool:
+    return dep.config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT
 
 
 class AgentDeploymentController(NemoController):
@@ -66,6 +79,10 @@ class AgentDeploymentController(NemoController):
         self._entities: NemoEntitiesClient | None = None
         self._controller_config: ControllerConfig | None = None
         self._starting_since: dict[tuple[str, str], float] = {}
+        self._runtime_instance_ids: dict[tuple[str, str], str] = {}
+        self._pending_restart_deployment_ids: set[str] = set()
+        self._runtime_health_client: httpx.AsyncClient | None = None
+        self._startup_sessions_reconciled = False
         self._interval_seconds: float = 5.0  # default; overwritten in on_startup
 
     # ------------------------------------------------------------------
@@ -139,10 +156,14 @@ class AgentDeploymentController(NemoController):
         self._registry = registry
         set_runner_registry(registry)
 
+        await self._reconcile_sessions_after_controller_start()
         logger.info("AgentDeploymentController started.")
 
     async def on_shutdown(self) -> None:
         """Shut down the runner backends."""
+        if self._runtime_health_client is not None:
+            await self._runtime_health_client.aclose()
+            self._runtime_health_client = None
         if self._registry is not None:
             await self._registry.shutdown()
         logger.info("AgentDeploymentController shut down.")
@@ -158,7 +179,13 @@ class AgentDeploymentController(NemoController):
 
     async def reconcile(self) -> None:
         """Reconcile deployments, then independently expire due sessions."""
+        if not self._startup_sessions_reconciled:
+            await self._reconcile_sessions_after_controller_start()
+            if not self._startup_sessions_reconciled or self.stop_requested():
+                return
         await self._reconcile_deployments()
+        if not self.stop_requested():
+            await self._retry_pending_restart_reconciliations()
         if not self.stop_requested():
             await self._reconcile_expired_sessions()
 
@@ -201,7 +228,11 @@ class AgentDeploymentController(NemoController):
 
     async def _reconcile_expired_sessions(self) -> None:
         """Persist expiration and clean up runtimes for sessions past their deadline."""
-        sessions = await self._list_active_sessions()
+        try:
+            sessions = await self._list_active_sessions()
+        except Exception:
+            logger.exception("Failed to list active sessions across all workspaces")
+            return
         reconciliation_time = datetime.now(UTC)
         for session in sessions:
             if self.stop_requested():
@@ -227,26 +258,178 @@ class AgentDeploymentController(NemoController):
                     session.workspace,
                 )
 
-    async def _list_active_sessions(self) -> list[AgentSession]:
+    async def _list_active_sessions(self, *, deployment_id: str | None = None) -> list[AgentSession]:
         """List every active session across workspaces, following pagination."""
         sessions: list[AgentSession] = []
         page = 1
+        filter_obj = {"status": SessionStatus.ACTIVE.value}
+        if deployment_id is not None:
+            filter_obj["deployment_id"] = deployment_id
+        while True:
+            result = await self.entities.list(
+                AgentSession,
+                workspace="-",
+                filter_obj=filter_obj,
+                page=page,
+                page_size=_SESSION_LIST_PAGE_SIZE,
+            )
+            sessions.extend(result.data)
+            if result.pagination is None or page >= result.pagination.total_pages:
+                return sessions
+            page += 1
+
+    async def _reconcile_sessions_after_controller_start(self) -> None:
+        """Conservatively invalidate invoked sessions after controller startup."""
+        self._startup_sessions_reconciled = await self._reconcile_sessions_after_restart()
+        if self._startup_sessions_reconciled:
+            logger.info("Reconciled active sessions after agents controller startup.")
+
+    async def _reconcile_sessions_after_restart(
+        self,
+        *,
+        deployment_id: str | None = None,
+        at: datetime | None = None,
+    ) -> bool:
+        """Expire or lose invoked active sessions, returning whether the pass completed."""
         try:
-            while True:
-                result = await self.entities.list(
-                    AgentSession,
-                    workspace="-",
-                    filter_obj={"status": SessionStatus.ACTIVE.value},
-                    page=page,
-                    page_size=_SESSION_LIST_PAGE_SIZE,
-                )
-                sessions.extend(result.data)
-                if result.pagination is None or page >= result.pagination.total_pages:
-                    return sessions
-                page += 1
+            sessions = await self._list_active_sessions(deployment_id=deployment_id)
         except Exception:
-            logger.exception("Failed to list active sessions across all workspaces")
-            return []
+            logger.exception(
+                "Failed to list active sessions while reconciling runtime restart%s.",
+                f" for deployment ID '{deployment_id}'" if deployment_id is not None else "",
+            )
+            return False
+
+        reconciliation_time = (at or datetime.now(UTC)).astimezone(UTC)
+        reconciled = True
+        for session in sessions:
+            if self.stop_requested():
+                return False
+            try:
+                await self._transition_session_after_restart(session, at=reconciliation_time)
+            except NemoEntityNotFoundError:
+                logger.debug(
+                    "Session '%s' in workspace '%s' disappeared during restart reconciliation.",
+                    session.name,
+                    session.workspace,
+                )
+            except NemoEntityConflictError:
+                reconciled = False
+                logger.debug(
+                    "Optimistic lock conflict reconciling restarted session '%s' in workspace '%s' — "
+                    "will retry next cycle.",
+                    session.name,
+                    session.workspace,
+                )
+            except Exception:
+                reconciled = False
+                logger.exception(
+                    "Failed to reconcile restarted session '%s' in workspace '%s'.",
+                    session.name,
+                    session.workspace,
+                )
+        return reconciled
+
+    async def _transition_session_after_restart(
+        self,
+        session: AgentSession,
+        *,
+        at: datetime,
+    ) -> AgentSession | None:
+        """Move an invoked active session to expired or lost with one conflict retry."""
+        session_to_update = session
+        for attempt in range(2):
+            if session_to_update.status is not SessionStatus.ACTIVE:
+                return session_to_update
+            if session_to_update.last_active_at is None and session_to_update.expires_at is None:
+                return None
+
+            new_status = (
+                SessionStatus.EXPIRED if session_expiration_is_due(session_to_update, at=at) else SessionStatus.LOST
+            )
+            session_to_update.status = new_status
+            try:
+                reconciled_session = await self.entities.update(session_to_update)
+            except NemoEntityConflictError:
+                if attempt == 1:
+                    raise
+                session_to_update = await self.entities.get_by_id(AgentSession, session.id)
+                continue
+
+            await cleanup_fabric_runtime(self.entities, reconciled_session)
+            return reconciled_session
+
+        raise RuntimeError("Session restart retry loop exited unexpectedly.")  # pragma: no cover
+
+    async def _reconcile_deployment_sessions_after_restart(self, dep: AgentDeployment) -> bool:
+        """Reconcile active sessions bound to one restarted Fabric deployment."""
+        if not _is_fabric_deployment(dep):
+            return True
+        if dep.id is None:
+            logger.warning("Cannot reconcile sessions for deployment '%s' without an entity ID.", dep.name)
+            return False
+        reconciled = await self._reconcile_sessions_after_restart(deployment_id=dep.id)
+        if reconciled:
+            self._pending_restart_deployment_ids.discard(dep.id)
+        else:
+            self._pending_restart_deployment_ids.add(dep.id)
+        return reconciled
+
+    async def _retry_pending_restart_reconciliations(self) -> None:
+        """Retry deployment-scoped restart passes whose prior attempt was incomplete."""
+        for deployment_id in list(self._pending_restart_deployment_ids):
+            if self.stop_requested():
+                return
+            if await self._reconcile_sessions_after_restart(deployment_id=deployment_id):
+                self._pending_restart_deployment_ids.discard(deployment_id)
+
+    async def _observe_runtime_instance(self, dep: AgentDeployment) -> None:
+        """Detect a Fabric server process replacement from its health identity."""
+        if not _is_fabric_deployment(dep):
+            return
+        current_instance_id = await self._read_runtime_instance_id(dep)
+        if current_instance_id is None:
+            return
+
+        key = (dep.workspace, dep.name)
+        previous_instance_id = self._runtime_instance_ids.get(key)
+        if previous_instance_id is None:
+            self._runtime_instance_ids[key] = current_instance_id
+            return
+        if previous_instance_id == current_instance_id:
+            return
+
+        if await self._reconcile_deployment_sessions_after_restart(dep):
+            self._runtime_instance_ids[key] = current_instance_id
+            logger.warning(
+                "Fabric runtime instance changed for deployment '%s/%s'; active sessions were reconciled.",
+                dep.workspace,
+                dep.name,
+            )
+
+    async def _read_runtime_instance_id(self, dep: AgentDeployment) -> str | None:
+        """Read the current Fabric server process identity without persisting it."""
+        endpoint = get_deployment_endpoint(dep)
+        if endpoint is None:
+            return None
+        if self._runtime_health_client is None:
+            self._runtime_health_client = httpx.AsyncClient(
+                timeout=_RUNTIME_HEALTH_TIMEOUT_SECONDS,
+                follow_redirects=False,
+            )
+        try:
+            response = await self._runtime_health_client.get(f"{endpoint.rstrip('/')}/health")
+            response.raise_for_status()
+            runtime_instance_id = response.json().get("runtime_instance_id")
+        except Exception:
+            logger.debug(
+                "Could not read Fabric runtime instance for deployment '%s/%s'.",
+                dep.workspace,
+                dep.name,
+                exc_info=True,
+            )
+            return None
+        return runtime_instance_id if isinstance(runtime_instance_id, str) and runtime_instance_id else None
 
     async def _expire_session_if_due(
         self,
@@ -286,6 +469,7 @@ class AgentDeploymentController(NemoController):
 
     async def _start_deployment(self, dep: AgentDeployment) -> None:
         """pending -> starting: allocate port (subprocess) and spawn via the mode backend."""
+        await self._reconcile_deployment_sessions_after_restart(dep)
         t0 = time.perf_counter()
         backend = self._backend_for(dep)
         port = backend.allocate_port()
@@ -398,6 +582,7 @@ class AgentDeploymentController(NemoController):
                 dep.status = "running"
                 dep.endpoint = ""
                 self._starting_since.pop((dep.workspace, dep.name), None)
+                await self._observe_runtime_instance(dep)
                 await self._save(dep)
                 logger.info(
                     "Deployment '%s' is running (container mode, endpoints=%s, took %.1fs).",
@@ -423,6 +608,7 @@ class AgentDeploymentController(NemoController):
         if healthy:
             dep.status = "running"
             self._starting_since.pop((dep.workspace, dep.name), None)
+            await self._observe_runtime_instance(dep)
             await self._save(dep)
             logger.info(
                 "Deployment '%s' is running at %s (took %.1fs).",
@@ -437,6 +623,7 @@ class AgentDeploymentController(NemoController):
         """Mark failed if the runtime disappeared; subprocess may restart via pending."""
         info = await self._backend_for(dep).get_deployment_status(dep.workspace, dep.name)
         if info is None:
+            await self._reconcile_deployment_sessions_after_restart(dep)
             if is_container_deployment_mode(dep.deployment_mode):
                 # Do not bounce to pending — that would recreate plugin entities while a
                 # container may still be running / mid-teardown.
@@ -447,13 +634,20 @@ class AgentDeploymentController(NemoController):
                 dep.error = "Process not found in backend (attempting to restart)."
             await self._save(dep)
         elif info.status == "failed":
+            await self._reconcile_deployment_sessions_after_restart(dep)
             dep.status = "failed"
             dep.error = info.error or "Process exited unexpectedly."
             await self._save(dep)
             logger.warning("Deployment '%s' failed: %s", dep.name, dep.error)
-        elif is_container_deployment_mode(dep.deployment_mode) and info.endpoints != dep.endpoints:
-            dep.endpoints = list(info.endpoints)
-            await self._save(dep)
+        else:
+            if info.status == "starting":
+                await self._reconcile_deployment_sessions_after_restart(dep)
+            endpoints_changed = is_container_deployment_mode(dep.deployment_mode) and info.endpoints != dep.endpoints
+            if endpoints_changed:
+                dep.endpoints = list(info.endpoints)
+                await self._save(dep)
+            if info.status == "running":
+                await self._observe_runtime_instance(dep)
 
     async def _delete_deployment(self, dep: AgentDeployment) -> None:
         """deleting → (removed): terminate runtime and delete entity when teardown completes."""
@@ -477,6 +671,9 @@ class AgentDeploymentController(NemoController):
             return
 
         self._starting_since.pop((dep.workspace, dep.name), None)
+        self._runtime_instance_ids.pop((dep.workspace, dep.name), None)
+        if dep.id is not None:
+            self._pending_restart_deployment_ids.discard(dep.id)
         try:
             await self.entities.delete(
                 AgentDeployment,

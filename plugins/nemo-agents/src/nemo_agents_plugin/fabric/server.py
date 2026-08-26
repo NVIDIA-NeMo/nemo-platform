@@ -278,10 +278,11 @@ def create_fabric_serving_app(
                 await session_manager.close_all_sessions()
 
     app = FastAPI(title="NeMo Agents Fabric Server", lifespan=lifespan)
+    runtime_instance_id = str(uuid.uuid4())
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "runtime_instance_id": runtime_instance_id}
 
     @app.post("/v1/chat/completions", response_model=None, response_model_exclude_none=True)
     async def chat_completions(
