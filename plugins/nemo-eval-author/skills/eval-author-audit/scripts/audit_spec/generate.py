@@ -51,7 +51,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         yaml = _load_yaml()
-        candidate = _candidate_spec(args, yaml)
+        args.out = _validated_output_path(args.out)
+        candidate = validate_audit_spec(_candidate_spec(args, yaml))
         existing = _load_existing_audit(args.out, yaml) if args.out.exists() and args.mode != "replace" else None
         spec, summary = _prepare_output(candidate, existing, args)
 
@@ -108,6 +109,13 @@ def _load_existing_audit(path: Path, yaml: Any) -> dict[str, Any]:
     except yaml.YAMLError as exc:
         raise AuditSpecError(f"existing audit YAML does not parse: {exc}") from exc
     return validate_audit_spec(payload)
+
+
+def _validated_output_path(path: Path) -> Path:
+    resolved = path.expanduser().resolve()
+    if ".eval-author" not in resolved.parts[:-1]:
+        raise AuditSpecError("--out must resolve inside a .eval-author/ directory")
+    return resolved
 
 
 def _candidate_spec(args: argparse.Namespace, yaml: Any) -> dict[str, Any]:

@@ -421,6 +421,15 @@ def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None
     assert "Do not invent tool names that will not appear in the measurement surface" in normalized_step
 
 
+def test_audit_skill_runs_audit_scripts_through_uv() -> None:
+    """Documented script commands should use the repository Python environment."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+
+    assert "python <skill_dir>/scripts/audit_spec/" not in body
+    assert body.count("uv run <skill_dir>/scripts/audit_spec/generate.py") == 4
+    assert "uv run <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md" in body
+
+
 def test_audit_json_schema_is_valid() -> None:
     from jsonschema import Draft202012Validator
 
@@ -799,6 +808,82 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
         "expected_behavior",
         "The agent grounds recovery in customer identity and routes to an approved recovery path.",
     )
+
+
+def test_audit_generate_rejects_outputs_outside_eval_author(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / "README.md"
+    out.write_text("customer source must stay intact\n", encoding="utf-8")
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(ethos),
+        "--items",
+        str(items),
+        "--out",
+        str(out),
+        "--mode",
+        "replace",
+    )
+
+    assert result.returncode == 1
+    assert "--out must resolve inside a .eval-author/ directory" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert out.read_text(encoding="utf-8") == "customer source must stay intact\n"
+
+
+def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    del items_payload[0]["name"]
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 1
+    assert "name" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert audit.read_bytes() == before
+
+
+def test_audit_generate_rejects_duplicate_candidate_names_before_reconcile(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    duplicate = dict(items_payload[0])
+    duplicate["expected_use"] = "Different proposal for the existing tool."
+    items_payload.append(duplicate)
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 1
+    assert "duplicated" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert audit.read_bytes() == before
 
 
 def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> None:

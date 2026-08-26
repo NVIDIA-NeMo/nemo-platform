@@ -106,7 +106,7 @@ Create or update `.eval-author/audit.md` from `ETHOS.md` and the reviewed item
 proposals:
 
 ```bash
-python <skill_dir>/scripts/audit_spec/generate.py \
+uv run <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md
@@ -128,20 +128,20 @@ omitted from the proposal are reported as `possibly_stale_items`.
 Use the explicit modes when the default is not what the user wants:
 
 ```bash
-python <skill_dir>/scripts/audit_spec/generate.py \
+uv run <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode suggest
 
-python <skill_dir>/scripts/audit_spec/generate.py \
+uv run <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode reconcile \
   --items-mode full
 
-python <skill_dir>/scripts/audit_spec/generate.py \
+uv run <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
@@ -176,7 +176,7 @@ defines that reference format.
 Run validation after every generated or hand-edited audit file:
 
 ```bash
-python <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md
+uv run <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md
 ```
 
 `schemas/audit.schema.json` is the canonical structural schema. The Python
