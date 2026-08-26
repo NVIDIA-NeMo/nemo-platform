@@ -65,7 +65,7 @@ Audit-spec mechanics live under `scripts/audit_spec/`:
 | Script | Use it to |
 |---|---|
 | `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
-| `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write coverage/details files |
+| `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write coverage/details files for each selected method |
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
@@ -202,13 +202,16 @@ complete or correct.
 
 ## Step 4: Measure One ATIF Trace
 
-After validation, measure one completed trial directory or one ATIF trajectory file:
+After validation, measure one completed trial directory or one ATIF trajectory
+file. Use `--measure` to select one or more comma-separated measurement methods;
+the default is `tool_calls`.
 
 ```bash
 uv run --with-requirements <skill_dir>/requirements.txt \
   python <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trial-dir <harbor-job-dir>/<trial-dir> \
+  --measure tool_calls \
   --out-dir .eval-author/audit-measurements
 ```
 
@@ -224,8 +227,14 @@ uv run --with-requirements <skill_dir>/requirements.txt \
   --trace <path-to>/trajectory.json \
   --task-id <task-id> \
   --run-id <run-id> \
+  --measure tool_calls \
   --out-dir .eval-author/audit-measurements
 ```
+
+`--measure` may be passed more than once or as CSV, for example
+`--measure tool_calls,boundary`. The script loads the trajectory once, then runs
+each selected method against the same parsed Harbor trajectory model. Unknown
+method names fail before the trace is loaded.
 
 The script writes one folder per task and method:
 
@@ -240,7 +249,7 @@ audit item names this trace covered plus provider-neutral subject identity
 should consume this file and ignore method-specific debug details. `details.json`
 is specific to the selected method and carries traceability data for humans.
 
-The default measurement method is `tool_calls`. It covers only audit items whose
+The only v1 measurement method is `tool_calls`. It covers only audit items whose
 `kind` is `tool` by matching each tool item's `name` against ATIF
 `steps[].tool_calls[].function_name`, including embedded subagent trajectories.
 It does not judge capabilities, failure cases, user intent, output quality, or
