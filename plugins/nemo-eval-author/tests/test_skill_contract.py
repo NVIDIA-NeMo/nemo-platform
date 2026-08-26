@@ -436,7 +436,6 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/generate.py",
         "scripts/audit_spec/measure.py",
         "scripts/audit_spec/validate.py",
-        "scripts/audit_spec/_atif.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
         "scripts/audit_spec/measurements/tool_calls.py",
@@ -445,6 +444,7 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "schemas/audit_tool_calls_details.schema.json",
         "examples/schemas/tool_calls.coverage.json",
         "examples/schemas/tool_calls.details.json",
+        "requirements.txt",
         "templates/audit.md",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
@@ -1099,6 +1099,7 @@ def test_audit_generate_replace_mode_overwrites_existing_audit(tmp_path: Path) -
     assert items_by_name["customer.lookup"]["description"].startswith("Looks up customer profile")
 
 
+@_needs_harbor
 def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
@@ -1163,6 +1164,7 @@ def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path
     ]
 
 
+@_needs_harbor
 def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
@@ -1192,6 +1194,7 @@ def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path)
     assert details["tool_call_counts"] == {"ticket.create": 1}
 
 
+@_needs_harbor
 def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trial_dir = tmp_path / "job" / "account-recovery__abc"
@@ -1222,6 +1225,7 @@ def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
     assert coverage["subject"]["harbor_result"] == str(trial_dir / "result.json")
 
 
+@_needs_harbor
 def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
