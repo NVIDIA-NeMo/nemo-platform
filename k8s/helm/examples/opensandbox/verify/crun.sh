@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Verify the shared-kernel / crun OpenSandbox profile on nemo-dev-blue.
+# Verify the shared-kernel / crun OpenSandbox profile.
 #
 # Checks: server Ready + Secret, /health, create sandbox, Running,
 # empty runtimeClassName, shared-kernel match (uname -r == node kernel), cleanup.

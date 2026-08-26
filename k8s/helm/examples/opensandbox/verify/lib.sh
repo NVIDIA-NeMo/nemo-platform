@@ -2,8 +2,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Shared helpers for OpenSandbox runtime verification on nemo-dev-blue.
-# Sourced by verify-crun.sh / verify-kata-qemu.sh — do not run directly.
+# Shared helpers for OpenSandbox runtime verification.
+# Sourced by crun.sh / kata-qemu.sh — do not run directly.
+# Set OPEN_SANDBOX_WORKLOAD_NS (or NMP_NAMESPACE) to the platform job namespace.
 
 set -euo pipefail
 
@@ -72,7 +73,7 @@ require_profile() {
     crun)
       SERVER_DEPLOY="opensandbox-server-crun"
       SERVER_SVC="opensandbox-server-crun"
-      WORKLOAD_NS="nmp-temp1"
+      WORKLOAD_NS="${OPEN_SANDBOX_WORKLOAD_NS:-${NMP_NAMESPACE:-}}"
       API_SECRET="opensandbox-server-crun-api-key"
       EXPECT_RUNTIME_CLASS=""          # cluster default (crun)
       EXPECT_KATA_NODE="false"
@@ -80,7 +81,7 @@ require_profile() {
     kata-qemu)
       SERVER_DEPLOY="opensandbox-server-kata"
       SERVER_SVC="opensandbox-server-kata"
-      WORKLOAD_NS="nmp-temp1"
+      WORKLOAD_NS="${OPEN_SANDBOX_WORKLOAD_NS:-${NMP_NAMESPACE:-}}"
       API_SECRET="opensandbox-server-kata-api-key"
       EXPECT_RUNTIME_CLASS="kata-qemu"
       EXPECT_KATA_NODE="true"
@@ -89,6 +90,7 @@ require_profile() {
       die "unknown profile '${profile}' (expected crun|kata-qemu)"
       ;;
   esac
+  [[ -n "${WORKLOAD_NS}" ]] || die "set OPEN_SANDBOX_WORKLOAD_NS or NMP_NAMESPACE to the platform job namespace"
 }
 
 preflight_control_plane() {

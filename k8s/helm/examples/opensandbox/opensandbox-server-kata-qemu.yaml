@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# OpenSandbox server — kata-qemu profile for nemo-dev-blue.
+# OpenSandbox server — kata-qemu profile.
+# The chart does not install this release. Pass the file to the upstream
+# opensandbox-server chart. Point the platform at this Service *or* the crun
+# Service — not both. [secure_runtime] is server-global.
 #
-# Pins every sandbox to RuntimeClass/kata-qemu. Scheduling is enforced both by
-# [secure_runtime] (pod.spec.runtimeClassName) and by the BatchSandbox template
-# nodeSelector matching kata-deploy / RuntimeClass scheduling on this cluster:
-#   katacontainers.io/kata-runtime=true
-#   node.kubernetes.io/instance-type=BM.GPU.H100.8
-#   feature.node.kubernetes.io/cpu-cpuid.VMX=true
+# Pins every sandbox to RuntimeClass/kata-qemu. Template nodeSelector values
+# are an example (H100 + NFD VMX); replace them with labels that match your
+# kata-deploy / RuntimeClass scheduling.
 #
 # API key comes from Secret opensandbox-server-kata-api-key (key: api-key),
 # injected as OPENSANDBOX_SERVER_API_KEY (overrides any TOML api_key).
@@ -79,9 +79,8 @@ configToml: |
 
   [kubernetes]
   kubeconfig_path = ""
-  # Sandboxes land in the NMP temp workspace NS (shared with crun profile).
-  # Isolation is via [secure_runtime] / RuntimeClass + template labels, not a separate NS.
-  namespace = "nmp-temp1"
+  # MUST be the same namespace the platform jobs run in (Helm release namespace).
+  namespace = "REPLACE_WITH_RELEASE_NAMESPACE"
   informer_enabled = true
   informer_resync_seconds = 300
   informer_watch_timeout_seconds = 60

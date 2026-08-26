@@ -72,6 +72,24 @@ existingSecret: ngc-api
 # -- Existing Kubernetes image pull secrets to use for pulling container images from private registries or mirrors.
 imagePullSecrets: []
 
+# -- Whether OpenSandbox is installed on this cluster. The chart does not install OpenSandbox.
+# Defaults to false so sandboxed GRPO fail-closes until you deploy OpenSandbox and set this true.
+# See the OpenSandbox section in this README.
+sandboxClusterCapable: false
+
+# -- Connection settings for an already-installed OpenSandbox server.
+# Used when sandboxClusterCapable is true. Copy the API-key Secret into the Helm
+# release namespace (the namespace jobs run in). Override domain for a Kata Service.
+opensandbox:
+  # -- In-cluster OpenSandbox Service DNS with no scheme.
+  domain: "opensandbox-server-crun.opensandbox-system.svc.cluster.local"
+  # -- Scheme jobs use to reach the server. In-cluster Services speak http.
+  protocol: "http"
+  # -- Kubernetes Secret in the job/release namespace holding the API key.
+  apiKeySecret: "opensandbox-server-api-key"
+  # -- Key inside apiKeySecret.
+  apiKeySecretKey: "api-key"
+
 # -- RBAC configuration settings for optional dependencies
 rbac:
   # -- Specifies whether to enable the core Controller to have RBAC permissions to Volcano for scheduling distributed jobs.
@@ -485,6 +503,11 @@ basePlatformConfig: |
     image_registry: nvcr.io/nvidia/nemo-platform
     image_tag: {{ .Chart.AppVersion | quote }}
     image_pull_secrets: {{ default (list) .Values.imagePullSecrets | toJson }}
+    sandbox_cluster_capable: {{ .Values.sandboxClusterCapable }}
+    sandbox_server_domain: {{ .Values.opensandbox.domain | quote }}
+    sandbox_server_protocol: {{ .Values.opensandbox.protocol | quote }}
+    sandbox_api_key_secret: {{ .Values.opensandbox.apiKeySecret | quote }}
+    sandbox_api_key_secret_key: {{ .Values.opensandbox.apiKeySecretKey | quote }}
 
   studio:
     # -- platform_base_url is the base URL used to access the platform.
@@ -606,11 +629,13 @@ basePlatformConfig: |
     # the sandbox can read the downloaded environment and dataset. Must match the claim the
     # Jobs controller mounts for job storage.
     job_storage_pvc_claim: {{ (include "nmp-core.persistentVolumeClaim" . ) }}
-    # -- sandbox_cluster_capable declares that OpenSandbox is installed on this cluster.
-    # The chart does not install OpenSandbox, so this defaults to false: GRPO defaults to
-    # sandboxed Gym rollouts, and failing those at compile time is the safe outcome on a
-    # cluster that cannot sandbox. Set it to true once OpenSandbox is deployed.
-    sandbox_cluster_capable: false
+    # -- Alias of platform.sandbox_cluster_capable for one-release upgrades that still
+    # set platformConfig.rl.sandbox_cluster_capable. Prefer the top-level Helm value
+    # sandboxClusterCapable (and platform.sandbox_cluster_capable).
+    sandbox_cluster_capable: {{ .Values.sandboxClusterCapable }}
+    # -- Scheme compiled into Gym host_provider_options. Must be http for the
+    # in-cluster OpenSandbox Service or health polls stall on TLS.
+    sandbox_server_protocol: {{ .Values.opensandbox.protocol | quote }}
 
   # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
   safe_synthesizer:

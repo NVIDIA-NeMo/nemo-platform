@@ -31,7 +31,8 @@ data:
           # The Secret must exist in the sandbox namespace.
           imagePullSecrets:
             - name: nvcrimagepullsecret
-          # Must match RuntimeClass/kata-qemu scheduling.nodeSelector on nemo-dev-blue.
+          # Example nodeSelector matching kata-deploy on H100 + NFD VMX nodes.
+          # Replace instance-type and CPUID labels for your cluster.
           nodeSelector:
             katacontainers.io/kata-runtime: "true"
             node.kubernetes.io/instance-type: BM.GPU.H100.8
