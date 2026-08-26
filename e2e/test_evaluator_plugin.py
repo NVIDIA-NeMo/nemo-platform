@@ -48,6 +48,8 @@ from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
@@ -287,9 +289,10 @@ def _create_ready_mock_model(
 
 def _cleanup_evaluator_job(sdk: NeMoPlatform, job_name: str) -> None:
     with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=sdk.workspace)
+        jobs = client_from_platform(sdk, JobsClient)
+        jobs.cancel_job(name=job_name, workspace=sdk.workspace)
     with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=sdk.workspace)
+        jobs.delete_job(name=job_name, workspace=sdk.workspace)
 
 
 def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:
@@ -869,7 +872,9 @@ def test_gym_agent_evaluate_job_invalid_config_fails(
         job = wait_for_platform_job(evaluator_sdk, job_name, evaluator_workspace, timeout=240)
         assert job.status.lower() == "error", f"job {job_name!r} ended {job.status!r}"
 
-        job_status = evaluator_sdk.jobs.get_status(workspace=evaluator_workspace, name=job_name)
-        assert job_status.steps[0].status == "error"
+        job_status = client_from_platform(evaluator_sdk, JobsClient).get_job_status(
+            workspace=evaluator_workspace, name=job_name
+        )
+        assert job_status.data().steps[0].status == "error"
     finally:
         _cleanup_evaluator_job(evaluator_sdk, job_name)
