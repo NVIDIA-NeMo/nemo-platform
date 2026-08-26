@@ -10,6 +10,7 @@ from typing import cast
 import nemo_datasets_plugin.tasks.profile.run as run_mod
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_results import ResultRef
 from nemo_platform_plugin.jobs.constants import (
@@ -136,6 +137,16 @@ def test_task_fails_without_a_step_config(tmp_path, monkeypatch):
 def test_task_rejects_a_negative_row_budget(tmp_path, monkeypatch):
     data = _dataset(tmp_path / "data")
     _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": -1})
+    assert run_mod.run(_SDK) == 1
+
+
+@pytest.mark.parametrize("budget", [1.9, True, False, "5"], ids=["fraction", "true", "false", "string"])
+def test_task_rejects_a_row_budget_that_is_not_an_integer(tmp_path, monkeypatch, budget):
+    # `int()` accepted all four and changed what three of them meant: 1.9 profiled one row, `true`
+    # profiled one row, and `false` became 0, which this task reads as "every row". A budget that
+    # quietly means something else than the config says is worse than a job that refuses to start.
+    data = _dataset(tmp_path / "data")
+    _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": budget})
     assert run_mod.run(_SDK) == 1
 
 

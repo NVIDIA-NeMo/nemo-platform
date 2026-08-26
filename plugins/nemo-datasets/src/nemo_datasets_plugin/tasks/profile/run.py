@@ -118,11 +118,14 @@ def _resolve_row_budget(config: dict) -> int | None:
     if requested is None:
         return None
     # Validated here as well as at any API boundary that produced it: this reads a file off disk, so
-    # nothing upstream is guaranteed to have checked it.
-    budget = int(requested)
-    if budget < 0:
-        raise ValueError(f"row_budget must be >= 0, got {budget}")
-    return budget or None
+    # nothing upstream is guaranteed to have checked it. `int()` alone was too forgiving -- it turned
+    # 1.9 into 1, `true` into 1, and `false` into 0, which this function reads as "every row". A
+    # budget that quietly means something other than what the config says is worse than a failed job.
+    if not isinstance(requested, int) or isinstance(requested, bool):
+        raise ValueError(f"row_budget must be an integer or null, got {requested!r}")
+    if requested < 0:
+        raise ValueError(f"row_budget must be >= 0, got {requested}")
+    return requested or None
 
 
 def _resolve_column_roles(config: dict) -> dict[str, str]:
