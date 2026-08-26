@@ -17,7 +17,10 @@ import {
   formatCost,
   formatLatency,
 } from '@studio/routes/agents/AgentDetailRoute/evaluations/formatRollups';
-import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
+import {
+  type AgentEvaluationRow,
+  primaryExperimentName,
+} from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlaskConical, Trash } from 'lucide-react';
@@ -142,10 +145,12 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
       <StudioDataView<AgentEvaluationRow>
         dataViewState={dataViewState}
         makeColumns={makeColumns}
-        onRowClick={(row) =>
-          row.experimentName &&
-          navigate(getEvaluationDetailRoute(workspace, row.experimentName, row.name))
-        }
+        onRowClick={(row) => {
+          const experimentName = primaryExperimentName(row);
+          if (experimentName) {
+            navigate(getEvaluationDetailRoute(workspace, experimentName, row.name));
+          }
+        }}
         renderBulkActions={({ selectedRows }) => (
           <Button
             kind="tertiary"

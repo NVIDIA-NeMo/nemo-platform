@@ -7,7 +7,8 @@ import { evaluatorLabel } from '@studio/routes/agents/AgentDetailRoute/evaluatio
 import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 
 /** Enough to show what the agent is being measured against without turning the overview into the
- *  Evaluations tab. The rest stay one click away under Evaluations → Experiments. */
+ *  Evaluations tab. The rest stay one click away under Evaluations → Experiments. Applied to each
+ *  group separately, so pinning favorites never pushes the recent ones off the page. */
 export const RECENT_EXPERIMENT_LIMIT = 3;
 
 /** Window the delta is measured over. Fixed rather than "previous run" so the number means the same
@@ -27,6 +28,13 @@ export interface RecentExperiment {
   evaluationCount: number;
   /** One per evaluator seen anywhere in the experiment, alphabetized by label. */
   series: MetricTrendSeries[];
+  isFavorite: boolean;
+}
+
+/** The overview's two groups: the experiments the user pinned, and everything else by recency. */
+export interface GroupedRecentExperiments {
+  favorites: RecentExperiment[];
+  recent: RecentExperiment[];
 }
 
 /** A score with the timestamp it was published at, which the delta needs and `MetricTrendPoint` drops. */
@@ -70,7 +78,17 @@ const toSeries = (evaluator: string, scores: StampedScore[]): MetricTrendSeries 
 });
 
 /**
- * Roll the agent's evaluations up into one trend card per experiment, newest first.
+ * Roll the agent's evaluations up into trend cards, split into favorites and everything else, each
+ * group newest first.
+ *
+ * An evaluation feeds every experiment it belongs to, not just its first: membership is
+ * many-to-many, so keying on `experiment_ids[0]` would drop a shared evaluation's scores and
+ * timestamps from all but one of its experiments.
+ *
+ * Only experiments with `show_evaluations_over_time` set take part: a trend line over an
+ * experiment's evaluations is only meaningful when those evaluations are successive runs of the
+ * same measurement, which is exactly what that flag asserts. Experiments without it are left to the
+ * Experiments tab, which compares their evaluations side by side instead.
  *
  * Derived from the evaluations rather than queried, for the same reason as `groupByExperiment`: the
  * experiments endpoint has no `agent_name` filter, so "which experiments cover this agent" is only
@@ -83,53 +101,55 @@ const toSeries = (evaluator: string, scores: StampedScore[]): MetricTrendSeries 
 export const toRecentExperiments = (
   evaluations: AgentEvaluationRow[],
   limit: number = RECENT_EXPERIMENT_LIMIT
-): RecentExperiment[] => {
+): GroupedRecentExperiments => {
   const byExperiment = new Map<
     string,
     { row: RecentExperiment; scores: Map<string, StampedScore[]> }
   >();
 
   for (const evaluation of evaluations) {
-    const id = evaluation.experiment_ids[0];
-    if (!id) continue;
+    for (const experiment of evaluation.experiments) {
+      if (!experiment.showsEvaluationsOverTime) continue;
 
-    const entry = byExperiment.get(id) ?? {
-      row: {
-        id,
-        name: evaluation.experimentName,
-        description: evaluation.experimentDescription,
-        latestCreatedAt: null,
-        evaluationCount: 0,
-        series: [],
-      },
-      scores: new Map<string, StampedScore[]>(),
-    };
+      const entry = byExperiment.get(experiment.id) ?? {
+        row: {
+          id: experiment.id,
+          name: experiment.name,
+          description: experiment.description,
+          latestCreatedAt: null,
+          evaluationCount: 0,
+          series: [],
+          isFavorite: experiment.isFavorite,
+        },
+        scores: new Map<string, StampedScore[]>(),
+      };
 
-    entry.row.name ??= evaluation.experimentName;
-    entry.row.description ??= evaluation.experimentDescription;
-    entry.row.evaluationCount += 1;
-    if (
-      evaluation.created_at &&
-      (!entry.row.latestCreatedAt || evaluation.created_at > entry.row.latestCreatedAt)
-    ) {
-      entry.row.latestCreatedAt = evaluation.created_at;
-    }
-
-    const at = Date.parse(evaluation.created_at ?? '');
-    if (Number.isFinite(at)) {
-      for (const [evaluator, aggregate] of Object.entries(evaluation.aggregate_scores ?? {})) {
-        const mean = aggregate?.mean;
-        if (typeof mean !== 'number' || !Number.isFinite(mean)) continue;
-        const existing = entry.scores.get(evaluator) ?? [];
-        existing.push({ at, value: mean });
-        entry.scores.set(evaluator, existing);
+      entry.row.name ??= experiment.name;
+      entry.row.description ??= experiment.description;
+      entry.row.evaluationCount += 1;
+      if (
+        evaluation.created_at &&
+        (!entry.row.latestCreatedAt || evaluation.created_at > entry.row.latestCreatedAt)
+      ) {
+        entry.row.latestCreatedAt = evaluation.created_at;
       }
-    }
 
-    byExperiment.set(id, entry);
+      const at = Date.parse(evaluation.created_at ?? '');
+      if (Number.isFinite(at)) {
+        for (const [evaluator, aggregate] of Object.entries(evaluation.aggregate_scores ?? {})) {
+          const mean = aggregate?.mean;
+          if (typeof mean !== 'number' || !Number.isFinite(mean)) continue;
+          const existing = entry.scores.get(evaluator) ?? [];
+          existing.push({ at, value: mean });
+          entry.scores.set(evaluator, existing);
+        }
+      }
+
+      byExperiment.set(experiment.id, entry);
+    }
   }
 
-  return [...byExperiment.values()]
+  const rows = [...byExperiment.values()]
     .map(({ row, scores }) => ({
       ...row,
       series: [...scores.entries()]
@@ -141,6 +161,10 @@ export const toRecentExperiments = (
         )
         .sort((a, b) => a.label.localeCompare(b.label)),
     }))
-    .sort((a, b) => (b.latestCreatedAt ?? '').localeCompare(a.latestCreatedAt ?? ''))
-    .slice(0, limit);
+    .sort((a, b) => (b.latestCreatedAt ?? '').localeCompare(a.latestCreatedAt ?? ''));
+
+  return {
+    favorites: rows.filter((row) => row.isFavorite).slice(0, limit),
+    recent: rows.filter((row) => !row.isFavorite).slice(0, limit),
+  };
 };

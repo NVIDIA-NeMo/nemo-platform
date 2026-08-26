@@ -21,13 +21,33 @@ import { useMemo } from 'react';
 /** Statuses that will not change again, so polling can stop. */
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'error', 'cancelled']);
 
-/** A published evaluation plus the experiment it belongs to — the name its detail route is nested
- *  under, and the description the overview cards label it with. Both are null when the experiment
- *  could not be resolved. */
+/** One of the experiments an evaluation belongs to: the name its detail route is nested under, the
+ *  description the overview cards label it with, and the two display flags the overview groups and
+ *  filters on. Name and description are null when the experiment fell outside the fetched page and
+ *  could not be resolved, in which case both flags read false. */
+export interface EvaluationExperiment {
+  id: string;
+  name: string | null;
+  description: string | null;
+  isFavorite: boolean;
+  showsEvaluationsOverTime: boolean;
+}
+
+/** A published evaluation plus every experiment it belongs to.
+ *
+ *  Membership is many-to-many — `AddToGroupModal` adds an evaluation to further experiments by
+ *  appending to `experiment_ids` — so this is a list, in `experiment_ids` order, with unresolved
+ *  ids keeping their place. Consumers that roll evaluations up by experiment must visit every
+ *  entry, or a shared evaluation goes missing from all but one of its experiments. */
 export type AgentEvaluationRow = EvaluationResponse & {
-  experimentName: string | null;
-  experimentDescription: string | null;
+  experiments: EvaluationExperiment[];
 };
+
+/** The experiment an evaluation's detail route is nested under. Any of them addresses the same
+ *  evaluation, so this takes the first one whose name resolved; undefined when none did, which
+ *  leaves the caller with no linkable route. */
+export const primaryExperimentName = (evaluation: AgentEvaluationRow): string | undefined =>
+  evaluation.experiments.find((experiment) => experiment.name)?.name ?? undefined;
 
 interface UseAgentPanelParams {
   workspace: string;
@@ -117,8 +137,7 @@ export const useAgentDetails = ({
   const experimentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const evaluation of agentEvalsResponse?.data ?? []) {
-      const id = evaluation.experiment_ids[0];
-      if (id) ids.add(id);
+      for (const id of evaluation.experiment_ids) ids.add(id);
     }
     return [...ids].sort();
   }, [agentEvalsResponse]);
@@ -131,14 +150,19 @@ export const useAgentDetails = ({
 
   const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    return (agentEvalsResponse?.data ?? []).map((evaluation) => {
-      const experiment = experimentsById?.get(evaluation.experiment_ids[0] ?? '');
-      return {
-        ...evaluation,
-        experimentName: experiment?.name ?? null,
-        experimentDescription: experiment?.description ?? null,
-      };
-    });
+    return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
+      ...evaluation,
+      experiments: evaluation.experiment_ids.map((id) => {
+        const experiment = experimentsById?.get(id);
+        return {
+          id,
+          name: experiment?.name ?? null,
+          description: experiment?.description ?? null,
+          isFavorite: experiment?.is_favorite ?? false,
+          showsEvaluationsOverTime: experiment?.show_evaluations_over_time ?? false,
+        };
+      }),
+    }));
   }, [agentEvalsResponse, experimentsById, agentName]);
 
   const agentJobs: EvalJobRow[] = useMemo(() => {

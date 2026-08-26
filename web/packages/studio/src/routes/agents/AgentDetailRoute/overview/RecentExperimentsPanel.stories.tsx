@@ -13,6 +13,7 @@ const LATEST = Date.parse('2026-08-18T00:00:00Z');
 
 interface RunOptions {
   experimentId: string;
+  isFavorite?: boolean;
   experimentName: string;
   experimentDescription: string;
   /** How long before {@link LATEST} the run published. */
@@ -26,6 +27,7 @@ const run = ({
   experimentId,
   experimentName,
   experimentDescription,
+  isFavorite = false,
   daysAgo,
   scores,
 }: RunOptions): AgentEvaluationRow =>
@@ -35,8 +37,15 @@ const run = ({
     workspace: 'default',
     experiment_ids: [experimentId],
     dataset_name: 'support-bench-v3',
-    experimentName,
-    experimentDescription,
+    experiments: [
+      {
+        id: experimentId,
+        name: experimentName,
+        description: experimentDescription,
+        isFavorite,
+        showsEvaluationsOverTime: true,
+      },
+    ],
     created_at: new Date(LATEST - daysAgo * DAY_MS).toISOString(),
     aggregate_scores: Object.fromEntries(
       Object.entries(scores).map(([key, mean]) => [key, { mean }])
@@ -78,6 +87,7 @@ const evaluations: AgentEvaluationRow[] = [
       experimentName: 'Primary use cases',
       experimentDescription:
         'Continuously evaluate every merge to main against the full Support-Bench v3 benchmark.',
+      isFavorite: true,
     },
     {
       solved: { from: 0.78, step: 0.02 },
@@ -91,7 +101,8 @@ const meta: Meta<typeof RecentExperimentsPanel> = {
   title: 'Studio/RecentExperimentsPanel',
   component: RecentExperimentsPanel,
   args: {
-    experiments: toRecentExperiments(evaluations),
+    favorites: toRecentExperiments(evaluations).favorites,
+    experiments: toRecentExperiments(evaluations).recent,
     onOpenExperiment: () => {},
     onRunEvaluation: () => {},
   },
@@ -113,6 +124,7 @@ export const Default: Story = {};
 /** A brand-new experiment: one published run, so there is a score but no trend and no delta. */
 export const SingleRun: Story = {
   args: {
+    favorites: [],
     experiments: toRecentExperiments([
       run({
         experimentId: 'exp-primary',
@@ -122,12 +134,12 @@ export const SingleRun: Story = {
         daysAgo: 0,
         scores: { solved: 0.78, accuracy: 0.91, 'llm-judge.tone': 0.75 },
       }),
-    ]),
+    ]).recent,
   },
 };
 
 export const Empty: Story = {
-  args: { experiments: [] },
+  args: { favorites: [], experiments: [] },
 };
 
 export const Loading: Story = {

@@ -86,7 +86,8 @@ export const OverviewTab: FC<OverviewTabProps> = ({
           />
         )}
         <RecentExperimentsPanel
-          experiments={experiments}
+          favorites={experiments.favorites}
+          experiments={experiments.recent}
           isPending={isEvalsPending}
           onOpenExperiment={(experiment) =>
             experiment.name && navigate(getExperimentDetailRoute(workspace, experiment.name))

@@ -12,6 +12,7 @@ const experiment: RecentExperiment = {
   description: 'Dataset of early v2 use cases.',
   latestCreatedAt: '2026-08-10T00:00:00Z',
   evaluationCount: 3,
+  isFavorite: false,
   series: [
     {
       id: 'solved',
@@ -80,6 +81,37 @@ describe('RecentExperimentsPanel', () => {
 
     expect(screen.getByText('Unnamed experiment')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument();
+  });
+
+  it('groups favorites above the recent experiments', () => {
+    render(
+      <RecentExperimentsPanel
+        favorites={[{ ...experiment, id: 'exp-fav', name: 'Pinned bench', isFavorite: true }]}
+        experiments={[experiment]}
+        onOpenExperiment={vi.fn()}
+      />
+    );
+
+    const headings = screen.getAllByText(/^(Favorites|Recent experiments)$/);
+    expect(headings.map((heading) => heading.textContent)).toEqual([
+      'Favorites',
+      'Recent experiments',
+    ]);
+    expect(screen.getByText('Pinned bench')).toBeInTheDocument();
+  });
+
+  it('shows only the favorites group when nothing else is trending', () => {
+    render(
+      <RecentExperimentsPanel
+        favorites={[{ ...experiment, isFavorite: true }]}
+        experiments={[]}
+        onOpenExperiment={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Favorites')).toBeInTheDocument();
+    expect(screen.queryByText('Recent experiments')).not.toBeInTheDocument();
+    expect(screen.queryByText('Measure agent performance')).not.toBeInTheDocument();
   });
 
   it('prompts for a first evaluation when the agent has no experiments', async () => {
