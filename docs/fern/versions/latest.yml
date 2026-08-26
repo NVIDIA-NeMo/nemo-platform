@@ -145,6 +145,8 @@ navigation:
             path: ../../studio/data-designer-build.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
+          - page: Plugin UIs
+            path: ../../studio/plugins.mdx
           - page: Guardrail Configs
             path: ../../studio/guardrails.mdx
           - page: Virtual Models
