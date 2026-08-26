@@ -12,6 +12,9 @@
       "tool": 3
     }
   },
+  "measured_kinds": [
+    "tool"
+  ],
   "input_reports": [
     {
       "path": ".eval-author/audit-measurements/task=account-recovery/run=trial-001/tool_calls/coverage.json",
@@ -122,7 +125,7 @@
     {
       "name": "account_recovery",
       "kind": "capability",
-      "reason": "not_covered_by_any_input_report",
+      "reason": "not_measured_by_any_method",
       "description": "Helps a verified user regain account access.",
       "source_refs": [
         "ethos:Behavior"
@@ -183,16 +186,15 @@
     {
       "name": "account_recovery_unverified_identity",
       "kind": "failure_case",
-      "reason": "not_covered_by_any_input_report",
+      "reason": "not_measured_by_any_method",
       "description": "Refuses to reset access when identity verification is missing.",
       "source_refs": [
         "ethos:Success Criteria"
       ],
       "generation": {
-        "focus": "Exercise failure case account_recovery_unverified_identity by triggering User cannot provide required verification details.: Refuse account reset, explain what verification is required, and avoid password.reset.",
+        "focus": "Exercise failure case account_recovery_unverified_identity by triggering User cannot provide required verification details: Refuse account reset, explain what verification is required, and avoid password.reset.",
         "needed_tools": [
-          "customer.lookup",
-          "password.reset"
+          "customer.lookup"
         ],
         "evidence_required": [
           {

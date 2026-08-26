@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -16,12 +17,13 @@ from typing import Any, TypeAlias
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _markdown import AuditMarkdownError  # noqa: E402
+from _schema import ITEM_KINDS as AUDIT_ITEM_KINDS  # noqa: E402
 from _schema import AuditEnvironmentError, AuditSpecError, item_counts, load_audit_spec  # noqa: E402
 
 JsonObject: TypeAlias = dict[str, Any]
 
 REPORT_SCHEMA = "nemo.eval_author.audit_coverage_report.v1"
-ITEM_KINDS = ("capability", "failure_case", "tool")
+ITEM_KINDS = tuple(sorted(AUDIT_ITEM_KINDS))
 SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas"
 COVERAGE_SCHEMA_PATH = SCHEMAS_DIR / "audit_coverage.schema.json"
 REPORT_SCHEMA_PATH = SCHEMAS_DIR / "audit_coverage_report.schema.json"
@@ -87,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         "audit": str(args.audit),
         "coverage_report": str(args.out),
         "coverage_input_count": len(coverage_inputs),
+        "measured_kinds": report["measured_kinds"],
         "covered_count": report["coverage"]["overall"]["covered_count"],
         "uncovered_count": report["coverage"]["overall"]["uncovered_count"],
         "uncovered": report["uncovered"],
@@ -147,6 +150,7 @@ def _aggregate(*, audit: JsonObject, audit_path: Path, coverage_inputs: list[Cov
     audit_counts = item_counts(audit)
     covered_names: set[str] = set()
     input_reports: list[JsonObject] = []
+    measured_kinds: set[str] = set()
 
     for coverage_input in coverage_inputs:
         payload = coverage_input.payload
@@ -159,19 +163,24 @@ def _aggregate(*, audit: JsonObject, audit_path: Path, coverage_inputs: list[Cov
         )
         input_report = _input_report(coverage_input)
         input_reports.append(input_report)
+        measured_kinds.add(payload["item_kind"])
         covered_names.update(payload["covered"])
 
     covered = [item["name"] for item in audit_items if item["name"] in covered_names]
     uncovered = [item["name"] for item in audit_items if item["name"] not in covered_names]
+    measured_kinds_list = [kind for kind in ITEM_KINDS if kind in measured_kinds]
     return {
         "schema": REPORT_SCHEMA,
         "audit": _audit_info(audit, audit_path, audit_counts),
+        "measured_kinds": measured_kinds_list,
         "input_reports": input_reports,
         "coverage": _coverage_summary(audit_items, covered),
         "covered": covered,
         "uncovered": uncovered,
         "uncovered_items": [
-            _uncovered_item(item, audit_items_by_name) for item in audit_items if item["name"] in uncovered
+            _uncovered_item(item, audit_items_by_name, measured_kinds=measured_kinds)
+            for item in audit_items
+            if item["name"] not in covered_names
         ],
     }
 
@@ -186,7 +195,7 @@ def _validate_coverage_matches_audit(
 ) -> None:
     """Reject stale or incompatible coverage files before aggregating them."""
     coverage_audit = coverage["audit"]
-    for field in ("schema", "agent", "item_count"):
+    for field in ("schema", "agent", "status", "item_count"):
         expected = len(audit["items"]) if field == "item_count" else audit[field]
         if coverage_audit[field] != expected:
             raise AuditCoverageInputError(
@@ -245,12 +254,14 @@ def _count_summary(*, item_count: int, covered_count: int) -> JsonObject:
     }
 
 
-def _uncovered_item(item: JsonObject, audit_items_by_name: dict[str, JsonObject]) -> JsonObject:
+def _uncovered_item(
+    item: JsonObject, audit_items_by_name: dict[str, JsonObject], *, measured_kinds: set[str]
+) -> JsonObject:
     """Format one uncovered audit item as direct input to a later generation step."""
     return {
         "name": item["name"],
         "kind": item["kind"],
-        "reason": "not_covered_by_any_input_report",
+        "reason": _uncovered_reason(item, measured_kinds),
         "description": item["description"],
         "source_refs": item.get("source_refs", []),
         "generation": {
@@ -262,29 +273,48 @@ def _uncovered_item(item: JsonObject, audit_items_by_name: dict[str, JsonObject]
     }
 
 
+def _uncovered_reason(item: JsonObject, measured_kinds: set[str]) -> str:
+    """Distinguish true coverage gaps from item kinds no selected method measured."""
+    if item["kind"] not in measured_kinds:
+        return "not_measured_by_any_method"
+    return "not_covered_by_any_input_report"
+
+
 def _generation_focus(item: JsonObject) -> str:
     """Describe the missing behavior in task-generation terms without inventing a task."""
     if item["kind"] == "tool":
         return f"Exercise a scenario where the agent should call {item['name']}: {item['expected_use']}"
     if item["kind"] == "capability":
         return f"Exercise capability {item['name']}: {item['expected_behavior']}"
-    return f"Exercise failure case {item['name']} by triggering {item['trigger']}: {item['expected_behavior']}"
+    trigger = item["trigger"].rstrip(". ")
+    return f"Exercise failure case {item['name']} by triggering {trigger}: {item['expected_behavior']}"
 
 
 def _needed_tools(item: JsonObject, audit_items_by_name: dict[str, JsonObject]) -> list[str]:
     """Return the declared tool names a generator should consider when closing this gap."""
     if item["kind"] == "tool":
-        return [item["name"]]
+        return _dedupe_names([item["name"]])
     if item["kind"] == "capability":
-        return list(item["required_tools"])
+        return _dedupe_names(item["required_tools"])
 
+    tools = list(item.get("expected_tools", [])) or _tools_from_capabilities(item, audit_items_by_name)
+    prohibited_tools = set(item.get("prohibited_tools", []))
+    return _dedupe_names(tool for tool in tools if tool not in prohibited_tools)
+
+
+def _tools_from_capabilities(item: JsonObject, audit_items_by_name: dict[str, JsonObject]) -> list[str]:
+    """Collect required tools from capabilities linked by a failure-case item."""
     tools: list[str] = []
     for capability_name in item["applies_to"]:
         capability = audit_items_by_name.get(capability_name)
-        if capability is None or capability["kind"] != "capability":
-            continue
-        tools.extend(capability["required_tools"])
-    return list(dict.fromkeys(tools))
+        if capability is not None and capability["kind"] == "capability":
+            tools.extend(capability["required_tools"])
+    return tools
+
+
+def _dedupe_names(names: Iterable[str]) -> list[str]:
+    """Dedupe a name iterable while preserving first-seen order."""
+    return list(dict.fromkeys(names))
 
 
 def _audit_info(audit: JsonObject, audit_path: Path, counts: dict[str, int]) -> JsonObject:

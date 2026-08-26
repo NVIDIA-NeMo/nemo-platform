@@ -27,8 +27,8 @@ Current assumptions:
   digest.
 - Aggregation input is one or more per-trace `coverage.json` files. `report.py`
   validates those files against `schemas/audit_coverage.schema.json`, compares
-  their denominator metadata with the current `audit.md`, and writes one
-  `coverage_report.json` file.
+  their denominator metadata, including audit status, with the current
+  `audit.md`, and writes one `coverage_report.json` file.
 - Aggregation does not read ATIF traces, Harbor result files, or method-specific
   `details.json` files. It only unions stable audit item names from
   `coverage.json`.
@@ -36,6 +36,10 @@ Current assumptions:
   uncovered item preserves the original audit item and adds generation-oriented
   context: the reason it is uncovered, a one-sentence focus, likely needed
   tools, and required evidence.
+- The aggregate report records `measured_kinds` from the input coverage files.
+  An uncovered item whose kind is absent from `measured_kinds` uses
+  `reason: not_measured_by_any_method`; an uncovered item whose kind was measured
+  uses `reason: not_covered_by_any_input_report`.
 - Harbor's current `Trajectory` model is treated as the reader for now, but it
   may prove too strict for measurement if valid evaluator traces include producer
   extensions, omit fields that coverage does not consume, or move to a newer ATIF

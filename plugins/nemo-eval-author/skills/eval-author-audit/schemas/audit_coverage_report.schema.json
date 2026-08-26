@@ -8,6 +8,7 @@
   "required": [
     "schema",
     "audit",
+    "measured_kinds",
     "input_reports",
     "coverage",
     "covered",
@@ -22,6 +23,10 @@
     "audit": {
       "description": "Audit spec metadata for the denominator used by this aggregate report.",
       "$ref": "#/$defs/audit"
+    },
+    "measured_kinds": {
+      "description": "Audit item kinds that at least one input coverage report attempted to measure.",
+      "$ref": "#/$defs/itemKindList"
     },
     "input_reports": {
       "description": "Per-trace coverage files included in this aggregate report.",
@@ -69,6 +74,15 @@
         "failure_case",
         "tool"
       ]
+    },
+    "itemKindList": {
+      "description": "Unique audit item kinds, usually derived from input report item_kind values.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/itemKind"
+      }
     },
     "nameList": {
       "type": "array",
@@ -304,7 +318,10 @@
         },
         "reason": {
           "description": "Why this item appears in the uncovered list.",
-          "const": "not_covered_by_any_input_report"
+          "enum": [
+            "not_covered_by_any_input_report",
+            "not_measured_by_any_method"
+          ]
         },
         "description": {
           "description": "Description copied from the audit item.",

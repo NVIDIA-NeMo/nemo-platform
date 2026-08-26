@@ -1535,9 +1535,11 @@ def test_audit_report_aggregates_coverage_and_formats_generation_gaps(tmp_path: 
     assert code == 0, stderr or summary
     assert summary["written"] is True
     assert summary["coverage_input_count"] == 1
+    assert summary["measured_kinds"] == ["tool"]
     assert summary["covered_count"] == 1
     assert summary["uncovered_count"] == 2
     assert summary["uncovered"] == ["account_recovery", "account_recovery_unverified_identity"]
+    assert report["measured_kinds"] == ["tool"]
     assert report["audit"]["item_counts"] == {"capability": 1, "failure_case": 1, "tool": 1}
     assert report["coverage"]["overall"] == {"item_count": 3, "covered_count": 1, "uncovered_count": 2}
     assert report["coverage"]["by_kind"] == {
@@ -1563,13 +1565,78 @@ def test_audit_report_aggregates_coverage_and_formats_generation_gaps(tmp_path: 
             "covered_count": 1,
         }
     ]
+    assert gaps_by_name["account_recovery"]["reason"] == "not_measured_by_any_method"
     assert gaps_by_name["account_recovery"]["generation"]["needed_tools"] == ["customer.lookup"]
     assert "Exercise capability account_recovery" in gaps_by_name["account_recovery"]["generation"]["focus"]
     assert gaps_by_name["account_recovery"]["audit_item"]["kind"] == "capability"
+    assert gaps_by_name["account_recovery_unverified_identity"]["reason"] == "not_measured_by_any_method"
     assert gaps_by_name["account_recovery_unverified_identity"]["generation"]["needed_tools"] == ["customer.lookup"]
     assert (
         "identity is not verified" in gaps_by_name["account_recovery_unverified_identity"]["audit_item"]["description"]
     )
+
+
+def test_audit_report_dedupes_generation_needed_tools(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools:\n      - customer.lookup\n      - customer.lookup\n",
+            1,
+        ),
+    )
+    coverage_dir = tmp_path / ".eval-author" / "audit-measurements"
+    _write_coverage(coverage_dir / "coverage.json", audit=audit, covered=["customer.lookup"])
+    out = tmp_path / ".eval-author" / "audit-coverage-report.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_REPORT,
+        "--audit",
+        str(audit),
+        "--coverage-dir",
+        str(coverage_dir),
+        "--out",
+        str(out),
+    )
+
+    report = json.loads(out.read_text(encoding="utf-8"))
+    gaps_by_name = {item["name"]: item for item in report["uncovered_items"]}
+
+    assert code == 0, stderr or summary
+    assert gaps_by_name["account_recovery"]["generation"]["needed_tools"] == ["customer.lookup"]
+
+
+def test_audit_report_failure_case_needed_tools_prefer_expected_and_filter_prohibited(tmp_path: Path) -> None:
+    ticket_yaml = yaml.safe_dump([_ticket_tool_item()], sort_keys=False)
+    ticket_block = "\n".join(f"  {line}" for line in ticket_yaml.splitlines())
+    audit = _write_audit(
+        tmp_path,
+        lambda text: text.replace("\n  - kind: capability\n", f"\n{ticket_block}\n\n  - kind: capability\n", 1).replace(
+            "    expected_tools:\n      - customer.lookup\n    prohibited_tools: []\n",
+            "    expected_tools:\n      - ticket.create\n    prohibited_tools:\n      - ticket.create\n",
+            1,
+        ),
+    )
+    coverage_dir = tmp_path / ".eval-author" / "audit-measurements"
+    _write_coverage(coverage_dir / "coverage.json", audit=audit, covered=["customer.lookup"])
+    out = tmp_path / ".eval-author" / "audit-coverage-report.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_REPORT,
+        "--audit",
+        str(audit),
+        "--coverage-dir",
+        str(coverage_dir),
+        "--out",
+        str(out),
+    )
+
+    report = json.loads(out.read_text(encoding="utf-8"))
+    gaps_by_name = {item["name"]: item for item in report["uncovered_items"]}
+
+    assert code == 0, stderr or summary
+    assert gaps_by_name["account_recovery_unverified_identity"]["generation"]["needed_tools"] == []
+    assert ".:" not in gaps_by_name["account_recovery_unverified_identity"]["generation"]["focus"]
 
 
 def test_audit_report_rejects_stale_coverage_denominator_without_writing(tmp_path: Path) -> None:
@@ -1595,6 +1662,32 @@ def test_audit_report_rejects_stale_coverage_denominator_without_writing(tmp_pat
     assert report["written"] is False
     assert report["error_type"] == "coverage_input"
     assert "audit.item_count 99 does not match current audit 3" in report["error"]
+    assert not out.exists()
+
+
+def test_audit_report_rejects_mismatched_audit_status_without_writing(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    coverage_path = tmp_path / ".eval-author" / "audit-measurements" / "coverage.json"
+    coverage = _write_coverage(coverage_path, audit=audit, covered=["customer.lookup"])
+    coverage["audit"]["status"] = "approved"
+    coverage_path.write_text(json.dumps(coverage), encoding="utf-8")
+    out = tmp_path / ".eval-author" / "audit-coverage-report.json"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_REPORT,
+        "--audit",
+        str(audit),
+        "--coverage",
+        str(coverage_path),
+        "--out",
+        str(out),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "coverage_input"
+    assert "audit.status 'approved' does not match current audit 'draft'" in report["error"]
     assert not out.exists()
 
 

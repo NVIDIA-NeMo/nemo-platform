@@ -286,7 +286,10 @@ longer matches the current `audit.md`.
 
 The aggregate report uses `schemas/audit_coverage_report.schema.json`. It
 contains overall and per-kind count summaries, the union of covered item names,
-and `uncovered_items`. Each uncovered item includes the original audit item plus
-generation-oriented context: a stable `reason`, a one-sentence `focus`, likely
-`needed_tools`, and the item's `evidence_required`. Treat that list as the input
-for a later task-generation step.
+the measured item kinds, and `uncovered_items`. Each uncovered item includes the
+original audit item plus generation-oriented context: a stable `reason`, a
+one-sentence `focus`, likely `needed_tools`, and the item's `evidence_required`.
+Use `reason: not_measured_by_any_method` to distinguish gaps that no included
+measurement method could close from `reason: not_covered_by_any_input_report`,
+which means the item kind was measured but no input report covered that item.
+Treat that list as the input for a later task-generation step.
