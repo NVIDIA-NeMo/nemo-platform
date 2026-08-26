@@ -95,6 +95,76 @@ async def test_create_deployment_starts_container(
 
 
 @pytest.mark.asyncio
+async def test_create_deployment_uses_executor_default_network(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "network": "nmp-e2e-test-network"},
+        )
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    _, create_kwargs = mock_docker_client.containers.create.call_args
+    assert create_kwargs["network"] == "nmp-e2e-test-network"
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_backend_config_network_overrides_executor_default(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "network": "executor-network"},
+        )
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={"docker": {"network": "deployment-network"}},
+    )
+
+    assert update.status == "STARTING"
+    _, create_kwargs = mock_docker_client.containers.create.call_args
+    assert create_kwargs["network"] == "deployment-network"
+
+
+@pytest.mark.asyncio
 async def test_create_deployment_maps_command_to_entrypoint(
     docker_backend: DockerDeploymentBackend,
     mock_entities: AsyncMock,

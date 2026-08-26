@@ -287,6 +287,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         docker_cfg = parse_docker_backend_config(backend_config)
         if config.backend_config.docker is not None:
             docker_cfg = config.backend_config.docker
+        if docker_cfg.network is None and self._executor_config.network is not None:
+            docker_cfg = docker_cfg.model_copy(update={"network": self._executor_config.network})
 
         dep_key = deployment_key(workspace, name)
         gpu_pool = self._gpu_pool

@@ -5,8 +5,21 @@
 
 from __future__ import annotations
 
+import os
+
 from nemo_deployments_plugin.backends.labels import DEFAULT_RESOURCE_SCOPE
 from pydantic import BaseModel, Field, model_validator
+
+DOCKER_NETWORK_ENV_VAR = "NEMO_DEPLOYMENTS_DOCKER_NETWORK"
+LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR = "MODELS_DOCKER_NETWORK"
+
+
+def _default_network() -> str | None:
+    for env_var in (DOCKER_NETWORK_ENV_VAR, LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR):
+        value = os.getenv(env_var)
+        if value:
+            return value
+    return None
 
 
 class DockerExecutorConfig(BaseModel):
@@ -28,6 +41,14 @@ class DockerExecutorConfig(BaseModel):
         ),
     )
     pull_images: bool = Field(default=True, description="Pull container images before run when missing locally.")
+    network: str | None = Field(
+        default_factory=_default_network,
+        description=(
+            "Default Docker network for containers created by this executor. "
+            f"Can also be set with {DOCKER_NETWORK_ENV_VAR}; "
+            f"{LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR} is accepted for compatibility."
+        ),
+    )
     resource_scope: str = Field(
         default=DEFAULT_RESOURCE_SCOPE,
         min_length=1,
