@@ -196,7 +196,14 @@ class TestTranslateAgentConfig:
                     "transport": "stdio",
                     "url": "repo-mcp --root .",
                     "exposure": "fabric_managed",
-                }
+                    "allowed_tools": ["read_file", "search_files"],
+                    "blocked_tools": ["write_file"],
+                },
+                "disabled": {
+                    "transport": "streamable-http",
+                    "url": "https://mcp.example.com",
+                    "allowed_tools": [],
+                },
             }
         }
         payload["tools"] = {"blocked": ["shell", "browser"]}
@@ -214,6 +221,9 @@ class TestTranslateAgentConfig:
         assert mcp.servers["repo"].transport == "stdio"
         assert mcp.servers["repo"].url == "repo-mcp --root ."
         assert mcp.servers["repo"].exposure == "fabric_managed"
+        assert mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
+        assert mcp.servers["repo"].blocked_tools == ["write_file"]
+        assert mcp.servers["disabled"].allowed_tools == []
         assert tools.blocked == ["shell", "browser"]
 
     def test_top_level_prompts_rejected_until_shared_prompt_contract_exists(self) -> None:

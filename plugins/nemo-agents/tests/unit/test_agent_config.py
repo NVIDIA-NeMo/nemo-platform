@@ -137,6 +137,8 @@ class TestAgentConfig:
                 "repo": {
                     "transport": "stdio",
                     "url": "repo-mcp --root .",
+                    "allowed_tools": ["read_file", "search_files"],
+                    "blocked_tools": ["write_file"],
                 }
             }
         }
@@ -149,8 +151,28 @@ class TestAgentConfig:
         assert config.mcp is not None
         assert config.mcp.servers["repo"].transport == "stdio"
         assert config.mcp.servers["repo"].exposure == "harness_native"
+        assert config.mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
+        assert config.mcp.servers["repo"].blocked_tools == ["write_file"]
         assert config.tools is not None
         assert config.tools.blocked == ["shell", "browser"]
+
+    def test_mcp_server_preserves_explicit_empty_tool_allowlist(self) -> None:
+        payload = _example_yaml_config()
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "stdio",
+                    "url": "repo-mcp --root .",
+                    "allowed_tools": [],
+                }
+            }
+        }
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.mcp is not None
+        assert config.mcp.servers["repo"].allowed_tools == []
+        assert config.mcp.servers["repo"].blocked_tools == []
 
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):
