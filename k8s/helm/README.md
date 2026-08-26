@@ -122,102 +122,31 @@ and
 ## Kyverno
 
 The chart does not install Kyverno. Multi-node NCCL device injection renders
-ClusterPolicies that Kyverno must apply.
-
-    helm repo add kyverno https://kyverno.github.io/kyverno/
-    helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version 3.2.0
-
-Then enable exactly one cloud provider under `multinodeNetworking`. Full
-procedure: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/multinode-networking
+ClusterPolicies that Kyverno must apply. Enable exactly one cloud provider
+under `multinodeNetworking`.
+How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/multinode-networking
 
 ## Volcano
 
 The chart does not install Volcano. Multi-node `volcano_job` workloads need it.
 `rbac.volcanoEnabled` defaults to true so the core controller can manage Volcano
-CRs.
-
-    kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
-    kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
-    kubectl rollout status deployment/volcano-admission -n volcano-system
-
-Wait for admission TLS before installing this chart (`failurePolicy: Fail`).
-Full procedure: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/volcano
+CRs. Skip Volcano and set `rbac.volcanoEnabled: false` if you are not running
+those jobs.
+How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/volcano
 
 ## OpenSandbox
 
-The chart does not install OpenSandbox. Sandboxed GRPO talks to an already
-installed server as an HTTP client (`OPEN_SANDBOX_DOMAIN`,
+The chart does not install OpenSandbox. Sandboxed GRPO / NeMo Gym talks to an
+already installed server as an HTTP client (`OPEN_SANDBOX_DOMAIN`,
 `OPEN_SANDBOX_API_KEY`). Gym sample YAML uses `OPENSANDBOX_*`; do not mix names.
 
 `[kubernetes] namespace` in the server TOML **must be the Helm release
-namespace** (the namespace jobs run in). Control plane may stay in
-`opensandbox-system`. Copy the API-key Secret into the job namespace.
-Image-pull secrets on BatchSandbox templates must exist there too.
+namespace**. Control plane may stay in `opensandbox-system`. Copy the API-key
+Secret into the job namespace.
 
 Example overlays: [examples/opensandbox](examples/opensandbox).
-
-### Crun / shared-kernel
-
-    export NMP_NAMESPACE=<release-namespace>
-    export OPENSANDBOX_DIR=/path/to/OpenSandbox
-    export EXAMPLES=k8s/helm/examples/opensandbox
-
-Replace `REPLACE_WITH_RELEASE_NAMESPACE` in `opensandbox-server-crun.yaml`.
-Apply the crun BatchSandbox template ConfigMap, create the API-key Secret in
-`opensandbox-system`, copy it into `$NMP_NAMESPACE` as
-`opensandbox-server-api-key`, then:
-
-    helm upgrade --install opensandbox-controller \
-      "${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-controller" \
-      --namespace opensandbox-system \
-      -f "${EXAMPLES}/opensandbox-controller.yaml"
-    helm upgrade --install opensandbox-server-crun \
-      "${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-server" \
-      --namespace opensandbox-system \
-      -f "${EXAMPLES}/opensandbox-server-crun.yaml"
-
-Set on this chart:
-
-    sandboxClusterCapable: true
-    opensandbox:
-      domain: opensandbox-server-crun.opensandbox-system.svc.cluster.local
-      protocol: http
-      apiKeySecret: opensandbox-server-api-key
-      apiKeySecretKey: api-key
-
-Protocol **must** be `http` for the in-cluster Service. If unset, NeMo-RL
-health URLs default to https and stall.
-
-`[secure_runtime]` is server-global. Point jobs at **one** Service.
-
-Verify: `OPEN_SANDBOX_WORKLOAD_NS=$NMP_NAMESPACE ./k8s/helm/examples/opensandbox/verify/crun.sh`
-
-Full procedure: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox
-
-### Kata / fully secure runtime
-
-Same OpenSandbox flow with `opensandbox-server-kata-qemu.yaml`. Override
-`opensandbox.domain` to `opensandbox-server-kata.opensandbox-system.svc.cluster.local`.
-
-Cluster prerequisites: KVM-capable CPU (Intel VMX / AMD SVM / Arm), `/dev/kvm`,
-nested virt if the node is a VM, KVM/vhost modules, CRI-O or containerd handler.
-
-    helm upgrade --install kata-deploy \
-      oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy \
-      --version 4.0.0 --namespace kube-system --create-namespace \
-      -f kata-values.yaml
-
-QEMU-only shims. Node selectors in the example overlay are an example, not the
-only supported shape.
-
-CRI-O retrofit: `overlay.skip_mount_home` only applies to overlay mounts created
-after it is active. Nodes that already ran containers need cordon → drain →
-crio restart → uncordon.
-
-Smoke: RuntimeClass `kata-qemu` pod with a guest kernel that differs from the
-node. Then `verify/kata-qemu.sh`.
-
-Full procedure: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata
+Shared-kernel (cluster default OCI runtime): https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox
+Kata QEMU: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata
 
 ## NetworkPolicies
 

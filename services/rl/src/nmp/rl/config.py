@@ -155,8 +155,9 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         description=(
             "Name of the shared job-storage PersistentVolumeClaim (the same claim the Jobs "
             "controller mounts at the job storage path). Sandboxed GRPO re-mounts that claim "
-            "into the Gym host so the sandbox can read the downloaded environment and dataset, "
-            "so it must be set on any cluster where platform.sandbox_cluster_capable is true."
+            "into the Gym host so the sandbox can read the downloaded environment and dataset. "
+            "Required before submitting sandboxed GRPO jobs. DPO and unsandboxed Gym can omit it "
+            "even when platform.sandbox_cluster_capable is true."
         ),
     )
 

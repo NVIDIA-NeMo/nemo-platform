@@ -7,9 +7,11 @@ description: "Install Kata Containers and an OpenSandbox server that pins sandbo
 ---
 <a id="install-opensandbox-kata"></a>
 
-Use this path when sandbox pods must run in a Kata QEMU VM instead of the cluster default OCI runtime (crun). Complete the [OpenSandbox (crun)](/documentation/self-managed-deployment/setup/helm/opensandbox) namespace, Secret, and platform-values steps first; this page only adds virtualization prerequisites and the Kata server overlay.
+Use this path when **sandboxed GRPO / NeMo Gym** sandbox pods must run in a Kata QEMU VM instead of the cluster default OCI runtime, so those custom environments are isolated from the host kernel. It does **not** sandbox the rest of the platform (API, DPO, SFT, inference). **Kata is optional**; most installs only need the [shared-kernel OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox) path.
 
-OpenSandbox `[secure_runtime]` is **server-global**. Do not mix crun and Kata on one server. For production, install **one** server and set `opensandbox.domain` to that Service.
+Complete the OpenSandbox namespace, Secret, and platform-values steps first; this page only adds virtualization prerequisites and the Kata server overlay.
+
+OpenSandbox `[secure_runtime]` is **server-global**: one server process cannot mix shared-kernel and Kata. That does not remove runc/crun from the cluster. For production, install **one** OpenSandbox server and set `opensandbox.domain` to that Service.
 
 Upstream: [Secure container runtime](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/guides/secure-container.md).
 
@@ -23,24 +25,24 @@ Each Kata worker needs:
 - KVM / vhost kernel modules loaded
 - CRI-O or containerd with a Kata handler
 
-Confirm with `ls /dev/kvm` on the node and `kubectl get nodes -l katacontainers.io/kata-runtime=true` after kata-deploy.
+Confirm with `ls /dev/kvm` on the node (BIOS virtualization must be enabled; NFD CPUID labels do not prove that) and `kubectl get nodes -l katacontainers.io/kata-runtime=true` after kata-deploy.
 
 ## Install kata-deploy (QEMU only)
 
-Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. Node selectors in the example are **an example** (bare-metal H100 + NFD VMX), not the only supported shape.
+Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. The top-level `nodeSelector` is the **kata-deploy DaemonSet**; it must use labels that already exist (instance type, or a label you apply after confirming KVM). Do **not** select `katacontainers.io/kata-runtime` there — kata-deploy applies that label after it lands. Keep `katacontainers.io/kata-runtime: "true"` on the RuntimeClass only. NFD `cpu-cpuid.VMX` reports processor capability, not BIOS enablement. Replace the example labels for your cluster; if every node has working KVM, you can omit the DaemonSet selector.
 
 ```yaml
 # example kata-deploy values — replace selectors for your instance types
 nodeSelector:
-  katacontainers.io/kata-runtime: "true"  # applied by kata-deploy itself after install
+  node.kubernetes.io/instance-type: BM.GPU.H100.8
+  feature.node.kubernetes.io/cpu-cpuid.VMX: "true"
 shims:
   disableAll: true
   qemu:
     enabled: true
     runtimeClass:
       nodeSelector:
-        node.kubernetes.io/instance-type: BM.GPU.H100.8
-        feature.node.kubernetes.io/cpu-cpuid.VMX: "true"
+        katacontainers.io/kata-runtime: "true"
 ```
 
 ```sh
@@ -58,6 +60,8 @@ A smoke pod with `runtimeClassName: kata-qemu` should reach Running and print a 
 
 ## CRI-O overlay.skip_mount_home retrofit
 
+This section applies only to **CRI-O** (OKE, OpenShift, and similar). **containerd + runc** is the usual default; skip this retrofit there.
+
 kata-deploy writes a CRI-O drop-in that includes `overlay.skip_mount_home=true` and restarts cri-o. That option only applies to overlay mounts created **after** it is active.
 
 On nodes that already ran containers, a bare cri-o restart re-adopts old `merged` mounts. The Kata guest can then see an empty virtiofs `shared/` directory and `CreateContainer` hangs.
@@ -66,7 +70,7 @@ For those nodes: cordon → drain → restart cri-o → uncordon. Fresh nodes th
 
 ## OpenSandbox Kata server
 
-Use the same controller as crun. Install a second server only if you are comparing runtimes; production should run one:
+Use the same controller as the shared-kernel server. Install a second server only if you are comparing runtimes; production should run one:
 
 ```sh
 export NMP_NAMESPACE=nemo-platform
