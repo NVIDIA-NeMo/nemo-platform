@@ -49,11 +49,7 @@ from nemo_datasets_plugin.profiler.readers.base import (
 )
 from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
-from nemo_datasets_plugin.profiler.stats import (
-    InferredRowFold,
-    RowFold,
-    quote_enumerations,
-)
+from nemo_datasets_plugin.profiler.stats import RowFold, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     DatasetProfile,
@@ -287,11 +283,11 @@ class _PartitionFolds:
     """
 
     def __init__(self, features: list[FeatureSchema] | None) -> None:
-        # Declared: the columns are known, so the accumulators are chosen now. Inferred: they are
-        # discovered as they appear and typed once every row has gone by. Either way the fold that
-        # measured the columns is the one that reports them, so there is a single copy of the schema
-        # here rather than two that can drift.
-        self._columns: RowFold | InferredRowFold = RowFold(features) if features is not None else InferredRowFold()
+        # `features` is None when the partition declared no schema, which the fold reads as "discover
+        # the columns as they appear". Declared or not it is the same fold, and the fold that measured
+        # the columns is the one that reports them, so there is a single copy of the schema here
+        # rather than two that can drift.
+        self._columns = RowFold(features)
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
 
