@@ -25,11 +25,11 @@ dependencies = [
 ]
 version = "0.0.0"
 
+[project.entry-points."nemo.jobs"]
+"safe-synthesizer.generate" = "nemo_safe_synthesizer_plugin.jobs.generate:GenerateJob"
+
 [project.entry-points."nemo.services"]
 safe-synthesizer = "nemo_safe_synthesizer_plugin.service:SafeSynthesizerService"
-
-[project.entry-points."nemo.cli"]
-safe-synthesizer = "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"
 
 [project.entry-points."nemo.sdk"]
 safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"

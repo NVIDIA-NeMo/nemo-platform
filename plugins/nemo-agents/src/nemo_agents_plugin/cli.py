@@ -79,6 +79,7 @@ from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
 from nemo_platform_plugin.discovery import discover_agent_cli
+from nemo_platform_plugin.job import NemoJob
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,21 @@ class AgentsCLI(NemoCLI):
                 continue
             app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
+
+    def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
+        """Amend the auto-generated job groups with commands the three verbs cannot express.
+
+        ``optimize`` gains ``prepare-fileset``: ``submit`` requires an already-staged bundle, so
+        the staging step needs a home, and it belongs next to the verb that consumes it.
+        """
+        if job_cls.name != "optimize":
+            return
+        try:
+            from nemo_agents_plugin.jobs.optimize_cli import register_prepare_fileset_command
+        except ImportError:
+            logger.warning("nemo-optimization unavailable; skipping optimize prepare-fileset", exc_info=True)
+            return
+        register_prepare_fileset_command(group)
 
 
 # ---------------------------------------------------------------------------

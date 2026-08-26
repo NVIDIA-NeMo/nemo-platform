@@ -137,7 +137,14 @@ class TestAgentConfig:
                 "repo": {
                     "transport": "stdio",
                     "url": "repo-mcp --root .",
-                }
+                    "allowed_tools": ["read_file", "search_files"],
+                    "blocked_tools": ["write_file"],
+                },
+                "private-api": {
+                    "transport": "streamable-http",
+                    "url": "https://mcp.example.com",
+                    "custom_headers": {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"},
+                },
             }
         }
         payload["tools"] = {"blocked": ["shell", "browser"]}
@@ -149,8 +156,46 @@ class TestAgentConfig:
         assert config.mcp is not None
         assert config.mcp.servers["repo"].transport == "stdio"
         assert config.mcp.servers["repo"].exposure == "harness_native"
+        assert config.mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
+        assert config.mcp.servers["repo"].blocked_tools == ["write_file"]
+        assert config.mcp.servers["private-api"].custom_headers == {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"}
         assert config.tools is not None
         assert config.tools.blocked == ["shell", "browser"]
+
+    def test_mcp_server_preserves_explicit_empty_tool_allowlist(self) -> None:
+        payload = _example_yaml_config()
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "stdio",
+                    "url": "repo-mcp --root .",
+                    "allowed_tools": [],
+                }
+            }
+        }
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.mcp is not None
+        assert config.mcp.servers["repo"].allowed_tools == []
+        assert config.mcp.servers["repo"].blocked_tools == []
+
+    def test_opentelemetry_export_config_validates(self) -> None:
+        payload = _example_yaml_config()
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "full",
+                    "endpoint": "http://otel-collector:4317",
+                    "transport": "grpc",
+                }
+            ],
+        }
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.telemetry.opentelemetry == payload["telemetry"]["opentelemetry"]
 
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):

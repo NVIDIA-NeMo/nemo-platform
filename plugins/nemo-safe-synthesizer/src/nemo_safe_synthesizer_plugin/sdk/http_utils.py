@@ -41,7 +41,7 @@ def platform_default_headers(platform: PlatformClient) -> dict[str, str]:
 
 
 def job_route_base_url(*, raw_base_url: str, workspace: str, job_name: str) -> str:
-    """Build the stable Safe Synthesizer plugin URL prefix for one submitted job."""
+    """Build the stable Safe Synthesizer plugin URL prefix for one created job."""
     encoded_workspace = quote(workspace, safe="")
     encoded_job_name = quote(job_name, safe="")
     return _join_url(raw_base_url, f"{_API_PREFIX}/v2/workspaces/{encoded_workspace}/jobs/{encoded_job_name}")

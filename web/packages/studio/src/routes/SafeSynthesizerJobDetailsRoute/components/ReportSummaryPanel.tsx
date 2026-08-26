@@ -5,7 +5,7 @@ import { ScoreGauge } from '@nemo/common/src/components/ScoreGauge';
 import { SafeSynthesizerSummary } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Button, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getSafeSynthesizerJobReportRoute } from '@studio/routes/utils';
+import { getGenerateJobReportRoute } from '@studio/routes/utils';
 import { File } from 'lucide-react';
 import { FC } from 'react';
 import { useNavigate } from 'react-router';
@@ -39,7 +39,7 @@ export const ReportSummaryPanel: FC<ReportSummaryPanelProps> = ({ jobId, jobResu
           <Flex justify="end">
             <Button
               kind="secondary"
-              onClick={() => navigate(getSafeSynthesizerJobReportRoute(workspace, jobId))}
+              onClick={() => navigate(getGenerateJobReportRoute(workspace, jobId))}
             >
               View Report
             </Button>

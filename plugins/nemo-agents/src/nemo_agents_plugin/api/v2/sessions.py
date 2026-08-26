@@ -21,12 +21,14 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import SessionPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.api.v2.session_access import get_owned_session, session_not_found
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
 from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
 from nemo_agents_plugin.schema import CreateSessionRequest, SessionFilter, SessionPage
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.dependencies import get_effective_principal_id
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 from nemo_platform_plugin.schema import PaginationData
@@ -104,9 +106,11 @@ async def list_sessions(
     sort: str = Query(default="-created_at"),
     filter: SessionFilter | dict[str, object] = Depends(_session_filter_dep),
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> SessionPage:
-    """List sessions in a workspace, optionally filtered by deployment ID."""
-    filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
+    """List the current principal's sessions, optionally filtered by deployment ID."""
+    filter_dict = dict(filter) if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
+    filter_dict["created_by"] = effective_principal_id
     try:
         result = await entity_client.list(
             AgentSession,
@@ -139,18 +143,15 @@ async def get_session(
     workspace: str,
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> AgentSession:
     """Get a session by name."""
-    try:
-        return await entity_client.get(AgentSession, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{name}' not found in workspace '{workspace}'.",
-        ) from exc
-    except Exception as exc:
-        logger.exception("Failed to get session '%s'", name)
-        raise HTTPException(status_code=500, detail="Failed to get session.") from exc
+    return await get_owned_session(
+        entity_client,
+        workspace=workspace,
+        name=name,
+        effective_principal_id=effective_principal_id,
+    )
 
 
 @router.post("/sessions/{name}/close", response_model=AgentSession, tags=["Agent Sessions"])
@@ -163,18 +164,15 @@ async def close_session(
     workspace: str,
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> AgentSession:
     """Close a session. Closing an already-closed session is idempotent."""
-    try:
-        session = await entity_client.get(AgentSession, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{name}' not found in workspace '{workspace}'.",
-        ) from exc
-    except Exception as exc:
-        logger.exception("Failed to get session '%s' before closing", name)
-        raise HTTPException(status_code=500, detail="Failed to get session.") from exc
+    session = await get_owned_session(
+        entity_client,
+        workspace=workspace,
+        name=name,
+        effective_principal_id=effective_principal_id,
+    )
 
     if session.status is SessionStatus.CLOSED:
         await _cleanup_fabric_runtime(entity_client, session)
@@ -189,16 +187,12 @@ async def close_session(
             detail=f"Session '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except NemoEntityConflictError as exc:
-        try:
-            latest_session = await entity_client.get(AgentSession, name=name, workspace=workspace)
-        except NemoEntityNotFoundError as get_exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Session '{name}' not found in workspace '{workspace}'.",
-            ) from get_exc
-        except Exception as get_exc:
-            logger.exception("Failed to get session '%s' after close conflict", name)
-            raise HTTPException(status_code=500, detail="Failed to get session.") from get_exc
+        latest_session = await get_owned_session(
+            entity_client,
+            workspace=workspace,
+            name=name,
+            effective_principal_id=effective_principal_id,
+        )
 
         if latest_session.status is SessionStatus.CLOSED:
             await _cleanup_fabric_runtime(entity_client, latest_session)
@@ -226,18 +220,15 @@ async def delete_session(
     workspace: str,
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> None:
     """Permanently delete a session by name."""
-    try:
-        session = await entity_client.get(AgentSession, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{name}' not found in workspace '{workspace}'.",
-        ) from exc
-    except Exception as exc:
-        logger.exception("Failed to get session '%s' before deleting", name)
-        raise HTTPException(status_code=500, detail="Failed to get session.") from exc
+    session = await get_owned_session(
+        entity_client,
+        workspace=workspace,
+        name=name,
+        effective_principal_id=effective_principal_id,
+    )
 
     try:
         await entity_client.delete(
@@ -247,10 +238,7 @@ async def delete_session(
             expected_db_version=session.db_version,
         )
     except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{name}' not found in workspace '{workspace}'.",
-        ) from exc
+        raise session_not_found(workspace, name) from exc
     except NemoEntityConflictError as exc:
         raise HTTPException(
             status_code=409,

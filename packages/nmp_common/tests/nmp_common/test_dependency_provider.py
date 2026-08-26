@@ -9,9 +9,15 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nmp.common.auth import AuthClient, Principal
 from nmp.common.config import Configuration
 from nmp.common.service import DependencyProvider
-from nmp.common.service.dependencies import get_entity_client, get_platform_config, get_sdk_client
+from nmp.common.service.dependencies import (
+    get_effective_principal_id,
+    get_entity_client,
+    get_platform_config,
+    get_sdk_client,
+)
 
 
 def test_get_http_client_caches_endpoint_client() -> None:
@@ -104,7 +110,23 @@ def test_setup_dependencies_registers_fastapi_overrides() -> None:
 
     assert app.dependency_overrides[get_sdk_client] == provider.get_request_scoped_sdk
     assert app.dependency_overrides[get_entity_client] == provider.get_entity_client
+    assert app.dependency_overrides[get_effective_principal_id] == provider.get_effective_principal_id
     assert app.dependency_overrides[get_platform_config] == provider.get_platform_config
+
+
+def test_get_effective_principal_id_uses_delegated_identity() -> None:
+    provider = DependencyProvider()
+    request = MagicMock()
+    auth_client = MagicMock(spec=AuthClient)
+    auth_client.principal = Principal(
+        id="service:agents",
+        email=None,
+        on_behalf_of="session-owner",
+        on_behalf_of_email=None,
+    )
+
+    with patch("nmp.common.auth.get_auth_client", return_value=auth_client):
+        assert provider.get_effective_principal_id(request) == "session-owner"
 
 
 @pytest.mark.asyncio

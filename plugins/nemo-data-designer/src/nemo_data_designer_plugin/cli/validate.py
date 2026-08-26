@@ -11,8 +11,6 @@ import typer
 from data_designer.cli.ui import print_error, print_header, print_success
 from data_designer.cli.utils.config_loader import ConfigLoadError, load_config_builder
 from nemo_data_designer_plugin.sdk.validation import (
-    ExecutionContext,
-    ValidationContextResult,
     ValidationReport,
     validate_config_sync,
 )
@@ -20,11 +18,6 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.cli_state import resolve_local_cli_sdks
 
 OutputFormat = Literal["text", "json"]
-
-_CONTEXT_HEADINGS: dict[ExecutionContext, str] = {
-    "local": "Local execution",
-    "remote": "Remote execution",
-}
 
 
 def validate_command(
@@ -38,14 +31,6 @@ def validate_command(
             ),
         ),
     ],
-    execution_context: Annotated[
-        ExecutionContext | None,
-        typer.Option(
-            "--execution-context",
-            help=("Execution context to validate against. Omit to validate every applicable context (local + remote)."),
-            case_sensitive=False,
-        ),
-    ] = None,
     workspace: Annotated[
         str | None,
         typer.Option(
@@ -64,13 +49,7 @@ def validate_command(
         ),
     ] = "text",
 ) -> None:
-    """Validate a Data Designer configuration.
-
-    By default validates the config against every applicable execution context
-    (local and remote). Pass ``--execution-context`` to limit to one. The remote
-    pass is a client-side simulation of what ``nemo data-designer create submit``
-    accepts; it does not contact the service.
-    """
+    """Validate a Data Designer configuration."""
     try:
         config_builder = load_config_builder(config_source)
     except ConfigLoadError as e:
@@ -100,7 +79,6 @@ def validate_command(
         sdk=sdk,
         async_sdk=async_sdk,
         workspace=resolved_workspace,
-        execution_context=execution_context,
         config_source=config_source,
     )
 
@@ -118,33 +96,9 @@ def _render_text_report(report: ValidationReport, *, config_source: str) -> None
     typer.echo(f"  Config: {config_source}")
     typer.echo("")
 
-    for result in report.results:
-        _render_context_block(result)
-        typer.echo("")
-
-    summary = _format_summary(report)
     if report.ok:
-        print_success(summary)
-    else:
-        print_error(summary)
-
-
-def _render_context_block(result: ValidationContextResult) -> None:
-    heading = _CONTEXT_HEADINGS.get(result.context, result.context)
-    typer.echo(heading)
-    if result.ok:
-        typer.echo("  ✔ Configuration is valid")
+        print_success("  ✔ Configuration is valid")
         return
-    for err in result.errors:
-        typer.echo(f"  ✘ {err.message}")
 
-
-def _format_summary(report: ValidationReport) -> str:
-    if not report.results:
-        return "No validation context was run"
-
-    pieces: list[str] = []
-    for result in report.results:
-        verdict = "valid" if result.ok else "invalid"
-        pieces.append(f"{verdict} for {result.context} execution")
-    return "Result: " + "; ".join(pieces)
+    for err in report.errors:
+        print_error(f"  ✘ {err.message}")

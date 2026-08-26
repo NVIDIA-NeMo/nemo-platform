@@ -3,10 +3,9 @@
 
 """E2E coverage for the Safe Synthesizer plugin.
 
-Smoke coverage runs in the local subprocess harness and verifies the API,
-Files, and job-entity surfaces without requiring the task image to complete.
-Full workflow coverage is opt-in and targets a Kubernetes deployment such as
-minikube at ``NMP_BASE_URL=http://localhost:30080``.
+Smoke coverage runs in the local subprocess harness and verifies the API and
+Files surfaces. Job execution coverage requires a container/GPU Jobs backend,
+such as minikube at ``NMP_BASE_URL=http://localhost:30080``.
 
 Examples:
 
@@ -24,7 +23,6 @@ import importlib.util
 import io
 import json
 import os
-import sys
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -41,10 +39,7 @@ from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 pytestmark = [
     pytest.mark.timeout(600),
-    pytest.mark.e2e_config(
-        "e2e/configs/local-subprocess.yaml",
-        {"safe_synthesizer": {"runtime_python": sys.executable}},
-    ),
+    pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml"),
 ]
 
 TERMINAL_STATUSES = {"completed", "error", "cancelled"}
@@ -500,6 +495,8 @@ def test_safe_synthesizer_fileset_upload_download_round_trips(
     assert downloaded.decode("utf-8") == _dataset_csv()
 
 
+@pytest.mark.container_only
+@pytest.mark.requires_gpu
 def test_safe_synthesizer_job_create_list_retrieve_cancel_delete(
     sdk: NeMoPlatform,
     workspace: str,

@@ -5,20 +5,13 @@
 export type TraceStatisticsRange = 'day' | 'week' | 'month';
 
 /**
- * The subset of `Trace` this component needs. Kept structural rather than importing the SDK type
- * so stories and tests can build fixtures without a full trace payload.
+ * Headline numbers for the range, as returned by Intake's `bucket=total` rollup. The caller owns
+ * the aggregation, so stories and tests can build a summary without a trace payload.
  */
-export interface TraceStatisticsSample {
-  readonly startedAt: Date;
-  readonly durationMs?: number | null;
-  readonly totalTokens?: number | null;
-  readonly costUsd?: number | null;
-}
-
 export interface TraceStatisticsSummary {
   totalTraces: number;
-  /** Wall-clock duration divided by tokens produced, averaged per trace. */
-  avgLatencyMsPerToken: number;
+  /** Mean wall-clock duration of a run. */
+  avgLatencyMs: number;
   avgTokensPerRun: number;
   avgCostUsd: number;
 }

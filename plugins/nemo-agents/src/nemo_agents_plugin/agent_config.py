@@ -69,6 +69,7 @@ class TelemetryConfig(BaseModel):
     project: str | None = None
     atif: dict[str, Any] | None = None
     atof: dict[str, Any] | None = None
+    opentelemetry: dict[str, Any] | None = None
 
 
 class InstructionConfig(BaseModel):
@@ -97,7 +98,10 @@ class McpServerConfig(BaseModel):
     url: str
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
+    custom_headers: dict[str, str] = Field(default_factory=dict)
     exposure: Literal["harness_native", "fabric_managed"] = "harness_native"
+    allowed_tools: list[str] | None = None
+    blocked_tools: list[str] = Field(default_factory=list)
 
 
 class McpConfig(BaseModel):

@@ -7,6 +7,12 @@ description: ""
 ---
 Use **Agents** in the NeMo Studio workspace sidebar to review and operate agent workflows managed by NeMo Platform.
 
+## Current Agent Experience
+
+New agents use the Platform-managed `nemo-agents-spec-v1` `agent.yaml` format. NeMo Platform translates this durable configuration into the NVIDIA Agent Intelligence Toolkit Fabric runtime configuration when it deploys the agent. Fabric is the execution layer; `nemo-agents-spec-v1` remains the configuration contract that you author and store.
+
+This Fabric-first path is recommended for new agents. Studio can also display legacy `nat-workflow-v1` agents, so the fields shown on the **Details** tab depend on the agent's config format. Create a sample `nemo-agents-spec-v1` agent with **Create Example Agent**, or register your own agent through the `nemo agents` CLI or Agents API. Studio does not currently provide a general-purpose editor for authoring an arbitrary `agent.yaml`.
+
 ## Agent List
 
 The Agents table shows the agents in the selected workspace, including their deployment state and creation time. Select an agent to open its details page.
@@ -14,6 +20,7 @@ The Agents table shows the agents in the selected workspace, including their dep
 | Action | Where | Result |
 |--------|-------|--------|
 | Review details | Select an agent | Opens the agent details page with deployment, log, chat, evaluation, and configuration views. |
+| Create a sample agent | **Create Example Agent** | Creates a Platform-managed example agent in the current workspace. |
 | Deploy an agent | Row actions > **Deploy** | Creates a deployment for the selected agent. |
 | Clone an agent | Row actions > **Clone** | Creates a copy of the agent definition with a new name. |
 | Chat with a deployment | Agent details page > **Chat** tab | Opens chat for a running deployment. |
@@ -22,13 +29,24 @@ The Agents table shows the agents in the selected workspace, including their dep
 
 ## Agent Details
 
-The agent details page has five tabs:
+The agent details page has the following tabs:
 
+- **Overview**, when enabled, summarizes the agent, models, and recent activity.
 - **Deployments** lists active and historical deployments for the agent. Use this tab to deploy the agent, open chat for a running deployment, view logs, or delete a deployment.
 - **Logs** shows deployment logs.
 - **Chat** opens an interactive chat with a running deployment.
-- **Evaluations** shows recent evaluation jobs for the agent and lets you start a new evaluation.
-- **Details** shows stored agent metadata and configuration, including workflow, model, tool, and additional config fields.
+- **Evaluations** shows active jobs, completed evaluations, and experiments scoped to this agent, and lets you start a new evaluation.
+- **Details** shows the config format and the stored agent configuration. For `nemo-agents-spec-v1`, this includes the Fabric-first harness, named models, instructions, skills, MCP servers, environment, telemetry, and other fields present in `agent.yaml`. Legacy NAT agents show their workflow, LLM, and function configuration instead.
+
+## Evaluate an Agent
+
+Agent evaluations are not a separate item under the **Agents** navigation parent. To open them, use this path:
+
+1. Select **Agents** in the workspace sidebar.
+2. Select an agent.
+3. Select the **Evaluations** tab.
+
+Select **Run evaluation** to start an evaluation for the current agent. The tab keeps active jobs visible and lets you switch between **Completed Evaluations** and **Experiments**. This agent-scoped view differs from **Models > Model Evaluations**, which shows model evaluation results.
 
 Agents are created and updated through the `nemo agents` CLI or Agents API. NeMo Studio reflects the current workspace state after the platform services refresh.
 

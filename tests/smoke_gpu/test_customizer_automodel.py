@@ -16,7 +16,9 @@ Two failure classes are caught at .so load time, before any GPU device is touche
                          the one installed (ABI mismatch)
 """
 
+from importlib.machinery import ModuleSpec
 from pathlib import Path
+from typing import Any
 
 import pytest
 from file_removals import assert_file_patterns_absent, read_file_patterns
@@ -35,6 +37,7 @@ DALI_FILE_REMOVALS = {
 MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "bitsandbytes": "0.49.2",
     "mamba-ssm": "2.3.0",
+    "peft": "0.20.0",
     "wandb": "0.28.2",
 }
 
@@ -94,6 +97,35 @@ def test_transformers_audio_backend_probe_is_off():
     from transformers.utils.import_utils import is_soundfile_available
 
     assert not is_soundfile_available()
+
+
+@pytest.mark.smoke_nmp_automodel_training
+def test_peft_lora_dispatch_matches_installed_torchao(monkeypatch: pytest.MonkeyPatch):
+    """PEFT's torchao dispatcher must import against the torchao in this image.
+
+    ``dispatch_torchao`` runs during adapter injection and is gated on ``find_spec("torchao")`` --
+    file presence, not API compatibility -- before importing torchao symbols. torchao comes from
+    the NGC base image rather than the venv, so a peft expecting a retired torchao API fails
+    ``merge=true`` jobs at injection, after training has already succeeded.
+    """
+    import importlib.util
+
+    original_find_spec = importlib.util.find_spec
+
+    def find_spec_without_transformer_engine(name: str, *args: Any, **kwargs: Any) -> ModuleSpec | None:
+        if name == "transformer_engine" or name.startswith("transformer_engine."):
+            return None
+        return original_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", find_spec_without_transformer_engine)
+
+    import torch
+    from peft import LoraConfig
+    from peft.tuners.lora.torchao import dispatch_torchao
+
+    # A plain Linear holds no torchao tensor subclass, so the dispatcher must decline by
+    # returning None rather than raise ImportError while probing for one.
+    assert dispatch_torchao(torch.nn.Linear(8, 8), "default", LoraConfig()) is None
 
 
 @pytest.mark.smoke_nmp_automodel_training
