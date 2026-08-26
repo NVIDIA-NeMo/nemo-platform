@@ -9,9 +9,11 @@ description: "Install OpenSandbox as a cluster engine and point NeMo Platform jo
 
 The NeMo Platform Helm chart does **not** install [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox). Treat it like Volcano or Kyverno: install the upstream charts, then tell the platform a server is available.
 
-This page covers the shared-kernel (**crun**) path. For hardware-isolated sandboxes, see [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata). Example Helm values live in [`k8s/helm/examples/opensandbox/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox).
+Install OpenSandbox when you run **sandboxed GRPO / NeMo Gym**: untrusted custom environment FileSets run in isolated pods, not in the training container. It does **not** sandbox the rest of the platform (API, DPO, SFT, inference).
 
-OpenSandbox `[secure_runtime]` is **server-global**. One server cannot mix crun and Kata. Point the platform at **one** Service DNS.
+This page is the **shared-kernel** path: sandbox pods use the cluster default OCI runtime. That is often **runc** (containerd) or **crun** (CRI-O, including OKE and OpenShift). The example overlay is still named `opensandbox-server-crun` because the reference cluster was CRI-O. **Kata is not required.** Use [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) only when those Gym/GRPO sandbox pods must be isolated from the host kernel (QEMU VM). Example Helm values live in [`k8s/helm/examples/opensandbox/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox).
+
+OpenSandbox `[secure_runtime]` is **server-global**. One OpenSandbox server cannot mix shared-kernel and Kata. Point the platform at **one** Service DNS. The cluster still keeps its default OCI runtime; this is not a request to taint nodes or remove runc/crun.
 
 Upstream Helm, TOML, and SDK documentation: [Kubernetes deployment](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/kubernetes/deployment.md), [configuration](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/getting-started/configuration.md), [server configuration reference](https://github.com/opensandbox-group/OpenSandbox/blob/main/server/configuration.md).
 
@@ -30,11 +32,11 @@ Training and other job pods are OpenSandbox **clients**. They do not need a kube
 | Scheme | `platform.sandbox_server_protocol` / Gym `host_provider_options.connection.protocol` | Set **`http`** for the in-cluster Service. If unset, NeMo-RL health URLs default to **https** and stall |
 | Proxy | `use_server_proxy` | Leave true. Jobs cannot reach sandbox pod IPs |
 | Capability | `sandboxClusterCapable` / `platform.sandbox_cluster_capable` | Defaults to `false` (sandboxed GRPO fail-closes) |
-| Job PVC | `rl.job_storage_pvc_claim` | Already templated; sandboxes remount the same claim |
+| Job PVC | `rl.job_storage_pvc_claim` | Required for sandboxed GRPO; sandboxes remount the same claim |
 
 Gym sample YAML uses `OPENSANDBOX_DOMAIN` / `OPENSANDBOX_API_KEY`. NeMo Platform and the SDK use `OPEN_SANDBOX_*`. Do not mix the names.
 
-## Install the crun server
+## Install the shared-kernel server
 
 You need a local OpenSandbox checkout (charts under `kubernetes/charts/`) or a published chart tarball. Replace `NMP_NAMESPACE` with the platform release namespace.
 
@@ -95,4 +97,4 @@ export OPEN_SANDBOX_WORKLOAD_NS="$NMP_NAMESPACE"
 ./k8s/helm/examples/opensandbox/verify/crun.sh
 ```
 
-The verifier checks the server Deployment, `/health`, creates a short-lived sandbox in the job namespace, and asserts an empty `runtimeClassName` (cluster default / crun).
+The verifier checks the server Deployment, `/health`, creates a short-lived sandbox in the job namespace, and asserts an empty `runtimeClassName` (cluster default OCI runtime).

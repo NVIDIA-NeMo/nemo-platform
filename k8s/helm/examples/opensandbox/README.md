@@ -7,10 +7,17 @@ The NeMo Platform Helm chart does **not** install OpenSandbox. These files are
 values and BatchSandbox templates for the upstream OpenSandbox charts. Point
 jobs at **one** already-installed server.
 
+Use OpenSandbox for **sandboxed GRPO / NeMo Gym**: untrusted custom environment
+FileSets run in isolated pods, not in the training container. It does **not**
+sandbox the rest of the platform (API, DPO, SFT, inference). The default path
+is **shared-kernel** (cluster default OCI runtime: often runc on containerd, or
+crun on CRI-O including OKE/OpenShift). **Kata is not required**; use Kata only
+when those Gym/GRPO sandbox pods must be isolated from the host kernel (QEMU VM).
+
 Full procedure: [OpenSandbox](https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox)
 and [OpenSandbox with Kata](https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata)
-in the NeMo Platform documentation. `helm show readme` of this chart also
-summarizes the same cluster-engine install.
+in the NeMo Platform documentation. `helm show readme` of this chart points at
+those pages.
 
 ## Namespace rule
 
@@ -25,16 +32,16 @@ Replace `REPLACE_WITH_RELEASE_NAMESPACE` in the server values before install.
 
 | File | Role |
 |------|------|
-| `opensandbox-controller.yaml` | Shared controller (CRI-O: empty `containerdSocketPath`) |
+| `opensandbox-controller.yaml` | Shared controller (snapshots unused on CRI-O) |
 | `opensandbox-server-crun.yaml` | Shared-kernel / crun server (no `[secure_runtime]`) |
 | `opensandbox-server-kata-qemu.yaml` | Kata QEMU server (`[secure_runtime] type=kata`) |
 | `batchsandbox-template-crun.yaml` | ConfigMap — exclude control-plane; soft-avoid GPU/Kata |
 | `batchsandbox-template-kata-qemu.yaml` | ConfigMap — example Kata node selectors |
 
 `[secure_runtime]` is server-global. Install **one** server for production
-(crun **or** Kata). Dual releases are only for proving both paths.
+(shared-kernel **or** Kata). Dual releases are only for proving both paths.
 
-## Install (crun)
+## Install (shared-kernel)
 
 Requires a local OpenSandbox checkout with charts under
 `kubernetes/charts/`, or a published chart tarball.
