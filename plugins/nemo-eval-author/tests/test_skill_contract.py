@@ -69,6 +69,8 @@ _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 _AUDIT_COVERAGE_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_coverage.schema.json"
 _AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_tool_calls_details.schema.json"
+_AUDIT_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.coverage.json"
+_AUDIT_TOOL_CALLS_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.details.json"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -441,6 +443,8 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "schemas/audit.schema.json",
         "schemas/audit_coverage.schema.json",
         "schemas/audit_tool_calls_details.schema.json",
+        "examples/schemas/tool_calls.coverage.json",
+        "examples/schemas/tool_calls.details.json",
         "templates/audit.md",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
@@ -476,6 +480,22 @@ def test_audit_measurement_json_schemas_are_valid(schema_path: Path) -> None:
     from jsonschema import Draft202012Validator
 
     Draft202012Validator.check_schema(json.loads(schema_path.read_text(encoding="utf-8")))
+
+
+@pytest.mark.parametrize(
+    ("schema_path", "example_path"),
+    (
+        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_COVERAGE_EXAMPLE),
+        (_AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA, _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE),
+    ),
+)
+def test_audit_measurement_schema_examples_validate(schema_path: Path, example_path: Path) -> None:
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    example = json.loads(example_path.read_text(encoding="utf-8"))
+
+    Draft202012Validator(schema).validate(example)
 
 
 def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
