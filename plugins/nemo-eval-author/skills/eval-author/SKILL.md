@@ -21,7 +21,7 @@ triggers:
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
-  - eval-author-audit (use to generate and validate audit.md coverage denominators)
+  - eval-author-audit (use to generate, validate, measure, or aggregate audit.md coverage)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: Reading only. Each sub-flow states its own runtime needs.
@@ -81,14 +81,14 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
-| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, then write per-method coverage/details files for one ATIF trace |
+| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, write per-method coverage/details files for one ATIF trace, then aggregate coverage reports |
 
-Runnable tasks, verifier metrics, and coverage aggregation are not built yet.
+Runnable tasks and verifier metrics are not built yet.
 `eval-author-audit` works one level above tasks: it generates and validates the
-coverage denominator and can measure one ATIF trace against it. When a
-user asks for new runnable tasks, say so plainly rather than improvising a task
-layout by hand. A task written against a guessed convention scores nothing and
-costs a full evaluation run to discover.
+coverage denominator, measures traces against it, and aggregates deterministic
+coverage reports. When a user asks for new runnable tasks, say so plainly rather
+than improvising a task layout by hand. A task written against a guessed
+convention scores nothing and costs a full evaluation run to discover.
 
 ## Boundaries
 
@@ -99,7 +99,7 @@ user, not to you.
   move, or reformat any of it, including its `.gitignore`. The only files you add
   belong under `.eval-author/`, which is theirs to commit or ignore.
   `eval-author-discover` scripts write nothing; `eval-author-audit` writes only
-  the audit output path the user explicitly requested.
+  the audit artifact paths the user explicitly requested.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
