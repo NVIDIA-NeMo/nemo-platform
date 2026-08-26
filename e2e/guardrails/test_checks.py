@@ -11,9 +11,9 @@ providers for deterministic rail-model responses.
 from collections.abc import Callable
 from typing import Any
 
-import nemo_platform
 import pytest
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import BadRequestError
 from nemo_platform_plugin.guardrail.client import GuardrailClient
 from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest, GuardrailCheckResponse
 
@@ -149,7 +149,7 @@ def test_checks_rejects_unknown_config_id(
         config_mode="referenced", outcome="safe", rail_types=("input",)
     )
 
-    with pytest.raises(nemo_platform.APIStatusError) as exc_info:
+    with pytest.raises(BadRequestError) as exc_info:
         _post_check(
             test_case,
             extra_guardrails={"config_id": f"{test_case.workspace}/missing-guardrails-config"},
