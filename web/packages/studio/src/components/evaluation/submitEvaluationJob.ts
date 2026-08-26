@@ -273,3 +273,22 @@ export const parseEvalConfig = (text: string): EvalSpec => {
   }
   return { tasks: parsed.tasks, max_concurrent_tasks: parsed.max_concurrent_tasks };
 };
+
+/** Parse a user-uploaded eval-config.json for the "create experiment" flow, which only runs
+ *  dataset-driven configs. The dataset arrives as a separate upload and its ref is written in
+ *  at submit, so a config that omits ``dataset`` entirely is accepted and filled in here —
+ *  otherwise an author would have to hand-write a placeholder that is immediately discarded. */
+export const parseUploadedDatasetConfig = (text: string): DatasetEvalSpec => {
+  const raw = JSON.parse(text) as Partial<PersistedEvalSpec & DatasetEvalSpec>;
+  const spec = parseEvalConfig(
+    JSON.stringify(
+      raw.tasks === undefined && raw.dataset === undefined ? { ...raw, dataset: '' } : raw
+    )
+  );
+  if (!isDatasetEvalSpec(spec)) {
+    throw new Error(
+      'This eval config is task-driven. Uploading a config requires the dataset-driven form: a "prompt_template" and a non-empty "metrics" array scored over the uploaded dataset.'
+    );
+  }
+  return spec;
+};
