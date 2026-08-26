@@ -4,32 +4,18 @@
 """The top-level profiling pipeline.
 
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
-splits, reads them, and assembles a ``DatasetProfile``. It produces the structural envelope —
-partitions, splits with their counts and sizes, the files it could not use, and the coverage figures
-— along with the derived row schema (``features``), per-column ``stats``, and the full
-``classification`` (roles, format, prompt form, dataset type, and verifiability).
+splits, reads them, and assembles a ``DatasetProfile``: the structural envelope (partitions, splits
+with their counts and sizes, the files it could not use, the coverage figures) plus the derived row
+schema (``features``), per-column ``stats``, and the full ``classification``.
 
-Every file is opened — sampling a *subset of files* would hide columns that appear only in later
-shards.
+Every file is opened, since sampling a subset of files would hide columns that appear only in later
+shards. Every partition is **folded**: batches are measured and let go, and nothing kept grows with
+the file, so an exhaustive read costs what a short one costs. ``row_budget`` survives only as a way
+to ask for a shorter run.
 
-Every partition is **folded**: batches are measured and let go, and nothing kept grows with the file.
-An exhaustive read therefore costs what a short one costs, which is why reading everything is the
-default. ``row_budget`` survives only as a way to ask for a shorter run.
-
-What a declared schema buys is not the fold but its sharpness. Parquet footers are read first, so
-the columns are known before a row is parsed and each accumulator is chosen up front.
-
-Without one — line-delimited data — the columns wait for the data. Columns are created on first sight and
-back-filled with the rows they were absent for, and each carries every shape at once until the last
-row has gone by and the dtype resolves. That costs a deferred type per column and nothing else; it
-does not cost a second pass, and it does not decide from a prefix.
-
-A caller who does ask for one gets a target rather than a ceiling. :data:`MIN_ROWS_PER_FILE` is the
-floor every file is read to however thin its share gets, since one sampled below it cannot
-contribute the columns it alone witnesses. That division outlived the memory problem it was invented
-for: reading files in order until a total ran out would leave the later ones unopened, which is the
-same coverage hole by another route.
-"""
+A declared schema does not change the mechanism, only what is known when. Parquet footers are read
+first, so the columns are named and typed before a row is parsed; line-delimited data declares
+neither, so columns are discovered as they appear and typed once the last row has gone by."""
 
 from __future__ import annotations
 
@@ -65,17 +51,12 @@ from nemo_platform_plugin.files.dataset_profile import (
 PROFILER_NAME = "nemo-dataset-profiler"
 PROFILER_VERSION = "0.1.0"
 
-# Read everything. The budget existed to keep a materialised partition off the heap, and nothing is
-# materialised any longer -- a fold's memory is flat in rows, so an exhaustive read costs what a
-# short one costs. What it bounded was never really rows, it was risk.
+# Read everything. Nothing is materialised, so an exhaustive read costs what a short one costs.
 DEFAULT_ROW_BUDGET = None
 
 # Rows read from a file however thin a caller-supplied budget gets. Below this a file cannot
-# contribute the columns it alone witnesses, which is the whole reason every file is opened rather
-# than a subset sampled. It is what makes a budget a target rather than a ceiling: 10,000 shards read
-# this many each. It survives the default going unbounded because it never had anything to do with
-# memory -- dividing a budget across files is about *coverage*, and reading files in order until a
-# total ran out would leave the later ones unopened.
+# contribute the columns it alone witnesses, which is why every file is opened rather than a subset
+# sampled. It makes a budget a target rather than a ceiling: 10,000 shards read this many each.
 MIN_ROWS_PER_FILE = 10
 
 
@@ -98,26 +79,21 @@ def profile(
     """Profile the dataset behind ``source`` into a ``DatasetProfile``.
 
     ``row_budget`` bounds how many rows each *partition* reads in total, divided across its files.
-    It defaults to ``None``, which reads every row: memory is flat in rows either way, so the only
-    thing a budget buys now is a shorter run. Files smaller than their share are read to the end, so
-    a budgeted profile of a small dataset is still complete.
+    It defaults to ``None``, which reads every row: memory is flat in rows either way, so a budget
+    buys only a shorter run. Files smaller than their share are read to the end.
 
     ``column_roles`` maps a column name to a role the caller is asserting, for datasets whose column
-    names the role table does not recognize. Hints take precedence over name detection but still have
-    to pass the dtype gates, and a rejected one is reported as evidence rather than dropped.
+    names the role table does not recognize. Hints take precedence over name detection but still
+    have to pass the dtype gates, and a rejected one is reported as evidence rather than dropped.
 
-    ``created_at`` is injectable so a profile can be made reproducible byte-for-byte in tests; it
-    defaults to the current UTC time.
+    ``created_at`` is injectable so a profile can be made reproducible byte-for-byte in tests.
     """
     created_at = created_at or datetime.now(timezone.utc)
     all_entries = source.list_files()
     data_entries = [entry for entry in all_entries if detect_format(entry.path) is not None]
-    # Files that plainly hold records but have no reader yet. They are not profiled, but they must be
-    # reported: silently dropping them let a directory of .csv shards profile as an exhaustively
-    # scanned, empty dataset — indistinguishable from a dataset that really is empty. They get real
-    # FileErrors like any other file the profiler could not read, just at the envelope, since no
-    # partition ever grouped them. Kept as entries, not just paths, because their bytes still count
-    # toward the size of the fileset even though no partition will ever weigh them.
+    # Files that hold records but have no reader yet. Reported rather than dropped, or a directory
+    # of .csv shards would profile as an exhaustively scanned empty dataset. They get FileErrors at
+    # the envelope, since no partition grouped them, and keep their bytes in the fileset size.
     unreadable_entries = [
         entry
         for entry in sorted(all_entries, key=lambda entry: entry.path)
@@ -138,8 +114,7 @@ def profile(
     rows_present: int | None = 0
 
     # Every path the source listed, data or not. A split's glob is verified against this rather than
-    # against the partition's own files, so a pattern can never be emitted that would also pull in a
-    # README sitting beside the shards.
+    # the partition's own files, so a pattern can never pull in a README sitting beside the shards.
     all_paths = [entry.path for entry in all_entries]
 
     for name, partition_entries in group_partitions(data_entries):
@@ -183,11 +158,10 @@ def profile(
 def _per_file_cap(row_budget: int | None, file_count: int) -> int | None:
     """Split a partition's row budget across its files.
 
-    Bounded below by :data:`MIN_ROWS_PER_FILE`, which is what makes the budget a target rather than a
-    ceiling: at a thousand shards the arithmetic share is ten rows, and at ten thousand it would be
-    one, which is too thin to witness a column. Overshooting the budget there is the right trade --
-    the alternative is sampling a *subset of files*, which hides columns that appear only in later
-    shards, and file-level sampling is the tier of this problem still to solve.
+    Bounded below by :data:`MIN_ROWS_PER_FILE`, which makes the budget a target rather than a
+    ceiling: at ten thousand shards the arithmetic share is one row, too thin to witness a column.
+    Overshooting there beats sampling a subset of files and hiding columns that appear only in later
+    shards.
     """
     if row_budget is None:
         return None
@@ -199,8 +173,8 @@ def _per_file_cap(row_budget: int | None, file_count: int) -> int | None:
 def _add_known(total: int | None, addend: int | None) -> int | None:
     """Sum two counts, where ``None`` means unknown and poisons the total.
 
-    A fileset whose row count is unknown for even one file has an unknown total — reporting the sum
-    of the rest would look like a fact and read low.
+    A fileset whose count is unknown for even one file has an unknown total; reporting the sum of
+    the rest would look like a fact and read low.
     """
     if total is None or addend is None:
         return None
@@ -210,14 +184,12 @@ def _add_known(total: int | None, addend: int | None) -> int | None:
 def _unify_schemas(schemas: list[pa.Schema]) -> pa.Schema | None:
     """One schema describing every file of the partition, or None when they cannot be reconciled.
 
-    Taking the first file's schema and ignoring the rest makes the profile depend on which shard
-    happens to sort first: a column that appears only in a later shard would vanish from ``features``
-    (and so from ``stats``), and the same data would classify differently under a different file
-    order. Unifying is order-independent for the common case — later shards adding columns.
+    Taking the first file's schema would make the profile depend on which shard sorts first: a column
+    appearing only in a later shard would vanish from ``features``, and the same data would classify
+    differently under a different file order.
 
-    A genuine type conflict for the same column name has no correct answer here, so we return None
-    and let the caller fall back to inferring from the rows themselves, which widens the conflicting
-    column to ``json`` rather than asserting one shard's type over the other's.
+    A genuine type conflict for one column name has no correct answer here, so this returns None and
+    the caller infers from the rows instead, widening the conflicting column to ``json``.
     """
     if not schemas:
         return None
@@ -243,8 +215,8 @@ class _PartitionOutcome:
 def _capped_columns_evidence(features: list[FeatureSchema]) -> list[Evidence]:
     """Say so when the schema stopped at the cap rather than at the end of the data.
 
-    A profile that quietly described 4,096 of a file's columns as though they were all of them would
-    be worse than one that failed: the reader has no way to tell a wide table from a broken one.
+    A profile describing 4,096 of a file's columns as though they were all of them is worse than one
+    that failed, since the reader cannot tell a wide table from a broken one.
     """
     if not columns_were_capped(features):
         return []
@@ -262,9 +234,9 @@ def _capped_columns_evidence(features: list[FeatureSchema]) -> list[Evidence]:
 def _peek_files(source: FileSource, entries: list[FileEntry]) -> dict[str, FilePreview]:
     """What each file declares about itself, before any of them is read.
 
-    A failure here is not reported: it will surface as a :class:`FileError` when the file is actually
-    read, with a reason, and reporting it twice would double-count. All this decides is whether the
-    partition can be folded, and a file that cannot be peeked cannot.
+    A failure here is not reported: it surfaces as a :class:`FileError` with a reason when the file
+    is read, and reporting it twice would double-count. All this decides is what the partition knows
+    before it starts.
     """
     previews: dict[str, FilePreview] = {}
     for entry in entries:
@@ -283,19 +255,17 @@ class _PartitionFolds:
     """
 
     def __init__(self, features: list[FeatureSchema] | None) -> None:
-        # `features` is None when the partition declared no schema, which the fold reads as "discover
-        # the columns as they appear". Declared or not it is the same fold, and the fold that measured
-        # the columns is the one that reports them, so there is a single copy of the schema here
-        # rather than two that can drift.
+        # None means the partition declared no schema, which the fold reads as "discover the columns
+        # as they appear". Either way the fold that measured them reports them, so there is one copy
+        # of the schema rather than two that can drift.
         self._columns = RowFold(features)
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
 
     def update(self, rows: list[dict]) -> None:
         self._columns.update(rows)
-        # Guarded like the columns are. Unguarded, the only thing that would catch this is the
-        # per-file handler, which would report odd *data* as a bad *file* -- collapsing the one
-        # distinction the two failure domains exist to keep.
+        # Guarded like the columns are. Unguarded, only the per-file handler would catch it, and it
+        # would report odd *data* as a bad *file*.
         if self._prefix_error is None:
             try:
                 self._prefix.update(rows)
@@ -347,27 +317,22 @@ def _profile_partition(
     *,
     all_paths: list[str],
 ) -> _PartitionOutcome:
-    """Profile one partition — the files of one source directory, whatever formats they are in.
+    """Profile one partition -- the files of one source directory, whatever formats they are in.
 
-    The reader is resolved per file rather than per partition. Format is a property of a file, and
-    a directory holding two of them is a stray file, not a second dataset; splitting the partition
-    to keep one scalar ``file_format`` true is what made partition names unstable. A partition whose
-    files do not all declare a schema simply infers one, from the rows, as it folds them.
+    The reader is resolved per file rather than per partition, since format is a property of a file
+    and a directory holding two of them has a stray file, not a second dataset.
 
-    An unreadable file (or a format with no registered reader) is isolated: it is named on a
-    :class:`FileError` the envelope collects, contributes no rows, and flips ``scanned_all`` off — it
-    never aborts the profile. Files that read cleanly are counted, not listed.
+    An unreadable file, or one in a format with no registered reader, is isolated: named on a
+    :class:`FileError` the envelope collects, contributing no rows, and flipping ``scanned_all`` off
+    without aborting the profile.
     """
-    # Footers first, before a single row is read. A parquet file declares its schema and its exact
-    # row count there, so one seek per file establishes the partition's whole shape: what the columns
-    # are, and how many rows are coming. That is what a fold needs and cannot otherwise have -- the
-    # accumulators must exist before the first batch.
+    # Footers first. A parquet file declares its schema and exact row count there, so one seek per
+    # file establishes the partition's shape.
     previews = _peek_files(source, entries)
     arrow_schemas = [preview.arrow_schema for preview in previews.values() if preview.arrow_schema is not None]
     declared = _unify_schemas(arrow_schemas) if len(arrow_schemas) == len(entries) and arrow_schemas else None
-    # Declared or not, the partition folds. With a schema the accumulators are chosen up front and
-    # without one the columns wait for the data, which costs a deferred dtype per column and nothing
-    # else.
+    # Declared or not, the partition folds the same way. A schema names and types the columns before
+    # the first batch; without one they are discovered as they appear and typed at the end.
     row_cap = _per_file_cap(row_budget, len(entries))
     folds = _PartitionFolds(derive_features([], declared) if declared is not None else None)
     rows_scanned = 0
@@ -409,16 +374,14 @@ def _profile_partition(
                 # partial read is not exhaustive however many rows it managed to get.
                 scanned_all = num_rows is not None and scanned >= num_rows and error is None
             except Exception as exc:
-                # Failure isolation: an unreadable file (or missing reader) keeps its identity,
-                # skips the rest of its rows, and does not abort the profile. The reason is recorded
-                # rather than swallowed, so a consumer can tell corrupt input from a profiler bug.
+                # Failure isolation: the file keeps its identity, skips its remaining rows, and does
+                # not abort the profile. The reason is recorded so a consumer can tell corrupt input
+                # from a profiler bug.
                 error = f"{type(exc).__name__}: {exc}"
                 num_rows = None
                 scanned_all = False
-            # Counted for what was actually consumed, outside the guard, because a read is no longer
-            # all-or-nothing: a fold cannot give rows back, so a file that failed on its fifth batch
-            # still contributed four and the envelope has to say so. Accounting for it as unread
-            # would leave `rows_scanned` describing fewer rows than the stats were built from.
+            # Counted outside the guard, for what was consumed: a fold cannot give rows back, so a
+            # file that failed on its fifth batch still contributed four.
             rows_scanned += scanned
             if scanned or error is None:
                 files_read += 1
@@ -455,8 +418,8 @@ def _profile_partition(
         splits=split_profiles,
         features=features,
         stats=stats,
-        # Scoped to this partition, which is where it was decided all along: `partition_scanned` is
-        # the value that already gated whether `categorical.values` could quote a proven enumeration.
+        # Scoped to this partition, where it was decided all along: `partition_scanned` already
+        # gated whether `categorical.values` could quote a proven enumeration.
         rows_complete=partition_scanned,
         classification=classification,
     )

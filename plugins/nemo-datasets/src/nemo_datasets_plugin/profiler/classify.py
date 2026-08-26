@@ -7,10 +7,10 @@ Roles are inferred from column names, gated by dtype, and stacked onto the featu
 ``semantic_role`` markers. The dataset type is the most specific structure the assigned roles
 satisfy.
 
-Content probes are *measured* in :mod:`stats` over every column; this module only interprets the
-counts. Roles still order that interpretation — a column known to be the ground truth is a better
-answer than one that merely looks like it — but they no longer gate it, so a dataset whose columns
-carry unrecognized names keeps whatever its content proves.
+Content probes are measured in :mod:`stats` over every column; this module only interprets the
+counts. Roles order that interpretation -- a column known to be the ground truth beats one that
+merely looks like it -- but do not gate it, so a dataset with unrecognized column names keeps
+whatever its content proves.
 """
 
 from __future__ import annotations
@@ -102,9 +102,9 @@ def _is_binary(column: ColumnStats | None) -> bool:
 def _is_label_column(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> bool:
     """Whether a column named ``label`` really carries a binary preference label.
 
-    A bool says so outright. An integer is the more common on-disk encoding (0/1, as KTO-style sets
-    ship it), but only when the observed values really are binary — a wider integer range is a class
-    index or a rating, which is a different claim, so it stays unroled.
+    A bool says so outright. An integer is the more common on-disk encoding (0/1), but only when the
+    observed values really are binary: a wider range is a class index or a rating, which is a
+    different claim, so it stays unroled.
     """
     if feature.dtype == "bool":
         return True
@@ -114,9 +114,9 @@ def _is_label_column(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> b
 def _dtype_allows(feature: FeatureSchema, role: str, stats: dict[str, ColumnStats]) -> bool:
     """Whether this column's dtype can carry ``role`` at all.
 
-    Applied to detected *and* declared roles alike. A hint says which column, not what the data is:
+    Applied to detected and declared roles alike. A hint says which column, not what the data is:
     without this, one typo (``{"score": "prompt"}`` on an int column) would silently produce a
-    nonsense classification and the profile would become a place to store mistakes.
+    nonsense classification.
     """
     dtype = feature.dtype
     if role == "score" or role == "rank":
@@ -150,9 +150,9 @@ def _assign_roles(
 ) -> list[Evidence]:
     """Stack roles onto ``features`` in place; return evidence for any hint the data could not support.
 
-    A declared role wins over the name-alias table — the caller knows their schema and the table is
-    ~35 English names — but it still has to pass the dtype gate, and a rejected hint is reported
-    rather than dropped. Silence is what made the alias table's misses so expensive in the first place.
+    A declared role wins over the name-alias table, since the caller knows their schema and the
+    table is ~35 English names. It still has to pass the dtype gate, and a rejected hint is reported
+    rather than dropped.
     """
     rejected: list[Evidence] = []
     for feature in features:
@@ -217,10 +217,9 @@ def _messages_stats(features: list[FeatureSchema], stats: dict[str, ColumnStats]
 def _detect_types(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> list[str]:
     """Every dataset type the assigned roles satisfy, most specific first.
 
-    The chain is ordered by specificity, so the head is the best single answer and the tail is
-    structures the same columns *also* satisfy. Returning only the head made rule order an invisible
-    tie-break: prompt + completion + score + label is genuinely both scored_response and
-    unpaired_preference, and which one a consumer saw depended on line numbers.
+    Ordered by specificity, so the head is the best single answer and the tail is structures the
+    same columns also satisfy. Returning only the head made rule order an invisible tie-break:
+    prompt + completion + score + label is genuinely both scored_response and unpaired_preference.
     """
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
     targets = roles & {"completion", "chosen", "rejected", "stepwise_completions"}
@@ -237,9 +236,8 @@ def _detect_types(features: list[FeatureSchema], stats: dict[str, ColumnStats]) 
         candidates.append("scored_response")
     if has("prompt", "completion", "label"):
         candidates.append("unpaired_preference")
-    # `rank` is only a dataset type alongside something to rank. On its own it short-circuited every
-    # more specific structure above, so a stray numeric column named `rank` — or a ranked variant of
-    # a preference set — was enough to mislabel the dataset.
+    # `rank` is only a dataset type alongside something to rank. On its own it short-circuits every
+    # more specific structure above, so a stray numeric column named `rank` would mislabel the set.
     if has("rank") and targets:
         candidates.append("ranked_responses")
     if has("prompt", "completion"):
@@ -261,9 +259,9 @@ def _detect_types(features: list[FeatureSchema], stats: dict[str, ColumnStats]) 
 
 # --- interpreting the content probes --------------------------------------------------------------
 
-# A verification target must cover at least this fraction of sampled rows to be asserted. Below it,
-# a "hit" is noise -- e.g. one completion in thousands coincidentally ending in `#### <number>` does
-# not make a dataset verifiable. Tune here; the coverage itself is still reported on the Verifiability.
+# A verification target must cover at least this fraction of sampled rows to be asserted. Below it a
+# hit is noise: one completion in thousands ending in `#### <number>` does not make a dataset
+# verifiable. The coverage itself is still reported on the Verifiability.
 _MIN_VERIFIABILITY_COVERAGE = 0.05
 
 
@@ -357,13 +355,11 @@ class PrefixPairFold:
     """The one probe that reads two columns against each other rather than each on its own.
 
     A preference set whose prompt is embedded in both answers shows up as a long shared prefix
-    between them, and no per-column measurement can see that. Being relational, it also cannot live
-    on a column accumulator, so it folds separately over the same batches.
+    between them, which no per-column measurement can see. Being relational it cannot live on a
+    column accumulator, so it folds separately over the same batches.
 
-    It takes no schema. Resolving by name straight off each row is what lets it run over a partition
-    whose columns are not known yet, which is every partition with no declared schema. Values that
-    are not text contribute nothing, so a `chosen` column that turns out to hold chat rather than
-    strings simply never counts a pair -- the same answer the dtype check used to give up front.
+    It takes no schema, resolving its two columns off each row, which lets it run over a partition
+    whose columns are not known yet. Values that are not text contribute nothing.
     """
 
     def __init__(self) -> None:
@@ -414,14 +410,13 @@ def classify(
 ) -> PartitionClassification:
     """Assign roles onto ``features`` in place and return the partition's classification.
 
-    ``probes`` are the per-column content measurements, and ``prefix_pair`` the one relational one.
-    Both are folded over the rows before this runs; nothing here reads a row, which is what lets a
-    partition be classified without ever having been materialised. Absent, each reads as "nothing
-    was measured", and role/axis/type inference is unaffected — that needs only schema and stats.
+    ``probes`` are the per-column content measurements and ``prefix_pair`` the one relational one,
+    both folded before this runs. Nothing here reads a row, which is what lets a partition be
+    classified without ever having been materialised. Absent, each reads as "nothing was measured".
 
-    ``column_roles`` maps a column name to a role the caller is asserting, taking precedence over
-    the name-alias table but still subject to the dtype gates. It exists because that table is ~35
-    English names with no way to say "my `q` column is the prompt", and its misses are silent.
+    ``column_roles`` maps a column name to a role the caller is asserting, taking precedence over the
+    name-alias table but still subject to the dtype gates. The table is ~35 English names with no way
+    to say "my `q` column is the prompt", and its misses are silent.
     """
     probes = probes or {}
     evidence = _assign_roles(features, stats, column_roles or {})
