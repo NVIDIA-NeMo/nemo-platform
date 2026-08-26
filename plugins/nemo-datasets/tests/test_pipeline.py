@@ -681,6 +681,9 @@ def test_a_measurement_failure_is_scoped_to_its_own_partition(tmp_path, monkeypa
     partitions = {p.name: p for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions}
 
     assert partitions["bad"].classification.dataset_type == "unknown"
+    # `candidates[0]` is documented to be `dataset_type`, and the wide guard is the one path that
+    # never runs the classifier, so it has to supply the head itself rather than leave the list empty.
+    assert partitions["bad"].classification.candidates == ["unknown"]
     assert partitions["good"].classification.dataset_type == "prompt_completion"
     assert partitions["good"].stats  # a neighbour's bad data costs this partition nothing
 
