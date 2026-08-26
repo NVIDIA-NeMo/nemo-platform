@@ -11,12 +11,13 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _markdown import AuditMarkdownError  # noqa: E402
 from _schema import AuditEnvironmentError, AuditSpecError, load_audit_spec  # noqa: E402
+from _types import JsonObject, MeasurementMethod, TrajectoryLike  # noqa: E402
 from measurements import tool_calls  # noqa: E402
 
 COVERAGE_SCHEMA = "nemo.eval_author.audit_coverage.v1"
@@ -25,7 +26,7 @@ COVERAGE_SCHEMA_PATH = SCHEMAS_DIR / "audit_coverage.schema.json"
 DETAIL_SCHEMA_PATHS = {
     tool_calls.DETAILS_SCHEMA: SCHEMAS_DIR / "audit_tool_calls_details.schema.json",
 }
-METHODS = {tool_calls.METHOD_NAME: tool_calls}
+METHODS: dict[str, MeasurementMethod] = {tool_calls.METHOD_NAME: cast(MeasurementMethod, tool_calls)}
 
 
 class AuditTraceError(ValueError):
@@ -44,8 +45,8 @@ class Subject:
     task_id: str
     run_id: str | None
 
-    def to_json(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+    def to_json(self) -> JsonObject:
+        payload: JsonObject = {
             "trace": str(self.trace_path),
             "trace_format": "atif",
             "task_id": self.task_id,
@@ -60,8 +61,8 @@ class MeasurementReport:
     """In-memory coverage/details output for one measurement method."""
 
     method_name: str
-    coverage: dict[str, Any]
-    details: dict[str, Any]
+    coverage: JsonObject
+    details: JsonObject
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,7 @@ class WrittenMeasurement:
     details_path: Path
     covered: list[str]
 
-    def to_summary(self) -> dict[str, Any]:
+    def to_summary(self) -> JsonObject:
         return {
             "method": self.method_name,
             "item_kind": self.item_kind,
@@ -137,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         _print({"valid": True, "written": False, "error_type": "measurement", "error": str(exc)}, compact=args.compact)
         return 1
 
-    summary: dict[str, Any] = {
+    summary: JsonObject = {
         "valid": True,
         "written": True,
         "audit": str(args.audit),
@@ -199,7 +200,7 @@ def _harbor_trial_dir_for_trace(trace_path: Path) -> Path | None:
 
 
 # Read optional Harbor result metadata only to infer provider-neutral task/run ids.
-def _load_harbor_result(path: Path) -> dict[str, Any]:
+def _load_harbor_result(path: Path) -> JsonObject:
     if not path.exists():
         return {}
     try:
@@ -212,9 +213,9 @@ def _load_harbor_result(path: Path) -> dict[str, Any]:
 
 
 # Read ATIF through Harbor once; downstream methods receive the typed trajectory object.
-def _load_harbor_trajectory(path: Path) -> Any:
+def _load_harbor_trajectory(path: Path) -> TrajectoryLike:
     try:
-        from harbor.models.trajectories import Trajectory
+        from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
     except ImportError as exc:
         raise AuditEnvironmentError(
             "harbor is required to read ATIF traces; install the skill dependencies from requirements.txt"
@@ -254,9 +255,9 @@ def _measurement_methods(measure_values: list[str] | None, legacy_values: list[s
 # Fan the shared trajectory into each selected measurement method.
 def _measure_all(
     *,
-    audit: dict[str, Any],
+    audit: JsonObject,
     audit_path: Path,
-    trajectory: Any,
+    trajectory: TrajectoryLike,
     subject: Subject,
     method_names: list[str],
 ) -> list[MeasurementReport]:
@@ -269,9 +270,9 @@ def _measure_all(
 # Wrap one method's raw result in the shared coverage/details envelope.
 def _measure(
     *,
-    audit: dict[str, Any],
+    audit: JsonObject,
     audit_path: Path,
-    trajectory: Any,
+    trajectory: TrajectoryLike,
     subject: Subject,
     method_name: str,
 ) -> MeasurementReport:
@@ -337,7 +338,7 @@ def _write_reports(
 
 
 # Record only denominator identity, not the audit items themselves.
-def _audit_info(audit: dict[str, Any], audit_path: Path) -> dict[str, Any]:
+def _audit_info(audit: JsonObject, audit_path: Path) -> JsonObject:
     return {
         "path": str(audit_path),
         "schema": audit["schema"],
@@ -348,7 +349,7 @@ def _audit_info(audit: dict[str, Any], audit_path: Path) -> dict[str, Any]:
 
 
 # Resolve the JSON Schema for a method-specific details payload.
-def _details_schema_path(details: dict[str, Any]) -> Path:
+def _details_schema_path(details: JsonObject) -> Path:
     schema = details.get("schema")
     if not isinstance(schema, str) or schema not in DETAIL_SCHEMA_PATHS:
         raise AuditMeasurementError(f"no details JSON Schema is registered for {schema!r}")
@@ -356,10 +357,10 @@ def _details_schema_path(details: dict[str, Any]) -> Path:
 
 
 # Validate generated JSON against the schema committed with the skill.
-def _validate_report(report: dict[str, Any], *, schema_path: Path, label: str) -> None:
+def _validate_report(report: JsonObject, *, schema_path: Path, label: str) -> None:
     try:
-        from jsonschema import Draft202012Validator
-        from jsonschema.exceptions import SchemaError
+        from jsonschema import Draft202012Validator  # ty: ignore[unresolved-import]
+        from jsonschema.exceptions import SchemaError  # ty: ignore[unresolved-import]
     except ImportError as exc:
         raise AuditEnvironmentError(f"jsonschema is required to validate {label} reports") from exc
 
@@ -383,16 +384,17 @@ def _validate_report(report: dict[str, Any], *, schema_path: Path, label: str) -
         )
 
 
-def _string(value: Any) -> str | None:
+def _string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _json(payload: dict[str, Any], *, compact: bool) -> str:
-    kwargs = {"separators": (",", ":")} if compact else {"indent": 2}
-    return json.dumps(payload, sort_keys=True, **kwargs)
+def _json(payload: JsonObject, *, compact: bool) -> str:
+    if compact:
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return json.dumps(payload, sort_keys=True, indent=2)
 
 
-def _print(payload: dict[str, Any], *, compact: bool) -> None:
+def _print(payload: JsonObject, *, compact: bool) -> None:
     print(_json(payload, compact=compact))
 
 
