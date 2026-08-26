@@ -62,6 +62,7 @@ def _make_grpo_step(
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
     expert_parallel_size: int = 1,
+    activation_checkpointing: bool = False,
     grpo: GRPOConfig | None = None,
 ) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
@@ -95,6 +96,7 @@ def _make_grpo_step(
             num_gpus_per_node=1,
             tensor_parallel_size=tensor_parallel_size,
             expert_parallel_size=expert_parallel_size,
+            activation_checkpointing=activation_checkpointing,
         ),
         output_model="out",
         workspace_path=str(tmp_path / "workspace"),
@@ -108,6 +110,7 @@ def _prepared_step(
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
     expert_parallel_size: int = 1,
+    activation_checkpointing: bool = False,
     grpo: GRPOConfig | None = None,
 ) -> tuple[TrainingStepConfig, Path]:
     dataset_pvc = tmp_path / "dataset"
@@ -122,6 +125,7 @@ def _prepared_step(
             lora=lora,
             tensor_parallel_size=tensor_parallel_size,
             expert_parallel_size=expert_parallel_size,
+            activation_checkpointing=activation_checkpointing,
             grpo=grpo,
         ),
         dataset_pvc,
@@ -849,6 +853,46 @@ def test_expert_parallel_size_reaches_dtensor_and_selects_v2(
 
     assert dtensor_cfg["expert_parallel_size"] == 8
     assert dtensor_cfg["_v2"] is True
+
+
+def test_activation_checkpointing_on_moe_ignores_the_router(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recomputing the router is what makes AC crash on an MoE.
+
+    The bf16 top-k is nondeterministic, so the recomputed forward can route a token to a
+    different expert than the saved one did; the permutation buffers then differ by a row
+    and backward raises CheckpointError out of a TE kernel. Automodel only saves the router
+    output when this is set.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, expert_parallel_size=8, activation_checkpointing=True)
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert dtensor_cfg["activation_checkpointing"] is True
+    assert dtensor_cfg["moe_parallelizer"] == {"ignore_router_for_ac": True}
+
+
+@pytest.mark.parametrize(
+    ("expert_parallel_size", "activation_checkpointing"),
+    [(8, False), (1, True), (1, False)],
+)
+def test_moe_parallelizer_omitted_without_both_moe_and_checkpointing(
+    tmp_path: Path,
+    job_ctx: NMPJobContext,
+    monkeypatch: pytest.MonkeyPatch,
+    expert_parallel_size: int,
+    activation_checkpointing: bool,
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        expert_parallel_size=expert_parallel_size,
+        activation_checkpointing=activation_checkpointing,
+    )
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert "moe_parallelizer" not in dtensor_cfg
 
 
 def test_expert_parallel_size_omitted_when_unused(
