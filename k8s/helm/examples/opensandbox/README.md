@@ -77,10 +77,10 @@ helm upgrade --install opensandbox-controller \
   --namespace opensandbox-system \
   -f "${EXAMPLES}/opensandbox-controller.yaml"
 
-helm upgrade --install opensandbox-server-crun \
+helm upgrade --install opensandbox-server \
   "${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-server" \
   --namespace opensandbox-system \
-  -f "${EXAMPLES}/opensandbox-server-crun.yaml"
+  -f "${EXAMPLES}/opensandbox-server.yaml"
 ```
 
 Then set on the platform chart:
@@ -88,7 +88,7 @@ Then set on the platform chart:
 ```yaml
 sandboxClusterCapable: true
 opensandbox:
-  domain: opensandbox-server-crun.opensandbox-system.svc.cluster.local
+  domain: opensandbox-server.opensandbox-system.svc.cluster.local
   protocol: http
   apiKeySecret: opensandbox-server-api-key
   apiKeySecretKey: api-key
@@ -107,7 +107,7 @@ controller install plus `-f opensandbox-server-kata-qemu.yaml`. Override
 
 ```bash
 export OPEN_SANDBOX_WORKLOAD_NS="${NMP_NAMESPACE}"
-./k8s/helm/examples/opensandbox/verify/crun.sh
+./k8s/helm/examples/opensandbox/verify/shared-kernel.sh
 # or, after installing the Kata server:
 ./k8s/helm/examples/opensandbox/verify/kata-qemu.sh
 ```
