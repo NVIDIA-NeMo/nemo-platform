@@ -112,19 +112,12 @@ class TestEntitiesMCPServerSmoke:
         import json
 
         class FailingWorkspacesClient:
-            def list(self, *args: object, **kwargs: object) -> object:
+            def list_workspaces(self, *args: object, **kwargs: object) -> object:
                 raise RuntimeError("platform unavailable")
 
-        class FailingPlatformClient:
-            workspaces = FailingWorkspacesClient()
-
-        def get_failing_platform_sdk(base_url: str | None = None) -> FailingPlatformClient:
-            _ = base_url
-            return FailingPlatformClient()
-
         monkeypatch.setattr(
-            "nmp.core.entities.mcp.server.get_platform_sdk",
-            get_failing_platform_sdk,
+            "nmp.core.entities.mcp.server.client_from_platform",
+            lambda sdk, client_cls: FailingWorkspacesClient(),
         )
         bad_server = create_server("http://unused.example.com")
         tool_result = await bad_server.call_tool("list_workspaces", {})
