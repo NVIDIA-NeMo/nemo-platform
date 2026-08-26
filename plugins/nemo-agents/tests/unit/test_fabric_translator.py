@@ -394,3 +394,44 @@ class TestTranslateAgentConfig:
                 "field_name_policy": "preserve",
             },
         ]
+
+    def test_relay_opentelemetry_export_translates_to_fabric(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "full",
+                    "endpoint": "http://otel-collector:4317",
+                    "transport": "grpc",
+                    "header_env": {"Authorization": "OTEL_AUTH_HEADER"},
+                    "resource_attributes": {"deployment.environment": "test"},
+                },
+                {
+                    "type": "gen_ai",
+                    "endpoint": "http://shared-collector:4318/v1/traces",
+                    "service_name": "shared-agent-service",
+                },
+            ],
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        opentelemetry = observability.opentelemetry
+        assert opentelemetry is not None
+        assert opentelemetry.enabled is True
+        assert len(opentelemetry.endpoints) == 2
+        endpoint = opentelemetry.endpoints[0]
+        assert endpoint.type == "full"
+        assert endpoint.endpoint == "http://otel-collector:4317"
+        assert endpoint.transport == "grpc"
+        assert endpoint.header_env == {"Authorization": "OTEL_AUTH_HEADER"}
+        assert endpoint.resource_attributes == {"deployment.environment": "test"}
+        assert endpoint.service_name == "example-agent"
+        assert opentelemetry.endpoints[1].service_name == "shared-agent-service"

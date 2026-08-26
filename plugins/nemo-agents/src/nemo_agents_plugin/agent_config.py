@@ -69,6 +69,7 @@ class TelemetryConfig(BaseModel):
     project: str | None = None
     atif: dict[str, Any] | None = None
     atof: dict[str, Any] | None = None
+    opentelemetry: dict[str, Any] | None = None
 
 
 class InstructionConfig(BaseModel):

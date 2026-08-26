@@ -174,6 +174,23 @@ class TestAgentConfig:
         assert config.mcp.servers["repo"].allowed_tools == []
         assert config.mcp.servers["repo"].blocked_tools == []
 
+    def test_opentelemetry_export_config_validates(self) -> None:
+        payload = _example_yaml_config()
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "full",
+                    "endpoint": "http://otel-collector:4317",
+                    "transport": "grpc",
+                }
+            ],
+        }
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.telemetry.opentelemetry == payload["telemetry"]["opentelemetry"]
+
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):
             AgentConfig.model_validate(
