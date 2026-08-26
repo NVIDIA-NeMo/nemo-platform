@@ -391,7 +391,7 @@ def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
             return_value=platform,
         ),
         patch(
-            "nmp.core.models.controllers.backends.deployments_plugin.compiler.determine_loopback_override",
+            "nmp.core.models.controllers.backends.deployments_plugin.resolve.determine_loopback_override",
             return_value=None,
         ),
     ):

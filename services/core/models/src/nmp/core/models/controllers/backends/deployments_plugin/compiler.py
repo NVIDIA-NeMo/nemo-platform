@@ -8,7 +8,6 @@ mapping of ``k8s_nim_operator_config`` → plugin ``K8sDeploymentConfig``.
 """
 
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 from nemo_deployments_plugin.entities import (
     Container,
@@ -25,11 +24,7 @@ from nemo_deployments_plugin.entities import (
     VolumeMount,
 )
 from nemo_deployments_plugin.secrets import platform_ngc_secret_ref
-from nemo_platform_plugin.config import (
-    LOOPBACK_ADDRESSES,
-    determine_loopback_override,
-    get_platform_config,
-)
+from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -45,7 +40,10 @@ from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import
     tool_call_plugin_init_containers,
     tool_call_plugin_install_path,
 )
-from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+from nmp.core.models.controllers.backends.deployments_plugin.resolve import (
+    ResolvedPluginDeployment,
+    rewrite_loopback_for_docker_container,
+)
 from nmp.core.models.controllers.backends.engine import (
     ENGINE_GENERIC,
     ENGINE_NIM,
@@ -163,17 +161,11 @@ def _container_reachable_platform_base_url(*, runtime: Runtime) -> str:
     """
     platform = get_platform_config()
     base_url = platform.base_url.rstrip("/")
-    if runtime != Runtime.DOCKER:
-        return base_url
-
-    parts = urlsplit(base_url)
-    hostname = (parts.hostname or "").lower()
-    if hostname not in LOOPBACK_ADDRESSES:
-        return base_url
-
-    override = platform.loopback_address or determine_loopback_override() or "host.docker.internal"
-    netloc = override if parts.port is None else f"{override}:{parts.port}"
-    return parts._replace(netloc=netloc).geturl()
+    return rewrite_loopback_for_docker_container(
+        base_url,
+        runtime=runtime,
+        loopback_address=platform.loopback_address,
+    )
 
 
 def _lora_sidecar(
