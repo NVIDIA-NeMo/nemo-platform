@@ -5,7 +5,7 @@
 
 The audit-spec scripts treat `audit.md` as the coverage denominator. Measurement
 reads one task trace, compares it to the audit items, and writes per-task,
-per-method artifacts for later aggregation.
+per-run, per-method artifacts for later aggregation.
 
 Current assumptions:
 
@@ -18,6 +18,12 @@ Current assumptions:
 - Harbor is a required dependency for measurement. Use `requirements.txt` when
   running `measure.py` outside a repository environment that already provides
   Harbor.
+- Reports are written under encoded path components:
+  `<out-dir>/task=<task-id>/run=<run-id>/<method>/coverage.json` and
+  `details.json`. The raw `task_id` and `run_id` remain in the JSON payloads.
+  If no run id is provided by the CLI or Harbor result metadata, measurement
+  derives one from the ATIF trajectory identity, then from the trace content
+  digest.
 - Harbor's current `Trajectory` model is treated as the reader for now, but it
   may prove too strict for measurement if valid evaluator traces include producer
   extensions, omit fields that coverage does not consume, or move to a newer ATIF

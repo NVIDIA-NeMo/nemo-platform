@@ -159,7 +159,8 @@
       "required": [
         "trace",
         "trace_format",
-        "task_id"
+        "task_id",
+        "run_id"
       ],
       "properties": {
         "trace": {
@@ -175,7 +176,7 @@
           "$ref": "#/$defs/nonEmptyString"
         },
         "run_id": {
-          "description": "Optional identifier for the specific run, trial, attempt, or repetition measured.",
+          "description": "Identifier for the specific run, trial, attempt, or repetition measured.",
           "$ref": "#/$defs/nonEmptyString"
         }
       }

@@ -231,18 +231,22 @@ uv run --with-requirements <skill_dir>/requirements.txt \
 each selected method against the same parsed Harbor trajectory model. Unknown
 method names fail before the trace is loaded.
 
-The script writes one folder per task and method:
+The script writes one folder per task, run, and method. Task and run ids are
+encoded as single path components so ids containing `/` cannot create nested or
+escaping paths:
 
 ```text
-.eval-author/audit-measurements/<task-id>/tool_calls/coverage.json
-.eval-author/audit-measurements/<task-id>/tool_calls/details.json
+.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/tool_calls/coverage.json
+.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/tool_calls/details.json
 ```
 
 `coverage.json` uses the shared coverage schema and contains only the stable
 audit item names this trace covered plus provider-neutral subject identity
-(`trace`, `trace_format`, `task_id`, and optional `run_id`). Coverage aggregation
-should consume this file and ignore method-specific debug details. `details.json`
-is specific to the selected method and carries traceability data for humans.
+(`trace`, `trace_format`, `task_id`, and `run_id`). It also records
+`item_kind_count`, the denominator for the measured item kind. Coverage
+aggregation should consume this file and ignore method-specific debug details.
+`details.json` is specific to the selected method and carries traceability data
+for humans.
 
 The only v1 measurement method is `tool_calls`. It covers only audit items whose
 `kind` is `tool` by matching each tool item's `name` against ATIF

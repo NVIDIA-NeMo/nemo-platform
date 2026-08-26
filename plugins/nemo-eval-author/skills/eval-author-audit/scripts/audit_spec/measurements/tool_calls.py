@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from typing import Any, TypeAlias
 
-from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
+try:
+    from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
+except ImportError:
+    Trajectory = Any  # type: ignore[assignment,misc]
 
 JsonObject: TypeAlias = dict[str, Any]
 

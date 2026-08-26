@@ -7,18 +7,27 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, TypeAlias, cast
+from typing import Any, TypeAlias
+from urllib.parse import quote
 
-from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
+try:
+    from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
+except ImportError as exc:
+    HARBOR_IMPORT_ERROR: ImportError | None = exc
+    Trajectory = Any  # type: ignore[assignment,misc]
+else:
+    HARBOR_IMPORT_ERROR = None
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _markdown import AuditMarkdownError  # noqa: E402
-from _schema import AuditEnvironmentError, AuditSpecError, load_audit_spec  # noqa: E402
+from _schema import AuditEnvironmentError, AuditSpecError, item_counts, load_audit_spec  # noqa: E402
 from measurements import tool_calls  # noqa: E402
 
 JsonObject: TypeAlias = dict[str, Any]
@@ -31,16 +40,22 @@ DETAIL_SCHEMA_PATHS = {
 }
 
 
-class MeasurementMethod(Protocol):
-    """Module-level protocol implemented by measurement method modules."""
+@dataclass(frozen=True)
+class MeasurementMethod:
+    """Callable contract and schema metadata for one measurement method."""
 
-    METHOD_NAME: str
-    DETAILS_SCHEMA: str
+    name: str
+    details_schema: str
+    measure: Callable[[JsonObject, Trajectory], JsonObject]
 
-    def measure(self, audit: JsonObject, trajectory: Trajectory) -> JsonObject: ...
 
-
-METHODS: dict[str, MeasurementMethod] = {tool_calls.METHOD_NAME: cast(MeasurementMethod, tool_calls)}
+METHODS: dict[str, MeasurementMethod] = {
+    tool_calls.METHOD_NAME: MeasurementMethod(
+        name=tool_calls.METHOD_NAME,
+        details_schema=tool_calls.DETAILS_SCHEMA,
+        measure=tool_calls.measure,
+    )
+}
 
 
 class AuditTraceError(ValueError):
@@ -52,22 +67,37 @@ class AuditMeasurementError(ValueError):
 
 
 @dataclass(frozen=True)
-class Subject:
-    """The trace subject being measured."""
+class PendingSubject:
+    """The trace and caller/provider identity available before parsing ATIF."""
 
     trace_path: Path
     task_id: str
     run_id: str | None
 
+
+@dataclass(frozen=True)
+class Subject:
+    """The trace subject being measured."""
+
+    trace_path: Path
+    task_id: str
+    run_id: str
+
     def to_json(self) -> JsonObject:
-        payload: JsonObject = {
+        return {
             "trace": str(self.trace_path),
             "trace_format": "atif",
             "task_id": self.task_id,
+            "run_id": self.run_id,
         }
-        if self.run_id is not None:
-            payload["run_id"] = self.run_id
-        return payload
+
+
+@dataclass(frozen=True)
+class LoadedTrace:
+    """Parsed ATIF plus a stable fallback identity for ad-hoc traces."""
+
+    trajectory: Trajectory
+    content_sha256: str
 
 
 @dataclass(frozen=True)
@@ -112,33 +142,31 @@ def main(argv: list[str] | None = None) -> int:
         "--out-dir",
         type=Path,
         required=True,
-        help="directory where <task-id>/<method>/coverage.json and details.json will be written",
+        help="directory where task=<id>/run=<id>/<method>/coverage.json and details.json will be written",
     )
     parser.add_argument(
         "--measure",
         action="append",
         help=f"comma-separated measurement methods to run (default: {tool_calls.METHOD_NAME})",
     )
-    parser.add_argument("--method", action="append", dest="legacy_measure", help=argparse.SUPPRESS)
     parser.add_argument("--compact", action="store_true", help="emit compact JSON")
     args = parser.parse_args(argv)
 
     try:
-        method_names = _measurement_methods(args.measure, args.legacy_measure)
+        method_names = _measurement_methods(args.measure)
         audit = load_audit_spec(args.audit)
-        subject_info = _subject(args)
-        trajectory = _load_harbor_trajectory(subject_info.trace_path)
+        pending_subject = _subject(args)
+        loaded_trace = _load_harbor_trajectory(pending_subject.trace_path)
+        subject_info = _finalize_subject(pending_subject, loaded_trace)
         reports = _measure_all(
             audit=audit,
             audit_path=args.audit,
-            trajectory=trajectory,
+            trajectory=loaded_trace.trajectory,
             subject=subject_info,
             method_names=method_names,
         )
         _validate_reports(reports)
-        written_reports = _write_reports(
-            reports, out_dir=args.out_dir, task_id=subject_info.task_id, compact=args.compact
-        )
+        written_reports = _write_reports(reports, out_dir=args.out_dir, subject=subject_info, compact=args.compact)
     except AuditEnvironmentError as exc:
         _print({"valid": None, "written": False, "error_type": "environment", "error": str(exc)}, compact=args.compact)
         return 2
@@ -160,14 +188,13 @@ def main(argv: list[str] | None = None) -> int:
         "task_id": subject_info.task_id,
         "methods": [report.method_name for report in written_reports],
         "measurements": [report.to_summary() for report in written_reports],
+        "run_id": subject_info.run_id,
     }
-    if subject_info.run_id is not None:
-        summary["run_id"] = subject_info.run_id
     _print(summary, compact=args.compact)
     return 0
 
 
-def _subject(args: argparse.Namespace) -> Subject:
+def _subject(args: argparse.Namespace) -> PendingSubject:
     """Resolve the requested trace and provider-neutral subject identifiers before parsing ATIF."""
     if args.trial_dir is not None:
         return _subject_from_trial_dir(args.trial_dir, task_id=args.task_id, run_id=args.run_id)
@@ -176,7 +203,7 @@ def _subject(args: argparse.Namespace) -> Subject:
     return _subject_from_trace(args.trace, task_id=args.task_id, run_id=args.run_id)
 
 
-def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None, run_id: str | None) -> Subject:
+def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None, run_id: str | None) -> PendingSubject:
     """Derive task/run identity from Harbor metadata when a trial directory is supplied."""
     if not trial_dir.is_dir():
         raise AuditTraceError(f"Harbor trial directory does not exist: {trial_dir}")
@@ -187,19 +214,19 @@ def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None, run_id: str
         )
     result_path = trial_dir / "result.json"
     result = _load_harbor_result(result_path)
-    return Subject(
+    return PendingSubject(
         trace_path=trace_path,
         task_id=task_id or _string(result.get("task_name")) or trial_dir.name,
         run_id=run_id or _string(result.get("trial_name")) or trial_dir.name,
     )
 
 
-def _subject_from_trace(trace_path: Path, *, task_id: str | None, run_id: str | None) -> Subject:
+def _subject_from_trace(trace_path: Path, *, task_id: str | None, run_id: str | None) -> PendingSubject:
     """Derive task/run identity from a direct trace path, honoring explicit CLI stamps first."""
     trial_dir = _harbor_trial_dir_for_trace(trace_path)
     result_path = trial_dir / "result.json" if trial_dir is not None else None
     result = _load_harbor_result(result_path) if result_path is not None else {}
-    return Subject(
+    return PendingSubject(
         trace_path=trace_path,
         task_id=task_id or _string(result.get("task_name")) or trace_path.stem,
         run_id=run_id or _string(result.get("trial_name")) or (trial_dir.name if trial_dir is not None else None),
@@ -226,21 +253,47 @@ def _load_harbor_result(path: Path) -> JsonObject:
     return payload
 
 
-def _load_harbor_trajectory(path: Path) -> Trajectory:
+def _load_harbor_trajectory(path: Path) -> LoadedTrace:
     """Read ATIF through Harbor once; downstream methods receive the typed trajectory object."""
+    if HARBOR_IMPORT_ERROR is not None:
+        raise AuditEnvironmentError(
+            "Harbor is required to read ATIF trajectories for audit measurement; "
+            "install requirements.txt or run with uv --with-requirements"
+        ) from HARBOR_IMPORT_ERROR
     try:
-        text = path.read_text(encoding="utf-8")
+        raw = path.read_bytes()
     except OSError as exc:
         raise AuditTraceError(f"could not read Harbor ATIF trajectory at {path}: {exc}") from exc
     try:
-        return Trajectory.model_validate_json(text)
+        trajectory_model: Any = Trajectory
+        trajectory = trajectory_model.model_validate_json(raw)
     except ValueError as exc:
         raise AuditTraceError(f"{path} is not an ATIF trajectory accepted by Harbor: {exc}") from exc
+    return LoadedTrace(trajectory=trajectory, content_sha256=hashlib.sha256(raw).hexdigest())
 
 
-def _measurement_methods(measure_values: list[str] | None, legacy_values: list[str] | None) -> list[str]:
+def _finalize_subject(subject: PendingSubject, loaded_trace: LoadedTrace) -> Subject:
+    """Fill any missing run identity from the parsed trace or trace content."""
+    return Subject(
+        trace_path=subject.trace_path,
+        task_id=subject.task_id,
+        run_id=subject.run_id or _trace_run_id(loaded_trace),
+    )
+
+
+def _trace_run_id(loaded_trace: LoadedTrace) -> str:
+    """Prefer explicit ATIF identity, then fall back to a short trace-content digest."""
+    trajectory = loaded_trace.trajectory
+    return (
+        _string(getattr(trajectory, "trajectory_id", None))
+        or _string(getattr(trajectory, "session_id", None))
+        or f"trace-sha256-{loaded_trace.content_sha256[:12]}"
+    )
+
+
+def _measurement_methods(measure_values: list[str] | None) -> list[str]:
     """Parse comma-separated method selections and de-duplicate them in request order."""
-    values = (measure_values or []) + (legacy_values or [])
+    values = measure_values or []
     if not values:
         values = [tool_calls.METHOD_NAME]
 
@@ -286,13 +339,16 @@ def _measure(
     measurement = method.measure(audit, trajectory)
     audit_info = _audit_info(audit, audit_path)
     subject_info = subject.to_json()
-    method_info = {"name": method.METHOD_NAME}
+    method_info = {"name": method.name}
+    item_kind = measurement["item_kind"]
+    kind_counts = item_counts(audit)
     coverage = {
         "schema": COVERAGE_SCHEMA,
         "audit": audit_info,
         "subject": subject_info,
         "method": method_info,
-        "item_kind": measurement["item_kind"],
+        "item_kind": item_kind,
+        "item_kind_count": kind_counts[item_kind],
         "covered": measurement["covered"],
     }
     details = {
@@ -301,7 +357,7 @@ def _measure(
         "subject": subject_info,
         "method": method_info,
     }
-    return MeasurementReport(method_name=method.METHOD_NAME, coverage=coverage, details=details)
+    return MeasurementReport(method_name=method.name, coverage=coverage, details=details)
 
 
 def _validate_reports(reports: list[MeasurementReport]) -> None:
@@ -319,13 +375,18 @@ def _write_reports(
     reports: list[MeasurementReport],
     *,
     out_dir: Path,
-    task_id: str,
+    subject: Subject,
     compact: bool,
 ) -> list[WrittenMeasurement]:
     """Write one coverage/details file pair per selected measurement method."""
     written_reports: list[WrittenMeasurement] = []
     for report in reports:
-        method_dir = out_dir / task_id / report.method_name
+        method_dir = (
+            out_dir
+            / _path_component("task", subject.task_id)
+            / _path_component("run", subject.run_id)
+            / report.method_name
+        )
         method_dir.mkdir(parents=True, exist_ok=True)
         coverage_path = method_dir / "coverage.json"
         details_path = method_dir / "details.json"
@@ -352,6 +413,11 @@ def _audit_info(audit: JsonObject, audit_path: Path) -> JsonObject:
         "status": audit["status"],
         "item_count": len(audit["items"]),
     }
+
+
+def _path_component(label: str, value: str) -> str:
+    """Encode externally supplied ids as single safe path components."""
+    return f"{label}={quote(value, safe='')}"
 
 
 def _details_schema_path(details: JsonObject) -> Path:

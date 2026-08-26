@@ -17,6 +17,7 @@
     "name": "tool_calls"
   },
   "item_kind": "tool",
+  "item_kind_count": 3,
   "covered": [
     "customer.lookup",
     "ticket.create"
