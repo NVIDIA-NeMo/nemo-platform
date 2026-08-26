@@ -64,7 +64,7 @@ Audit-spec mechanics live under `scripts/audit_spec/`:
 | Script | Use it to |
 |---|---|
 | `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
-| `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write a per-trace report |
+| `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write coverage/details files |
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
@@ -72,8 +72,9 @@ Shared helpers are private modules in the same tree:
 `scripts/audit_spec/_atif.py`. Measurement methods live under
 `scripts/audit_spec/measurements/`; v1 ships
 `scripts/audit_spec/measurements/tool_calls.py`.
-The generated report shape is defined by
-`schemas/audit_measurement.schema.json`.
+Shared coverage output is defined by `schemas/audit_coverage.schema.json`.
+Tool-call debug output is defined by
+`schemas/audit_tool_calls_details.schema.json`.
 
 ## Step 1: Draft Or Update Audit Items
 
@@ -196,7 +197,7 @@ After validation, measure one completed Harbor trial or one ATIF trajectory file
 python <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trial-dir <harbor-job-dir>/<trial-dir> \
-  --out .eval-author/audit-measurements/<task-id>.json
+  --out-dir .eval-author/audit-measurements
 ```
 
 Harbor trial directories normally contain `agent/trajectory.json`; agents that
@@ -208,22 +209,28 @@ python <skill_dir>/scripts/audit_spec/measure.py \
   --audit .eval-author/audit.md \
   --trace <path-to>/trajectory.json \
   --task-id <task-id> \
-  --out .eval-author/audit-measurements/<task-id>.json
+  --out-dir .eval-author/audit-measurements
 ```
 
-The default measurement method is `tool_calls`. It deterministically covers
-`evidence_required` entries whose `kind` is `tool_call` by matching
-`evidence_required[].tool` against ATIF `steps[].tool_calls[].function_name`,
-including embedded subagent trajectories. It reports every other evidence kind
-as `unmeasured` with a reason. Item statuses are:
+The script writes one folder per task and method:
 
-| Status | Meaning |
-|---|---|
-| `covered` | All required evidence predicates were covered |
-| `partial` | At least one predicate was covered, but another predicate was missing or unmeasured |
-| `not_covered` | The method measured at least one predicate and none were covered |
-| `unmeasured` | No required predicate was supported by the selected method |
+```text
+.eval-author/audit-measurements/<task-id>/tool_calls/coverage.json
+.eval-author/audit-measurements/<task-id>/tool_calls/details.json
+```
 
-The script validates the report against `schemas/audit_measurement.schema.json`
-before writing one JSON report per trace or trial. It does not union coverage
-across tasks; treat coverage aggregation as the next audit PR.
+`coverage.json` uses the shared coverage schema and contains only the stable
+audit item names this trace covered. Coverage aggregation should consume this
+file and ignore method-specific debug details. `details.json` is specific to the
+selected method and carries traceability data for humans.
+
+The default measurement method is `tool_calls`. It covers only audit items whose
+`kind` is `tool` by matching each tool item's `name` against ATIF
+`steps[].tool_calls[].function_name`, including embedded subagent trajectories.
+It does not judge capabilities, failure cases, user intent, output quality, or
+other evidence kinds.
+
+The script validates `coverage.json` against `schemas/audit_coverage.schema.json`
+and validates `details.json` against the selected method's details schema before
+writing. It does not union coverage across tasks; treat coverage aggregation as
+the next audit PR.

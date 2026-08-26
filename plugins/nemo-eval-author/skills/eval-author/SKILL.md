@@ -81,7 +81,7 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
-| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, then measure one Harbor/ATIF trace against it |
+| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, then write per-method coverage/details files for one Harbor/ATIF trace |
 
 Runnable tasks, verifier metrics, and coverage aggregation are not built yet.
 `eval-author-audit` works one level above tasks: it generates and validates the

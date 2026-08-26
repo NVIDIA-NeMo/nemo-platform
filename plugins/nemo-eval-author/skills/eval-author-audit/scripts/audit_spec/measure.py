@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,12 +17,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _atif import AtifTraceError, AtifTraceFacts, load_atif_trace  # noqa: E402
 from _markdown import AuditMarkdownError  # noqa: E402
-from _schema import AuditEnvironmentError, AuditSpecError, item_counts, load_audit_spec  # noqa: E402
+from _schema import AuditEnvironmentError, AuditSpecError, load_audit_spec  # noqa: E402
 from measurements import tool_calls  # noqa: E402
 
-MEASUREMENT_SCHEMA = "nemo.eval_author.audit_measurement.v1"
-MEASUREMENT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "audit_measurement.schema.json"
-STATUS_ORDER = ("covered", "partial", "not_covered", "unmeasured")
+COVERAGE_SCHEMA = "nemo.eval_author.audit_coverage.v1"
+SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas"
+COVERAGE_SCHEMA_PATH = SCHEMAS_DIR / "audit_coverage.schema.json"
+DETAIL_SCHEMA_PATHS = {
+    tool_calls.DETAILS_SCHEMA: SCHEMAS_DIR / "audit_tool_calls_details.schema.json",
+}
 METHODS = {tool_calls.METHOD_NAME: tool_calls}
 
 
@@ -63,7 +65,12 @@ def main(argv: list[str] | None = None) -> int:
     subject.add_argument("--trace", type=Path, help="ATIF trajectory JSON file")
     subject.add_argument("--trial-dir", type=Path, help="Harbor trial directory containing agent/trajectory.json")
     parser.add_argument("--task-id", help="task id to stamp on the measurement report")
-    parser.add_argument("--out", type=Path, required=True, help="measurement report JSON file to write")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        help="directory where <task-id>/<method>/coverage.json and details.json will be written",
+    )
     parser.add_argument("--method", choices=sorted(METHODS), default=tool_calls.METHOD_NAME)
     parser.add_argument("--compact", action="store_true", help="emit compact JSON")
     args = parser.parse_args(argv)
@@ -72,12 +79,21 @@ def main(argv: list[str] | None = None) -> int:
         audit = load_audit_spec(args.audit)
         subject_info = _subject(args)
         trace = load_atif_trace(subject_info.trace_path)
-        report = _measure(
+        coverage, details = _measure(
             audit=audit, audit_path=args.audit, trace=trace, subject=subject_info, method_name=args.method
         )
-        _validate_report(report)
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(_json(report, compact=args.compact) + "\n", encoding="utf-8")
+        _validate_report(coverage, schema_path=COVERAGE_SCHEMA_PATH, label="audit coverage")
+        _validate_report(
+            details,
+            schema_path=_details_schema_path(details),
+            label=f"{args.method} details",
+        )
+        method_dir = args.out_dir / subject_info.task_id / args.method
+        method_dir.mkdir(parents=True, exist_ok=True)
+        coverage_path = method_dir / "coverage.json"
+        details_path = method_dir / "details.json"
+        coverage_path.write_text(_json(coverage, compact=args.compact) + "\n", encoding="utf-8")
+        details_path.write_text(_json(details, compact=args.compact) + "\n", encoding="utf-8")
     except AuditEnvironmentError as exc:
         _print({"valid": None, "written": False, "error_type": "environment", "error": str(exc)}, compact=args.compact)
         return 2
@@ -92,12 +108,15 @@ def main(argv: list[str] | None = None) -> int:
         {
             "valid": True,
             "written": True,
-            "output": str(args.out),
+            "coverage": str(coverage_path),
+            "details": str(details_path),
             "audit": str(args.audit),
             "trace": str(subject_info.trace_path),
             "task_id": subject_info.task_id,
             "method": args.method,
-            "summary": report["summary"],
+            "item_kind": coverage["item_kind"],
+            "covered": coverage["covered"],
+            "covered_count": len(coverage["covered"]),
         },
         compact=args.compact,
     )
@@ -169,79 +188,71 @@ def _measure(
     trace: AtifTraceFacts,
     subject: Subject,
     method_name: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     method = METHODS[method_name]
-    items = [method.measure_item(item, trace) for item in audit["items"]]
+    measurement = method.measure(audit, trace)
+    audit_info = _audit_info(audit, audit_path)
+    subject_info = subject.to_json()
+    method_info = {"name": method.METHOD_NAME}
+    coverage = {
+        "schema": COVERAGE_SCHEMA,
+        "audit": audit_info,
+        "subject": subject_info,
+        "method": method_info,
+        "item_kind": measurement["item_kind"],
+        "covered": measurement["covered"],
+    }
+    details = {
+        **measurement["details"],
+        "audit": audit_info,
+        "subject": subject_info,
+        "method": method_info,
+    }
+    return coverage, details
+
+
+def _audit_info(audit: dict[str, Any], audit_path: Path) -> dict[str, Any]:
     return {
-        "schema": MEASUREMENT_SCHEMA,
-        "audit": {
-            "path": str(audit_path),
-            "schema": audit["schema"],
-            "agent": audit["agent"],
-            "status": audit["status"],
-            "item_count": len(audit["items"]),
-            "item_counts": item_counts(audit),
-        },
-        "subject": subject.to_json(),
-        "method": {
-            "name": method.METHOD_NAME,
-            "supported_evidence_kinds": sorted(method.SUPPORTED_EVIDENCE_KINDS),
-        },
-        "trace": {
-            "schema_version": trace.schema_version,
-            "session_id": trace.session_id,
-            "trajectory_id": trace.trajectory_id,
-            "tool_call_count": len(trace.tool_calls),
-            "tool_call_counts": trace.tool_call_counts,
-        },
-        "summary": _summary(items),
-        "items": items,
+        "path": str(audit_path),
+        "schema": audit["schema"],
+        "agent": audit["agent"],
+        "status": audit["status"],
+        "item_count": len(audit["items"]),
     }
 
 
-def _validate_report(report: dict[str, Any]) -> None:
+def _details_schema_path(details: dict[str, Any]) -> Path:
+    schema = details.get("schema")
+    if not isinstance(schema, str) or schema not in DETAIL_SCHEMA_PATHS:
+        raise AuditMeasurementError(f"no details JSON Schema is registered for {schema!r}")
+    return DETAIL_SCHEMA_PATHS[schema]
+
+
+def _validate_report(report: dict[str, Any], *, schema_path: Path, label: str) -> None:
     try:
         from jsonschema import Draft202012Validator
         from jsonschema.exceptions import SchemaError
     except ImportError as exc:
-        raise AuditEnvironmentError("jsonschema is required to validate audit measurement reports") from exc
+        raise AuditEnvironmentError(f"jsonschema is required to validate {label} reports") from exc
 
     try:
-        schema = json.loads(MEASUREMENT_SCHEMA_PATH.read_text(encoding="utf-8"))
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise AuditEnvironmentError(
-            f"could not load audit measurement JSON Schema from {MEASUREMENT_SCHEMA_PATH}: {exc}"
-        ) from exc
+        raise AuditEnvironmentError(f"could not load {label} JSON Schema from {schema_path}: {exc}") from exc
 
     try:
         Draft202012Validator.check_schema(schema)
     except SchemaError as exc:
-        raise AuditEnvironmentError(f"bundled audit measurement JSON Schema is invalid: {exc.message}") from exc
+        raise AuditEnvironmentError(f"bundled {label} JSON Schema is invalid: {exc.message}") from exc
     errors = sorted(
         Draft202012Validator(schema).iter_errors(report),
         key=lambda error: (list(error.absolute_path), error.message),
     )
     if errors:
         raise AuditMeasurementError(
-            "generated audit measurement report failed its JSON Schema: "
+            f"generated {label} report failed its JSON Schema: "
             + "\n".join(f"{list(error.absolute_path)}: {error.message}" for error in errors)
         )
-
-
-def _summary(items: list[dict[str, Any]]) -> dict[str, Any]:
-    by_status = Counter(item["status"] for item in items)
-    by_kind: dict[str, dict[str, int]] = defaultdict(lambda: {status: 0 for status in STATUS_ORDER})
-    names_by_status: dict[str, list[str]] = {status: [] for status in STATUS_ORDER}
-    for item in items:
-        status = item["status"]
-        names_by_status[status].append(item["name"])
-        by_kind[item["kind"]][status] += 1
-    return {
-        "total_items": len(items),
-        "items_by_status": {status: by_status.get(status, 0) for status in STATUS_ORDER},
-        "items_by_kind_and_status": dict(sorted(by_kind.items())),
-        "item_names_by_status": names_by_status,
-    }
 
 
 def _string(value: Any) -> str | None:

@@ -67,7 +67,8 @@ _AUDIT_GENERATE = _AUDIT_SPEC_DIR / "generate.py"
 _AUDIT_MEASURE = _AUDIT_SPEC_DIR / "measure.py"
 _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
-_AUDIT_MEASUREMENT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_measurement.schema.json"
+_AUDIT_COVERAGE_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_coverage.schema.json"
+_AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_tool_calls_details.schema.json"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -438,7 +439,8 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/_markdown.py",
         "scripts/audit_spec/measurements/tool_calls.py",
         "schemas/audit.schema.json",
-        "schemas/audit_measurement.schema.json",
+        "schemas/audit_coverage.schema.json",
+        "schemas/audit_tool_calls_details.schema.json",
         "templates/audit.md",
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
@@ -463,10 +465,17 @@ def test_audit_json_schema_is_valid() -> None:
     Draft202012Validator.check_schema(json.loads(_AUDIT_JSON_SCHEMA.read_text(encoding="utf-8")))
 
 
-def test_audit_measurement_json_schema_is_valid() -> None:
+@pytest.mark.parametrize(
+    "schema_path",
+    (
+        _AUDIT_COVERAGE_JSON_SCHEMA,
+        _AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA,
+    ),
+)
+def test_audit_measurement_json_schemas_are_valid(schema_path: Path) -> None:
     from jsonschema import Draft202012Validator
 
-    Draft202012Validator.check_schema(json.loads(_AUDIT_MEASUREMENT_JSON_SCHEMA.read_text(encoding="utf-8")))
+    Draft202012Validator.check_schema(json.loads(schema_path.read_text(encoding="utf-8")))
 
 
 def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
@@ -1074,7 +1083,7 @@ def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
     _write_atif_trace(trace, embedded_tool_calls=["customer.lookup"])
-    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, summary, stderr = _run_json_script(
         _AUDIT_MEASURE,
@@ -1084,27 +1093,46 @@ def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path
         str(trace),
         "--task-id",
         "account-recovery",
-        "--out",
-        str(out),
+        "--out-dir",
+        str(out_dir),
     )
 
     assert code == 0, stderr or summary
-    report = json.loads(out.read_text(encoding="utf-8"))
-    items = {item["name"]: item for item in report["items"]}
+    coverage_path = out_dir / "account-recovery" / "tool_calls" / "coverage.json"
+    details_path = out_dir / "account-recovery" / "tool_calls" / "details.json"
+    coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+    details = json.loads(details_path.read_text(encoding="utf-8"))
 
     assert summary["written"] is True
-    assert summary["summary"]["items_by_status"] == {
-        "covered": 1,
-        "partial": 1,
-        "not_covered": 0,
-        "unmeasured": 1,
+    assert summary["coverage"] == str(coverage_path)
+    assert summary["details"] == str(details_path)
+    assert summary["covered"] == ["customer.lookup"]
+    assert summary["covered_count"] == 1
+    assert coverage == {
+        "schema": "nemo.eval_author.audit_coverage.v1",
+        "audit": {
+            "path": str(audit),
+            "schema": "nemo.eval_author.audit.v1",
+            "agent": "example-agent",
+            "status": "draft",
+            "item_count": 3,
+        },
+        "subject": {
+            "trace": str(trace),
+            "trace_format": "atif",
+            "task_id": "account-recovery",
+        },
+        "method": {"name": "tool_calls"},
+        "item_kind": "tool",
+        "covered": ["customer.lookup"],
     }
-    assert report["schema"] == "nemo.eval_author.audit_measurement.v1"
-    assert report["subject"]["task_id"] == "account-recovery"
-    assert report["method"]["name"] == "tool_calls"
-    assert report["trace"]["tool_call_counts"] == {"customer.lookup": 1}
-    assert items["customer.lookup"]["status"] == "covered"
-    assert items["customer.lookup"]["evidence"][0]["matches"] == [
+    assert details["schema"] == "nemo.eval_author.audit_tool_calls_details.v1"
+    assert details["subject"]["task_id"] == "account-recovery"
+    assert details["audit_tools"] == ["customer.lookup"]
+    assert details["covered"] == ["customer.lookup"]
+    assert details["missing"] == []
+    assert details["tool_call_counts"] == {"customer.lookup": 1}
+    assert details["matches"]["customer.lookup"] == [
         {
             "step_id": 1,
             "tool": "customer.lookup",
@@ -1113,16 +1141,13 @@ def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path
             "trajectory_path": "$.subagent_trajectories[0]",
         }
     ]
-    assert items["account_recovery"]["status"] == "partial"
-    assert [evidence["status"] for evidence in items["account_recovery"]["evidence"]] == ["unmeasured", "covered"]
-    assert items["account_recovery_unverified_identity"]["status"] == "unmeasured"
 
 
 def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
     _write_atif_trace(trace, tool_calls=["ticket.create"])
-    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, summary, stderr = _run_json_script(
         _AUDIT_MEASURE,
@@ -1132,17 +1157,19 @@ def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path)
         str(trace),
         "--task-id",
         "account-recovery",
-        "--out",
-        str(out),
+        "--out-dir",
+        str(out_dir),
     )
 
     assert code == 0, stderr or summary
-    report = json.loads(out.read_text(encoding="utf-8"))
-    names_by_status = report["summary"]["item_names_by_status"]
+    coverage = json.loads((out_dir / "account-recovery" / "tool_calls" / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((out_dir / "account-recovery" / "tool_calls" / "details.json").read_text(encoding="utf-8"))
 
-    assert names_by_status["covered"] == []
-    assert names_by_status["not_covered"] == ["customer.lookup", "account_recovery"]
-    assert names_by_status["unmeasured"] == ["account_recovery_unverified_identity"]
+    assert summary["covered"] == []
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert details["missing"] == ["customer.lookup"]
+    assert details["tool_call_counts"] == {"ticket.create": 1}
 
 
 def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
@@ -1153,7 +1180,7 @@ def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
         json.dumps({"task_name": "account-recovery", "trial_name": "account-recovery__abc"}),
         encoding="utf-8",
     )
-    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, summary, stderr = _run_json_script(
         _AUDIT_MEASURE,
@@ -1161,25 +1188,25 @@ def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
         str(audit),
         "--trial-dir",
         str(trial_dir),
-        "--out",
-        str(out),
+        "--out-dir",
+        str(out_dir),
     )
 
     assert code == 0, stderr or summary
-    report = json.loads(out.read_text(encoding="utf-8"))
+    coverage = json.loads((out_dir / "account-recovery" / "tool_calls" / "coverage.json").read_text(encoding="utf-8"))
 
     assert summary["task_id"] == "account-recovery"
-    assert report["subject"]["task_id"] == "account-recovery"
-    assert report["subject"]["trial_id"] == "account-recovery__abc"
-    assert report["subject"]["harbor_trial_dir"] == str(trial_dir)
-    assert report["subject"]["harbor_result"] == str(trial_dir / "result.json")
+    assert coverage["subject"]["task_id"] == "account-recovery"
+    assert coverage["subject"]["trial_id"] == "account-recovery__abc"
+    assert coverage["subject"]["harbor_trial_dir"] == str(trial_dir)
+    assert coverage["subject"]["harbor_result"] == str(trial_dir / "result.json")
 
 
 def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
     trace.write_text("{}", encoding="utf-8")
-    out = tmp_path / ".eval-author" / "audit-measurements" / "account-recovery.json"
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, report, _ = _run_json_script(
         _AUDIT_MEASURE,
@@ -1189,8 +1216,8 @@ def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) ->
         str(trace),
         "--task-id",
         "account-recovery",
-        "--out",
-        str(out),
+        "--out-dir",
+        str(out_dir),
     )
 
     assert code == 1
@@ -1198,7 +1225,7 @@ def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) ->
     assert report["written"] is False
     assert report["error_type"] == "trace"
     assert "not an ATIF trajectory" in report["error"]
-    assert not out.exists()
+    assert not out_dir.exists()
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
