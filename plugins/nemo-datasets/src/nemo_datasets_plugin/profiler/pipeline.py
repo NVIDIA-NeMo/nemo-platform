@@ -127,9 +127,12 @@ def profile(
         rows_present = _add_known(rows_present, outcome.rows_present)
         file_errors.extend(outcome.file_errors)
 
-    # A file the profiler could not use holds an unknown number of rows, so it makes the fileset
-    # total unknown — whether it was skipped for want of a reader or failed mid-read.
-    if file_errors:
+    # Files with no reader never reached a partition, so their rows never went through `_add_known`
+    # and have to be unknowed here. Everything that *did* reach one already contributed its count, or
+    # its unknown, through the loop above -- including a file that failed part-way through the data
+    # but had already declared an exact count in its footer. Unknowing that one too would report a
+    # fileset whose splits each know their size as a fileset of unknown size.
+    if unreadable_entries:
         rows_present = None
 
     coverage = Coverage(
@@ -402,7 +405,11 @@ def _profile_partition(
                 # not abort the profile. The reason is recorded so a consumer can tell corrupt input
                 # from a profiler bug.
                 error = f"{type(exc).__name__}: {exc}"
-                num_rows = None
+                # A footer count was read before any row was, so a failure part-way through the data
+                # does not unknow it. Discarding it made a whole split's `num_examples` unknown over
+                # one bad shard, where the contract has it counting every file's rows "whether or not
+                # that file was read to the end". `scanned_all` is what says the read fell short.
+                num_rows = previews[entry.path].num_rows
                 scanned_all = False
             # Counted outside the guard, for what was consumed: a fold cannot give rows back, so a
             # file that failed on its fifth batch still contributed four.
