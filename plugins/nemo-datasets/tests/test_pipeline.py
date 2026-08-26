@@ -870,13 +870,12 @@ def test_a_duplicate_column_name_is_described_once(tmp_path):
     assert set(part.stats) == {f.name for f in part.features}
 
 
-def test_a_declared_dtype_is_answered_only_by_its_own_measurement(tmp_path):
+def test_a_declared_dtype_measures_every_value_it_was_given(tmp_path):
     # The other half of duplicate field names: `to_pylist` collapses the pair to the *last* one's
-    # values, so the schema says `string` while the rows hold ints. Each value is measured by the
-    # measurement that fits it, and the declared dtype picks which one answers -- so the ints are
-    # measured as numbers and the string column reports having seen no strings. Reporting their
-    # cardinality under a `string` dtype, as choosing one accumulator up front did, conflated the
-    # type the file declared with the values it actually holds.
+    # values, so the schema says `string` while the rows hold ints. A declared column skips the
+    # per-type routing -- the dtype already names the measurement that will answer -- so that
+    # measurement is handed the batch whole and sees exactly what a directly chosen accumulator
+    # would. Lengths need a string and find none; the vocabulary counts values whatever they are.
     schema = pa.schema([pa.field("prompt", pa.string()), pa.field("prompt", pa.int64())])
     table = pa.Table.from_arrays([pa.array(["a", "b"]), pa.array([1, 2])], schema=schema)
     pq.write_table(table, tmp_path / "train.parquet")
@@ -885,8 +884,8 @@ def test_a_declared_dtype_is_answered_only_by_its_own_measurement(tmp_path):
 
     assert [(f.name, f.dtype) for f in part.features] == [("prompt", "string")]
     categorical = part.stats["prompt"].categorical
-    assert part.stats["prompt"].text is None  # no string was ever seen
-    assert categorical is not None and categorical.distinct_count == 0
+    assert part.stats["prompt"].text is None  # no value was a string, so no lengths
+    assert categorical is not None and categorical.distinct_count == 2
 
 
 def test_rows_completeness_is_per_partition(tmp_path):
