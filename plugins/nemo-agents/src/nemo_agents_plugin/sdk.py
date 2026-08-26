@@ -147,28 +147,28 @@ class AgentsResource:
     # ------------------------------------------------------------------
 
     @property
-    def deployments(self) -> "_DeploymentResource":
+    def deployments(self) -> _DeploymentResource:
         """Sub-resource for deployment lifecycle operations."""
         if self._deployments is None:
             self._deployments = _DeploymentResource(self)
         return self._deployments
 
     @property
-    def environments(self) -> "_EnvironmentResource":
+    def environments(self) -> _EnvironmentResource:
         """Sub-resource for AgentEnvironment CRUD (``nemo.agents.environments``)."""
         if self._environments is None:
             self._environments = _EnvironmentResource(self)
         return self._environments
 
     @property
-    def environment_specs(self) -> "_EnvironmentSpecResource":
+    def environment_specs(self) -> _EnvironmentSpecResource:
         """Sub-resource for AgentEnvironmentSpec CRUD (``nemo.agents.environment_specs``)."""
         if self._environment_specs is None:
             self._environment_specs = _EnvironmentSpecResource(self)
         return self._environment_specs
 
     @property
-    def compute_specs(self) -> "_ComputeSpecResource":
+    def compute_specs(self) -> _ComputeSpecResource:
         """Sub-resource for AgentComputeSpec CRUD (``nemo.agents.compute_specs``)."""
         if self._compute_specs is None:
             self._compute_specs = _ComputeSpecResource(self)

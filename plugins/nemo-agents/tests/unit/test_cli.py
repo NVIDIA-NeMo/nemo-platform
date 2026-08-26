@@ -775,7 +775,7 @@ def test_list_connection_error_prints_request_context_and_hint() -> None:
 
 
 # ---------------------------------------------------------------------------
-# environment / environment-spec / compute-spec commands (AIRCORE-1073)
+# environment / environment-spec / compute-spec commands
 # ---------------------------------------------------------------------------
 
 
@@ -808,6 +808,26 @@ def test_deploy_forwards_environment_ref() -> None:
     body = _j.loads(captured["body"])
     assert body["agent"] == "a1"
     assert body["environment"] == "default/env1"
+
+
+def test_deploy_rejects_empty_environment() -> None:
+    called = False
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["deploy", "--agent", "a1", "--environment", "   ", "--no-wait", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 2
+    assert "--environment must not be empty." in result.stderr
+    assert not called  # no API call made
 
 
 def test_environment_spec_create_from_file(tmp_path: Path) -> None:

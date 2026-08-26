@@ -131,7 +131,7 @@ def test_invoke_rejects_empty_session_id() -> None:
 
 
 # ---------------------------------------------------------------------------
-# environment / environment-spec / compute-spec resources (AIRCORE-1073)
+# environment / environment-spec / compute-spec resources
 # ---------------------------------------------------------------------------
 
 

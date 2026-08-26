@@ -988,12 +988,15 @@ def _register_platform_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
+        if environment is not None and not environment.strip():
+            typer.echo("--environment must not be empty.", err=True)
+            raise typer.Exit(code=2)
         payload: dict = {"agent": agent, "deployment_mode": mode}
         if name:
             payload["name"] = name
         if image:
             payload["image"] = image
-        if environment:
+        if environment is not None:
             payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
