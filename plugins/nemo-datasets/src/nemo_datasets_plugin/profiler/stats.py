@@ -524,6 +524,12 @@ class RoutedAccumulator(ColumnAccumulator):
         return accumulator
 
     def _observe(self, present: list[Any]) -> None:
+        declared = self._declared
+        if declared is not None:
+            key = _measurement_for(declared.dtype)
+            if key is not None:
+                self._measurement(key)._observe(present)
+            return
         if self._schema is not None:
             self._schema.update(present)
         # Routed by python type. Where a dtype resolves to something measurable every present value
