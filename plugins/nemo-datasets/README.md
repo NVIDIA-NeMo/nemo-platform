@@ -56,6 +56,193 @@ reader (`.csv`, `.json`, `.arrow`, `.avro`, `.orc`, …) is reported as a `FileE
 ignored — otherwise a directory of CSV shards would profile as an exhaustively-scanned *empty*
 dataset, which is indistinguishable from a dataset that really is empty.
 
+## How the measurement works
+
+The diagrams under [Architecture](#architecture) are the formal version of this. Read this section
+first — `stats.py` is genuinely hard to read top-to-bottom, because `RowFold` is the first class in
+the file and depends on almost everything below it.
+
+### The rule that causes all of it
+
+> You are standing at a conveyor belt. Boxes go past. You may not keep any box. You have a notepad.
+> At the end, someone asks you questions about all the boxes.
+
+A dataset can be tens of gigabytes. It is read once and cannot be held. So every question the
+profile answers has to be answerable from a notepad whose size never grows, however many rows go by.
+
+That is all a **fold** is — belt, notepad, rule:
+
+```
+update(batch)   # some rows just went past; make your marks
+finalize()      # the belt is empty; answer the questions
+```
+
+Everything that looks strange in `stats.py` is a consequence of that one constraint.
+
+### A notepad is an accumulator
+
+One notepad per column. A dataset with `messages` and `score` means two notepads, both marked as
+each row goes by. The marks are tallies:
+
+```
+rows seen    ||||||||   8
+nulls                   0
+non-empty    ||||||||   8
+```
+
+Different columns want different questions asked, so there are four kinds:
+
+| Notepad | For | What it marks |
+|---|---|---|
+| `StringAccumulator` | text | length distribution, distinct values |
+| `NumericAccumulator` | numbers | min, max, mean, distinct values |
+| `BoolAccumulator` | true/false | how many of each |
+| `MessageAccumulator` | chat logs | turns, roles seen, whether it ends on the assistant |
+
+### Which notepad to bring — and why there are two folds
+
+**Parquet says in advance.** The footer declares that `messages` is a list of `{role, content}`,
+and it is read before the belt starts. So exactly the right notepad is chosen up front.
+
+→ `RowFold`. Notepads picked from the declared schema. Straightforward.
+
+**JSONL says nothing.** It is lines of text with no header. What the `messages` column *is* cannot be
+known until the last row has gone by — row 900,000 may hold a number and make the whole column
+mixed. Three options, two of them bad:
+
+- read the file twice — too slow;
+- decide from the first N rows and hope — wrong sometimes, and silently;
+- **bring all four notepads, mark whichever fits each value, and pick at the end.**
+
+→ `InferredRowFold` driving one `DeferredAccumulator` per column. `DeferredAccumulator` is not
+clever — it is four notepads held at once, plus a fifth (`SchemaFold`) tracking which types have
+been seen. When the belt empties, `SchemaFold` says what the column was and only that notepad is
+read out.
+
+It costs less than it sounds. A string is only ever marked on the string notepad, an int only on the
+numeric one, so it is the same work on more paper — measured at ~2.9× the memory of choosing up
+front, and flat whether the file holds 10,000 rows or 1,000,000.
+
+### The histogram: how to answer "median length" without keeping the lengths
+
+Writing down 40 million lengths and sorting them is a notepad that weighs as much as the dataset.
+So the page comes **pre-printed with buckets** and lengths are tallied into them.
+
+Below 32, every length has its own line and is recorded **exactly**. Above it the buckets widen with
+the magnitude — 32 slices per doubling — so the width stays a roughly constant *fraction* of the
+value rather than a constant amount:
+
+| value | its bucket | width | relative |
+|---:|---|---:|---:|
+| 31 | `[31, 32)` | 1 | exact |
+| 1,000 | `[992, 1008)` | 16 | 1.6% |
+| 1,000,000 | `[999424, 1015808)` | 16,384 | 1.6% |
+
+Measured against exact quantiles on real shards: ~2%. And the page never grows.
+
+For a `messages` column holding six 2-turn chats, one 3-turn and one 4-turn, the entire notepad is:
+
+```python
+_turns._counts == {2: 6, 3: 1, 4: 1}
+```
+
+which is enough to answer "median 2, max 4". Turn counts are small enough to land in the exact
+region, so the buckets are legible by hand; a `content_chars` histogram over real text is the same
+structure with wider buckets at the top end.
+
+The trade is deliberate. The **count** is exact, because every row was tallied and none sampled;
+only the **value** is rounded. `max` is tracked exactly and separately, since it is the one number a
+reader may treat as a hard bound.
+
+→ `_LengthHistogram`. See also [Why a histogram and not a reservoir](#why-a-histogram-and-not-a-reservoir).
+
+### The vocabulary: a list that erases itself
+
+Counting distinct values exactly means *remembering* them. For a `label` column of
+`{safe, unsafe}` that is two words. For a column of reasoning traces it is the whole dataset —
+the rule broken. So the notepad watches itself and gives up when the column stops looking like a
+short list:
+
+| Bound | Value |
+|---|---|
+| distinct values | 1,024 |
+| characters in any one value | 256 |
+| total bytes | 64 KB |
+
+Giving up means **erasing the page and stopping**, permanently:
+
+```
+1,024 distinct values ->  84,548 bytes retained
+1,025 distinct values ->     658 bytes retained, values gone
+```
+
+The 256-character bound is the one doing the real work. It does not ask *how many* values there are,
+it asks **what kind of column this is** — a category name is short by nature, so one
+paragraph-length value settles it on sight and free-text columns bail out immediately rather than
+after 1,024 rows.
+
+→ `_Vocabulary`.
+
+### Probes: the yes/no tallies
+
+Stats measure *how much*. Probes count *whether the tell-tale sign was there*:
+
+```
+rows                 8
+non_empty            8
+texts                8    values readable as text
+extractable_answer   0    contained "####" or "\boxed{}"
+transcript_marker    0    looked like "\n\nHuman:" / "\n\nAssistant:"
+```
+
+These are what later decides whether a dataset is *verifiable* — whether a grading answer is
+embedded that a model's output could be checked against. They are tallied on the **same pass** as
+the stats, because opening the row is the expensive part; once it is open, look for everything.
+
+→ `ColumnProbes`.
+
+### Reading the notepad
+
+When the belt is empty, `classify()` reads **only the notepad** and says what the shipment was:
+
+```
+dataset_type  = "messages"
+format        = "conversational"
+verifiability = None            # checked; there is nothing to auto-grade
+```
+
+It never sees a row. That is the payoff of the rule — the rows are long gone and the partition can
+still be described. See [Why absence is a claim](#why-absence-is-a-claim) for why `None` there is an
+answer rather than a gap.
+
+### The one exception, and why the order looks backwards
+
+For a few roles — `label`, `provenance`, `meta`, `rank` — the actual values are worth putting in the
+report. Knowing a label column is exactly `{safe, unsafe}` is useful.
+
+But which columns those are is not known until the classifier has spoken. So:
+
+1. during the pass, `_Vocabulary` quietly keeps the values it has seen;
+2. `classify()` assigns roles;
+3. **then** `quote_enumerations` writes the values for quotable roles and drops the rest.
+
+That is why quoting runs *after* classification rather than during the pass — and it only works
+because the values were held back, since the belt cannot be rewound.
+
+→ `quote_enumerations`, gated on `_QUOTABLE_ROLES`. See also
+[Why the profile almost never contains row content](#why-the-profile-almost-never-contains-row-content).
+
+### Reading `stats.py`
+
+Not top to bottom. In this order:
+
+1. `ColumnAccumulator` — the base notepad. Everything else is this plus specifics.
+2. `StringAccumulator` — the simplest real one, barely 20 lines.
+3. `_LengthHistogram` and `_Vocabulary` — the two tricks above.
+4. `RowFold` — the easy fold.
+5. `DeferredAccumulator`, then `InferredRowFold` — the hard fold, which by now reads as the easy one
+   times four.
+
 ## Architecture
 
 ### Pipeline
@@ -132,10 +319,10 @@ until classification assigns them.
 ```mermaid
 flowchart TD
     FIN{"which fold?"}
-    FIN -->|"RowFold"| F1["finalize() → measured"]
+    FIN -->|"RowFold"| F1["finalize() → (features, measured)<br/><i>schema was an input, de-duplicated</i>"]
     FIN -->|"InferredRowFold"| F2["finalize() → (features, measured)<br/><i>schema is an output here</i>"]
 
-    F1 --> M["measured:<br/>stats · probes · vocabularies · errors"]
+    F1 --> M["measured:<br/>stats · probes · vocabularies · errors<br/><i>features: the schema actually measured</i>"]
     F2 --> M
 
     M --> CLS["classify(features, stats, probes, prefix_pair)<br/><i>reads no rows</i>"]
