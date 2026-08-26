@@ -1,0 +1,126 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "OpenSandbox with Kata"
+description: "Install Kata Containers and an OpenSandbox server that pins sandboxes to RuntimeClass kata-qemu."
+---
+<a id="install-opensandbox-kata"></a>
+
+Use this path when sandbox pods must run in a Kata QEMU VM instead of the cluster default OCI runtime (crun). Complete the [OpenSandbox (crun)](/documentation/self-managed-deployment/setup/helm/opensandbox) namespace, Secret, and platform-values steps first; this page only adds virtualization prerequisites and the Kata server overlay.
+
+OpenSandbox `[secure_runtime]` is **server-global**. Do not mix crun and Kata on one server. For production, install **one** server and set `opensandbox.domain` to that Service.
+
+Upstream: [Secure container runtime](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/guides/secure-container.md).
+
+## Node virtualization prerequisites
+
+Each Kata worker needs:
+
+- Hardware virtualization: Intel VMX, AMD SVM, or Arm virtualization extensions (NFD often labels `feature.node.kubernetes.io/cpu-cpuid.VMX=true`)
+- `/dev/kvm` on the node
+- Nested virtualization if the node itself is a VM
+- KVM / vhost kernel modules loaded
+- CRI-O or containerd with a Kata handler
+
+Confirm with `ls /dev/kvm` on the node and `kubectl get nodes -l katacontainers.io/kata-runtime=true` after kata-deploy.
+
+## Install kata-deploy (QEMU only)
+
+Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. Node selectors in the example are **an example** (bare-metal H100 + NFD VMX), not the only supported shape.
+
+```yaml
+# example kata-deploy values — replace selectors for your instance types
+nodeSelector:
+  katacontainers.io/kata-runtime: "true"  # applied by kata-deploy itself after install
+shims:
+  disableAll: true
+  qemu:
+    enabled: true
+    runtimeClass:
+      nodeSelector:
+        node.kubernetes.io/instance-type: BM.GPU.H100.8
+        feature.node.kubernetes.io/cpu-cpuid.VMX: "true"
+```
+
+```sh
+helm upgrade --install kata-deploy oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy \
+  --version 4.0.0 \
+  --namespace kube-system \
+  --create-namespace \
+  -f kata-values.yaml
+
+kubectl -n kube-system rollout status ds/kata-deploy --timeout=600s
+kubectl get runtimeclass kata-qemu
+```
+
+A smoke pod with `runtimeClassName: kata-qemu` should reach Running and print a **guest** kernel (`uname -r` differs from the node `kernelVersion`).
+
+## CRI-O overlay.skip_mount_home retrofit
+
+kata-deploy writes a CRI-O drop-in that includes `overlay.skip_mount_home=true` and restarts cri-o. That option only applies to overlay mounts created **after** it is active.
+
+On nodes that already ran containers, a bare cri-o restart re-adopts old `merged` mounts. The Kata guest can then see an empty virtiofs `shared/` directory and `CreateContainer` hangs.
+
+For those nodes: cordon → drain → restart cri-o → uncordon. Fresh nodes that never ran containers before kata-deploy do not need this.
+
+## OpenSandbox Kata server
+
+Use the same controller as crun. Install a second server only if you are comparing runtimes; production should run one:
+
+```sh
+export NMP_NAMESPACE=nemo-platform
+export OPENSANDBOX_DIR=/path/to/OpenSandbox
+export EXAMPLES=k8s/helm/examples/opensandbox
+
+sed -i.bak "s/REPLACE_WITH_RELEASE_NAMESPACE/${NMP_NAMESPACE}/g" \
+  "${EXAMPLES}/opensandbox-server-kata-qemu.yaml"
+
+# Adjust batchsandbox-template-kata-qemu.yaml nodeSelector to match kata-deploy.
+kubectl apply -f "${EXAMPLES}/batchsandbox-template-kata-qemu.yaml"
+
+kubectl create secret generic opensandbox-server-kata-api-key \
+  -n opensandbox-system --from-literal=api-key="$(openssl rand -hex 32)"
+
+kubectl get secret opensandbox-server-kata-api-key -n opensandbox-system -o json \
+  | jq 'del(.metadata.uid,.metadata.resourceVersion,.metadata.creationTimestamp,.metadata.namespace)
+        | .metadata.name="opensandbox-server-api-key"' \
+  | kubectl apply -n "$NMP_NAMESPACE" -f -
+
+helm upgrade --install opensandbox-server-kata \
+  "${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-server" \
+  --namespace opensandbox-system \
+  -f "${EXAMPLES}/opensandbox-server-kata-qemu.yaml"
+```
+
+The overlay sets:
+
+```toml
+[secure_runtime]
+type = "kata"
+k8s_runtime_class = "kata-qemu"
+```
+
+`[kubernetes] namespace` must still be the platform job namespace.
+
+## Point the platform at the Kata Service
+
+```yaml
+sandboxClusterCapable: true
+opensandbox:
+  domain: opensandbox-server-kata.opensandbox-system.svc.cluster.local
+  protocol: http
+  apiKeySecret: opensandbox-server-api-key
+  apiKeySecretKey: api-key
+```
+
+## Verify
+
+```sh
+export OPEN_SANDBOX_WORKLOAD_NS="$NMP_NAMESPACE"
+./k8s/helm/examples/opensandbox/verify/kata-qemu.sh
+```
+
+Expect `runtimeClassName=kata-qemu`, scheduling on a kata-labeled node, and a guest kernel that **differs** from the node kernel.
+
+Kata still needs admission controls that reject privileged pods, host namespaces/devices, and unsafe hostPath mounts. Those policies are cluster-admin work; the platform chart does not install them.

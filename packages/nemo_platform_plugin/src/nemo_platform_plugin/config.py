@@ -550,6 +550,42 @@ class NemoPlatformConfig(ServiceConfig):
     image_pull_secrets: list[ImagePullSecret] = Field(
         default_factory=list, description="Global image pull secrets for the platform"
     )
+    sandbox_cluster_capable: bool = Field(
+        default=False,
+        description=(
+            "Whether OpenSandbox is installed on this cluster. The Helm chart does not "
+            "install OpenSandbox. When false, sandboxed GRPO fails at compile time. "
+            "Eval and other services should read this same field."
+        ),
+    )
+    sandbox_server_domain: str | None = Field(
+        default=None,
+        description=(
+            "In-cluster OpenSandbox Service DNS with no scheme, injected as "
+            "OPEN_SANDBOX_DOMAIN on Kubernetes/Volcano job pods when "
+            "sandbox_cluster_capable is true."
+        ),
+    )
+    sandbox_server_protocol: str | None = Field(
+        default=None,
+        description=(
+            "Scheme jobs use to reach OpenSandbox (http or https). In-cluster Services "
+            "speak http. RL compiles this into Gym host_provider_options; leave unset "
+            "and NeMo-RL health URLs default to https."
+        ),
+    )
+    sandbox_api_key_secret: str | None = Field(
+        default=None,
+        description=(
+            "Kubernetes Secret in the job namespace holding the OpenSandbox API key. "
+            "Injected as OPEN_SANDBOX_API_KEY via secretKeyRef when sandbox_cluster_capable "
+            "is true. Copy the Secret from opensandbox-system into the release namespace."
+        ),
+    )
+    sandbox_api_key_secret_key: str = Field(
+        default="api-key",
+        description="Key inside sandbox_api_key_secret that stores the OpenSandbox API key.",
+    )
     image_registry: str = Field(
         default="my-registry",
         description="Docker registry for NeMo Platform images (e.g., 'nvcr.io/nvidia/nemo-platform').",

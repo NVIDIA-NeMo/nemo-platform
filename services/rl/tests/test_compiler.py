@@ -380,9 +380,26 @@ def test_grpo_lora_model_entity_peft(sandbox_capable: None) -> None:
     assert cfg.peft.type is FinetuningType.LORA
 
 
+def test_grpo_compile_succeeds_when_platform_sandbox_capable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_server_protocol", "http", raising=False)
+
+    sc = _build_training_step_config(
+        _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
+        trust_remote_code=False,
+    )
+    assert sc.gym is not None
+    assert sc.gym.sandboxed is True
+    assert sc.gym.sandbox_server_protocol == "http"
+
+
 def test_grpo_compile_fails_closed_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", False, raising=False)
     with pytest.raises(PlatformJobCompilationError, match="sandbox_cluster_capable"):
         _build_training_step_config(
             _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
@@ -413,6 +430,6 @@ def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) 
     job = _make_job_output(GRPOTraining(type="grpo"), environment="default/env")
     step = _build_training_step(job, [], trust_remote_code=False, profile=None)
     assert step["name"] == "grpo-training"
-    env_names = {(env["name"] if isinstance(env, dict) else env.name) for env in step["environment"]}
+    env_names = {env["name"] for env in step["environment"]}
     assert "NMP_VLLM_SERVICE_HOST" in env_names
     assert "NMP_BROKER_SERVICE_PORT" in env_names

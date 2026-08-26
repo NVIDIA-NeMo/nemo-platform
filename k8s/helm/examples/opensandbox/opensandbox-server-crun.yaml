@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# OpenSandbox server — shared-kernel / crun profile for nemo-dev-blue.
+# OpenSandbox server — shared-kernel / crun profile.
+# The chart does not install this release. Pass the file to the upstream
+# opensandbox-server chart: helm upgrade --install ... -f this file.
 #
 # OpenSandbox [secure_runtime] is server-global, so crun and kata-qemu each get
 # their own Helm release. This release leaves secure_runtime unset so pods use
@@ -78,9 +80,10 @@ configToml: |
 
   [kubernetes]
   kubeconfig_path = ""
-  # Sandboxes land in the NMP temp workspace NS (shared with kata profile).
-  # Isolation is via absent [secure_runtime] + template labels, not a separate NS.
-  namespace = "nmp-temp1"
+  # MUST be the same namespace the platform jobs run in (Helm release namespace).
+  # PVC remounts and image-pull secrets fail across namespaces.
+  # Replace with your NeMo Platform release namespace before installing.
+  namespace = "REPLACE_WITH_RELEASE_NAMESPACE"
   informer_enabled = true
   informer_resync_seconds = 300
   informer_watch_timeout_seconds = 60

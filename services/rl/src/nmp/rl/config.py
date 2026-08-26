@@ -166,8 +166,9 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
     sandbox_cluster_capable: bool = Field(
         default=False,
         description=(
-            "When false and sandboxed_gym_default is true, GRPO jobs with environment "
-            "filesets fail at compile time unless the cluster has OpenSandbox available."
+            "Deprecated alias of platform.sandbox_cluster_capable. Prefer the platform "
+            "field. When both are false and sandboxed_gym_default is true, GRPO jobs "
+            "with environment filesets fail at compile time."
         ),
     )
 

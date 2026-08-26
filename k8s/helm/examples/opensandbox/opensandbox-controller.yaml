@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# OpenSandbox controller — shared by both crun and kata-qemu server profiles.
-# Target: nemo-dev-blue (OCI / CRI-O).
+# OpenSandbox controller — shared by crun and kata-qemu server profiles.
+# CRI-O clusters should leave containerdSocketPath empty (pause/resume needs a
+# CRI-O socket path if you enable snapshots).
 #
 # Snapshot/commit uses containerd by default upstream; this cluster is cri-o,
 # so clear the socket path (pause/resume not wired unless you add a CRI-O path).
