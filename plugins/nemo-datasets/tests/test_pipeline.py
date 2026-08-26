@@ -858,6 +858,21 @@ def test_a_declared_schema_is_trusted_when_it_covers_every_file(tmp_path):
     assert [f.name for f in part.features] == ["prompt"]
 
 
+def test_a_duplicate_column_name_is_described_once(tmp_path):
+    # Parquet permits duplicate field names, and the fold keeps the first so that which one wins is
+    # deterministic. The caller used to hold its own copy of the declared schema, though, so
+    # `features` announced a column no accumulator had measured and disagreed with `stats` about how
+    # many there were. The fold reports the schema it actually measured, so the two cannot drift.
+    schema = pa.schema([pa.field("prompt", pa.string()), pa.field("prompt", pa.string())])
+    table = pa.Table.from_arrays([pa.array(["a", "b"]), pa.array(["c", "d"])], schema=schema)
+    pq.write_table(table, tmp_path / "train.parquet")
+
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert [(f.name, f.dtype) for f in part.features] == [("prompt", "string")]
+    assert set(part.stats) == {f.name for f in part.features}
+
+
 def test_rows_completeness_is_per_partition(tmp_path):
     # A corrupt shard in one partition says nothing about the measurements in another, but a
     # fileset-wide flag downgraded every partition to the worst one. It was never even the value
