@@ -109,13 +109,16 @@ def _is_binary(column: ColumnStats | None) -> bool:
 def _is_label_column(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> bool:
     """Whether a column named ``label`` really carries a binary preference label.
 
-    A bool says so outright. An integer is the more common on-disk encoding (0/1), but only when the
-    observed values really are binary: a wider range is a class index or a rating, which is a
-    different claim, so it stays unroled.
+    A bool says so outright. Integers and strings are the common on-disk encodings -- ``0``/``1``,
+    ``safe``/``unsafe`` -- and both are accepted, but only when the observed values really are
+    binary: a wider range is a class index or a rating, which is a different claim, so it stays
+    unroled. The encoding is not the question; the number of distinct values is.
     """
     if feature.dtype == "bool":
         return True
-    return _is_numeric(feature.dtype) and _is_binary(stats.get(feature.name))
+    if not _is_numeric(feature.dtype) and feature.dtype != "string":
+        return False
+    return _is_binary(stats.get(feature.name))
 
 
 def _dtype_allows(feature: FeatureSchema, role: str, stats: dict[str, ColumnStats]) -> bool:

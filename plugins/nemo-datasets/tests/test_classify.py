@@ -118,6 +118,24 @@ def test_unpaired_preference_accepts_a_binary_integer_label():
     assert features[2].semantic_role == "label"
 
 
+def test_unpaired_preference_accepts_a_binary_string_label():
+    # `safe`/`unsafe` is as common an encoding as 0/1, and requiring a number left every
+    # content-safety set unroled -- so its values were never quoted either, because quoting is gated
+    # on the role. The encoding is not the question; the number of distinct values is.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
+    stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=2))}
+    assert classify(features, stats).dataset_type == "unpaired_preference"
+    assert features[2].semantic_role == "label"
+
+
+def test_wide_string_label_is_not_a_preference_label():
+    # Symmetric with the integer rule: three classes is a class label, not a binary preference.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
+    stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=3))}
+    assert classify(features, stats).dataset_type == "prompt_completion"
+    assert features[2].semantic_role is None
+
+
 def test_wide_integer_label_is_not_a_preference_label():
     # A multi-class index or a rating is a different claim from a binary preference.
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "int64")]
