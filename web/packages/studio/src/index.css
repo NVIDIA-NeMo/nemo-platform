@@ -45,16 +45,19 @@ body {
   color: currentColor;
 }
 
-/* Lucide icons: default size and stroke width, overridable via Tailwind utilities */
+/* Lucide icons: default size and stroke width, overridable via Tailwind utilities.
+
+   stroke-width is authored in the 24-unit viewBox, not in px, so the rendered
+   width is `stroke-width * (rendered size / 24)`. At the 16px default, 1.5
+   renders as exactly 1px against 14px text. Scaling the icon up scales the
+   stroke with it (20px -> 1.25px, 48px -> 3px), which is why there is no
+   `vector-effect: non-scaling-stroke` here — that would pin every size to the
+   same hairline. */
 @layer base {
   .lucide {
     width: 16px;
     height: 16px;
-    stroke-width: 1;
-  }
-
-  .lucide * {
-    vector-effect: non-scaling-stroke;
+    stroke-width: 1.5;
   }
 }
 
