@@ -23,6 +23,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform import PermissionDeniedError as StainlessPermissionDeniedError
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import PermissionDeniedError
 from nemo_platform_plugin.files.client import FilesClient
@@ -411,7 +412,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_create_provider(self, viewer_workspace):
         workspace, viewer_sdk, _, _ = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.providers.create(
                 workspace=workspace,
                 name="should-fail",
@@ -420,7 +421,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_upsert_provider(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.providers.update(
                 name=names["provider"],
                 workspace=workspace,
@@ -429,7 +430,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_delete_provider(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.providers.delete(name=names["provider"], workspace=workspace)
 
     # -- Deployment Configs: allowed --
@@ -448,7 +449,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_create_deployment_config(self, viewer_workspace):
         workspace, viewer_sdk, _, _ = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name="should-fail",
@@ -459,7 +460,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_update_deployment_config(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployment_configs.update(
                 name=names["config"],
                 workspace=workspace,
@@ -470,7 +471,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_delete_deployment_config(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployment_configs.delete(name=names["config"], workspace=workspace)
 
     # -- Deployments: allowed --
@@ -489,7 +490,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_create_deployment(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployments.create(
                 workspace=workspace,
                 name="should-fail",
@@ -498,7 +499,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_update_deployment(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployments.update(
                 name=names["deployment"],
                 workspace=workspace,
@@ -507,7 +508,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_delete_deployment(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployments.delete(name=names["deployment"], workspace=workspace)
 
 
@@ -711,7 +712,7 @@ class TestProviderSecretPermissions:
             )
             assert provider_ok.api_key_secret_name is None
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.create(
                     workspace=workspace,
                     name=short_unique_name("prov"),
@@ -740,7 +741,7 @@ class TestProviderSecretPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.update(
                     name=short_unique_name("prov"),
                     workspace=workspace,
@@ -816,7 +817,7 @@ class TestProviderDeploymentRefPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.create(
                     workspace=workspace,
                     name=short_unique_name("prov"),
@@ -841,7 +842,7 @@ class TestProviderDeploymentRefPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.update(
                     name=short_unique_name("prov"),
                     workspace=workspace,
@@ -894,7 +895,7 @@ class TestDeploymentConfigPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             editor_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=short_unique_name("cfg"),
@@ -960,7 +961,7 @@ class TestDeploymentConfigPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             editor_sdk.inference.deployment_configs.update(
                 name=config_name,
                 workspace=workspace,
@@ -987,7 +988,7 @@ class TestDeploymentConfigPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployment_configs.create(
                     workspace=workspace,
                     name=short_unique_name("cfg"),
@@ -1022,7 +1023,7 @@ class TestDeploymentConfigPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployment_configs.update(
                     name=config_name,
                     workspace=workspace,
@@ -1128,7 +1129,7 @@ class TestDeploymentPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployments.create(
                     workspace=workspace,
                     name=short_unique_name("dep"),
@@ -1166,7 +1167,7 @@ class TestDeploymentPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployments.update(
                     name=deploy_name,
                     workspace=workspace,

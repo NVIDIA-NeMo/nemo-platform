@@ -552,9 +552,7 @@ def _wait_for_gateway_ready(
     until it confirms the provider is routable.
     """
     logger.info("Waiting for inference gateway to sync...")
-    if not client_from_platform(sdk, ModelsClient).wait_for_gateway(
-        deployment_name, workspace=workspace, timeout=timeout
-    ):
+    if not sdk.models.wait_for_gateway(deployment_name, workspace=workspace, timeout=timeout):
         pytest.fail(
             f"Inference gateway did not become ready for deployment '{deployment_name}' "
             f"within {timeout}s. The deployment's model provider may not have been created. "
