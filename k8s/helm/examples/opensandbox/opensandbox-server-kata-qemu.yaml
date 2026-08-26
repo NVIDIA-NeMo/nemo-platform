@@ -6,9 +6,9 @@
 # opensandbox-server chart. Point the platform at this Service *or* the
 # shared-kernel Service — not both. [secure_runtime] is server-global.
 #
-# Pins every sandbox to RuntimeClass/kata-qemu. Template nodeSelector values
-# are an example (H100 + NFD VMX); replace them with labels that match your
-# kata-deploy / RuntimeClass scheduling.
+# Pins every sandbox to RuntimeClass/kata-qemu. Template nodeSelector is
+# katacontainers.io/kata-runtime (applied by kata-deploy). Add a custom KVM
+# label if you restrict which nodes get kata-deploy.
 #
 # API key comes from Secret opensandbox-server-kata-api-key (key: api-key),
 # injected as OPENSANDBOX_SERVER_API_KEY (overrides any TOML api_key).

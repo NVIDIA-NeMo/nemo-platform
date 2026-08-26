@@ -25,11 +25,20 @@ Each Kata worker needs:
 - KVM / vhost kernel modules loaded
 - CRI-O or containerd with a Kata handler
 
-Confirm with `ls /dev/kvm` on the node. NFD `cpu-cpuid.VMX` / SVM labels report processor capability only; they do not prove BIOS virtualization is on. After kata-deploy, `kubectl get nodes -l katacontainers.io/kata-runtime=true` shows nodes that received the runtime.
+Confirm virtualization on the node. Do **not** use Node Feature Discovery CPUID labels for this; they report processor capability, not BIOS enablement. On the worker:
+
+```sh
+ls /dev/kvm
+kvm-ok   # cpu-checker package on Debian/Ubuntu
+grep -cE '(vmx|svm)' /proc/cpuinfo
+lscpu | grep -i virt
+```
+
+Operators often already know BIOS virtualization is on; when it is the firmware default these checks still pass. After kata-deploy, `kubectl get nodes -l katacontainers.io/kata-runtime=true` shows nodes that received the runtime.
 
 ## Install kata-deploy (QEMU only)
 
-Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. The top-level `nodeSelector` is the **kata-deploy DaemonSet**. Select a **custom label you apply** after confirming BIOS VMX (Intel) or SVM (AMD) and `/dev/kvm` — not a runtime label, and not NFD CPUID. Do **not** select `katacontainers.io/kata-runtime` on the DaemonSet; kata-deploy applies that label after it lands. Keep it on the RuntimeClass only. If every node has working KVM, omit the DaemonSet selector so kata-deploy runs cluster-wide.
+Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. The top-level `nodeSelector` is the **kata-deploy DaemonSet**. Select a **custom label you apply** after the host checks above (Intel VMX or AMD SVM, plus `/dev/kvm`) — not a runtime label. Do **not** select `katacontainers.io/kata-runtime` on the DaemonSet; kata-deploy applies that label after it lands. Keep it on the RuntimeClass only. If every node has working KVM, omit the DaemonSet selector so kata-deploy runs cluster-wide.
 
 ```yaml
 # example kata-deploy values — replace the custom label with one you apply
