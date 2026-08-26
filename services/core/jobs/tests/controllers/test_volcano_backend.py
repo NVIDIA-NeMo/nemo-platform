@@ -536,7 +536,7 @@ def test_schedule_injects_opensandbox_secret_env_when_cluster_capable(
     mock_platform_config,
 ):
     mock_platform_config.sandbox_cluster_capable = True
-    mock_platform_config.sandbox_server_domain = "opensandbox-server-crun.opensandbox-system.svc.cluster.local"
+    mock_platform_config.sandbox_server_domain = "opensandbox-server.opensandbox-system.svc.cluster.local"
     mock_platform_config.sandbox_api_key_secret = "opensandbox-server-api-key"
     mock_platform_config.sandbox_api_key_secret_key = "api-key"
 
@@ -547,7 +547,7 @@ def test_schedule_injects_opensandbox_secret_env_when_cluster_capable(
     for task in job_body["spec"]["tasks"]:
         env_by_name = {env["name"]: env for env in task["template"]["spec"]["containers"][0]["env"]}
         assert env_by_name["OPEN_SANDBOX_DOMAIN"]["value"] == (
-            "opensandbox-server-crun.opensandbox-system.svc.cluster.local"
+            "opensandbox-server.opensandbox-system.svc.cluster.local"
         )
         secret_ref = env_by_name["OPEN_SANDBOX_API_KEY"]["valueFrom"]["secretKeyRef"]
         assert secret_ref["name"] == "opensandbox-server-api-key"

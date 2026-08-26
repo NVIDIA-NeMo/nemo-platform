@@ -82,7 +82,7 @@ sandboxClusterCapable: false
 # release namespace (the namespace jobs run in). Override domain for a Kata Service.
 opensandbox:
   # -- In-cluster OpenSandbox Service DNS with no scheme.
-  domain: "opensandbox-server-crun.opensandbox-system.svc.cluster.local"
+  domain: "opensandbox-server.opensandbox-system.svc.cluster.local"
   # -- Scheme jobs use to reach the server. In-cluster Services speak http.
   protocol: "http"
   # -- Kubernetes Secret in the job/release namespace holding the API key.

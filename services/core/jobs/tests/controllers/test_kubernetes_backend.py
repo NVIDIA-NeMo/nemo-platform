@@ -1832,7 +1832,7 @@ def test_schedule_injects_opensandbox_secret_env_when_cluster_capable(
     kubernetes_job, cpu_execution_provider, test_step_pending, mock_platform_config
 ):
     mock_platform_config.sandbox_cluster_capable = True
-    mock_platform_config.sandbox_server_domain = "opensandbox-server-crun.opensandbox-system.svc.cluster.local"
+    mock_platform_config.sandbox_server_domain = "opensandbox-server.opensandbox-system.svc.cluster.local"
     mock_platform_config.sandbox_api_key_secret = "opensandbox-server-api-key"
     mock_platform_config.sandbox_api_key_secret_key = "api-key"
 
@@ -1840,7 +1840,7 @@ def test_schedule_injects_opensandbox_secret_env_when_cluster_capable(
     job_body = kubernetes_job._batch_v1.create_namespaced_job.call_args.kwargs["body"]
     env_by_name = {env.name: env for env in job_body.spec.template.spec.containers[0].env}
 
-    assert env_by_name["OPEN_SANDBOX_DOMAIN"].value == ("opensandbox-server-crun.opensandbox-system.svc.cluster.local")
+    assert env_by_name["OPEN_SANDBOX_DOMAIN"].value == ("opensandbox-server.opensandbox-system.svc.cluster.local")
     secret_ref = env_by_name["OPEN_SANDBOX_API_KEY"].value_from.secret_key_ref
     assert secret_ref.name == "opensandbox-server-api-key"
     assert secret_ref.key == "api-key"
@@ -1851,7 +1851,7 @@ def test_schedule_omits_opensandbox_env_when_cluster_not_capable(
     kubernetes_job, cpu_execution_provider, test_step_pending, mock_platform_config
 ):
     mock_platform_config.sandbox_cluster_capable = False
-    mock_platform_config.sandbox_server_domain = "opensandbox-server-crun.opensandbox-system.svc.cluster.local"
+    mock_platform_config.sandbox_server_domain = "opensandbox-server.opensandbox-system.svc.cluster.local"
     mock_platform_config.sandbox_api_key_secret = "opensandbox-server-api-key"
 
     kubernetes_job.schedule(cpu_execution_provider, test_step_pending)

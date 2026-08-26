@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Shared helpers for OpenSandbox runtime verification.
-# Sourced by crun.sh / kata-qemu.sh — do not run directly.
+# Sourced by shared-kernel.sh / kata-qemu.sh — do not run directly.
 # Set OPEN_SANDBOX_WORKLOAD_NS (or NMP_NAMESPACE) to the platform job namespace.
 
 set -euo pipefail
@@ -70,12 +70,12 @@ PY
 require_profile() {
   local profile="$1"
   case "${profile}" in
-    crun)
-      SERVER_DEPLOY="opensandbox-server-crun"
-      SERVER_SVC="opensandbox-server-crun"
+    shared-kernel)
+      SERVER_DEPLOY="opensandbox-server"
+      SERVER_SVC="opensandbox-server"
       WORKLOAD_NS="${OPEN_SANDBOX_WORKLOAD_NS:-${NMP_NAMESPACE:-}}"
-      API_SECRET="opensandbox-server-crun-api-key"
-      EXPECT_RUNTIME_CLASS=""          # cluster default (crun)
+      API_SECRET="opensandbox-server-api-key"
+      EXPECT_RUNTIME_CLASS=""          # cluster default OCI runtime
       EXPECT_KATA_NODE="false"
       ;;
     kata-qemu)
@@ -87,7 +87,7 @@ require_profile() {
       EXPECT_KATA_NODE="true"
       ;;
     *)
-      die "unknown profile '${profile}' (expected crun|kata-qemu)"
+      die "unknown profile '${profile}' (expected shared-kernel|kata-qemu)"
       ;;
   esac
   [[ -n "${WORKLOAD_NS}" ]] || die "set OPEN_SANDBOX_WORKLOAD_NS or NMP_NAMESPACE to the platform job namespace"
@@ -215,8 +215,8 @@ assert_runtime_class() {
   rc="$(kubectl get pod -n "${WORKLOAD_NS}" "${pod}" \
     -o jsonpath='{.spec.runtimeClassName}')"
   if [[ -z "${EXPECT_RUNTIME_CLASS}" ]]; then
-    [[ -z "${rc}" ]] || die "expected empty runtimeClassName for crun, got '${rc}'"
-    ok "runtimeClassName unset (shared-kernel / crun)"
+    [[ -z "${rc}" ]] || die "expected empty runtimeClassName for shared-kernel, got '${rc}'"
+    ok "runtimeClassName unset (shared-kernel / cluster default OCI runtime)"
   else
     [[ "${rc}" == "${EXPECT_RUNTIME_CLASS}" ]] \
       || die "expected runtimeClassName=${EXPECT_RUNTIME_CLASS}, got '${rc}'"
@@ -240,7 +240,7 @@ assert_node_placement() {
   else
     # Soft check: prefer non-kata, but allow schedule on kata nodes if capacity tight
     if [[ "${kata}" == "true" ]]; then
-      warn "crun sandbox landed on kata-labeled node ${node} (affinity is soft)"
+      warn "shared-kernel sandbox landed on kata-labeled node ${node} (affinity is soft)"
     else
       ok "scheduled on non-kata node ${node}"
     fi
@@ -248,7 +248,7 @@ assert_node_placement() {
 }
 
 # Collect guest kernel evidence inside the sandbox and compare to the node.
-# crun  → shared host kernel (uname -r must match node kernelVersion)
+# shared-kernel → host kernel (uname -r must match node kernelVersion)
 # kata  → guest kernel (uname -r must differ from node kernelVersion)
 assert_kernel_isolation() {
   local pod="$1"
@@ -310,7 +310,7 @@ echo OSB_VERIFY_OK
     fi
   else
     if [[ "${guest_release}" != "${host_kernel}" ]]; then
-      warn "crun sandbox kernel '${guest_release}' != host '${host_kernel}' — unexpected isolation"
+      warn "shared-kernel sandbox kernel '${guest_release}' != host '${host_kernel}' — unexpected isolation"
     else
       ok "guest kernel matches host shared kernel (${guest_release})"
     fi
