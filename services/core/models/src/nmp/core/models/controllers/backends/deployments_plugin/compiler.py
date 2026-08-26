@@ -278,7 +278,6 @@ def compile_model_deployment(
             env=_env(puller_env),
             volumeMounts=[VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT)],
         )
-        _apply_gpu_resources(puller, resolved.view.gpu)
         puller_config = DeploymentConfig(
             name=names.puller,
             workspace=resolved.deployment.workspace,
