@@ -97,6 +97,17 @@ def _build_dtensor_cfg(
     # Optional keys stay absent when unset so NeMo-RL's defaults apply.
     if expert_parallel_size > 1:
         dtensor_cfg["expert_parallel_size"] = expert_parallel_size
+        if parallelism.activation_checkpointing:
+            # The router's top-k runs in bf16 and is not deterministic, so the recomputed
+            # forward can route one token differently than the saved one did. The expert
+            # permutation buffers then come back a row short and backward dies in
+            # torch.utils.checkpoint with "Recomputed values ... have different metadata"
+            # -- pointing at a TE permutation kernel, which reads as a backend bug rather
+            # than a routing one. ignore_router_for_ac switches Automodel's apply_ac to a
+            # selective policy that SAVES the router output instead of recomputing it.
+            # There is no case where recomputing it is what a caller wants, so this is not
+            # a knob: NeMo-RL's own MoE recipes set it wherever AC is on.
+            dtensor_cfg["moe_parallelizer"] = {"ignore_router_for_ac": True}
     if automodel_kwargs:
         dtensor_cfg["automodel_kwargs"] = dict(automodel_kwargs)
     if lora_cfg["enabled"]:
