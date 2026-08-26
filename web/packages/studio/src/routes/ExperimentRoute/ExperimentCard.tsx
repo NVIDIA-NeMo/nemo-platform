@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
-import { Card, Text } from '@nvidia/foundations-react-core';
+import { Card, Tag, Text } from '@nvidia/foundations-react-core';
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
@@ -35,7 +35,14 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
     >
       {/* Main info */}
       <div className="flex flex-col items-start gap-2 flex-1">
-        <Text kind="title/sm">{group.name}</Text>
+        <div className="flex items-center gap-2">
+          <Text kind="title/sm">{group.name}</Text>
+          {group.is_favorite && (
+            <Tag kind="outline" color="green" density="compact" readOnly>
+              Favorite
+            </Tag>
+          )}
+        </div>
         {group.description && (
           <Text kind="body/regular/sm" className="text-secondary">
             {group.description}
