@@ -55,4 +55,4 @@ export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;
 export const LINK_DOCS_SECRETS = `${DOCS_BASE_URL}get-started/core-concepts/manage-secrets`;
 
 // Evaluations
-export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}reference/cli-reference`;
+export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}evaluate-models/experiments`;

@@ -25,7 +25,8 @@ reusable actions, and supporting docs.
   Main source validation workflow. It runs linting, OPA policy WASM build,
   Python unit tests, Python integration tests, OPA policy tests, Studio web
   checks for relevant web changes, and PR coverage comments. It runs on pushes
-  to `main`, pull requests to `main`, merge queue checks, and manual dispatch.
+  to `main`, pull requests to `main` or `release/*`, merge queue checks, and
+  manual dispatch.
   On successful `main` pushes, it also sends a completion event to an external
   CI consumer.
 
@@ -38,9 +39,9 @@ reusable actions, and supporting docs.
 
 - `security.yaml`
   Security workflow. It runs TruffleHog secrets scanning and CodeQL analysis on
-  pushes to `main`, pull requests to `main`, and manual dispatch. It also runs
-  in merge queues so required checks can resolve, but the TruffleHog job
-  intentionally skips its scan for `merge_group` events.
+  pushes to `main`, pull requests to `main` or `release/*`, and manual dispatch.
+  It also runs in merge queues so required checks can resolve, but the
+  TruffleHog job intentionally skips its scan for `merge_group` events.
 
 - `docs.yaml`
   Documentation workflow. It builds docs for relevant docs changes, deploys
