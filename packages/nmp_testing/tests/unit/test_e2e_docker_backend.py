@@ -120,6 +120,7 @@ def test_docker_backend_starts_clickhouse_sidecar_on_api_network(
         assert api_container.env["NMP_INTAKE_CLICKHOUSE_URL"] == docker_backend._clickhouse_api_url()
         assert api_container.env["NEMO_JOBS_DEFAULT_DOCKER_NETWORK"] == "nmp-e2e-test-network"
         assert api_container.env["NEMO_DEPLOYMENTS_DOCKER_NETWORK"] == "nmp-e2e-test-network"
+        assert api_container.env["NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE"] == "network"
         assert api_container.env["NMP_IMAGE_REGISTRY"] == "registry.example/nmp"
         assert api_container.env["NMP_IMAGE_TAG"] == "test-tag"
 

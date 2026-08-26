@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 
 def test_docker_executor_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE", raising=False)
     monkeypatch.delenv("NEMO_DEPLOYMENTS_DOCKER_NETWORK", raising=False)
+    monkeypatch.delenv("MODELS_DOCKER_NETWORKING_MODE", raising=False)
     monkeypatch.delenv("MODELS_DOCKER_NETWORK", raising=False)
 
     cfg = DockerExecutorConfig()
@@ -17,6 +19,7 @@ def test_docker_executor_config_defaults(monkeypatch: pytest.MonkeyPatch) -> Non
     assert cfg.resource_scope == DEFAULT_RESOURCE_SCOPE
     assert cfg.oneshot_observe_timeout_seconds == 5
     assert cfg.network is None
+    assert cfg.endpoint_mode == "host"
 
 
 def test_docker_executor_config_reads_network_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -35,6 +38,35 @@ def test_docker_executor_config_reads_legacy_models_network_env(monkeypatch: pyt
     cfg = DockerExecutorConfig()
 
     assert cfg.network == "legacy-network"
+
+
+def test_docker_executor_config_reads_endpoint_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE", "NETWORK")
+    monkeypatch.setenv("NEMO_DEPLOYMENTS_DOCKER_NETWORK", "nmp-e2e-test-network")
+
+    cfg = DockerExecutorConfig()
+
+    assert cfg.endpoint_mode == "network"
+
+
+def test_docker_executor_config_reads_legacy_dond_endpoint_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE", raising=False)
+    monkeypatch.setenv("MODELS_DOCKER_NETWORKING_MODE", "dond")
+    monkeypatch.setenv("MODELS_DOCKER_NETWORK", "legacy-network")
+
+    cfg = DockerExecutorConfig()
+
+    assert cfg.endpoint_mode == "network"
+
+
+def test_docker_executor_config_rejects_network_endpoint_mode_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("NEMO_DEPLOYMENTS_DOCKER_NETWORK", raising=False)
+    monkeypatch.delenv("MODELS_DOCKER_NETWORK", raising=False)
+
+    with pytest.raises(ValidationError, match="endpoint_mode='network' requires network"):
+        DockerExecutorConfig(endpoint_mode="network")
 
 
 def test_docker_executor_config_rejects_inverted_port_range() -> None:

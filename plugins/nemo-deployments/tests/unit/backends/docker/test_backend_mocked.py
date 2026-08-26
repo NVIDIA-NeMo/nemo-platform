@@ -165,6 +165,48 @@ async def test_create_deployment_backend_config_network_overrides_executor_defau
 
 
 @pytest.mark.asyncio
+async def test_create_deployment_network_endpoint_mode_reports_container_url(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    free_host_ports: None,
+) -> None:
+    del free_host_ports
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {
+                "docker_timeout": 60,
+                "pull_images": False,
+                "network": "nmp-e2e-test-network",
+                "endpoint_mode": "network",
+            },
+        )
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = published_port_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert len(update.endpoints) == 1
+    assert update.endpoints[0].url == f"http://{container_name('default', 'srv')}:8000"
+
+
+@pytest.mark.asyncio
 async def test_create_deployment_maps_command_to_entrypoint(
     docker_backend: DockerDeploymentBackend,
     mock_entities: AsyncMock,
@@ -877,6 +919,48 @@ async def test_read_status_starting_when_running_port_not_bound(
 
     assert update.status == "STARTING"
     assert "not ready" in update.status_message
+
+
+@pytest.mark.asyncio
+async def test_read_status_network_endpoint_mode_probes_container_url(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {
+                "docker_timeout": 60,
+                "pull_images": False,
+                "network": "nmp-e2e-test-network",
+                "endpoint_mode": "network",
+            },
+        )
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = published_port_config()
+    mock_docker_client.containers.get.return_value = _running_container_with_published_port(49152)
+    with patch(
+        "nemo_deployments_plugin.backends.docker.backend.check_readiness_probe",
+        new=AsyncMock(return_value=(True, "http probe 200")),
+    ) as readiness:
+        update = await backend.read_status(workspace="default", name="srv")
+
+    target_url = f"http://{container_name('default', 'srv')}:8000"
+    assert update.status == "READY"
+    assert len(update.endpoints) == 1
+    assert update.endpoints[0].url == target_url
+    readiness.assert_awaited_once()
+    await_args = readiness.await_args
+    assert await_args is not None
+    assert await_args.kwargs["host_url"] == target_url
+    assert await_args.kwargs["host_ports"] == {8000: 8000}
 
 
 @pytest.mark.asyncio

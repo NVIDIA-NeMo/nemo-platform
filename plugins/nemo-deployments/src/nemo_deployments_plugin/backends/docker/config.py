@@ -6,12 +6,16 @@
 from __future__ import annotations
 
 import os
+from typing import Literal
 
 from nemo_deployments_plugin.backends.labels import DEFAULT_RESOURCE_SCOPE
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+DOCKER_ENDPOINT_MODE_ENV_VAR = "NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE"
 DOCKER_NETWORK_ENV_VAR = "NEMO_DEPLOYMENTS_DOCKER_NETWORK"
+LEGACY_MODELS_DOCKER_NETWORKING_MODE_ENV_VAR = "MODELS_DOCKER_NETWORKING_MODE"
 LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR = "MODELS_DOCKER_NETWORK"
+DockerEndpointMode = Literal["host", "network"]
 
 
 def _default_network() -> str | None:
@@ -20,6 +24,22 @@ def _default_network() -> str | None:
         if value:
             return value
     return None
+
+
+def _default_endpoint_mode() -> str:
+    value = os.getenv(DOCKER_ENDPOINT_MODE_ENV_VAR)
+    if value:
+        return _normalize_endpoint_mode(value)
+    return _normalize_endpoint_mode(os.getenv(LEGACY_MODELS_DOCKER_NETWORKING_MODE_ENV_VAR, "host"))
+
+
+def _normalize_endpoint_mode(value: str) -> str:
+    mode = value.lower()
+    if mode == "dond":
+        return "network"
+    if mode in {"local", "dind"}:
+        return "host"
+    return mode
 
 
 class DockerExecutorConfig(BaseModel):
@@ -49,6 +69,17 @@ class DockerExecutorConfig(BaseModel):
             f"{LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR} is accepted for compatibility."
         ),
     )
+    endpoint_mode: DockerEndpointMode = Field(
+        default_factory=_default_endpoint_mode,
+        validate_default=True,
+        description=(
+            "'host' reports and probes host-published ports. 'network' reports and probes "
+            "Docker-network container names and container ports, for controller/API "
+            "processes that run inside a container on the same Docker network. Can also "
+            f"be set with {DOCKER_ENDPOINT_MODE_ENV_VAR}; "
+            f"{LEGACY_MODELS_DOCKER_NETWORKING_MODE_ENV_VAR}=dond selects 'network' for compatibility."
+        ),
+    )
     resource_scope: str = Field(
         default=DEFAULT_RESOURCE_SCOPE,
         min_length=1,
@@ -70,8 +101,17 @@ class DockerExecutorConfig(BaseModel):
         description="Last host port (inclusive) to consider when publishing container ports for this executor.",
     )
 
+    @field_validator("endpoint_mode", mode="before")
+    @classmethod
+    def _normalize_endpoint_mode(cls, value: object) -> object:
+        if isinstance(value, str):
+            return _normalize_endpoint_mode(value)
+        return value
+
     @model_validator(mode="after")
-    def _validate_port_range(self) -> DockerExecutorConfig:
+    def _validate_config(self) -> DockerExecutorConfig:
         if self.port_range_start > self.port_range_end:
             raise ValueError("port_range_start must not exceed port_range_end")
+        if self.endpoint_mode == "network" and not self.network:
+            raise ValueError("endpoint_mode='network' requires network")
         return self
