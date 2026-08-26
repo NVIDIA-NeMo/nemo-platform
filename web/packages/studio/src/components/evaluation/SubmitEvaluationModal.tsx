@@ -8,6 +8,7 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
+import { validateFileFormat } from '@nemo/common/src/utils/fileValidation';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
 import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type {
@@ -201,6 +202,19 @@ const discardSeeded = async (
  *  this only labels the blob so the fileset preview renders it as the right kind of file. */
 const datasetMimeType = (filename: string): string =>
   filename.toLowerCase().endsWith('.csv') ? 'text/csv' : 'application/jsonl';
+
+/** Why an uploaded dataset would fail at job time, or nothing when it reads cleanly.
+ *
+ *  `validateFileFormat` only understands JSON and JSONL, so a `.csv` is taken on trust — the
+ *  evaluator reads it, and reimplementing CSV parsing here to prove it would duplicate that.
+ *  Unlike a flow that renames the upload to a fixed `dataset.jsonl`, this one keeps the file's
+ *  own name in the ref, so a pretty-printed `.json` array is a legitimate dataset and is not
+ *  rejected for failing to be JSON Lines. */
+const datasetFileError = async (file: File): Promise<string | undefined> => {
+  if (file.name.toLowerCase().endsWith('.csv')) return undefined;
+  const result = await validateFileFormat(file);
+  return result.isValid ? undefined : (result.error ?? 'File is not valid JSON or JSONL');
+};
 
 /** Resolve the spec this submission runs, and persist it for later reuse.
  *
@@ -404,6 +418,22 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     staleTime: Infinity,
   });
 
+  // Same idea for the dataset: read it at pick time so an unparseable file is caught here
+  // rather than by the job, minutes later.
+  const { data: datasetPickError, isFetching: isCheckingDataset } = useQuery({
+    queryKey: [
+      'uploaded-eval-dataset',
+      datasetFile?.name,
+      datasetFile?.size,
+      datasetFile?.lastModified,
+    ],
+    queryFn: async () => (await datasetFileError(datasetFile!)) ?? null,
+    enabled: open && mode === MODE_DEFAULT && !!datasetFile,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const datasetFieldError = errors.datasetFile?.message ?? datasetPickError ?? undefined;
+
   const datasetConfig: DatasetEvalSpec | null =
     uploadedConfig && isDatasetEvalSpec(uploadedConfig) ? uploadedConfig : null;
 
@@ -428,7 +458,10 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const canSubmit =
     mode === MODE_EXPERIMENT
       ? !isValidatingEvaluation && !!selectedEvaluation && !evaluationConfigIssue
-      : !isParsingConfig && (!configFile || (!!datasetConfig && !configFieldError));
+      : !isParsingConfig &&
+        !isCheckingDataset &&
+        !datasetFieldError &&
+        (!configFile || (!!datasetConfig && !configFieldError));
 
   const judgeMetric = datasetConfig?.metrics.find((metric) => metric.metric_type === 'llm-judge');
 
@@ -676,12 +709,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     useControllerProps={{ control, name: 'configFile' }}
                     accept={CONFIG_FILE_ACCEPT}
                     label="Evaluator config"
-                    placeholder="Select a JSON or YAML config"
+                    hint="NeMo Evaluator config (.yaml, .yml or .json)"
                     required
-                    formFieldProps={{
-                      slotError: configFieldError,
-                      status: configFieldError ? 'error' : undefined,
-                    }}
+                    slotError={configFieldError}
                   />
 
                   <Stack gap="density-lg">
@@ -692,8 +722,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                       useControllerProps={{ control, name: 'datasetFile' }}
                       accept={DATASET_FILE_ACCEPT}
                       label="Add dataset"
-                      placeholder="Select a .jsonl, .json or .csv file"
+                      hint="Rows to score (.jsonl, .json or .csv)"
                       slotHelp="Replaces the config's own dataset reference."
+                      slotError={datasetFieldError}
                     />
                     <ControlledTextInput
                       useControllerProps={{ control, name: 'promptTemplate' }}
