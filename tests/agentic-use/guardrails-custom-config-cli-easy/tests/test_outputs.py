@@ -21,10 +21,8 @@ import json
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.guardrail.client import GuardrailClient
-from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest
+from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest, GuardrailConfig
 from trace_reader import get_session
 
 WORKSPACE = "default"
@@ -47,94 +45,82 @@ def _make_unsigned_jwt() -> str:
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> GuardrailClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE, access_token=_make_unsigned_jwt())
+    return GuardrailClient(base_url=nmp_base_url, workspace=WORKSPACE, auth=_make_unsigned_jwt())
 
 
 @pytest.fixture
-def config(client: NeMoPlatform):
+def config(client: GuardrailClient) -> GuardrailConfig:
     """Retrieve the agent-created guardrail config."""
-    return client_from_platform(client, GuardrailClient).get_guardrail_config(name=CONFIG_NAME).data()
+    return client.get_guardrail_config(name=CONFIG_NAME).data()
 
 
 # --- Config structure checks ---
 
 
-def test_config_exists(config) -> None:
+def test_config_exists(config: GuardrailConfig) -> None:
     """Test that harbor-custom-config was created."""
     assert config.name == CONFIG_NAME, f"Expected config name '{CONFIG_NAME}', got '{config.name}'"
     print(f"Config exists: {config.name}")
 
 
-def test_config_description_updated(config) -> None:
+def test_config_description_updated(config: GuardrailConfig) -> None:
     """Test that the config description was updated."""
     assert config.description == "Updated custom guardrail config", (
         f"Expected description 'Updated custom guardrail config', got '{config.description}'"
     )
 
 
-def test_config_has_input_rails(config) -> None:
+def test_config_has_input_rails(config: GuardrailConfig) -> None:
     """Test that the config has input rails configured."""
-    data = config.data
-    assert data is not None, "Config data should not be None"
-    rails = data.rails
-    input_rails = rails.input if rails else None
-    input_flows = input_rails.flows if input_rails else []
+    rails = config.data.get("rails") or {}
+    input_flows = (rails.get("input") or {}).get("flows") or []
     assert any("self check input" in f for f in input_flows), (
         f"Expected 'self check input' in input rail flows, got {input_flows}"
     )
     print(f"Input rails configured: {input_flows}")
 
 
-def test_config_has_output_rails(config) -> None:
+def test_config_has_output_rails(config: GuardrailConfig) -> None:
     """Test that the config has output rails configured."""
-    data = config.data
-    assert data is not None, "Config data should not be None"
-    rails = data.rails
-    output_rails = rails.output if rails else None
-    output_flows = output_rails.flows if output_rails else []
+    rails = config.data.get("rails") or {}
+    output_flows = (rails.get("output") or {}).get("flows") or []
     assert any("self check output" in f for f in output_flows), (
         f"Expected 'self check output' in output rail flows, got {output_flows}"
     )
     print(f"Output rails configured: {output_flows}")
 
 
-def test_config_uses_guardrails_model(config) -> None:
+def test_config_uses_guardrails_model(config: GuardrailConfig) -> None:
     """Test that the config uses the guardrails-llm model."""
-    data = config.data
-    assert data is not None, "Config data should not be None"
-    models = data.models or []
-    model_names = [getattr(m, "model", "") for m in models]
+    models = config.data.get("models") or []
+    model_names = [m.get("model", "") for m in models]
     assert any("guardrails-llm" in name for name in model_names), (
         f"Expected a model containing 'guardrails-llm', got {model_names}"
     )
     print(f"Models configured: {model_names}")
 
 
-def test_config_has_input_prompt_about_fruit(config) -> None:
+def test_config_has_input_prompt_about_fruit(config: GuardrailConfig) -> None:
     """Test that the self_check_input prompt checks for fruit mentions."""
-    data = config.data
-    assert data is not None, "Config data should not be None"
-    prompts = data.prompts or []
-    input_prompts = [p for p in prompts if "self_check_input" in getattr(p, "task", "")]
+    prompts = config.data.get("prompts") or []
+    input_prompts = [p for p in prompts if "self_check_input" in p.get("task", "")]
     assert len(input_prompts) > 0, (
-        f"Expected a prompt with task 'self_check_input', got tasks: {[getattr(p, 'task', None) for p in prompts]}"
+        f"Expected a prompt with task 'self_check_input', got tasks: {[p.get('task') for p in prompts]}"
     )
-    content = (getattr(input_prompts[0], "content", "") or "").lower()
+    content = (input_prompts[0].get("content") or "").lower()
     assert "fruit" in content, f"Expected self_check_input prompt to mention 'fruit', got: {content[:200]}"
 
 
-def test_config_has_output_prompt_about_bread(config) -> None:
+def test_config_has_output_prompt_about_bread(config: GuardrailConfig) -> None:
     """Test that the self_check_output prompt checks for bread baking content."""
-    data = config.data
-    assert data is not None, "Config data should not be None"
-    prompts = data.prompts or []
-    output_prompts = [p for p in prompts if "self_check_output" in getattr(p, "task", "")]
+    prompts = config.data.get("prompts") or []
+    output_prompts = [p for p in prompts if "self_check_output" in p.get("task", "")]
     assert len(output_prompts) > 0, (
-        f"Expected a prompt with task 'self_check_output', got tasks: {[getattr(p, 'task', None) for p in prompts]}"
+        f"Expected a prompt with task 'self_check_output', got tasks: {[p.get('task') for p in prompts]}"
     )
-    content = (getattr(output_prompts[0], "content", "") or "").lower()
+    content = (output_prompts[0].get("content") or "").lower()
     assert "bread" in content or "baking" in content, (
         f"Expected self_check_output prompt to mention 'bread' or 'baking', got: {content[:200]}"
     )
@@ -143,73 +129,61 @@ def test_config_has_output_prompt_about_bread(config) -> None:
 # --- Functional inference checks ---
 
 
-def test_input_rail_blocks_fruit_mention(client: NeMoPlatform) -> None:
+def test_input_rail_blocks_fruit_mention(client: GuardrailClient) -> None:
     """Test that a message mentioning fruit is blocked by the input rail.
 
     The self_check_input prompt tells the LLM to block messages mentioning fruit.
     A message about apples should trigger a 'Yes' response from the self-check,
     causing guardrails to mark the request blocked.
     """
-    response = (
-        client_from_platform(client, GuardrailClient)
-        .check_guardrail(
-            body=GuardrailCheckRequest(
-                model=MODEL,
-                messages=[{"role": "user", "content": "Tell me about the health benefits of apples"}],
-                guardrails={"config_id": CONFIG_ID},
-                max_tokens=256,
-                temperature=0,
-            )
+    response = client.check_guardrail(
+        body=GuardrailCheckRequest(
+            model=MODEL,
+            messages=[{"role": "user", "content": "Tell me about the health benefits of apples"}],
+            guardrails={"config_id": CONFIG_ID},
+            max_tokens=256,
+            temperature=0,
         )
-        .data()
-    )
+    ).data()
     assert response.status == "blocked", f"Message mentioning fruit should be blocked, got: {response.status}"
     print(f"Input rail correctly blocked fruit mention: {response.status}")
 
 
-def test_normal_message_passes_through(client: NeMoPlatform) -> None:
+def test_normal_message_passes_through(client: GuardrailClient) -> None:
     """Test that a normal message (no fruit, no bread) passes through both rails.
 
     A geography question doesn't mention fruit (passes input rail) and the response
     won't be about bread baking (passes output rail).
     """
-    response = (
-        client_from_platform(client, GuardrailClient)
-        .check_guardrail(
-            body=GuardrailCheckRequest(
-                model=MODEL,
-                messages=[{"role": "user", "content": "What is the capital of France?"}],
-                guardrails={"config_id": CONFIG_ID},
-                max_tokens=256,
-                temperature=0,
-            )
+    response = client.check_guardrail(
+        body=GuardrailCheckRequest(
+            model=MODEL,
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            guardrails={"config_id": CONFIG_ID},
+            max_tokens=256,
+            temperature=0,
         )
-        .data()
-    )
+    ).data()
     assert response.status == "success", f"Normal message should NOT be blocked, got: {response.status}"
     print(f"Normal message passed through: {response.status}")
 
 
-def test_output_rail_blocks_bread_content(client: NeMoPlatform) -> None:
+def test_output_rail_blocks_bread_content(client: GuardrailClient) -> None:
     """Test that a response about baking bread is blocked by the output rail.
 
     The message doesn't mention fruit (passes input rail), but asking about bread
     baking will elicit a response about baking bread, which the output self-check
     should mark as blocked.
     """
-    response = (
-        client_from_platform(client, GuardrailClient)
-        .check_guardrail(
-            body=GuardrailCheckRequest(
-                model=MODEL,
-                messages=[{"role": "user", "content": "Give me a step-by-step guide for baking sourdough bread"}],
-                guardrails={"config_id": CONFIG_ID},
-                max_tokens=256,
-                temperature=0,
-            )
+    response = client.check_guardrail(
+        body=GuardrailCheckRequest(
+            model=MODEL,
+            messages=[{"role": "user", "content": "Give me a step-by-step guide for baking sourdough bread"}],
+            guardrails={"config_id": CONFIG_ID},
+            max_tokens=256,
+            temperature=0,
         )
-        .data()
-    )
+    ).data()
     assert response.status == "blocked", f"Response about baking bread should be blocked, got: {response.status}"
     print(f"Output rail correctly blocked bread content: {response.status}")
 

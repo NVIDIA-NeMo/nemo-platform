@@ -9,19 +9,13 @@ providers for deterministic rail-model responses.
 """
 
 from collections.abc import Callable
-from typing import Any, TypeAlias, cast
+from typing import Any
 
 import nemo_platform
 import pytest
-from nemo_platform.types.guardrail import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionUserMessageParam,
-    GuardrailCheckResponse,
-    GuardrailsDataParam,
-)
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.guardrail.client import GuardrailClient
-from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest
+from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest, GuardrailCheckResponse
 
 from e2e.guardrails.utils import (
     BACKEND_RESPONSE,
@@ -29,12 +23,6 @@ from e2e.guardrails.utils import (
     CONTENT_SAFETY_OUTPUT_FLOW,
     GuardrailsChatTestCase,
 )
-
-# `guardrails` is assembled dynamically from test fixture data (`content_safety_config()`,
-# ad-hoc `extra_guardrails` overrides), so we build it as a plain dict and cast it once at
-# the SDK call boundary rather than threading `GuardrailsDataParam`'s nested TypedDicts
-# through the test fixtures.
-_CheckMessage: TypeAlias = ChatCompletionUserMessageParam | ChatCompletionAssistantMessageParam
 
 
 def _post_check(
@@ -61,15 +49,15 @@ def _post_check(
             body=GuardrailCheckRequest(
                 model=test_case.backend_model_ref,
                 messages=_check_messages(test_case),
-                guardrails=cast(GuardrailsDataParam, guardrails),
+                guardrails=guardrails,
             ),
         )
         .data()
     )
 
 
-def _check_messages(test_case: GuardrailsChatTestCase) -> list[_CheckMessage]:
-    messages: list[_CheckMessage] = [{"role": "user", "content": test_case.user_input}]
+def _check_messages(test_case: GuardrailsChatTestCase) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [{"role": "user", "content": test_case.user_input}]
     if "output" in test_case.rail_types:
         messages.append({"role": "assistant", "content": BACKEND_RESPONSE})
     return messages

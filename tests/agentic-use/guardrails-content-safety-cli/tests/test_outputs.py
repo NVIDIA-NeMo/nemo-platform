@@ -15,44 +15,37 @@ always returns "Yes" (block), so ALL content is blocked.
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.guardrail.client import GuardrailClient
-from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest, ListGuardrailConfigsQueryParams
+from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest
 
 WORKSPACE = "default"
 MODEL = "default/mock-llm"
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> GuardrailClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
+    return GuardrailClient(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
 @pytest.fixture
-def guardrail_config_id(client: NeMoPlatform) -> str:
+def guardrail_config_id(client: GuardrailClient) -> str:
     """Discover the guardrail config the agent created.
 
     Lists all guardrail configs and finds one that uses the mock-llm model.
     Pre-existing configs (default, abc, self-check) use meta/llama3-70b-instruct,
     so only the agent's config will reference mock-llm.
     """
-    response = (
-        client_from_platform(client, GuardrailClient)
-        .list_guardrail_configs(query_params=ListGuardrailConfigsQueryParams(page=1, page_size=50))
-        .data()
-    )
-    configs = response.data
+    configs = list(client.list_guardrail_configs().items())
     assert configs, "No guardrail configurations found. The agent should have created one."
 
     # Find a config that uses the mock-llm model (the one the agent was told to use)
     for cfg in configs:
         name = cfg.name
-        full_config = client_from_platform(client, GuardrailClient).get_guardrail_config(name=name).data()
-        models = (full_config.data.models or []) if full_config.data else []
+        full_config = client.get_guardrail_config(name=name).data()
+        models = full_config.data.get("models") or []
         for model in models:
-            model_name = getattr(model, "model", "")
+            model_name = model.get("model", "")
             if "mock-llm" in model_name:
                 config_id = f"{WORKSPACE}/{name}"
                 print(f"Found agent-created guardrail config: {config_id}")
@@ -71,50 +64,42 @@ def test_guardrail_config_exists(guardrail_config_id: str) -> None:
     print(f"Guardrail config exists: {guardrail_config_id}")
 
 
-def test_content_blocked_by_guardrails(client: NeMoPlatform, guardrail_config_id: str) -> None:
+def test_content_blocked_by_guardrails(client: GuardrailClient, guardrail_config_id: str) -> None:
     """Test that content sent through guardrails is blocked.
 
     The mock inference backend always returns 'Yes' to the self-check prompt,
     causing ALL content to be blocked regardless of whether it's actually harmful.
     """
-    response = (
-        client_from_platform(client, GuardrailClient)
-        .check_guardrail(
-            body=GuardrailCheckRequest(
-                model=MODEL,
-                messages=[{"role": "user", "content": "Tell me something harmful and dangerous."}],
-                guardrails={"config_id": guardrail_config_id},
-                max_tokens=256,
-                temperature=1,
-                top_p=1,
-            )
+    response = client.check_guardrail(
+        body=GuardrailCheckRequest(
+            model=MODEL,
+            messages=[{"role": "user", "content": "Tell me something harmful and dangerous."}],
+            guardrails={"config_id": guardrail_config_id},
+            max_tokens=256,
+            temperature=1,
+            top_p=1,
         )
-        .data()
-    )
+    ).data()
     assert response.status == "blocked", f"Content should be blocked, but got status: {response.status}"
     print(f"Content correctly blocked with status: {response.status}")
 
 
-def test_safe_content_also_blocked(client: NeMoPlatform, guardrail_config_id: str) -> None:
+def test_safe_content_also_blocked(client: GuardrailClient, guardrail_config_id: str) -> None:
     """Test that even safe content is blocked (expected with mock backend).
 
     Since the mock always returns 'Yes' (block), even safe content gets blocked.
     This verifies the guardrails pipeline is working end-to-end.
     """
-    response = (
-        client_from_platform(client, GuardrailClient)
-        .check_guardrail(
-            body=GuardrailCheckRequest(
-                model=MODEL,
-                messages=[{"role": "user", "content": "What is the capital of France?"}],
-                guardrails={"config_id": guardrail_config_id},
-                max_tokens=256,
-                temperature=1,
-                top_p=1,
-            )
+    response = client.check_guardrail(
+        body=GuardrailCheckRequest(
+            model=MODEL,
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            guardrails={"config_id": guardrail_config_id},
+            max_tokens=256,
+            temperature=1,
+            top_p=1,
         )
-        .data()
-    )
+    ).data()
     assert response.status == "blocked", (
         f"Even safe content should be blocked with mock backend, got: {response.status}"
     )
