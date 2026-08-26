@@ -3,12 +3,8 @@
 
 import { WorkspaceModelSelect } from '@nemo/common/src/components/ModelSelectV2';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import { Divider, FormField, Panel, Stack, Text, TextArea } from '@nvidia/foundations-react-core';
+import { Divider, FormField, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
-import {
-  getGeneralInstruction,
-  setGeneralInstruction,
-} from '@studio/routes/guardrails/GuardrailConfigTab/instructions';
 import {
   getMainModelName,
   setMainModelName,
@@ -19,13 +15,7 @@ import type { FC } from 'react';
 import { useController, useFormContext } from 'react-hook-form';
 
 /**
- * The guardrail's main editing surface: the instructions that frame every rail prompt,
- * then the rails themselves.
- *
- * Both text fields write through the same `config` controller the rails use, so the
- * document is the only copy of them. Binding a controller to `config.instructions`
- * directly would register a path most configs don't have, which react-hook-form counts as
- * a change and reports as unsaved edits on an untouched form.
+ * The guardrail's main editing surface: the main model, then the rails themselves.
  */
 export const GuardrailConfigurationPanel: FC = () => {
   // Not the strict `useWorkspaceFromPath`: that throws when the param is absent, and the
@@ -65,43 +55,6 @@ export const GuardrailConfigurationPanel: FC = () => {
             aria-label="Main Model"
             hideAdapters
             fullWidth
-          />
-        </FormField>
-
-        <FormField
-          slotLabel="General Instructions"
-          slotHelp="Instructions for the LLM (similar to system prompts)"
-        >
-          {/*
-            No `rows`: it fights `field-sizing: content` (from resizeable="auto"), which
-            clips the top and offsets the scrollbar on long values. The base style's
-            `min-height: 3lh` provides the floor; --max-auto-height the cap.
-          */}
-          <TextArea
-            resizeable="auto"
-            className="w-full"
-            aria-label="General Instructions"
-            value={getGeneralInstruction(config.instructions)}
-            onChange={(event) =>
-              update({
-                instructions: setGeneralInstruction(config.instructions, event.currentTarget.value),
-              })
-            }
-          />
-        </FormField>
-
-        <FormField
-          slotLabel="Sample Conversation"
-          slotHelp="An example dialogue included in the guardrail prompts to demonstrate the desired tone and format."
-        >
-          <TextArea
-            resizeable="auto"
-            className="w-full"
-            aria-label="Sample Conversation"
-            value={config.sample_conversation ?? ''}
-            onChange={(event) =>
-              update({ sample_conversation: event.currentTarget.value || undefined })
-            }
           />
         </FormField>
 

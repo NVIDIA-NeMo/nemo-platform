@@ -3,15 +3,37 @@
 
 # NeMo Eval Author
 
-Two skills that an agent reads to work on the evaluation suites in a user's own
-repository. There is no CLI, no service, and no importable code, so this directory
-builds no package at all. A customer points their agent at `skills/` and nothing
-gets installed.
+Four skills that an agent reads to work on the evaluation suites in a user's own
+repository and to understand traces from NeMo Intake. This directory provides no
+installed public package or service, so a customer points their agent at
+`skills/` and nothing gets installed.
+
+The audit sub-flow also ships a bundled validator CLI at
+[`skills/eval-author-audit/scripts/audit_spec/validate.py`](skills/eval-author-audit/scripts/audit_spec/validate.py)
+and private helper modules under `scripts/audit_spec/`. They are invoked from the
+copied skill tree, not published as a package API.
+
+## Prerequisites
+
+Discovery imports nothing beyond the standard library and Harbor itself, so it
+runs on whatever Python the customer already has. Audit validation needs PyYAML
+to read the marked YAML block and jsonschema to enforce
+`schemas/audit.schema.json`. Trace inspection requires the supported `nemo` CLI,
+an explicit workspace, and read access to a configured local or remote NeMo
+Platform instance.
+
+`tests/test_skill_contract.py` holds to the same boundary and imports nothing
+from the platform, so `pytest`, `pyyaml`, and `jsonschema` are enough to run it.
+The five tests that make Harbor judge a fixture suite skip when Harbor is absent,
+which is why this directory declares no dependencies and appears in no dependency
+group.
 
 | Skill | Role |
 | --- | --- |
 | [`eval-author`](skills/eval-author/SKILL.md) | Core. Owns the standard every sub-flow follows and routes to one. |
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
+| [`eval-author-audit`](skills/eval-author-audit/SKILL.md) | Sub-flow. Validates an existing finite `audit.md` coverage denominator. |
+| [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Not user-invocable. Explains one Intake trace after `eval-author` selects it. |
 
 ## Where findings go
 
@@ -19,8 +41,13 @@ gets installed.
 JSON as front matter so a later model reads the verdict without Harbor. It is
 visible and worth committing: a teammate who reads it skips the discovery pass.
 
-The scripts write no files. They report to stdout and the skill tells the agent
-where to save, because that is a judgement about someone's repository.
+`eval-author-inspect-trace` leaves one report per trace under
+`.eval-author/traces/`. The front matter carries Intake source metadata and the
+exact read commands. Findings use `behavior`, `issue`, `recovery`, and
+`uncertainty` categories.
+
+The bundled scripts write no files. They report to stdout, and the skill tells
+the agent where to save. Trace inspection contains instructions only.
 
 ## Why skills instead of an agent
 
@@ -34,17 +61,22 @@ The Eval Author agent that Experimentalist insight mode still uses lives in
 
 ## Dependencies
 
-The scripts under `skills/*/scripts/` import nothing beyond the standard library and
-Harbor itself, so they run on whatever Python the customer already has. Where a real
-answer needs a provider, the skill defers to the provider's own validators rather
-than guessing from file layout, which is why `eval-author-discover` probes for an
-installed Harbor and asks Harbor to judge each config.
-
-`tests/test_skill_contract.py` holds to the same boundary and imports nothing from
-the platform, so `pytest` and `pyyaml` are enough to run it. The five tests that
-make Harbor judge a fixture suite skip when Harbor is absent, which is why this
-directory declares no dependencies and appears in no dependency group.
-
 Adding a runtime dependency to a bundled script is a breaking change for anyone who
 copied the skill, so the contract test walks each script's imports and fails on
-anything outside the standard library, a sibling module, or Harbor.
+anything outside the standard library, a sibling module, or the explicitly allowed
+third-party validators.
+
+Trace inspection uses read-only `nemo intake` commands. The CLI handles its
+contexts, authentication, transport, filters, pagination, and errors.
+
+## Next Steps
+
+- Start with [`eval-author`](skills/eval-author/SKILL.md) to select the right
+  sub-flow and apply the shared evaluation standard.
+- Use [`eval-author-discover`](skills/eval-author-discover/SKILL.md) to check
+  whether a Harbor suite can run.
+- Use [`eval-author-audit`](skills/eval-author-audit/SKILL.md) to validate an
+  existing finite `audit.md` coverage denominator.
+- After `eval-author` selects it, follow
+  [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) to
+  explain one Intake trace.

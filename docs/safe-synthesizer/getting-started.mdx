@@ -7,15 +7,15 @@ description: ""
 ---
 <a id="nss-getting-started"></a>
 
-Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets on a host GPU.
+Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets through the platform Jobs service.
 
 ## Prerequisites
 
 Before using NeMo Safe Synthesizer, complete [Setup](/documentation/get-started) to install the CLI/SDK.
 
-NeMo Safe Synthesizer has the following additional requirements:
+Using NeMo Safe Synthesizer has the following additional requirements:
 
-- An NVIDIA GPU **on the host machine** with 80GB+ VRAM (check with `nvidia-smi`). This is separate from any GPU inside a NIM container; Safe Synthesizer training runs directly on the host.
+- A GPU-capable Jobs backend with 80GB+ VRAM available for Safe Synthesizer tasks.
 - Sufficient disk space for generated datasets (50GB+ recommended)
 
 For general platform troubleshooting (port conflicts, health checks, and so on), refer to [Setup](/documentation/get-started).
@@ -23,20 +23,25 @@ For general platform troubleshooting (port conflicts, health checks, and so on),
 <Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 ---
 
-## Host-local CLI
+## CLI, Jobs API, and SDK
 
-For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution)):
+Safe Synthesizer jobs run through the platform Jobs service. Upload input data to the Files service, then create a job with the CLI, Jobs API, or the Python SDK builder.
+
+Example:
 
 ```shell
-BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
-uv run nemo safe-synthesizer runtime setup
-uv run nemo safe-synthesizer run-local \
-  --spec-file ./nss-job.json \
-  --data-source ./input.csv \
-  --output-dir ./nss-output
+nemo files filesets create my-input
+nemo files upload ./data.csv my-input
+cat <<EOF >> ./nss-job.json
+{
+  "data_source": "default/my-input#data.csv",
+  "config": {}
+}
+EOF
+nemo safe-synthesizer generate \
+  --workspace default \
+  --spec-file ./nss-job.json
 ```
-
-The `run-local` command launches the Safe Synthesizer task in a separate runtime Python subprocess. The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only; platform job submission uses the Jobs API or SDK.
 
 ---
 
@@ -45,7 +50,6 @@ The `run-local` command launches the Safe Synthesizer task in a separate runtime
 Create your first synthetic dataset:
 
 - [Safe Synthesizer 101 Tutorial](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - a beginner-friendly introduction
-- [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution) - local CLI and runtime task details
 - [SDK Resources](/documentation/synthesize-safe-data/sdk-resources) - Python SDK methods for jobs, builders, logs, and results
 
 ---

@@ -30,6 +30,8 @@ export interface RailDefinition {
   id: string;
   /** Name shown in the rail list. */
   label: string;
+  /** One or two sentences shown under the label, explaining what the rail does. */
+  description: string;
   /** Stages this rail can run at, in pipeline order. Shown whether or not it is on. */
   scopes: readonly RailScope[];
   /**

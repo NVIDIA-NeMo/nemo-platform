@@ -52,6 +52,11 @@
       "expected_skill": "nemo-explore"
     },
     {
+      "type": "implicit",
+      "prompt": "I have a NeMo agent in this repo. Explore it and ask me the questions the code cannot answer before we write ETHOS.md.",
+      "expected_skill": "nemo-explore"
+    },
+    {
       "type": "negative-control",
       "prompt": "Convert this NAT workflow YAML to the new Platform agent.yaml format.",
       "expected_skill_not": "nemo-explore"

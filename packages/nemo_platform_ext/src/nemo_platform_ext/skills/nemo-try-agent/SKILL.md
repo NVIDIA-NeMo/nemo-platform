@@ -125,7 +125,7 @@ RC=$?
 
 ## Verification
 
-A "successful" invocation requires both: (a) the CLI returns exit code 0, and (b) the response body is non-empty. An empty body on a question the spec says the agent should handle is a quality signal, not a success.
+A "successful" invocation requires both: (a) the CLI returns exit code 0, and (b) the response body is non-empty. An empty body on a question the Ethos says the agent should handle is a quality signal, not a success.
 
 ```bash
 if [ $RC -ne 0 ]; then

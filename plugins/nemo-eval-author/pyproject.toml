@@ -4,15 +4,13 @@
 [project]
 name = "nemo-eval-author-plugin"
 version = "0.1.0"
-description = "Eval Author skills that an agent reads to discover a repository's Harbor eval setup."
+description = "Eval Author skills for Harbor suite discovery, audit-spec validation, and Intake trace understanding."
 requires-python = ">=3.12,<3.14"
 
 [tool.uv]
-# Nothing here is importable. The directory holds two skills and the test that guards
-# them, so there is no package to build and nothing to install. That is also why the
-# skills sit at the top level instead of under `src/<module>/skills/`: that layout exists
-# to make skills importable and shippable through the `nemo.skills` entry point, and this
-# plugin deliberately does not plug into skill discovery yet.
+# Nothing here installs as a package. The directory holds four skills, their
+# bundled scripts, and contract tests. The skills stay at the top level
+# because this plugin doesn't use the `nemo.skills` entry point.
 package = false
 
 [tool.pytest.ini_options]

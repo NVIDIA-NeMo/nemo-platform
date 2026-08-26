@@ -204,6 +204,16 @@ class TestCreateEnvironmentGPU:
 
         assert env["NMP_DOCKER_RESERVED_GPU_DEVICE_IDS"] == "0"
 
+    def test_deployments_docker_backend_uses_quickstart_network_endpoint_mode(self):
+        manager = self._make_manager()
+        mock_platform_config = MagicMock()
+        mock_platform_config.to_env_vars.return_value = {}
+
+        env = manager._create_environment(mock_platform_config)
+
+        assert env["NEMO_DEPLOYMENTS_DOCKER_NETWORK"] == "test-network"
+        assert env["NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE"] == "network"
+
 
 class TestCreateEnvironmentRegistryCredentials:
     """Tests for registry credential env var passthrough."""

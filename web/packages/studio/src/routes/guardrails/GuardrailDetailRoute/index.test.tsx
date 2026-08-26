@@ -87,13 +87,8 @@ describe('GuardrailDetailRoute', () => {
     await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT });
 
     // Tab content arrives after the index route's redirect settles (see above).
-    await user.type(
-      await screen.findByRole(
-        'textbox',
-        { name: 'General Instructions' },
-        { timeout: XL_SELECTOR_TIMEOUT }
-      ),
-      'Be concise.'
+    await user.click(
+      await screen.findByRole('switch', { name: 'Self Checks' }, { timeout: XL_SELECTOR_TIMEOUT })
     );
 
     expect(await screen.findByRole('button', { name: 'Save Guardrail' })).toBeInTheDocument();
@@ -102,7 +97,7 @@ describe('GuardrailDetailRoute', () => {
     await user.click(reset);
 
     expect(screen.queryByRole('button', { name: 'Save Guardrail' })).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'General Instructions' })).toHaveValue('');
+    expect(screen.getByRole('switch', { name: 'Self Checks' })).not.toBeChecked();
   });
 
   it('shows a loading state while fetching', async () => {
@@ -134,13 +129,8 @@ describe('GuardrailDetailRoute', () => {
     await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT });
 
     // Tab content arrives after the index route's redirect settles (see above).
-    await user.type(
-      await screen.findByRole(
-        'textbox',
-        { name: 'General Instructions' },
-        { timeout: XL_SELECTOR_TIMEOUT }
-      ),
-      'Be concise.'
+    await user.click(
+      await screen.findByRole('switch', { name: 'Self Checks' }, { timeout: XL_SELECTOR_TIMEOUT })
     );
     await user.click(await screen.findByRole('button', { name: 'Save Guardrail' }));
 
