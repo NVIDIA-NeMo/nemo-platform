@@ -1,12 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { formatEvaluatorScore } from '@nemo/common/src/utils/formatters';
+import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Card, Tag, Text } from '@nvidia/foundations-react-core';
+import { MetricTrendPanel } from '@studio/components/charts/MetricTrendPanel';
+import {
+  DELTA_COMPARISON_LABEL,
+  formatTrendDelta,
+  toTrendSeries,
+  TREND_EVALUATION_LIMIT,
+} from '@studio/routes/ExperimentRoute/experimentTrend';
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
-import { type FC } from 'react';
+import { type FC, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
 interface ExperimentCardProps {
@@ -16,6 +25,16 @@ interface ExperimentCardProps {
 
 export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) => {
   const navigate = useNavigate();
+  const showTrend = Boolean(group.show_evaluations_over_time);
+
+  // Only experiments flagged to graph over time pay for this; the rest render the plain card.
+  const { data: evaluationsPage, isPending } = useListEvaluations(
+    workspace,
+    { filter: { experiment_id: group.id }, page_size: TREND_EVALUATION_LIMIT },
+    { query: { enabled: showTrend && !!group.id } }
+  );
+
+  const series = useMemo(() => toTrendSeries(evaluationsPage?.data ?? []), [evaluationsPage]);
 
   return (
     <Card
@@ -53,10 +72,32 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="flex shrink-0 items-center gap-6">
-        <Metric title="Evaluations" value={String(group.evaluation_count ?? 0)} />
-      </div>
+      {/* Stats, or the trendline for experiments flagged to graph over time. */}
+      {showTrend ? (
+        // The evaluator pills are buttons inside an interactive card; without this, selecting a
+        // series would bubble up and navigate to the experiment instead of switching the chart.
+        <div
+          role="presentation"
+          className="w-1/2 shrink-0"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <MetricTrendPanel
+            chartOnly
+            title={group.name}
+            series={series}
+            isPending={isPending}
+            chartHeight={48}
+            comparisonLabel={DELTA_COMPARISON_LABEL}
+            formatValue={formatEvaluatorScore}
+            formatDelta={formatTrendDelta}
+          />
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-6">
+          <Metric title="Evaluations" value={String(group.evaluation_count ?? 0)} />
+        </div>
+      )}
     </Card>
   );
 };
