@@ -16,6 +16,7 @@ triggers:
 not-for:
   - eval-author (use for the standard, the boundaries, and to pick a sub-flow)
   - eval-author-discover (use to prove whether a Harbor suite is runnable)
+  - eval-author-inspect-trace (use after eval-author selects an Intake trace)
   - nemo-experimentalist (use to optimize an agent from Insights or explicit datasets)
 compatibility: >-
   Python 3.11 or later. PyYAML and jsonschema must be importable by the
