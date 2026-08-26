@@ -7,12 +7,14 @@ import {
   FormField,
   Stack,
   Switch,
+  Tag,
   Text,
   TextArea,
+  TextInput,
 } from '@nvidia/foundations-react-core';
 import type { RailScope } from '@studio/routes/guardrails/rails/types';
-import { Plus } from 'lucide-react';
-import { type FC, useRef } from 'react';
+import { Plus, X } from 'lucide-react';
+import { type FC, useRef, useState } from 'react';
 
 /**
  * One stage of an LLM-judged rail: whether it runs, and the prompt that decides the
@@ -43,6 +45,16 @@ export interface PromptScopeSectionProps {
   onPromptChange: (prompt: string) => void;
   /** Template variables this stage can reference, e.g. `{{ user_input }}`. */
   variables: readonly string[];
+  /** Caps the check's response length. Library default (1024) applies when unset. */
+  maxTokens: number | undefined;
+  onMaxTokensChange: (maxTokens: number | undefined) => void;
+  /** Caps the prompt length in characters before it's sent. Library default (16000)
+   * applies when unset. */
+  maxLength: number | undefined;
+  onMaxLengthChange: (maxLength: number | undefined) => void;
+  /** Sequences that stop generation early when the model produces one. */
+  stop: readonly string[];
+  onStopChange: (stop: string[]) => void;
 }
 
 export const PromptScopeSection: FC<PromptScopeSectionProps> = ({
@@ -52,9 +64,23 @@ export const PromptScopeSection: FC<PromptScopeSectionProps> = ({
   prompt,
   onPromptChange,
   variables,
+  maxTokens,
+  onMaxTokensChange,
+  maxLength,
+  onMaxLengthChange,
+  stop,
+  onStopChange,
 }) => {
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const [stopDraft, setStopDraft] = useState('');
   const title = SCOPE_TITLES[scope];
+
+  const addStop = () => {
+    const value = stopDraft.trim();
+    if (!value || stop.includes(value)) return;
+    onStopChange([...stop, value]);
+    setStopDraft('');
+  };
 
   /**
    * Insert at the caret rather than appending: a variable almost always belongs mid-
@@ -127,6 +153,68 @@ export const PromptScopeSection: FC<PromptScopeSectionProps> = ({
           </Flex>
         </Stack>
       ) : null}
+
+      <Flex gap="density-md" wrap="wrap">
+        <FormField
+          slotLabel={`${title} Max Tokens`}
+          slotHelp="Caps the length of the check's response. Defaults to 1024 when unset."
+          className="min-w-[160px] flex-1"
+        >
+          <TextInput
+            type="number"
+            min={1}
+            value={maxTokens === undefined ? '' : String(maxTokens)}
+            onValueChange={(value) => onMaxTokensChange(value === '' ? undefined : Number(value))}
+          />
+        </FormField>
+
+        <FormField
+          slotLabel={`${title} Max Prompt Length`}
+          slotHelp="Caps the prompt length in characters. Defaults to 16000 when unset."
+          className="min-w-[160px] flex-1"
+        >
+          <TextInput
+            type="number"
+            min={1}
+            value={maxLength === undefined ? '' : String(maxLength)}
+            onValueChange={(value) => onMaxLengthChange(value === '' ? undefined : Number(value))}
+          />
+        </FormField>
+      </Flex>
+
+      <FormField
+        slotLabel={`${title} Stop Sequences`}
+        slotHelp="Generation stops early if the model produces one of these."
+      >
+        <Stack gap="density-sm">
+          {stop.length ? (
+            <Flex gap="density-sm" wrap="wrap">
+              {stop.map((token) => (
+                <Tag
+                  key={token}
+                  color="gray"
+                  onClick={() => onStopChange(stop.filter((existing) => existing !== token))}
+                  aria-label={`Remove stop sequence ${token}`}
+                >
+                  {token}
+                  <X size={12} />
+                </Tag>
+              ))}
+            </Flex>
+          ) : null}
+          <TextInput
+            value={stopDraft}
+            onValueChange={setStopDraft}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                addStop();
+              }
+            }}
+            placeholder="Add a stop sequence and press Enter"
+          />
+        </Stack>
+      </FormField>
     </Stack>
   );
 };
