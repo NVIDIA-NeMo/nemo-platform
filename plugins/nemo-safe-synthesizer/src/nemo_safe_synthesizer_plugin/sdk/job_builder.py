@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Builder for Safe Synthesizer jobs submitted through the plugin SDK."""
+"""Builder for Safe Synthesizer jobs created through the plugin SDK."""
 
 from __future__ import annotations
 
@@ -142,13 +142,13 @@ class SafeSynthesizerJobBuilder:
         return self
 
     def resolve_job_config(self) -> Self:
-        """Upload input data and validate the final job configuration without submitting."""
+        """Upload input data and validate the final job configuration without creating a job."""
         self._resolve_datasource()
         self._build_job_spec()
         return self
 
     def create_job(self, **kwargs: Any) -> SafeSynthesizerJob:
-        """Upload input data and submit the Safe Synthesizer job."""
+        """Upload input data and create the Safe Synthesizer job."""
         self._resolve_datasource()
         response = self._client.safe_synthesizer.jobs.create(
             workspace=self._workspace,

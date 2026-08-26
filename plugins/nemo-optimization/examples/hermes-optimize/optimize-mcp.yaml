@@ -88,10 +88,10 @@ optimizer:
 eval:
   general:
     dataset:
-      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset-mcp.json
+      file_path: dataset-mcp.json
     max_concurrency: 1
   fabric:
-    base_dir: plugins/nemo-optimization/examples/hermes-optimize
+    base_dir: .
     capture_trajectory: false
     timeout_s: 300
   run_hook:
@@ -102,7 +102,7 @@ eval:
         binding: email_phishing_analyzer.audit:AnalyzerRunBinding
         executable: ${PHISHING_MCP_BIN}
         config_paths:
-          - plugins/nemo-optimization/examples/hermes-optimize/analyzer-inference-api.yaml
+          - analyzer-inference-api.yaml
         handoff:
           env: NVIDIA_API_KEY
           ref: email_phishing_analyzer.credential_handoff:CredentialHandoff

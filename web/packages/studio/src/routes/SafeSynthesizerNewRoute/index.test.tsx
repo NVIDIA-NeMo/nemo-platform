@@ -43,7 +43,7 @@ vi.mock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
 
 vi.mock('@studio/routes/utils', () => ({
   getSafeSynthesizerRoute: (workspace: string) => `/projects/${workspace}/safe-synthesizer`,
-  getSafeSynthesizerJobRoute: (workspace: string, jobName: string) =>
+  getGenerateJobRoute: (workspace: string, jobName: string) =>
     `/projects/${workspace}/safe-synthesizer/jobs/${jobName}`,
 }));
 

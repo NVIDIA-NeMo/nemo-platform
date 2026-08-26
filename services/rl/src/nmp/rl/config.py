@@ -94,6 +94,37 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         ),
     )
 
+    sandbox_rollout_chunk_size: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Rollouts carried by one POST to the Gym sandbox, as "
+            "env.nemo_gym.sandbox.rollout_chunk_size. Leave unset to take NeMo-RL's default of "
+            "8. A chunk's wall time scales with the tokens its rollouts ask for, and the "
+            "OpenSandbox server caps how long one proxied request may stay open, so a job with "
+            "a large max_new_tokens can need a smaller chunk: overrunning that cap fails every "
+            "rollout with an HTTP 500 the job cannot recover from. The cap is fixed by the "
+            "server build rather than exposed in its config, so the workable value is specific "
+            "to this deployment and its models -- read the elapsed time on the failing POSTs "
+            "and divide down from 8. Shrink this without raising sandbox_rollout_max_in_flight "
+            "and step throughput falls with it: in-flight rollouts are the product of the two. "
+            "Operator-scoped: jobs cannot set it."
+        ),
+    )
+
+    sandbox_rollout_max_in_flight: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Concurrent POSTs to the Gym sandbox, as "
+            "env.nemo_gym.sandbox.rollout_max_in_flight. Leave unset to take NeMo-RL's default "
+            "of 8. In-flight rollouts are rollout_chunk_size × this value, so a deployment that "
+            "lowers sandbox_rollout_chunk_size to stay under the proxy's per-request cap should "
+            "raise this in proportion if it wants the same step throughput. Operator-scoped: "
+            "jobs cannot set it."
+        ),
+    )
+
     sandbox_ttl_s: int | None = Field(
         default=None,
         gt=0,

@@ -23,7 +23,7 @@ from nemo_evaluator_sdk.agent_eval.scores import (
     AgentEvalScoreStatus,
     AgentEvalTaskScore,
 )
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, TrialError
 from nemo_evaluator_sdk.metrics.protocol import (
     BooleanValue,
     ContinuousScore,
@@ -116,6 +116,54 @@ def test_trial_to_atif_ingest_handles_missing_output() -> None:
         _trial(output_text=None), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
     )
     assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "", "timestamp": STARTED_AT}]
+
+
+def test_trial_to_atif_ingest_includes_trial_error_in_root_extra() -> None:
+    trial = AgentEvalTrial(
+        id="trial-timeout",
+        task_id="task-1",
+        status=AgentEvalTrialStatus.PARTIAL,
+        output=AgentOutput(output_text="partial answer"),
+        error=TrialError(
+            type="AgentTimeoutError",
+            message="Agent execution timed out after 900.0 seconds",
+            occurred_at=STARTED_AT,
+        ),
+    )
+
+    body = trial_to_atif_ingest(
+        trial,
+        run_id="run-1",
+        evaluation_name="exp-1",
+        agent_name="a",
+        started_at=STARTED_AT,
+    )
+
+    assert body["extra"] == {
+        "error": {
+            "type": "AgentTimeoutError",
+            "message": "Agent execution timed out after 900.0 seconds",
+        }
+    }
+
+
+def test_trial_to_atif_ingest_omits_absent_error_message() -> None:
+    trial = AgentEvalTrial(
+        id="trial-failed",
+        task_id="task-1",
+        status=AgentEvalTrialStatus.FAILED,
+        error=TrialError(type="RuntimeError"),
+    )
+
+    body = trial_to_atif_ingest(
+        trial,
+        run_id="run-1",
+        evaluation_name="exp-1",
+        agent_name="a",
+        started_at=STARTED_AT,
+    )
+
+    assert body["extra"] == {"error": {"type": "RuntimeError"}}
 
 
 def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:

@@ -20,13 +20,15 @@ triggers:
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
+  - eval-author-audit (use to validate existing audit.md coverage denominators)
   - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
   - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
-  - nemo-experimentalist (use to run insight-driven optimization end to end)
+  - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: >-
-  Reading only. Discovery uses the local checkout. Trace inspection requires
-  the nemo CLI, an explicit workspace, and read access to configured Intake.
+  Reading only. Discovery and audit use the local checkout. Trace inspection
+  requires the nemo CLI, an explicit workspace, and read access to configured
+  Intake.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -49,6 +51,8 @@ The authority depends on the sub-flow:
 
 - For suite discovery, Harbor's validators judge runnability. A file's presence
   doesn't prove that Harbor accepts it.
+- For audit-spec validation, the bundled schema and validator judge the finite
+  `audit.md` coverage denominator.
 - For trace inspection, Intake establishes what happened. Local source code can
   explain behavior, but it can't replace recorded trace evidence.
 
@@ -78,12 +82,15 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
+| `eval-author-audit` | Validate an existing finite `audit.md` coverage denominator |
 | `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
 
-Authoring new tasks and verifier metrics is not built yet. When a user asks for
-that, say so plainly rather than improvising a task layout by hand. A task written
-against a guessed convention scores nothing and costs a full evaluation run to
-discover.
+Authoring or generating audit specs, runnable tasks, and verifier metrics is not
+built yet. `eval-author-audit` works one level above tasks: it validates the
+coverage denominator that future generation, task authoring, and measurement can
+target. When a user asks for new runnable tasks, say so plainly rather than
+improvising a task layout by hand. A task written against a guessed convention
+scores nothing and costs a full evaluation run to discover.
 
 ## Boundaries
 

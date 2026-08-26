@@ -18,7 +18,7 @@ import {
   safeSynthesizerJobRequestSchema,
   getSafeSynthesizerFormDefaults,
 } from '@studio/routes/SafeSynthesizerNewRoute/schema';
-import { getSafeSynthesizerJobRoute, getSafeSynthesizerRoute } from '@studio/routes/utils';
+import { getGenerateJobRoute, getSafeSynthesizerRoute } from '@studio/routes/utils';
 import { FC, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -56,7 +56,7 @@ export const SafeSynthesizerNewRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
             setErrorMessage(null);
             // Navigate to the job details or list page
             if (data.name) {
-              navigate(getSafeSynthesizerJobRoute(workspace, data.name));
+              navigate(getGenerateJobRoute(workspace, data.name));
             } else {
               navigate(getSafeSynthesizerRoute(workspace));
             }

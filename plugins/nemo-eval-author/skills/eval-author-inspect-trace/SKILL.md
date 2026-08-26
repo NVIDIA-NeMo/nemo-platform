@@ -15,6 +15,7 @@ triggers:
 not-for:
   - eval-author (use for the standard, the boundaries, and to pick a sub-flow)
   - eval-author-discover (use to establish whether a repository's Harbor suite is runnable)
+  - eval-author-audit (use to validate an existing finite audit.md coverage denominator)
   - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - nemo-experimentalist (use for an optimization experiment across many trials)
 compatibility: >-

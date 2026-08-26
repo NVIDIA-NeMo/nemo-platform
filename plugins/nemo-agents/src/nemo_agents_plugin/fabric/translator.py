@@ -207,7 +207,29 @@ def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict
     if telemetry.atof is not None:
         observability["atof"] = _relay_atof_config(telemetry.atof, output_dir=telemetry.output_dir)
 
+    if telemetry.opentelemetry is not None:
+        observability["opentelemetry"] = _relay_opentelemetry_config(
+            telemetry.opentelemetry,
+            agent_name=config.name,
+        )
+
     return observability
+
+
+def _relay_opentelemetry_config(opentelemetry_config: dict[str, Any], agent_name: str) -> dict[str, Any]:
+    opentelemetry = dict(opentelemetry_config)
+    endpoints = opentelemetry.get("endpoints")
+    if not isinstance(endpoints, list):
+        return opentelemetry
+
+    enriched_endpoints: list[Any] = []
+    for endpoint_config in endpoints:
+        if isinstance(endpoint_config, dict):
+            endpoint_config = dict(endpoint_config)
+            endpoint_config.setdefault("service_name", agent_name)
+        enriched_endpoints.append(endpoint_config)
+    opentelemetry["endpoints"] = enriched_endpoints
+    return opentelemetry
 
 
 def _relay_atof_config(atof_config: dict[str, Any], output_dir: str | None) -> dict[str, Any]:
