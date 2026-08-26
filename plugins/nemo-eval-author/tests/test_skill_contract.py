@@ -499,6 +499,7 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
 def test_every_audit_spec_path_the_skill_names_exists() -> None:
     _, body = _frontmatter_and_body(_AUDIT_DIR)
     for relative in (
+        "scripts/audit_spec/README.md",
         "scripts/audit_spec/generate.py",
         "scripts/audit_spec/measure.py",
         "scripts/audit_spec/validate.py",
