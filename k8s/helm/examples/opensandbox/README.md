@@ -22,6 +22,12 @@ and [OpenSandbox with Kata](https://docs.nvidia.com/nemo-platform/latest/documen
 in the NeMo Platform documentation. `helm show readme` of this chart points at
 those pages.
 
+## Prerequisites
+
+- A local [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) checkout with Helm charts under `kubernetes/charts/`, or a published chart tarball
+- `kubectl` access to the cluster
+- The NeMo Platform Helm release namespace (jobs run here; it is also `[kubernetes] namespace` in the server values)
+
 ## Namespace rule
 
 `[kubernetes] namespace` in the server TOML **must be the Helm release
@@ -45,9 +51,6 @@ Replace `REPLACE_WITH_RELEASE_NAMESPACE` in the server values before install.
 (shared-kernel **or** Kata). Dual releases are only for proving both paths.
 
 ## Install (shared-kernel)
-
-Requires a local OpenSandbox checkout with charts under
-`kubernetes/charts/`, or a published chart tarball.
 
 ```bash
 export NMP_NAMESPACE=nemo-platform          # must match the platform job namespace
