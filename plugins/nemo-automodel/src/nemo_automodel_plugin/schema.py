@@ -17,6 +17,7 @@ __all__ = [
     "AutomodelJobOutput",
     "BatchSpec",
     "DatasetSpec",
+    "EmbeddingSpec",
     "LoRAParams",
     "OptimizerSpec",
     "OutputRequest",
@@ -59,8 +60,27 @@ class DatasetSpec(AutomodelSchema):
     prompt_template: str | None = None
 
 
+class EmbeddingSpec(AutomodelSchema):
+    """Collator and dataset knobs for bi_encoder / cross_encoder recipes."""
+
+    train_n_passages: int = Field(default=5, ge=2)
+    eval_negative_size: int | None = Field(default=None, ge=1)
+    do_gradient_checkpointing: bool = False
+    query_max_length: int = Field(default=512, ge=1)
+    passage_max_length: int = Field(default=512, ge=1)
+    query_prefix: str = Field(default="query:", description="Collator-side prefix; BiEncoderCollator adds a space.")
+    passage_prefix: str = Field(default="passage:", description="Collator-side prefix; BiEncoderCollator adds a space.")
+
+
 class TrainingSpec(AutomodelSchema):
     training_type: Literal["sft", "distillation"] = "sft"
+    recipe: Literal["auto", "sft", "bi_encoder", "cross_encoder"] = Field(
+        default="auto",
+        description=(
+            "Training recipe. 'auto' uses the model checkpoint head; explicit encoder recipes can wrap a causal-LM "
+            "backbone for retrieval training."
+        ),
+    )
     finetuning_type: Literal["lora", "all_weights", "lora_merged"] = "lora"
     lora: LoRAParams | None = None
     max_seq_length: int = Field(default=2048, gt=0)
@@ -78,11 +98,17 @@ class TrainingSpec(AutomodelSchema):
     distillation_temperature: float = Field(default=1.0, gt=0.0)
     teacher_precision: Literal["bf16", "fp16", "fp32"] = "bf16"
     offload_teacher: bool = False
+    embedding: EmbeddingSpec | None = Field(
+        default=None,
+        description="Retrieval collator/dataset knobs. Used when recipe is bi_encoder or cross_encoder.",
+    )
 
     @model_validator(mode="after")
     def _training_type_fields(self) -> Self:
         if self.training_type == "distillation" and not self.teacher_model:
             raise ValueError("teacher_model is required when training_type is distillation")
+        if self.training_type == "distillation" and self.recipe not in ("auto", "sft"):
+            raise ValueError("distillation only supports the sft recipe")
         if self.finetuning_type.startswith("lora") and self.lora is None:
             self.lora = LoRAParams()
         return self
@@ -115,7 +141,13 @@ class OptimizerSpec(AutomodelSchema):
     adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam optimizer beta2.")
     warmup_steps: int = Field(default=0, ge=0)
     adam_eps: float = Field(default=1e-8, gt=0.0, description="Adam/AdamW epsilon for numerical stability.")
-    optimizer: Literal["Adam", "AdamW"] = Field(default="Adam", description="Optimizer algorithm.")
+    optimizer: Literal["auto", "Adam", "AdamW", "FusedAdam"] = Field(
+        default="auto",
+        description=(
+            "Optimizer algorithm. 'auto' selects Transformer Engine FusedAdam for retrieval recipes "
+            "and torch Adam for SFT."
+        ),
+    )
     lr_decay_style: Literal["cosine", "linear", "constant"] = Field(
         default="cosine", description="Learning-rate decay schedule."
     )
@@ -163,6 +195,21 @@ class AutomodelJobInput(AutomodelSchema):
         if isinstance(data, dict) and "output_model" in data:
             raise ValueError("spec.output_model was removed. Use spec.output instead.")
         return data
+
+    @model_validator(mode="after")
+    def _apply_retrieval_recipe_defaults(self) -> Self:
+        recipe = self.training.recipe
+        if recipe not in ("bi_encoder", "cross_encoder"):
+            return self
+        if "global_batch_size" not in self.batch.model_fields_set:
+            self.batch.global_batch_size = 128
+        if "micro_batch_size" not in self.batch.model_fields_set:
+            self.batch.micro_batch_size = 4
+        if "learning_rate" not in self.optimizer.model_fields_set:
+            self.optimizer.learning_rate = 1e-5 if recipe == "bi_encoder" else 3e-6
+        if "warmup_steps" not in self.optimizer.model_fields_set:
+            self.optimizer.warmup_steps = 5 if recipe == "bi_encoder" else 100
+        return self
 
 
 class AutomodelJobOutput(AutomodelSchema):

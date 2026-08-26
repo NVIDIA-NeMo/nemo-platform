@@ -123,6 +123,24 @@ class LoRAParams(_PEFTParams):
 PeftMethod = LoRAParams
 
 
+class EmbeddingParams(BaseModel):
+    """Retrieval dataset and collator settings for bi_encoder / cross_encoder recipes."""
+
+    train_n_passages: int = Field(default=5, ge=2, description="Passages per query: 1 positive + (n-1) negatives.")
+    eval_negative_size: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Negatives per query at eval. Defaults to train_n_passages - 1.",
+    )
+    do_gradient_checkpointing: bool = Field(default=False)
+    query_max_length: int = Field(default=512, ge=1)
+    passage_max_length: int = Field(default=512, ge=1)
+    query_prefix: str = Field(default="query:", description="Collator-side prefix; do not include a trailing space.")
+    passage_prefix: str = Field(
+        default="passage:", description="Collator-side prefix; do not include a trailing space."
+    )
+
+
 class ParallelismParams(BaseModel):
     """Distributed training parallelism configuration.
 
@@ -151,6 +169,11 @@ class _TrainingBase(BaseModel):
     (like HuggingFace TrainingArguments / TRL SFTConfig).
     Only parallelism is grouped — it's enterprise infrastructure.
     """
+
+    recipe: Literal["auto", "sft", "bi_encoder", "cross_encoder"] = Field(
+        default="auto",
+        description="Training recipe; explicit encoder recipes may wrap a causal-LM checkpoint.",
+    )
 
     # --- PEFT (orthogonal to training method) ---
     peft: Optional[PeftMethod] = Field(
@@ -192,7 +215,13 @@ class _TrainingBase(BaseModel):
         ge=0,
         description="Linear warmup steps. Recommended: 10% of total training steps for stable training.",
     )
-    optimizer: Literal["Adam", "AdamW"] = Field(default="Adam", description="Optimizer algorithm.")
+    optimizer: Literal["auto", "Adam", "AdamW", "FusedAdam"] = Field(
+        default="auto",
+        description=(
+            "Optimizer algorithm. 'auto' selects Transformer Engine FusedAdam for retrieval recipes "
+            "and torch Adam for SFT."
+        ),
+    )
     lr_decay_style: Literal["cosine", "linear", "constant"] = Field(
         default="cosine", description="Learning-rate decay schedule."
     )
@@ -263,6 +292,10 @@ class _TrainingBase(BaseModel):
         default=None,
         description="Random seed for reproducibility. Optional.",
     )
+    embedding: Optional[EmbeddingParams] = Field(
+        default=None,
+        description="Retrieval collator/dataset knobs. Used when recipe is bi_encoder or cross_encoder.",
+    )
 
     # --- Enterprise Infrastucture ---
     parallelism: ParallelismParams = Field(default_factory=ParallelismParams)
@@ -274,6 +307,24 @@ class _TrainingBase(BaseModel):
     )
 
     model_config = {"protected_namespaces": ()}
+
+    @model_validator(mode="after")
+    def _apply_retrieval_recipe_defaults(self) -> Self:
+        if self.recipe == "bi_encoder":
+            lr, warmup = 1e-5, 5
+        elif self.recipe == "cross_encoder":
+            lr, warmup = 3e-6, 100
+        else:
+            return self
+        if "batch_size" not in self.model_fields_set:
+            self.batch_size = 128
+        if "micro_batch_size" not in self.model_fields_set:
+            self.micro_batch_size = 4
+        if "learning_rate" not in self.model_fields_set:
+            self.learning_rate = lr
+        if "warmup_steps" not in self.model_fields_set:
+            self.warmup_steps = warmup
+        return self
 
     @property
     def finetuning_type(self) -> FinetuningType:

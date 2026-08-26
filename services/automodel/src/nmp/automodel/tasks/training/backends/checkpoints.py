@@ -42,6 +42,7 @@ class ModelType(StrEnum):
 
     LLM = "llm"
     EMBEDDING = "embedding"
+    CROSS_ENCODER = "cross_encoder"
 
 
 def extract_precision_from_model_config(model_path: str | Path) -> Precision | None:
@@ -130,7 +131,7 @@ def find_best_checkpoint(
     """
     base_dir = workspace_dir / "checkpoints"
     is_peft = config.training.finetuning_type in (FinetuningType.LORA, FinetuningType.LORA_MERGED)
-    type_label = "embedding" if model_type == ModelType.EMBEDDING else ""
+    type_label = "" if model_type == ModelType.LLM else model_type.value
 
     # Order of preference:
     # 1. LOWEST_VAL symlink
@@ -333,6 +334,64 @@ def merge_lora_embedding_adapter(
         gc.collect()
 
 
+def merge_lora_cross_encoder_adapter(
+    adapter_path: Path,
+    base_model_path: str,
+    output_path: Path,
+) -> None:
+    """Merge a LoRA adapter into a cross-encoder (sequence-classification) base model."""
+    try:
+        import gc
+
+        import torch
+        from peft import PeftModel
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    except ImportError as e:
+        raise ImportError(
+            "LoRA merge requires 'peft' and 'transformers' packages. Ensure they are installed in the container."
+        ) from e
+
+    logger.info("Merging cross-encoder LoRA adapter from %s with base model %s", adapter_path, base_model_path)
+
+    tmp_path = Path("/scratch/merged_lora") if Path("/scratch").is_dir() else Path("/tmp/merged_lora")
+    shutil.rmtree(tmp_path, ignore_errors=True)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    model = None
+    try:
+        logger.info("Loading base model (AutoModelForSequenceClassification): %s", base_model_path)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            base_model_path,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+
+        logger.info("Loading adapter from %s", adapter_path)
+        model = PeftModel.from_pretrained(model, str(adapter_path))
+
+        logger.info("Merging adapter into base model")
+        model = model.merge_and_unload()
+
+        logger.info("Saving merged model to %s", tmp_path)
+        model.save_pretrained(tmp_path, safe_serialization=True)
+
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+            tokenizer.save_pretrained(tmp_path)
+            logger.info("Tokenizer saved to %s", tmp_path)
+        except Exception as e:
+            logger.warning("Could not save tokenizer: %s", e)
+
+        output_path.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(tmp_path, output_path, dirs_exist_ok=True)
+        logger.info("Successfully merged cross-encoder LoRA adapter to %s", output_path)
+
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        torch.cuda.empty_cache()
+        gc.collect()
+
+
 def export_onnx(
     model_path: Path,
     output_path: Path,
@@ -437,13 +496,15 @@ def process_checkpoint(
     finetuning_type = customizer_config.training.finetuning_type
     base_model_path = customizer_config.model.path
     is_embedding = model_type == ModelType.EMBEDDING
-    type_label = "embedding" if is_embedding else ""
+    is_cross_encoder = model_type == ModelType.CROSS_ENCODER
+    is_llm = model_type == ModelType.LLM
+    type_label = "" if is_llm else model_type.value
 
     # Resolve chat template using the same priority logic as training:
     # 1. Use pre-resolved template if provided (ensures consistency with training)
     # 2. Otherwise, resolve using priority-based selection
     chat_template: str | None = None
-    if not is_embedding:
+    if is_llm:
         if resolved_chat_template is not None:
             chat_template = resolved_chat_template
             logger.info("Using pre-resolved chat template from training config")
@@ -460,6 +521,12 @@ def process_checkpoint(
         # For embedding models, this produces a full-weight model compatible with ONNX export and NIM serving.
         if is_embedding:
             merge_lora_embedding_adapter(
+                adapter_path=checkpoint_path,
+                base_model_path=base_model_path,
+                output_path=output_path,
+            )
+        elif is_cross_encoder:
+            merge_lora_cross_encoder_adapter(
                 adapter_path=checkpoint_path,
                 base_model_path=base_model_path,
                 output_path=output_path,

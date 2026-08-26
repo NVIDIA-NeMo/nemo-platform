@@ -53,6 +53,7 @@ Full template:
   },
   "training": {
     "training_type": "sft",
+    "recipe": "auto",
     "finetuning_type": "lora",
     "lora": {
       "rank": 16,
@@ -114,6 +115,7 @@ Full template:
 | Field | Default | Notes |
 |-------|---------|-------|
 | `training_type` | `sft` | `distillation` requires `teacher_model` (entity ref) |
+| `recipe` | `auto` | `auto` uses the checkpoint head; `sft`, `bi_encoder`, or `cross_encoder` explicitly selects the recipe. Explicit encoder recipes can wrap a causal-LM checkpoint. |
 | `finetuning_type` | `lora` | `all_weights` (full fine-tune), `lora_merged` (merge adapter into base) |
 | `lora.rank` | `16` | Higher → more capacity, more VRAM. Typical training range 8–32; **cap at 32** if the adapter will be served with default NIM / vLLM (rank > 32 may not load) |
 | `lora.alpha` | `32` | Scaling; common rule of thumb **alpha ≈ 2× rank** |

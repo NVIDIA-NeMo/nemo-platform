@@ -20,8 +20,10 @@ if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
 
 
-def _infer_output_type(input_spec: AutomodelJobInput, is_embedding_model: bool) -> str:
-    if is_embedding_model:
+def _infer_output_type(input_spec: AutomodelJobInput, checkpoint_head_type: str) -> str:
+    recipe = input_spec.training.recipe
+    is_bi_encoder = recipe == "bi_encoder" or (recipe == "auto" and checkpoint_head_type == "embedding")
+    if is_bi_encoder:
         return "model"
     lora = input_spec.training.lora
     if input_spec.training.finetuning_type == "lora" and lora is not None and not lora.merge:
@@ -40,9 +42,13 @@ async def transform_input_to_output(
     if input_spec.dataset.validation:
         await check_dataset_access(sdk, input_spec.dataset.validation, workspace)
 
-    is_embedding = bool(model_entity.spec and getattr(model_entity.spec, "is_embedding_model", False))
+    checkpoint_head_type = "unknown"
+    if model_entity.spec:
+        checkpoint_head_type = getattr(model_entity.spec, "head_type", None) or "unknown"
+        if checkpoint_head_type == "unknown" and getattr(model_entity.spec, "is_embedding_model", False):
+            checkpoint_head_type = "embedding"
 
-    output_type = _infer_output_type(input_spec, is_embedding)
+    output_type = _infer_output_type(input_spec, checkpoint_head_type)
 
     if input_spec.output is None:
         out_name = generated_output_name(input_spec.model, input_spec.dataset.training, workspace)

@@ -42,13 +42,16 @@ def _transformers_module(monkeypatch: pytest.MonkeyPatch) -> None:
 from nmp.automodel.tasks.training.backends.config import (  # noqa: E402
     _configure_chat_dataset,
     _configure_moe_backend,
+    _configure_retrieval_dataset,
     _configure_sft_dataset,
+    _resolve_optimizer_target,
     compile_automodel_config,
     estimate_steps_per_epoch,
+    resolve_compiled_recipe,
     resolve_warmup_steps,
 )
 from nmp.automodel.tasks.training.datasets.preparation import PreparedDataset  # noqa: E402
-from nmp.automodel.tasks.training.schemas import TrainingStepConfig  # noqa: E402
+from nmp.automodel.tasks.training.schemas import EmbeddingConfig, TrainingRecipe, TrainingStepConfig  # noqa: E402
 
 CONFIG_MODULE = "nmp.automodel.tasks.training.backends.config"
 AUTOCONFIG_PATCH = "transformers.AutoConfig"
@@ -171,6 +174,91 @@ class TestConfigureSftDataset:
         assert cfg["dataset"]["answer_only_loss_mask"] is True
         assert cfg["dataset"]["padding"] == "do_not_pad"
         assert cfg["dataset"]["truncation"] == "longest_first"
+
+
+class TestConfigureRetrievalDataset:
+    def test_bi_encoder_uses_bi_encoder_collator(
+        self,
+        tmp_path: Path,
+        mock_customizer_config: MagicMock,
+    ) -> None:
+        train_file = tmp_path / "train.jsonl"
+        val_file = tmp_path / "validation.jsonl"
+        train_file.write_text('{"query":"q","pos_doc":"p","neg_doc":["n"]}\n')
+        val_file.write_text('{"query":"q","pos_doc":"p","neg_doc":["n"]}\n')
+        cfg: dict[str, Any] = {}
+
+        _configure_retrieval_dataset(
+            cfg,
+            mock_customizer_config,
+            train_file,
+            val_file,
+            seed=42,
+            embedding_config=EmbeddingConfig(),
+            recipe=TrainingRecipe.BI_ENCODER,
+        )
+
+        assert cfg["dataloader"]["dataset"]["model_type"] == "bi_encoder"
+        assert cfg["dataloader"]["collate_fn"]["_target_"].endswith("BiEncoderCollator")
+
+    def test_cross_encoder_uses_cross_encoder_collator(
+        self,
+        tmp_path: Path,
+        mock_customizer_config: MagicMock,
+    ) -> None:
+        train_file = tmp_path / "train.jsonl"
+        val_file = tmp_path / "validation.jsonl"
+        train_file.write_text('{"query":"q","pos_doc":"p","neg_doc":["n"]}\n')
+        val_file.write_text('{"query":"q","pos_doc":"p","neg_doc":["n"]}\n')
+        cfg: dict[str, Any] = {}
+
+        _configure_retrieval_dataset(
+            cfg,
+            mock_customizer_config,
+            train_file,
+            val_file,
+            seed=42,
+            embedding_config=EmbeddingConfig(),
+            recipe=TrainingRecipe.CROSS_ENCODER,
+        )
+
+        assert cfg["dataloader"]["dataset"]["model_type"] == "cross_encoder"
+        assert cfg["dataloader"]["collate_fn"]["_target_"].endswith("CrossEncoderCollator")
+        assert cfg["dataloader"]["collate_fn"]["rerank_max_length"] == 512
+
+    def test_bi_encoder_strips_trailing_space_from_nemotron_prefixes(
+        self,
+        tmp_path: Path,
+        mock_customizer_config: MagicMock,
+    ) -> None:
+        train_file = tmp_path / "train.jsonl"
+        val_file = tmp_path / "validation.jsonl"
+        train_file.write_text('{"query":"q","pos_doc":"p","neg_doc":["n"]}\n')
+        val_file.write_text('{"query":"q","pos_doc":"p","neg_doc":["n"]}\n')
+        cfg: dict[str, Any] = {}
+
+        _configure_retrieval_dataset(
+            cfg,
+            mock_customizer_config,
+            train_file,
+            val_file,
+            seed=42,
+            embedding_config=EmbeddingConfig(
+                train_n_passages=7,
+                query_max_length=256,
+                passage_max_length=384,
+                query_prefix="query: ",
+                passage_prefix="passage: ",
+            ),
+            recipe=TrainingRecipe.BI_ENCODER,
+        )
+
+        collator = cfg["dataloader"]["collate_fn"]
+        assert collator["query_prefix"] == "query:"
+        assert collator["passage_prefix"] == "passage:"
+        assert collator["q_max_len"] == 256
+        assert collator["p_max_len"] == 384
+        assert cfg["dataloader"]["dataset"]["n_passages"] == 7
 
 
 class TestConfigureMoeBackend:
@@ -486,3 +574,117 @@ def test_the_reporting_block_reaches_the_recipe_config(tmp_path: Path) -> None:
         "time_series_metrics": ["*_loss"],
         "min_report_interval_seconds": 30,
     }
+
+
+def test_compile_cross_encoder_recipe_selects_cross_encoder_model(tmp_path: Path) -> None:
+    fixture = Path(__file__).parents[3] / "contract" / "input_configs" / "embed-1b" / "embed_1b_full_sft.json"
+    raw = json.loads(fixture.read_text())
+    raw.pop("backend")
+    config = TrainingStepConfig.model_validate(raw)
+    config.training.recipe = TrainingRecipe.CROSS_ENCODER
+
+    prepared = PreparedDataset(
+        merged_dir=tmp_path,
+        train_file=tmp_path / "train.jsonl",
+        validation_file=tmp_path / "validation.jsonl",
+        train_samples=100,
+        validation_samples=10,
+    )
+
+    with (
+        patch(f"{CONFIG_MODULE}.prepare_dataset", return_value=prepared),
+        patch(f"{CONFIG_MODULE}.DatasetValidator"),
+        patch(f"{CONFIG_MODULE}._configure_datasets"),
+        patch(f"{CONFIG_MODULE}.build_wandb_config", return_value=None),
+        patch(f"{CONFIG_MODULE}.build_mlflow_config", return_value=None),
+    ):
+        compiled = compile_automodel_config(config, tmp_path, MagicMock())
+
+    assert compiled["model"]["_target_"].endswith("NeMoAutoModelCrossEncoder.from_pretrained")
+    assert compiled["model"]["num_labels"] == 1
+    assert "loss_fn" not in compiled
+
+
+def _embed_training_config(tmp_path: Path, **overrides: Any) -> tuple[TrainingStepConfig, PreparedDataset]:
+    fixture = Path(__file__).parents[3] / "contract" / "input_configs" / "embed-1b" / "embed_1b_full_sft.json"
+    raw = json.loads(fixture.read_text())
+    raw.pop("backend")
+    config = TrainingStepConfig.model_validate(raw)
+    for key, value in overrides.items():
+        setattr(config, key, value)
+    prepared = PreparedDataset(
+        merged_dir=tmp_path,
+        train_file=tmp_path / "train.jsonl",
+        validation_file=tmp_path / "validation.jsonl",
+        train_samples=100,
+        validation_samples=10,
+    )
+    return config, prepared
+
+
+def _compile_retrieval(config: TrainingStepConfig, tmp_path: Path, prepared: PreparedDataset) -> dict[str, Any]:
+    with (
+        patch(f"{CONFIG_MODULE}.prepare_dataset", return_value=prepared),
+        patch(f"{CONFIG_MODULE}.DatasetValidator"),
+        patch(f"{CONFIG_MODULE}._configure_datasets"),
+        patch(f"{CONFIG_MODULE}.build_wandb_config", return_value=None),
+        patch(f"{CONFIG_MODULE}.build_mlflow_config", return_value=None),
+    ):
+        return compile_automodel_config(config, tmp_path, MagicMock())
+
+
+def test_auto_recipe_maps_cross_encoder_head_to_cross_encoder_model(tmp_path: Path) -> None:
+    config, prepared = _embed_training_config(tmp_path)
+    config.training.recipe = TrainingRecipe.AUTO
+    config.model.is_embedding_model = False
+    config.model.checkpoint_head_type = "cross_encoder"
+
+    compiled = _compile_retrieval(config, tmp_path, prepared)
+
+    assert resolve_compiled_recipe(config) == TrainingRecipe.CROSS_ENCODER
+    assert compiled["model"]["_target_"].endswith("NeMoAutoModelCrossEncoder.from_pretrained")
+    assert compiled["optimizer"]["_target_"] == "transformer_engine.pytorch.optimizers.fused_adam.FusedAdam"
+    assert compiled["model"]["attn_implementation"] == "sdpa"
+
+
+def test_bi_encoder_compile_uses_fused_adam_and_job_embedding_config(tmp_path: Path) -> None:
+    config, prepared = _embed_training_config(
+        tmp_path,
+        embedding=EmbeddingConfig(query_prefix="query: ", passage_prefix="passage: ", train_n_passages=6),
+    )
+    config.training.recipe = TrainingRecipe.BI_ENCODER
+
+    compiled = _compile_retrieval(config, tmp_path, prepared)
+
+    assert compiled["optimizer"]["_target_"] == "transformer_engine.pytorch.optimizers.fused_adam.FusedAdam"
+    assert compiled["model"]["attn_implementation"] == "sdpa"
+    assert compiled["model"]["_target_"].endswith("NeMoAutoModelBiEncoder.from_pretrained")
+
+
+@pytest.mark.parametrize(
+    ("optimizer_name", "recipe", "expected_target"),
+    [
+        ("auto", TrainingRecipe.SFT, "torch.optim.Adam"),
+        (
+            "auto",
+            TrainingRecipe.BI_ENCODER,
+            "transformer_engine.pytorch.optimizers.fused_adam.FusedAdam",
+        ),
+        ("Adam", TrainingRecipe.BI_ENCODER, "torch.optim.Adam"),
+        ("AdamW", TrainingRecipe.CROSS_ENCODER, "torch.optim.AdamW"),
+        (
+            "FusedAdam",
+            TrainingRecipe.SFT,
+            "transformer_engine.pytorch.optimizers.fused_adam.FusedAdam",
+        ),
+    ],
+)
+def test_optimizer_selection_is_explicit_after_auto_resolution(
+    optimizer_name: str,
+    recipe: TrainingRecipe,
+    expected_target: str,
+) -> None:
+    config = MagicMock()
+    config.optimizer.optimizer_name = optimizer_name
+
+    assert _resolve_optimizer_target(config, recipe) == expected_target

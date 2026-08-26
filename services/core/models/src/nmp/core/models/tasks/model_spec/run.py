@@ -48,6 +48,7 @@ from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.models.config import config as models_config
 from nmp.core.models.schemas import ModelSpec, ToolCallConfig
 from nmp.core.models.tasks.model_spec.schemas import ModelSpecTaskConfig, NMPJobContext
+from nmp.core.models.tasks.model_spec.utils import infer_model_head_type
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -262,15 +263,24 @@ class ModelSpecRunner:
         logger.info(os.listdir(dest_dir))
         is_trusted = me.trust_remote_code if me.trust_remote_code is not None else False
         model_spec = infer_model_cfg_from_hf(str(dest_dir), is_trusted=is_trusted, file_listing=all_file_paths)
-        # Embedding if model name or storage path contains "embed"; use or to avoid
-        # overwriting a correct True from model name when storage path lacks "embed"
-        model_spec.is_embedding_model = is_embedding_model(me.name)
-        if isinstance(fs.storage, LocalStorageConfig):
-            model_spec.is_embedding_model = model_spec.is_embedding_model or is_embedding_model(fs.storage.path)
-        elif isinstance(fs.storage, NGCStorageConfig):
-            model_spec.is_embedding_model = model_spec.is_embedding_model or is_embedding_model(fs.storage.target)
-        elif isinstance(fs.storage, HuggingfaceStorageConfig):
-            model_spec.is_embedding_model = model_spec.is_embedding_model or is_embedding_model(fs.storage.repo_id)
+        model_spec.head_type, head_type_reason = infer_model_head_type(str(dest_dir))
+
+        # Legacy filesets may omit model-card/config signals. Preserve the old
+        # name/path heuristic only as an unknown-result fallback.
+        if model_spec.head_type == "unknown":
+            legacy_identifiers = [me.name]
+            if isinstance(fs.storage, LocalStorageConfig):
+                legacy_identifiers.append(fs.storage.path)
+            elif isinstance(fs.storage, NGCStorageConfig):
+                legacy_identifiers.append(fs.storage.target)
+            elif isinstance(fs.storage, HuggingfaceStorageConfig):
+                legacy_identifiers.append(fs.storage.repo_id)
+            if any(is_embedding_model(identifier) for identifier in legacy_identifiers):
+                model_spec.head_type = "embedding"
+                head_type_reason = "legacy_fallback:name_or_storage_contains_embed"
+
+        model_spec.is_embedding_model = model_spec.head_type == "embedding"
+        logger.info("Inferred model head_type=%s (%s)", model_spec.head_type, head_type_reason)
 
         minimum_gpus_all_weights, _ = find_minimum_gpus_from_metadata(
             model_spec,
@@ -302,7 +312,9 @@ class ModelSpecRunner:
             me: ModelEntity = self._models.update_model(
                 name=config.name,
                 workspace=config.workspace,
-                body=UpdateModelEntityRequest(spec=PluginModelSpec.model_validate(model_spec.model_dump())),
+                body=UpdateModelEntityRequest(
+                    spec=PluginModelSpec.model_validate(model_spec.model_dump(mode="python"))
+                ),
             ).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(

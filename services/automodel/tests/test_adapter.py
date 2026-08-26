@@ -28,6 +28,7 @@ def test_adapter_plumbs_previously_dropped_fields() -> None:
             "dataset": {"training": "default/train"},
             "training": {
                 "training_type": "sft",
+                "recipe": "cross_encoder",
                 "finetuning_type": "lora",
                 "precision": "bf16",
                 "lora": {"rank": 8, "alpha": 16, "dropout": 0.1},
@@ -43,6 +44,7 @@ def test_adapter_plumbs_previously_dropped_fields() -> None:
         },
     )
     assert isinstance(spec.training, SFTTraining)
+    assert spec.training.recipe == "cross_encoder"
     assert spec.training.precision is not None and spec.training.precision.value == "bf16"
     assert spec.training.min_learning_rate == 1e-5
     assert spec.training.adam_beta1 == 0.8
@@ -50,6 +52,32 @@ def test_adapter_plumbs_previously_dropped_fields() -> None:
     assert spec.training.parallelism.sequence_parallel is True
     assert spec.training.peft is not None
     assert spec.training.peft.dropout == 0.1
+    assert spec.training.embedding is None
+
+
+def test_adapter_plumbs_embedding_spec() -> None:
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {
+                "training_type": "sft",
+                "recipe": "bi_encoder",
+                "finetuning_type": "all_weights",
+                "embedding": {
+                    "train_n_passages": 7,
+                    "query_prefix": "query:",
+                    "passage_prefix": "passage:",
+                },
+            },
+            "output": {"name": "out", "type": "model", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.embedding is not None
+    assert spec.training.embedding.train_n_passages == 7
+    assert spec.training.embedding.query_prefix == "query:"
+    assert spec.training.embedding.passage_prefix == "passage:"
 
 
 def test_adapter_new_fields_default_when_omitted() -> None:
@@ -101,7 +129,7 @@ def test_adapter_plumbs_pass2_hyperparameters() -> None:
 
 
 def test_adapter_pass2_defaults_when_omitted() -> None:
-    """Omitting pass-2 fields preserves the historical hardcoded defaults."""
+    """Omitting pass-2 fields preserves effective defaults through ``auto``."""
     spec = automodel_spec_to_compiler_output(
         {
             "model": "meta/llama",
@@ -112,7 +140,7 @@ def test_adapter_pass2_defaults_when_omitted() -> None:
     )
     assert isinstance(spec.training, SFTTraining)
     assert spec.training.adam_eps == 1e-8
-    assert spec.training.optimizer == "Adam"
+    assert spec.training.optimizer == "auto"
     assert spec.training.lr_decay_style == "cosine"
     assert spec.training.attn_implementation == "sdpa"
     assert spec.training.sequence_packing_max_samples == 1000

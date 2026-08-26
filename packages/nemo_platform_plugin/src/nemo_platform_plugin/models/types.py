@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, NotRequired, Self, TypedDict
+from typing import Any, Literal, NotRequired, Self, TypedDict
 
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -253,7 +253,15 @@ class ModelSpec(BaseModel):
     context_size: int | None = Field(None, description="Context window size")
     num_virtual_tokens: int | None = Field(None, description="Number of virtual tokens for prompt tuning")
     is_chat: bool | None = Field(None, description="Whether this is a chat model")
-    is_embedding_model: bool = Field(False, description="Whether this is an embedding model")
+    head_type: Literal["causal_lm", "embedding", "cross_encoder", "unknown"] = Field(
+        default="unknown",
+        description="Task-specific head persisted in the checkpoint.",
+    )
+    is_embedding_model: bool = Field(
+        False,
+        description="Deprecated compatibility alias for head_type == 'embedding'.",
+        deprecated=True,
+    )
 
     # Basic model information
     checkpoint_model_name: str = Field(description="Checkpoint Model identifier or model path")

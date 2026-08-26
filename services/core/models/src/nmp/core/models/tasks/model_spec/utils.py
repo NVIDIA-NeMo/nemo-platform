@@ -4,12 +4,14 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 _EMBEDDING_PIPELINE_TAGS = frozenset({"feature-extraction", "sentence-similarity", "text-embeddings-inference"})
+_CROSS_ENCODER_PIPELINE_TAGS = frozenset({"text-ranking", "reranking"})
 _GENERATIVE_PIPELINE_TAGS = frozenset({"text-generation", "text2text-generation", "image-to-text"})
+_RERANKING_TAGS = frozenset({"reranker", "reranking", "text-ranking"})
 _SUPPORTING_TAGS = frozenset(
     {
         "sentence-transformers",
@@ -18,6 +20,7 @@ _SUPPORTING_TAGS = frozenset(
         "embedding",
         "multimodal",
         "retrieval",
+        *_RERANKING_TAGS,
     }
 )
 _SENTENCE_TRANSFORMER_ARTIFACTS = (
@@ -27,17 +30,23 @@ _SENTENCE_TRANSFORMER_ARTIFACTS = (
     "1_Pooling",
 )
 _FRONTMATTER_PATTERN = re.compile(r"\A---\s*\n(.*?)\n---(?:\s*\n|$)", re.DOTALL)
+ModelHeadType = Literal["causal_lm", "embedding", "cross_encoder", "unknown"]
 
 
-def _load_architectures(config_path: Path) -> list[str]:
+def _load_config(config_path: Path) -> dict[str, Any]:
     if not config_path.is_file():
-        return []
+        return {}
 
     try:
         with config_path.open("r", encoding="utf-8") as f:
             config = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return []
+        return {}
+    return config if isinstance(config, dict) else {}
+
+
+def _load_architectures(config_path: Path) -> list[str]:
+    config = _load_config(config_path)
 
     architectures = config.get("architectures", [])
     if isinstance(architectures, str):
@@ -76,72 +85,113 @@ def _normalize_tags(raw_tags: Any) -> set[str]:
     return {str(tag).strip().lower() for tag in raw_tags if str(tag).strip()}
 
 
-# TODO: refine this function and replace is_embedding_model with it
-# see if we can also use `family` or `tied_embeddings` in the ModelSpec to determine if it's an embedding model.
-def is_embedding_model_v2(model_dir: str) -> tuple[bool, str]:
+def infer_model_head_type(model_dir: str) -> tuple[ModelHeadType, str]:
     """
-    Analyzes a local Hugging Face model directory to determine if it is an embedding model.
+    Infer the task-specific head already persisted in a Hugging Face checkpoint.
+
+    This intentionally describes the checkpoint as saved. A causal-LM checkpoint
+    can still be used as the backbone for a new bi-encoder or cross-encoder job;
+    that training intent must be selected by the job, not inferred here.
 
     Args:
         model_dir (str): The path to the downloaded model directory.
 
     Returns:
-        tuple[bool, str]: A boolean indicating if it's an embedding model,
-                          and a string explaining the reasoning.
+        The inferred head type and a string explaining the strongest signals.
     """
 
     model_path = Path(model_dir)
     if not model_path.is_dir():
-        return False, f"Directory not found: {model_dir}"
+        return "unknown", f"Directory not found: {model_dir}"
 
-    strong_positive_signals: list[str] = []
-    strong_negative_signals: list[str] = []
+    embedding_signals: list[str] = []
+    cross_encoder_signals: list[str] = []
+    causal_lm_signals: list[str] = []
     supporting_signals: list[str] = []
 
     for artifact in _SENTENCE_TRANSFORMER_ARTIFACTS:
         artifact_path = model_path / artifact
         if artifact == "1_Pooling":
             if artifact_path.is_dir():
-                strong_positive_signals.append("artifact:1_Pooling/")
+                embedding_signals.append("artifact:1_Pooling/")
             continue
         if artifact_path.is_file():
-            strong_positive_signals.append(f"artifact:{artifact}")
+            embedding_signals.append(f"artifact:{artifact}")
 
+    config = _load_config(model_path / "config.json")
     architectures = _load_architectures(model_path / "config.json")
-    generative_architectures = [
-        arch for arch in architectures if ("ForCausalLM" in arch or "ForConditionalGeneration" in arch)
-    ]
-    if generative_architectures:
-        strong_negative_signals.append(f"architectures:{'|'.join(generative_architectures)}")
+    sequence_classification_architectures: list[str] = []
+    for architecture in architectures:
+        architecture_lower = architecture.lower()
+        if "forsequenceclassification" in architecture_lower:
+            sequence_classification_architectures.append(architecture)
+        elif "bidirectional" in architecture_lower or "embedding" in architecture_lower:
+            embedding_signals.append(f"architecture:{architecture}")
+        elif "forcausallm" in architecture_lower or "forconditionalgeneration" in architecture_lower:
+            causal_lm_signals.append(f"architecture:{architecture}")
+
+    model_type = str(config.get("model_type", "")).lower()
+    if "bidirec" in model_type:
+        embedding_signals.append(f"model_type:{model_type}")
+
+    auto_map = config.get("auto_map", {})
+    if isinstance(auto_map, dict):
+        if "AutoModelForSequenceClassification" in auto_map:
+            cross_encoder_signals.append("auto_map:AutoModelForSequenceClassification")
+        elif "AutoModel" in auto_map and ("bidirec" in model_type or "pooling" in config):
+            embedding_signals.append("auto_map:AutoModel")
+
+    if "pooling" in config and not cross_encoder_signals:
+        embedding_signals.append("config:pooling")
 
     readme_frontmatter = _load_readme_frontmatter(model_path / "README.md")
     pipeline_tag_raw = readme_frontmatter.get("pipeline_tag")
     pipeline_tag = str(pipeline_tag_raw).strip().lower() if isinstance(pipeline_tag_raw, str) else None
     if pipeline_tag in _EMBEDDING_PIPELINE_TAGS:
-        strong_positive_signals.append(f"pipeline_tag:{pipeline_tag}")
+        embedding_signals.append(f"pipeline_tag:{pipeline_tag}")
+    if pipeline_tag in _CROSS_ENCODER_PIPELINE_TAGS:
+        cross_encoder_signals.append(f"pipeline_tag:{pipeline_tag}")
     if pipeline_tag in _GENERATIVE_PIPELINE_TAGS:
-        strong_negative_signals.append(f"pipeline_tag:{pipeline_tag}")
+        causal_lm_signals.append(f"pipeline_tag:{pipeline_tag}")
 
     tags = _normalize_tags(readme_frontmatter.get("tags"))
+    id2label = config.get("id2label")
+    num_labels = config.get("num_labels")
+    is_single_score_head = num_labels == 1 or (isinstance(id2label, dict) and len(id2label) == 1)
+    has_reranking_metadata = pipeline_tag in _CROSS_ENCODER_PIPELINE_TAGS or bool(tags.intersection(_RERANKING_TAGS))
+    if sequence_classification_architectures and (is_single_score_head or has_reranking_metadata):
+        cross_encoder_signals.extend(
+            f"architecture:{architecture}" for architecture in sequence_classification_architectures
+        )
+
     supporting_tags = sorted(tags.intersection(_SUPPORTING_TAGS))
     if supporting_tags:
         supporting_signals.append(f"tags:{'|'.join(supporting_tags)}")
 
     if (model_path / "generation_config.json").is_file():
-        strong_negative_signals.append("file:generation_config.json")
+        causal_lm_signals.append("file:generation_config.json")
 
-    if strong_positive_signals:
-        details = ",".join(strong_positive_signals)
+    # A persisted scoring head is more specific than generic embedding/card
+    # metadata, and sentence-transformer artifacts are more specific than a
+    # stale generation_config.json copied from a causal-LM backbone.
+    for head_type, signals in (
+        ("cross_encoder", cross_encoder_signals),
+        ("embedding", embedding_signals),
+        ("causal_lm", causal_lm_signals),
+    ):
+        if not signals:
+            continue
+        details = ",".join(signals)
         if supporting_signals:
             details = f"{details};supporting={','.join(supporting_signals)}"
-        return True, f"strong_positive:{details}"
-
-    if strong_negative_signals:
-        details = ",".join(strong_negative_signals)
-        if supporting_signals:
-            details = f"{details};supporting={','.join(supporting_signals)}"
-        return False, f"strong_negative:{details}"
+        return head_type, f"{head_type}:{details}"
 
     if supporting_signals:
-        return False, f"inconclusive:supporting={','.join(supporting_signals)}"
-    return False, "inconclusive:no_strong_embedding_signals"
+        return "unknown", f"inconclusive:supporting={','.join(supporting_signals)}"
+    return "unknown", "inconclusive:no_strong_head_signals"
+
+
+def is_embedding_model_v2(model_dir: str) -> tuple[bool, str]:
+    """Compatibility wrapper for callers that still consume a boolean."""
+    head_type, reason = infer_model_head_type(model_dir)
+    return head_type == "embedding", reason

@@ -156,7 +156,15 @@ class ModelSpec(BaseModel):
     context_size: Optional[int] = Field(None, description="Context window size")
     num_virtual_tokens: Optional[int] = Field(None, description="Number of virtual tokens for prompt tuning")
     is_chat: Optional[bool] = Field(None, description="Whether this is a chat model")
-    is_embedding_model: bool = Field(False, description="Whether this is an embedding model")
+    head_type: Literal["causal_lm", "embedding", "cross_encoder", "unknown"] = Field(
+        default="unknown",
+        description="Task-specific head persisted in the checkpoint.",
+    )
+    is_embedding_model: bool = Field(
+        False,
+        description="Deprecated compatibility alias for head_type == 'embedding'.",
+        deprecated=True,
+    )
 
     # Basic model information
     checkpoint_model_name: str = Field(description="Checkpoint Model identifier or model path")
