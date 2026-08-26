@@ -411,6 +411,22 @@ def test_a_hint_the_dtype_cannot_support_is_rejected_loudly():
     assert "n -> prompt" in rejections[0].detail and "int64" in rejections[0].detail
 
 
+def test_a_hint_naming_a_role_that_does_not_exist_is_rejected():
+    # The dtype gate has no constraint to apply to a role it does not recognize, so it used to wave
+    # a typo through: `semantic_role="prmpt"` reached the profile as a `declared` role, evidence
+    # claimed the columns matched, and nothing downstream read it -- so the dataset classified as
+    # `unknown` with the profile asserting the opposite.
+    features = [_f("q", "string")]
+    result = classify(features, {}, column_roles={"q": "prmpt"})
+
+    assert features[0].semantic_role is None
+    assert features[0].semantic_role_source is None
+    rejections = [e for e in result.evidence if e.kind == "user_hint"]
+    assert len(rejections) == 1
+    assert "q -> prmpt" in rejections[0].detail
+    assert not any("prmpt" in e.detail for e in result.evidence if e.kind == "column_name")
+
+
 def test_a_rejected_hint_falls_back_to_detection():
     # `answer` is a known alias; a bad hint on it must not cost the role the table would have found.
     features = [_f("answer", "string")]
