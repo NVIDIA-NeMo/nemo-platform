@@ -340,17 +340,11 @@ Platform `agent.yaml`. **When the chosen model's primary-axis score has
 include an explicit evidence caveat in the human-readable recommendation.** Do
 not encode benchmark commentary as unsupported config fields.
 
-If they're authoring an Ethos for `nemo-ethos`:
-
-```markdown
-## Model
-
-- **Family/size:** <plain description, e.g. "Qwen3 235B MoE">
-- **NIM model id:** `<model-string>`
-- **Why this choice:** <one plain-English sentence — same words you used above>
-- **Evidence:** <"Direct BFCL and Arena measurements" | "BFCL inferred from ancestor <ancestor-id>; Arena measured directly" | "No public benchmark coverage — selection based on model-name intent only, eval recommended">
-- **Deployment:** <cloud | self-hosted (VRAM)>
-```
+If they're authoring an Ethos for `nemo-ethos`, do not emit a `## Model`
+section. Ethos has no such heading. Return the choice to `nemo-explore` with
+family/size, NIM model id, reason, evidence, and deployment mode so explore
+can record permitted providers and model families in `Constraints`. The
+selected model itself belongs in `agent.yaml`.
 
 If they are authoring Platform `agent.yaml`, emit a default model block:
 
@@ -485,9 +479,10 @@ If `nemo-explore` invoked this skill, return control to `nemo-explore` with the 
 - Never silently change the selected harness to accommodate an available model.
 - Never emit a model identifier without showing the plain-English reason alongside it.
 - **When the primary candidate's evidence is anything other than `direct`, the model name does not appear in your response until the user has resolved the trade-off in Pattern B.** Anchoring is the failure mode this guards against — users default to the first model named regardless of caveats. The withhold is non-negotiable.
-- When emitting the Ethos recommendation, always include an Evidence line naming
-  the source quality. For `agent.yaml`, present the evidence next to the YAML
-  rather than inventing a config field.
+- When returning a model choice for Ethos, include the evidence so
+  `nemo-explore` can put it in `Constraints`. Never write a `## Model`
+  heading. For `agent.yaml`, present the evidence next to the YAML rather
+  than inventing a config field.
 
 ## Gotchas
 

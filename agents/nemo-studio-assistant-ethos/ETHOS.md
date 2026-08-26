@@ -110,7 +110,7 @@ Unacceptable regressions, even alongside a headline win:
 ## Constraints
 
 - Approved surface: NeMo Platform Python SDK (`nemo_api`) over the packaged MCP server only. No direct third-party API calls, no CLI, no shell, no arbitrary subprocesses.
-- Model access: cloud models through the deployment's configured platform base URL and inference gateway only. Do not add a provider that bypasses it. The deployed model today is NVIDIA Nemotron 3 Super 120B A12B, recorded in `agent.yaml`.
+- Model access: cloud models through the deployment's configured platform base URL and inference gateway only. Do not add a provider that bypasses it. The deployed model today is `nvidia-nemotron-3-5-lightning-30b-a3b`, recorded in `agent.yaml`.
 - Secrets: managed by the platform. Never inline a credential into config, prompt, or log output.
 - Telemetry: agent-specific telemetry exporters stay disabled until a reviewed pipeline exists. Diagnosis uses container and platform logs.
 - Blast radius: an ambiguous workspace or destructive target requires clarification. Missing context is never permission to pick a target.

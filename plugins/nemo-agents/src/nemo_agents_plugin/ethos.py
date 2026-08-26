@@ -100,17 +100,20 @@ unattended. Conditional permission used to live only in the section's prose
 _LEVER_RE = re.compile(r"^-\s*([^:]+?)\s*:\s*(.+?)\s*$", re.MULTILINE)
 
 
+def _require_supported_schema_version(version: int) -> None:
+    if version < 1 or version > ETHOS_SCHEMA_VERSION:
+        raise ValueError(f"schema version must be between 1 and {ETHOS_SCHEMA_VERSION}")
+
+
 def required_sections(version: int) -> tuple[str, ...]:
     """Sections that must be present for ``version`` to parse at all."""
-    if version < 1:
-        raise ValueError("schema version must be 1 or greater")
+    _require_supported_schema_version(version)
     return ETHOS_SECTION_TITLES
 
 
 def known_sections(version: int) -> tuple[str, ...]:
     """Every section ``version`` defines, in canonical order."""
-    if version < 1:
-        raise ValueError("schema version must be 1 or greater")
+    _require_supported_schema_version(version)
     return ETHOS_SECTION_TITLES
 
 

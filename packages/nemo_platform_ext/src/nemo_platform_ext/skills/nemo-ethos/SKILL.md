@@ -11,7 +11,6 @@ triggers:
   - persist the agent design
   - nemo ethos
   - write agent ethos
-  - write ETHOS.md
 not-for:
   - nemo-explore (use to gather the design before writing the Ethos)
   - nemo-build-agent (use to scaffold and deploy once the Ethos is signed off)
@@ -193,7 +192,7 @@ and then helps nobody.
    print(f'valid: name={ethos.name} version={ethos.schema_version} role={ethos.role[:60]!r}')
    for warning in ethos.warnings:
        print(f'warning: {warning}')
-   " || { echo "ethos_invalid"; exit 1; }
+   " || { echo "ethos_parse_invalid"; exit 1; }
    ```
 
 8. **Upload to Filesets (canonical copy).** Create the per-agent fileset if

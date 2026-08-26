@@ -115,17 +115,17 @@ Library-prefix naming (`nemo-*`) is required for user-invocable skills (skills i
 ---
 name: nemo-build-agent
 description: >
-  Scaffold and deploy a NeMo Agent Toolkit (NAT) agent from a spec.
+  Scaffold and deploy a NeMo Agent Toolkit (NAT) agent from an Ethos.
   Generates the workflow YAML, creates the agent, deploys it, optionally
   wires guardrails and an eval suite. Use when the user says "build me an
-  agent," "scaffold from this spec," "deploy my agent," or has finished
+  agent," "scaffold from this ethos," "deploy my agent," or has finished
   `nemo-explore` and is ready to ship.
 triggers:
   - build the agent
-  - scaffold from spec
+  - scaffold from ethos
   - deploy my agent
 not-for:
-  - nemo-explore (use for design conversation before a spec exists)
+  - nemo-explore (use for design conversation before an Ethos exists)
   - nemo-try-agent (use to test an already-deployed agent)
   - nemo-agents-optimize (use to improve a deployed agent's metrics)
 compatibility: nemo-platform >= 0.1.0; macOS or Linux; requires `agents/<name>-ethos/ETHOS.md`

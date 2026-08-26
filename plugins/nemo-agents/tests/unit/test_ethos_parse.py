@@ -10,6 +10,7 @@ from nemo_agents_plugin.ethos import (
     ETHOS_SCHEMA_VERSION,
     ETHOS_SECTION_TITLES,
     RETIRED_SECTION_TITLES,
+    known_sections,
     required_sections,
 )
 from nemo_agents_plugin.ethos_parse import EthosParseError, parse_ethos
@@ -122,6 +123,17 @@ def test_schema_drops_optimizer_run_configuration() -> None:
 def test_schema_requires_every_section() -> None:
     """The parser requires the full section list."""
     assert required_sections(ETHOS_SCHEMA_VERSION) == ETHOS_SECTION_TITLES
+    assert known_sections(ETHOS_SCHEMA_VERSION) == ETHOS_SECTION_TITLES
+
+
+def test_section_helpers_reject_unsupported_versions() -> None:
+    future = ETHOS_SCHEMA_VERSION + 1
+    with pytest.raises(ValueError, match=r"between 1 and 1"):
+        required_sections(future)
+    with pytest.raises(ValueError, match=r"between 1 and 1"):
+        known_sections(future)
+    with pytest.raises(ValueError, match=r"between 1 and 1"):
+        required_sections(0)
 
 
 def test_retired_headings_are_declared() -> None:

@@ -53,10 +53,11 @@ spending attention on.
 
 ## The schema you are filling
 
-The Ethos has five front-matter fields and fifteen body sections. Every body
-section is required. One field is a quality gate for handoff: `nemo-ethos` is
-blocked until `Role` is concrete. For any other canonical section with nothing
-to say, write `_(none)_` rather than dropping the heading.
+The Ethos has five base front-matter fields, plus optional `updated_timestamp`,
+and fifteen body sections. Every body section is required. One field is a
+quality gate for handoff: `nemo-ethos` is blocked until `Role` is concrete.
+For any other canonical section with nothing to say, write `_(none)_` rather
+than dropping the heading.
 
 The fifteen headings are a floor, not a ceiling. Extra `##` headings and extra
 YAML front-matter keys are allowed. Keep them if the user adds them. Do not
@@ -71,6 +72,7 @@ strip custom sections to make the file look "strict."
 | `created_timestamp` | yes | ISO 8601 timestamp for when the Ethos is created. `nemo-ethos` fills this at write time. |
 | `author` | yes | Human or agent that created the Ethos. `nemo-ethos` fills this from the current author context when known; ask only if ambiguous. |
 | `owner` | optional | Accountable human or team for the approvals named in `Constraints` or `Change Scope`. Ask only if those sections name an approval. |
+| `updated_timestamp` | conditional | Set on edits. Omit on first write. `nemo-ethos` fills this. |
 
 **Body sections** (in canonical order)
 
@@ -271,6 +273,7 @@ already answered:
 1. `Constraints` — hard bounds no change may cross.
 2. `Trade-offs` — hard gates, then a ranking.
 3. `Change Scope` — which levers on this agent may move.
+4. Ranked `Success Criteria` when the repo only has eval wiring.
 
 Do not collect run limits. A per-experiment spend cap belongs to the
 optimizer. If the user volunteers one, keep the standing policy and drop

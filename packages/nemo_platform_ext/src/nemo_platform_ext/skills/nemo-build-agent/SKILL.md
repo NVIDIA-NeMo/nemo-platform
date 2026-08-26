@@ -254,7 +254,8 @@ confirmation before running it:
 
 ## Step 2: Try the deployed agent
 
-For the default path, invoke one question from each category in the Ethos. For
+For the default path, invoke one question from each category in the Ethos
+`Scope` section (`Categories`). Do not invent a separate category heading. For
 an unchanged NAT-only run without an Ethos, use representative questions from the
 workflow and the user's stated requirements:
 
