@@ -1512,6 +1512,10 @@ chmod -R 777 {job_vol}/{storage_subpath}
     def _sync(self, step: PlatformJobStepWithContext) -> JobUpdate:
         container: Container | None = self.get_container(step)
         if step.status == PlatformJobStatus.ACTIVE:
+            if container is None:
+                task_fallback = self._get_terminal_task_fallback_update(step)
+                if task_fallback is not None:
+                    return task_fallback
             if result := self.enforce_sync_ttl(
                 step, self._execution_profile_config.ttl_seconds_active, container, before_active=False
             ):
@@ -1648,6 +1652,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             return self.create_step_update(step, container)
 
     def _get_terminal_task_fallback_update(self, step: PlatformJobStepWithContext) -> JobUpdate | None:
+        """Return the latest persisted terminal task status for a missing Docker container."""
         try:
             tasks = self._jobs.list_job_step_tasks(
                 name=step.name,
