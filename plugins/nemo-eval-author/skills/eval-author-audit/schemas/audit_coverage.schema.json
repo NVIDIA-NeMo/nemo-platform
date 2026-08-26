@@ -11,6 +11,7 @@
     "subject",
     "method",
     "item_kind",
+    "item_kind_count",
     "covered"
   ],
   "properties": {
@@ -37,6 +38,11 @@
         "failure_case",
         "tool"
       ]
+    },
+    "item_kind_count": {
+      "description": "Number of audit items in the denominator with this item_kind. Aggregators use this as the method-specific denominator.",
+      "type": "integer",
+      "minimum": 0
     },
     "covered": {
       "description": "Stable audit item names this trace covered according to the selected method.",
@@ -107,7 +113,8 @@
       "required": [
         "trace",
         "trace_format",
-        "task_id"
+        "task_id",
+        "run_id"
       ],
       "properties": {
         "trace": {
@@ -123,7 +130,7 @@
           "$ref": "#/$defs/nonEmptyString"
         },
         "run_id": {
-          "description": "Optional identifier for the specific run, trial, attempt, or repetition measured.",
+          "description": "Identifier for the specific run, trial, attempt, or repetition measured.",
           "$ref": "#/$defs/nonEmptyString"
         }
       }
