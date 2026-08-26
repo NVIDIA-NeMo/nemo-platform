@@ -153,8 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-# Resolve the requested trace and provider-neutral subject identifiers before parsing ATIF.
 def _subject(args: argparse.Namespace) -> Subject:
+    """Resolve the requested trace and provider-neutral subject identifiers before parsing ATIF."""
     if args.trial_dir is not None:
         return _subject_from_trial_dir(args.trial_dir, task_id=args.task_id, run_id=args.run_id)
     if args.trace is None:
@@ -162,8 +162,8 @@ def _subject(args: argparse.Namespace) -> Subject:
     return _subject_from_trace(args.trace, task_id=args.task_id, run_id=args.run_id)
 
 
-# Derive task/run identity from Harbor metadata when a trial directory is supplied.
 def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None, run_id: str | None) -> Subject:
+    """Derive task/run identity from Harbor metadata when a trial directory is supplied."""
     if not trial_dir.is_dir():
         raise AuditTraceError(f"Harbor trial directory does not exist: {trial_dir}")
     trace_path = trial_dir / "agent" / "trajectory.json"
@@ -180,8 +180,8 @@ def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None, run_id: str
     )
 
 
-# Derive task/run identity from a direct trace path, honoring explicit CLI stamps first.
 def _subject_from_trace(trace_path: Path, *, task_id: str | None, run_id: str | None) -> Subject:
+    """Derive task/run identity from a direct trace path, honoring explicit CLI stamps first."""
     trial_dir = _harbor_trial_dir_for_trace(trace_path)
     result_path = trial_dir / "result.json" if trial_dir is not None else None
     result = _load_harbor_result(result_path) if result_path is not None else {}
@@ -192,15 +192,15 @@ def _subject_from_trace(trace_path: Path, *, task_id: str | None, run_id: str | 
     )
 
 
-# Recognize the common Harbor trial layout without putting Harbor fields in report schemas.
 def _harbor_trial_dir_for_trace(trace_path: Path) -> Path | None:
+    """Recognize the common Harbor trial layout without putting Harbor fields in report schemas."""
     if trace_path.name == "trajectory.json" and trace_path.parent.name == "agent":
         return trace_path.parent.parent
     return None
 
 
-# Read optional Harbor result metadata only to infer provider-neutral task/run ids.
 def _load_harbor_result(path: Path) -> JsonObject:
+    """Read optional Harbor result metadata only to infer provider-neutral task/run ids."""
     if not path.exists():
         return {}
     try:
@@ -212,8 +212,8 @@ def _load_harbor_result(path: Path) -> JsonObject:
     return payload
 
 
-# Read ATIF through Harbor once; downstream methods receive the typed trajectory object.
 def _load_harbor_trajectory(path: Path) -> TrajectoryLike:
+    """Read ATIF through Harbor once; downstream methods receive the typed trajectory object."""
     try:
         from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
     except ImportError as exc:
@@ -231,9 +231,8 @@ def _load_harbor_trajectory(path: Path) -> TrajectoryLike:
         raise AuditTraceError(f"{path} is not an ATIF trajectory accepted by Harbor: {exc}") from exc
 
 
-# Parse comma-separated method selections and de-duplicate them in request order.
 def _measurement_methods(measure_values: list[str] | None, legacy_values: list[str] | None) -> list[str]:
-    """Return selected measurement methods from comma-separated CLI values."""
+    """Parse comma-separated method selections and de-duplicate them in request order."""
     values = (measure_values or []) + (legacy_values or [])
     if not values:
         values = [tool_calls.METHOD_NAME]
@@ -252,7 +251,6 @@ def _measurement_methods(measure_values: list[str] | None, legacy_values: list[s
     return list(dict.fromkeys(method_names))
 
 
-# Fan the shared trajectory into each selected measurement method.
 def _measure_all(
     *,
     audit: JsonObject,
@@ -261,13 +259,13 @@ def _measure_all(
     subject: Subject,
     method_names: list[str],
 ) -> list[MeasurementReport]:
+    """Fan the shared trajectory into each selected measurement method."""
     return [
         _measure(audit=audit, audit_path=audit_path, trajectory=trajectory, subject=subject, method_name=method_name)
         for method_name in method_names
     ]
 
 
-# Wrap one method's raw result in the shared coverage/details envelope.
 def _measure(
     *,
     audit: JsonObject,
@@ -276,6 +274,7 @@ def _measure(
     subject: Subject,
     method_name: str,
 ) -> MeasurementReport:
+    """Wrap one method's raw result in the shared coverage/details envelope."""
     method = METHODS[method_name]
     measurement = method.measure(audit, trajectory)
     audit_info = _audit_info(audit, audit_path)
@@ -298,8 +297,8 @@ def _measure(
     return MeasurementReport(method_name=method.METHOD_NAME, coverage=coverage, details=details)
 
 
-# Validate every generated report before any files are written.
 def _validate_reports(reports: list[MeasurementReport]) -> None:
+    """Validate every generated report before any files are written."""
     for report in reports:
         _validate_report(report.coverage, schema_path=COVERAGE_SCHEMA_PATH, label=f"{report.method_name} coverage")
         _validate_report(
@@ -309,7 +308,6 @@ def _validate_reports(reports: list[MeasurementReport]) -> None:
         )
 
 
-# Write one coverage/details file pair per selected measurement method.
 def _write_reports(
     reports: list[MeasurementReport],
     *,
@@ -317,6 +315,7 @@ def _write_reports(
     task_id: str,
     compact: bool,
 ) -> list[WrittenMeasurement]:
+    """Write one coverage/details file pair per selected measurement method."""
     written_reports: list[WrittenMeasurement] = []
     for report in reports:
         method_dir = out_dir / task_id / report.method_name
@@ -337,8 +336,8 @@ def _write_reports(
     return written_reports
 
 
-# Record only denominator identity, not the audit items themselves.
 def _audit_info(audit: JsonObject, audit_path: Path) -> JsonObject:
+    """Record only denominator identity, not the audit items themselves."""
     return {
         "path": str(audit_path),
         "schema": audit["schema"],
@@ -348,16 +347,16 @@ def _audit_info(audit: JsonObject, audit_path: Path) -> JsonObject:
     }
 
 
-# Resolve the JSON Schema for a method-specific details payload.
 def _details_schema_path(details: JsonObject) -> Path:
+    """Resolve the JSON Schema for a method-specific details payload."""
     schema = details.get("schema")
     if not isinstance(schema, str) or schema not in DETAIL_SCHEMA_PATHS:
         raise AuditMeasurementError(f"no details JSON Schema is registered for {schema!r}")
     return DETAIL_SCHEMA_PATHS[schema]
 
 
-# Validate generated JSON against the schema committed with the skill.
 def _validate_report(report: JsonObject, *, schema_path: Path, label: str) -> None:
+    """Validate generated JSON against the schema committed with the skill."""
     try:
         from jsonschema import Draft202012Validator  # ty: ignore[unresolved-import]
         from jsonschema.exceptions import SchemaError  # ty: ignore[unresolved-import]
