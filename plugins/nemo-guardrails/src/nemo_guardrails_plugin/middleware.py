@@ -383,7 +383,17 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         logger.debug("Storing process_request GenerationResponse for %s", provenance.label)
         plugin_state.set(STATE_KEY_INPUT_GENERATION_RESPONSE, generation_response)
 
-        if is_blocked_generation_response(generation_response):
+        if generation_response.log is None:
+            logger.warning(
+                "Guardrail %s returned no activation log after input rails; cannot determine rail result",
+                provenance.label,
+            )
+            raise InferenceMiddlewareError(
+                "Unable to determine guardrail result for the request",
+                status_code=500,
+            )
+
+        if is_blocked_generation_response(generation_response.log):
             return build_immediate_response(
                 response_body=build_blocked_immediate_response_body(
                     config_id,
@@ -574,10 +584,20 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             error_msg="Failed to run output rails",
         )
 
+        if generation_response.log is None:
+            logger.warning(
+                "Guardrail %s returned no activation log after output rails; cannot determine rail result",
+                provenance.label,
+            )
+            raise InferenceMiddlewareError(
+                "Unable to determine guardrail result for the request",
+                status_code=500,
+            )
+
         # Both branches share the same kwargs; only the builder differs.
         response_body_builder = (
             build_blocked_output_response_body
-            if is_blocked_generation_response(generation_response)
+            if is_blocked_generation_response(generation_response.log)
             else build_output_response_body
         )
         return build_inference_response(
