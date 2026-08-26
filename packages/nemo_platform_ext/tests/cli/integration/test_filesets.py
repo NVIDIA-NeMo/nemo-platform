@@ -246,7 +246,7 @@ def fileset_with_nested_files(
             files.upload_file(
                 name=fileset.name,
                 workspace=random_workspace,
-                path=local.relative_to(dir_a).as_posix(),
+                path=f"{dir_a.name}/{local.relative_to(dir_a).as_posix()}",
                 content=local.read_bytes(),
             )
 

@@ -820,7 +820,10 @@ class TestHuggingfaceHubClientCompatibility:
         ) as fileset:
             # 1. List all files in the repo
             all_files = (
-                client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+                client_from_platform(sdk, FilesClient)
+                .list_files(name=fileset.name, workspace=fileset.workspace)
+                .data()
+                .data
             )
 
             # 2. Filter to get only config files (exclude large model files)

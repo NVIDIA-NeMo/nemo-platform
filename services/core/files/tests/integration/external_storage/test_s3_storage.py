@@ -614,12 +614,12 @@ class TestS3DefaultStorageConfig:
             )
 
             # List files
-            files = sdk_with_s3_default.files.list(
+            files_response = sdk_with_s3_default.files.list(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
-            assert len(files) == 1
-            assert files[0].path == "test.txt"
+            assert len(files_response) == 1
+            assert files_response[0].path == "test.txt"
 
             # Download and verify content
             downloaded = sdk_with_s3_default.files.download_content(
