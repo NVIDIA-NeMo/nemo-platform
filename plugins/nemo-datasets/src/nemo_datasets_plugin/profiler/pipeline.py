@@ -288,8 +288,9 @@ class _PartitionFolds:
 
     def __init__(self, features: list[FeatureSchema] | None) -> None:
         # Declared: the columns are known, so the accumulators are chosen now. Inferred: they are
-        # discovered as they appear and typed once every row has gone by.
-        self.features = features or []
+        # discovered as they appear and typed once every row has gone by. Either way the fold that
+        # measured the columns is the one that reports them, so there is a single copy of the schema
+        # here rather than two that can drift.
         self._columns: RowFold | InferredRowFold = RowFold(features) if features is not None else InferredRowFold()
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
@@ -318,23 +319,20 @@ class _PartitionFolds:
         a classifier that trips over a shape no detector anticipated.
         """
         try:
-            if isinstance(self._columns, InferredRowFold):
-                self.features, measured = self._columns.finalize()
-            else:
-                measured = self._columns.finalize()
+            features, measured = self._columns.finalize()
             classification = classify(
-                self.features,
+                features,
                 measured.stats,
                 probes=measured.probes,
                 prefix_pair=self._prefix.result(),
                 column_roles=column_roles,
             )
-            quote_enumerations(self.features, measured.stats, measured.vocabularies)
-            classification.evidence.extend(_capped_columns_evidence(self.features))
+            quote_enumerations(features, measured.stats, measured.vocabularies)
+            classification.evidence.extend(_capped_columns_evidence(features))
             classification.evidence.extend(measured.errors)
             if self._prefix_error is not None:
                 classification.evidence.append(self._prefix_error)
-            return self.features, measured.stats, classification
+            return features, measured.stats, classification
         except Exception as exc:
             detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
             return (

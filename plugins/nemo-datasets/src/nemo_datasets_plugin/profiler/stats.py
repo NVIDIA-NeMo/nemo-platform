@@ -133,7 +133,15 @@ class RowFold:
                     ),
                 )
 
-    def finalize(self) -> ColumnMeasurements:
+    def finalize(self) -> tuple[list[FeatureSchema], ColumnMeasurements]:
+        """The schema that was measured, and the measurements.
+
+        The features come back rather than being assumed from what was handed in, because they are
+        not the same list: duplicate names were dropped in the constructor, so a caller holding its
+        own copy would describe a column that no accumulator ever measured. Returning the same pair
+        :meth:`InferredRowFold.finalize` does also spares the caller an ``isinstance`` to find out
+        which of the two it is holding.
+        """
         stats: dict[str, ColumnStats] = {}
         probes: dict[str, ColumnProbes] = {}
         vocabularies: dict[str, set[Any]] = {}
@@ -163,7 +171,7 @@ class RowFold:
                 vocabularies[feature.name] = vocabulary
             if column is not None:
                 stats[feature.name] = column
-        return ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+        return self._features, ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
 
 
 def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
@@ -174,7 +182,8 @@ def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -
     """
     fold = RowFold(features)
     fold.update(rows)
-    return fold.finalize()
+    _, measured = fold.finalize()
+    return measured
 
 
 def quote_enumerations(
