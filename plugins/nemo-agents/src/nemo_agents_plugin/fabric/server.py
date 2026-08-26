@@ -256,7 +256,6 @@ def create_fabric_serving_app(
             base_dir=config_path.parent,
             session_registry=session_registry,
             max_concurrent_invocations=settings.max_concurrent_invocations,
-            idle_session_timeout_seconds=settings.idle_session_timeout_seconds,
         )
         app.state.session_manager = session_manager
         cleanup_shutdown = asyncio.Event()

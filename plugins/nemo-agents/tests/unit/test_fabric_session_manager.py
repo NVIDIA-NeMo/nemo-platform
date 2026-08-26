@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,7 +11,7 @@ import pytest
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric import session_manager
 from nemo_agents_plugin.fabric.runtime import FabricInvocationRequest, FabricRuntimeResult
-from nemo_agents_plugin.fabric.session_manager import FabricSessionActivity, FabricSessionManager
+from nemo_agents_plugin.fabric.session_manager import FabricSessionManager
 from nemo_agents_plugin.fabric.session_registry import (
     FabricSessionNotFoundError,
     FabricSessionRegistry,
@@ -533,98 +532,6 @@ async def test_invoke_session_refreshes_activity(
 
 
 @pytest.mark.asyncio
-async def test_reports_attachment_and_invocation_activity_timestamps(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
-    runtime = _FakeRuntime()
-    timestamps = iter(
-        [
-            datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
-            datetime(2026, 8, 25, 12, 1, tzinfo=UTC),
-            datetime(2026, 8, 25, 12, 2, tzinfo=UTC),
-            datetime(2026, 8, 25, 12, 3, tzinfo=UTC),
-            datetime(2026, 8, 25, 12, 4, tzinfo=UTC),
-        ]
-    )
-    activity: list[FabricSessionActivity] = []
-
-    async def report_activity(update: FabricSessionActivity) -> None:
-        activity.append(update)
-
-    async def invoke_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> FabricRuntimeResult:
-        return FabricRuntimeResult(status="succeeded", response=request.input)
-
-    monkeypatch.setattr(session_manager, "invoke_fabric_runtime", invoke_fabric_runtime)
-    manager = FabricSessionManager(
-        _agent_config(),
-        base_dir=tmp_path,
-        session_registry=FabricSessionRegistry(),
-        fabric=cast(Any, _FakeFabric(runtime)),
-        idle_session_timeout_seconds=30.0,
-        activity_callback=report_activity,
-        clock=lambda: next(timestamps),
-    )
-
-    session = await manager.resolve_session("session-1")
-    await manager.invoke_session(session, FabricInvocationRequest(input="first"))
-    await manager.invoke_session(session, FabricInvocationRequest(input="second"))
-
-    expected_timestamps = [
-        datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
-        datetime(2026, 8, 25, 12, 1, tzinfo=UTC),
-        datetime(2026, 8, 25, 12, 2, tzinfo=UTC),
-        datetime(2026, 8, 25, 12, 3, tzinfo=UTC),
-        datetime(2026, 8, 25, 12, 4, tzinfo=UTC),
-    ]
-    assert [update.last_active_at for update in activity] == expected_timestamps
-    assert [update.expires_at for update in activity] == [
-        timestamp + timedelta(seconds=30) for timestamp in expected_timestamps
-    ]
-    assert {update.session_id for update in activity} == {"session-1"}
-
-
-@pytest.mark.asyncio
-async def test_failed_invocation_reports_start_and_finish_activity(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    registry = FabricSessionRegistry()
-    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
-    timestamps = iter(
-        [
-            datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
-            datetime(2026, 8, 25, 12, 1, tzinfo=UTC),
-        ]
-    )
-    activity: list[FabricSessionActivity] = []
-
-    async def report_activity(update: FabricSessionActivity) -> None:
-        activity.append(update)
-
-    async def invoke_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> FabricRuntimeResult:
-        raise RuntimeError("invoke failed")
-
-    monkeypatch.setattr(session_manager, "invoke_fabric_runtime", invoke_fabric_runtime)
-    manager = FabricSessionManager(
-        _agent_config(),
-        base_dir=tmp_path,
-        session_registry=registry,
-        activity_callback=report_activity,
-        clock=lambda: next(timestamps),
-    )
-
-    with pytest.raises(RuntimeError, match="invoke failed"):
-        await manager.invoke_session(session, FabricInvocationRequest(input="hello"))
-
-    assert [update.last_active_at for update in activity] == [
-        datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
-        datetime(2026, 8, 25, 12, 1, tzinfo=UTC),
-    ]
-
-
-@pytest.mark.asyncio
 async def test_stream_session_refreshes_activity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -652,43 +559,6 @@ async def test_stream_session_refreshes_activity(
         assert resolved_stream is stream
 
     assert refresh_calls == [session]
-
-
-@pytest.mark.asyncio
-async def test_interrupted_stream_reports_start_and_finish_activity(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    registry = FabricSessionRegistry()
-    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
-    timestamps = iter(
-        [
-            datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
-            datetime(2026, 8, 25, 12, 1, tzinfo=UTC),
-        ]
-    )
-    activity: list[FabricSessionActivity] = []
-
-    async def report_activity(update: FabricSessionActivity) -> None:
-        activity.append(update)
-
-    monkeypatch.setattr(session_manager, "stream_fabric_runtime", lambda runtime, request: object())
-    manager = FabricSessionManager(
-        _agent_config(),
-        base_dir=tmp_path,
-        session_registry=registry,
-        activity_callback=report_activity,
-        clock=lambda: next(timestamps),
-    )
-
-    with pytest.raises(RuntimeError, match="stream interrupted"):
-        async with manager.stream_session(session, FabricInvocationRequest(input="hello")):
-            raise RuntimeError("stream interrupted")
-
-    assert [update.last_active_at for update in activity] == [
-        datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
-        datetime(2026, 8, 25, 12, 1, tzinfo=UTC),
-    ]
 
 
 @pytest.mark.asyncio
@@ -826,17 +696,11 @@ async def test_invoke_session_releases_lock_after_cancellation(
 ) -> None:
     registry = FabricSessionRegistry()
     session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
-    activity: list[FabricSessionActivity] = []
-
-    async def report_activity(update: FabricSessionActivity) -> None:
-        activity.append(update)
-
     manager = FabricSessionManager(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
         fabric=cast(Any, _FakeFabric(_FakeRuntime())),
-        activity_callback=report_activity,
     )
     invocation_started = asyncio.Event()
 
@@ -859,9 +723,6 @@ async def test_invoke_session_releases_lock_after_cancellation(
     result = await manager.invoke_session(session, FabricInvocationRequest(input="next"))
 
     assert result.response == "recovered"
-    assert len(activity) == 4
-    assert all(update.last_active_at.tzinfo is UTC for update in activity)
-    assert all(update.expires_at > update.last_active_at for update in activity)
 
 
 def test_rejects_negative_concurrency_limit(tmp_path: Path) -> None:
@@ -871,16 +732,6 @@ def test_rejects_negative_concurrency_limit(tmp_path: Path) -> None:
             base_dir=tmp_path,
             session_registry=FabricSessionRegistry(),
             max_concurrent_invocations=-1,
-        )
-
-
-def test_rejects_non_positive_idle_session_timeout(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="idle_session_timeout_seconds must be greater than zero"):
-        FabricSessionManager(
-            _agent_config(),
-            base_dir=tmp_path,
-            session_registry=FabricSessionRegistry(),
-            idle_session_timeout_seconds=0,
         )
 
 

@@ -476,12 +476,12 @@ class AgentSession(NemoEntity, entity_type="agent_session"):
     last_active_at: datetime | None = Field(
         default=None,
         description=(
-            "UTC timestamp of the last activity in the session; null until a runtime has successfully attached."
+            "UTC timestamp of the latest accepted or completed invocation; null until the first invocation is accepted."
         ),
         json_schema_extra={"nullable": True},
     )
     expires_at: datetime | None = Field(
         default=None,
-        description="UTC timestamp when the session expires, if expiration is configured.",
+        description="UTC rolling idle deadline derived from the latest session activity.",
         json_schema_extra={"nullable": True},
     )

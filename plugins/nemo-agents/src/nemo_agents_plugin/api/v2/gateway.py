@@ -31,7 +31,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -49,14 +50,23 @@ from nemo_agents_plugin.api.v2.session_access import get_owned_session_by_id
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.deployment_routing import get_deployment_endpoint, is_deployment_routable
 from nemo_agents_plugin.entities import Agent, AgentDeployment, AgentSession, SessionStatus
+from nemo_agents_plugin.fabric.session_manager import DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_effective_principal_id
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClient,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Platform-created Fabric deployments currently use the serving default. If the
+# timeout becomes deployment-configurable, this value must come from the deployment.
+_SESSION_IDLE_TIMEOUT = timedelta(seconds=DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS)
 
 # HTTP methods forwarded through the proxy, split by authorization scope. Read-like methods
 # require only agents:read; mutating methods require agents:write. This mirrors the Inference
@@ -167,7 +177,8 @@ async def _resolve_and_proxy_agent(
         deployment,
         trailing_uri,
         model_name=name,
-        session_id=session.id if session is not None else None,
+        entity_client=entity_client,
+        session=session,
     )
 
 
@@ -289,7 +300,8 @@ async def _resolve_and_proxy_deployment(
         dep,
         trailing_uri,
         model_name=name,
-        session_id=session.id if session is not None else None,
+        entity_client=entity_client,
+        session=session,
     )
 
 
@@ -299,7 +311,8 @@ async def _proxy_deployment(
     trailing_uri: str,
     *,
     model_name: str,
-    session_id: str | None = None,
+    entity_client: NemoEntitiesClient,
+    session: AgentSession | None = None,
 ) -> StreamingResponse:
     """Validate and proxy to an already-resolved deployment entity."""
     if not is_deployment_routable(deployment):
@@ -319,12 +332,25 @@ async def _proxy_deployment(
             detail=f"Deployment '{deployment.name}' has no routable endpoint (status='{deployment.status}').",
         )
 
+    activity_session = session
+
+    async def persist_start_activity() -> None:
+        nonlocal activity_session
+        if activity_session is not None:
+            activity_session = await _require_session_activity_update(entity_client, activity_session)
+
+    async def persist_finish_activity() -> None:
+        if activity_session is not None:
+            await _best_effort_session_activity_update(entity_client, activity_session)
+
     return await _proxy(
         request,
         endpoint,
         trailing_uri,
         model_name=model_name,
-        session_id=session_id,
+        session_id=session.id if session is not None else None,
+        on_start=persist_start_activity if session is not None else None,
+        on_complete=persist_finish_activity if session is not None else None,
     )
 
 
@@ -436,10 +462,7 @@ async def _resolve_request_session(
         effective_principal_id=effective_principal_id,
     )
     if session.status is not SessionStatus.ACTIVE:
-        raise HTTPException(
-            status_code=409,
-            detail=(f"Session ID '{session_id}' has status '{session.status.value}' and cannot be invoked."),
-        )
+        raise _session_inactive(session)
     return session
 
 
@@ -485,6 +508,99 @@ def _session_deployment_mismatch(session: AgentSession, *, detail: str) -> HTTPE
     )
 
 
+def _session_inactive(session: AgentSession) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=(f"Session ID '{session.id}' has status '{session.status.value}' and cannot be invoked."),
+    )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+async def _persist_session_activity(
+    entity_client: NemoEntitiesClient,
+    session: AgentSession,
+    *,
+    activity_at: datetime | None = None,
+) -> AgentSession:
+    """Advance persisted activity timestamps, retrying one optimistic conflict."""
+    timestamp = (activity_at or _utc_now()).astimezone(UTC)
+    session_to_update = session
+
+    for attempt in range(2):
+        if session_to_update.status is not SessionStatus.ACTIVE:
+            raise _session_inactive(session_to_update)
+
+        last_active_at = session_to_update.last_active_at
+        if last_active_at is not None:
+            if last_active_at.tzinfo is None or last_active_at.utcoffset() is None:
+                last_active_at = last_active_at.replace(tzinfo=UTC)
+            if last_active_at >= timestamp:
+                return session_to_update
+
+        session_to_update.last_active_at = timestamp
+        session_to_update.expires_at = timestamp + _SESSION_IDLE_TIMEOUT
+        try:
+            return await entity_client.update(session_to_update)
+        except NemoEntityConflictError:
+            if attempt == 1:
+                raise
+            session_to_update = await entity_client.get_by_id(AgentSession, session.id)
+
+    raise RuntimeError("Session activity update retry loop exited unexpectedly.")  # pragma: no cover
+
+
+async def _require_session_activity_update(
+    entity_client: NemoEntitiesClient,
+    session: AgentSession,
+) -> AgentSession:
+    """Persist required invocation-start activity or reject the invocation."""
+    try:
+        return await _persist_session_activity(entity_client, session)
+    except HTTPException:
+        raise
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session ID '{session.id}' was deleted before invocation.",
+        ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session ID '{session.id}' is being modified concurrently.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to persist invocation-start activity for session ID '%s'.", session.id)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not persist activity for session ID '{session.id}'.",
+        ) from exc
+
+
+async def _best_effort_session_activity_update(
+    entity_client: NemoEntitiesClient,
+    session: AgentSession,
+) -> None:
+    """Persist invocation-finish activity without changing an emitted response."""
+    try:
+        await _persist_session_activity(entity_client, session)
+    except HTTPException:
+        logger.debug(
+            "Session ID '%s' became non-active before finish activity was persisted.",
+            session.id,
+        )
+    except NemoEntityNotFoundError:
+        logger.debug("Session ID '%s' was deleted before finish activity was persisted.", session.id)
+    except Exception:
+        logger.warning(
+            "Failed to persist invocation-finish activity for session ID '%s'.",
+            session.id,
+            exc_info=True,
+        )
+
+
 async def _proxy(
     request: Request,
     endpoint: str,
@@ -492,6 +608,8 @@ async def _proxy(
     *,
     model_name: str | None = None,
     session_id: str | None = None,
+    on_start: Callable[[], Awaitable[None]] | None = None,
+    on_complete: Callable[[], Awaitable[None]] | None = None,
 ) -> StreamingResponse:
     """Forward *request* to ``{endpoint}/{trailing_uri}`` and stream the response.
 
@@ -531,6 +649,19 @@ async def _proxy(
         headers[SESSION_ID_HEADER] = session_id
 
     body = await request.body()
+
+    activity_started = False
+    activity_completed = False
+    if on_start is not None:
+        await on_start()
+        activity_started = True
+
+    async def _complete_activity_once() -> None:
+        nonlocal activity_completed
+        if not activity_started or activity_completed or on_complete is None:
+            return
+        activity_completed = True
+        await on_complete()
 
     # We need the upstream response headers before we can construct StreamingResponse
     # (to forward content-type, etc.).  Use a two-phase approach:
@@ -579,10 +710,13 @@ async def _proxy(
     chunks: list[bytes] = []
 
     async def _buffered() -> AsyncIterator[bytes]:
-        for c in chunks:
-            yield c
-        async for c in stream_gen:
-            yield c
+        try:
+            for c in chunks:
+                yield c
+            async for c in stream_gen:
+                yield c
+        finally:
+            await _complete_activity_once()
 
     # Prime: triggers the HTTP request, populates response_headers / status_code_holder,
     # and catches the most common failure modes before we commit to a StreamingResponse.
@@ -592,9 +726,14 @@ async def _proxy(
     except StopAsyncIteration:
         pass  # empty body — still valid (e.g. 204)
     except HTTPException:
+        await _complete_activity_once()
         raise  # 5xx → 502 translation raised inside the generator; propagate as-is
     except httpx.RequestError as exc:
+        await _complete_activity_once()
         raise HTTPException(status_code=502, detail=f"Could not connect to agent: {exc}") from exc
+    except BaseException:
+        await _complete_activity_once()
+        raise
 
     content_type = response_headers.get("content-type", "application/json")
 
@@ -607,8 +746,12 @@ async def _proxy(
     # NemoAgentWrapperFunction.convert_to_chat_response where the LLM's
     # response_metadata carries the real model name.
     if model_name and not content_type.startswith("text/event-stream"):
-        async for remaining in stream_gen:
-            chunks.append(remaining)
+        try:
+            async for remaining in stream_gen:
+                chunks.append(remaining)
+        except BaseException:
+            await _complete_activity_once()
+            raise
         raw = b"".join(chunks)
         try:
             data = json.loads(raw)

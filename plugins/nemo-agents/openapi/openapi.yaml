@@ -4263,14 +4263,14 @@ components:
           default: active
         last_active_at:
           title: Last Active At
-          description: UTC timestamp of the last activity in the session; null until
-            a runtime has successfully attached.
+          description: UTC timestamp of the latest accepted or completed invocation;
+            null until the first invocation is accepted.
           nullable: true
           type: string
           format: date-time
         expires_at:
           title: Expires At
-          description: UTC timestamp when the session expires, if expiration is configured.
+          description: UTC rolling idle deadline derived from the latest session activity.
           nullable: true
           type: string
           format: date-time
