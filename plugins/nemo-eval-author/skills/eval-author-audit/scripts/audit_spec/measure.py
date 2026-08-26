@@ -342,6 +342,8 @@ def _measure(
     method_info = {"name": method.name}
     item_kind = measurement["item_kind"]
     kind_counts = item_counts(audit)
+    if not isinstance(item_kind, str) or item_kind not in kind_counts:
+        raise AuditMeasurementError(f"measurement method {method.name!r} returned unsupported item kind {item_kind!r}")
     coverage = {
         "schema": COVERAGE_SCHEMA,
         "audit": audit_info,
@@ -387,11 +389,16 @@ def _write_reports(
             / _path_component("run", subject.run_id)
             / report.method_name
         )
-        method_dir.mkdir(parents=True, exist_ok=True)
         coverage_path = method_dir / "coverage.json"
         details_path = method_dir / "details.json"
-        coverage_path.write_text(_json(report.coverage, compact=compact) + "\n", encoding="utf-8")
-        details_path.write_text(_json(report.details, compact=compact) + "\n", encoding="utf-8")
+        try:
+            method_dir.mkdir(parents=True, exist_ok=True)
+            coverage_path.write_text(_json(report.coverage, compact=compact) + "\n", encoding="utf-8")
+            details_path.write_text(_json(report.details, compact=compact) + "\n", encoding="utf-8")
+        except OSError as exc:
+            raise AuditEnvironmentError(
+                f"could not write {report.method_name} measurement reports under {method_dir}: {exc}"
+            ) from exc
         written_reports.append(
             WrittenMeasurement(
                 method_name=report.method_name,
