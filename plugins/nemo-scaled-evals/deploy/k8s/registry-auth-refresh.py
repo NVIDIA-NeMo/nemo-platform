@@ -76,4 +76,6 @@ else:
     secret["metadata"]["resourceVersion"] = existing["metadata"]["resourceVersion"]
     request("PUT", secret_path, secret)
 
-print(f"wrote docker config for {host} into secret/{secret_name}")
+# Deliberately omits the Secret name: it reaches this script through an env var whose
+# name matches a credential heuristic, and it is static deployment config anyway.
+print(f"wrote docker config for {host} in namespace {namespace}")
