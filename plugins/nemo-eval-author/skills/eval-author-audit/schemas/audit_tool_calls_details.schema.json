@@ -28,7 +28,7 @@
       "$ref": "#/$defs/audit"
     },
     "subject": {
-      "description": "The task or trial trace measured by this report.",
+      "description": "Provider-neutral identity of the measured task/run artifact.",
       "$ref": "#/$defs/subject"
     },
     "method": {
@@ -115,6 +115,7 @@
       }
     },
     "audit": {
+      "description": "Identity and status of the audit denominator used for this measurement. Details readers use this to connect method-specific evidence back to the same denominator as coverage.json.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -126,27 +127,33 @@
       ],
       "properties": {
         "path": {
+          "description": "Path to the audit.md file measured against.",
           "$ref": "#/$defs/pathString"
         },
         "schema": {
+          "description": "Schema version of the audit denominator.",
           "const": "nemo.eval_author.audit.v1"
         },
         "agent": {
+          "description": "Agent name declared by the audit denominator.",
           "$ref": "#/$defs/nonEmptyString"
         },
         "status": {
+          "description": "Review state of the audit denominator when this measurement was produced.",
           "enum": [
             "draft",
             "approved"
           ]
         },
         "item_count": {
+          "description": "Number of audit items in the denominator when this measurement was produced.",
           "type": "integer",
           "minimum": 1
         }
       }
     },
     "subject": {
+      "description": "The measured task or run. Keep this provider-neutral so coverage and details files can be read without understanding the runner that produced the trace.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -156,22 +163,20 @@
       ],
       "properties": {
         "trace": {
+          "description": "Path to the interaction trace that was measured.",
           "$ref": "#/$defs/pathString"
         },
         "trace_format": {
+          "description": "Trace serialization format understood by the measurement method.",
           "const": "atif"
         },
         "task_id": {
+          "description": "Stable task, scenario, or case identifier for grouping measurements.",
           "$ref": "#/$defs/nonEmptyString"
         },
-        "trial_id": {
+        "run_id": {
+          "description": "Optional identifier for the specific run, trial, attempt, or repetition measured.",
           "$ref": "#/$defs/nonEmptyString"
-        },
-        "harbor_trial_dir": {
-          "$ref": "#/$defs/pathString"
-        },
-        "harbor_result": {
-          "$ref": "#/$defs/pathString"
         }
       }
     },

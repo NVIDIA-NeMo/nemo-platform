@@ -11,9 +11,7 @@
     "trace": ".harbor/runs/account-recovery/trials/trial-001/agent/trajectory.json",
     "trace_format": "atif",
     "task_id": "account-recovery",
-    "trial_id": "trial-001",
-    "harbor_trial_dir": ".harbor/runs/account-recovery/trials/trial-001",
-    "harbor_result": ".harbor/runs/account-recovery/trials/trial-001/result.json"
+    "run_id": "trial-001"
   },
   "method": {
     "name": "tool_calls"

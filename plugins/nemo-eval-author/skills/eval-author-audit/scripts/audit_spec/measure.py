@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Measure one Harbor/ATIF trace against an audit-spec denominator."""
+"""Measure one ATIF trace against an audit-spec denominator."""
 
 from __future__ import annotations
 
@@ -38,9 +38,7 @@ class Subject:
 
     trace_path: Path
     task_id: str
-    trial_id: str | None
-    harbor_trial_dir: Path | None
-    harbor_result_path: Path | None
+    run_id: str | None
 
     def to_json(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -48,12 +46,8 @@ class Subject:
             "trace_format": "atif",
             "task_id": self.task_id,
         }
-        if self.trial_id is not None:
-            payload["trial_id"] = self.trial_id
-        if self.harbor_trial_dir is not None:
-            payload["harbor_trial_dir"] = str(self.harbor_trial_dir)
-        if self.harbor_result_path is not None:
-            payload["harbor_result"] = str(self.harbor_result_path)
+        if self.run_id is not None:
+            payload["run_id"] = self.run_id
         return payload
 
 
@@ -64,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     subject.add_argument("--trace", type=Path, help="ATIF trajectory JSON file")
     subject.add_argument("--trial-dir", type=Path, help="Harbor trial directory containing agent/trajectory.json")
     parser.add_argument("--task-id", help="task id to stamp on the measurement report")
+    parser.add_argument("--run-id", help="run id to stamp on the measurement report")
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -124,13 +119,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def _subject(args: argparse.Namespace) -> Subject:
     if args.trial_dir is not None:
-        return _subject_from_trial_dir(args.trial_dir, task_id=args.task_id)
+        return _subject_from_trial_dir(args.trial_dir, task_id=args.task_id, run_id=args.run_id)
     if args.trace is None:
         raise AuditMeasurementError("provide --trace or --trial-dir")
-    return _subject_from_trace(args.trace, task_id=args.task_id)
+    return _subject_from_trace(args.trace, task_id=args.task_id, run_id=args.run_id)
 
 
-def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None) -> Subject:
+def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None, run_id: str | None) -> Subject:
     if not trial_dir.is_dir():
         raise AuditMeasurementError(f"Harbor trial directory does not exist: {trial_dir}")
     trace_path = trial_dir / "agent" / "trajectory.json"
@@ -143,22 +138,18 @@ def _subject_from_trial_dir(trial_dir: Path, *, task_id: str | None) -> Subject:
     return Subject(
         trace_path=trace_path,
         task_id=task_id or _string(result.get("task_name")) or trial_dir.name,
-        trial_id=_string(result.get("trial_name")) or trial_dir.name,
-        harbor_trial_dir=trial_dir,
-        harbor_result_path=result_path if result_path.exists() else None,
+        run_id=run_id or _string(result.get("trial_name")) or trial_dir.name,
     )
 
 
-def _subject_from_trace(trace_path: Path, *, task_id: str | None) -> Subject:
+def _subject_from_trace(trace_path: Path, *, task_id: str | None, run_id: str | None) -> Subject:
     trial_dir = _harbor_trial_dir_for_trace(trace_path)
     result_path = trial_dir / "result.json" if trial_dir is not None else None
     result = _load_harbor_result(result_path) if result_path is not None else {}
     return Subject(
         trace_path=trace_path,
         task_id=task_id or _string(result.get("task_name")) or trace_path.stem,
-        trial_id=_string(result.get("trial_name")) or (trial_dir.name if trial_dir is not None else None),
-        harbor_trial_dir=trial_dir,
-        harbor_result_path=result_path if result_path is not None and result_path.exists() else None,
+        run_id=run_id or _string(result.get("trial_name")) or (trial_dir.name if trial_dir is not None else None),
     )
 
 
