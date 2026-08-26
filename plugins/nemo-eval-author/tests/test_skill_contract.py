@@ -177,6 +177,13 @@ def _run_json_script(
     return result.returncode, json.loads(result.stdout), result.stderr
 
 
+def _import_audit_measure(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Import a fresh copy of measure.py so monkeypatches stay local to one test."""
+    monkeypatch.syspath_prepend(str(_AUDIT_SPEC_DIR))
+    sys.modules.pop("measure", None)
+    return importlib.import_module("measure")
+
+
 def _digest(path: Path) -> str:
     with path.open("rb") as stream:
         return f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
@@ -1428,6 +1435,111 @@ def test_audit_measure_rejects_empty_measure_selection_before_trace_load(tmp_pat
     assert report["error_type"] == "measurement"
     assert "--measure must name at least one measurement method" in report["error"]
     assert not out_dir.exists()
+
+
+def test_audit_measure_reports_write_failures_as_environment_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    measure_module = _import_audit_measure(monkeypatch)
+
+    monkeypatch.setattr(measure_module, "load_audit_spec", lambda path: _template_payload())
+    monkeypatch.setattr(
+        measure_module,
+        "_load_harbor_trajectory",
+        lambda path: measure_module.LoadedTrace(trajectory=object(), content_sha256="a" * 64),
+    )
+    monkeypatch.setattr(measure_module, "_validate_reports", lambda reports: None)
+    monkeypatch.setitem(
+        measure_module.METHODS,
+        "tool_calls",
+        measure_module.MeasurementMethod(
+            name="tool_calls",
+            details_schema="test.details",
+            measure=lambda audit, trajectory: {
+                "item_kind": "tool",
+                "covered": [],
+                "details": {"schema": "test.details"},
+            },
+        ),
+    )
+
+    def raise_permission_error(self: Path, *args: Any, **kwargs: Any) -> None:
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "mkdir", raise_permission_error)
+
+    code = measure_module.main(
+        [
+            "--audit",
+            str(tmp_path / "audit.md"),
+            "--trace",
+            str(tmp_path / "trajectory.json"),
+            "--task-id",
+            "account-recovery",
+            "--run-id",
+            "trial-1",
+            "--out-dir",
+            str(tmp_path / ".eval-author" / "audit-measurements"),
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert code == 2
+    assert report["valid"] is None
+    assert report["written"] is False
+    assert report["error_type"] == "environment"
+    assert "could not write tool_calls measurement reports" in report["error"]
+    assert "Permission denied" in report["error"]
+
+
+def test_audit_measure_reports_unknown_method_item_kind_as_measurement_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    measure_module = _import_audit_measure(monkeypatch)
+
+    monkeypatch.setattr(measure_module, "load_audit_spec", lambda path: _template_payload())
+    monkeypatch.setattr(
+        measure_module,
+        "_load_harbor_trajectory",
+        lambda path: measure_module.LoadedTrace(trajectory=object(), content_sha256="a" * 64),
+    )
+    monkeypatch.setitem(
+        measure_module.METHODS,
+        "boundary",
+        measure_module.MeasurementMethod(
+            name="boundary",
+            details_schema="test.details",
+            measure=lambda audit, trajectory: {"item_kind": "boundary", "covered": [], "details": {}},
+        ),
+    )
+
+    code = measure_module.main(
+        [
+            "--audit",
+            str(tmp_path / "audit.md"),
+            "--trace",
+            str(tmp_path / "trajectory.json"),
+            "--task-id",
+            "account-recovery",
+            "--run-id",
+            "trial-1",
+            "--measure",
+            "boundary",
+            "--out-dir",
+            str(tmp_path / ".eval-author" / "audit-measurements"),
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "measurement method 'boundary' returned unsupported item kind 'boundary'" in report["error"]
 
 
 def test_audit_measure_marks_missing_harbor_as_environment_error(tmp_path: Path) -> None:
