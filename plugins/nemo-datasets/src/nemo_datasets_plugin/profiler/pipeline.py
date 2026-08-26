@@ -387,10 +387,12 @@ def _profile_partition(
                 # open at all. Folding it silently would make a corrupt shard look complete.
                 error = "; ".join(read_errors) or None
                 # A footer knows the count before the read; a line-delimited file only knows it by
-                # reaching the end, which a capped read does not do.
+                # reaching the end, which a capped read does not do -- and counting rows it could
+                # parse is not counting the file's rows, so a read that reported anything at all
+                # leaves the count unknown rather than low.
                 if preview.num_rows is not None:
                     num_rows = preview.num_rows
-                elif row_cap is None or scanned < row_cap:
+                elif error is None and (row_cap is None or scanned < row_cap):
                     num_rows = scanned
                 # Exhaustive requires parsing every row. A known count alone is not enough, and a
                 # partial read is not exhaustive however many rows it managed to get.

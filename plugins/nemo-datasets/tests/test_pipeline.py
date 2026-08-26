@@ -558,7 +558,11 @@ def test_profile_records_a_partial_jsonl_read(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    assert result.partitions[0].splits[0].num_examples == 2  # the readable rows survived
+    # Not 2: the rows it could parse are not the file's rows, and a count that omits the corrupt
+    # line would read low while looking like a fact. `coverage` says what was actually scanned.
+    assert result.partitions[0].splits[0].num_examples is None
+    assert result.coverage.rows_scanned == 2
+    assert result.coverage.rows_present is None
     assert [e.path for e in result.file_errors] == ["train.jsonl"]
     assert "line 2" in result.file_errors[0].error
     assert result.partitions[0].rows_complete is False  # a line was lost, so not a full scan
