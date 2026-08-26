@@ -1,0 +1,26 @@
+{
+  "schema": "nemo.eval_author.audit_coverage.v1",
+  "audit": {
+    "path": ".eval-author/audit.md",
+    "schema": "nemo.eval_author.audit.v1",
+    "agent": "support-agent",
+    "status": "draft",
+    "item_count": 5
+  },
+  "subject": {
+    "trace": ".harbor/runs/account-recovery/trials/trial-001/agent/trajectory.json",
+    "trace_format": "atif",
+    "task_id": "account-recovery",
+    "trial_id": "trial-001",
+    "harbor_trial_dir": ".harbor/runs/account-recovery/trials/trial-001",
+    "harbor_result": ".harbor/runs/account-recovery/trials/trial-001/result.json"
+  },
+  "method": {
+    "name": "tool_calls"
+  },
+  "item_kind": "tool",
+  "covered": [
+    "customer.lookup",
+    "ticket.create"
+  ]
+}

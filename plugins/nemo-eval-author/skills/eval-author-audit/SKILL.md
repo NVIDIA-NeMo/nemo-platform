@@ -76,6 +76,8 @@ Shared helpers are private modules in the same tree:
 Shared coverage output is defined by `schemas/audit_coverage.schema.json`.
 Tool-call debug output is defined by
 `schemas/audit_tool_calls_details.schema.json`.
+Concrete instances live under `examples/schemas/tool_calls.coverage.json` and
+`examples/schemas/tool_calls.details.json`.
 
 ## Step 1: Draft Or Update Audit Items
 
