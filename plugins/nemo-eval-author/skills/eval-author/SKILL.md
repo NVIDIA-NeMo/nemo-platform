@@ -82,15 +82,15 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
-| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, then measure one Harbor/ATIF trace against it |
+| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, then write per-method coverage/details files for one ATIF trace |
 | `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
 
 Runnable tasks, verifier metrics, and coverage aggregation are not built yet.
 `eval-author-audit` works one level above tasks: it generates and validates the
-coverage denominator and can measure one Harbor/ATIF trace against it. When a
-user asks for new runnable tasks, say so plainly rather than improvising a task
-layout by hand. A task written against a guessed convention scores nothing and
-costs a full evaluation run to discover.
+coverage denominator and can measure one ATIF trace against it. When a user asks
+for new runnable tasks, say so plainly rather than improvising a task layout by
+hand. A task written against a guessed convention scores nothing and costs a full
+evaluation run to discover.
 
 ## Boundaries
 

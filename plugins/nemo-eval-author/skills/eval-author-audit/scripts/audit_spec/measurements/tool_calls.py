@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Deterministic audit measurement from ATIF tool calls."""
+"""Deterministic audit coverage from ATIF tool calls."""
 
 from __future__ import annotations
 
@@ -11,57 +11,26 @@ from typing import Any
 from _atif import AtifTraceFacts
 
 METHOD_NAME = "tool_calls"
-SUPPORTED_EVIDENCE_KINDS = frozenset({"tool_call"})
+ITEM_KIND = "tool"
+DETAILS_SCHEMA = "nemo.eval_author.audit_tool_calls_details.v1"
 
 
-def measure_item(item: dict[str, Any], trace: AtifTraceFacts) -> dict[str, Any]:
-    """Measure one audit item against the tool calls present in an ATIF trace."""
-    evidence_results = [_measure_evidence(evidence, trace) for evidence in item["evidence_required"]]
-    status = _item_status(evidence_results)
+def measure(audit: dict[str, Any], trace: AtifTraceFacts) -> dict[str, Any]:
+    """Measure audit tool items against the tool calls present in an ATIF trace."""
+    audit_tools = [item["name"] for item in audit["items"] if item["kind"] == ITEM_KIND]
+    covered = [tool for tool in audit_tools if trace.matches(tool)]
+    missing = [tool for tool in audit_tools if tool not in covered]
     return {
-        "name": item["name"],
-        "kind": item["kind"],
-        "status": status,
-        "covered": status == "covered",
-        "evidence": evidence_results,
+        "item_kind": ITEM_KIND,
+        "covered": covered,
+        "details": {
+            "schema": DETAILS_SCHEMA,
+            "item_kind": ITEM_KIND,
+            "audit_tools": audit_tools,
+            "covered": covered,
+            "missing": missing,
+            "observed_tool_calls": [call.to_json() for call in trace.tool_calls],
+            "tool_call_counts": trace.tool_call_counts,
+            "matches": {tool: trace.matches(tool) for tool in audit_tools},
+        },
     }
-
-
-def _measure_evidence(evidence: dict[str, Any], trace: AtifTraceFacts) -> dict[str, Any]:
-    kind = evidence["kind"]
-    result: dict[str, Any] = {
-        "kind": kind,
-        "description": evidence["description"],
-    }
-    if kind != "tool_call":
-        result.update(
-            {
-                "status": "unmeasured",
-                "measured": False,
-                "reason": f"method {METHOD_NAME!r} supports only tool_call evidence",
-            }
-        )
-        return result
-
-    tool = evidence["tool"]
-    matches = trace.matches(tool)
-    result.update(
-        {
-            "status": "covered" if matches else "not_covered",
-            "measured": True,
-            "tool": tool,
-            "matches": matches,
-        }
-    )
-    return result
-
-
-def _item_status(evidence_results: list[dict[str, Any]]) -> str:
-    statuses = {result["status"] for result in evidence_results}
-    if statuses == {"covered"}:
-        return "covered"
-    if "covered" in statuses:
-        return "partial"
-    if statuses == {"unmeasured"}:
-        return "unmeasured"
-    return "not_covered"
