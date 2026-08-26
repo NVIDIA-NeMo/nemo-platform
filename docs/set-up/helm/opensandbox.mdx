@@ -1,0 +1,107 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "OpenSandbox"
+description: "Install OpenSandbox as a cluster engine and point NeMo Platform jobs at the in-cluster server."
+---
+<a id="install-opensandbox"></a>
+
+The NeMo Platform Helm chart does **not** install [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox). Install the upstream charts, then point the platform at the running server.
+
+Install OpenSandbox when you run **sandboxed GRPO / NeMo Gym**: untrusted custom environment FileSets run in isolated pods, not in the training container. It does **not** sandbox the rest of the platform (API, DPO, SFT, inference).
+
+This page is the **shared-kernel** path: sandbox pods use the cluster default OCI runtime. That is often **runc** (containerd) or **crun** (CRI-O, including OKE and OpenShift). **A kernel-isolated runtime is not required.** Use [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) when those Gym/GRPO sandbox pods must be isolated from the host kernel. The documented path is Kata QEMU because it gives each sandbox its own guest kernel; other isolated runtimes may work but have not been tested. Example Helm values live in [`k8s/helm/examples/opensandbox/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox).
+
+OpenSandbox `[secure_runtime]` is **server-global**. One OpenSandbox server cannot mix shared-kernel and Kata, so point the platform at **one** Service DNS. The cluster keeps its default OCI runtime for every other workload.
+
+Upstream Helm, TOML, and SDK documentation: [Kubernetes deployment](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/kubernetes/deployment.md), [configuration](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/getting-started/configuration.md), [server configuration reference](https://github.com/opensandbox-group/OpenSandbox/blob/main/server/configuration.md).
+
+## Prerequisites
+
+- A local [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) checkout with Helm charts under `kubernetes/charts/`, or a published chart tarball
+- `kubectl` access to the cluster
+- The NeMo Platform Helm release namespace (jobs run here; it is also `[kubernetes] namespace` in the server values)
+
+## Namespace rule
+
+OpenSandbox `config.toml` `[kubernetes] namespace` **must be the same namespace the platform jobs run in** (the Helm release namespace). Control-plane Deployments, Services, and template ConfigMaps can stay in `opensandbox-system`. Sandbox pods remount the job-storage PVC by claim name and resolve image-pull secrets in their own namespace, so a dedicated `opensandbox` workload namespace will fail PVC remounts and image pulls.
+
+## Values jobs need
+
+Training and other job pods are OpenSandbox **clients**. They do not need a kubeconfig to the sandbox API. The Python SDK builds `http(s)://{domain}/v1` from:
+
+| Client need | How it is supplied | Notes |
+| --- | --- | --- |
+| API host | `OPEN_SANDBOX_DOMAIN` | In-cluster Service DNS, **no scheme**. Default example: `opensandbox-server.opensandbox-system.svc.cluster.local` |
+| API key | `OPEN_SANDBOX_API_KEY` | Kubernetes Secret in the **job** namespace (not `opensandbox-system`) |
+| Scheme | `platform.sandbox_server_protocol` / Gym `host_provider_options.connection.protocol` | Set **`http`** for the in-cluster Service. If unset, NeMo-RL health URLs default to **https** and stall |
+| Proxy | `use_server_proxy` | Leave true. Jobs cannot reach sandbox pod IPs |
+| Capability | `sandboxClusterCapable` / `platform.sandbox_cluster_capable` | Defaults to `false` (sandboxed GRPO fail-closes) |
+| Job PVC | `rl.job_storage_pvc_claim` | Required for sandboxed GRPO; sandboxes remount the same claim |
+
+Gym sample YAML uses `OPENSANDBOX_DOMAIN` / `OPENSANDBOX_API_KEY`. NeMo Platform and the SDK use `OPEN_SANDBOX_*`. Do not mix the names.
+
+## Install the shared-kernel server
+
+Replace `NMP_NAMESPACE` with the platform release namespace.
+
+```sh
+export NMP_NAMESPACE=nemo-platform
+export OPENSANDBOX_DIR=/path/to/OpenSandbox
+export EXAMPLES=k8s/helm/examples/opensandbox
+
+sed -i.bak "s/REPLACE_WITH_RELEASE_NAMESPACE/${NMP_NAMESPACE}/g" \
+  "${EXAMPLES}/opensandbox-server.yaml"
+
+kubectl create namespace opensandbox-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace "$NMP_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -f "${EXAMPLES}/batchsandbox-template.yaml"
+
+kubectl create secret generic opensandbox-server-api-key \
+  -n opensandbox-system --from-literal=api-key="$(openssl rand -hex 32)"
+
+# Jobs cannot secretKeyRef across namespaces. Copy the key into the job namespace.
+kubectl get secret opensandbox-server-api-key -n opensandbox-system -o json \
+  | jq 'del(.metadata.uid,.metadata.resourceVersion,.metadata.creationTimestamp,.metadata.namespace)' \
+  | kubectl apply -n "$NMP_NAMESPACE" -f -
+
+# The BatchSandbox template hard-codes imagePullSecrets.name: nvcrimagepullsecret.
+# That Secret must exist in $NMP_NAMESPACE. If yours has a different name, edit
+# imagePullSecrets in batchsandbox-template.yaml (and batchsandbox-template-kata-qemu.yaml
+# if you use Kata) before kubectl apply.
+kubectl get secret nvcrimagepullsecret -n "$NMP_NAMESPACE"
+
+helm upgrade --install opensandbox-controller \
+  "${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-controller" \
+  --namespace opensandbox-system \
+  -f "${EXAMPLES}/opensandbox-controller.yaml"
+
+helm upgrade --install opensandbox-server \
+  "${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-server" \
+  --namespace opensandbox-system \
+  -f "${EXAMPLES}/opensandbox-server.yaml"
+```
+
+## Point the platform at the server
+
+```yaml
+sandboxClusterCapable: true
+opensandbox:
+  domain: opensandbox-server.opensandbox-system.svc.cluster.local
+  protocol: http
+  apiKeySecret: opensandbox-server-api-key
+  apiKeySecretKey: api-key
+```
+
+When `sandboxClusterCapable` is true, Kubernetes and Volcano job pods receive `OPEN_SANDBOX_DOMAIN` and a Secret-backed `OPEN_SANDBOX_API_KEY`. The chart still does not create OpenSandbox Deployments.
+
+## Verify
+
+```sh
+export OPEN_SANDBOX_WORKLOAD_NS="$NMP_NAMESPACE"
+./k8s/helm/examples/opensandbox/verify/shared-kernel.sh
+```
+
+The verifier checks the server Deployment, `/health`, creates a short-lived sandbox in the job namespace, and asserts an empty `runtimeClassName` (cluster default OCI runtime).

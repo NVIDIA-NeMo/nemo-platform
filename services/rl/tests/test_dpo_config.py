@@ -152,12 +152,42 @@ def test_scheduler_cosine_is_warmup_then_decay_chain() -> None:
 
 
 def test_scheduler_flat_is_constant_lr() -> None:
+    """Flat LR still has to arrive as a list.
+
+    NeMo-RL types policy.scheduler as a list of scheduler/milestone entries or a
+    SchedulerMilestones mapping. A bare {"name", "kwargs"} dict is neither, and MasterConfig
+    rejects it up front -- the job dies in the driver before the model loads.
+    """
     cfg = _make_step_config(
         optimizer=TrainingStepConfig.OptimizerConfig(optimizer_type=OptimizerType.ADAMW_WITH_FLAT_LR)
     )
     sched = _build_scheduler_config(cfg, num_steps=100)
-    assert isinstance(sched, dict)
-    assert sched["name"] == "torch.optim.lr_scheduler.ConstantLR"
+    assert isinstance(sched, list)
+    assert sched[0]["name"] == "torch.optim.lr_scheduler.ConstantLR"
+    assert sched[0]["kwargs"] == {"factor": 1.0, "total_iters": 100}
+
+
+@pytest.mark.parametrize(
+    "optimizer_type",
+    [
+        OptimizerType.ADAMW_WITH_COSINE_ANNEALING,
+        OptimizerType.ADAM_WITH_COSINE_ANNEALING,
+        OptimizerType.ADAMW_WITH_FLAT_LR,
+        OptimizerType.ADAM_WITH_FLAT_LR,
+        None,
+    ],
+)
+def test_scheduler_shape_is_accepted_by_nemo_rl(optimizer_type: OptimizerType | None) -> None:
+    """Every optimizer_type must emit a shape NeMo-RL's MasterConfig accepts."""
+    cfg = _make_step_config(optimizer=TrainingStepConfig.OptimizerConfig(optimizer_type=optimizer_type))
+    sched = _build_scheduler_config(cfg, num_steps=100)
+
+    if isinstance(sched, list):
+        # list[SinglePytorchSchedulerConfig | SinglePytorchMilestonesConfig]
+        assert all(("name" in entry and "kwargs" in entry) or "milestones" in entry for entry in sched)
+    else:
+        # SchedulerMilestones = dict[str, list[int]]
+        assert all(isinstance(value, list) for value in sched.values())
 
 
 # --------------------------------------------------------------------------- #

@@ -29,7 +29,7 @@ Thin contributor layer only — the heavy compile glue and container tasks live 
   in Environments section below.
 - **GRPO sandboxed mode** defaults from platform config (`sandboxed_gym_default=true`).
   Compile fails closed when OpenSandbox is unavailable (set
-  `NMP_RL_SANDBOX_CLUSTER_CAPABLE=true` once installed) or when
+  `NMP_PLATFORM_SANDBOX_CLUSTER_CAPABLE=true` once installed) or when
   `NMP_RL_JOB_STORAGE_PVC_CLAIM` is unset — the Gym sandbox re-mounts that claim to
   read the downloaded environment and dataset. Set `NMP_RL_SANDBOXED_GYM_DEFAULT=false`
   for trusted dev smoke tests only.
