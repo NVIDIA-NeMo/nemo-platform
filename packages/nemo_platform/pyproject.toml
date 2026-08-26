@@ -45,6 +45,11 @@ dependencies = [
   "nmp-common",
 ]
 
+[project.urls]
+Homepage = "https://github.com/NVIDIA-NeMo/nemo-platform"
+Documentation = "https://docs.nvidia.com/nemo-platform"
+Source = "https://github.com/NVIDIA-NeMo/nemo-platform"
+
 [project.optional-dependencies]
 all = ["nemo-platform[services]"]
 
@@ -73,6 +78,20 @@ auth-service = [
   "pyyaml>=6.0.0",
   "nmp-common",
   "wasmtime>=20.0.0",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+automodel-service = [
+  "nmp-common",
+  "nmp-customization-common",
+  "nemo-platform-plugin",
+  "nemo-platform-sdk",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "httpx>=0.27.0",
+  "aiofiles>=24.1.0",
+  "tenacity>=8.5.0",
+  "jsonschema>=4.23.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -126,6 +145,7 @@ files-service = [
   "ngcsdk>=4.9.10",
   "duckdb>=1.1.3",
   "pandas>=1.5.3",
+  "filesets",
   "opentelemetry-proto>=1.28.2",
   "aioboto3>=15.5.0",
   "types-aioboto3[s3]>=15.5.0",
@@ -274,6 +294,23 @@ nemo-auditor-plugin = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
+nemo-automodel-plugin = [
+  "nemo-platform-plugin",
+  "nmp-automodel",
+  "nmp-customization-common",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "typer>=0.12.5",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-customizer-plugin = [
+  "nemo-platform-plugin",
+  "pydantic>=2.10.6",
+  "typer>=0.12.5",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
   "data-designer==0.9.1",
@@ -390,24 +427,34 @@ nemo-platform-plugin = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-platform-sdk = [
-  "httpx>=0.23.0, <1",
-  "pydantic>=2.0.0,<3",
-  "typing-extensions>=4.14, <5",
-  "anyio>=4.0.0,<5",
-  "distro>=1.7.0, <2",
-  "sniffio",
   "nemo-platform-plugin",
   "typer>=0.20.0",
   "rich>=13.7.1",
   "prompt_toolkit>=3.0.0",
   "requests>=2.31.0",
+  "pydantic>=2.0.0,<3",
   "pyyaml>=6.0.0",
   "docker>=7.0.0",
   "ngcsdk>=4.8.2",
   "nvidia-ml-py>=13.0.0",
   "psutil>=5.9.0",
+  "httpx>=0.23.0,<1",
   "openai",
+  "anyio>=4.0.0,<5",
   "fsspec>=2023.1.0",
+  "typing-extensions>=4.14, <5",
+  "distro>=1.7.0, <2",
+  "sniffio",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-rl-plugin = [
+  "nemo-platform-plugin",
+  "nmp-rl",
+  "nmp-customization-common",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "typer>=0.12.5",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -431,6 +478,16 @@ nemo-safe-synthesizer-plugin = [
 nemo-switchyard = [
   "nemo-platform-plugin",
   "switchyard-vendored",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-unsloth-plugin = [
+  "nemo-platform-plugin",
+  "nmp-unsloth",
+  "nmp-customization-common",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "typer>=0.12.5",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -465,6 +522,17 @@ nmp-common = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
+nmp-customization-common = [
+  "nmp-common",
+  "nemo-platform-sdk",
+  "nemo-platform-plugin",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "httpx>=0.27.0",
+  "tenacity>=8.5.0",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 platform-seed-service = [
   "nmp-common",
   "nmp-auth",
@@ -478,6 +546,8 @@ plugins = [
     "nemo-platform[nemo-agents-plugin]",
     "nemo-platform[nemo-anonymizer-plugin]",
     "nemo-platform[nemo-auditor-plugin]",
+    "nemo-platform[nemo-automodel-plugin]",
+    "nemo-platform[nemo-customizer-plugin]",
     "nemo-platform[nemo-data-designer-plugin]",
     "nemo-platform[nemo-deployments-plugin]",
     "nemo-platform[nemo-evaluator-plugin]",
@@ -485,8 +555,23 @@ plugins = [
     "nemo-platform[nemo-guardrails-plugin]",
     "nemo-platform[nemo-insights-plugin]",
     "nemo-platform[nemo-optimization-plugin]",
+    "nemo-platform[nemo-rl-plugin]",
     "nemo-platform[nemo-safe-synthesizer-plugin]",
     "nemo-platform[nemo-switchyard]",
+    "nemo-platform[nemo-unsloth-plugin]",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+rl-service = [
+  "nmp-common",
+  "nmp-customization-common",
+  "nemo-platform-plugin",
+  "nemo-platform-sdk",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "httpx>=0.27.0",
+  "tenacity>=8.5.0",
+  "packaging>=24.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -504,9 +589,12 @@ services = [
   "nmp-common",
   "pyleak>=0.1.0",
   "rich>=14.1.0",
-  "nemo-platform[platform-seed-service]",
+  "nemo-platform[unsloth-service]",
+  "nemo-platform[rl-service]",
+  "nemo-platform[automodel-service]",
   "nemo-platform[core-service]",
   "nemo-platform[studio-service]",
+  "nemo-platform[platform-seed-service]",
   "nemo-platform[intake-service]",
   "nemo-platform[hello-world-service]",
   "nemo-platform[guardrails-service]",
@@ -526,6 +614,18 @@ switchyard-vendored = [
   "anthropic>=0.99.0,<1.0",
   "httpx>=0.28.1,<1.0",
   "pydantic>=2.13.3,<3.0",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+unsloth-service = [
+  "nmp-common",
+  "nmp-customization-common",
+  "nemo-platform-plugin",
+  "nemo-platform-sdk",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "httpx>=0.27.0",
+  "tenacity>=8.5.0",
 ]
 
 
@@ -550,13 +650,13 @@ nemo_agents_files_telemetry = "nemo_agents_plugin.telemetry.files_service_export
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli"]
-safe-synthesizer = "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"
 agents = "nemo_agents_plugin.cli:AgentsCLI"
 anonymizer = "nemo_anonymizer_plugin.cli:AnonymizerCLI"
 auditor = "nemo_auditor.cli:AuditorPluginCLI"
 data-designer = "nemo_data_designer_plugin.cli.main:DataDesignerCLI"
 evaluator = "nemo_evaluator.cli:EvaluatorPluginCLI"
 insights = "nemo_insights_plugin.cli:InsightsCLI"
+customization = "nemo_customizer.cli:CustomizationCLI"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli.agents"]
@@ -572,6 +672,12 @@ platform = "nmp.common.client_factory:PlatformNemoClientProvider"
 agents-deployment = "nemo_agents_plugin.runner.controller:AgentDeploymentController"
 insights-analysis = "nemo_insights_plugin.controller:InsightsAnalysisController"
 deployments = "nemo_deployments_plugin.controller:DeploymentsController"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.customization.contributors"]
+automodel = "nemo_automodel_plugin.contributor:AutomodelContributor"
+rl = "nemo_rl_plugin.contributor:RlContributor"
+unsloth = "nemo_unsloth_plugin.contributor:UnslothContributor"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.docs"]
@@ -615,6 +721,10 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "insights.analyze-job" = "nemo_insights_plugin.jobs.analyze:AnalyzeJob"
 "agents.execute" = "nemo_agents_plugin.jobs.execute:ExecuteAgentJob"
 "agents.package-agent" = "nemo_agents_plugin.jobs.package_agent:PackageAgentJob"
+"customization.automodel.jobs" = "nemo_automodel_plugin.jobs.jobs:AutomodelJob"
+"customization.rl.jobs" = "nemo_rl_plugin.jobs.jobs:RlJob"
+"customization.unsloth.jobs" = "nemo_unsloth_plugin.jobs.jobs:UnslothJob"
+"safe-synthesizer.generate" = "nemo_safe_synthesizer_plugin.jobs.generate:GenerateJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]
@@ -634,6 +744,7 @@ data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resou
 evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"
 insights = "nemo_insights_plugin.sdk:insights_sdk_resources"
+customization = "nemo_customizer.sdk.resources:customization_sdk_resources"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.sdk_provider"]
@@ -653,6 +764,7 @@ data-designer = "nemo_data_designer_plugin.service:DataDesignerService"
 evaluator = "nemo_evaluator.service:EvaluatorPluginService"
 insights = "nemo_insights_plugin.service:InsightsService"
 deployments = "nemo_deployments_plugin.service:DeploymentsService"
+customization = "nemo_customizer.router:CustomizationRouterService"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.skills"]
@@ -667,10 +779,13 @@ safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
 experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 insights = "nemo_insights_plugin.skills:skills_dir"
 deployments = "nemo_deployments_plugin.skills:skills_dir"
+customizer = "nemo_customizer.skills:get_skills_path"
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
+models = { workspace = true }
+filesets = { workspace = true }
 nmp-build-tools = { workspace = true }
 
 [tool.hatch.version]
@@ -706,7 +821,11 @@ only-include = ["_empty"]
 [tool.bundle-package]
 # Library packages
 nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common", inherit = { "entry-points" = ["nemo.*"] } }
+nmp-customization-common = { source = "../../packages/nmp_customization_common/src/nmp/customization_common", module = "nmp/customization_common" }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
+nemo-platform-ext = { source = "../../packages/nemo_platform_ext/src/nemo_platform_ext", module = "nemo_platform_ext", deps_group = "nemo-platform-sdk", force_include = { "../../../../docs" = "nemo_platform_ext/cli/docs" } }
+models = { source = "../../packages/models/src/models", module = "models", deps_group = "nemo-platform-sdk" }
+filesets = { source = "../../packages/filesets/src/filesets", module = "filesets", deps_group = "nemo-platform-sdk" }
 nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk" }
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }
 nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
@@ -717,6 +836,10 @@ switchyard-vendored = { source = "../../plugins/nemo-switchyard/vendor/switchyar
 nemo-agents-plugin = { source = "../../plugins/nemo-agents/src/nemo_agents_plugin", module = "nemo_agents_plugin", inherit = { "entry-points" = ["nemo.*", "nat.plugins", "nat.components"] }, force_include = { "../../vendor/claude_code_agent_adapter/src/nat_claude_code_agent_adapter" = "nat_claude_code_agent_adapter", "../../vendor/codex_agent_adapter/src/nat_codex_agent_adapter" = "nat_codex_agent_adapter", "../../vendor/cursor_agent_adapter/src/nat_cursor_agent_adapter" = "nat_cursor_agent_adapter", "../../vendor/hermes_agent_adapter/src/nat_hermes_agent_adapter" = "nat_hermes_agent_adapter", "../../vendor/openclaw_agent_adapter/src/nat_openclaw_agent_adapter" = "nat_openclaw_agent_adapter" } }
 nemo-anonymizer-plugin = { source = "../../plugins/nemo-anonymizer/src/nemo_anonymizer_plugin", module = "nemo_anonymizer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor", inherit = { "entry-points" = ["nemo.*"] } }
+# Customization router plus its backend contributors. Heavy ML stacks stay in the
+# training images; these carry only compile-side deps, so they are safe to bundle.
+nemo-automodel-plugin = { source = "../../plugins/nemo-automodel/src/nemo_automodel_plugin", module = "nemo_automodel_plugin", inherit = { "entry-points" = ["nemo.*"] } }
+nemo-customizer-plugin = { source = "../../plugins/nemo-customizer/src/nemo_customizer", module = "nemo_customizer", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-data-designer-plugin = { source = "../../plugins/nemo-data-designer/src/nemo_data_designer_plugin", module = "nemo_data_designer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-deployments-plugin = { source = "../../plugins/nemo-deployments/src/nemo_deployments_plugin", module = "nemo_deployments_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator", inherit = { "entry-points" = ["nemo.*"] } }
@@ -725,8 +848,10 @@ nemo-insights-plugin = { source = "../../plugins/nemo-insights/src/nemo_insights
 # Required by agents.optimize (OptimizeJob lives here; agents plugin imports it at router setup).
 nemo-optimization-plugin = { source = "../../plugins/nemo-optimization/src/nemo_optimization", module = "nemo_optimization", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-guardrails-plugin = { source = "../../plugins/nemo-guardrails/src/nemo_guardrails_plugin", module = "nemo_guardrails_plugin", inherit = { "entry-points" = ["nemo.*"] } }
+nemo-rl-plugin = { source = "../../plugins/nemo-rl/src/nemo_rl_plugin", module = "nemo_rl_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-safe-synthesizer-plugin = { source = "../../plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin", module = "nemo_safe_synthesizer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-switchyard = { source = "../../plugins/nemo-switchyard/src/nemo_switchyard", module = "nemo_switchyard", inherit = { "entry-points" = ["nemo.*"] } }
+nemo-unsloth-plugin = { source = "../../plugins/nemo-unsloth/src/nemo_unsloth_plugin", module = "nemo_unsloth_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 
 # Core services
 nmp-auth = { source = "../../services/core/auth/src/nmp/core/auth", module = "nmp/core/auth", deps_group = "auth-service" }
@@ -741,6 +866,12 @@ nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", modu
 nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
 nmp-intake = { source = "../../services/intake/src/nmp/intake", module = "nmp/intake", deps_group = "intake-service" }
+# Customization task packages: compile glue and schemas only. Their container
+# entrypoint scripts are deliberately not re-exported, and the GPU stacks they
+# drive (torch, unsloth, nemo-rl) live in the training images, not this wheel.
+nmp-automodel = { source = "../../services/automodel/src/nmp/automodel", module = "nmp/automodel", deps_group = "automodel-service" }
+nmp-rl = { source = "../../services/rl/src/nmp/rl", module = "nmp/rl", deps_group = "rl-service" }
+nmp-unsloth = { source = "../../services/unsloth/src/nmp/unsloth", module = "nmp/unsloth", deps_group = "unsloth-service" }
 
 [tool.bundle-package.nemo-platform-sdk]
 source = "../../sdk/python/nemo-platform/src/nemo_platform"
@@ -748,7 +879,6 @@ module = "nemo_platform"
 inherit."optional-dependencies" = true
 inherit.scripts = true
 inherit."entry-points" = ["nemo.*"]
-force_include."../../../../../docs" = "nemo_platform/cli/docs"
 
 [tool.bundle-package.nemo-agents-example-calculator]
 source = "../../plugins/nemo-agents/examples/calculator-agent/src/calculator_agent"

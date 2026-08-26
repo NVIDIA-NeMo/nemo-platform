@@ -3,13 +3,13 @@
 
 import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
 import type {
-  SafeSynthesizerJob,
+  GenerateJob,
   SafeSynthesizerSummary,
 } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { SafeSynthesizerJobReportRoute } from '@studio/routes/SafeSynthesizerJobReportRoute';
+import { GenerateJobReportRoute } from '@studio/routes/SafeSynthesizerJobReportRoute';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -154,7 +154,7 @@ const createWrapper = () => {
 };
 
 // Helper function to create mock job
-const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizerJob =>
+const createMockJob = (overrides?: Partial<GenerateJob>): GenerateJob =>
   ({
     id: 'test-job-123',
     name: 'Test Job',
@@ -173,7 +173,7 @@ const createMockJob = (overrides?: Partial<SafeSynthesizerJob>): SafeSynthesizer
       },
     },
     ...overrides,
-  }) as SafeSynthesizerJob;
+  }) as GenerateJob;
 
 // Helper function to create mock summary
 const createMockSummary = (overrides?: Partial<SafeSynthesizerSummary>): SafeSynthesizerSummary =>
@@ -184,7 +184,7 @@ const createMockSummary = (overrides?: Partial<SafeSynthesizerSummary>): SafeSyn
   }) as SafeSynthesizerSummary;
 
 // Helper function to mock API hooks
-const mockApiHooks = (job: SafeSynthesizerJob, summary: SafeSynthesizerSummary) => {
+const mockApiHooks = (job: GenerateJob, summary: SafeSynthesizerSummary) => {
   vi.spyOn(safeSynthesizerApi, 'useSafeSynthesizerGetJobSuspense').mockImplementation(
     vi.fn().mockReturnValue({ data: job })
   );
@@ -193,7 +193,7 @@ const mockApiHooks = (job: SafeSynthesizerJob, summary: SafeSynthesizerSummary) 
   );
 };
 
-describe('SafeSynthesizerJobReportRoute - Feature Flag', () => {
+describe('GenerateJobReportRoute - Feature Flag', () => {
   beforeEach(() => {
     vi.resetModules();
   });
@@ -205,8 +205,8 @@ describe('SafeSynthesizerJobReportRoute - Feature Flag', () => {
     }));
 
     const module = await import('./index');
-    expect(module.SafeSynthesizerJobReportRoute).toBeDefined();
-    expect(module.SafeSynthesizerJobReportRoute).not.toBeNull();
+    expect(module.GenerateJobReportRoute).toBeDefined();
+    expect(module.GenerateJobReportRoute).not.toBeNull();
   });
 
   it('should be null when feature flag is disabled', async () => {
@@ -216,11 +216,11 @@ describe('SafeSynthesizerJobReportRoute - Feature Flag', () => {
     }));
 
     const module = await import('./index');
-    expect(module.SafeSynthesizerJobReportRoute).toBeNull();
+    expect(module.GenerateJobReportRoute).toBeNull();
   });
 });
 
-describe('SafeSynthesizerJobReportRoute - Rendering', () => {
+describe('GenerateJobReportRoute - Rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -232,7 +232,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
   });
 
   it('should render the route with all panels', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -241,7 +241,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     // Verify navigation is rendered
     expect(screen.getByTestId('safe-synthesizer-navigation')).toBeInTheDocument();
@@ -255,7 +255,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
   });
 
   it('should render menu with correct items', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -264,7 +264,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     // Verify report menu is rendered
     expect(screen.getByTestId('report-menu')).toBeInTheDocument();
@@ -283,7 +283,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
   });
 
   it('should render panels with correct titles and icons', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -292,7 +292,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     // Verify panel titles
     const panelTitles = screen.getAllByTestId('panel-title');
@@ -308,7 +308,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
   });
 
   it('should pass correct props to OverviewPanel', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -317,14 +317,14 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     const overviewPanel = screen.getByTestId('overview-panel');
     expect(within(overviewPanel).getByTestId('panel-job-id')).toHaveTextContent('test-job-123');
   });
 
   it('should pass report summary to score panels', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -333,7 +333,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     // Verify summary is passed to both score panels
     const syntheticQualityPanel = screen.getByTestId('synthetic-quality-panel');
@@ -346,7 +346,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
   });
 
   it('should pass dpEnabled flag to DataPrivacyPanel based on job config', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -360,18 +360,18 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
           },
         },
       },
-    } as Partial<SafeSynthesizerJob>);
+    } as Partial<GenerateJob>);
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     const dataPrivacyPanel = screen.getByTestId('data-privacy-panel');
     expect(within(dataPrivacyPanel).getByTestId('panel-dp-enabled')).toHaveTextContent('enabled');
   });
 
   it('should default dpEnabled to false when not specified in job config', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -381,18 +381,18 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
         data_source: 'hf://test-namespace/test-dataset/train.jsonl',
         config: {},
       },
-    } as Partial<SafeSynthesizerJob>);
+    } as Partial<GenerateJob>);
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     const dataPrivacyPanel = screen.getByTestId('data-privacy-panel');
     expect(within(dataPrivacyPanel).getByTestId('panel-dp-enabled')).toHaveTextContent('disabled');
   });
 
   it('should set up breadcrumbs correctly', () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -401,7 +401,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const mockSummary = createMockSummary();
     mockApiHooks(mockJob, mockSummary);
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     // Verify breadcrumbs were called with correct items
     expect(mockUseBreadcrumbs).toHaveBeenCalledWith(
@@ -419,7 +419,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
   });
 
   it('should handle menu section navigation', async () => {
-    if (!SafeSynthesizerJobReportRoute) {
+    if (!GenerateJobReportRoute) {
       // Skip test if feature flag is disabled
       return;
     }
@@ -432,7 +432,7 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     const scrollIntoViewMock = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 
-    render(<SafeSynthesizerJobReportRoute />, { wrapper: createWrapper() });
+    render(<GenerateJobReportRoute />, { wrapper: createWrapper() });
 
     const user = userEvent.setup();
 

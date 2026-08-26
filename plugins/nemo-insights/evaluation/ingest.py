@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 from nemo_platform import NeMoPlatform
-from nemo_platform.config.config import Config
+from nemo_platform_ext.config.config import Config
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
 

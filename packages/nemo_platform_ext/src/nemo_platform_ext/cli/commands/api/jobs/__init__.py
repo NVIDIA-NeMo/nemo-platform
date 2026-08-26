@@ -8,6 +8,8 @@ from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 
 from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
@@ -20,6 +22,7 @@ from nemo_platform_ext.cli.core.formatters import (
     validate_stream_output_format,
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
+from nemo_platform_ext.cli.core.job_watch_renderer import JobWatchRenderResult, render_job_watch_events
 from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
 from nemo_platform_ext.cli.core.types import (
@@ -29,6 +32,7 @@ from nemo_platform_ext.cli.core.types import (
     OutputColumnsOption,
     StreamOutputOption,
 )
+from nemo_platform_ext.cli.core.waiters import wait_for_platform_job
 
 _cli_child_results = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.results")
 _cli_child_steps = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.steps")
@@ -102,6 +106,30 @@ def create_jobs(
         typer.Option("--input-data", help="Input data for the request (JSON or YAML)", rich_help_panel="Input Options"),
     ] = None,
     output_format: EntityOutputFormatOption = None,
+    wait: Annotated[
+        bool,
+        typer.Option(
+            "--wait",
+            help="Wait for the created job to reach a terminal state without streaming logs",
+            rich_help_panel="Lifecycle Options",
+        ),
+    ] = False,
+    watch: Annotated[
+        bool,
+        typer.Option("--watch", help="Watch the created job to a terminal state", rich_help_panel="Lifecycle Options"),
+    ] = False,
+    timeout: Annotated[
+        int | None,
+        typer.Option(
+            "--timeout", min=1, help="Maximum time to wait or watch in seconds", rich_help_panel="Lifecycle Options"
+        ),
+    ] = None,
+    poll_interval: Annotated[
+        int,
+        typer.Option(
+            "--poll-interval", min=1, help="Seconds between status checks", rich_help_panel="Lifecycle Options"
+        ),
+    ] = 3,
 ) -> None:
     """Create a new platform job.
 
@@ -156,12 +184,26 @@ def create_jobs(
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
-    if handle_code_generation(["jobs"], "create", all_kwargs, output_format, state):
+    if wait and watch:
+        raise typer.BadParameter("Cannot combine --wait and --watch.")
+
+    if handle_code_generation(
+        ["jobs"],
+        "create",
+        all_kwargs,
+        output_format,
+        state,
+        watch_config={"type": "platform_job", "resource_label": "job"} if watch else None,
+        watch_options={"timeout": timeout, "poll_interval": poll_interval} if watch else None,
+        wait_config={"type": "platform_job", "resource_label": "job"} if wait else None,
+        wait_options={"timeout": timeout if timeout is not None else 1200, "poll_interval": poll_interval}
+        if wait
+        else None,
+    ):
         return
 
     client = state.get_client()
     result = client.jobs.create(**all_kwargs)
-
     format_output(
         result,
         is_list=False,
@@ -169,6 +211,37 @@ def create_jobs(
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
+    if wait or watch:
+        wait_name = getattr(result, "name", None) or all_kwargs.get("name")
+        if not wait_name:
+            raise RuntimeError("Unable to determine created resource name for --wait/--watch")
+        wait_workspace = getattr(result, "workspace", None) or all_kwargs.get("workspace")
+        if wait_workspace is None:
+            wait_workspace = client._get_workspace_path_param()
+        jobs_client = client_from_platform(client, JobsClient)
+        if wait:
+            if not wait_for_platform_job(
+                jobs_client,
+                wait_name,
+                workspace=wait_workspace,
+                resource_label="job",
+                timeout=timeout if timeout is not None else 1200,
+                poll_interval=poll_interval,
+            ):
+                raise typer.Exit(1)
+            return
+        events = jobs_client.watch_job(
+            wait_name,
+            workspace=wait_workspace,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        watch_result = render_job_watch_events(events, resource_label="job")
+        if watch_result is JobWatchRenderResult.INTERRUPTED:
+            raise typer.Exit(130)
+        if watch_result is not JobWatchRenderResult.SUCCEEDED:
+            raise typer.Exit(1)
+        return
 
 
 @app.command("delete")
@@ -601,3 +674,49 @@ def update_status_details_jobs(
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
+
+
+@app.command("watch")
+@collect_warnings
+@handle_errors
+def watch_platform_job(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Name of the platform job to watch")],
+    workspace: Annotated[str | None, typer.Option("--workspace", help="Workspace containing the job")] = None,
+    attempt_id: Annotated[int | None, typer.Option("--attempt-id", help="Filter logs to an attempt ID")] = None,
+    step_id: Annotated[str | None, typer.Option("--step-id", help="Filter logs to a step ID")] = None,
+    task_id: Annotated[str | None, typer.Option("--task-id", help="Filter logs to a task ID")] = None,
+    limit: Annotated[int | None, typer.Option("--limit", min=1, help="Maximum logs to fetch per page")] = None,
+    timeout: Annotated[int | None, typer.Option("--timeout", min=1, help="Maximum watch time in seconds")] = None,
+    poll_interval: Annotated[
+        int,
+        typer.Option("--poll-interval", min=1, help="Seconds between status checks"),
+    ] = 3,
+    include_history: Annotated[
+        bool,
+        typer.Option("--history/--no-history", help="Include logs already present before watching"),
+    ] = True,
+) -> None:
+    """Watch a platform job until it reaches a terminal status."""
+    state: CLIContext = ctx.obj
+    client = state.get_client()
+    jobs_client = client_from_platform(client, JobsClient)
+    if workspace is None:
+        workspace = client._get_workspace_path_param()
+
+    events = jobs_client.watch_job(
+        name,
+        workspace=workspace,
+        attempt_id=attempt_id,
+        step_id=step_id,
+        task_id=task_id,
+        limit=limit,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        include_history=include_history,
+    )
+    watch_result = render_job_watch_events(events, resource_label="job")
+    if watch_result is JobWatchRenderResult.INTERRUPTED:
+        raise typer.Exit(130)
+    if watch_result is not JobWatchRenderResult.SUCCEEDED:
+        raise typer.Exit(1)

@@ -1,4 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""NeMo CLI - Command-line interface for NeMo Platform."""
+from nemo_platform._alias import alias_package as _alias_package
+
+_alias_package("nemo_platform_ext.cli", globals())

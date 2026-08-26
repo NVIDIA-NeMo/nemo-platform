@@ -10,14 +10,14 @@ interface ResultSummaryProps {
   checks: GuardrailCheckEntity[];
 }
 
-const GUARDED_BG = 'bg-[var(--text-color-feedback-warning)]';
+const BLOCKED_BG = 'bg-[var(--text-color-feedback-warning)]';
 const ALLOWED_BG = 'bg-[var(--text-color-brand)]';
 const NOTRUN_BG = 'bg-[var(--color-gray-200)]';
 
-/** Count of checks by their latest-run verdict: allowed, guarded, or never run. */
+/** Count of checks by their latest-run verdict: allowed, blocked, or never run. */
 const summarizeResults = (checks: GuardrailCheckEntity[]) => {
   let allowed = 0;
-  let guarded = 0;
+  let blocked = 0;
   let notRun = 0;
 
   for (const check of checks) {
@@ -25,13 +25,13 @@ const summarizeResults = (checks: GuardrailCheckEntity[]) => {
     if (status === 'success') {
       allowed += 1;
     } else if (status === 'blocked') {
-      guarded += 1;
+      blocked += 1;
     } else {
       notRun += 1;
     }
   }
 
-  return { allowed, guarded, notRun };
+  return { allowed, blocked, notRun };
 };
 
 /** One proportional segment of the summary bar; renders nothing when its share is zero. */
@@ -61,10 +61,10 @@ const LegendRow: FC<{ dotClassName: string; label: string; value: number }> = ({
 
 /** Proportional bar + legend breaking down a set of checks by their latest-run verdict. */
 export const ResultSummary: FC<ResultSummaryProps> = ({ checks }) => {
-  const { allowed, guarded, notRun } = summarizeResults(checks);
+  const { allowed, blocked, notRun } = summarizeResults(checks);
 
-  // Bar proportions span every check: guarded, then allowed, then not-run at the end.
-  const total = guarded + allowed + notRun;
+  // Bar proportions span every check: blocked, then allowed, then not-run at the end.
+  const total = blocked + allowed + notRun;
   const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
 
   return (
@@ -74,14 +74,14 @@ export const ResultSummary: FC<ResultSummaryProps> = ({ checks }) => {
           className=" h-3 overflow-hidden rounded-full bg-surface-sunken"
           role="img"
           gap="0.5"
-          aria-label={`${guarded} guarded, ${allowed} allowed, ${notRun} not run`}
+          aria-label={`${blocked} blocked, ${allowed} allowed, ${notRun} not run`}
         >
-          <BarSegment colorClassName={GUARDED_BG} pct={pct(guarded)} />
+          <BarSegment colorClassName={BLOCKED_BG} pct={pct(blocked)} />
           <BarSegment colorClassName={ALLOWED_BG} pct={pct(allowed)} />
           <BarSegment colorClassName={NOTRUN_BG} pct={pct(notRun)} />
         </Flex>
         <Stack gap="density-sm">
-          <LegendRow dotClassName={GUARDED_BG} label="Guarded" value={guarded} />
+          <LegendRow dotClassName={BLOCKED_BG} label="Blocked" value={blocked} />
           <LegendRow dotClassName={ALLOWED_BG} label="Allowed" value={allowed} />
           <LegendRow dotClassName={NOTRUN_BG} label="Not run" value={notRun} />
         </Stack>

@@ -55,7 +55,7 @@ def upload_files(
     if workspace is None:
         workspace = client._get_workspace_path_param()
 
-    from nemo_platform.filesets import RichProgressCallback
+    from filesets import RichProgressCallback
 
     with RichProgressCallback(description="Uploading") as callback:
         if fileset is not None:

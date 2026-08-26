@@ -383,7 +383,9 @@ def test_authentik_umbrella_values_define_one_shared_postgresql_instance() -> No
         "existingSecret": "shared-postgresql",
         "existingSecretPasswordKey": "nemo-password",
     }
-    assert values["nemo-platform"]["api"]["extraArgs"] == ["--service-group=core"]
+    assert values["nemo-platform"]["api"]["serviceGroup"] == "core"
+    assert values["nemo-platform"]["core"]["controller"]["controllerGroup"] == "core"
+    assert "extraArgs" not in values["nemo-platform"]["api"]
     assert nemo_database == {
         "host": "shared-postgresql",
         "port": 5432,

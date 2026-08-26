@@ -10,8 +10,17 @@ cd "${PROJECT_ROOT}"
 export PATH="$HOME/.local/bin:$PATH"
 
 make vendor
-git add "${PROJECT_ROOT}/sdk/python/" "${PROJECT_ROOT}/packages/nemo_platform/pyproject.toml"
-git diff --cached --exit-code "${PROJECT_ROOT}/sdk/python/" "${PROJECT_ROOT}/packages/nemo_platform/pyproject.toml" > "${PROJECT_ROOT}/diff.txt" || {
+mapfile -t BUNDLE_PACKAGE_PYPROJECTS < <(
+  git grep -l '^\[tool\.bundle-package\]' -- '**/pyproject.toml' || true
+)
+
+VENDORED_CHECK_PATHS=("${PROJECT_ROOT}/sdk/python/")
+for pyproject in "${BUNDLE_PACKAGE_PYPROJECTS[@]}"; do
+  VENDORED_CHECK_PATHS+=("${PROJECT_ROOT}/${pyproject}")
+done
+
+git add "${VENDORED_CHECK_PATHS[@]}"
+git diff --cached --exit-code "${VENDORED_CHECK_PATHS[@]}" > "${PROJECT_ROOT}/diff.txt" || {
   echo "Run 'make vendor' to sync packages with the SDK and wrapper."
   exit 1
 }

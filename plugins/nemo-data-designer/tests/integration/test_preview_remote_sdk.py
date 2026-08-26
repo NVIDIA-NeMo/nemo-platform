@@ -189,6 +189,31 @@ def test_file_contents_seed_dataset() -> None:
     }
 
 
+def test_bad_config_source_shows_clear_error_and_no_traceback(tmp_path: Path) -> None:
+    config_path = u.write_config_file(
+        tmp_path,
+        """
+import data_designer.config as dd
+import pandas as pd
+
+
+def wrong_function_name() -> dd.DataDesignerConfigBuilder:
+    return dd.DataDesignerConfigBuilder()
+""",
+        name="dataframe_seed_create_config.py",
+    )
+
+    with u.make_mock_client_context(workspace="default") as client_context:
+        result = u.invoke_cli(
+            ["create", str(config_path), "--num-records", "3"],
+            client_context,
+        )
+
+    assert result.exit_code != 0
+    assert "load_config_builder()" in result.output
+    assert "traceback" not in result.output.lower()
+
+
 def test_nemotron_personas_dataset() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.add_column(

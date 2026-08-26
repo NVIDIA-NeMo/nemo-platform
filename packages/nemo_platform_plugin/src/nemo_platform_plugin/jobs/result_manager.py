@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generic, Literal, Type, TypeVar, overload
 
+from filesets import parse_fileset_ref
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
 from nemo_platform_plugin.client.errors import NemoClientError

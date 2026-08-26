@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 from nemo_studio_assistant.register import (
     ask_user_question,
     check_status,
+    deploy_guardrail,
     job_progress,
     nemo_api,
     select_agent,
@@ -17,6 +18,7 @@ from nemo_studio_assistant.register import (
 )
 
 TOOLS = (
+    deploy_guardrail,
     nemo_api,
     check_status,
     select_agent,

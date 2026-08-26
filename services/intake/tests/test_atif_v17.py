@@ -729,6 +729,65 @@ def test_atif_mapping_keeps_tool_error_on_tool_span() -> None:
     assert tool.status == SpanStatus.ERROR
 
 
+def test_atif_mapping_promotes_root_extra_error() -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "extra": {
+                "error": {
+                    "type": "AgentTimeoutError",
+                    "message": "Agent execution timed out after 900.0 seconds",
+                }
+            },
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "solve the task"},
+                {"step_id": 2, "source": "agent", "message": "partial answer"},
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    root = spans[0]
+    root_response = Span.from_domain(root)
+    llm = next(span for span in spans if span.kind == SpanKind.LLM)
+    assert root.status == SpanStatus.ERROR
+    assert root_response.error_type == "AgentTimeoutError"
+    assert root_response.error_message == "Agent execution timed out after 900.0 seconds"
+    assert json.loads(root_response.raw_attributes or "{}")["extra"]["error"] == {
+        "type": "AgentTimeoutError",
+        "message": "Agent execution timed out after 900.0 seconds",
+    }
+    assert llm.status == SpanStatus.SUCCESS
+
+
+@pytest.mark.parametrize("error", ["timeout", [], 42])
+def test_atif_mapping_ignores_non_object_root_extra_error(error: Any) -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "extra": {"error": error},
+            "steps": [{"step_id": 1, "source": "agent", "message": "answer"}],
+        }
+    )
+
+    root = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )[0]
+
+    assert root.status == SpanStatus.SUCCESS
+
+
 def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -> None:
     base = {
         "schema_version": "ATIF-v1.5",

@@ -3,9 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 title: "NeMo Studio Virtual Models"
-description: ""
+description: "Inspect inference routes in Studio when the Guardrails preview feature is enabled."
 ---
-Use **Virtual Models** in the NeMo Studio workspace sidebar to inspect inference routes and their middleware pipelines for the selected workspace.
+
+<Warning>
+
+The Virtual Models Studio UI is a preview feature and is disabled by default. An administrator must set `studio.feature_flags.guardrails_enabled: true` in the platform configuration and restart Studio before **Models > Virtual Models** appears. This flag also enables **Governance > Guardrails**.
+
+</Warning>
+
+Use **Models > Virtual Models** in the NeMo Studio workspace sidebar to inspect inference routes and their middleware pipelines for the selected workspace.
 
 ## Virtual Model List
 

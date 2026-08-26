@@ -129,6 +129,7 @@ nemo-platform:
     existingSecretPasswordKey: password
   core:
     controller:
+      controllerGroup: core
       env:
         NMP_PLATFORM_URL: "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
         NMP_AUTH_URL: "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
@@ -139,8 +140,7 @@ nemo-platform:
     serviceAccount:
       create: true
       name: nemo
-    extraArgs:
-      - "--service-group=core"
+    serviceGroup: core
     env:
       NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE: "/etc/nmp/workload-token/private-key.pem"
     extraVolumes:

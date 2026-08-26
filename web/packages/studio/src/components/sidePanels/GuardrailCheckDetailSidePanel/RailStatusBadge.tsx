@@ -23,7 +23,7 @@ export const RailStatusBadge: FC<RailStatusBadgeProps> = ({ status }) => {
     return (
       <Badge color="yellow" kind="solid">
         <ShieldCheck size={10} />
-        Guarded
+        Blocked
       </Badge>
     );
   }

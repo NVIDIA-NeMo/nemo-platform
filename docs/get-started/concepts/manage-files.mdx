@@ -80,6 +80,20 @@ nemo files filesets list --workspace my-workspace
 ```
 
 </Tip>
+
+All Python SDK examples that follow assume this client initialization:
+
+```python
+import os
+
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL") or "http://localhost:8080",
+    workspace="default",
+)
+```
+
 ### Creating Filesets
 
 Creating a fileset involves specifying a name and workspace. You can optionally provide a description, purpose, and custom storage configuration.

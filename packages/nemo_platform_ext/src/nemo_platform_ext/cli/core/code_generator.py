@@ -11,6 +11,11 @@ from typing import Any
 
 from nemo_platform_ext.cli.core.context import CLIContext
 
+_INFERENCE_DEPLOYMENT_LIFECYCLE = "inference_deployment"
+_PLATFORM_JOB_LIFECYCLE = "platform_job"
+_LIFECYCLE_TYPES_WITH_DEADLINES = {_INFERENCE_DEPLOYMENT_LIFECYCLE}
+_LIFECYCLE_TYPES_WITH_STATUS_ERROR_HANDLING = {_INFERENCE_DEPLOYMENT_LIFECYCLE}
+
 
 def handle_code_generation(
     resource_path: list[str],
@@ -20,6 +25,8 @@ def handle_code_generation(
     context: CLIContext,
     wait_config: dict[str, Any] | None = None,
     wait_options: dict[str, Any] | None = None,
+    watch_config: dict[str, Any] | None = None,
+    watch_options: dict[str, Any] | None = None,
 ) -> bool:
     """
     Check if in code generation mode and generate code if needed.
@@ -42,6 +49,8 @@ def handle_code_generation(
             base_url=base_url,
             wait_config=wait_config,
             wait_options=wait_options,
+            watch_config=watch_config,
+            watch_options=watch_options,
         )
         formatted_code = format_code_output(code, language="python")
         print(formatted_code)
@@ -57,6 +66,8 @@ def generate_python_code(
     base_url: str | None = None,
     wait_config: dict[str, Any] | None = None,
     wait_options: dict[str, Any] | None = None,
+    watch_config: dict[str, Any] | None = None,
+    watch_options: dict[str, Any] | None = None,
 ) -> str:
     """
     Generate Python SDK code equivalent to a CLI command.
@@ -72,16 +83,28 @@ def generate_python_code(
     """
     lines = []
 
-    wait_type = wait_config.get("type") if wait_config else None
+    if wait_config and watch_config:
+        raise ValueError("Only one of wait_config or watch_config may be provided")
 
-    if wait_config:
+    lifecycle_config = watch_config or wait_config
+    lifecycle_options = watch_options if watch_config else wait_options
+    lifecycle_type = lifecycle_config.get("type") if lifecycle_config else None
+
+    lifecycle_mode = "watch" if watch_config else "wait" if wait_config else None
+
+    if _lifecycle_uses_deadline(lifecycle_type, lifecycle_mode):
         lines.append("import time")
-    if wait_type == "inference_deployment":
+    if _lifecycle_uses_status_error_handling(lifecycle_type, lifecycle_mode):
         lines.append(
             "from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NeMoPlatform, NotFoundError"
         )
     else:
         lines.append("from nemo_platform import NeMoPlatform")
+        if lifecycle_type == _PLATFORM_JOB_LIFECYCLE:
+            lines.append("from nemo_platform_plugin.client.adapter import client_from_platform")
+            lines.append("from nemo_platform_plugin.jobs.client import JobsClient")
+            if lifecycle_mode == "wait":
+                lines.append("from nemo_platform_plugin.jobs.watch_types import JobStatusEvent, JobWatchTimeoutError")
     lines.append("")
 
     if base_url:
@@ -89,15 +112,30 @@ def generate_python_code(
     else:
         lines.append("client = NeMoPlatform()")
     lines.append("")
+    if lifecycle_type == _PLATFORM_JOB_LIFECYCLE:
+        lines.append("jobs_client = client_from_platform(client, JobsClient)")
+        lines.append("")
 
     resource_chain = "client." + ".".join(resource_path)
     _append_method_call(lines, resource_chain, method, _format_method_args(args))
 
-    if wait_config:
-        lines.extend(["", _render_wait_code(resource_path, args, wait_config, wait_options or {})])
+    if lifecycle_config:
+        lines.extend(
+            [
+                "",
+                _render_lifecycle_code(
+                    resource_path,
+                    args,
+                    lifecycle_config,
+                    lifecycle_options or {},
+                    mode=lifecycle_mode,
+                ),
+            ]
+        )
 
-    lines.append("")
-    lines.append("print(response)")
+    if lifecycle_type != _PLATFORM_JOB_LIFECYCLE:
+        lines.append("")
+        lines.append("print(response)")
 
     return "\n".join(lines)
 
@@ -138,16 +176,51 @@ def _format_python_literal(value: Any) -> str:
     return repr(value)
 
 
-def _render_wait_code(
+def _lifecycle_uses_deadline(lifecycle_type: object, mode: str | None) -> bool:
+    return lifecycle_type in _LIFECYCLE_TYPES_WITH_DEADLINES and not (
+        lifecycle_type == _PLATFORM_JOB_LIFECYCLE and mode == "watch"
+    )
+
+
+def _lifecycle_uses_status_error_handling(lifecycle_type: object, mode: str | None) -> bool:
+    return lifecycle_type in _LIFECYCLE_TYPES_WITH_STATUS_ERROR_HANDLING and not (
+        lifecycle_type == _PLATFORM_JOB_LIFECYCLE and mode == "watch"
+    )
+
+
+def _require_timeout(timeout: Any, lifecycle_type: object, mode: str | None) -> Any:
+    if timeout is not None:
+        return timeout
+    mode_label = f"{mode} " if mode else ""
+    raise ValueError(f"{mode_label}{lifecycle_type!r} lifecycle code generation requires timeout")
+
+
+def _require_resource_label(lifecycle_config: dict[str, Any], lifecycle_type: object, mode: str | None) -> str:
+    mode_label = f"{mode} " if mode else ""
+    try:
+        resource_label = lifecycle_config["resource_label"]
+    except KeyError as exc:
+        raise ValueError(
+            f"{mode_label}{lifecycle_type!r} lifecycle code generation requires a non-empty resource_label"
+        ) from exc
+    if not isinstance(resource_label, str) or not resource_label.strip():
+        raise ValueError(
+            f"{mode_label}{lifecycle_type!r} lifecycle code generation requires a non-empty resource_label"
+        )
+    return resource_label
+
+
+def _render_lifecycle_code(
     resource_path: list[str],
     args: dict[str, Any],
-    wait_config: dict[str, Any],
-    wait_options: dict[str, Any],
+    lifecycle_config: dict[str, Any],
+    lifecycle_options: dict[str, Any],
+    *,
+    mode: str | None,
 ) -> str:
-    wait_type = wait_config.get("type")
-    resource_label = str(wait_config.get("resource_label") or "resource")
-    timeout = wait_options.get("timeout", 1200)
-    poll_interval = wait_options.get("poll_interval", 3)
+    lifecycle_type = lifecycle_config.get("type")
+    timeout = lifecycle_options.get("timeout")
+    poll_interval = lifecycle_options.get("poll_interval", 3)
     resource_chain = "client." + ".".join(resource_path)
     status_kwargs = _format_keyword_args(args, ["workspace"])
     resource_name = 'getattr(response, "name", None)'
@@ -159,11 +232,14 @@ def _render_wait_code(
         resource_name = {resource_name}
         if not resource_name:
             raise RuntimeError("Unable to determine created resource name for --wait")
-        deadline = time.monotonic() + {timeout}
         """
     ).strip()
+    if mode == "watch":
+        prelude = prelude.replace("--wait", "--watch")
 
-    if wait_type == "inference_deployment":
+    if lifecycle_type == _INFERENCE_DEPLOYMENT_LIFECYCLE:
+        timeout = _require_timeout(timeout, lifecycle_type, mode)
+        prelude = "\n".join([prelude, f"deadline = time.monotonic() + {timeout}"])
         workspace_literal = _format_python_literal(args["workspace"]) if args.get("workspace") is not None else "None"
         return "\n\n".join(
             [
@@ -177,15 +253,24 @@ def _render_wait_code(
             ]
         )
 
-    if wait_type == "platform_job":
+    if lifecycle_type == _PLATFORM_JOB_LIFECYCLE and mode == "watch":
         return "\n\n".join(
             [
                 prelude,
-                _render_platform_job_wait_code(resource_chain, status_kwargs, resource_label, poll_interval),
+                _render_platform_job_watch_code(args, timeout, poll_interval),
+            ]
+        )
+    if lifecycle_type == _PLATFORM_JOB_LIFECYCLE and mode == "wait":
+        timeout = _require_timeout(timeout, lifecycle_type, mode)
+        resource_label = _require_resource_label(lifecycle_config, lifecycle_type, mode)
+        return "\n\n".join(
+            [
+                prelude,
+                _render_platform_job_wait_code(args, timeout, poll_interval, resource_label),
             ]
         )
 
-    raise ValueError(f"Unsupported wait config type: {wait_type!r}")
+    raise ValueError(f"Unsupported lifecycle config type: {lifecycle_type!r}")
 
 
 def _render_inference_deployment_wait_code(
@@ -240,34 +325,56 @@ def _render_inference_deployment_wait_code(
     ).strip()
 
 
-def _render_platform_job_wait_code(
-    resource_chain: str,
-    status_kwargs: str,
-    resource_label: str,
+def _render_platform_job_watch_code(
+    args: dict[str, Any],
+    timeout: int | None,
     poll_interval: int,
 ) -> str:
-    resource_label_literal = _format_python_literal(resource_label)
+    workspace = _format_python_literal(args["workspace"]) if args.get("workspace") is not None else "None"
 
     return dedent(
         f"""
-        while True:
-            status_response = {resource_chain}.get_status(resource_name{status_kwargs})
-            status = str(status_response.status or "").lower()
-            if status == "completed":
-                response = status_response
-                break
-            if status in {{"cancelled", "error"}}:
+        for event in jobs_client.watch_job(
+            resource_name,
+            workspace={workspace},
+            timeout={timeout},
+            poll_interval={poll_interval},
+        ):
+            print(event)
+        """
+    ).strip()
+
+
+def _render_platform_job_wait_code(
+    args: dict[str, Any],
+    timeout: int,
+    poll_interval: int,
+    resource_label: str,
+) -> str:
+    workspace = _format_python_literal(args["workspace"]) if args.get("workspace") is not None else "None"
+
+    return dedent(
+        f"""
+        resource_label = {_format_python_literal(resource_label)}
+        try:
+            for event in jobs_client.watch_job(
+                resource_name,
+                workspace={workspace},
+                timeout={timeout},
+                poll_interval={poll_interval},
+                include_logs=False,
+            ):
+                if not isinstance(event, JobStatusEvent):
+                    continue
+                if not event.terminal:
+                    continue
+                if event.successful:
+                    break
                 raise RuntimeError(
-                    {resource_label_literal} + f" {{resource_name!r}} ended with status {{status!r}}"
+                    f"{{resource_label.title()}} {{resource_name!r}} ended with status {{event.status!r}}"
                 )
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(
-                    "Timed out waiting for "
-                    + {resource_label_literal}
-                    + f" {{resource_name!r}} to complete"
-                )
-            time.sleep(min({poll_interval}, remaining))
+        except JobWatchTimeoutError as exc:
+            raise TimeoutError(f"Timed out waiting for {{resource_label}} {{resource_name!r}} to complete") from exc
         """
     ).strip()
 

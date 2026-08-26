@@ -10,7 +10,13 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parent.parent.parent
-WORKSPACE_SLICES = ("automodel", "rl", "unsloth")
+WORKSPACE_SLICES = ("automodel", "customizer", "rl", "unsloth")
+SDK_EDITABLE_DOCKERFILES = (
+    Path("docker/Dockerfile.nmp-customizer-tasks"),
+    Path("docker/Dockerfile.nmp-unsloth-training"),
+    Path("docker/automodel/Dockerfile.nmp-automodel-training"),
+    Path("docker/rl/Dockerfile.nmp-rl-training"),
+)
 WANDB_PACKAGE_SPEC_RE = re.compile(r"(?<![\w./-])wandb(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
 DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/Dockerfile.nmp-customizer-tasks"),
@@ -87,6 +93,32 @@ def test_docker_workspace_slice_contains_all_workspace_sources(slice_name):
             f"{slice_name} workspace is missing {sorted(missing_sources)} referenced by "
             f"{project_path.relative_to(ROOT)}"
         )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [pytest.param(ROOT / path, id=str(path)) for path in SDK_EDITABLE_DOCKERFILES],
+)
+def test_sdk_editable_image_installs_filesets(path: Path) -> None:
+    """Editable SDK installs need the filesets source package available separately."""
+    text = path.read_text(encoding="utf-8")
+
+    assert "-e /app/sdk/python/nemo-platform" in text
+    assert "-e /app/packages/filesets" in text
+
+
+@pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
+def test_sdk_editable_workspace_slice_includes_filesets(slice_name: str) -> None:
+    """The SDK imports ``filesets`` lazily when ``sdk.files`` is accessed."""
+    workspace_path = ROOT / "docker" / slice_name / "pyproject.workspace.toml"
+    workspace = _load_pyproject(workspace_path)
+    member_paths = set(workspace["tool"]["uv"]["workspace"]["members"])
+    source_names = _workspace_sources(workspace)
+    dockerfile_text = (ROOT / "docker" / slice_name / "Dockerfile.platform-workspace").read_text(encoding="utf-8")
+
+    assert "packages/filesets" in member_paths
+    assert "filesets" in source_names
+    assert "COPY packages/filesets packages/filesets" in dockerfile_text
 
 
 def test_deployments_plugin_is_optional_for_models_service():

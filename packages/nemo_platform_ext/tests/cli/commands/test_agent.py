@@ -195,4 +195,5 @@ class TestAgentCommands:
             "| nemo anonymizer | Functional plugins | Plugin commands for anonymizer. |",
             "| nemo experiments | Functional plugins | Manage experiments. |",
             "| nemo intake | Functional plugins | Intake operations. |",
+            "| nemo safe-synthesizer | Functional plugins | Plugin commands for safe-synthesizer. |",
         ]

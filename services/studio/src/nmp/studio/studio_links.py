@@ -223,6 +223,17 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("model_providers", "providers"),
     ),
     "guardrails": StudioLinkDestination("Guardrails", "/workspaces/{workspace}/guardrails"),
+    "virtual_models": StudioLinkDestination(
+        "Virtual Models",
+        "/workspaces/{workspace}/virtual-models",
+        aliases=("virtual_model_list", "virtual_models_page"),
+    ),
+    "virtual_model_chat": StudioLinkDestination(
+        "Chat with VirtualModel {name}",
+        "/workspaces/{workspace}/virtual-models?virtualModel={name}&tab=chat",
+        aliases=("chat_with_virtual_model", "virtual_model_playground"),
+        requires_name=True,
+    ),
     "secrets": StudioLinkDestination("Secrets", "/workspaces/{workspace}/secrets"),
     "intake": StudioLinkDestination("Intake", "/workspaces/{workspace}/intake"),
     "intake_traces": StudioLinkDestination(
@@ -396,6 +407,8 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
     "deployment": ("deployments_enabled",),
     "inference_providers": ("inference_provider_enabled",),
     "guardrails": ("guardrails_enabled",),
+    "virtual_models": ("guardrails_enabled",),
+    "virtual_model_chat": ("guardrails_enabled",),
     "secrets": ("secrets_enabled",),
     "intake": ("intake_enabled",),
     "intake_traces": ("intake_enabled",),

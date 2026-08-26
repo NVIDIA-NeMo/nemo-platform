@@ -48,20 +48,21 @@ describe('resolveConfigModel', () => {
     expect(resolveConfigModel(config, 'pii-filter')).toBe('gpt-4');
   });
 
-  it('falls back to the first model that declares a reference', () => {
-    const config: RailsConfig = {
-      models: [{ type: 'embeddings', engine: 'openai', model: 'text-embedding-ada-002' }],
-    };
-    expect(resolveConfigModel(config, 'pii-filter')).toBe('text-embedding-ada-002');
-  });
-
   it.each([
     ['no models', { models: [] } satisfies RailsConfig],
     ['models without a reference', { models: [{ type: 'main', engine: 'openai' }] }],
     ['an absent config', undefined],
+    // A task LLM is addressed by a rail via `$model=`; running generation against it would
+    // produce a result that looks valid and means nothing.
+    [
+      'only task LLMs',
+      {
+        models: [{ type: 'embeddings', engine: 'openai', model: 'text-embedding-ada-002' }],
+      } satisfies RailsConfig,
+    ],
   ])('throws a named error for %s', (_label, config) => {
     expect(() => resolveConfigModel(config as RailsConfig | undefined, 'pii-filter')).toThrow(
-      "Guardrail config 'pii-filter' has no usable model to run checks against."
+      "Guardrail config 'pii-filter' has no main model. Set one on the Configuration tab."
     );
   });
 });
@@ -199,7 +200,9 @@ describe('runGuardrailCheck against a draft', () => {
   it('rejects a draft with no usable model before calling /checks', async () => {
     await expect(
       runGuardrailCheck(WORKSPACE, snapshot('benign-greeting'), { models: [] })
-    ).rejects.toThrow("Guardrail config 'pii-filter' has no usable model to run checks against.");
+    ).rejects.toThrow(
+      "Guardrail config 'pii-filter' has no main model. Set one on the Configuration tab."
+    );
     expect(recordedCheckRequests).toHaveLength(0);
   });
 });

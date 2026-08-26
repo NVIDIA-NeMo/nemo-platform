@@ -7,7 +7,7 @@
 
 - Read `workflows/config.md` for the job spec field reference.
 - Resolve the CLI with `workflows/run.md`.
-- Use a platform fileset `data_source` for platform jobs or pass `--data-source` for host-local input files.
+- Use a platform fileset `data_source`.
 
 ## Basic Job Spec
 
@@ -133,26 +133,20 @@
     }
     ```
 
-## Submit the Spec
+## Create the Job
 
-Use the Jobs API or SDK for the primary platform-container path. Pass the JSON object above as the `spec` field in the create-job request. Confirm the service is configured for container execution before submission:
+Use the CLI, Jobs API, or SDK for the primary platform-container path. Pass the JSON object above as the CLI spec file or as the `spec` field in the create-job request. Confirm the service is configured for container execution before job creation:
 
 ```bash
-export NEMO_SAFE_SYNTHESIZER_JOB_MODE=container
 export NMP_IMAGE_REGISTRY=nvcr.io/nvidia/nemo-platform
 export NMP_IMAGE_TAG=<tag>  # match your installed NeMo Platform release
 export NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE=safe-synthesizer-tasks
 ```
 
-Use host-local execution only for local CUDA/GPU development or task debugging:
-
 ```bash
-uv run nemo safe-synthesizer runtime setup
-uv run nemo safe-synthesizer run-local \
+nemo safe-synthesizer generate \
   --workspace default \
-  --spec-file nss-job.json \
-  --data-source ./input.csv \
-  --output-dir ./nss-output
+  --spec-file nss-job.json
 ```
 
 ## Next Steps

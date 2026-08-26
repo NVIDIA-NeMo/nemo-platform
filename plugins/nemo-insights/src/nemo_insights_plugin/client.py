@@ -20,8 +20,8 @@ the one place that branch lives.
 from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.auth.helpers import discover_nmp_config
-from nemo_platform.config.config import Config
+from nemo_platform_ext.auth.helpers import discover_nmp_config
+from nemo_platform_ext.config.config import Config
 
 # Loopback hosts are served by an unauthenticated local platform; attaching
 # (and refreshing) OAuth tokens there is both unnecessary and a failure mode

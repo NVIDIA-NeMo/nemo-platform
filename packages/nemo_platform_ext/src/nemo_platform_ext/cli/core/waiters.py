@@ -19,10 +19,22 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 
 from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NotFoundError
+from nemo_platform_plugin.client.response import NemoPaginatedResponse, NemoResponse
+from nemo_platform_plugin.client.types import CursorPagination
+from nemo_platform_plugin.jobs.client import JobsWatchClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLog, PlatformJobStatusResponse
+from nemo_platform_plugin.jobs.types import JobLogsQueryParams
+from nemo_platform_plugin.jobs.watch_types import (
+    JobStatusEvent,
+    JobWarningEvent,
+    JobWatchEvent,
+    JobWatchTimeoutError,
+)
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
@@ -49,6 +61,63 @@ _SAFE_JOB_TYPE_BUCKETS = frozenset(
 
 def _pause(seconds: float) -> None:
     time.sleep(seconds)
+
+
+class _WatchedJobsClient:
+    def __init__(self, jobs_client: JobsWatchClient) -> None:
+        self._jobs_client = jobs_client
+        self.last_status: PlatformJobStatusResponse | None = None
+
+    def get_job_status(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+    ) -> NemoResponse[PlatformJobStatusResponse]:
+        response = self._jobs_client.get_job_status(workspace=workspace, name=name)
+        self.last_status = response.data()
+        return response
+
+    def list_job_logs(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+        query_params: JobLogsQueryParams | None = None,
+    ) -> NemoPaginatedResponse[PlatformJobLog, CursorPagination]:
+        return self._jobs_client.list_job_logs(workspace=workspace, name=name, query_params=query_params)
+
+    def watch_job(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        poll_interval: float = 3,
+        timeout: float | None = None,
+        include_history: bool = True,
+        include_logs: bool = True,
+        attempt_id: int | None = None,
+        step_id: str | None = None,
+        task_id: str | None = None,
+        limit: int | None = None,
+        page_cursor: str | None = None,
+    ) -> Iterator[JobWatchEvent]:
+        from nemo_platform_plugin.jobs.watch import watch_job
+
+        return watch_job(
+            self,
+            name,
+            workspace=workspace,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            include_history=include_history,
+            include_logs=include_logs,
+            attempt_id=attempt_id,
+            step_id=step_id,
+            task_id=task_id,
+            limit=limit,
+            page_cursor=page_cursor,
+        )
 
 
 def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: datetime | None) -> int | None:
@@ -187,6 +256,20 @@ def _make_live_display(
     return text
 
 
+class _PlatformJobWaitLiveDisplay:
+    def __init__(self, *, start_time: float, timeout: int, poll_interval: int) -> None:
+        self.start_time = start_time
+        self.timeout = timeout
+        self.poll_interval = poll_interval
+
+    def snapshot(self) -> tuple[str, int]:
+        return datetime.now().strftime("%H:%M:%S"), int(time.time() - self.start_time)
+
+    def __rich__(self) -> Text:
+        polling_time, wait_elapsed = self.snapshot()
+        return _make_live_display(polling_time, self.timeout, self.poll_interval, wait_elapsed)
+
+
 def _sleep_until_next_poll(start_time: float, timeout: float, poll_interval: int) -> bool:
     if poll_interval <= 0:
         raise ValueError(f"_sleep_until_next_poll poll_interval must be greater than 0, got {poll_interval}")
@@ -221,6 +304,7 @@ def wait_for_inference_deployment(
     timeout: int = 1200,
     poll_interval: int = 3,
     check_gateway: bool = True,
+    verbose: bool = True,
 ) -> bool:
     """Wait for an inference deployment to reach the requested status."""
     if workspace is None:
@@ -231,13 +315,15 @@ def wait_for_inference_deployment(
     last_status = ""
     last_message = ""
 
-    console.print(f"[bold]Waiting for deployment '{name}' to reach status: {status}[/bold]\n")
+    if verbose:
+        console.print(f"[bold]Waiting for deployment '{name}' to reach status: {status}[/bold]\n")
 
     with Live(console=console, refresh_per_second=4, transient=True) as live:
         while time.time() - start_time < timeout:
             wait_elapsed = int(time.time() - start_time)
             polling_time = datetime.now().strftime("%H:%M:%S")
-            live.update(_make_live_display(polling_time, timeout, poll_interval, wait_elapsed))
+            if verbose:
+                live.update(_make_live_display(polling_time, timeout, poll_interval, wait_elapsed))
 
             try:
                 deployment = client.inference.deployments.retrieve(name, workspace=workspace)
@@ -253,7 +339,7 @@ def wait_for_inference_deployment(
                 last_status = current_status
                 last_message = current_message
 
-                if history and len(history) > last_history_len:
+                if verbose and history and len(history) > last_history_len:
                     live.stop()
                     if last_history_len == 0:
                         console.print()
@@ -269,11 +355,13 @@ def wait_for_inference_deployment(
                     console.print()
                     live.start()
 
-                live.update(_make_live_display(polling_time, timeout, poll_interval, wait_elapsed))
+                if verbose:
+                    live.update(_make_live_display(polling_time, timeout, poll_interval, wait_elapsed))
 
                 if current_status == status and status != "DELETED":
                     live.stop()
-                    console.print(f"\n[green]✓ Deployment reached {status} status![/green]")
+                    if verbose:
+                        console.print(f"\n[green]✓ Deployment reached {status} status![/green]")
                     if status == "READY" and check_gateway:
                         remaining_timeout = timeout - (time.time() - start_time)
                         if remaining_timeout <= 0:
@@ -286,6 +374,7 @@ def wait_for_inference_deployment(
                             provider_workspace,
                             timeout=remaining_timeout,
                             poll_interval=poll_interval,
+                            verbose=verbose,
                         )
                     return True
 
@@ -303,11 +392,13 @@ def wait_for_inference_deployment(
                 console.print("\n[red]✗ Deployment not found[/red]")
                 return False
             except (APIConnectionError, APITimeoutError) as exc:
-                _print_transient_wait_error(live, "deployment status", exc)
+                if verbose:
+                    _print_transient_wait_error(live, "deployment status", exc)
             except APIStatusError as exc:
                 if exc.status_code not in _TRANSIENT_GATEWAY_STATUS_CODES:
                     raise
-                _print_transient_wait_error(live, "deployment status", exc)
+                if verbose:
+                    _print_transient_wait_error(live, "deployment status", exc)
 
             if not _sleep_until_next_poll(start_time, timeout, poll_interval):
                 break
@@ -321,7 +412,7 @@ def wait_for_inference_deployment(
 
 
 def wait_for_platform_job(
-    jobs_resource: Any,
+    jobs_client: JobsWatchClient,
     name: str,
     *,
     workspace: str | None = None,
@@ -332,60 +423,56 @@ def wait_for_platform_job(
     """Wait for a platform job resource to complete."""
     start_time = time.time()
     last_status = ""
+    jobs = _WatchedJobsClient(jobs_client)
 
     console.print(f"[bold]Waiting for {resource_label} '{name}' to complete[/bold]\n")
 
-    with Live(console=console, refresh_per_second=4, transient=True) as live:
-        while time.time() - start_time < timeout:
-            wait_elapsed = int(time.time() - start_time)
-            polling_time = datetime.now().strftime("%H:%M:%S")
-            live.update(_make_live_display(polling_time, timeout, poll_interval, wait_elapsed))
+    live_display = _PlatformJobWaitLiveDisplay(start_time=start_time, timeout=timeout, poll_interval=poll_interval)
+    with Live(live_display, console=console, refresh_per_second=4, transient=True) as live:
+        try:
+            for event in jobs.watch_job(
+                name,
+                workspace=workspace,
+                poll_interval=poll_interval,
+                timeout=timeout,
+                include_logs=False,
+            ):
+                polling_time, wait_elapsed = live_display.snapshot()
+                live.update(live_display)
 
-            try:
-                job_status = jobs_resource.get_status(name, workspace=workspace)
-            except NotFoundError:
-                live.stop()
-                console.print(f"\n[red]✗ {resource_label.title()} not found[/red]")
-                return False
-            except (APIConnectionError, APITimeoutError) as exc:
-                _print_transient_wait_error(live, f"{resource_label} status", exc)
-                if not _sleep_until_next_poll(start_time, timeout, poll_interval):
-                    break
-                continue
-            except APIStatusError as exc:
-                if exc.status_code not in _TRANSIENT_GATEWAY_STATUS_CODES:
-                    raise
-                _print_transient_wait_error(live, f"{resource_label} status", exc)
-                if not _sleep_until_next_poll(start_time, timeout, poll_interval):
-                    break
-                continue
+                if isinstance(event, JobWarningEvent):
+                    live.stop()
+                    console.print(f"\n[yellow]{event.message}[/yellow]")
+                    live.start()
+                    continue
 
-            current_status = _status_text(getattr(job_status, "status", "")).lower()
-            if current_status != last_status:
-                live.stop()
-                console.print(_make_history_line(polling_time, wait_elapsed, current_status))
-                last_status = current_status
-                console.print()
-                live.start()
+                if not isinstance(event, JobStatusEvent):
+                    continue
 
-            if current_status == "completed":
-                live.stop()
-                _emit_job_run_event(
-                    job_status, resource_label=resource_label, status=current_status, start_time=start_time
-                )
-                console.print(f"\n[green]✓ {resource_label.title()} completed![/green]")
-                return True
+                current_status = event.status
+                if current_status != last_status:
+                    live.stop()
+                    console.print(_make_history_line(polling_time, wait_elapsed, current_status))
+                    last_status = current_status
+                    console.print()
+                    live.start()
 
-            if current_status in {"cancelled", "error"}:
-                live.stop()
-                _emit_job_run_event(
-                    job_status, resource_label=resource_label, status=current_status, start_time=start_time
-                )
-                console.print(f"\n[red]✗ {resource_label.title()} entered {current_status} state[/red]")
-                return False
-
-            if not _sleep_until_next_poll(start_time, timeout, poll_interval):
-                break
+                if event.terminal:
+                    live.stop()
+                    _emit_job_run_event(
+                        jobs.last_status, resource_label=resource_label, status=current_status, start_time=start_time
+                    )
+                    if event.successful:
+                        console.print(f"\n[green]✓ {resource_label.title()} completed![/green]")
+                        return True
+                    console.print(f"\n[red]✗ {resource_label.title()} entered {current_status} state[/red]")
+                    return False
+        except NotFoundError:
+            live.stop()
+            console.print(f"\n[red]✗ {resource_label.title()} not found[/red]")
+            return False
+        except JobWatchTimeoutError:
+            pass
 
     wait_elapsed = int(time.time() - start_time)
     detail = f"Last status: {last_status}" if last_status else "No status returned"
@@ -399,12 +486,14 @@ def wait_for_gateway(
     workspace: str,
     timeout: float = 60,
     poll_interval: int = 1,
+    verbose: bool = True,
 ) -> bool:
     """Wait for the inference gateway to be able to route to a provider."""
     start_time = time.time()
     start_timestamp = datetime.now().strftime("%H:%M:%S")
 
-    console.print(f"[bold]Waiting for gateway to be ready for provider '{provider_name}'[/bold]\n")
+    if verbose:
+        console.print(f"[bold]Waiting for gateway to be ready for provider '{provider_name}'[/bold]\n")
 
     def _make_gateway_display(polling_time: str, elapsed: int, status: str) -> Text:
         text = Text()
@@ -418,12 +507,14 @@ def wait_for_gateway(
         while time.time() - start_time < timeout:
             elapsed = int(time.time() - start_time)
             polling_time = datetime.now().strftime("%H:%M:%S")
-            live.update(_make_gateway_display(polling_time, elapsed, "Checking gateway..."))
+            if verbose:
+                live.update(_make_gateway_display(polling_time, elapsed, "Checking gateway..."))
 
             try:
                 client.inference.gateway.provider.ready(provider_name, workspace=workspace)
                 live.stop()
-                console.print(f"  [{polling_time}] ({elapsed}s) [green]Gateway is ready![/green]")
+                if verbose:
+                    console.print(f"  [{polling_time}] ({elapsed}s) [green]Gateway is ready![/green]")
                 return True
             except NotFoundError:
                 pass

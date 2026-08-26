@@ -26,7 +26,8 @@ This page walks through the full workflow:
 8. [Create the job](#create-the-job)
 9. [View job details after completion](#view-job-details)
 10. [Edit rows after completion](#edit-rows-after-completion)
-11. [Split the dataset](#split-the-dataset)
+11. [Transform the dataset into another schema](#transform-the-dataset)
+12. [Split the dataset](#split-the-dataset)
 
 ---
 
@@ -34,7 +35,7 @@ This page walks through the full workflow:
 
 ## View jobs
 
-Navigate to **Data Designer** in the workspace sidebar to open the jobs list. The list shows every Data Designer job in the current workspace with its status, and supports searching by name, filtering by status, and narrowing by creation or update date range.
+Navigate to **Data > Datasets > Data Designer** in the workspace sidebar to open the jobs list. The list shows every Data Designer job in the current workspace with its status, and supports searching by name, filtering by status, and narrowing by creation or update date range.
 
 Selecting a job opens its [details page](#view-job-details). Each row also has a quick-actions menu with **View details**, **Clone**, **Cancel** (when the job is still cancellable), and **Delete**.
 
@@ -224,7 +225,7 @@ On success, the job is created with your configured name, row count, and generat
 
 ## View job details after completion
 
-The job details page shows the job name, status badge, description, and created/updated timestamps, plus a **Split** action (see [Split the dataset](#split-the-dataset)) and a job actions menu with **View config** (opens the generated Data Designer config), **Clone**, **Cancel**, and **Delete**.
+The job details page shows the job name, status badge, description, and created/updated timestamps, plus a job actions menu with **Transform** (see [Transform the dataset](#transform-the-dataset)), **Split** (see [Split the dataset](#split-the-dataset)), **View config** (opens the generated Data Designer config), **Clone**, **Cancel**, and **Delete**. **Transform** and **Split** are disabled until the job has produced `.json`, `.jsonl`, or `.parquet` output.
 
 Details are organized into four tabs. The page opens on **Profile** for a job in a terminal state and on **Logs** for one that's still running.
 
@@ -260,6 +261,71 @@ How your edits are saved depends on the file format:
 Files larger than 8 MB (non-Parquet) can't be edited in the browser. Download them to edit locally.
 
 </Note>
+
+---
+
+<a id="transform-the-dataset"></a>
+
+## Transform the dataset into another schema
+
+A finished dataset rarely lands in the exact shape the next tool wants. **Transform** rewrites each row into another schema — renaming, nesting, dropping, and combining fields — without regenerating any data.
+
+Choose **Transform** from the job actions menu on the details page. It is available once the job has produced a `.json`, `.jsonl`, or `.parquet` output file.
+
+Under the hood, the transform launches a second Data Designer job that only maps fields: the file you pick becomes the seed, the job declares no generated columns, and a `schema_transform` processor rewrites every row. **Nothing is generated and no model is called, so the transform costs no inference.** The result is written to `processors-files/<output name>/` in the new job's fileset, and Studio navigates to the new job when it is created.
+
+### Pick a target format
+
+The **Target format** cards decide which fields the mapping asks you for:
+
+| Format | What it produces |
+| --- | --- |
+| **Evaluation Tasks** | Tasks the Evaluator can run an agent against: `id`, `intent`, `inputs.instruction`, and an optional grader-only `reference.expected`. |
+| **Messages** | A two-turn `messages` array — a user turn and an assistant turn — the usual shape for supervised fine-tuning. The `role` values are filled in for you. |
+| **Custom** | The raw output schema, one key at a time. Starts as a passthrough of the source columns, so renaming or dropping a few fields is an edit rather than a rewrite from scratch. |
+
+A format is a Studio-side convenience: it names the fields the target consumer expects and pre-fills the underlying template. Anything a format can't express is still reachable through **Custom**.
+
+### Map the fields
+
+Studio reads the source file's columns and guesses a mapping from the column names, so a well-named dataset is often already mapped when the modal opens.
+
+Each field row shows whether it is **Required** or **Optional**, a source column picker, and a `{ }` toggle that swaps the picker for a raw Jinja2 input — use it for filters, concatenation, or literal values the picker can't express. Leaving a field blank drops it from the output entirely instead of writing an empty string. Required fields with no source block the transform and are called out in a banner.
+
+**Custom** replaces the field rows with a key/template grid. Keys accept dot paths and numeric segments, so `reference.expected` nests an object and `messages.0.content` builds an array. Filling in the last row grows the grid; the available source columns are listed below it as `{{ column }}` chips.
+
+Template values are Jinja2:
+
+- `{{ column }}` inserts that column's value for the row. Text outside the braces is kept, so `Ticket {{ id }}: {{ summary }}` is one field.
+- Text with no braces is a constant — every row gets the same value.
+- Filters transform a value: `{{ topic | upper }}`, `{{ score | int }}`.
+- `{{ notes | default('none') }}` covers an undefined column; add `true` as a second argument to replace empty values too.
+
+<Note>
+
+If the format needs a unique identifier per row and no source column matches, the picker offers a **generated** option instead. The job adds that column as a UUID sampler, one value per row — still no inference. A constant would be identical on every row, which silently collapses the output.
+
+</Note>
+
+### Preview, then create
+
+The **before / after** panel renders a single source row through the current mapping so you can check it against real data before anything is written. Step through rows with the row selector. Complex Jinja2 — filters, blocks, helpers — is only approximated in the browser; the transform applies it exactly when it runs.
+
+The bottom of the modal sets:
+
+- **Job name** — the new transform job's name, seeded from the source job and the format.
+- **Output name** — the processor name, which is also the directory the output is written to.
+- **Rows** — how many rows to read from the source, defaulting to the source job's record count. Asking for more rows than the source has restarts the reader at the top of the file and duplicates rows; Studio warns when you do.
+
+Closing the modal with an unsubmitted mapping asks you to confirm before discarding it.
+
+<a id="transform-a-fileset-file"></a>
+
+### Transform a single fileset file in place
+
+The same mapping is available outside Data Designer. On any read/write fileset, choose **Transform** from a file's quick-actions menu to rewrite that file through a format and field mapping.
+
+That path applies the mapping in the browser and overwrites the file, so no job is created — and because the rows are re-serialized as JSONL, only `.jsonl` files can be transformed in place. Use the Data Designer transform above for `.json`, `.csv`, and `.parquet` sources, or for keeping the original alongside the result.
 
 ---
 

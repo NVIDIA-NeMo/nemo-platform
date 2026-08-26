@@ -476,6 +476,38 @@ def test_training_start_states_the_schedule_and_no_position(reporter: _Recording
     assert "step" not in report
 
 
+def test_run_facts_ride_along_with_the_schedule(reporter: _RecordingReporter) -> None:
+    """Constants about the run share the report that states the schedule."""
+    _make_callback(reporter).report_training_start(
+        max_steps=940, num_epochs=2, run_facts={"training_type": "grpo", "rollouts_per_step": 128}
+    )
+
+    report = reporter.reports[-1]
+    assert report["training_type"] == "grpo"
+    assert report["rollouts_per_step"] == 128
+    assert report["max_steps"] == 940
+
+
+def test_run_facts_cannot_overwrite_the_schedule(reporter: _RecordingReporter) -> None:
+    """The reported schedule has to be the one progress tracking runs on.
+
+    Both leave in the same call -- as `configure_progress_tracking` arguments and
+    as two entries in the same blob. A run fact shadowing either lets them
+    disagree: progress still tracked against the real max_steps, the blob beside
+    it advertising another, and a job rendering as `step 30 / 999` at 100%.
+    Writing the schedule last makes that unreachable, whatever a caller passes.
+    """
+    _make_callback(reporter).report_training_start(
+        max_steps=940, num_epochs=2, run_facts={"max_steps": 999, "num_epochs": 7, "training_type": "grpo"}
+    )
+
+    report = reporter.reports[-1]
+    assert report["max_steps"] == 940, "the argument wins"
+    assert report["num_epochs"] == 2, "the argument wins"
+    assert report["training_type"] == "grpo", "everything else still rides along"
+    assert reporter.tracking == (940, 2), "and it matches what progress tracking was given"
+
+
 def test_training_start_does_not_reset_the_stored_progress() -> None:
     """report_running derives percentage_done from a stated step, and it merges.
 

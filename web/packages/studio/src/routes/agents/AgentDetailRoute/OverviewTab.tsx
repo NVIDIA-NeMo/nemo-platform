@@ -6,15 +6,26 @@ import { Flex, Stack } from '@nvidia/foundations-react-core';
 import { AgentTraceStatistics } from '@studio/components/AgentTraceStatistics';
 import type { TraceStatisticsRange } from '@studio/components/AgentTraceStatistics/types';
 import { bucketAdverbForRange } from '@studio/components/AgentTraceStatistics/utils';
-import { INTAKE_ENABLED } from '@studio/constants/environment';
+import { INTAKE_ENABLED, OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { AgentSummaryPanel } from '@studio/routes/agents/AgentDetailRoute/overview/AgentSummaryPanel';
-import { useOverviewTraces } from '@studio/routes/agents/AgentDetailRoute/overview/useOverviewTraces';
-import { getIntakeTracesRoute } from '@studio/routes/utils';
+import { OpenInsightsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightsPanel';
+import { useAgentTraceMetrics } from '@studio/routes/agents/AgentDetailRoute/overview/useAgentTraceMetrics';
+import { useOpenInsights } from '@studio/routes/agents/AgentDetailRoute/overview/useOpenInsights';
+import {
+  getIntakeTracesRoute,
+  getOptimizerInsightRoute,
+  getOptimizerRoute,
+} from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface OverviewTabProps {
   workspace: string;
+  /**
+   * From the route params, so the rollup query starts on the first render. Waiting on `agent.name`
+   * would leave the statistics looking empty until the agent fetch lands.
+   */
+  agentName?: string;
   agent?: Agent;
   modelNames: string[];
   /** Jump to the chat tab so the agent emits its first traces. */
@@ -22,10 +33,27 @@ interface OverviewTabProps {
 }
 
 /** Landing view for an agent: how it has been running, next to what it is. */
-export const OverviewTab: FC<OverviewTabProps> = ({ workspace, agent, modelNames, onRunAgent }) => {
+export const OverviewTab: FC<OverviewTabProps> = ({
+  workspace,
+  agentName,
+  agent,
+  modelNames,
+  onRunAgent,
+}) => {
   const navigate = useNavigate();
   const [range, setRange] = useState<TraceStatisticsRange>('week');
-  const { traces, isPending } = useOverviewTraces({ workspace, range, enabled: INTAKE_ENABLED });
+  const { summary, buckets, isPending } = useAgentTraceMetrics({
+    workspace,
+    agentName,
+    range,
+    enabled: INTAKE_ENABLED,
+  });
+  const {
+    insights,
+    totalCount: insightCount,
+    isPending: insightsPending,
+    error: insightsError,
+  } = useOpenInsights({ workspace, agent: agent?.name, enabled: OPTIMIZER_ENABLED });
 
   if (!INTAKE_ENABLED) {
     return (
@@ -39,18 +67,29 @@ export const OverviewTab: FC<OverviewTabProps> = ({ workspace, agent, modelNames
     <Flex gap="density-2xl" align="start" wrap="wrap" className="w-full pb-6">
       <Stack gap="density-2xl" className="min-w-0 flex-1 basis-[32rem]">
         <AgentTraceStatistics
-          traces={traces}
+          summary={summary}
+          buckets={buckets}
           range={range}
           onRangeChange={setRange}
           onViewTraces={() => navigate(getIntakeTracesRoute(workspace))}
           onRunAgent={onRunAgent}
           isPending={isPending}
-          caption={`${bucketAdverbForRange(range)} · Workspace-wide`}
+          caption={bucketAdverbForRange(range)}
         />
       </Stack>
-      <div className="w-full shrink-0 lg:w-80">
+      <Stack gap="density-2xl" className="w-full shrink-0 lg:w-90">
         <AgentSummaryPanel agent={agent} modelNames={modelNames} />
-      </div>
+        {OPTIMIZER_ENABLED && (
+          <OpenInsightsPanel
+            insights={insights}
+            totalCount={insightCount}
+            isPending={insightsPending}
+            error={insightsError}
+            onOpenInsight={(insight) => navigate(getOptimizerInsightRoute(workspace, insight.id))}
+            onViewAll={() => navigate(getOptimizerRoute(workspace))}
+          />
+        )}
+      </Stack>
     </Flex>
   );
 };
