@@ -2435,11 +2435,39 @@ components:
             own max_tokens.'
           type: integer
           exclusiveMinimum: 0.0
+        top_k:
+          title: Top K
+          description: 'Restrict rollout sampling to the k most likely tokens at each
+            step. Omit to sample from the full distribution, which is what standard
+            GRPO does. Narrowing this has the same risk as lowering temperature: the
+            rollouts in a prompt group become more alike, and GRPO learns from how
+            much they differ.'
+          type: integer
+          exclusiveMinimum: 0.0
         normalize_rewards:
           type: boolean
           title: Normalize Rewards
-          description: Normalize rewards within each prompt group.
+          description: Divide each group's advantages by their standard deviation.
           default: true
+        use_leave_one_out_baseline:
+          type: boolean
+          title: Use Leave One Out Baseline
+          description: Compare each rollout against the mean of the *other* rollouts
+            in its group rather than against the group mean including itself. Excluding
+            a rollout from its own baseline removes the bias that comparing it to
+            itself introduces.
+          default: true
+        advantage_clip_low:
+          title: Advantage Clip Low
+          description: Lower bound applied to advantages after normalization. Omit
+            for no bound. Bounding both ends limits how much one unusual rollout can
+            move the policy.
+          type: number
+        advantage_clip_high:
+          title: Advantage Clip High
+          description: Upper bound applied to advantages after normalization. Omit
+            for no bound.
+          type: number
         overlong_filtering:
           type: boolean
           title: Overlong Filtering
@@ -2472,6 +2500,29 @@ components:
           title: Ratio Clip Max
           description: Upper PPO-style importance ratio clip bound.
           default: 0.28
+        ratio_clip_c:
+          title: Ratio Clip C
+          description: Dual-clip bound. Puts a floor under the loss for tokens whose
+            advantage is negative, so a single badly-scored rollout cannot dominate
+            the update. Must be greater than 1; 3 is the usual choice. Omit to leave
+            dual clipping off.
+          type: number
+          exclusiveMinimum: 1.0
+        use_on_policy_kl_approximation:
+          type: boolean
+          title: Use On Policy Kl Approximation
+          description: Estimate the KL term against the policy that generated the
+            rollouts rather than the one currently training. The two differ once a
+            rollout batch is reused across several optimizer steps.
+          default: true
+        use_importance_sampling_correction:
+          type: boolean
+          title: Use Importance Sampling Correction
+          description: Reweight each token by how much more or less likely the training
+            policy is to produce it than the rollout policy was. Corrects for the
+            drift that builds up when a rollout batch is reused, at the cost of higher
+            variance.
+          default: true
         max_grad_norm:
           type: number
           minimum: 0.0

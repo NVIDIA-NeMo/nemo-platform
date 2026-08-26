@@ -85,7 +85,7 @@ def test_materialize_workdir_from_downloaded_adapter(tmp_path):
 
 def test_is_adapter_reuse_requested_for_local_adapter(tmp_path, monkeypatch):
     pytest.importorskip("nemo_safe_synthesizer.config.job")
-    from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig
+    from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig
 
     output_dir = tmp_path / "nss-output"
     _write_adapter_dir(output_dir)
@@ -105,7 +105,7 @@ def test_is_adapter_reuse_requested_for_local_adapter(tmp_path, monkeypatch):
 
 def test_is_adapter_reuse_requested_for_pretrained_model_job(tmp_path):
     pytest.importorskip("nemo_safe_synthesizer.config.job")
-    from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig
+    from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig
 
     job_config = SafeSynthesizerJobConfig.model_validate(
         {

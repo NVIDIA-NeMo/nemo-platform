@@ -6,10 +6,10 @@ import { KVPair } from '@nemo/common/src/components/KVPair';
 import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
-  useSafeSynthesizerDownloadJobResultSyntheticData as useDownloadJobResultSyntheticDataV1beta1SafeSynthesizerJobsJobIdResultsSyntheticDataDownloadGet,
-  useSafeSynthesizerListJobResults as useListJobResultsV1beta1SafeSynthesizerJobsJobIdResultsGet,
+  useSafeSynthesizerDownloadJobResultSyntheticData as useDownloadJobResultSyntheticDataV1beta1GenerateJobsJobIdResultsSyntheticDataDownloadGet,
+  useSafeSynthesizerListJobResults as useListJobResultsV1beta1GenerateJobsJobIdResultsGet,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
-import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
+import type { GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import {
   Anchor,
   CodeSnippet,
@@ -30,7 +30,7 @@ import { isJobSuccessful } from '@studio/util/safeSynthesizer';
 import { FC, useCallback, useState } from 'react';
 
 interface SafeSynthesizerFilesetPreviewProps {
-  job: SafeSynthesizerJob;
+  job: GenerateJob;
   showJobId?: boolean;
 }
 
@@ -44,7 +44,7 @@ export const SafeSynthesizerFilesetPreview: FC<SafeSynthesizerFilesetPreviewProp
   const { safeSynthesizerJobName } = useRequiredPathParams([ROUTE_PARAMS.safeSynthesizerJobName]);
 
   const isSuccessful = isJobSuccessful(job.status);
-  const { data: jobResultsList } = useListJobResultsV1beta1SafeSynthesizerJobsJobIdResultsGet(
+  const { data: jobResultsList } = useListJobResultsV1beta1GenerateJobsJobIdResultsGet(
     workspace,
     safeSynthesizerJobName,
     {
@@ -57,7 +57,7 @@ export const SafeSynthesizerFilesetPreview: FC<SafeSynthesizerFilesetPreviewProp
   const fileInfo = parseFilesetUrl(job.spec.data_source);
 
   const { refetch: refetchSyntheticData } =
-    useDownloadJobResultSyntheticDataV1beta1SafeSynthesizerJobsJobIdResultsSyntheticDataDownloadGet(
+    useDownloadJobResultSyntheticDataV1beta1GenerateJobsJobIdResultsSyntheticDataDownloadGet(
       workspace,
       safeSynthesizerJobName,
       {

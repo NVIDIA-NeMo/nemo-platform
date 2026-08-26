@@ -7,8 +7,9 @@ import {
   type AgentTraceStatisticsProps,
 } from '@studio/components/AgentTraceStatistics/index';
 import type {
+  TraceStatisticsBucket,
   TraceStatisticsRange,
-  TraceStatisticsSample,
+  TraceStatisticsSummary,
 } from '@studio/components/AgentTraceStatistics/types';
 import { type FC, useState } from 'react';
 
@@ -28,49 +29,63 @@ const makeRandom = (seed: number): (() => number) => {
 interface FixtureOptions {
   buckets: number;
   bucketMs: number;
-  tracesPerBucket?: number;
+  runsPerBucket?: number;
   seed?: number;
 }
 
+interface Fixture {
+  summary: TraceStatisticsSummary;
+  buckets: TraceStatisticsBucket[];
+}
+
 /**
- * Token counts swing on a slow sine so the chart shows the peaks and troughs of a real workload;
- * latency and cost are derived from tokens with independent jitter.
+ * Stands in for Intake's bucketed rollup: token means swing on a slow sine so the chart shows the
+ * peaks and troughs of a real workload, with latency and cost derived from tokens plus jitter. The
+ * summary is the same numbers collapsed, the way `bucket=total` would return them.
  */
-const makeTraces = ({
+const makeFixture = ({
   buckets,
   bucketMs,
-  tracesPerBucket = 6,
+  runsPerBucket = 6,
   seed = 42,
-}: FixtureOptions): TraceStatisticsSample[] => {
+}: FixtureOptions): Fixture => {
   const random = makeRandom(seed);
-  const samples: TraceStatisticsSample[] = [];
+  const points: TraceStatisticsBucket[] = [];
   const start = ANCHOR - (buckets - 1) * bucketMs;
 
   for (let bucket = 0; bucket < buckets; bucket++) {
     const wave = Math.sin(bucket / 1.7) * 0.5 + Math.sin(bucket / 5.3) * 0.5;
-    const baseTokens = 2200 + wave * 1300;
-    for (let i = 0; i < tracesPerBucket; i++) {
-      const totalTokens = Math.max(120, Math.round(baseTokens * (0.85 + random() * 0.3)));
-      const msPerToken = 0.045 + random() * 0.02;
-      samples.push({
-        startedAt: new Date(start + bucket * bucketMs + random() * bucketMs),
-        totalTokens,
-        durationMs: Math.round(totalTokens * msPerToken * 1000) / 1000,
-        costUsd: totalTokens * 0.0000032 * (0.9 + random() * 0.2),
-      });
-    }
+    const tokens = Math.max(120, Math.round((2200 + wave * 1300) * (0.85 + random() * 0.3)));
+    points.push({
+      timestamp: start + bucket * bucketMs,
+      tokens,
+      latencyMs: Math.round(tokens * (0.045 + random() * 0.02) * 1000) / 1000,
+      costUsd: tokens * 0.0000032 * (0.9 + random() * 0.2),
+    });
   }
-  return samples;
+
+  const mean = (select: (point: TraceStatisticsBucket) => number | null): number =>
+    points.reduce((total, point) => total + (select(point) ?? 0), 0) / points.length;
+
+  return {
+    summary: {
+      totalTraces: points.length * runsPerBucket,
+      avgLatencyMs: mean((point) => point.latencyMs),
+      avgTokensPerRun: mean((point) => point.tokens),
+      avgCostUsd: mean((point) => point.costUsd),
+    },
+    buckets: points,
+  };
 };
 
-const MONTH_TRACES = makeTraces({ buckets: 31, bucketMs: DAY_MS });
-const WEEK_TRACES = makeTraces({ buckets: 7, bucketMs: DAY_MS, seed: 7 });
-const DAY_TRACES = makeTraces({ buckets: 24, bucketMs: HOUR_MS, tracesPerBucket: 3, seed: 11 });
+const MONTH = makeFixture({ buckets: 31, bucketMs: DAY_MS });
+const WEEK = makeFixture({ buckets: 7, bucketMs: DAY_MS, seed: 7 });
+const DAY = makeFixture({ buckets: 24, bucketMs: HOUR_MS, runsPerBucket: 3, seed: 11 });
 
-const TRACES_BY_RANGE: Record<TraceStatisticsRange, TraceStatisticsSample[]> = {
-  day: DAY_TRACES,
-  week: WEEK_TRACES,
-  month: MONTH_TRACES,
+const FIXTURE_BY_RANGE: Record<TraceStatisticsRange, Fixture> = {
+  day: DAY,
+  week: WEEK,
+  month: MONTH,
 };
 
 const meta: Meta<typeof AgentTraceStatistics> = {
@@ -78,7 +93,8 @@ const meta: Meta<typeof AgentTraceStatistics> = {
   title: 'Studio/AgentTraceStatistics',
   args: {
     range: 'month',
-    traces: MONTH_TRACES,
+    summary: MONTH.summary,
+    buckets: MONTH.buckets,
     onRangeChange: () => {},
     onViewTraces: () => {},
   },
@@ -102,11 +118,13 @@ type Story = StoryObj<typeof AgentTraceStatistics>;
 /** Stands in for the caller's refetch: changing the range swaps which fixture is passed in. */
 const RangeAwareStatistics: FC<AgentTraceStatisticsProps> = (props) => {
   const [range, setRange] = useState<TraceStatisticsRange>(props.range);
+  const fixture = FIXTURE_BY_RANGE[range];
   return (
     <AgentTraceStatistics
       {...props}
       range={range}
-      traces={TRACES_BY_RANGE[range]}
+      summary={fixture.summary}
+      buckets={fixture.buckets}
       onRangeChange={setRange}
     />
   );
@@ -118,11 +136,11 @@ export const Default: Story = {
 
 /** Hourly buckets — the tick formatter switches from dates to hours. */
 export const DayRange: Story = {
-  args: { range: 'day', traces: DAY_TRACES },
+  args: { range: 'day', summary: DAY.summary, buckets: DAY.buckets },
 };
 
 export const Loading: Story = {
-  args: { isPending: true, traces: [] },
+  args: { isPending: true, summary: null, buckets: [] },
 };
 
 /**
@@ -131,17 +149,18 @@ export const Loading: Story = {
  */
 export const Empty: Story = {
   args: {
-    traces: [],
+    summary: null,
+    buckets: [],
     onRunAgent: () => {},
     onLearnMore: () => {},
   },
 };
 
-/** Traces missing cost or token rollups still contribute what they have. */
+/** Buckets missing cost or token rollups still plot the series they do have. */
 export const PartialRollups: Story = {
   args: {
-    traces: MONTH_TRACES.map((trace, index) =>
-      index % 3 === 0 ? { ...trace, costUsd: null, totalTokens: null } : trace
+    buckets: MONTH.buckets.map((bucket, index) =>
+      index % 3 === 0 ? { ...bucket, costUsd: null, tokens: null } : bucket
     ),
   },
 };

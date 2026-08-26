@@ -162,7 +162,7 @@ def test_safe_synthesizer_resource_get_logs_forwards_query_params() -> None:
     )
 
 
-def test_job_builder_uploads_dataframe_and_submits_spec() -> None:
+def test_job_builder_uploads_dataframe_and_creates_job() -> None:
     client = MagicMock()
     client.files.upload = MagicMock()
     client.safe_synthesizer.jobs.create.return_value = SimpleNamespace(name="safe-synth-job")
@@ -193,7 +193,7 @@ def test_job_builder_uploads_dataframe_and_submits_spec() -> None:
     assert config["replace_pii"]["globals"]["classify"]["classify_model_provider"] == "default/nvidia-build"
 
 
-def test_job_builder_submits_pretrained_model_job_for_adapter_reuse() -> None:
+def test_job_builder_creates_pretrained_model_job_for_adapter_reuse() -> None:
     client = MagicMock()
     client.files.upload = MagicMock()
     client.safe_synthesizer.jobs.create.return_value = SimpleNamespace(name="adapter-reuse-job")
