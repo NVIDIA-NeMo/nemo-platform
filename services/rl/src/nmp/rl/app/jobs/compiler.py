@@ -344,6 +344,15 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 use_on_policy_kl_approximation=t.use_on_policy_kl_approximation,
                 use_importance_sampling_correction=t.use_importance_sampling_correction,
                 max_grad_norm=t.max_grad_norm,
+                truncated_importance_sampling_type=t.truncated_importance_sampling_type,
+                truncated_importance_sampling_ratio=t.truncated_importance_sampling_ratio,
+                truncated_importance_sampling_ratio_min=t.truncated_importance_sampling_ratio_min,
+                use_dynamic_sampling=t.use_dynamic_sampling,
+                dynamic_sampling_max_gen_batches=t.dynamic_sampling_max_gen_batches,
+                batch_multiplier=t.batch_multiplier,
+                # exclude_none: RewardShapingConfig reads each penalty field independently, so a
+                # null would land as an explicit "no penalty" rather than leaving its default.
+                reward_shaping=(t.reward_shaping.model_dump(exclude_none=True) if t.reward_shaping else None),
                 automodel_kwargs=t.automodel_kwargs,
                 router_aux_loss_coef=t.router_aux_loss_coef,
                 vllm_tensor_parallel_size=t.vllm_tensor_parallel_size,
