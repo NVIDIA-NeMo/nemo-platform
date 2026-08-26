@@ -6,14 +6,18 @@
 
 from __future__ import annotations
 
-from _types import JsonObject, TrajectoryLike
+from typing import Any, TypeAlias
+
+from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
+
+JsonObject: TypeAlias = dict[str, Any]
 
 METHOD_NAME = "tool_calls"
 ITEM_KIND = "tool"
 DETAILS_SCHEMA = "nemo.eval_author.audit_tool_calls_details.v1"
 
 
-def measure(audit: JsonObject, trajectory: TrajectoryLike) -> JsonObject:
+def measure(audit: JsonObject, trajectory: Trajectory) -> JsonObject:
     """Measure audit tool items against the tool calls present in an ATIF trace."""
     audit_tools = [item["name"] for item in audit["items"] if item["kind"] == ITEM_KIND]
     observed_tool_calls = _tool_calls(trajectory, trajectory_path="$")
@@ -36,7 +40,7 @@ def measure(audit: JsonObject, trajectory: TrajectoryLike) -> JsonObject:
     }
 
 
-def _tool_calls(trajectory: TrajectoryLike, *, trajectory_path: str) -> list[JsonObject]:
+def _tool_calls(trajectory: Trajectory, *, trajectory_path: str) -> list[JsonObject]:
     calls: list[JsonObject] = []
     trajectory_id = _optional_string(trajectory.trajectory_id)
     for step_index, step in enumerate(trajectory.steps or [], start=1):

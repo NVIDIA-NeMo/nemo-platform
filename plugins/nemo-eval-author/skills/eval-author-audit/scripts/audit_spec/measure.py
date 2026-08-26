@@ -11,14 +11,17 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, Protocol, TypeAlias, cast
+
+from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _markdown import AuditMarkdownError  # noqa: E402
 from _schema import AuditEnvironmentError, AuditSpecError, load_audit_spec  # noqa: E402
-from _types import JsonObject, MeasurementMethod, TrajectoryLike  # noqa: E402
 from measurements import tool_calls  # noqa: E402
+
+JsonObject: TypeAlias = dict[str, Any]
 
 COVERAGE_SCHEMA = "nemo.eval_author.audit_coverage.v1"
 SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas"
@@ -26,6 +29,17 @@ COVERAGE_SCHEMA_PATH = SCHEMAS_DIR / "audit_coverage.schema.json"
 DETAIL_SCHEMA_PATHS = {
     tool_calls.DETAILS_SCHEMA: SCHEMAS_DIR / "audit_tool_calls_details.schema.json",
 }
+
+
+class MeasurementMethod(Protocol):
+    """Module-level protocol implemented by measurement method modules."""
+
+    METHOD_NAME: str
+    DETAILS_SCHEMA: str
+
+    def measure(self, audit: JsonObject, trajectory: Trajectory) -> JsonObject: ...
+
+
 METHODS: dict[str, MeasurementMethod] = {tool_calls.METHOD_NAME: cast(MeasurementMethod, tool_calls)}
 
 
@@ -212,15 +226,8 @@ def _load_harbor_result(path: Path) -> JsonObject:
     return payload
 
 
-def _load_harbor_trajectory(path: Path) -> TrajectoryLike:
+def _load_harbor_trajectory(path: Path) -> Trajectory:
     """Read ATIF through Harbor once; downstream methods receive the typed trajectory object."""
-    try:
-        from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
-    except ImportError as exc:
-        raise AuditEnvironmentError(
-            "harbor is required to read ATIF traces; install the skill dependencies from requirements.txt"
-        ) from exc
-
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -255,7 +262,7 @@ def _measure_all(
     *,
     audit: JsonObject,
     audit_path: Path,
-    trajectory: TrajectoryLike,
+    trajectory: Trajectory,
     subject: Subject,
     method_names: list[str],
 ) -> list[MeasurementReport]:
@@ -270,7 +277,7 @@ def _measure(
     *,
     audit: JsonObject,
     audit_path: Path,
-    trajectory: TrajectoryLike,
+    trajectory: Trajectory,
     subject: Subject,
     method_name: str,
 ) -> MeasurementReport:

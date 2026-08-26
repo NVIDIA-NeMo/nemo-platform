@@ -69,8 +69,7 @@ Audit-spec mechanics live under `scripts/audit_spec/`:
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
-`scripts/audit_spec/_schema.py`, `scripts/audit_spec/_markdown.py`, and
-`scripts/audit_spec/_types.py`.
+`scripts/audit_spec/_schema.py` and `scripts/audit_spec/_markdown.py`.
 Measurement uses Harbor's `harbor.models.trajectories.Trajectory` to read ATIF
 files. Measurement methods live under `scripts/audit_spec/measurements/`; v1 ships
 `scripts/audit_spec/measurements/tool_calls.py`.
