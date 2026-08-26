@@ -1394,12 +1394,15 @@ def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
 
     assert code == 0, stderr or summary
     coverage = json.loads((out_dir / "account-recovery" / "tool_calls" / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((out_dir / "account-recovery" / "tool_calls" / "details.json").read_text(encoding="utf-8"))
 
     assert summary["task_id"] == "account-recovery"
     assert coverage["subject"]["task_id"] == "account-recovery"
-    assert coverage["subject"]["trial_id"] == "account-recovery__abc"
-    assert coverage["subject"]["harbor_trial_dir"] == str(trial_dir)
-    assert coverage["subject"]["harbor_result"] == str(trial_dir / "result.json")
+    assert coverage["subject"]["run_id"] == "account-recovery__abc"
+    assert details["subject"] == coverage["subject"]
+    assert "trial_id" not in coverage["subject"]
+    assert "harbor_trial_dir" not in coverage["subject"]
+    assert "harbor_result" not in coverage["subject"]
 
 
 @_needs_harbor

@@ -8,7 +8,7 @@ description: >-
   Author. Use when the user wants a hand-editable audit.md file derived from
   Ethos, needs schema enforcement for declared tools, capabilities, failure
   cases, evidence, and references, or wants to measure which audit items one
-  Harbor/ATIF trace covers. Changes none of the user's source, and saves audit
+  ATIF trace covers. Changes none of the user's source, and saves audit
   artifacts under `.eval-author/`.
 triggers:
   - generate audit.md from ETHOS.md
@@ -24,7 +24,7 @@ not-for:
   - nemo-experimentalist (use to optimize an agent from Insights or explicit datasets)
 compatibility: >-
   Python 3.11 or later for generation and validation; Python 3.12 or later for
-  Harbor trace measurement. Dependencies are listed in requirements.txt.
+  ATIF measurement via Harbor's trajectory model. Dependencies are listed in requirements.txt.
   Generation, validation, and measurement read local files only; they do not
   start Harbor jobs or call platform services.
 maturity: alpha
@@ -37,7 +37,7 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 
 Read `eval-author` for the shared standard, vocabulary, and boundaries. This
 sub-flow generates and validates a finite coverage denominator from `ETHOS.md`
-and reviewed audit items, then can measure one Harbor/ATIF trace against it. It
+and reviewed audit items, then can measure one ATIF trace against it. It
 does not generate tasks or aggregate coverage reports yet.
 
 The audit-spec approach has three item kinds in v1:
@@ -200,9 +200,9 @@ provided and cross-item references such as `required_tools` and `applies_to`.
 Validation proves only structure and references, not that the denominator is
 complete or correct.
 
-## Step 4: Measure One Harbor/ATIF Trace
+## Step 4: Measure One ATIF Trace
 
-After validation, measure one completed Harbor trial or one ATIF trajectory file:
+After validation, measure one completed trial directory or one ATIF trajectory file:
 
 ```bash
 uv run --with-requirements <skill_dir>/requirements.txt \
@@ -212,9 +212,10 @@ uv run --with-requirements <skill_dir>/requirements.txt \
   --out-dir .eval-author/audit-measurements
 ```
 
-Harbor trial directories normally contain `agent/trajectory.json`; agents that
-do not emit ATIF may not have that file. When the trace file is already known,
-pass it directly and stamp the task explicitly:
+The current `--trial-dir` reader supports Harbor-style trial directories that
+normally contain `agent/trajectory.json`; agents that do not emit ATIF may not
+have that file. When the trace file is already known, pass it directly and stamp
+the task explicitly:
 
 ```bash
 uv run --with-requirements <skill_dir>/requirements.txt \
@@ -222,6 +223,7 @@ uv run --with-requirements <skill_dir>/requirements.txt \
   --audit .eval-author/audit.md \
   --trace <path-to>/trajectory.json \
   --task-id <task-id> \
+  --run-id <run-id> \
   --out-dir .eval-author/audit-measurements
 ```
 
@@ -233,9 +235,10 @@ The script writes one folder per task and method:
 ```
 
 `coverage.json` uses the shared coverage schema and contains only the stable
-audit item names this trace covered. Coverage aggregation should consume this
-file and ignore method-specific debug details. `details.json` is specific to the
-selected method and carries traceability data for humans.
+audit item names this trace covered plus provider-neutral subject identity
+(`trace`, `trace_format`, `task_id`, and optional `run_id`). Coverage aggregation
+should consume this file and ignore method-specific debug details. `details.json`
+is specific to the selected method and carries traceability data for humans.
 
 The default measurement method is `tool_calls`. It covers only audit items whose
 `kind` is `tool` by matching each tool item's `name` against ATIF
