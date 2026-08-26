@@ -506,6 +506,7 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
+        "scripts/audit_spec/_types.py",
         "scripts/audit_spec/measurements/tool_calls.py",
         "schemas/audit.schema.json",
         "schemas/audit_coverage.schema.json",
