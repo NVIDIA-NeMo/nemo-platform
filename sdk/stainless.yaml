@@ -258,6 +258,7 @@ resources:
         models:
           categorical_stats: CategoricalStats
           column_stats: ColumnStats
+          coverage: Coverage
           dataset_profile: DatasetProfile
           evidence: Evidence
           feature_schema: FeatureSchema
@@ -270,7 +271,6 @@ resources:
           partition_profile: PartitionProfile
           profile_fileset_request: ProfileFilesetRequest
           quantiles: Quantiles
-          sampling_info: SamplingInfo
           split_profile: SplitProfile
           submit_profile_job_response: SubmitProfileJobResponse
           text_stats: TextStats

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile, SamplingInfo
+from nemo_platform_plugin.files.dataset_profile import Coverage, DatasetProfile
 from nemo_platform_plugin.files.metadata import DatasetMetadataContent, FilesetMetadata
 from nemo_platform_plugin.files.types import PutFilesetProfileRequest, UpdateFilesetRequest
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -47,7 +47,7 @@ from nmp.core.files.entities import FILESET_PROFILE_ENTITY_NAME, Fileset, Filese
 def _minimal_profile(created_at: datetime | None = None) -> DatasetProfile:
     return DatasetProfile(
         created_at=created_at or datetime(2026, 1, 1),
-        sampling=SamplingInfo(rows_scanned=1, rows_present=1, files_read=1, files_present=1, bytes_present=100),
+        coverage=Coverage(rows_scanned=1, rows_present=1, files_read=1, files_present=1, bytes_present=100),
         partitions=[],
     )
 
