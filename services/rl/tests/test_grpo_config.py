@@ -1081,6 +1081,8 @@ def test_operator_can_pin_the_rollout_max_in_flight(
     step.gym.sandbox_rollout_max_in_flight = 64
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert sandbox["rollout_max_in_flight"] == 64
+
+
 def test_dapo_components_default_off(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
     """An unstated job must compile to the same NeMo-RL config as before these knobs existed."""
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
