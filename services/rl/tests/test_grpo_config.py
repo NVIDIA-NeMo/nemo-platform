@@ -20,7 +20,10 @@ from nmp.rl.app.jobs.training.schemas import (
 )
 from nmp.rl.entities.values import FinetuningType, TrainingType
 from nmp.rl.tasks.training.backends.nemo_rl.grpo_config import compile_grpo_config
-from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import DEFAULT_ROLLOUT_CHUNK_SIZE
+from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
+    DEFAULT_ROLLOUT_CHUNK_SIZE,
+    DEFAULT_ROLLOUT_MAX_IN_FLIGHT,
+)
 
 
 @pytest.fixture
@@ -1003,3 +1006,34 @@ def test_operator_can_pin_the_rollout_chunk_size(
     step.gym.sandbox_rollout_chunk_size = 2
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert sandbox["rollout_chunk_size"] == 2
+
+
+def test_rollout_max_in_flight_defaults_to_the_upstream_value(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset leaves NeMo-RL's default, so declaring the knob is never required."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    assert step.gym.sandbox_rollout_max_in_flight is None
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_max_in_flight"] == DEFAULT_ROLLOUT_MAX_IN_FLIGHT
+
+
+def test_operator_can_pin_the_rollout_max_in_flight(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lowering chunk_size without raising this throttles the step.
+
+    In-flight rollouts are chunk_size × max_in_flight, so a deployment that shrinks
+    chunks to stay under the proxy cap has to raise concurrency if it wants the same
+    throughput it had before chunking.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+
+    step.gym.sandbox_rollout_max_in_flight = 64
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_max_in_flight"] == 64

@@ -6247,8 +6247,20 @@ components:
       properties:
         optimize_config:
           type: string
+          minLength: 1
           title: Optimize Config
-          description: Absolute path to the Fabric-native optimization YAML file.
+          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
+            \ set \u2014 required for `submit` \u2014 this is a path relative to the\
+            \ fileset root.  Without it (local `nemo agents optimize run` only) it\
+            \ is an absolute path on the host running the CLI."
+        optimize_config_fileset:
+          title: Optimize Config Fileset
+          description: 'Fileset holding the optimization bundle: the config named
+            by optimize_config plus every asset it references (Agent under Test package,
+            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
+            with `nemo agents optimize prepare-fileset`.  Required for `submit`, where
+            the job has no access to the client''s filesystem.'
+          type: string
         workspace:
           type: string
           title: Workspace
@@ -6258,7 +6270,19 @@ components:
         agent:
           title: Agent
           description: Optional platform agent reference ('name' or 'workspace/name').
-            When omitted, optimize_config must include an inline Fabric agent package.
+            When omitted, the optimization config must include an inline Fabric agent
+            package.
+          type: string
+          minLength: 1
+        output:
+          title: Output
+          description: "Where to publish the study artifacts (optimized config, trials\
+            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
+            \ either a local directory (path-shaped: starts with '/', './', '../',\
+            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
+            \  Filesets are created on demand if missing.  This is in addition to\
+            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
+            \ gives remote clients a stable, addressable location to read from."
           type: string
       type: object
       required:

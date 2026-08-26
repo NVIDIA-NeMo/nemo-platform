@@ -89,7 +89,7 @@ async def create_deployment(
     deployment_name = body.name or f"{body.agent}-{secrets.token_hex(4)}"
 
     # 3. Resolve deployment-time config. NAT workflows need legacy injection;
-    # Platform-owned agent specs stay strict and are translated by the runner.
+    # Platform-owned agent configs stay strict and are translated by the runner.
     resolved_config = _resolve_deployment_config(agent, workspace=workspace)
 
     # 4. Resolve and snapshot the referenced AgentEnvironment. The environment

@@ -1186,7 +1186,7 @@ class TestDetectAgentConfigFormat:
 
         assert detect_agent_config_format(agent_config) == NAT_WORKFLOW_CONFIG_FORMAT
 
-    def test_detects_platform_agent_spec(self, tmp_path: Path) -> None:
+    def test_detects_platform_agent_config(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.builder import detect_agent_config_format
         from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
 

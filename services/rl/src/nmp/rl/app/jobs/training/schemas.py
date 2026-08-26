@@ -154,8 +154,10 @@ class TrainingStepConfig(BaseModel):
         # Operator-scoped, from platformConfig.rl.sandbox_resources / sandbox_ttl_s.
         sandbox_resources: dict[str, str] | None = None
         sandbox_ttl_s: int | None = None
-        # Rollouts per POST to the sandbox. None takes NeMo-RL's default.
+        # Rollouts per POST to the sandbox, and how many of those POSTs may run at once.
+        # None takes NeMo-RL's default. In-flight rollouts are the product of the two.
         sandbox_rollout_chunk_size: int | None = Field(default=None, gt=0)
+        sandbox_rollout_max_in_flight: int | None = Field(default=None, gt=0)
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1

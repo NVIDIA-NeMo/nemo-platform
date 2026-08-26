@@ -4,6 +4,8 @@
 import { CJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { Stack } from '@nvidia/foundations-react-core';
+import { GrpoRewardPanel } from '@studio/components/CustomizationOverview/GrpoRewardPanel';
+import { GrpoTrainingHealthPanel } from '@studio/components/CustomizationOverview/GrpoTrainingHealthPanel';
 import { RunConfigurationPanel } from '@studio/components/CustomizationOverview/RunConfigurationPanel';
 import { TrainingLossPanel } from '@studio/components/CustomizationOverview/TrainingLossPanel';
 import { ErrorMessageWithRetry } from '@studio/components/ErrorMessageWithRetry';
@@ -13,10 +15,12 @@ import { useCustomizationFilesAsRows } from '@studio/hooks/useCustomizationFiles
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { useCustomizationJobStatus } from '@studio/hooks/useCustomizationJobStatus';
 import { hasMetrics } from '@studio/types/customization';
-import { isRlJob } from '@studio/util/customizationBackend';
+import { isGrpoJob, isRlJob } from '@studio/util/customizationBackend';
 import {
   getCustomizationTrainingSteps,
   getDatasetUri,
+  getGrpoProgressTiles,
+  getGrpoSummaryTiles,
   getJobDuration,
   getJobStartDate,
   getLossTiles,
@@ -25,6 +29,7 @@ import {
   getTrainingDiagnosticsTiles,
   getTrainingTelemetry,
 } from '@studio/util/customizations';
+import { buildRewardChartData } from '@studio/util/grpoMetrics';
 import { type FC, useState } from 'react';
 
 type Props = {
@@ -60,12 +65,15 @@ export const CustomizationOverview: FC<Props> = ({ customizationJobName, workspa
     startDate: isTerminalStatus ? undefined : getJobStartDate(steps),
   });
 
+  // Reading record counts costs a fileset listing plus a download per file, and only the loss
+  // chart's x-axis uses them — the GRPO panel scales off the reported steps instead.
+  const isGrpo = Boolean(customization && isGrpoJob(customization));
   const {
     trainingRecords,
     validationRecords,
     isPending: isFilesLoading,
   } = useCustomizationFilesAsRows({
-    fileset: getDatasetUri(customization) || undefined,
+    fileset: isGrpo ? undefined : getDatasetUri(customization) || undefined,
   });
 
   const epochs = customization
@@ -94,29 +102,35 @@ export const CustomizationOverview: FC<Props> = ({ customizationJobName, workspa
     return null;
   }
 
-  const diagnosticsTiles = getTrainingDiagnosticsTiles(
-    telemetry,
-    hasMetrics(statusDetails) ? statusDetails : undefined,
-    {
-      isTerminal: isTerminalStatus,
-      duration: getJobDuration(steps, isTerminalStatus, liveSeconds),
-    }
-  );
-
-  const lossTiles = getLossTiles(
-    hasMetrics(statusDetails) ? statusDetails : undefined,
-    isTerminalStatus
-  );
+  const metrics = hasMetrics(statusDetails) ? statusDetails : undefined;
+  const runState = {
+    isTerminal: isTerminalStatus,
+    duration: getJobDuration(steps, isTerminalStatus, liveSeconds),
+  };
 
   return (
     <Stack gap="density-xl">
-      <TrainingLossPanel
-        trainLoss={hasMetrics(statusDetails) ? statusDetails.metrics?.train_loss : undefined}
-        valLoss={hasMetrics(statusDetails) ? statusDetails.metrics?.val_loss : undefined}
-        maxSteps={maxXAxisValue}
-        metrics={[...lossTiles, ...diagnosticsTiles]}
-        progress={getTrainingProgressTiles(telemetry)}
-      />
+      {isGrpoJob(customization) ? (
+        <>
+          <GrpoRewardPanel
+            reward={buildRewardChartData(metrics)}
+            metrics={getGrpoSummaryTiles(metrics, isTerminalStatus)}
+            progress={getGrpoProgressTiles(telemetry, runState)}
+          />
+          <GrpoTrainingHealthPanel statusDetails={metrics} />
+        </>
+      ) : (
+        <TrainingLossPanel
+          trainLoss={metrics?.metrics?.train_loss}
+          valLoss={metrics?.metrics?.val_loss}
+          maxSteps={maxXAxisValue}
+          metrics={[
+            ...getLossTiles(metrics, isTerminalStatus),
+            ...getTrainingDiagnosticsTiles(telemetry, metrics, runState),
+          ]}
+          progress={getTrainingProgressTiles(telemetry)}
+        />
+      )}
 
       <RunConfigurationPanel
         customization={customization}

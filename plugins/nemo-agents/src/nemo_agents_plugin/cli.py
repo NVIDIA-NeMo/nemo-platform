@@ -30,7 +30,6 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
-- ``ethos``        — sub-group: migrate an agent's Ethos artifacts to their final names
 """
 
 from __future__ import annotations
@@ -64,8 +63,10 @@ from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
 from nemo_agents_plugin.entities import (
+    AGENT_SPEC_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
     ETHOS_FILENAME,
+    ETHOS_LOCAL_ROOT,
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
@@ -80,6 +81,7 @@ from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
 from nemo_platform_plugin.discovery import discover_agent_cli
+from nemo_platform_plugin.job import NemoJob
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +126,6 @@ class AgentsCLI(NemoCLI):
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
-        _register_ethos_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
         for name, cli_cls in discover_agent_cli().items():
@@ -135,6 +136,21 @@ class AgentsCLI(NemoCLI):
                 continue
             app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
+
+    def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
+        """Amend the auto-generated job groups with commands the three verbs cannot express.
+
+        ``optimize`` gains ``prepare-fileset``: ``submit`` requires an already-staged bundle, so
+        the staging step needs a home, and it belongs next to the verb that consumes it.
+        """
+        if job_cls.name != "optimize":
+            return
+        try:
+            from nemo_agents_plugin.jobs.optimize_cli import register_prepare_fileset_command
+        except ImportError:
+            logger.warning("nemo-optimization unavailable; skipping optimize prepare-fileset", exc_info=True)
+            return
+        register_prepare_fileset_command(group)
 
 
 # ---------------------------------------------------------------------------
@@ -774,13 +790,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
-        migration_warning: tuple[str, ...] = ()
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
-            from nemo_agents_plugin.ethos_migrate import registration_migration_warning
-
-            migration_warning = registration_migration_warning(name, workspace, agent_config)
-            for line in migration_warning:
+            for line in _spec_package_warning(name, agent_config):
                 typer.echo(line, err=True)
         elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
             # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
@@ -811,7 +823,6 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     workspace=workspace,
                     agent_root=agent_config.parent,
                     base_url=base_url,
-                    omit_legacy_contract=bool(migration_warning),
                 )
             except Exception as exc:
                 typer.echo(
@@ -1209,76 +1220,6 @@ def _register_platform_commands(app: typer.Typer) -> None:
         assert name  # guaranteed by the checks above
         success = _wait_for_deployment(base_url, workspace, name, timeout=timeout, interval=interval)
         raise typer.Exit(code=0 if success else 1)
-
-
-# ---------------------------------------------------------------------------
-# Ethos artifact commands
-# ---------------------------------------------------------------------------
-
-
-def _register_ethos_commands(app: typer.Typer) -> None:
-    """Register the ``ethos`` sub-group onto *app*.
-
-    Glue only: migration validation and changes live in
-    :mod:`nemo_agents_plugin.ethos_migrate`.
-    """
-    ethos_app = typer.Typer(name="ethos", help="Manage an agent's Ethos artifacts.", no_args_is_help=True)
-    app.add_typer(ethos_app, rich_help_panel="Agent Resources (requires running cluster)")
-
-    @ethos_app.command(name="migrate")
-    def ethos_migrate(
-        name: str = typer.Option(..., "--name", "-n", help="Agent name."),
-        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        dry_run: bool = typer.Option(
-            False,
-            "--dry-run",
-            help="Assess the migration without writing or deleting artifacts.",
-        ),
-        cleanup: bool = typer.Option(
-            False,
-            "--cleanup",
-            help="Delete matching legacy artifacts after you verify completed targets.",
-        ),
-        base_url: BaseUrlOption = None,
-    ) -> None:
-        """Move an agent's platform-managed package and Fileset to their Ethos names.
-
-        Additive migration preserves legacy artifacts. Cleanup deletes them only
-        after matching targets are verified.
-        """
-        from nemo_agents_plugin.ethos_migrate import (
-            MigrationError,
-            MigrationRequest,
-            run_migration,
-            validate_agent_name,
-        )
-
-        # Reject an unsafe name before anything else, so a usage error never
-        # needs a reachable platform and never reaches a path operation.
-        try:
-            validate_agent_name(name)
-        except MigrationError as exc:
-            typer.echo(f"Error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-
-        try:
-            sdk = _platform_sdk(_resolve_base_url(base_url))
-            request = MigrationRequest(
-                agent=name,
-                workspace=workspace,
-                dry_run=dry_run,
-                cleanup=cleanup,
-            )
-            report = run_migration(request, sdk=sdk)
-        except MigrationError as exc:
-            typer.echo(f"Error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-        except Exception as exc:
-            typer.echo(f"Error: migration failed: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-
-        for line in report.lines:
-            typer.echo(line)
 
 
 # ---------------------------------------------------------------------------
@@ -1731,16 +1672,12 @@ def _clear_existing_ethos_artifacts(
     sdk: NeMoPlatform,
     fileset: str,
     workspace: str,
-    preserve_legacy_contract: bool,
 ) -> None:
     """Remove the previous executable snapshot while preserving durable Ethos."""
-    from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
     from nemo_platform import NotFoundError as PlatformNotFoundError
     from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
 
     preserved = {ETHOS_FILENAME}
-    if preserve_legacy_contract:
-        preserved.add(LEGACY_CONTRACT_FILENAME)
 
     try:
         existing = sdk.files.list(fileset=fileset, workspace=workspace).data
@@ -1758,13 +1695,29 @@ def _clear_existing_ethos_artifacts(
             continue
 
 
+def _spec_package_warning(agent: str, agent_config: Path) -> tuple[str, ...]:
+    """Return skill guidance when *agent_config* lives in a spec package."""
+    if not agent or agent in {".", ".."} or "\0" in agent:
+        return ()
+    if "/" in agent or "\\" in agent or Path(agent).is_absolute() or Path(agent).name != agent:
+        return ()
+    package = Path(ETHOS_LOCAL_ROOT) / f"{agent}-spec"
+    if agent_config.parent.resolve() != package.resolve():
+        return ()
+    if not (package / AGENT_SPEC_FILENAME).is_file():
+        return ()
+    return (
+        f"Warning: This package uses {AGENT_SPEC_FILENAME}.",
+        f"Run the nemo-ethos skill to write {ETHOS_FILENAME}, then delete the {agent}-spec package.",
+    )
+
+
 def _upload_ethos_fileset(
     *,
     agent_name: str,
     workspace: str,
     agent_root: Path,
     base_url: str,
-    omit_legacy_contract: bool = False,
 ) -> None:
     """Replace the executable snapshot in the conventional Ethos fileset.
 
@@ -1772,15 +1725,13 @@ def _upload_ethos_fileset(
     UTF-8 sibling artifacts such as skills and prompts are uploaded; binary
     neighbors are skipped because deployment ``ConfigFile`` values are text.
     Existing runtime artifacts are removed first so recreating an agent cannot
-    reuse a stale bundle. Durable ``ETHOS.md`` is preserved, as is the legacy
-    contract unless an explicit migration requests its removal.
+    reuse a stale bundle. Durable ``ETHOS.md`` is preserved, while
+    ``AGENT-SPEC.md`` is omitted so a spec package does not leave its legacy
+    contract in the Ethos fileset.
     """
-    from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
-    excluded_paths = {Path(ETHOS_FILENAME)}
-    if omit_legacy_contract:
-        excluded_paths.add(Path(LEGACY_CONTRACT_FILENAME))
+    excluded_paths = {Path(ETHOS_FILENAME), Path(AGENT_SPEC_FILENAME)}
     artifacts = _collect_text_agent_artifacts(
         agent_root,
         excluded_paths=excluded_paths,
@@ -1803,7 +1754,6 @@ def _upload_ethos_fileset(
             sdk=sdk,
             fileset=fileset,
             workspace=workspace,
-            preserve_legacy_contract=not omit_legacy_contract,
         )
         upload_to_fileset(
             staged,

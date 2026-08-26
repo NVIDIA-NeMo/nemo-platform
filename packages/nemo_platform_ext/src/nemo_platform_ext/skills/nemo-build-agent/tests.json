@@ -8,7 +8,7 @@
     },
     {
       "type": "explicit",
-      "prompt": "Use nemo-build-agent to implement and deploy the approved support-triage spec.",
+      "prompt": "Use nemo-build-agent to implement and deploy the approved support-triage Ethos.",
       "expected_skill": "nemo-build-agent"
     },
     {
@@ -18,7 +18,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "The IT helpdesk agent spec is approved. Build and deploy it for password resets, VPN issues, and software access requests.",
+      "prompt": "The IT helpdesk agent Ethos is approved. Build and deploy it for password resets, VPN issues, and software access requests.",
       "expected_skill": "nemo-build-agent"
     },
     {
@@ -28,7 +28,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "Take the approved spec in agents/ and ship the agent to NeMo Platform.",
+      "prompt": "Take the approved Ethos in agents/ and ship the agent to NeMo Platform.",
       "expected_skill": "nemo-build-agent"
     },
     {
@@ -43,7 +43,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "I have an old NAT agent workflow and an approved spec. Build and deploy it while preserving the legacy config.",
+      "prompt": "I have an old NAT agent workflow and an approved Ethos. Build and deploy it while preserving the legacy config.",
       "expected_skill": "nemo-build-agent"
     },
     {

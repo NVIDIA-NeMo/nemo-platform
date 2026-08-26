@@ -19,13 +19,10 @@ from nemo_agents_plugin.cli import (
     MAX_ETHOS_STAGED_FILES,
     AgentsCLI,
     _collect_text_agent_artifacts,
+    _spec_package_warning,
     _upload_ethos_fileset,
 )
-from nemo_agents_plugin.ethos_migrate import (
-    LEGACY_CONTRACT_FILENAME,
-    LEGACY_PACKAGE_SUFFIX,
-    registration_migration_warning,
-)
+from nemo_agents_plugin.entities import AGENT_SPEC_FILENAME
 from typer.testing import CliRunner
 
 
@@ -324,12 +321,11 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         workspace="default",
         agent_root=tmp_path,
         base_url="http://test",
-        omit_legacy_contract=False,
     )
 
 
 def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    package = tmp_path / "agents" / f"fabric-agent{LEGACY_PACKAGE_SUFFIX}"
+    package = tmp_path / "agents" / "fabric-agent-spec"
     package.mkdir(parents=True)
     config = package / "agent.yaml"
     config.write_text(
@@ -345,7 +341,7 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
             ]
         )
     )
-    (package / LEGACY_CONTRACT_FILENAME).write_text("# Contract\n")
+    (package / AGENT_SPEC_FILENAME).write_text("# Contract\n")
     monkeypatch.chdir(tmp_path)
     normalized_config = {
         "config_format": "nemo-agents-spec-v1",
@@ -371,7 +367,7 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         uploaded["workspace"] = workspace
         uploaded["sdk_base_url"] = sdk.base_url
 
-    files = _FakeEthosFiles([LEGACY_CONTRACT_FILENAME], delete_error=FileNotFoundError())
+    files = _FakeEthosFiles([AGENT_SPEC_FILENAME], delete_error=FileNotFoundError())
 
     app = AgentsCLI().get_cli()
     with (
@@ -387,12 +383,39 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         )
 
     assert result.exit_code == 0, result.stderr
-    assert result.stderr.splitlines()[-3:] == list(registration_migration_warning("fabric-agent", "default", config))
+    warning = _spec_package_warning("fabric-agent", config)
+    assert result.stderr.splitlines()[-len(warning) :] == list(warning)
     assert uploaded["files"] == {"agent.yaml"}
-    assert files.deleted == [LEGACY_CONTRACT_FILENAME]
+    assert files.deleted == [AGENT_SPEC_FILENAME]
     assert uploaded["fileset"] == "fabric-agent-ethos"
     assert uploaded["workspace"] == "default"
     assert uploaded["sdk_base_url"] == "http://test"
+
+
+def test_spec_package_warning_points_at_nemo_ethos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package = tmp_path / "agents" / "acme-bot-spec"
+    package.mkdir(parents=True)
+    config = package / "agent.yaml"
+    config.write_text("name: acme-bot\n")
+    (package / AGENT_SPEC_FILENAME).write_text("# spec\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert _spec_package_warning("acme-bot", config) == (
+        "Warning: This package uses AGENT-SPEC.md.",
+        "Run the nemo-ethos skill to write ETHOS.md, then delete the acme-bot-spec package.",
+    )
+    assert _spec_package_warning("acme-bot", tmp_path / "agent.yaml") == ()
+    escaped = tmp_path / "escaped-spec"
+    escaped.mkdir()
+    (escaped / "agent.yaml").write_text("name: escaped\n")
+    (escaped / AGENT_SPEC_FILENAME).write_text("# spec\n")
+    assert _spec_package_warning("../escaped", escaped / "agent.yaml") == ()
+
+
+def test_agents_cli_has_no_ethos_migrate_command() -> None:
+    result = CliRunner().invoke(AgentsCLI().get_cli(), ["ethos", "migrate", "--help"])
+
+    assert result.exit_code != 0
 
 
 def test_collect_text_agent_artifacts_allows_small_agent_root(tmp_path: Path) -> None:
@@ -429,14 +452,14 @@ def test_upload_ethos_fileset_replaces_stale_runtime_artifacts(tmp_path: Path) -
         agent_root,
         existing_paths=[
             "ETHOS.md",
-            LEGACY_CONTRACT_FILENAME,
+            AGENT_SPEC_FILENAME,
             "agent.yaml",
             "skills/old/SKILL.md",
             "__pycache__/tool.pyc",
         ],
     )
 
-    assert deleted == ["agent.yaml", "skills/old/SKILL.md", "__pycache__/tool.pyc"]
+    assert deleted == [AGENT_SPEC_FILENAME, "agent.yaml", "skills/old/SKILL.md", "__pycache__/tool.pyc"]
     assert uploaded == {"agent.yaml", "skills/review/SKILL.md"}
 
 

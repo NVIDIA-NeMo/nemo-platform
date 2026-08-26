@@ -10,14 +10,21 @@ export interface CustomizationMetricValue {
 }
 
 /**
+ * Keyed by the `<phase>_<name>` the callback reports. The two losses are named because the backend
+ * always sends both keys; the rest depend on the algorithm and can carry a `/`, so they are indexed.
+ */
+export interface CustomizationMetricSeries {
+  train_loss?: CustomizationMetricValue[];
+  val_loss?: CustomizationMetricValue[];
+  [name: string]: CustomizationMetricValue[] | undefined;
+}
+
+/**
  * Training-progress fields that get merged into status_details
  * once training callbacks start reporting.
  */
 export interface CustomizationStatusDetailsWithMetrics extends CustomizationJobStatusDetails {
-  metrics?: {
-    train_loss?: CustomizationMetricValue[];
-    val_loss?: CustomizationMetricValue[];
-  };
+  metrics?: CustomizationMetricSeries;
 }
 
 export function hasMetrics(
