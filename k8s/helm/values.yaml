@@ -629,13 +629,6 @@ basePlatformConfig: |
     # the sandbox can read the downloaded environment and dataset. Must match the claim the
     # Jobs controller mounts for job storage.
     job_storage_pvc_claim: {{ (include "nmp-core.persistentVolumeClaim" . ) }}
-    # -- Alias of platform.sandbox_cluster_capable for one-release upgrades that still
-    # set platformConfig.rl.sandbox_cluster_capable. Prefer the top-level Helm value
-    # sandboxClusterCapable (and platform.sandbox_cluster_capable).
-    sandbox_cluster_capable: {{ .Values.sandboxClusterCapable }}
-    # -- Scheme compiled into Gym host_provider_options. Must be http for the
-    # in-cluster OpenSandbox Service or health polls stall on TLS.
-    sandbox_server_protocol: {{ .Values.opensandbox.protocol | quote }}
 
   # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
   safe_synthesizer:
