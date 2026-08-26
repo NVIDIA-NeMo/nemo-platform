@@ -89,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
         "audit": str(args.audit),
         "coverage_report": str(args.out),
         "coverage_input_count": len(coverage_inputs),
+        "warning_count": len(report["warnings"]),
+        "warnings": report["warnings"],
         "measured_kinds": report["measured_kinds"],
         "covered_count": report["coverage"]["overall"]["covered_count"],
         "uncovered_count": report["coverage"]["overall"]["uncovered_count"],
@@ -151,15 +153,18 @@ def _aggregate(*, audit: JsonObject, audit_path: Path, coverage_inputs: list[Cov
     covered_names: set[str] = set()
     input_reports: list[JsonObject] = []
     measured_kinds: set[str] = set()
+    warnings: list[JsonObject] = []
 
     for coverage_input in coverage_inputs:
         payload = coverage_input.payload
-        _validate_coverage_matches_audit(
-            coverage=payload,
-            coverage_path=coverage_input.path,
-            audit=audit,
-            audit_counts=audit_counts,
-            audit_item_kinds=audit_item_kinds,
+        warnings.extend(
+            _validate_coverage_matches_audit(
+                coverage=payload,
+                coverage_path=coverage_input.path,
+                audit=audit,
+                audit_counts=audit_counts,
+                audit_item_kinds=audit_item_kinds,
+            )
         )
         input_report = _input_report(coverage_input)
         input_reports.append(input_report)
@@ -173,6 +178,7 @@ def _aggregate(*, audit: JsonObject, audit_path: Path, coverage_inputs: list[Cov
         "schema": REPORT_SCHEMA,
         "audit": _audit_info(audit, audit_path, audit_counts),
         "measured_kinds": measured_kinds_list,
+        "warnings": warnings,
         "input_reports": input_reports,
         "coverage": _coverage_summary(audit_items, covered),
         "covered": covered,
@@ -192,15 +198,26 @@ def _validate_coverage_matches_audit(
     audit: JsonObject,
     audit_counts: dict[str, int],
     audit_item_kinds: dict[str, str],
-) -> None:
+) -> list[JsonObject]:
     """Reject stale or incompatible coverage files before aggregating them."""
+    warnings: list[JsonObject] = []
     coverage_audit = coverage["audit"]
-    for field in ("schema", "agent", "status", "item_count"):
+    for field in ("schema", "agent", "item_count"):
         expected = len(audit["items"]) if field == "item_count" else audit[field]
         if coverage_audit[field] != expected:
             raise AuditCoverageInputError(
                 f"{coverage_path}: audit.{field} {coverage_audit[field]!r} does not match current audit {expected!r}"
             )
+
+    if coverage_audit["status"] != audit["status"]:
+        warnings.append(
+            {
+                "kind": "audit_status_mismatch",
+                "coverage": str(coverage_path),
+                "input_status": coverage_audit["status"],
+                "current_status": audit["status"],
+            }
+        )
 
     item_kind = coverage["item_kind"]
     if coverage["item_kind_count"] != audit_counts[item_kind]:
@@ -216,6 +233,7 @@ def _validate_coverage_matches_audit(
             raise AuditCoverageInputError(
                 f"{coverage_path}: covered item {name!r} has kind {audit_item_kinds[name]!r}, not {item_kind!r}"
             )
+    return warnings
 
 
 def _input_report(coverage_input: CoverageInput) -> JsonObject:
@@ -297,7 +315,10 @@ def _needed_tools(item: JsonObject, audit_items_by_name: dict[str, JsonObject]) 
     if item["kind"] == "capability":
         return _dedupe_names(item["required_tools"])
 
-    tools = list(item.get("expected_tools", [])) or _tools_from_capabilities(item, audit_items_by_name)
+    if "expected_tools" in item:
+        tools = item["expected_tools"]
+    else:
+        tools = _tools_from_capabilities(item, audit_items_by_name)
     prohibited_tools = set(item.get("prohibited_tools", []))
     return _dedupe_names(tool for tool in tools if tool not in prohibited_tools)
 

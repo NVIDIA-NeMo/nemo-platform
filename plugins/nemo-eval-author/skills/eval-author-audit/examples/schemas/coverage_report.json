@@ -15,6 +15,7 @@
   "measured_kinds": [
     "tool"
   ],
+  "warnings": [],
   "input_reports": [
     {
       "path": ".eval-author/audit-measurements/task=account-recovery/run=trial-001/tool_calls/coverage.json",

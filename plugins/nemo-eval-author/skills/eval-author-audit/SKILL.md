@@ -282,13 +282,16 @@ Use `--coverage <path-to-coverage.json>` for explicit files, or repeat
 The script scans coverage directories recursively for files named
 `coverage.json`, validates every input against
 `schemas/audit_coverage.schema.json`, and rejects inputs whose audit metadata no
-longer matches the current `audit.md`.
+longer matches the current `audit.md`. A status-only mismatch, such as
+measurements produced while the audit was `draft` and aggregated after it became
+`approved`, is reported as a warning instead of forcing a re-measure.
 
 The aggregate report uses `schemas/audit_coverage_report.schema.json`. It
 contains overall and per-kind count summaries, the union of covered item names,
-the measured item kinds, and `uncovered_items`. Each uncovered item includes the
-original audit item plus generation-oriented context: a stable `reason`, a
-one-sentence `focus`, likely `needed_tools`, and the item's `evidence_required`.
+warnings, the measured item kinds, and `uncovered_items`. Each uncovered item
+includes the original audit item plus generation-oriented context: a stable
+`reason`, a one-sentence `focus`, likely `needed_tools`, and the item's
+`evidence_required`.
 Use `reason: not_measured_by_any_method` to distinguish gaps that no included
 measurement method could close from `reason: not_covered_by_any_input_report`,
 which means the item kind was measured but no input report covered that item.

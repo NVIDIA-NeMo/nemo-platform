@@ -26,9 +26,13 @@ Current assumptions:
   derives one from the ATIF trajectory identity, then from the trace content
   digest.
 - Aggregation input is one or more per-trace `coverage.json` files. `report.py`
-  validates those files against `schemas/audit_coverage.schema.json`, compares
-  their denominator metadata, including audit status, with the current
-  `audit.md`, and writes one `coverage_report.json` file.
+  validates those files against `schemas/audit_coverage.schema.json`, rejects
+  hard denominator mismatches against the current `audit.md`, and writes one
+  `coverage_report.json` file.
+- Aggregation treats audit status as review metadata, not denominator content.
+  Status-only mismatches, such as measuring while an audit is `draft` and
+  reporting after it becomes `approved`, are emitted in `warnings` without
+  rejecting the input coverage file.
 - Aggregation does not read ATIF traces, Harbor result files, or method-specific
   `details.json` files. It only unions stable audit item names from
   `coverage.json`.

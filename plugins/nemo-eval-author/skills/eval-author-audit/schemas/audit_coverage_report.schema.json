@@ -9,6 +9,7 @@
     "schema",
     "audit",
     "measured_kinds",
+    "warnings",
     "input_reports",
     "coverage",
     "covered",
@@ -27,6 +28,13 @@
     "measured_kinds": {
       "description": "Audit item kinds that at least one input coverage report attempted to measure.",
       "$ref": "#/$defs/itemKindList"
+    },
+    "warnings": {
+      "description": "Non-fatal compatibility notes for inputs included in this aggregate report.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
     },
     "input_reports": {
       "description": "Per-trace coverage files included in this aggregate report.",
@@ -73,6 +81,13 @@
         "capability",
         "failure_case",
         "tool"
+      ]
+    },
+    "auditStatus": {
+      "description": "Review state of an audit denominator.",
+      "enum": [
+        "draft",
+        "approved"
       ]
     },
     "itemKindList": {
@@ -146,10 +161,7 @@
         },
         "status": {
           "description": "Review state of the audit denominator when this report was produced.",
-          "enum": [
-            "draft",
-            "approved"
-          ]
+          "$ref": "#/$defs/auditStatus"
         },
         "item_count": {
           "description": "Total number of audit items in the denominator.",
@@ -158,6 +170,35 @@
         },
         "item_counts": {
           "$ref": "#/$defs/itemCounts"
+        }
+      }
+    },
+    "warning": {
+      "description": "One non-fatal condition observed while building the aggregate report.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "coverage",
+        "input_status",
+        "current_status"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Warning discriminator.",
+          "const": "audit_status_mismatch"
+        },
+        "coverage": {
+          "description": "Input coverage file that carried the mismatched status.",
+          "$ref": "#/$defs/pathString"
+        },
+        "input_status": {
+          "description": "Audit status recorded in the input coverage file.",
+          "$ref": "#/$defs/auditStatus"
+        },
+        "current_status": {
+          "description": "Audit status in the current denominator.",
+          "$ref": "#/$defs/auditStatus"
         }
       }
     },
