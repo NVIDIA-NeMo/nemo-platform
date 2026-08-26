@@ -25,16 +25,24 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import UTC, datetime
 from typing import ClassVar, cast
 
 from nemo_agents_plugin.config import ControllerConfig
-from nemo_agents_plugin.entities import AgentDeployment, is_container_deployment_mode
+from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus, is_container_deployment_mode
 from nemo_agents_plugin.runner.backend import RunnerBackend
 from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
+from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
 from nemo_platform_plugin.controller import NemoController
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClient,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
+
+_SESSION_LIST_PAGE_SIZE = 100
 
 
 class AgentDeploymentController(NemoController):
@@ -148,6 +156,22 @@ class AgentDeploymentController(NemoController):
             logger.exception("Failed to list deployments across all workspaces")
             return []
 
+    async def reconcile(self) -> None:
+        """Reconcile deployments, then independently expire due sessions."""
+        await self._reconcile_deployments()
+        if not self.stop_requested():
+            await self._reconcile_expired_sessions()
+
+    async def _reconcile_deployments(self) -> None:
+        """Reconcile each deployment with per-entity error isolation."""
+        for deployment in await self.list_objects():
+            if self.stop_requested():
+                return
+            try:
+                await self.reconcile_one(deployment)
+            except Exception:
+                logger.exception("Failed to reconcile deployment %s", deployment)
+
     async def reconcile_one(self, obj: object) -> None:
         """Drive the state machine for a single deployment entity.
 
@@ -174,6 +198,91 @@ class AgentDeploymentController(NemoController):
             await self._verify_running(dep)
         elif dep.status == "deleting":
             await self._delete_deployment(dep)
+
+    async def _reconcile_expired_sessions(self) -> None:
+        """Persist expiration and clean up runtimes for sessions past their deadline."""
+        sessions = await self._list_active_sessions()
+        reconciliation_time = datetime.now(UTC)
+        for session in sessions:
+            if self.stop_requested():
+                return
+            try:
+                await self._expire_session_if_due(session, at=reconciliation_time)
+            except NemoEntityNotFoundError:
+                logger.debug(
+                    "Session '%s' in workspace '%s' disappeared during expiration reconciliation.",
+                    session.name,
+                    session.workspace,
+                )
+            except NemoEntityConflictError:
+                logger.debug(
+                    "Optimistic lock conflict expiring session '%s' in workspace '%s' — will retry next cycle.",
+                    session.name,
+                    session.workspace,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to reconcile expiration for session '%s' in workspace '%s'.",
+                    session.name,
+                    session.workspace,
+                )
+
+    async def _list_active_sessions(self) -> list[AgentSession]:
+        """List every active session across workspaces, following pagination."""
+        sessions: list[AgentSession] = []
+        page = 1
+        try:
+            while True:
+                result = await self.entities.list(
+                    AgentSession,
+                    workspace="-",
+                    filter_obj={"status": SessionStatus.ACTIVE.value},
+                    page=page,
+                    page_size=_SESSION_LIST_PAGE_SIZE,
+                )
+                sessions.extend(result.data)
+                if result.pagination is None or page >= result.pagination.total_pages:
+                    return sessions
+                page += 1
+        except Exception:
+            logger.exception("Failed to list active sessions across all workspaces")
+            return []
+
+    async def _expire_session_if_due(
+        self,
+        session: AgentSession,
+        *,
+        at: datetime,
+    ) -> AgentSession | None:
+        """Transition one due session to expired with one optimistic retry.
+
+        The persisted deadline is authoritative even when an invocation is still
+        running. That invocation may finish, but its completion cannot reactivate
+        the terminal session.
+        """
+        session_to_update = session
+        for attempt in range(2):
+            if session_to_update.status is not SessionStatus.ACTIVE:
+                if session_to_update.status is SessionStatus.EXPIRED:
+                    await cleanup_fabric_runtime(self.entities, session_to_update)
+                    return session_to_update
+                return None
+            if not session_expiration_is_due(session_to_update, at=at):
+                return None
+
+            session_to_update.status = SessionStatus.EXPIRED
+            try:
+                expired_session = await self.entities.update(session_to_update)
+            except NemoEntityConflictError:
+                if attempt == 1:
+                    raise
+                session_to_update = await self.entities.get_by_id(AgentSession, session.id)
+                continue
+
+            await cleanup_fabric_runtime(self.entities, expired_session)
+            return expired_session
+
+        raise RuntimeError("Session expiration retry loop exited unexpectedly.")  # pragma: no cover
 
     async def _start_deployment(self, dep: AgentDeployment) -> None:
         """pending -> starting: allocate port (subprocess) and spawn via the mode backend."""

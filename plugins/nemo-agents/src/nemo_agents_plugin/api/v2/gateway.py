@@ -51,6 +51,7 @@ from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.deployment_routing import get_deployment_endpoint, is_deployment_routable
 from nemo_agents_plugin.entities import Agent, AgentDeployment, AgentSession, SessionStatus
 from nemo_agents_plugin.fabric.session_manager import DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS
+from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_effective_principal_id
@@ -463,6 +464,11 @@ async def _resolve_request_session(
     )
     if session.status is not SessionStatus.ACTIVE:
         raise _session_inactive(session)
+    if session.expires_at is not None and session_expiration_is_due(session, at=_utc_now()):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session ID '{session.id}' has status 'expired' and cannot be invoked.",
+        )
     return session
 
 

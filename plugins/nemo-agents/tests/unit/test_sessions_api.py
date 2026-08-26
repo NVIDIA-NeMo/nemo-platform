@@ -12,6 +12,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nemo_agents_plugin import session_lifecycle as session_lifecycle_module
 from nemo_agents_plugin.api.v2 import sessions as sessions_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
@@ -370,7 +371,7 @@ class TestFabricRuntimeCleanup:
             return httpx.Response(204)
 
         cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        with patch.object(sessions_router_module.httpx, "AsyncClient", return_value=cleanup_client):
+        with patch.object(session_lifecycle_module.httpx, "AsyncClient", return_value=cleanup_client):
             await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
 
         assert len(requests) == 1
@@ -387,7 +388,7 @@ class TestFabricRuntimeCleanup:
             return httpx.Response(404)
 
         cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        with patch.object(sessions_router_module.httpx, "AsyncClient", return_value=cleanup_client):
+        with patch.object(session_lifecycle_module.httpx, "AsyncClient", return_value=cleanup_client):
             await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)
 
     async def test_cleanup_ignores_connection_failure(self, mock_entity_client: AsyncMock) -> None:
@@ -400,5 +401,5 @@ class TestFabricRuntimeCleanup:
             raise httpx.ConnectError("refused", request=request)
 
         cleanup_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        with patch.object(sessions_router_module.httpx, "AsyncClient", return_value=cleanup_client):
+        with patch.object(session_lifecycle_module.httpx, "AsyncClient", return_value=cleanup_client):
             await sessions_router_module._cleanup_fabric_runtime(mock_entity_client, session)

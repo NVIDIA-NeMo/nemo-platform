@@ -15,17 +15,15 @@ import logging
 import secrets
 from collections.abc import Awaitable
 from typing import cast
-from urllib.parse import quote
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import SessionPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.api.v2.session_access import get_owned_session, session_not_found
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
 from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
 from nemo_agents_plugin.schema import CreateSessionRequest, SessionFilter, SessionPage
+from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime as _cleanup_fabric_runtime
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_effective_principal_id
@@ -38,8 +36,6 @@ from starlette.requests import Request
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-_FABRIC_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 _raw_session_filter_dep = make_filter_obj_dep(SessionFilter)
 
@@ -285,66 +281,4 @@ def _deployment_not_found(workspace: str, deployment_id: str) -> HTTPException:
     return HTTPException(
         status_code=404,
         detail=f"Deployment ID '{deployment_id}' not found in workspace '{workspace}'.",
-    )
-
-
-async def _cleanup_fabric_runtime(
-    entity_client: NemoEntitiesClient,
-    session: AgentSession,
-) -> None:
-    """Best-effort removal of a session's process-local Fabric runtime."""
-    try:
-        deployment = await entity_client.find_one(
-            AgentDeployment,
-            workspace=session.workspace,
-            filter_obj={"id": session.deployment_id},
-        )
-    except Exception:
-        logger.warning(
-            "Could not resolve deployment ID '%s' while cleaning up session ID '%s'.",
-            session.deployment_id,
-            session.id,
-            exc_info=True,
-        )
-        return
-
-    if deployment.id != session.deployment_id or deployment.workspace != session.workspace:
-        logger.warning(
-            "Resolved deployment did not match session ID '%s'; skipping Fabric runtime cleanup.",
-            session.id,
-        )
-        return
-
-    endpoint = get_deployment_endpoint(deployment)
-    if endpoint is None:
-        logger.warning(
-            "Deployment ID '%s' has no endpoint; skipping cleanup for session ID '%s'.",
-            deployment.id,
-            session.id,
-        )
-        return
-
-    cleanup_url = f"{endpoint.rstrip('/')}/v1/sessions/{quote(session.id, safe='')}"
-    try:
-        async with httpx.AsyncClient(
-            timeout=_FABRIC_CLEANUP_TIMEOUT_SECONDS,
-            follow_redirects=False,
-        ) as client:
-            response = await client.delete(cleanup_url)
-    except Exception:
-        logger.warning(
-            "Fabric runtime cleanup request failed for session ID '%s'.",
-            session.id,
-            exc_info=True,
-        )
-        return
-
-    # A missing runtime is already clean: the session may never have been invoked or may
-    # have expired from the deployment's process-local registry.
-    if response.status_code == 404 or 200 <= response.status_code < 300:
-        return
-    logger.warning(
-        "Fabric runtime cleanup returned HTTP %s for session ID '%s'.",
-        response.status_code,
-        session.id,
     )

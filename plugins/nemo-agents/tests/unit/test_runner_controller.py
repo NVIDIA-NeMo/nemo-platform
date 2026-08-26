@@ -17,15 +17,20 @@ Pin the contracts callers depend on:
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.entities import AgentDeployment
+from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
+from nemo_agents_plugin.runner import controller as controller_module
 from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nemo_platform_plugin.entity_client import NemoEntityConflictError
+
+EXPIRATION_NOW = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 
 
 def test_agent_deployment_controller_declares_entities_dependency() -> None:
@@ -74,6 +79,38 @@ def _make_controller() -> tuple[AgentDeploymentController, Any]:
     ctrl._controller_config = ControllerConfig(health_check_timeout_seconds=120)
     ctrl._save = AsyncMock()  # type: ignore[method-assign]
     return ctrl, cast(Any, backend)
+
+
+def _make_session(
+    *,
+    name: str = "session-one",
+    expires_at: datetime | None = None,
+    status: SessionStatus = SessionStatus.ACTIVE,
+) -> AgentSession:
+    session = AgentSession(
+        name=name,
+        workspace="default",
+        deployment_id="deployment-id",
+        status=status,
+        expires_at=expires_at,
+    )
+    session._id = f"{name}-id"
+    return session
+
+
+@pytest.mark.asyncio
+async def test_reconcile_runs_expiration_after_isolated_deployment_failures() -> None:
+    ctrl, _ = _make_controller()
+    first = AgentDeployment(name="first", workspace="default", agent="calc")
+    second = AgentDeployment(name="second", workspace="default", agent="calc")
+    ctrl.list_objects = AsyncMock(return_value=[first, second])  # type: ignore[method-assign]
+    ctrl.reconcile_one = AsyncMock(side_effect=[RuntimeError("failed"), None])  # type: ignore[method-assign]
+    ctrl._reconcile_expired_sessions = AsyncMock()  # type: ignore[method-assign]
+
+    await ctrl.reconcile()
+
+    assert ctrl.reconcile_one.await_args_list == [call(first), call(second)]
+    ctrl._reconcile_expired_sessions.assert_awaited_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -179,3 +216,114 @@ async def test_check_health_marks_running_when_healthy() -> None:
     await ctrl._check_health(dep)
 
     assert dep.status == "running"
+
+
+# ---------------------------------------------------------------------------
+# Persisted session expiration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_expire_session_transitions_due_session_and_cleans_runtime() -> None:
+    ctrl, _ = _make_controller()
+    session = _make_session(expires_at=EXPIRATION_NOW)
+    ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
+
+    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+        result = await ctrl._expire_session_if_due(session, at=EXPIRATION_NOW)
+
+    assert result is session
+    assert session.status is SessionStatus.EXPIRED
+    ctrl.entities.update.assert_awaited_once_with(session)
+    cleanup.assert_awaited_once_with(ctrl.entities, session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expires_at", [None, EXPIRATION_NOW + timedelta(seconds=1)])
+async def test_expire_session_leaves_session_before_deadline_active(expires_at: datetime | None) -> None:
+    ctrl, _ = _make_controller()
+    session = _make_session(expires_at=expires_at)
+
+    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+        result = await ctrl._expire_session_if_due(
+            session,
+            at=EXPIRATION_NOW,
+        )
+
+    assert result is None
+    assert session.status is SessionStatus.ACTIVE
+    ctrl.entities.update.assert_not_called()
+    cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("refreshed_status", "deadline_delta_seconds", "expected_updates", "expected_cleanup"),
+    [
+        pytest.param(SessionStatus.ACTIVE, 30 * 60, 1, False, id="renewed-activity-wins"),
+        pytest.param(SessionStatus.ACTIVE, -1, 2, True, id="still-due-retries"),
+        pytest.param(SessionStatus.CLOSED, -1, 1, False, id="closed-wins"),
+        pytest.param(SessionStatus.EXPIRED, -1, 1, True, id="concurrent-expiration-is-idempotent"),
+    ],
+)
+async def test_expiration_conflict_resolves_from_refetched_session(
+    refreshed_status: SessionStatus,
+    deadline_delta_seconds: int,
+    expected_updates: int,
+    expected_cleanup: bool,
+) -> None:
+    ctrl, _ = _make_controller()
+    stale = _make_session(expires_at=EXPIRATION_NOW - timedelta(seconds=2))
+    refreshed = _make_session(
+        expires_at=EXPIRATION_NOW + timedelta(seconds=deadline_delta_seconds),
+        status=refreshed_status,
+    )
+    ctrl.entities.update = AsyncMock(side_effect=[NemoEntityConflictError("conflict"), refreshed])
+    ctrl.entities.get_by_id = AsyncMock(return_value=refreshed)
+
+    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+        result = await ctrl._expire_session_if_due(stale, at=EXPIRATION_NOW)
+
+    assert (result is refreshed) is expected_cleanup
+    expected_status = (
+        SessionStatus.EXPIRED
+        if refreshed_status is SessionStatus.ACTIVE and deadline_delta_seconds <= 0
+        else refreshed_status
+    )
+    assert refreshed.status is expected_status
+    assert ctrl.entities.update.await_count == expected_updates
+    ctrl.entities.get_by_id.assert_awaited_once_with(AgentSession, stale.id)
+    if expected_cleanup:
+        cleanup.assert_awaited_once_with(ctrl.entities, refreshed)
+    else:
+        cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_active_session_listing_follows_pagination() -> None:
+    ctrl, _ = _make_controller()
+    first = MagicMock(data=[_make_session(name="one")])
+    first.pagination = MagicMock(total_pages=2)
+    second = MagicMock(data=[_make_session(name="two")])
+    second.pagination = MagicMock(total_pages=2)
+    ctrl.entities.list = AsyncMock(side_effect=[first, second])
+
+    sessions = await ctrl._list_active_sessions()
+
+    assert [session.name for session in sessions] == ["one", "two"]
+    assert ctrl.entities.list.await_args_list == [
+        call(
+            AgentSession,
+            workspace="-",
+            filter_obj={"status": SessionStatus.ACTIVE.value},
+            page=1,
+            page_size=100,
+        ),
+        call(
+            AgentSession,
+            workspace="-",
+            filter_obj={"status": SessionStatus.ACTIVE.value},
+            page=2,
+            page_size=100,
+        ),
+    ]

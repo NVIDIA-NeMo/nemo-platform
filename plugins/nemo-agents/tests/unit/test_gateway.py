@@ -794,6 +794,31 @@ class TestSessionAwareRouting:
         assert resp.status_code == 409
         assert resp.json()["detail"] == (f"Session ID 'session-1' has status '{status.value}' and cannot be invoked.")
 
+    def test_active_session_at_expiration_deadline_returns_409(
+        self,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+    ) -> None:
+        deadline = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
+        session = _make_session(session_id="session-1")
+        session.expires_at = deadline
+        mock_entity_client.find_one = AsyncMock(return_value=session)
+
+        with (
+            patch.object(gateway_module, "_utc_now", return_value=deadline),
+            patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient") as httpx_client,
+        ):
+            response = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                headers={SESSION_ID_HEADER: "session-1"},
+                json={},
+            )
+
+        assert response.status_code == 409
+        assert "status 'expired'" in response.json()["error"]["message"]
+        mock_entity_client.update.assert_not_awaited()
+        httpx_client.assert_not_called()
+
     def test_empty_session_header_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         resp = client.post(
             "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
