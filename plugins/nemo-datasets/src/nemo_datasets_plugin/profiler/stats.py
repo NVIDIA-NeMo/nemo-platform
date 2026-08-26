@@ -218,7 +218,7 @@ class ColumnAccumulator:
 
     The base class is the whole measurement for a dtype with no statistics of its own, because the
     content probes run over every column whatever its type. Subclasses add their state by overriding
-    ``_observe`` and ``_blocks``.
+    ``_observe`` and ``_stat_blocks``.
     """
 
     def __init__(self) -> None:
@@ -255,7 +255,7 @@ class ColumnAccumulator:
         Stats are None when there was nothing worth measuring, which keeps the map sparse. Probes are
         always returned: a column of nothing is a finding classification is entitled to read.
         """
-        blocks = self._blocks()
+        blocks = self._stat_blocks()
         null_rate = self._nulls / self.rows if self.rows else 0.0
         column = ColumnStats(null_rate=null_rate, **blocks)
         if not any(blocks.values()) and null_rate == 0.0:
@@ -271,7 +271,7 @@ class ColumnAccumulator:
     def _observe(self, present: list[Any]) -> None:
         """Fold this batch's non-null values into the dtype's own state. The base column has none."""
 
-    def _blocks(self) -> dict[str, Any]:
+    def _stat_blocks(self) -> dict[str, Any]:
         """The dtype-specific ``ColumnStats`` blocks. The base column contributes none."""
         return {}
 
@@ -359,7 +359,7 @@ class StringAccumulator(ColumnAccumulator):
                 self._strings += 1
         self._vocabulary.update(present)
 
-    def _blocks(self) -> dict[str, Any]:
+    def _stat_blocks(self) -> dict[str, Any]:
         text = TextStats(chars=self._lengths.quantiles()) if self._strings else None
         return {"text": text, "categorical": self._vocabulary.finalize()}
 
@@ -391,7 +391,7 @@ class NumericAccumulator(ColumnAccumulator):
                 self._count += 1
         self._vocabulary.update(present)
 
-    def _blocks(self) -> dict[str, Any]:
+    def _stat_blocks(self) -> dict[str, Any]:
         numeric = None
         if self._count:
             numeric = NumericStats(min=self._min, max=self._max, mean=self._sum / self._count)
@@ -412,7 +412,7 @@ class BoolAccumulator(ColumnAccumulator):
     def _observe(self, present: list[Any]) -> None:
         self._vocabulary.update(present)
 
-    def _blocks(self) -> dict[str, Any]:
+    def _stat_blocks(self) -> dict[str, Any]:
         return {"categorical": self._vocabulary.finalize()}
 
     def vocabulary(self) -> set[Any] | None:
@@ -460,7 +460,7 @@ class MessageAccumulator(ColumnAccumulator):
             if _valid_alternation(messages):
                 self._valid_alternation += 1
 
-    def _blocks(self) -> dict[str, Any]:
+    def _stat_blocks(self) -> dict[str, Any]:
         if not self._conversations:
             return {"messages": None}
         return {
@@ -547,11 +547,11 @@ class RoutedAccumulator(ColumnAccumulator):
             return self._declared
         return (self._schema or SchemaFold(self._name)).finalize()
 
-    def _blocks(self) -> dict[str, Any]:
+    def _stat_blocks(self) -> dict[str, Any]:
         key = _measurement_for(self.feature().dtype)
         # Built here when no value ever called for it, so an all-null string column still reports the
         # empty blocks a chosen StringAccumulator would have.
-        return self._measurement(key)._blocks() if key is not None else {}
+        return self._measurement(key)._stat_blocks() if key is not None else {}
 
     def vocabulary(self) -> set[Any] | None:
         key = _measurement_for(self.feature().dtype)
@@ -566,7 +566,7 @@ def _is_numeric(dtype: str) -> bool:
 # are exact; above it each octave is cut into this many slices, a fixed *relative* width of 1/32.
 # Reporting a bucket's midpoint puts every estimate within ~1.6% whatever the magnitude.
 _HISTOGRAM_SLICE_BITS = 5
-_HISTOGRAM_SLICES = 1 << _HISTOGRAM_SLICE_BITS
+_HISTOGRAM_SLICES = 1 << _HISTOGRAM_SLICE_BITS  # 32
 
 
 def _length_bucket(value: int) -> int:
