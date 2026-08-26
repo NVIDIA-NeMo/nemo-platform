@@ -76,6 +76,7 @@ export const AgentDetailRoute: FC = () => {
     agent,
     agentDeployments,
     agentEvals,
+    isAgentEvalsPending,
     agentJobs,
     chatDeployment,
     deleteDeploymentMutation,
@@ -219,6 +220,7 @@ export const AgentDetailRoute: FC = () => {
                 agent={agent}
                 modelNames={modelNames}
                 evals={agentEvals}
+                isEvalsPending={isAgentEvalsPending}
                 onRunAgent={() => setSelectedTab('chat')}
                 onRunEvaluation={agentName ? () => setSubmitEvalOpen(true) : undefined}
               />

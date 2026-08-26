@@ -13,7 +13,7 @@ import { toRecentExperiments } from '@studio/routes/agents/AgentDetailRoute/over
 import { RecentExperimentsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/RecentExperimentsPanel';
 import { useAgentTraceMetrics } from '@studio/routes/agents/AgentDetailRoute/overview/useAgentTraceMetrics';
 import { useOpenInsights } from '@studio/routes/agents/AgentDetailRoute/overview/useOpenInsights';
-import { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
+import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import {
   getExperimentDetailRoute,
   getIntakeTracesRoute,
@@ -29,6 +29,7 @@ interface OverviewTabProps {
   modelNames: string[];
   /** The agent's published evaluations, which the experiment cards are rolled up from. */
   evals: AgentEvaluationRow[];
+  isEvalsPending?: boolean;
   /** Jump to the chat tab so the agent emits its first traces. */
   onRunAgent: () => void;
   /** Open the submit-evaluation modal from the experiments empty state. */
@@ -41,6 +42,7 @@ export const OverviewTab: FC<OverviewTabProps> = ({
   agent,
   modelNames,
   evals,
+  isEvalsPending,
   onRunAgent,
   onRunEvaluation,
 }) => {
@@ -85,6 +87,7 @@ export const OverviewTab: FC<OverviewTabProps> = ({
         )}
         <RecentExperimentsPanel
           experiments={experiments}
+          isPending={isEvalsPending}
           onOpenExperiment={(experiment) =>
             experiment.name && navigate(getExperimentDetailRoute(workspace, experiment.name))
           }

@@ -73,7 +73,7 @@ export const useAgentDetails = ({
 
   const deploymentsData = deploymentsResponse?.data;
 
-  const { data: agentEvalsResponse } = useListEvaluations(
+  const { data: agentEvalsResponse, isPending: isAgentEvalsPending } = useListEvaluations(
     workspace,
     {
       filter: { agent_name: agentName ?? '' },
@@ -167,6 +167,7 @@ export const useAgentDetails = ({
     agent,
     agentDeployments,
     agentEvals,
+    isAgentEvalsPending,
     agentJobs,
     healthyDeployments,
     isDeploying,
