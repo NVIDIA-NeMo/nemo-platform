@@ -25,7 +25,8 @@ reusable actions, and supporting docs.
   Main source validation workflow. It runs linting, OPA policy WASM build,
   Python unit tests, Python integration tests, OPA policy tests, Studio web
   checks for relevant web changes, and PR coverage comments. It runs on pushes
-  to `main`, pull requests to `main`, merge queue checks, and manual dispatch.
+  to `main`, pull requests to `main` or `release/*`, merge queue checks, and
+  manual dispatch.
   On successful `main` pushes, it also sends a completion event to an external
   CI consumer.
 
