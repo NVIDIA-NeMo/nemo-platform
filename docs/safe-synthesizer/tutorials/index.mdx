@@ -7,14 +7,15 @@ description: ""
 ---
 <a id="safe-synthesizer-tutorials"></a>
 
-Learn how to run NeMo Safe Synthesizer jobs through hands-on tutorials to generate private synthetic versions of sensitive tabular datasets. Each tutorial provides step-by-step guidance with executable code examples.
+Learn how to run NeMo Safe Synthesizer jobs through hands-on tutorials to generate private synthetic versions of sensitive tabular datasets.
+Each tutorial provides step-by-step guidance with executable code examples.
 
 ## Prerequisites
 
 Before starting any tutorial, ensure you have:
 
 - [NeMo Safe Synthesizer running](/documentation/synthesize-safe-data)
-- Python environment with the PyPI `nemo-platform` wrapper package installed. The `all` extra is defined by the wrapper package, not by the generated SDK package under `sdk/python/nemo-platform/pyproject.toml`. If you are working from a source checkout, run `make bootstrap` from the repository root instead.
+- Python environment with the PyPI `nemo-platform` package installed. If you are working from a source checkout, run `make bootstrap` from the repository root instead.
  ```bash
  pip install "nemo-platform[all]"
  ```
@@ -33,7 +34,7 @@ Learn the basics with your first Safe Synthesizer job, leveraging smart defaults
 **Topics covered:**
 - Installing the SDK
 - Connecting to Safe Synthesizer
-- Using `SafeSynthesizerJobBuilder`
+- Using the `SafeSynthesizerJobBuilder`
 - Monitoring job progress
 - Retrieving synthetic data and evaluation reports
 
@@ -78,5 +79,5 @@ After completing these tutorials, explore:
 
 ## Need Help?
 
-- Check the [GitHub Issues](https://github.com/NVIDIA/GenerativeAIExamples/issues) for known issues
+- Check the [GitHub Issues](https://github.com/NVIDIA-NeMo/Safe-Synthesizer/issues) for known issues
 - Review the [jobs](/documentation/synthesize-safe-data/about/jobs) guide for job management

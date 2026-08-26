@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from nemo_platform_ext.cli.commands.config_help import CONFIG_APP_HELP
-from nemo_platform_ext.cli.manifest import TopLevelEntry
+from nemo_platform_ext.cli.manifest import TopLevelEntry, functional_plugin_entry
 
 TOP_LEVEL_ENTRIES = (
     TopLevelEntry(
@@ -180,5 +180,10 @@ nemo plugins list""",
         name="plugins",
         panel="CLI functions",
         kind="group",
+    ),
+    functional_plugin_entry(
+        "safe-synthesizer",
+        "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI",
+        source="plugin",
     ),
 )

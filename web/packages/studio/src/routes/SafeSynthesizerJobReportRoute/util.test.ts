@@ -9,7 +9,7 @@ import {
   isPassingGrade,
 } from '@studio/routes/SafeSynthesizerJobReportRoute/util';
 
-describe('SafeSynthesizerJobReportRoute utils', () => {
+describe('GenerateJobReportRoute utils', () => {
   describe('getDataPrivacyGradeLabel', () => {
     it('returns "Poor" for scores less than 2', () => {
       expect(getDataPrivacyGradeLabel(0)).toBe(GRADE_VALUES.POOR);

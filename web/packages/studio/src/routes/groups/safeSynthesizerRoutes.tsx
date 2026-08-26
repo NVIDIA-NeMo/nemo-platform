@@ -24,18 +24,18 @@ const SafeSynthesizerNewRoute =
       default: m.SafeSynthesizerNewRoute as FC,
     }))
   );
-const SafeSynthesizerJobDetailsRoute =
+const GenerateJobDetailsRoute =
   SAFE_SYNTHESIZER_ENABLED &&
   lazy(() =>
     import('@studio/routes/SafeSynthesizerJobDetailsRoute').then((m) => ({
-      default: m.SafeSynthesizerJobDetailsRoute as FC,
+      default: m.GenerateJobDetailsRoute as FC,
     }))
   );
-const SafeSynthesizerJobReportRoute =
+const GenerateJobReportRoute =
   SAFE_SYNTHESIZER_ENABLED &&
   lazy(() =>
     import('@studio/routes/SafeSynthesizerJobReportRoute').then((m) => ({
-      default: m.SafeSynthesizerJobReportRoute as FC,
+      default: m.GenerateJobReportRoute as FC,
     }))
   );
 
@@ -52,12 +52,12 @@ export const safeSynthesizerRoutes: RouteObject[] = gateSafeSynthesizerRoutes([
   },
   {
     path: ROUTES.workspace.safeSynthesizerJob,
-    element: SafeSynthesizerJobDetailsRoute ? <SafeSynthesizerJobDetailsRoute /> : null,
+    element: GenerateJobDetailsRoute ? <GenerateJobDetailsRoute /> : null,
     errorElement: <RouteErrorPanel title="Safe Synthesizer" />,
   },
   {
     path: ROUTES.workspace.safeSynthesizerJobReport,
-    element: SafeSynthesizerJobReportRoute ? <SafeSynthesizerJobReportRoute /> : null,
+    element: GenerateJobReportRoute ? <GenerateJobReportRoute /> : null,
     errorElement: <RouteErrorPanel title="Safe Synthesizer" />,
   },
 ]);
