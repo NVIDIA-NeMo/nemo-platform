@@ -215,8 +215,8 @@ def _create_nemotron_personas_fileset(sdk: NeMoPlatform, persona_data: pd.DataFr
         files.upload_file(
             workspace="system",
             name=fileset_name,
-            local_path=tmpfile.name,
             path=get_file_path_for_locale("en_US"),
+            content=Path(tmpfile.name).read_bytes(),
         )
 
 

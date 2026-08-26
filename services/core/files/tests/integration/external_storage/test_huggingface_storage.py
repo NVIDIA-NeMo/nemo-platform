@@ -141,7 +141,10 @@ class TestHuggingfaceStorageBackend:
         ) as fileset:
             # List files from the Huggingface repo
             files_response = (
-                client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+                client_from_platform(sdk, FilesClient)
+                .list_files(name=fileset.name, workspace=fileset.workspace)
+                .data()
+                .data
             )
 
             # Should have files in the repo
@@ -195,8 +198,10 @@ class TestHuggingfaceStorageBackend:
             },
         ) as fileset:
             # Download config.json
-            content = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="config.json"
+            content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="config.json")
+                .read()
             )
 
             # Should be valid JSON
@@ -436,8 +441,10 @@ class TestHuggingfaceCaching:
             assert commit_sha != "main", "revision should be resolved to SHA"
 
             # Download a file to populate the cache
-            content = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="config.json"
+            content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="config.json")
+                .read()
             )
             assert len(content) > 0
 
@@ -484,8 +491,10 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # First download - should fetch from source (cache miss)
-            content1 = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="config.json"
+            content1 = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="config.json")
+                .read()
             )
 
             # Source download should have been called twice:
@@ -494,8 +503,10 @@ class TestHuggingfaceCaching:
             assert download_spy.call_count == 2, "First download should fetch from source (serve + cache)"
 
             # Second download - should be served from cache (no source fetch)
-            content2 = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="config.json"
+            content2 = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="config.json")
+                .read()
             )
 
             # Content should be identical
@@ -530,21 +541,27 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # Download config.json
-            config_content = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="config.json"
+            config_content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="config.json")
+                .read()
             )
 
             # Download tokenizer_config.json (different file)
-            tokenizer_content = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="tokenizer_config.json"
+            tokenizer_content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="tokenizer_config.json")
+                .read()
             )
 
             # Files should be different
             assert config_content != tokenizer_content
 
             # Download config.json again - should be from cache
-            config_content2 = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path="config.json"
+            config_content2 = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path="config.json")
+                .read()
             )
             assert config_content2 == config_content
 
@@ -639,6 +656,7 @@ class TestHuggingfaceCaching:
                         query_params=ListFilesQueryParams(include_cache_status=True),
                     )
                     .data()
+                    .data
                 )
 
                 # Check if all files are cached
@@ -681,6 +699,7 @@ class TestHuggingfaceCaching:
                     query_params=ListFilesQueryParams(include_cache_status=True),
                 )
                 .data()
+                .data
             )
 
             # All files should be not_cached (no warming happened)

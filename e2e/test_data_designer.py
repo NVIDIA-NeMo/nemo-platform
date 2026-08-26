@@ -5,6 +5,7 @@ import tempfile
 import time
 from collections.abc import Generator
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 import data_designer.config as dd
@@ -151,10 +152,10 @@ def test_fileset_seed_data(sdk: NeMoPlatform, files_client: FilesClient, workspa
     with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
         seed_data.to_parquet(f.name, index=False)
         client_from_platform(sdk, FilesClient).upload_file(
-            local_path=f.name,
             path=remote_path,
             name=fileset_name,
             workspace=workspace,
+            content=Path(f.name).read_bytes(),
         )
 
     filepath = f"{workspace}/{fileset_name}#{remote_path}"

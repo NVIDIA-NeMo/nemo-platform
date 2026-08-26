@@ -476,11 +476,10 @@ def apply_plan(
                             repo_type="dataset",
                         )
                         client_from_platform(sdk, FilesClient).upload_file(
-                            local_path=local_file,
+                            content=Path(local_file).read_bytes(),
                             name=fileset,
                             workspace=workspace,
                             path=target_path,
-                            fileset_auto_create=False,
                         )
                         artifact_result["status"] = "uploaded"
                         uploaded += 1

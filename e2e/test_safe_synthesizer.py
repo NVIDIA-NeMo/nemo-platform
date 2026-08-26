@@ -488,10 +488,14 @@ def test_safe_synthesizer_fileset_upload_download_round_trips(
     nss_dataset: tuple[str, str],
 ) -> None:
     fileset, _ = nss_dataset
-    downloaded = client_from_platform(sdk, FilesClient).download_file(
-        name=fileset,
-        workspace=workspace,
-        path=INPUT_REMOTE_PATH,
+    downloaded = (
+        client_from_platform(sdk, FilesClient)
+        .download_file(
+            name=fileset,
+            workspace=workspace,
+            path=INPUT_REMOTE_PATH,
+        )
+        .read()
     )
 
     assert downloaded.decode("utf-8") == _dataset_csv()

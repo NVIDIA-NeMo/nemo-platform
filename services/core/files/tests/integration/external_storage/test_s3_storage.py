@@ -275,27 +275,24 @@ class TestS3StorageBackend:
         upload_file = tmp_path / "empty-file.txt"
         upload_file.write_bytes(test_content)
 
-        client_from_platform(sdk, FilesClient).upload_file(
-            local_path=str(upload_file),
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            content=upload_file.read_bytes(),
             path="empty-file.txt",
             name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
         # Verify via list
-        files = (
-            client_from_platform(sdk, FilesClient)
-            .list_files(name=s3_fileset.name, workspace=s3_fileset.workspace)
-            .data()
-        )
-        assert len(files) == 1
-        assert files[0].path == "empty-file.txt"
-        assert files[0].size == 0
+        listing = files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data
+        assert len(listing) == 1
+        assert listing[0].path == "empty-file.txt"
+        assert listing[0].size == 0
 
         # Download to memory and verify
-        downloaded_content = client_from_platform(sdk, FilesClient).download_file(
+        downloaded_content = files.download_file(
             name=s3_fileset.name, workspace=s3_fileset.workspace, path="empty-file.txt"
-        )
+        ).read()
         assert downloaded_content == test_content
 
     def test_upload_large_file(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
@@ -309,24 +306,21 @@ class TestS3StorageBackend:
         upload_file = tmp_path / "large-file.bin"
         upload_file.write_bytes(test_content)
 
-        client_from_platform(sdk, FilesClient).upload_file(
-            local_path=str(upload_file),
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            content=upload_file.read_bytes(),
             path="large-file.bin",
             name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
-        files = (
-            client_from_platform(sdk, FilesClient)
-            .list_files(name=s3_fileset.name, workspace=s3_fileset.workspace)
-            .data()
-        )
-        assert len(files) == 1
-        assert files[0].size == len(test_content)
+        listing = files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data
+        assert len(listing) == 1
+        assert listing[0].size == len(test_content)
 
-        downloaded_content = client_from_platform(sdk, FilesClient).download_file(
+        downloaded_content = files.download_file(
             name=s3_fileset.name, workspace=s3_fileset.workspace, path="large-file.bin"
-        )
+        ).read()
         assert downloaded_content == test_content
 
     def test_download_with_byte_range(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
@@ -336,7 +330,7 @@ class TestS3StorageBackend:
         upload_file.write_bytes(test_content)
 
         client_from_platform(sdk, FilesClient).upload_file(
-            local_path=str(upload_file),
+            content=upload_file.read_bytes(),
             path="range-test.txt",
             name=s3_fileset.name,
             workspace=s3_fileset.workspace,
@@ -451,10 +445,8 @@ class TestS3StorageBackend:
         }
 
         for remote_path, content in files_to_upload.items():
-            local_file = tmp_path / "upload.tmp"
-            local_file.write_bytes(content)
             client_from_platform(sdk, FilesClient).upload_file(
-                local_path=str(local_file),
+                content=content,
                 path=remote_path,
                 name=s3_fileset.name,
                 workspace=s3_fileset.workspace,
@@ -464,6 +456,7 @@ class TestS3StorageBackend:
             client_from_platform(sdk, FilesClient)
             .list_files(name=s3_fileset.name, workspace=s3_fileset.workspace)
             .data()
+            .data
         )
         paths = {f.path for f in files}
         assert paths == set(files_to_upload.keys())
@@ -614,7 +607,7 @@ class TestS3DefaultStorageConfig:
             upload_file.write_bytes(test_content)
 
             files.upload_file(
-                local_path=str(upload_file),
+                content=upload_file.read_bytes(),
                 path="test.txt",
                 name=fileset.name,
                 workspace=fileset.workspace,
@@ -660,7 +653,7 @@ class TestS3DefaultStorageConfig:
             file1 = tmp_path / "file1.txt"
             file1.write_bytes(b"content for fileset 1")
             files.upload_file(
-                local_path=str(file1),
+                content=file1.read_bytes(),
                 path="shared-name.txt",
                 name=fileset1.name,
                 workspace=fileset1.workspace,
@@ -669,7 +662,7 @@ class TestS3DefaultStorageConfig:
             file2 = tmp_path / "file2.txt"
             file2.write_bytes(b"content for fileset 2")
             files.upload_file(
-                local_path=str(file2),
+                content=file2.read_bytes(),
                 path="shared-name.txt",
                 name=fileset2.name,
                 workspace=fileset2.workspace,

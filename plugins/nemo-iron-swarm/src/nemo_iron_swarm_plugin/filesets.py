@@ -101,7 +101,7 @@ def delete_fileset(sdk: NeMoPlatform, ref: str) -> None:
     if not workspace or not name:
         return
     try:
-        client_from_platform(sdk, FilesClient).delete_fileset(name, workspace=workspace)
+        client_from_platform(sdk, FilesClient).delete_fileset(name=name, workspace=workspace)
     except Exception:  # already deleted, or storage unavailable — the manifest still goes
         logger.warning("failed to delete fileset %s", ref, exc_info=True)
 

@@ -180,7 +180,10 @@ class TestFilesBasic:
 
         # Verify upload succeeded
         files_response = (
-            client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+            client_from_platform(sdk, FilesClient)
+            .list_files(name=fileset.name, workspace=fileset.workspace)
+            .data()
+            .data
         )
         assert len(files_response) == 1
         uploaded_file = files_response[0]
@@ -188,8 +191,10 @@ class TestFilesBasic:
         assert uploaded_file.size == len(test_content)
 
         # Download file
-        downloaded = client_from_platform(sdk, FilesClient).download_file(
-            name=fileset.name, workspace=fileset.workspace, path="test.txt"
+        downloaded = (
+            client_from_platform(sdk, FilesClient)
+            .download_file(name=fileset.name, workspace=fileset.workspace, path="test.txt")
+            .read()
         )
         assert downloaded == test_content
 
@@ -200,7 +205,10 @@ class TestFilesBasic:
         )
 
         files_response = (
-            client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+            client_from_platform(sdk, FilesClient)
+            .list_files(name=fileset.name, workspace=fileset.workspace)
+            .data()
+            .data
         )
         assert len(files_response) == 0, "File should be deleted"
 
@@ -235,7 +243,10 @@ class TestFilesBasic:
                 assert path in test_files
 
         files_response = (
-            client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+            client_from_platform(sdk, FilesClient)
+            .list_files(name=fileset.name, workspace=fileset.workspace)
+            .data()
+            .data
         )
 
         listed_paths = {f.path for f in files_response}
@@ -246,8 +257,10 @@ class TestFilesBasic:
             assert f.size == len(test_files[f.path])
 
         for path, expected_content in test_files.items():
-            downloaded = client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name, workspace=fileset.workspace, path=path
+            downloaded = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(name=fileset.name, workspace=fileset.workspace, path=path)
+                .read()
             )
             assert downloaded == expected_content
 
@@ -279,7 +292,12 @@ class TestFilesBasic:
             workspace=fileset.workspace,
         )
         # Get the file info for the file_url
-        files = client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+        files = (
+            client_from_platform(sdk, FilesClient)
+            .list_files(name=fileset.name, workspace=fileset.workspace)
+            .data()
+            .data
+        )
         upload_response = next(f for f in files if f.path == parquet_path)
 
         # Use DuckDB with HTTPXFileSystem to query via the test client's transport

@@ -130,7 +130,7 @@ class TestNGCFileset:
 
     def test_list_files(self, sdk: NeMoPlatform, workspace: str, ngc_fileset: str):
         """Listing an NGC-backed fileset returns files with paths and sizes."""
-        files = client_from_platform(sdk, FilesClient).list_files(name=ngc_fileset, workspace=workspace).data()
+        files = client_from_platform(sdk, FilesClient).list_files(name=ngc_fileset, workspace=workspace).data().data
         assert len(files) > 0, "NGC fileset should contain at least one file"
 
         for f in files:
@@ -139,19 +139,23 @@ class TestNGCFileset:
 
     def test_download_file(self, sdk: NeMoPlatform, workspace: str, ngc_fileset: str):
         """Downloading the smallest file from an NGC fileset succeeds and size matches."""
-        files = client_from_platform(sdk, FilesClient).list_files(name=ngc_fileset, workspace=workspace).data()
+        files = client_from_platform(sdk, FilesClient).list_files(name=ngc_fileset, workspace=workspace).data().data
         assert len(files) > 0
 
         target = min(files, key=lambda f: f.size)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             local_path = Path(tmpdir) / target.path.replace("/", "_")
-            client_from_platform(sdk, FilesClient).download_file(
-                name=ngc_fileset,
-                workspace=workspace,
-                path=target.path,
-                local_path=str(local_path),
+            content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(
+                    name=ngc_fileset,
+                    workspace=workspace,
+                    path=target.path,
+                )
+                .read()
             )
+            local_path.write_bytes(content)
             assert local_path.exists()
             assert local_path.stat().st_size == target.size
 
@@ -165,6 +169,7 @@ class TestNGCFileset:
                 query_params=ListFilesQueryParams(include_cache_status=True),
             )
             .data()
+            .data
         )
         assert len(files) > 0
 
@@ -260,7 +265,7 @@ class TestHuggingFaceFileset:
 
     def test_list_files(self, sdk: NeMoPlatform, workspace: str, hf_fileset: str):
         """Listing an HF-backed fileset returns files with paths and sizes."""
-        files = client_from_platform(sdk, FilesClient).list_files(name=hf_fileset, workspace=workspace).data()
+        files = client_from_platform(sdk, FilesClient).list_files(name=hf_fileset, workspace=workspace).data().data
         assert len(files) > 0, "HF fileset should contain at least one file"
 
         for f in files:
@@ -269,19 +274,23 @@ class TestHuggingFaceFileset:
 
     def test_download_file(self, sdk: NeMoPlatform, workspace: str, hf_fileset: str):
         """Downloading the smallest file from an HF fileset succeeds and size matches."""
-        files = client_from_platform(sdk, FilesClient).list_files(name=hf_fileset, workspace=workspace).data()
+        files = client_from_platform(sdk, FilesClient).list_files(name=hf_fileset, workspace=workspace).data().data
         assert len(files) > 0
 
         target = min(files, key=lambda f: f.size)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             local_path = Path(tmpdir) / target.path.replace("/", "_")
-            client_from_platform(sdk, FilesClient).download_file(
-                name=hf_fileset,
-                workspace=workspace,
-                path=target.path,
-                local_path=str(local_path),
+            content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(
+                    name=hf_fileset,
+                    workspace=workspace,
+                    path=target.path,
+                )
+                .read()
             )
+            local_path.write_bytes(content)
             assert local_path.exists()
             assert local_path.stat().st_size == target.size
 
@@ -295,6 +304,7 @@ class TestHuggingFaceFileset:
                 query_params=ListFilesQueryParams(include_cache_status=True),
             )
             .data()
+            .data
         )
         assert len(files) > 0
 

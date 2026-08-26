@@ -379,7 +379,7 @@ def anonymizer_fileset(
             name=name,
             workspace=anonymizer_sdk.workspace,
             path=PARQUET_REMOTE_PATH,
-            local_path=str(parquet_path),
+            content=parquet_path.read_bytes(),
         )
     finally:
         with suppress(FileNotFoundError):

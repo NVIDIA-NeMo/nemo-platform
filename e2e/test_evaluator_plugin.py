@@ -517,7 +517,7 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
         for _, _, job in submitted_jobs:
             _cleanup_evaluator_job(evaluator_sdk, job.name)
         with suppress(Exception):
-            files.delete_fileset(fileset_name, workspace=workspace)
+            files.delete_fileset(name=fileset_name, workspace=workspace)
 
 
 def test_run_config_limits_samples(evaluator_sdk: NeMoPlatform) -> None:

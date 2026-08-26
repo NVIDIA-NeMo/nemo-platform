@@ -240,11 +240,15 @@ def fileset_with_nested_files(
     (dir_b / "file2.txt").write_text("content2")
     (dir_b / "file3.txt").write_text("content3")
 
-    client_from_platform(sdk, FilesClient).upload_file(
-        local_path=str(dir_a),
-        name=fileset.name,
-        workspace=random_workspace,
-    )
+    files = client_from_platform(sdk, FilesClient)
+    for local in dir_a.rglob("*"):
+        if local.is_file():
+            files.upload_file(
+                name=fileset.name,
+                workspace=random_workspace,
+                path=local.relative_to(dir_a).as_posix(),
+                content=local.read_bytes(),
+            )
 
     return {"workspace": random_workspace, "name": fileset.name}
 
