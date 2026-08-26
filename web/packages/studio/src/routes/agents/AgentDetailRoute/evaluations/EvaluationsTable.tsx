@@ -160,6 +160,7 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
           DataViewTableContent: {
             renderEmptyState: () => (
               <TableEmptyState
+                className="py-4"
                 icon={<FlaskConical className="size-16" />}
                 header="No published evaluations yet"
                 emptyMessage="Results appear here once a run finishes and its telemetry is ingested."

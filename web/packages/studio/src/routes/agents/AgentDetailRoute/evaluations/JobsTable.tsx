@@ -137,6 +137,7 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
         DataViewTableContent: {
           renderEmptyState: () => (
             <TableEmptyState
+              className="py-4"
               icon={<ListChecks className="size-16" />}
               header="No evaluation jobs yet"
               emptyMessage="Runs appear here as soon as they are submitted, before any results are published."
