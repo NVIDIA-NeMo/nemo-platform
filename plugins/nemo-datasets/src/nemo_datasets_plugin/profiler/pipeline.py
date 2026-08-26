@@ -231,20 +231,24 @@ def _capped_columns_evidence(features: list[FeatureSchema]) -> list[Evidence]:
     ]
 
 
-def _peek_files(source: FileSource, entries: list[FileEntry]) -> dict[str, FilePreview]:
-    """What each file declares about itself, before any of them is read.
+def _peek_files(source: FileSource, entries: list[FileEntry]) -> tuple[dict[str, FilePreview], set[str]]:
+    """What each file declares about itself, before any of them is read, and which could not be asked.
 
     A failure here is not reported: it surfaces as a :class:`FileError` with a reason when the file
-    is read, and reporting it twice would double-count. All this decides is what the partition knows
-    before it starts.
+    is read, and reporting it twice would double-count. It is still *returned*, because an empty
+    preview is otherwise ambiguous -- a line-delimited file declares nothing because its format
+    carries nothing, while a corrupt parquet declares nothing because it could not be opened, and
+    only the first of those means the partition has to infer its schema.
     """
     previews: dict[str, FilePreview] = {}
+    unpeekable: set[str] = set()
     for entry in entries:
         try:
             previews[entry.path] = get_reader(_format_of(entry.path)).peek(source, entry)
         except Exception:
             previews[entry.path] = FilePreview()
-    return previews
+            unpeekable.add(entry.path)
+    return previews, unpeekable
 
 
 class _PartitionFolds:
@@ -335,9 +339,20 @@ def _profile_partition(
     """
     # Footers first. A parquet file declares its schema and exact row count there, so one seek per
     # file establishes the partition's shape.
-    previews = _peek_files(source, entries)
-    arrow_schemas = [preview.arrow_schema for preview in previews.values() if preview.arrow_schema is not None]
-    declared = _unify_schemas(arrow_schemas) if len(arrow_schemas) == len(entries) and arrow_schemas else None
+    previews, unpeekable = _peek_files(source, entries)
+    # Every file the profiler could actually ask -- not every file. A file that could not be peeked
+    # will not read either, so it contributes no rows and no columns, and holding the whole partition
+    # to it re-typed every healthy shard from row inference: one corrupt file in five hundred was
+    # enough to widen a declared int32 to int64 and drop an all-null column to `json`.
+    #
+    # The denominator still has to be a denominator, though. A line-delimited file declares nothing
+    # and reads fine, and trusting a sibling parquet's schema would erase the columns it alone
+    # witnesses -- so a mixed-format partition still infers.
+    askable = [entry for entry in entries if entry.path not in unpeekable]
+    arrow_schemas = [
+        previews[entry.path].arrow_schema for entry in askable if previews[entry.path].arrow_schema is not None
+    ]
+    declared = _unify_schemas(arrow_schemas) if arrow_schemas and len(arrow_schemas) == len(askable) else None
     # Declared or not, the partition folds the same way. A schema names and types the columns before
     # the first batch; without one they are discovered as they appear and typed at the end.
     row_cap = _per_file_cap(row_budget, len(entries))

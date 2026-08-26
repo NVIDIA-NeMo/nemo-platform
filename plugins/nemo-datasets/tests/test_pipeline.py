@@ -170,11 +170,12 @@ def test_a_parquet_footer_declares_enough_to_fold_without_reading_rows(tmp_path)
     (tmp_path / "extra.jsonl").write_text('{"a": 1}\n')
     source = LocalFileSource(tmp_path)
 
-    previews = _peek_files(source, source.list_files())
+    previews, unpeekable = _peek_files(source, source.list_files())
 
     assert previews["train.parquet"].num_rows == 7
     assert previews["train.parquet"].arrow_schema is not None
     assert previews["extra.jsonl"] == FilePreview()  # declares nothing, so the partition cannot fold
+    assert not unpeekable  # both were asked and answered; neither failed
 
 
 def test_the_folded_and_materialised_paths_measure_the_same_thing(tmp_path):
@@ -856,6 +857,25 @@ def test_a_declared_schema_is_trusted_when_it_covers_every_file(tmp_path):
     part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
 
     assert [f.name for f in part.features] == ["prompt"]
+
+
+def test_one_unreadable_shard_does_not_discard_the_declared_schema(tmp_path):
+    # A file that cannot be peeked cannot be read either, so it contributes no rows and no columns.
+    # Holding the whole partition to it re-typed every healthy shard from row inference: the declared
+    # int32 widened to int64 and an all-null string column dropped to `json`, which then fails every
+    # dtype gate in classification. One bad file in five hundred was enough.
+    schema = pa.schema([pa.field("score", pa.int32()), pa.field("empty", pa.string())])
+    table = pa.Table.from_arrays(
+        [pa.array([1, 2], type=pa.int32()), pa.array([None, None], type=pa.string())], schema=schema
+    )
+    pq.write_table(table, tmp_path / "train-00000-of-00002.parquet")
+    (tmp_path / "train-00001-of-00002.parquet").write_bytes(b"PAR1junk")
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert [(f.name, f.dtype) for f in result.partitions[0].features] == [("score", "int32"), ("empty", "string")]
+    assert len(result.file_errors) == 1  # the bad shard is still named, and still costs the row count
+    assert result.coverage.rows_present is None
 
 
 def test_a_duplicate_column_name_is_described_once(tmp_path):
