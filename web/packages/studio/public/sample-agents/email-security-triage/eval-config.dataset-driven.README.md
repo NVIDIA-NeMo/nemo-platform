@@ -52,3 +52,24 @@ every row.
   needs no judge model and scores even when the judge is unreachable.
 - `llm-judge` — grades the verdict and whether `attack_type` is a sensible label, as two `scores`
   on one metric.
+
+## Which file to upload
+
+Three copies of this suite sit beside this note, in the order you probably want them:
+
+| File | Use it for |
+| --- | --- |
+| `eval-config.minimal.yaml` | The smallest config that runs — one `string-check`, no judge model. Start here when writing your own. |
+| `eval-config.dataset-driven.yaml` | The full suite, commented. Same two metrics as the JSON, in the format the Run Evaluation form expects. |
+| `eval-config.dataset-driven.json` | The original. Kept as the machine-readable reference; the YAML is easier to read and edit. |
+
+Upload one of them as the **Evaluator config** with `dataset.jsonl` as the dataset.
+
+The YAML files omit `dataset`, `target` and `publication` on purpose — Studio supplies all three
+per run, and the dataset ref in particular names a fileset that does not exist until you submit.
+Setting them anyway is allowed; Studio replaces them rather than complaining.
+
+They also drop `bundle_kind`, `bundle_format_version`, `metadata` and `secrets`, which have schema
+defaults. `outputs` cannot be dropped: the backend rehydrates `payload.metric`, recomputes the
+output spec, and rejects the job if the two disagree — so if you change a metric's `scores`, change
+`outputs` to match.

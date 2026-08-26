@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The smallest eval config that runs against the Email Security Triage sample agent.
+# Start here when writing your own; see eval-config.dataset-driven.yaml for a judged
+# metric, score parsing, and inference options.
+#
+# Upload it as the Evaluator config with dataset.jsonl as the dataset. One metric, no
+# judge model, so the run costs nothing beyond the agent's own generations.
+#
+# `dataset`, `target` and `publication` are absent because Studio supplies them per run.
+
+# Jinja, rendered against each dataset row: `item.<column>`.
+prompt_template: |-
+  From: {{ item.sender }}
+  Subject: {{ item.subject }}
+
+  {{ item.body }}
+
+metrics:
+  - metric_type: string-check
+    # `outputs` must keep matching what the metric actually returns — the backend
+    # rehydrates `payload.metric`, recomputes this block, and rejects the job if the
+    # two disagree. Copy it as-is unless you change the metric below.
+    outputs:
+      - name: string-check
+        value_json_schema:
+          title: ContinuousScore
+          description: Continuous numeric metric value.
+          type: number
+    payload:
+      kind: inline
+      metric:
+        type: string-check
+        operation: contains
+        # The agent answers with a YAML block; assert its verdict key matches the
+        # row's ground-truth `label` column.
+        left_template: "{{ (sample.output_text or '') | lower }}"
+        right_template: "is_likely_phishing: {% if item.label == 'phishing' %}true{% else %}false{% endif %}"

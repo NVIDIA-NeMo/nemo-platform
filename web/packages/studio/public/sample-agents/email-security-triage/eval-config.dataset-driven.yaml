@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Dataset-driven eval config for the Email Security Triage sample agent.
+#
+# Upload this in Run Agent Evaluation -> Create new evaluation -> Evaluator config,
+# with dataset.jsonl (beside this file) as the dataset. It is a NeMo Evaluator
+# `EvaluateInputSpec`, so the same file also runs from the CLI:
+#
+#   nemo evaluator evaluate submit --spec-file eval-config.dataset-driven.yaml
+#
+# Three keys Studio fills in for you, which is why they are absent here:
+#   dataset     - needs the fileset name, which does not exist until you submit
+#   target      - the agent you picked in the form
+#   publication - where this run's results are recorded
+# Setting them anyway is allowed; Studio replaces them rather than complaining.
+
+# How each dataset row becomes the request sent to the agent. Jinja, rendered against
+# the row: `item.<column>` for this file's four columns. There is no default — a custom
+# dataset's column names are arbitrary, so nothing can guess the framing for you.
+prompt_template: |-
+  From: {{ item.sender }}
+  Subject: {{ item.subject }}
+
+  {{ item.body }}
+
+# Every metric listed here scores every row. Each entry is a metric bundle: `payload.metric`
+# is the metric itself, `outputs` declares what it returns, and `metric_type` names its kind.
+# `bundle_kind`, `bundle_format_version`, `metadata` and `secrets` are omitted on purpose —
+# they have schema defaults, and `outputs` must keep agreeing with `payload.metric.scores`
+# or the job is rejected, so there is less to keep in sync this way.
+metrics:
+  # 1. Deterministic verdict check. No judge model, so it costs nothing and never
+  #    disagrees with itself. The agent answers with a YAML block; this asserts the
+  #    `is_likely_phishing` key matches the row's ground-truth label.
+  - metric_type: string-check
+    outputs:
+      - name: string-check
+        value_json_schema:
+          title: ContinuousScore
+          description: Continuous numeric metric value.
+          type: number
+    payload:
+      kind: inline
+      metric:
+        type: string-check
+        operation: contains
+        left_template: "{{ (sample.output_text or '') | lower }}"
+        right_template: "is_likely_phishing: {% if item.label == 'phishing' %}true{% else %}false{% endif %}"
+
+  # 2. Judged check on a field a string match cannot grade: whether the `attack_type`
+  #    the agent chose is a sensible label for this email. `model` is what the form's
+  #    "Model for LLM evaluators" picker pre-selects, and overrides when you change it.
+  - metric_type: llm-judge
+    outputs:
+      - name: attack_type_plausible
+        value_json_schema:
+          title: ContinuousScore
+          description: Continuous numeric metric value.
+          type: number
+    payload:
+      kind: inline
+      metric:
+        type: llm-judge
+        model: default/nvidia-nemotron-3-super-120b-a12b
+        prompt_template:
+          messages:
+            - role: user
+              content: |-
+                You are scoring an email security triage agent.
+
+                The agent answers with a YAML block (often wrapped in a ``` fence). Its verdict is the `is_likely_phishing` key: `true` means phishing, `false` means benign. Read that key and nothing else — the `indicators` and `explanation` fields routinely mention the opposite verdict as things the agent considered, and must be ignored. Do not read the first line; it is usually the fence.
+
+                Agent response:
+                {{ sample.output_text }}
+
+                Ground-truth verdict: "{{ item.label }}".
+
+                Return a JSON object with one key:
+                  "attack_type_plausible": 1 if the `attack_type` value is a sensible label for this email (one of bec, credential, malware, spam, benign; `benign` iff the verdict is benign), else 0.
+        scores:
+          - name: attack_type_plausible
+            minimum: 0.0
+            maximum: 1.0
+            # Judges narrate. Pull the digit out rather than parsing the whole reply.
+            parser:
+              type: regex
+              method: search
+              pattern: 'attack_type_plausible"?\s*:\s*([01])'
+        inference:
+          max_tokens: 1024
+          extra_body:
+            nvext:
+              max_thinking_tokens: 256
+        # Reasoning models emit their scratchpad first; everything up to this token
+        # is dropped before the parser runs.
+        reasoning:
+          end_token: "</think>"

@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  applyDatasetEvalOverrides,
   bareName,
   buildAgentEvalRequestBody,
   buildAgentTarget,
   buildDatasetAgentTarget,
   buildDatasetEvalRequestBody,
   type DatasetEvalSpec,
+  datasetEvalConfigError,
   buildEvalJobName,
   buildPersistedSpec,
   injectJudgeModel,
   type InlineMetricBundle,
+  isDatasetEvalSpec,
   parseEvalConfig,
   type PersistedEvalSpec,
 } from '@studio/components/evaluation/submitEvaluationJob';
@@ -202,6 +205,38 @@ describe('buildDatasetEvalRequestBody', () => {
     );
     expect(without.spec.publication).toBeUndefined();
   });
+
+  it('forwards authored keys Studio has no opinion about', () => {
+    const body = buildDatasetEvalRequestBody(
+      { ...datasetConfig, field_mapping: { input: 'question', reference: 'gold' } },
+      { workspace: 'ws-a', agent: 'a' },
+      null
+    );
+    expect(body.spec.field_mapping).toEqual({ input: 'question', reference: 'gold' });
+    expect(body.spec.dataset).toEqual([{ prompt: '2+2?' }]);
+    expect(body.spec.prompt_template).toBe('{{item.prompt}}');
+  });
+
+  it('overrides target and params the config authored, rather than forwarding them', () => {
+    const body = buildDatasetEvalRequestBody(
+      {
+        ...datasetConfig,
+        target: { kind: 'model', model: 'someone-elses-model' },
+        params: { parallelism: 99 },
+        publication: { intake: { evaluation_id: 'stale' } },
+      },
+      { workspace: 'ws-a', agent: 'support-bot', evaluationId: 'eval-1' },
+      null
+    );
+    expect(body.spec.target).toEqual(buildDatasetAgentTarget('ws-a', 'support-bot'));
+    expect(body.spec.params).toEqual({
+      parallelism: 1,
+      request_timeout: 300,
+      max_retries: 3,
+      ignore_request_failure: true,
+    });
+    expect(body.spec.publication).toEqual({ intake: { evaluation_id: 'eval-1' } });
+  });
 });
 
 describe('buildEvalJobName', () => {
@@ -252,5 +287,127 @@ describe('parseEvalConfig', () => {
         })
       )
     ).toThrow(/payload\.metric/);
+  });
+
+  const datasetYaml = `
+dataset: ws-a/data#rows.jsonl
+prompt_template: |-
+  Is this legit?
+  {{ item.body }}
+metrics:
+  - bundle_kind: metric-bundle
+    bundle_format_version: v1
+    metric_type: llm-judge
+    payload:
+      kind: inline
+      metric:
+        type: llm-judge
+        scores:
+          - name: accuracy
+`;
+
+  it('parses a dataset-driven config authored as YAML', () => {
+    const parsed = parseEvalConfig(datasetYaml, 'eval.yaml') as DatasetEvalSpec;
+    expect(isDatasetEvalSpec(parsed)).toBe(true);
+    expect(parsed.dataset).toBe('ws-a/data#rows.jsonl');
+    expect(parsed.prompt_template).toBe('Is this legit?\n{{ item.body }}');
+    expect(parsed.metrics[0].metric_type).toBe('llm-judge');
+  });
+
+  it('parses YAML with no filename to sniff from', () => {
+    expect((parseEvalConfig(datasetYaml) as DatasetEvalSpec).dataset).toBe('ws-a/data#rows.jsonl');
+  });
+
+  it('keeps top-level keys it does not recognize instead of dropping them', () => {
+    const parsed = parseEvalConfig(
+      JSON.stringify({ ...(parseEvalConfig(datasetYaml) as object), field_mapping: { input: 'q' } })
+    ) as DatasetEvalSpec;
+    expect(parsed.field_mapping).toEqual({ input: 'q' });
+  });
+
+  it('accepts a dataset-driven config with no dataset or prompt_template', () => {
+    const parsed = parseEvalConfig(JSON.stringify({ metrics: [metric] })) as DatasetEvalSpec;
+    expect(isDatasetEvalSpec(parsed)).toBe(true);
+    expect(parsed.dataset).toBeUndefined();
+    expect(parsed.prompt_template).toBeUndefined();
+  });
+
+  it('rejects a dataset-driven config with no metrics', () => {
+    expect(() => parseEvalConfig(JSON.stringify({ dataset: 'a/b#c.jsonl' }))).toThrow(/metrics/);
+  });
+
+  it('reports the filename when the text parses as neither JSON nor YAML', () => {
+    expect(() => parseEvalConfig('{ nope: [', 'broken.yaml')).toThrow(/"broken\.yaml"/);
+  });
+
+  it('rejects a non-object document', () => {
+    expect(() => parseEvalConfig('- a\n- b', 'list.yaml')).toThrow(/top-level object/);
+  });
+});
+
+describe('applyDatasetEvalOverrides', () => {
+  const authored: DatasetEvalSpec = {
+    dataset: 'ws-a/authored#rows.jsonl',
+    prompt_template: '{{ item.authored }}',
+    metrics: [metric],
+  };
+
+  it('leaves a complete config untouched when every override is blank', () => {
+    const out = applyDatasetEvalOverrides(authored, {
+      dataset: undefined,
+      promptTemplate: '',
+      judgeModel: null,
+    });
+    expect(out.dataset).toBe('ws-a/authored#rows.jsonl');
+    expect(out.prompt_template).toBe('{{ item.authored }}');
+    expect(out.metrics[0].payload.metric.model).toBeUndefined();
+  });
+
+  it('replaces dataset, prompt template and judge model when supplied', () => {
+    const out = applyDatasetEvalOverrides(authored, {
+      dataset: 'ws-a/uploaded#new.jsonl',
+      promptTemplate: '{{ item.override }}',
+      judgeModel: 'ws-a/judge',
+    });
+    expect(out.dataset).toBe('ws-a/uploaded#new.jsonl');
+    expect(out.prompt_template).toBe('{{ item.override }}');
+    expect(out.metrics[0].payload.metric.model).toBe('ws-a/judge');
+  });
+
+  it('fills in a config that authored neither dataset nor prompt template', () => {
+    const out = applyDatasetEvalOverrides(
+      { metrics: [metric] },
+      { dataset: 'ws-a/up#d.jsonl', promptTemplate: '{{ item.q }}' }
+    );
+    expect(datasetEvalConfigError(out)).toBeNull();
+  });
+
+  it('treats a whitespace-only prompt template as unset', () => {
+    expect(applyDatasetEvalOverrides(authored, { promptTemplate: '   ' }).prompt_template).toBe(
+      '{{ item.authored }}'
+    );
+  });
+});
+
+describe('datasetEvalConfigError', () => {
+  it('names the missing dataset', () => {
+    expect(datasetEvalConfigError({ metrics: [metric], prompt_template: 'x' })).toMatch(/dataset/);
+  });
+
+  it('treats an empty inline dataset and a blank ref as missing', () => {
+    expect(datasetEvalConfigError({ metrics: [metric], dataset: [] })).toMatch(/dataset/);
+    expect(datasetEvalConfigError({ metrics: [metric], dataset: '  ' })).toMatch(/dataset/);
+  });
+
+  it('names the missing prompt template once a dataset is present', () => {
+    expect(datasetEvalConfigError({ metrics: [metric], dataset: 'a/b#c.jsonl' })).toMatch(
+      /prompt template/
+    );
+  });
+
+  it('passes a complete config', () => {
+    expect(
+      datasetEvalConfigError({ metrics: [metric], dataset: 'a/b#c.jsonl', prompt_template: 'x' })
+    ).toBeNull();
   });
 });

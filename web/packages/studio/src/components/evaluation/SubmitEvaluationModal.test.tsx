@@ -11,7 +11,7 @@ import { http, HttpResponse } from 'msw';
 const emptyPage = { data: [], pagination: { total: 0, page: 1, page_size: 100 } };
 
 describe('SubmitEvaluationModal', () => {
-  it('scopes the "Use existing evaluation" list to the current agent', async () => {
+  it('scopes the "Create from existing evaluation" list to the current agent', async () => {
     const evaluationsUrls: URL[] = [];
     server.use(
       http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', ({ request }) => {
@@ -39,7 +39,7 @@ describe('SubmitEvaluationModal', () => {
     });
 
     // The list query only fires in experiment mode; switch to it.
-    await user.click(await screen.findByRole('radio', { name: 'Use existing evaluation' }));
+    await user.click(await screen.findByRole('radio', { name: 'Create from existing evaluation' }));
 
     await waitFor(() => {
       const filtered = evaluationsUrls.find((u) => u.searchParams.has('filter[agent_name]'));
