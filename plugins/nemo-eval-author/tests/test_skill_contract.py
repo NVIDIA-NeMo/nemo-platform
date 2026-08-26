@@ -31,8 +31,8 @@ so a Harbor change that tightens a rule flows through without a test change here
 
 Nothing here imports the platform, for the same reason the bundled scripts do not:
 these skills are copied into someone else's repository and have to stand alone. The
-tests that make Harbor judge a fixture suite skip when Harbor is absent, so the whole
-file runs against nothing but pytest, PyYAML, and jsonschema.
+tests that execute Harbor-backed behavior skip when Harbor is absent, so the whole
+file still runs against nothing but pytest, PyYAML, and jsonschema.
 """
 
 import ast
@@ -89,11 +89,9 @@ _MAX_BODY_LINES = 500
 # reference to eval-author-discover cannot pass for a reference to eval-author.
 _CORE_REFERENCE = re.compile(rf"\b{re.escape(_CORE_DIR.name)}\b(?!-)")
 
-# Only the tests that make Harbor judge a fixture suite need Harbor. Skipping rather
-# than failing is what lets this file run wherever the skills themselves run.
-_needs_harbor = pytest.mark.skipif(
-    find_spec("harbor") is None, reason="Harbor is not installed, so it can judge nothing"
-)
+# Only tests that execute Harbor-backed behavior need Harbor. Skipping rather than
+# failing is what lets this file run wherever the skills themselves run.
+_needs_harbor = pytest.mark.skipif(find_spec("harbor") is None, reason="Harbor is not installed")
 
 # Root reads a mode-000 file regardless, so the failure these tests stage cannot
 # happen there and the tests would pass without proving anything.
@@ -438,7 +436,6 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
-        "scripts/audit_spec/_types.py",
         "scripts/audit_spec/measurements/tool_calls.py",
         "schemas/audit.schema.json",
         "schemas/audit_coverage.schema.json",
@@ -1265,6 +1262,7 @@ def test_audit_measure_rejects_non_atif_trace_without_writing(tmp_path: Path) ->
     assert not out_dir.exists()
 
 
+@_needs_harbor
 def test_audit_measure_rejects_unknown_measurement_method_before_trace_load(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     out_dir = tmp_path / ".eval-author" / "audit-measurements"
@@ -1324,7 +1322,7 @@ def test_no_bundled_directory_is_named_after_a_provider_package() -> None:
 
 
 def test_only_the_ladder_imports_harbor() -> None:
-    """Every other module must keep working when Harbor is absent."""
+    """Every other discover module must keep working when Harbor is absent."""
     assert "harbor" in _imported_roots(_LADDER), "the ladder is the Harbor boundary and must import Harbor"
     for path in _bundled_scripts(_DISCOVER_SCRIPTS_DIR):
         if path == _LADDER:
