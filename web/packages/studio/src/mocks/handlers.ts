@@ -532,9 +532,15 @@ export const handlers = [
   http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', ({ params }) =>
     HttpResponse.json(mockExperiment(String(params['name'])))
   ),
-  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
-    HttpResponse.json(mockEvaluationsPage())
-  ),
+  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', ({ request }) => {
+    const agentName = new URL(request.url).searchParams.get('filter[agent_name]');
+    const page = mockEvaluationsPage();
+    return HttpResponse.json(
+      agentName
+        ? { ...page, data: page.data.filter((e) => e.agent_names?.includes(agentName)) }
+        : page
+    );
+  }),
   http.get(
     '*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions',
     ({ request, params }) => {
