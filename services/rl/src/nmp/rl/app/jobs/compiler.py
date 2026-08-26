@@ -89,19 +89,6 @@ from nmp.rl.schemas import DPOTraining, GRPOTraining, RlJobOutput
 logger = logging.getLogger(__name__)
 
 
-def _sandbox_cluster_capable() -> bool:
-    """OpenSandbox is a cluster fact: prefer platform config, alias the RL key."""
-    if getattr(platform_config, "sandbox_cluster_capable", False):
-        return True
-    return bool(getattr(config, "sandbox_cluster_capable", False))
-
-
-def _sandbox_server_protocol() -> str | None:
-    if config.sandbox_server_protocol:
-        return config.sandbox_server_protocol
-    return getattr(platform_config, "sandbox_server_protocol", None) or None
-
-
 def _get_cpu_resources() -> ResourcesSpec:
     return ResourcesSpec(
         limits=ResourcesLimitsSpec(
@@ -294,7 +281,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
         raise PlatformJobCompilationError(f"Expected a GRPO training spec, got {type(t).__name__}.")
     p = t.parallelism
     sandboxed = config.sandboxed_gym_default
-    if sandboxed and not _sandbox_cluster_capable():
+    if sandboxed and not platform_config.sandbox_cluster_capable:
         raise PlatformJobCompilationError(
             "GRPO jobs with custom environment filesets require sandboxed Gym (platform default). "
             "OpenSandbox is not yet available on this cluster (sandbox_cluster_capable=false). "
@@ -329,7 +316,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             gym_runtime_image=config.gym_runtime_image or get_training_image(),
             allow_internet=config.sandbox_allow_internet,
             public_dns_allow=config.sandbox_public_dns_allow,
-            sandbox_server_protocol=_sandbox_server_protocol(),
+            sandbox_server_protocol=platform_config.sandbox_server_protocol,
             sandbox_resources=config.sandbox_resources,
             sandbox_ttl_s=config.sandbox_ttl_s,
             sandbox_rollout_chunk_size=config.sandbox_rollout_chunk_size,

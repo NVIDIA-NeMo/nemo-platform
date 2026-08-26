@@ -67,13 +67,11 @@ def test_sandbox_cluster_capable_wires_domain_protocol_and_secret() -> None:
     )
     config = _platform_config(documents)
     platform = config["platform"]
-    rl = config["rl"]
 
     assert platform["sandbox_cluster_capable"] is True
     assert platform["sandbox_server_domain"] == "opensandbox-server-kata.opensandbox-system.svc.cluster.local"
     assert platform["sandbox_server_protocol"] == "http"
     assert platform["sandbox_api_key_secret"] == "opensandbox-server-api-key"
     assert platform["sandbox_api_key_secret_key"] == "api-key"
-    assert rl["sandbox_cluster_capable"] is True
-    assert rl["sandbox_server_protocol"] == "http"
+    assert "sandbox_cluster_capable" not in config.get("rl", {})
     assert _has_opensandbox_deployment(documents) is False
