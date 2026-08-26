@@ -374,7 +374,7 @@ class TestFilesBasic:
                     path="non-existent-file.txt",
                     name=fileset.name,
                     workspace=fileset.workspace,
-                )
+                ).read()
                 assert False, "Should have raised NotFoundError for non-existent file"
             except NotFoundError:
                 pass  # Expected

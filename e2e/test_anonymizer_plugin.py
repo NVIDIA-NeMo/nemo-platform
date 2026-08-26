@@ -477,10 +477,14 @@ def test_mock_provider_chat_completion_works_through_minikube_ingress(
 def test_file_upload_round_trips_through_minikube_ingress(
     anonymizer_sdk: NeMoPlatform, anonymizer_fileset: str
 ) -> None:
-    content = client_from_platform(anonymizer_sdk, FilesClient).download_file(
-        name=anonymizer_fileset,
-        workspace=anonymizer_sdk.workspace,
-        path=CSV_REMOTE_PATH,
+    content = (
+        client_from_platform(anonymizer_sdk, FilesClient)
+        .download_file(
+            name=anonymizer_fileset,
+            workspace=anonymizer_sdk.workspace,
+            path=CSV_REMOTE_PATH,
+        )
+        .read()
     )
 
     assert content.decode("utf-8") == _input_csv()
