@@ -21,6 +21,16 @@ export interface RangeBandSeries {
   color?: string;
   /** Renders the center line dashed — use for baselines and targets. */
   dashed?: boolean;
+  /**
+   * Overrides the chart-level `showMarks`. The default drops marks past a few points, which is
+   * wrong for a sparse series bridged with `connectNulls` — nothing then shows the real samples.
+   */
+  showMarks?: boolean;
+  /**
+   * Bridges `null` gaps in the center line. Off by default, since a gap usually means "no data";
+   * turn it on for a series sampled more sparsely than the x axis, where the gaps are the axis's.
+   */
+  connectNulls?: boolean;
   /** Overrides the chart-level `bandOpacity` for this series. */
   bandOpacity?: number;
   /** Formats this series' values in the tooltip. Falls back to the chart-level formatter. */

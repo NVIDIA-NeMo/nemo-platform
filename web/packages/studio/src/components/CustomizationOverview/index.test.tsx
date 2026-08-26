@@ -3,19 +3,21 @@
 
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import { CustomizationOverview } from '@studio/components/CustomizationOverview';
-import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
+import {
+  customizationJob1,
+  grpoCustomizationJob,
+} from '@studio/mocks/customizer/customization-jobs';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { TestProviders } from '@studio/tests/util/TestProviders';
+import type { CustomizationJob } from '@studio/util/customizationBackend';
 import { getBaseModel } from '@studio/util/customizations';
 import { render, screen, waitForElementToBeRemoved } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
-const renderOverview = async () => {
+const renderOverview = async (job: CustomizationJob = customizationJob1) => {
   render(
     <TestProviders>
-      <CustomizationOverview
-        customizationJobName={customizationJob1.name!}
-        workspace={customizationJob1.workspace}
-      />
+      <CustomizationOverview customizationJobName={job.name!} workspace={job.workspace} />
     </TestProviders>
   );
   await waitForElementToBeRemoved(() => screen.queryByText('Loading...'), {
@@ -94,5 +96,109 @@ describe('CustomizationOverview', () => {
 
     expect(await screen.findByText('Run configuration')).toBeInTheDocument();
     expect(screen.queryByText('Status Logs')).not.toBeInTheDocument();
+  });
+});
+
+describe('CustomizationOverview — GRPO', () => {
+  it('reads on reward instead of loss', async () => {
+    await renderOverview(grpoCustomizationJob);
+
+    expect(await screen.findByText('Final Mean Reward')).toBeInTheDocument();
+    expect(screen.getByText('0.6170')).toBeInTheDocument();
+    expect(screen.getByText('+0.4370 from start')).toBeInTheDocument();
+
+    expect(screen.getByText('Validation Reward')).toBeInTheDocument();
+    expect(screen.getByText('0.5800')).toBeInTheDocument();
+    // The eval step survives alongside the delta — "at the last eval interval" is the point.
+    expect(screen.getByText('held-out prompts, step 500')).toBeInTheDocument();
+
+    expect(screen.getByText('Truncation Rate')).toBeInTheDocument();
+    expect(screen.getByText('4.1%')).toBeInTheDocument();
+  });
+
+  it('drops the loss tiles and the loss chart', async () => {
+    await renderOverview(grpoCustomizationJob);
+
+    expect(await screen.findByText('Reward')).toBeInTheDocument();
+    // Both curves reach the chart — the series would otherwise fall back to the empty frame.
+    expect(screen.getByRole('button', { name: 'Training reward' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Validation reward' })).toBeInTheDocument();
+    expect(screen.queryByText('No reward data available')).not.toBeInTheDocument();
+
+    expect(screen.queryByText('Training loss')).not.toBeInTheDocument();
+    expect(screen.queryByText('Final Training Loss')).not.toBeInTheDocument();
+    expect(screen.queryByText('Final Validation Loss')).not.toBeInTheDocument();
+    // Loss-derived, so it says nothing about a GRPO run.
+    expect(screen.queryByText('Train/Val Gap')).not.toBeInTheDocument();
+  });
+
+  it('keeps the training health diagnostics collapsed until asked for', async () => {
+    await renderOverview(grpoCustomizationJob);
+
+    expect(await screen.findByText('Training health')).toBeInTheDocument();
+    expect(screen.queryByText('train_gen_kl_error')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('Training health'));
+
+    expect(await screen.findByText('train_gen_kl_error')).toBeInTheDocument();
+    expect(screen.getByText('5.4e-4')).toBeInTheDocument();
+    expect(screen.getByText('train_approx_entropy')).toBeInTheDocument();
+    expect(screen.getByText('falling')).toBeInTheDocument();
+
+    // A ratio centred on 1 rendered as its deviation — 1.004 is 0.4% off-policy, not 100%.
+    expect(screen.getByText('train_token_mult_prob_error')).toBeInTheDocument();
+    expect(screen.getByText('0.4%')).toBeInTheDocument();
+
+    expect(screen.getByText('Generation KL')).toBeInTheDocument();
+    expect(screen.getByText('Policy entropy')).toBeInTheDocument();
+    expect(screen.getByText('Generated tokens per rollout')).toBeInTheDocument();
+    expect(screen.queryByText('No data to compare')).not.toBeInTheDocument();
+
+    // Drift keeps its tile but gets no chart, and `kl_penalty` — a flat zero under the default
+    // `ref_policy_kl_penalty=0` — is reported by the run but rendered nowhere.
+    expect(screen.queryByText('Rollout / training logprob drift')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reference KL penalty')).not.toBeInTheDocument();
+  });
+
+  it('still renders the shared run configuration', async () => {
+    await renderOverview(grpoCustomizationJob);
+
+    expect(await screen.findByText('Run configuration')).toBeInTheDocument();
+    expect(screen.getByText(grpoCustomizationJob.spec.output.name)).toBeInTheDocument();
+    expect(
+      screen.getByText('default/grpo-output-fileset/checkpoints/step-500')
+    ).toBeInTheDocument();
+
+    // `getBaseModel` returned '' for every RL job, so this row rendered blank.
+    expect(screen.getByText('qwen/qwen2.5-7b-instruct')).toBeInTheDocument();
+  });
+
+  it('adds the GRPO run configuration rows', async () => {
+    await renderOverview(grpoCustomizationJob);
+
+    expect(await screen.findByText('Environment')).toBeInTheDocument();
+    expect(screen.getByText('default/math-verifier-env')).toBeInTheDocument();
+
+    expect(screen.getByText('Prompt Dataset')).toBeInTheDocument();
+
+    expect(screen.getByText('Training Backend')).toBeInTheDocument();
+    expect(screen.getByText('DTensor · Full weights')).toBeInTheDocument();
+
+    expect(screen.getByText('Parallelism')).toBeInTheDocument();
+    expect(screen.getByText('TP 4 · PP 1 · CP 1')).toBeInTheDocument();
+
+    expect(screen.getByText('Generation')).toBeInTheDocument();
+    expect(screen.getByText('vLLM, colocated · TP 4')).toBeInTheDocument();
+
+    expect(screen.getByText('Sequence Packing')).toBeInTheDocument();
+    expect(screen.getByText('Disabled')).toBeInTheDocument();
+  });
+
+  it('leaves the GRPO rows off a non-GRPO job', async () => {
+    await renderOverview();
+
+    expect(await screen.findByText('Run configuration')).toBeInTheDocument();
+    expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+    expect(screen.queryByText('Training Backend')).not.toBeInTheDocument();
   });
 });
