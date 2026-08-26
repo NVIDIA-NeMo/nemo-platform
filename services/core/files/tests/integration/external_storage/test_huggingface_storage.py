@@ -217,18 +217,17 @@ class TestHuggingfaceStorageBackend:
             },
         ) as fileset:
             # First get full file to know its size
-            full_content = client_from_platform(sdk, FilesClient).download_file(
+            files = client_from_platform(sdk, FilesClient)
+            full_content = files.download_file(
                 name=fileset.name, workspace=fileset.workspace, path="config.json"
-            )
+            ).read()
 
             # Now request just the first 50 bytes using range header
-            # Note: Range requests require the private _download_file method for extra_headers
-            range_response = client_from_platform(sdk, FilesClient).download_file(
+            range_response = files.with_headers({"Range": "bytes=0-49"}).download_file(
                 name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
-
-            assert range_response.status_code == 206  # Partial Content
             range_content = range_response.read()
+            assert range_response.http_response.status_code == 206  # Partial Content
             assert len(range_content) == 50
             assert range_content == full_content[:50]
 
@@ -580,9 +579,10 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # First, do a full download to populate cache
-            full_content = client_from_platform(sdk, FilesClient).download_file(
+            files = client_from_platform(sdk, FilesClient)
+            full_content = files.download_file(
                 name=fileset.name, workspace=fileset.workspace, path="config.json"
-            )
+            ).read()
 
             # Verify file is in cache after first download
             # Format: cache/hf/{repo_id}/{commit_sha}/{path}
@@ -592,19 +592,18 @@ class TestHuggingfaceCaching:
             assert config_cached[0].size == len(full_content)
 
             # Now do a range request - should still work even though we have cache
-            # Note: Range requests require the private _download_file method for extra_headers
-            range_response = client_from_platform(sdk, FilesClient).download_file(
+            range_response = files.with_headers({"Range": "bytes=0-49"}).download_file(
                 name=fileset.name, workspace=fileset.workspace, path="config.json"
             )
-            assert range_response.status_code == 206  # Partial Content
             range_content = range_response.read()
+            assert range_response.http_response.status_code == 206  # Partial Content
             assert len(range_content) == 50
             assert range_content == full_content[:50]
 
             # Another full download should use cache
-            full_content2 = client_from_platform(sdk, FilesClient).download_file(
+            full_content2 = files.download_file(
                 name=fileset.name, workspace=fileset.workspace, path="config.json"
-            )
+            ).read()
             assert full_content2 == full_content
 
             # Cache should still have exactly one file (no duplicate from byte range)
@@ -810,16 +809,17 @@ class TestHuggingfaceHubClientCompatibility:
 
             assert len(config_only_paths) > 0, "Should have some config files"
 
-            # 3. Download to a nested path that doesn't exist yet
+            # 3. Download each config file to a nested path that doesn't exist yet
+            downloads = client_from_platform(sdk, FilesClient)
             download_dir = tmp_path / "nested" / "path" / "downloads"
             assert not download_dir.exists(), "Directory should not exist before download"
 
-            client_from_platform(sdk, FilesClient).download_file(
-                name=fileset.name,
-                workspace=fileset.workspace,
-                path=config_only_paths,
-                local_path=str(download_dir),
-            )
+            for path in config_only_paths:
+                dest = download_dir / path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(
+                    downloads.download_file(name=fileset.name, workspace=fileset.workspace, path=path).read()
+                )
 
             # 4. Verify directory was created and files were downloaded
             assert download_dir.exists(), "Directory should be created by download"

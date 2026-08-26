@@ -32,7 +32,7 @@ def fileset(files_client: FilesClient, workspace: str) -> Iterator[Fileset]:
         pass
 
 
-def test_file_upload_and_download(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
+def test_file_upload_download(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
     """Test uploading and downloading a file.
 
     This test verifies the files system works end-to-end:
@@ -41,35 +41,28 @@ def test_file_upload_and_download(sdk: NeMoPlatform, workspace: str, fileset: Fi
     """
     test_content = b"Hello from e2e test! This is test file content."
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create local file to upload
-        local_file = Path(tmpdir, "test.txt")
-        local_file.write_bytes(test_content)
+    # Upload file using high-level API
+    files = client_from_platform(sdk, FilesClient)
+    files.upload_file(
+        name=fileset.name,
+        workspace=workspace,
+        path="test.txt",
+        content=test_content,
+    )
 
-        # Upload file using high-level API
-        files = client_from_platform(sdk, FilesClient)
-        files.upload_file(
-            name=fileset.name,
-            workspace=workspace,
-            local_path=str(local_file),
-            path="test.txt",
-        )
+    # Verify file was uploaded
+    files_list = files.list_files(name=fileset.name, workspace=workspace).data().data
+    assert len(files_list) == 1
+    assert files_list[0].path == "test.txt"
+    assert files_list[0].size == len(test_content)
 
-        # Verify file was uploaded
-        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
-        assert len(files_list) == 1
-        assert files_list[0].path == "test.txt"
-        assert files_list[0].size == len(test_content)
-
-        # Download file and verify content
-        download_path = Path(tmpdir, "downloaded.txt")
-        files.download_file(
-            name=fileset.name,
-            workspace=workspace,
-            path="test.txt",
-            local_path=str(download_path),
-        )
-        assert download_path.read_bytes() == test_content
+    # Download file and verify content
+    downloaded = files.download_file(
+        name=fileset.name,
+        workspace=workspace,
+        path="test.txt",
+    ).read()
+    assert downloaded == test_content
 
 
 def test_file_list_cache_status_for_default_storage(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
@@ -84,15 +77,19 @@ def test_file_list_cache_status_for_default_storage(sdk: NeMoPlatform, workspace
     )
 
     files = client_from_platform(sdk, FilesClient)
-    files_without_cache_check = files.list_files(name=fileset.name, workspace=workspace).data()
+    files_without_cache_check = files.list_files(name=fileset.name, workspace=workspace).data().data
     assert len(files_without_cache_check) == 1
     assert files_without_cache_check[0].cache_status == "not_cacheable"
 
-    files_with_cache_check = files.list_files(
-        name=fileset.name,
-        workspace=workspace,
-        query_params=ListFilesQueryParams(include_cache_status=True),
-    ).data()
+    files_with_cache_check = (
+        files.list_files(
+            name=fileset.name,
+            workspace=workspace,
+            query_params=ListFilesQueryParams(include_cache_status=True),
+        )
+        .data()
+        .data
+    )
     assert len(files_with_cache_check) == 1
     assert files_with_cache_check[0].cache_status == "not_cacheable"
 
@@ -106,34 +103,27 @@ def test_file_upload_nested_path(sdk: NeMoPlatform, workspace: str, fileset: Fil
     test_content = b"Nested file content"
     test_path = "folder/subfolder/nested.txt"
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create local file to upload
-        local_file = Path(tmpdir, "nested.txt")
-        local_file.write_bytes(test_content)
+    # Upload file to nested path
+    files = client_from_platform(sdk, FilesClient)
+    files.upload_file(
+        name=fileset.name,
+        workspace=workspace,
+        path=test_path,
+        content=test_content,
+    )
 
-        # Upload file to nested path
-        files = client_from_platform(sdk, FilesClient)
-        files.upload_file(
-            name=fileset.name,
-            workspace=workspace,
-            local_path=str(local_file),
-            path=test_path,
-        )
+    # List files and verify the nested file appears
+    files_list = files.list_files(name=fileset.name, workspace=workspace).data().data
+    file_paths = {f.path for f in files_list}
+    assert test_path in file_paths
 
-        # List files and verify the nested file appears
-        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
-        file_paths = {f.path for f in files_list}
-        assert test_path in file_paths
-
-        # Download and verify
-        download_path = Path(tmpdir, "downloaded.txt")
-        files.download_file(
-            name=fileset.name,
-            workspace=workspace,
-            path=test_path,
-            local_path=str(download_path),
-        )
-        assert download_path.read_bytes() == test_content
+    # Download and verify
+    downloaded = files.download_file(
+        name=fileset.name,
+        workspace=workspace,
+        path=test_path,
+    ).read()
+    assert downloaded == test_content
 
 
 def test_file_delete(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
@@ -145,76 +135,66 @@ def test_file_delete(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
     test_content = b"File to be deleted"
     test_path = "delete-me.txt"
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create local file to upload
-        local_file = Path(tmpdir, "delete-me.txt")
-        local_file.write_bytes(test_content)
+    # Upload file
+    files = client_from_platform(sdk, FilesClient)
+    files.upload_file(
+        name=fileset.name,
+        workspace=workspace,
+        path=test_path,
+        content=test_content,
+    )
 
-        # Upload file
-        files = client_from_platform(sdk, FilesClient)
-        files.upload_file(
-            name=fileset.name,
-            workspace=workspace,
-            local_path=str(local_file),
-            path=test_path,
-        )
+    # Verify file exists by listing
+    files_list = files.list_files(name=fileset.name, workspace=workspace).data().data
+    assert any(f.path == test_path for f in files_list)
 
-        # Verify file exists by listing
-        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
-        assert any(f.path == test_path for f in files_list)
+    # Delete file
+    files.delete_file(
+        name=fileset.name,
+        workspace=workspace,
+        path=test_path,
+    )
 
-        # Delete file
-        files.delete_file(
-            name=fileset.name,
-            workspace=workspace,
-            path=test_path,
-        )
-
-        # Verify file is gone
-        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
-        assert not any(f.path == test_path for f in files_list)
+    # Verify file is gone
+    files_list = files.list_files(name=fileset.name, workspace=workspace).data().data
+    assert not any(f.path == test_path for f in files_list)
 
 
 def test_directory_upload_and_download(sdk: NeMoPlatform, workspace: str, fileset: Fileset):
     """Test uploading and downloading a directory.
 
-    Verifies that entire directories can be uploaded and downloaded
-    with their structure preserved.
+    Verifies that directory contents can be uploaded and downloaded
+    with their relative structure preserved.
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create directory structure to upload
-        upload_dir = Path(tmpdir, "upload")
-        upload_dir.mkdir()
-        (upload_dir / "file1.txt").write_text("content1")
-        (upload_dir / "file2.txt").write_text("content2")
-        subdir = upload_dir / "subdir"
-        subdir.mkdir()
-        (subdir / "file3.txt").write_text("content3")
+    test_files = {
+        "file1.txt": b"content1",
+        "file2.txt": b"content2",
+        "subdir/file3.txt": b"content3",
+    }
 
-        # Upload entire directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Upload each file, preserving its relative path
         files = client_from_platform(sdk, FilesClient)
-        files.upload_file(
-            name=fileset.name,
-            workspace=workspace,
-            local_path=f"{upload_dir}/",
-            path="",
-        )
+        for remote_path, content in test_files.items():
+            files.upload_file(
+                name=fileset.name,
+                workspace=workspace,
+                path=remote_path,
+                content=content,
+            )
 
         # Verify all files were uploaded
-        files_list = files.list_files(name=fileset.name, workspace=workspace).data()
+        files_list = files.list_files(name=fileset.name, workspace=workspace).data().data
         paths = {f.path for f in files_list}
-        assert paths == {"file1.txt", "file2.txt", "subdir/file3.txt"}
+        assert paths == set(test_files)
 
-        # Download entire fileset
-        download_dir = Path(tmpdir, "download")
-        download_dir.mkdir()
-        files.download_file(
-            name=fileset.name,
-            workspace=workspace,
-            local_path=f"{download_dir}/",
-        )
+        # Download each file, preserving its relative path
+        download_root = Path(tmpdir, "download")
+        for entry in files_list:
+            dest = download_root / entry.path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(files.download_file(name=fileset.name, workspace=workspace, path=entry.path).read())
 
         # Verify downloaded content matches
-        assert (download_dir / "file1.txt").read_text() == "content1"
-        assert (download_dir / "file2.txt").read_text() == "content2"
-        assert (download_dir / "subdir" / "file3.txt").read_text() == "content3"
+        for remote_path, content in test_files.items():
+            assert (download_root / remote_path).read_bytes() == content
