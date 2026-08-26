@@ -23,9 +23,8 @@ These tests are that enforcement:
   would be importable as ``harbor``, which makes ``find_spec`` succeed on a
   machine with no Harbor and the probe claim an install that is not there.
 - Discovery reports a valid suite runnable and names the rung a broken one fails.
-- The bundled scripts write no files. ``SKILL.md`` tells the agent where to save
-  the report, because where a file belongs in someone's repository is a judgement
-  rather than a fact about their evals.
+- Discovery scripts write no files, and audit generation writes only the requested
+  audit output under ``.eval-author/``.
 
 These tests compare the skill against this repository, never against Harbor's
 rules. The skill reimplements no Harbor rule: it asks Harbor for every verdict,
@@ -65,6 +64,7 @@ _SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
+_AUDIT_GENERATE = _AUDIT_SPEC_DIR / "generate.py"
 _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 
@@ -179,6 +179,54 @@ def _digest(path: Path) -> str:
         return f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
 
 
+def _audit_payload(path: Path) -> dict:
+    block = re.search(
+        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
+        r"<!-- END:nemo-eval-author-audit:v1 -->",
+        path.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None
+    return yaml.safe_load(block.group("body"))
+
+
+def _assert_literal_block_scalar(text: str, field: str, first_line: str) -> None:
+    pattern = rf"(?:^|\n)(?:\s*-\s+|\s+){re.escape(field)}: \|[-+]?\n\s+{re.escape(first_line)}"
+    assert re.search(pattern, text), text
+
+
+def _template_payload() -> dict:
+    block = re.search(
+        r"<!-- BEGIN:nemo-eval-author-audit:v1 -->\s*```yaml\n(?P<body>.*?)\n```\s*"
+        r"<!-- END:nemo-eval-author-audit:v1 -->",
+        _AUDIT_TEMPLATE.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None
+    return yaml.safe_load(block.group("body"))
+
+
+def _write_audit_items(path: Path, items: list[dict]) -> None:
+    path.write_text(yaml.safe_dump({"items": items}), encoding="utf-8")
+
+
+def _ticket_tool_item() -> dict:
+    return {
+        "kind": "tool",
+        "name": "ticket.create",
+        "description": "Creates a support ticket for issues requiring human follow-up.",
+        "expected_use": "Used when self-service resolution cannot proceed.",
+        "expected_failure_behavior": "If ticket creation fails, the agent explains the failure and avoids duplicates.",
+        "evidence_required": [
+            {
+                "kind": "tool_call",
+                "tool": "ticket.create",
+                "description": "Trace shows a ticket.create call for an escalation.",
+            }
+        ],
+    }
+
+
 def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) -> Path:
     ethos = tmp_path / "ETHOS.md"
     ethos.write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n", encoding="utf-8")
@@ -194,6 +242,11 @@ def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) 
         text = transform(text)
     audit.write_text(text, encoding="utf-8")
     return audit
+
+
+def _run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a bundled script and return the completed process."""
+    return subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
 
 
 def _write_task(task_dir: Path, *, name: str = "smoke/generated") -> None:
@@ -263,9 +316,9 @@ def test_frontmatter_carries_every_required_field(skill_dir: Path) -> None:
 def test_no_skill_can_edit_what_it_did_not_write(skill_dir: Path) -> None:
     """Eval Author creates its own report and changes nothing that was already there.
 
-    ``Write`` covers the discovery report, which is the one artifact a sub-flow
-    leaves behind. ``Edit`` would let it rewrite files that predate it, which is the
-    permission customers declined to grant and the reason these ship as skills.
+    ``Write`` covers sub-flow artifacts under ``.eval-author/``. ``Edit`` would let
+    it rewrite files that predate it, which is the permission customers declined to
+    grant and the reason these ship as skills.
     """
     frontmatter, _ = _frontmatter_and_body(skill_dir)
     tools = set(frontmatter["allowed-tools"])
@@ -285,8 +338,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     assert {"Bash", "Write"} <= discover_tools, (
         f"{_DISCOVER_DIR.name} runs a script and saves a report; it has {sorted(discover_tools)}"
     )
-    assert "Bash" in audit_tools, f"{_AUDIT_DIR.name} runs a validation script; it has {sorted(audit_tools)}"
-    assert "Write" not in audit_tools, f"{_AUDIT_DIR.name} validates only; {sorted(audit_tools)} is too broad"
+    assert {"Bash", "Write"} <= audit_tools, (
+        f"{_AUDIT_DIR.name} generates and validates audit files; it has {sorted(audit_tools)}"
+    )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
     )
@@ -396,6 +450,7 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
 def test_every_audit_spec_path_the_skill_names_exists() -> None:
     _, body = _frontmatter_and_body(_AUDIT_DIR)
     for relative in (
+        "scripts/audit_spec/generate.py",
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
@@ -404,6 +459,38 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
         assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_audit_skill_reads_schema_before_drafting_items() -> None:
+    """The schema should guide authoring, not emerge from validator retries."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    step_one = body.split("## Step 2:", 1)[0]
+    normalized_step = re.sub(r"\s+", " ", step_one)
+
+    assert "Before drafting or updating" in step_one
+    assert "templates/audit.md" in step_one
+    assert "schemas/audit.schema.json" in step_one
+    assert "Do not use validation as the primary way to discover the format" in normalized_step
+
+
+def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:
+    """Tool names should match traces, not plausible aliases from prose."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    step_one = body.split("## Step 2:", 1)[0]
+    normalized_step = re.sub(r"\s+", " ", step_one)
+
+    assert "actual runtime traces or tool registry" in normalized_step
+    assert "eval-specific tools" in normalized_step
+    assert "Do not invent tool names that will not appear in the measurement surface" in normalized_step
+
+
+def test_audit_skill_runs_audit_scripts_through_uv() -> None:
+    """Documented script commands should use the repository Python environment."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+
+    assert "python <skill_dir>/scripts/audit_spec/" not in body
+    assert body.count("uv run <skill_dir>/scripts/audit_spec/generate.py") == 4
+    assert "uv run <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md" in body
 
 
 def test_audit_json_schema_is_valid() -> None:
@@ -742,6 +829,364 @@ def test_audit_validation_rejects_prefixed_yaml_fence(tmp_path: Path) -> None:
     assert code == 1
     assert report["valid"] is False
     assert "must contain one fenced yaml block" in report["error"]
+
+
+def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text(
+        "---\nname: support-agent\ncreated_timestamp: '2026-08-25T00:00:00+00:00'\nauthor: tester\n---\n"
+        "\n# Ethos: support-agent\n",
+        encoding="utf-8",
+    )
+    items = tmp_path / "items.yaml"
+    items_payload = _template_payload()["items"]
+    items_payload[0]["expected_use"] = (
+        "Used when account-specific information is required.\nDo not use for unrelated billing questions."
+    )
+    _write_audit_items(items, items_payload)
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    result = _run_script(_AUDIT_GENERATE, "--ethos", str(ethos), "--items", str(items), "--out", str(out))
+    assert result.returncode == 0, result.stderr
+    code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(out))
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(out)
+    text = out.read_text(encoding="utf-8")
+
+    assert code == 0, stderr or report
+    assert summary["mode"] == "reconcile"
+    assert summary["action"] == "create"
+    assert summary["items_mode"] == "partial"
+    assert summary["written"] is True
+    assert summary["conflicting_items"] == []
+    assert summary["conflicting_items_applied"] is True
+    assert report["agent"] == "support-agent"
+    assert payload["sources"] == [{"name": "ethos", "path": "../ETHOS.md", "sha256": _digest(ethos)}]
+    assert "source_ethos" not in payload
+    assert "source_ethos_sha256" not in payload
+    _assert_literal_block_scalar(text, "description", "Looks up customer profile, plan, account status")
+    _assert_literal_block_scalar(text, "expected_use", "Used when account-specific information is required.")
+    _assert_literal_block_scalar(
+        text,
+        "expected_behavior",
+        "The agent grounds recovery in customer identity and routes to an approved recovery path.",
+    )
+
+
+def test_audit_generate_rejects_outputs_outside_eval_author(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / "README.md"
+    out.write_text("customer source must stay intact\n", encoding="utf-8")
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(ethos),
+        "--items",
+        str(items),
+        "--out",
+        str(out),
+        "--mode",
+        "replace",
+    )
+
+    assert result.returncode == 1
+    assert "--out must resolve inside a .eval-author/ directory" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert out.read_text(encoding="utf-8") == "customer source must stay intact\n"
+
+
+def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    del items_payload[0]["name"]
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 1
+    assert "name" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert audit.read_bytes() == before
+
+
+def test_audit_generate_rejects_duplicate_candidate_names_before_reconcile(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    duplicate = dict(items_payload[0])
+    duplicate["expected_use"] = "Different proposal for the existing tool."
+    items_payload.append(duplicate)
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 1
+    assert "duplicated" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert audit.read_bytes() == before
+
+
+def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: (
+            "Manual reviewer notes must stay outside the block.\n\n"
+            + text.replace(
+                "Looks up customer profile, plan, account status, and contact details.",
+                "Hand reviewed lookup tool description.",
+                1,
+            )
+            + "\nManual footer must stay too.\n"
+        ),
+    )
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items_payload = _template_payload()["items"]
+    items_payload.append(_ticket_tool_item())
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+    text = audit.read_text(encoding="utf-8")
+    items_by_name = {item["name"]: item for item in payload["items"]}
+
+    assert summary["action"] == "reconcile"
+    assert summary["written"] is True
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["conflicting_items"] == ["customer.lookup"]
+    assert summary["conflicting_items_applied"] is False
+    assert summary["possibly_stale_items"] == []
+    assert payload["sources"][0]["sha256"] == _digest(tmp_path / "ETHOS.md")
+    assert items_by_name["customer.lookup"]["description"] == "Hand reviewed lookup tool description.\n"
+    assert items_by_name["ticket.create"]["kind"] == "tool"
+    assert "Manual reviewer notes must stay outside the block." in text
+    assert "Manual footer must stay too." in text
+    _assert_literal_block_scalar(text, "description", "Hand reviewed lookup tool description.")
+
+
+def test_audit_generate_suggests_without_writing(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    items_payload.append(_ticket_tool_item())
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+        "--mode",
+        "suggest",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    assert audit.read_bytes() == before
+    assert summary["action"] == "suggest_reconcile"
+    assert summary["written"] is False
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["conflicting_items"] == []
+    assert summary["possibly_stale_items"] == []
+
+
+def test_audit_generate_partial_update_does_not_report_stale_items(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, [_ticket_tool_item()])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+
+    assert summary["items_mode"] == "partial"
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["possibly_stale_items"] == []
+    assert {item["name"] for item in payload["items"]} == {
+        "customer.lookup",
+        "account_recovery",
+        "account_recovery_unverified_identity",
+        "ticket.create",
+    }
+
+
+def test_audit_generate_full_items_mode_reports_stale_items(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, [_ticket_tool_item()])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+        "--items-mode",
+        "full",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+
+    assert summary["items_mode"] == "full"
+    assert summary["added_items"] == ["ticket.create"]
+    assert summary["possibly_stale_items"] == [
+        "customer.lookup",
+        "account_recovery",
+        "account_recovery_unverified_identity",
+    ]
+
+
+def test_audit_generate_demotes_approved_audit_when_reconcile_adds_items(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, lambda text: text.replace("status: draft\n", "status: approved\n", 1))
+    (tmp_path / "ETHOS.md").write_text("# Ethos\n\n## Tools\n\n- customer.lookup\n- ticket.create\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, [_ticket_tool_item()])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+
+    assert summary["status"] == "draft"
+    assert payload["status"] == "draft"
+
+
+def test_audit_generate_preserves_existing_agent_unless_explicit(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    (tmp_path / "ETHOS.md").write_text("---\nname: other-agent\n---\n# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+
+    assert payload["agent"] == "example-agent"
+    assert summary["agent"] == "example-agent"
+    assert summary["agent_change"] == {"from": "example-agent", "to": "other-agent", "applied": False}
+
+
+def test_audit_generate_replace_mode_overwrites_existing_audit(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: (
+            "Manual reviewer notes should be discarded by replace mode.\n\n"
+            + text.replace(
+                "Looks up customer profile, plan, account status, and contact details.",
+                "Hand reviewed lookup tool description.",
+                1,
+            )
+        ),
+    )
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+        "--agent",
+        "example-agent",
+        "--mode",
+        "replace",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    payload = _audit_payload(audit)
+    text = audit.read_text(encoding="utf-8")
+    items_by_name = {item["name"]: item for item in payload["items"]}
+
+    assert summary["action"] == "replace"
+    assert summary["written"] is True
+    assert "Manual reviewer notes should be discarded by replace mode." not in text
+    assert items_by_name["customer.lookup"]["description"].startswith("Looks up customer profile")
 
 
 def test_bundled_scripts_never_import_the_platform() -> None:
