@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # ConfigMap mounted by opensandbox-server-kata.
-# Pins BatchSandbox pods onto kata-deploy-labeled H100 nodes.
-# RuntimeClass/kata-qemu already carries the same scheduling.nodeSelector;
-# repeating it here fails faster and keeps labels visible on the CR.
+# Pins BatchSandbox pods onto nodes kata-deploy labeled.
+# RuntimeClass/kata-qemu already carries katacontainers.io/kata-runtime;
+# repeating it here fails faster and keeps the label visible on the CR.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -28,13 +28,14 @@ data:
           # Sandbox pods are built from this template by the OpenSandbox server
           # not by the jobs controller, so neither the jobs controller's
           # image_pull_secrets nor the chart's top-level imagePullSecrets reaches them.
-          # The Secret must exist in the sandbox namespace.
+          # This name is required as written. If your pull Secret is named
+          # differently, change it here before kubectl apply. The Secret must
+          # exist in the sandbox / job namespace.
           imagePullSecrets:
             - name: nvcrimagepullsecret
-          # Must match RuntimeClass/kata-qemu scheduling.nodeSelector on nemo-dev-blue.
+          # Schedule onto nodes kata-deploy labeled. Replace or extend this
+          # if you pin sandboxes with a custom KVM label as well.
           nodeSelector:
             katacontainers.io/kata-runtime: "true"
-            node.kubernetes.io/instance-type: BM.GPU.H100.8
-            feature.node.kubernetes.io/cpu-cpuid.VMX: "true"
           tolerations:
             - operator: Exists

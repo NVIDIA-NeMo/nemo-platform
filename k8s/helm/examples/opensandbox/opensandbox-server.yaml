@@ -1,16 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# OpenSandbox server — shared-kernel / crun profile for nemo-dev-blue.
+# OpenSandbox server — shared-kernel profile (cluster default OCI runtime).
+# The chart does not install this release. Pass the file to the upstream
+# opensandbox-server chart: helm upgrade --install ... -f this file.
 #
-# OpenSandbox [secure_runtime] is server-global, so crun and kata-qemu each get
-# their own Helm release. This release leaves secure_runtime unset so pods use
-# the cluster default OCI runtime (crun under cri-o).
+# OpenSandbox [secure_runtime] is server-global, so shared-kernel and kata-qemu
+# each get their own Helm release. This release leaves secure_runtime unset so
+# pods use the cluster default OCI runtime.
 #
-# API key comes from Secret opensandbox-server-crun-api-key (key: api-key),
+# API key comes from Secret opensandbox-server-api-key (key: api-key),
 # injected as OPENSANDBOX_SERVER_API_KEY (overrides any TOML api_key).
 
-fullnameOverride: opensandbox-server-crun
+fullnameOverride: opensandbox-server
 
 server:
   replicaCount: 1
@@ -22,7 +24,7 @@ server:
     - name: OPENSANDBOX_SERVER_API_KEY
       valueFrom:
         secretKeyRef:
-          name: opensandbox-server-crun-api-key
+          name: opensandbox-server-api-key
           key: api-key
 
   resources:
@@ -43,16 +45,16 @@ server:
                 operator: NotIn
                 values: ["true"]
 
-  # Mount the crun BatchSandbox template ConfigMap.
+  # Mount the shared-kernel BatchSandbox template ConfigMap.
   volumeMounts:
     - name: batchsandbox-template
-      mountPath: /etc/opensandbox/batchsandbox-template-crun.yaml
+      mountPath: /etc/opensandbox/batchsandbox-template.yaml
       subPath: batchsandbox-template.yaml
       readOnly: true
   volumes:
     - name: batchsandbox-template
       configMap:
-        name: opensandbox-batchsandbox-template-crun
+        name: opensandbox-batchsandbox-template
 
   # In-cluster clients use the Service + use_server_proxy; gateway optional.
   gateway:
@@ -78,9 +80,10 @@ configToml: |
 
   [kubernetes]
   kubeconfig_path = ""
-  # Sandboxes land in the NMP temp workspace NS (shared with kata profile).
-  # Isolation is via absent [secure_runtime] + template labels, not a separate NS.
-  namespace = "nmp-temp1"
+  # MUST be the same namespace the platform jobs run in (Helm release namespace).
+  # PVC remounts and image-pull secrets fail across namespaces.
+  # Replace with your NeMo Platform release namespace before installing.
+  namespace = "REPLACE_WITH_RELEASE_NAMESPACE"
   informer_enabled = true
   informer_resync_seconds = 300
   informer_watch_timeout_seconds = 60
@@ -90,7 +93,7 @@ configToml: |
   sandbox_create_timeout_seconds = 900
   workload_provider = "batchsandbox"
   image_pull_policy = "IfNotPresent"
-  batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template-crun.yaml"
+  batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template.yaml"
 
   [egress]
   image = "docker.io/opensandbox/egress:v1.1.4"
@@ -98,4 +101,4 @@ configToml: |
   # Prefer dual-stack deny rules over privileged IPv6-disable init.
   disable_ipv6 = false
 
-  # Intentionally NO [secure_runtime] — shared-kernel / crun.
+  # Intentionally NO [secure_runtime] — shared-kernel / cluster default OCI runtime.

@@ -75,7 +75,7 @@ from nmp.rl.app.jobs.training.schemas import (
     TrainingStepConfig,
     WandBConfig,
 )
-from nmp.rl.config import config
+from nmp.rl.config import config, platform_config
 from nmp.rl.entities.values import FinetuningType, TrainingType
 from nmp.rl.images import (
     FILE_IO_TASK_COMMAND,
@@ -281,12 +281,12 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
         raise PlatformJobCompilationError(f"Expected a GRPO training spec, got {type(t).__name__}.")
     p = t.parallelism
     sandboxed = config.sandboxed_gym_default
-    if sandboxed and not config.sandbox_cluster_capable:
+    if sandboxed and not platform_config.sandbox_cluster_capable:
         raise PlatformJobCompilationError(
             "GRPO jobs with custom environment filesets require sandboxed Gym (platform default). "
             "OpenSandbox is not yet available on this cluster (sandbox_cluster_capable=false). "
-            "Set NMP_RL_SANDBOX_CLUSTER_CAPABLE=true once OpenSandbox is installed, or "
-            "NMP_RL_SANDBOXED_GYM_DEFAULT=false for trusted dev smoke tests only."
+            "Set sandboxClusterCapable=true (platform.sandbox_cluster_capable) once OpenSandbox "
+            "is installed, or NMP_RL_SANDBOXED_GYM_DEFAULT=false for trusted dev smoke tests only."
         )
     # The Gym host mounts the job-storage claim itself to read the environment and
     # dataset, and the training container only ever learns the storage *path*. Without
@@ -316,7 +316,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             gym_runtime_image=config.gym_runtime_image or get_training_image(),
             allow_internet=config.sandbox_allow_internet,
             public_dns_allow=config.sandbox_public_dns_allow,
-            sandbox_server_protocol=config.sandbox_server_protocol,
+            sandbox_server_protocol=platform_config.sandbox_server_protocol,
             sandbox_resources=config.sandbox_resources,
             sandbox_ttl_s=config.sandbox_ttl_s,
             sandbox_rollout_chunk_size=config.sandbox_rollout_chunk_size,

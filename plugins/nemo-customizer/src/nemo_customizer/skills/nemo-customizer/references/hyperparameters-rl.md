@@ -62,7 +62,7 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 
 - `environment` is **required** for GRPO (adapter-wheels-v1 FileSet).
 - `dataset` is Gym JSONL (`training.jsonl` required; not DPO preference triples).
-- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is capable (`NMP_RL_SANDBOX_CLUSTER_CAPABLE=true`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are compile-time checks.
+- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is capable (`NMP_PLATFORM_SANDBOX_CLUSTER_CAPABLE=true`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are compile-time checks.
 
 ## Field reference — shared training knobs
 

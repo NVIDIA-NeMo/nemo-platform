@@ -119,6 +119,35 @@ See the upstream
 and
 [OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
 
+## Kyverno
+
+The chart does not install Kyverno. Multi-node NCCL device injection renders
+ClusterPolicies that Kyverno must apply. Enable exactly one cloud provider
+under `multinodeNetworking`.
+How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/multinode-networking
+
+## Volcano
+
+The chart does not install Volcano. Multi-node `volcano_job` workloads need it.
+`rbac.volcanoEnabled` defaults to true so the core controller can manage Volcano
+CRs. Skip Volcano and set `rbac.volcanoEnabled: false` if you are not running
+those jobs.
+How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/volcano
+
+## OpenSandbox
+
+The chart does not install OpenSandbox. Sandboxed GRPO / NeMo Gym talks to an
+already installed server as an HTTP client (`OPEN_SANDBOX_DOMAIN`,
+`OPEN_SANDBOX_API_KEY`). Gym sample YAML uses `OPENSANDBOX_*`; do not mix names.
+
+`[kubernetes] namespace` in the server TOML **must be the Helm release
+namespace**. Control plane may stay in `opensandbox-system`. Copy the API-key
+Secret into the job namespace.
+
+Example overlays: [examples/opensandbox](examples/opensandbox).
+Shared-kernel (cluster default OCI runtime): https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox
+Kata QEMU: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata
+
 ## NetworkPolicies
 
 The chart can render NetworkPolicy resources for the Platform API, core
