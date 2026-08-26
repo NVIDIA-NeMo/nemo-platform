@@ -410,6 +410,17 @@ def test_audit_skill_reads_schema_before_drafting_items() -> None:
     assert "Do not use validation as the primary way to discover the format" in normalized_step
 
 
+def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:
+    """Tool names should match traces, not plausible aliases from prose."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    step_one = body.split("## Step 2:", 1)[0]
+    normalized_step = re.sub(r"\s+", " ", step_one)
+
+    assert "actual runtime traces or tool registry" in normalized_step
+    assert "eval-specific tools" in normalized_step
+    assert "Do not invent tool names that will not appear in the measurement surface" in normalized_step
+
+
 def test_audit_json_schema_is_valid() -> None:
     from jsonschema import Draft202012Validator
 

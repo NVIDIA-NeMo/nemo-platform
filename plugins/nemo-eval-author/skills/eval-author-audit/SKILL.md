@@ -79,6 +79,13 @@ tasks: canonical tools, high-level capabilities, and material failure cases. Kee
 the list finite. Do not create separate items for prompt paraphrases, fixture
 variants, or ordinary happy-path permutations.
 
+For `tool` items, use the names that appear in the actual runtime traces or tool
+registry, including eval-specific tools that may be more precise than product
+tools named in Ethos prose. If Ethos describes a generic tool such as `sqlite`
+but measurement traces expose `execute_sql` and `submit_sql`, declare the
+runtime tool names and connect capabilities or failure cases to those names.
+Do not invent tool names that will not appear in the measurement surface.
+
 Save the reviewed item proposals as `.eval-author/audit-items.yaml`. The items
 file may be either a mapping with an `items` key or the item list itself. It
 should use the same item shape shown in `templates/audit.md` and enforced by
