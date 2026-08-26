@@ -36,6 +36,22 @@ def test_local_file_source_lists_sorted_with_sizes(tmp_path):
     assert all(e.size_bytes > 0 for e in entries)
 
 
+def test_local_file_source_skips_symlinks_out_of_the_root(tmp_path):
+    # `is_file()` resolves a symlink and `open` follows it, so a link planted inside the root would
+    # otherwise be read and its column names would reach the profile. A symlinked *directory* is
+    # already excluded, because `rglob` declines to descend into one.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.jsonl").write_text('{"leaked": 1}\n')
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "train.jsonl").write_text('{"a": 1}\n')
+    (root / "escape.jsonl").symlink_to(outside / "secret.jsonl")
+    (root / "escape_dir").symlink_to(outside, target_is_directory=True)
+
+    assert [e.path for e in LocalFileSource(root).list_files()] == ["train.jsonl"]
+
+
 def test_local_file_source_open_reads_bytes(tmp_path):
     (tmp_path / "f.jsonl").write_text('{"x": 1}\n')
     with LocalFileSource(tmp_path).open("f.jsonl") as stream:

@@ -44,10 +44,14 @@ class LocalFileSource:
             raise NotADirectoryError(f"{self._root} is not a directory")
 
     def list_files(self) -> list[FileEntry]:
+        # Symlinks are skipped rather than followed. `is_file()` resolves them and `open` follows
+        # them, so a link planted inside the root reads a file outside it, and its column names reach
+        # the profile. `rglob` already declines to descend into a symlinked directory, so this covers
+        # the rest. A root that legitimately contains links is not a case the profiler needs to serve.
         entries = [
             FileEntry(path=path.relative_to(self._root).as_posix(), size_bytes=path.stat().st_size)
             for path in sorted(self._root.rglob("*"))
-            if path.is_file()
+            if path.is_file() and not path.is_symlink()
         ]
         return entries
 
