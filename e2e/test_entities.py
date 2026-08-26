@@ -166,6 +166,7 @@ def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, 
             body=EntityCreateInput(
                 name=entity_name,
                 data={"project_data": "value"},
+                project=project_name,
             ),
         ).data()
         assert entity.name == entity_name
