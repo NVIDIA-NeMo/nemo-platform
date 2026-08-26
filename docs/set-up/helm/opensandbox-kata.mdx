@@ -11,7 +11,7 @@ Use this path when **sandboxed GRPO / NeMo Gym** sandbox pods must run in a Kata
 
 Complete the OpenSandbox namespace, Secret, and platform-values steps first; this page only adds virtualization prerequisites and the Kata server overlay.
 
-OpenSandbox `[secure_runtime]` is **server-global**: one server process cannot mix shared-kernel and Kata. That does not remove runc/crun from the cluster. For production, install **one** OpenSandbox server and set `opensandbox.domain` to that Service.
+OpenSandbox `[secure_runtime]` is **server-global**: one server process cannot mix shared-kernel and Kata. Kata is added as an extra RuntimeClass, so the cluster default OCI runtime stays in place for every other workload. For production, install **one** OpenSandbox server and set `opensandbox.domain` to that Service.
 
 Upstream: [Secure container runtime](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/guides/secure-container.md).
 
@@ -19,23 +19,22 @@ Upstream: [Secure container runtime](https://github.com/opensandbox-group/OpenSa
 
 Each Kata worker needs:
 
-- Hardware virtualization: Intel VMX, AMD SVM, or Arm virtualization extensions (NFD often labels `feature.node.kubernetes.io/cpu-cpuid.VMX=true`)
+- Hardware virtualization enabled in BIOS: Intel VMX, AMD SVM, or Arm virtualization extensions
 - `/dev/kvm` on the node
 - Nested virtualization if the node itself is a VM
 - KVM / vhost kernel modules loaded
 - CRI-O or containerd with a Kata handler
 
-Confirm with `ls /dev/kvm` on the node (BIOS virtualization must be enabled; NFD CPUID labels do not prove that) and `kubectl get nodes -l katacontainers.io/kata-runtime=true` after kata-deploy.
+Confirm with `ls /dev/kvm` on the node. NFD `cpu-cpuid.VMX` / SVM labels report processor capability only; they do not prove BIOS virtualization is on. After kata-deploy, `kubectl get nodes -l katacontainers.io/kata-runtime=true` shows nodes that received the runtime.
 
 ## Install kata-deploy (QEMU only)
 
-Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. The top-level `nodeSelector` is the **kata-deploy DaemonSet**; it must use labels that already exist (instance type, or a label you apply after confirming KVM). Do **not** select `katacontainers.io/kata-runtime` there — kata-deploy applies that label after it lands. Keep `katacontainers.io/kata-runtime: "true"` on the RuntimeClass only. NFD `cpu-cpuid.VMX` reports processor capability, not BIOS enablement. Replace the example labels for your cluster; if every node has working KVM, you can omit the DaemonSet selector.
+Pin kata-deploy **4.0.0**. Restrict shims to QEMU so the cluster gets `RuntimeClass/kata-qemu`. The top-level `nodeSelector` is the **kata-deploy DaemonSet**. Select a **custom label you apply** after confirming BIOS VMX (Intel) or SVM (AMD) and `/dev/kvm` — not a runtime label, and not NFD CPUID. Do **not** select `katacontainers.io/kata-runtime` on the DaemonSet; kata-deploy applies that label after it lands. Keep it on the RuntimeClass only. If every node has working KVM, omit the DaemonSet selector so kata-deploy runs cluster-wide.
 
 ```yaml
-# example kata-deploy values — replace selectors for your instance types
+# example kata-deploy values — replace the custom label with one you apply
 nodeSelector:
-  node.kubernetes.io/instance-type: BM.GPU.H100.8
-  feature.node.kubernetes.io/cpu-cpuid.VMX: "true"
+  virt.nvidia.com/kvm: "true"  # apply after confirming BIOS VMX or SVM and /dev/kvm
 shims:
   disableAll: true
   qemu:
@@ -60,9 +59,9 @@ A smoke pod with `runtimeClassName: kata-qemu` should reach Running and print a 
 
 ## CRI-O overlay.skip_mount_home retrofit
 
-This section applies only to **CRI-O** (OKE, OpenShift, and similar). **containerd + runc** is the usual default; skip this retrofit there.
+On **containerd + runc** (the usual default), kata-deploy registers Kata as an **additional** RuntimeClass. It does not replace runc. Skip this section.
 
-kata-deploy writes a CRI-O drop-in that includes `overlay.skip_mount_home=true` and restarts cri-o. That option only applies to overlay mounts created **after** it is active.
+This retrofit applies only to **CRI-O** (OKE, OpenShift, and similar). kata-deploy writes a CRI-O drop-in that includes `overlay.skip_mount_home=true` and restarts cri-o. That option only applies to overlay mounts created **after** it is active.
 
 On nodes that already ran containers, a bare cri-o restart re-adopts old `merged` mounts. The Kata guest can then see an empty virtiofs `shared/` directory and `CreateContainer` hangs.
 

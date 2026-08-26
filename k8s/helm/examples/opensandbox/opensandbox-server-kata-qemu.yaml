@@ -3,8 +3,8 @@
 
 # OpenSandbox server — kata-qemu profile.
 # The chart does not install this release. Pass the file to the upstream
-# opensandbox-server chart. Point the platform at this Service *or* the crun
-# Service — not both. [secure_runtime] is server-global.
+# opensandbox-server chart. Point the platform at this Service *or* the
+# shared-kernel Service — not both. [secure_runtime] is server-global.
 #
 # Pins every sandbox to RuntimeClass/kata-qemu. Template nodeSelector values
 # are an example (H100 + NFD VMX); replace them with labels that match your
@@ -86,7 +86,7 @@ configToml: |
   informer_watch_timeout_seconds = 60
   snapshot_create_timeout_seconds = 900
   # Raised from the upstream 60s default; kata adds VM boot on top of the image pull, so it
-  # needs the headroom at least as much as the crun profile.
+  # needs the headroom at least as much as the shared-kernel profile.
   sandbox_create_timeout_seconds = 900
   workload_provider = "batchsandbox"
   image_pull_policy = "IfNotPresent"

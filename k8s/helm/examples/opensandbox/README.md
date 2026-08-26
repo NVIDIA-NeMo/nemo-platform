@@ -33,9 +33,9 @@ Replace `REPLACE_WITH_RELEASE_NAMESPACE` in the server values before install.
 | File | Role |
 |------|------|
 | `opensandbox-controller.yaml` | Shared controller (snapshots unused on CRI-O) |
-| `opensandbox-server-crun.yaml` | Shared-kernel / crun server (no `[secure_runtime]`) |
+| `opensandbox-server.yaml` | Shared-kernel server (no `[secure_runtime]`) |
 | `opensandbox-server-kata-qemu.yaml` | Kata QEMU server (`[secure_runtime] type=kata`) |
-| `batchsandbox-template-crun.yaml` | ConfigMap — exclude control-plane; soft-avoid GPU/Kata |
+| `batchsandbox-template.yaml` | ConfigMap — exclude control-plane; soft-avoid GPU/Kata |
 | `batchsandbox-template-kata-qemu.yaml` | ConfigMap — example Kata node selectors |
 
 `[secure_runtime]` is server-global. Install **one** server for production
@@ -53,21 +53,20 @@ export EXAMPLES=k8s/helm/examples/opensandbox
 
 # Replace the placeholder in the server values
 sed -i.bak "s/REPLACE_WITH_RELEASE_NAMESPACE/${NMP_NAMESPACE}/g" \
-  "${EXAMPLES}/opensandbox-server-crun.yaml"
+  "${EXAMPLES}/opensandbox-server.yaml"
 
 kubectl create namespace opensandbox-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace "${NMP_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl apply -f "${EXAMPLES}/batchsandbox-template-crun.yaml"
+kubectl apply -f "${EXAMPLES}/batchsandbox-template.yaml"
 
 # API key in the control-plane namespace (server reads it)
-kubectl create secret generic opensandbox-server-crun-api-key \
+kubectl create secret generic opensandbox-server-api-key \
   -n opensandbox-system --from-literal=api-key="$(openssl rand -hex 32)"
 
 # Copy the same key into the job namespace (jobs use secretKeyRef)
-kubectl get secret opensandbox-server-crun-api-key -n opensandbox-system -o json \
-  | jq 'del(.metadata.uid,.metadata.resourceVersion,.metadata.creationTimestamp,.metadata.namespace)
-        | .metadata.name="opensandbox-server-api-key"' \
+kubectl get secret opensandbox-server-api-key -n opensandbox-system -o json \
+  | jq 'del(.metadata.uid,.metadata.resourceVersion,.metadata.creationTimestamp,.metadata.namespace)' \
   | kubectl apply -n "${NMP_NAMESPACE}" -f -
 
 # Image pull secret for sandbox pods must also exist in the job namespace

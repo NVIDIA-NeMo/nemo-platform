@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# ConfigMap mounted by opensandbox-server-crun.
-# Shared-kernel profile: no runtimeClassName → cluster default (crun on this CRI-O cluster).
+# ConfigMap mounted by opensandbox-server.
+# Shared-kernel profile: no runtimeClassName → cluster default OCI runtime.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: opensandbox-batchsandbox-template-crun
+  name: opensandbox-batchsandbox-template
   namespace: opensandbox-system
   labels:
     app.kubernetes.io/part-of: opensandbox
@@ -16,7 +16,7 @@ data:
     metadata:
       labels:
         opensandbox.nvidia.com/isolation-class: shared-kernel
-        opensandbox.nvidia.com/runtime: crun
+        opensandbox.nvidia.com/runtime: shared-kernel
     spec:
       replicas: 1
       template:
