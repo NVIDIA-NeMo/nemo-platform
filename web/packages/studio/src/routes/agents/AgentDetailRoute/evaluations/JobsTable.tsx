@@ -16,7 +16,10 @@ import {
   evalDurationMs,
   evalJobDetailRoute,
 } from '@studio/api/evaluation/utils';
-import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
+import {
+  type AgentEvaluationRow,
+  primaryExperimentName,
+} from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { ListChecks } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
@@ -61,8 +64,9 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
       const published = row.evaluationName
         ? evaluations.find((evaluation) => evaluation.name === row.evaluationName)
         : undefined;
-      return published?.experimentName
-        ? getEvaluationDetailRoute(workspace, published.experimentName, published.name)
+      const experimentName = published && primaryExperimentName(published);
+      return experimentName
+        ? getEvaluationDetailRoute(workspace, experimentName, published.name)
         : evalJobDetailRoute(workspace, row);
     },
     [workspace, evaluations]

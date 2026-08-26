@@ -76,6 +76,7 @@ export const AgentDetailRoute: FC = () => {
     agent,
     agentDeployments,
     agentEvals,
+    isAgentEvalsPending,
     agentJobs,
     chatDeployment,
     deleteDeploymentMutation,
@@ -216,10 +217,12 @@ export const AgentDetailRoute: FC = () => {
             <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="overview">
               <OverviewTab
                 workspace={workspace}
-                agentName={agentName}
                 agent={agent}
                 modelNames={modelNames}
+                evals={agentEvals}
+                isEvalsPending={isAgentEvalsPending}
                 onRunAgent={() => setSelectedTab('chat')}
+                onRunEvaluation={agentName ? () => setSubmitEvalOpen(true) : undefined}
               />
             </TabsContent>
           )}
