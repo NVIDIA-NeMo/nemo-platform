@@ -139,7 +139,12 @@ class TestAgentConfig:
                     "url": "repo-mcp --root .",
                     "allowed_tools": ["read_file", "search_files"],
                     "blocked_tools": ["write_file"],
-                }
+                },
+                "private-api": {
+                    "transport": "streamable-http",
+                    "url": "https://mcp.example.com",
+                    "custom_headers": {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"},
+                },
             }
         }
         payload["tools"] = {"blocked": ["shell", "browser"]}
@@ -153,6 +158,7 @@ class TestAgentConfig:
         assert config.mcp.servers["repo"].exposure == "harness_native"
         assert config.mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
         assert config.mcp.servers["repo"].blocked_tools == ["write_file"]
+        assert config.mcp.servers["private-api"].custom_headers == {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"}
         assert config.tools is not None
         assert config.tools.blocked == ["shell", "browser"]
 

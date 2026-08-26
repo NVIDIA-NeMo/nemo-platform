@@ -203,6 +203,7 @@ class TestTranslateAgentConfig:
                     "transport": "streamable-http",
                     "url": "https://mcp.example.com",
                     "allowed_tools": [],
+                    "custom_headers": {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"},
                 },
             }
         }
@@ -224,6 +225,7 @@ class TestTranslateAgentConfig:
         assert mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
         assert mcp.servers["repo"].blocked_tools == ["write_file"]
         assert mcp.servers["disabled"].allowed_tools == []
+        assert mcp.servers["disabled"].custom_headers == {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"}
         assert tools.blocked == ["shell", "browser"]
 
     def test_top_level_prompts_rejected_until_shared_prompt_contract_exists(self) -> None:
