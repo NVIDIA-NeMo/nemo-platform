@@ -3,29 +3,22 @@
 
 """Per-column statistics and content probes.
 
-Given a partition's features and its rows, :func:`measure_columns` measures each top-level column
-according to its dtype: length quantiles for text, min/max/mean for numbers,
-chat-shape signals for messages, and a bounded vocabulary where the column has one. The result is
-sparse — a column with nothing worth measuring is omitted — and each column is isolated, so one the
-detectors cannot handle costs only itself. Row values themselves are never stored here at all; a
-small controlled vocabulary is added afterwards by :func:`quote_enumerations`, which gates on role.
+:func:`measure_columns` measures each top-level column by dtype: length quantiles for text,
+min/max/mean for numbers, chat-shape signals for messages, and a bounded vocabulary where the column
+has one. The result is sparse, and each column is isolated, so one the detectors cannot handle costs
+only itself.
 
-The same pass reads each column's *content* — answer markers, embedded transcripts — as plain
-per-column counts (:class:`ColumnProbes`). Those are measurements, not interpretations: what they
-mean is classification's job, and keeping the looking here is what stops a content signal from being
-reachable only through a correctly named column.
+The same pass counts each column's *content* -- answer markers, embedded transcripts -- into
+:class:`ColumnProbes`. Those are measurements; what they mean is classification's job. Measuring
+here, rather than behind a role, keeps a content signal reachable through a column whose name nobody
+recognises.
 
-The measuring itself is done by a :class:`ColumnAccumulator` per column, chosen once on dtype. An
-accumulator folds batches in and keeps no reference to them, so a column measured in pieces gives
-the same answer as one measured whole — the property that lets a caller stop materialising a
-partition before it can measure it. The base class is the entire measurement for a dtype with no
-statistics of its own, because the probes run over every column whatever its type.
+A :class:`ColumnAccumulator` per column does the measuring. It folds batches in and keeps no
+reference to them, so a column measured in pieces gives the same answer as one measured whole --
+what lets a caller stop materialising a partition before measuring it. Row values are never stored;
+:func:`quote_enumerations` adds a small controlled vocabulary afterwards, gated on role.
 
-Every measurement is O(1) in rows and exact in what it counts, and nothing is retained: a column's
-values are folded in and let go. The one estimate left is :class:`Quantiles`, which reads its
-percentiles off bucketed counters rather than off the lengths themselves -- see
-:class:`_LengthHistogram` for the bound that buys.
-"""
+See the plugin README for the extended reasoning behind the bounds and the estimate."""
 
 from __future__ import annotations
 
@@ -49,12 +42,8 @@ from nemo_platform_plugin.files.dataset_profile import (
 # A quotable enumeration holds at most this many distinct values.
 _MAX_ENUM_VALUES = 32
 
-# Where a column stops being a plausible controlled vocabulary, and so stops being worth counting.
-# Three bounds because a count alone bounds cardinality but not bytes -- 1024 reasoning traces is
-# 32 MB. `_MAX_VOCABULARY_VALUE_CHARS` is the one that matters most: it is a claim about what the
-# column *is* rather than how big it is, so it settles a free-text column on the first value instead
-# of after a thousand. Sized well above real vocabularies -- a `source` column spanning 500 datasets,
-# a 200-class label set -- and far below anything that costs memory.
+# Where a column stops being a plausible controlled vocabulary. Three bounds, because a count alone
+# bounds cardinality but not bytes; all three sit well above real vocabularies.
 _MAX_VOCABULARY_VALUES = 1024
 _MAX_VOCABULARY_VALUE_CHARS = 256
 _MAX_VOCABULARY_BYTES = 64 * 1024
@@ -62,11 +51,8 @@ _MAX_VOCABULARY_BYTES = 64 * 1024
 # uniform, so an exact size buys nothing the count bound does not already give.
 _NON_STRING_VALUE_BYTES = 8
 
-# Roles that are controlled vocabularies by construction, and so are safe to quote at any dataset
-# size. Everything else -- prompts, completions, chosen/rejected, context, chat -- is free text no
-# matter how few distinct values a small sample happens to show, and unroled columns are unknown,
-# which is the same thing for this purpose. An allowlist, so an unrecognized column fails to silence
-# rather than to exposure.
+# Roles that are controlled vocabularies by construction, and so safe to quote at any dataset size.
+# An allowlist, so an unrecognized column fails to silence rather than to exposure.
 _QUOTABLE_ROLES = frozenset({"label", "provenance", "meta", "rank"})
 
 
@@ -88,29 +74,15 @@ class PartitionMeasurements:
 class RowFold:
     """The per-column accumulators for one partition, fed batch by batch.
 
-    A declared schema names the columns before the first batch; without one they are discovered as
-    they appear and back-filled with the rows they were absent for, which is what makes the result
-    identical to inferring the schema first and measuring second -- a row without the key genuinely
-    holds a null for it. Both then measure through the same accumulator, which routes a value to the
-    measurement that fits it rather than being chosen for one in advance. What a declared schema buys
-    is the schema itself, and knowing which measurement reports the column; it no longer buys a
-    different mechanism, which is what two folds used to be for.
+    A declared schema names the columns before the first batch. Without one they are discovered as
+    they appear and back-filled with the rows they were absent for, which makes the result identical
+    to inferring the schema first and measuring second. Both measure through the same accumulator, so
+    a declared schema buys the schema itself, not a different mechanism.
 
-    Each column is isolated. A value no detector anticipated -- a chat message whose ``role`` is a
-    number, a float where a string was declared -- costs that column its measurements and nothing
-    else, where previously it cost the partition every measurement it had. The failure is reported
-    as an ``error`` evidence rather than left as a silent gap, because a column absent from ``stats``
-    is otherwise indistinguishable from one that simply had nothing worth measuring. It is caught per
-    column *per batch*, so a bad row in the middle of a file cannot take the rest of the file with it.
-
-    This is the narrow half of the two guards the profiler runs. The wide one still wraps the whole
-    measure stage, and still catches anything structural -- schema derivation, classification -- that
-    is not attributable to a single column.
-
-    Statistics and probes are folded together because they read the same values, and extracting a
-    column out of a batch costs more than either measurement. Neither fills in
-    ``categorical.values``: that needs the roles, which classification has not assigned yet, so
-    :func:`quote_enumerations` adds them afterwards, from the vocabulary this kept.
+    Each column is isolated, per column *per batch*: a value no detector anticipated costs that
+    column its measurements and nothing else, reported as ``error`` evidence rather than left as a
+    silent gap. This is the narrow half of the profiler's two guards; the wide one wraps the whole
+    measure stage and catches anything structural that no single column owns.
     """
 
     def __init__(self, features: list[FeatureSchema] | None = None) -> None:
@@ -123,9 +95,8 @@ class RowFold:
         self._failed: dict[str, Evidence] = {}
         self._rows_seen = 0
         for feature in features or []:
-            # Parquet permits duplicate field names, and every map here is keyed by name. Measuring
-            # the first and skipping the rest makes which one wins deterministic instead of
-            # "whichever came last", and keeps stats and probes agreeing on the same one.
+            # Parquet permits duplicate field names, and every map here is keyed by name. Keeping
+            # the first makes which one wins deterministic rather than "whichever came last".
             if feature.name in self._accumulators:
                 continue
             self._declared[feature.name] = feature
@@ -166,9 +137,9 @@ class RowFold:
         """The schema that was measured, and the measurements.
 
         The features come back rather than being assumed from what was handed in, because they are
-        not the same list: duplicate names were dropped in the constructor, so a caller holding its
-        own copy would describe a column that no accumulator ever measured. An inferred column has no
-        other source for its schema at all.
+        not the same list: duplicate names were dropped in the constructor, so a caller's own copy
+        would describe a column no accumulator ever measured. An inferred column has no other source
+        for its schema at all.
         """
         features: list[FeatureSchema] = []
         stats: dict[str, ColumnStats] = {}
@@ -218,17 +189,13 @@ def quote_enumerations(
 ) -> None:
     """Fill in ``categorical.values`` for columns whose role makes them a controlled vocabulary.
 
-    Runs after classification, because it needs the roles it gates on, and mutates ``stats`` in place
-    the way classification mutates ``features``. Deliberately fills in rather than redacting: skip
-    this pass and no values are stored, where a redaction pass that got skipped would leak them.
+    Runs after classification, since it needs the roles it gates on, and reads what the accumulators
+    already kept rather than going back to the rows. It fills in rather than redacts: skip this pass
+    and no values are stored, where a skipped redaction pass would leak them.
 
-    Reads what the accumulators already kept rather than going back to the rows. That second pass
-    was the last thing tying the measure stage to a materialised partition, and it was re-deriving a
-    set the vocabulary had built and thrown away.
-
-    Cardinality is only the size bound. It cannot be the permission, because it inverts on small
-    data -- in a three-row dataset every column holds under 32 distinct values, free text included,
-    so an entire column of prompts was quotable. The role says what a column *is*, at any size.
+    Cardinality is the size bound, never the permission -- it inverts on small data, where every
+    column holds few distinct values, free text included. The role says what a column *is*, at any
+    size.
     """
     for feature in features:
         if feature.semantic_role not in _QUOTABLE_ROLES:
@@ -247,11 +214,11 @@ class ColumnAccumulator:
 
     ``update`` folds a batch in and keeps no reference to it; ``finalize`` turns what was folded into
     the stored blocks. Splitting a column across calls gives the same answer as one call with all of
-    it, which is the property that lets the caller stop materialising a partition before measuring it.
+    it.
 
-    The base class is the whole measurement for a dtype with no statistics of its own — a struct, a
-    list, anything the dispatch does not recognise — because the content probes run over every column
-    regardless of type. Subclasses add their dtype's state by overriding ``_observe`` and ``_blocks``.
+    The base class is the whole measurement for a dtype with no statistics of its own, because the
+    content probes run over every column whatever its type. Subclasses add their state by overriding
+    ``_observe`` and ``_blocks``.
     """
 
     def __init__(self) -> None:
@@ -312,8 +279,8 @@ class ColumnAccumulator:
         """Charge this column ``count`` rows in which it was absent.
 
         A column that first appears in the fiftieth batch was null for every row before it, which is
-        exactly what a materialising reader computes with ``row.get(name)``. Counted rather than fed
-        as values, so discovering a column late costs a pair of additions and not a pass.
+        what a materialising reader computes with ``row.get(name)``. Counted rather than fed as
+        values, so discovering a column late costs two additions and not a pass.
         """
         self.rows += count
         self._nulls += count
@@ -327,22 +294,16 @@ class ColumnAccumulator:
 class _Vocabulary:
     """Distinct values, for as long as the column still looks like a controlled vocabulary.
 
-    Stops the moment it stops looking like one and drops what it had, which is the whole point:
-    counting distinct values exactly means *retaining* them, so on a free-text column this set grows
-    to hold the column. Today that costs little, because the rows are held anyway and the set stores
-    pointers into them -- 2.6 MB beside 61.4 MB of resident rows. It is the fold this is becoming
-    that makes it matter: once a batch is folded and discarded, this set is the *sole owner* of every
-    value it kept, and two text columns cost 46.8 MB against 0.163 MB for every other accumulator
-    combined. Unbounded, it is the one thing that would make the fold O(rows) again.
+    Counting distinct values exactly means *retaining* them, so on a free-text column this set grows
+    to hold the column -- unbounded, the one thing that would make the fold O(rows) again. It stops
+    the moment the column stops looking like a vocabulary, and drops what it had.
 
-    Three bounds rather than one. A count alone bounds cardinality but not bytes, and 1024 reasoning
-    traces is 32 MB. The middle bound does the real work: it asks what the column *is* rather than
-    how many values it holds, in the same way the role gate on quoting does. A vocabulary member is
-    short by nature, so a single long value settles the question on sight, which is why free-text
-    columns stop here almost immediately instead of after 1024 values.
+    Three bounds, because a count alone bounds cardinality but not bytes.
+    :data:`_MAX_VOCABULARY_VALUE_CHARS` does the real work: it asks what the column *is* rather than
+    how many values it holds, so free-text columns stop on their first long value.
 
-    The values themselves are never handed out here. They are row content, gated on role rather than
-    on size, and :func:`quote_enumerations` adds them once classification has assigned one.
+    The values are never handed out here. They are row content, gated on role rather than size, by
+    :func:`quote_enumerations`.
     """
 
     def __init__(self) -> None:
@@ -419,9 +380,9 @@ class NumericAccumulator(ColumnAccumulator):
 
     def _observe(self, present: list[Any]) -> None:
         for value in present:
-            # Non-finite floats (NaN / +-inf) are dropped: they serialize to JSON null and then fail
-            # to re-validate against NumericStats' required floats, making the profile unreadable on
-            # its next load. bool is an int in Python and is not a number here.
+            # Non-finite floats are dropped: they serialize to JSON null and fail to re-validate
+            # against NumericStats, making the profile unreadable. bool is an int here, and is not a
+            # number.
             if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
                 number = float(value)
                 self._min = min(self._min, number)
@@ -483,10 +444,8 @@ class MessageAccumulator(ColumnAccumulator):
                     continue
                 role = _role_of(message)
                 if role is not None:
-                    # Coerced to str because roles_seen is typed list[str] and a non-string role
-                    # would fail validation. Reported verbatim otherwise: the contract is explicit
-                    # that an unexpected role is the finding worth surfacing, not something to
-                    # normalize away.
+                    # Coerced to str for the contract, but reported verbatim: an unexpected role is
+                    # the finding worth surfacing, not something to normalize away.
                     role = role if isinstance(role, str) else str(role)
                     if role not in self._roles_seen and len(self._roles_seen) < _MAX_ROLES_SEEN:
                         self._roles_seen.append(role)
@@ -516,11 +475,9 @@ class MessageAccumulator(ColumnAccumulator):
         }
 
 
-# The one place a dtype becomes a measurement. It used to be written three times -- to choose an
-# accumulator up front, to pick the blocks to report, and to pick the vocabulary -- and the three had
-# to agree or a column was measured as one shape and reported as another. Naming the measurement
-# rather than constructing it is what collapses them: the caller looks the name up and decides for
-# itself whether to build one, reuse one, or skip.
+# The one place a dtype becomes a measurement. Naming the measurement rather than constructing it is
+# what lets one table serve every caller: each looks the name up and decides whether to build, reuse
+# or skip.
 _MEASUREMENTS: dict[str, type[ColumnAccumulator]] = {
     "string": StringAccumulator,
     "numeric": NumericAccumulator,
@@ -539,20 +496,15 @@ def _measurement_for(dtype: str) -> str | None:
 class RoutedAccumulator(ColumnAccumulator):
     """A column measured by every shape its values take, reporting the one its dtype selects.
 
-    An accumulator used to be chosen *by* dtype, which a declared schema gives up front and an
-    inferred one does not: the observed types are unioned over the whole column and a disagreement
-    widens to ``json``, so the choice cannot be made while making it still matters. Deferring it is
-    the only resolution that neither reads the data twice nor decides from a prefix and hopes.
+    Choosing one measurement *by* dtype needs the dtype, which a declared schema gives up front and
+    an inferred one does not: the observed types are unioned over the whole column and a
+    disagreement widens to ``json``, so the choice cannot be made while making it still matters.
+    Measuring every shape and picking at the end neither reads the data twice nor decides from a
+    prefix. It costs no more per value than choosing would have, since a string only ever reaches the
+    string state and an int only the numeric.
 
-    So every value is routed to the measurement that fits it and which measurement *answers* is
-    settled at the end. A declared column takes the same route; it just knows the answer already,
-    which spares it folding a schema it was handed. Measuring this way costs no more per value than
-    choosing would have -- a string only ever reaches the string state, an int only the numeric.
-
-    Measurements are built on first sight of a value that needs one, so a column of a single type
-    pays for a single one. Building all of them up front charged every column for every shape the
-    profiler knows whether or not its values ever reached them, which is a bill that grows as shapes
-    are added rather than with what the data actually holds.
+    A declared column takes the same route and simply knows the answer already. Measurements are
+    built on first sight of a value that needs one, so a column of a single type pays for one.
     """
 
     def __init__(self, name: str, declared: FeatureSchema | None = None) -> None:
@@ -574,9 +526,8 @@ class RoutedAccumulator(ColumnAccumulator):
     def _observe(self, present: list[Any]) -> None:
         if self._schema is not None:
             self._schema.update(present)
-        # Routed by python type. Where a dtype resolves to something measurable, every present value
-        # is of that type by construction -- `_resolve_scalar` only returns `string` when the whole
-        # column was strings -- so this sees exactly what the chosen accumulator would have seen.
+        # Routed by python type. Where a dtype resolves to something measurable every present value
+        # is of that type by construction, so this sees what a single chosen accumulator would.
         strings = [value for value in present if isinstance(value, str)]
         if strings:
             self._measurement("string")._observe(strings)
@@ -599,8 +550,7 @@ class RoutedAccumulator(ColumnAccumulator):
     def _blocks(self) -> dict[str, Any]:
         key = _measurement_for(self.feature().dtype)
         # Built here when no value ever called for it, so an all-null string column still reports the
-        # empty text and cardinality blocks a chosen StringAccumulator would have reported, rather
-        # than the nothing an absent measurement would.
+        # empty blocks a chosen StringAccumulator would have.
         return self._measurement(key)._blocks() if key is not None else {}
 
     def vocabulary(self) -> set[Any] | None:
@@ -613,9 +563,8 @@ def _is_numeric(dtype: str) -> bool:
 
 
 # How finely a length distribution is recorded. Lengths below the slice count get a counter each and
-# are exact; above it, each octave is cut into this many slices, so a bucket spans a fixed *relative*
-# width of 1/32. Reporting a bucket's midpoint then puts every estimate within ~1.6% of the truth,
-# whatever the value's magnitude and however many rows there are.
+# are exact; above it each octave is cut into this many slices, a fixed *relative* width of 1/32.
+# Reporting a bucket's midpoint puts every estimate within ~1.6% whatever the magnitude.
 _HISTOGRAM_SLICE_BITS = 5
 _HISTOGRAM_SLICES = 1 << _HISTOGRAM_SLICE_BITS
 
@@ -641,20 +590,13 @@ def _bucket_bounds(bucket: int) -> tuple[int, int]:
 class _LengthHistogram:
     """A per-row length distribution, held as counters rather than as the lengths themselves.
 
-    This is what lets an accumulator stay O(1) in rows. Exact quantiles need every length kept and
-    sorted, which is a list that grows with the dataset; a reservoir of sampled lengths bounds that,
-    but buys the bound with an RNG -- and so with a seed back in the contract, and two runs over the
-    same bytes disagreeing. Counting into fixed buckets bounds it with neither.
+    This is what keeps an accumulator O(1) in rows. Exact quantiles need every length kept and
+    sorted; a reservoir bounds that but pays with an RNG, putting a seed in the contract and letting
+    two runs over the same bytes disagree. Fixed buckets bound it with neither, at a hard error of
+    half a bucket width -- ~2% measured against exact quantiles, and the cheap error to accept, since
+    the number is read to pick a sequence budget.
 
-    The two put their error in different places. A reservoir sees *some* rows exactly, so its error
-    is in which rows it happened to keep: probabilistic, and shrinking only with the sample size.
-    This sees *every* row imprecisely, so its error is in how finely each value was recorded: a hard
-    bound of half a bucket width, whatever the data does. Measured against exact quantiles on real
-    shards, ~2%.
-
-    Rounding the value is the cheap error to accept here, because the number is read to pick a
-    sequence budget and gets rounded to a power of two by whoever reads it. ``max`` is kept exactly
-    and separately: it is the one value here a reader may treat as a hard bound.
+    ``max`` is kept exactly and separately, as the one value here a reader may treat as a hard bound.
     """
 
     def __init__(self) -> None:
@@ -695,17 +637,14 @@ class _LengthHistogram:
 
 # --- messages ------------------------------------------------------------------------------------
 
-# Role strings that mean "the turn the model is trained to produce". Matching only the literal
-# "assistant" made every chat dataset using another convention (`gpt`, `bot`, `model`) look
-# like it ended on a user turn, which classification reads as a prompt-only dataset with no training
-# target — a false negative over a large slice of public chat data.
+# Role strings meaning "the turn the model is trained to produce". Matching only the literal
+# "assistant" makes a dataset using another convention look like it ended on a user turn, which
+# classification reads as prompt-only with no training target.
 _ASSISTANT_ROLES = {"assistant", "gpt", "bot", "model", "chatbot", "ai"}
 
-# Distinct role strings a chat column may show before the list stops growing. It is fed straight from
-# row content, so without a bound one malformed column could hold a string per message -- and since
-# membership is checked against the list, that is quadratic as well as unbounded. The truncation
-# costs nothing a reader would act on: the list exists to pick a chat template, and a column with
-# more than this many roles is not a chat column, which the first few dozen already say.
+# Distinct role strings a chat column may show before the list stops growing. Fed from row content,
+# so without a bound one malformed column holds a string per message -- quadratic, since membership is
+# checked against the list. A column with more roles than this is not a chat column.
 _MAX_ROLES_SEEN = 64
 
 
@@ -749,11 +688,9 @@ def _valid_alternation(messages: list) -> bool:
 
 # --- content probes ------------------------------------------------------------------------------
 
-# Probes run over *every* column, not only role-assigned ones. Gating them on roles made a content
-# signal reachable only through a recognized column name: a dataset whose answer column is called
-# `a` instead of `answer` lost verifiability entirely, even though the markers were sitting in the
-# data and the regex would have matched them. Classification reads these counts and decides what
-# they mean; it no longer does the looking.
+# Probes run over *every* column, not only role-assigned ones. Gating them on roles would make a
+# content signal reachable only through a recognized column name, losing verifiability on a dataset
+# whose answer column is called `a`.
 _TRANSCRIPT_MARKER = re.compile(r"\n\n(?:Human|Assistant|User):")
 _GSM8K_ANSWER = re.compile(r"####\s*-?[\d.,/]+\s*$")
 _BOXED_ANSWER = re.compile(r"\\boxed\{")

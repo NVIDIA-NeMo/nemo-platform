@@ -54,8 +54,8 @@ def _canonical_for(split_name: str) -> str | None:
 def is_split_directory(name: str) -> bool:
     """Whether a directory name denotes a split rather than a partition.
 
-    Partition grouping needs this to avoid turning ``train/`` and ``test/`` into two unrelated
-    partitions, each with its own schema and classification, when they are two splits of one dataset.
+    Partition grouping uses it to keep ``train/`` and ``test/`` in one partition rather than two,
+    since they are two splits of one dataset.
     """
     return _canonical_for(name) is not None
 
@@ -63,10 +63,10 @@ def is_split_directory(name: str) -> bool:
 def _split_name(path: str) -> str:
     """The split a file belongs to.
 
-    A split-named directory anywhere on the path wins over the filename, because the ``data/train/``
-    layout names its shards ``0000.parquet`` — reading only the stem would file every split's shards
-    under the same meaningless name and collapse the whole dataset into one split. Nearest directory
-    to the file wins. Failing that, the shard-stripped stem: train-00000-of-00003.parquet -> "train".
+    A split-named directory on the path wins over the filename, nearest one first: the
+    ``data/train/`` layout names its shards ``0000.parquet``, so reading the stem alone would file
+    every split under the same name. Failing that, the shard-stripped stem
+    (``train-00000-of-00003.parquet`` -> ``train``).
     """
     parts = PurePosixPath(path).parts
     for directory in reversed(parts[:-1]):
@@ -78,11 +78,9 @@ def _split_name(path: str) -> str:
 def _glob_matches(pattern: str, path: str) -> bool:
     """Match ``path`` against ``pattern`` where ``*`` spans any run of characters except ``/``.
 
-    Deliberately the narrowest dialect rather than the most expressive one. This single reading of
-    ``*`` is shared by shell globs, Python's :mod:`glob`, fsspec and HF ``data_files``, so a pattern
-    emitted here means the same thing wherever a consumer pastes it. ``**`` is not produced at all:
-    its semantics differ between those tools, and a pattern that silently selects a different set of
-    files in the reader than it did in the profiler is worse than no pattern.
+    The narrowest dialect on purpose: this reading of ``*`` is shared by shell globs, :mod:`glob`,
+    fsspec and HF ``data_files``, so a pattern means the same thing wherever it is pasted. ``**`` is
+    never produced, since its meaning differs between those tools.
     """
     return re.fullmatch("[^/]*".join(re.escape(part) for part in pattern.split("*")), path) is not None
 
@@ -90,29 +88,22 @@ def _glob_matches(pattern: str, path: str) -> bool:
 def infer_data_files(split_name: str, entries: list[FileEntry], all_paths: list[str]) -> str | None:
     """A glob selecting exactly ``entries`` out of ``all_paths``, or None if no single one does.
 
-    This is the inverse of the split resolution above: splits are read *off* the paths, so the
-    pattern is rebuilt from the same evidence — the directory the files share, and the split name
-    their filenames start with. It restores addressability of a split's files without restoring the
-    per-file manifest that was removed for scaling: one pattern per split, whatever the shard count.
+    Rebuilt from the same evidence the split was read from: the directory the files share, and the
+    split name their filenames start with.
 
-    Candidates run most specific first, because the general ones over-match. In ``helpsteer2/`` a
-    ``train`` split wants ``helpsteer2/train*.parquet``; ``helpsteer2/*.parquet`` would swallow the
-    validation shards too, and only the ordering distinguishes them. The ``data/train/0000.parquet``
-    layout is the other way round — no filename starts with "train", so the name-anchored candidates
-    are skipped and the directory-wide one is exactly right.
+    Candidates are tried most specific first, because the general ones over-match: in ``helpsteer2/``
+    a ``train`` split wants ``helpsteer2/train*.parquet``, where ``helpsteer2/*.parquet`` would take
+    the validation shards too. Each is matched against every path the source listed, and the first to
+    reproduce the split exactly wins.
 
-    Every candidate is matched back against *every* file the source listed, not just this split's or
-    even just this partition's, and the first that reproduces the split exactly wins. Nothing is
-    emitted on a near miss. A glob is an instruction to go read files, so an approximate one is not
-    a smaller version of the right answer -- it quietly pulls a README, or another split's shards,
-    into a training set. None says "these files are not expressible as one pattern", which is a
-    thing a consumer can handle; a wrong pattern is not.
+    A near miss returns None. A glob is an instruction to go read files, so an approximate one is not
+    a smaller version of the right answer -- it pulls in a README, or another split's shards.
     """
     paths = [entry.path for entry in entries]
     directories = {PurePosixPath(path).parent.as_posix() for path in paths}
     if len(directories) != 1:
-        # Shards spread across subdirectories. Covering them needs `**`, whose meaning is not shared
-        # across glob implementations, so this reports no pattern rather than an ambiguous one.
+        # Shards spread across subdirectories need `**`, whose meaning is not shared across glob
+        # implementations, so report no pattern rather than an ambiguous one.
         return None
     directory = directories.pop()
     prefix = "" if directory == "." else f"{directory}/"
@@ -121,13 +112,11 @@ def infer_data_files(split_name: str, entries: list[FileEntry], all_paths: list[
     # A partition may hold more than one format; only a single shared suffix can go in the pattern.
     suffix = suffixes.pop() if len(suffixes) == 1 else None
 
-    # Stems to anchor on: the bare split name first, then the same name keeping the separator that
-    # follows it. Plain `train*` is what a person would write and is tried first for that reason;
-    # the separator variants exist only for the sibling collision, where `train` sits beside
-    # `train_prefs` in one directory and `train*` swallows both. Verification is what demotes the
-    # simple form there, so the narrower `train-*` is reached only when it is actually needed. Each
-    # stem is offered only when every filename in the split carries it, so one can never exclude a
-    # file it ought to match.
+    # Stems to anchor on: the bare split name first, then the same name with each separator. Plain
+    # `train*` is what a person would write, so it is tried first; the separator variants cover the
+    # case where `train` sits beside `train_prefs` and `train*` would take both. A stem is offered
+    # only when every filename in the split carries it, so it can never exclude a file it should
+    # match.
     stems = [split_name] + [f"{split_name}{sep}" for sep in ("-", ".", "_")] if split_name else []
     candidates: list[str] = []
     for stem in stems:

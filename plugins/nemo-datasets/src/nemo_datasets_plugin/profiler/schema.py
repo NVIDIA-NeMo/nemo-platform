@@ -3,10 +3,10 @@
 
 """Row-schema derivation.
 
-Derive the ``features`` tree (a list of :class:`FeatureSchema`) de novo from the data. Parquet
-carries a declared schema, so it is converted directly; formats without one (jsonl) are inferred
-from the sampled rows by resolving each column's dtype. A list of ``{role, content}`` structs — or
-the ``{from, value}`` spelling of the same thing — is recognized as the ``messages`` dtype.
+Derive the ``features`` tree (a list of :class:`FeatureSchema`) from the data. Parquet carries a
+declared schema, so it is converted directly; formats without one are inferred from the rows by
+resolving each column's dtype. A list of ``{role, content}`` structs, or the equivalent
+``{from, value}`` spelling, becomes the ``messages`` dtype.
 """
 
 from __future__ import annotations
@@ -16,27 +16,26 @@ from typing import Any
 import pyarrow as pa
 from nemo_platform_plugin.files.dataset_profile import FeatureSchema
 
-# A list element carrying at least one of these key sets is treated as a chat message (the messages
-# dtype). The same structure is also spelled `{from, value}`; recognizing only `{role, content}` left
-# a large slice of public chat data typed as a plain `list`, which then failed the `messages` dtype
-# gate in classification and profiled as `unknown` with no stats at all.
+# A list element carrying either key set is a chat message, giving the column the `messages` dtype.
+# Both spellings are common; recognizing only `{role, content}` typed much public chat data as a
+# plain `list`, which fails the `messages` dtype gate in classification and profiles as `unknown`
+# with no stats.
 _MESSAGE_KEY_SETS = ({"role", "content"}, {"from", "value"})
 
 
 # Columns a partition may have before the profiler stops describing it. Nothing legitimate reaches
-# this: it is a guard against a malformed file whose rows carry per-row unique keys, which would
-# otherwise mint a column -- and an accumulator -- for every row in the dataset. The row budget used
-# to bound this by accident, since a schema inferred from at most N rows had at most N keys; an
-# unbounded read has no such accident, so the bound is stated.
+# this; it guards against a malformed file whose rows carry unique keys, which would otherwise mint
+# a column, and an accumulator, per row. A row budget used to bound this by accident, since a schema
+# inferred from N rows has at most N keys. An unbounded read does not, so the bound is stated.
 MAX_COLUMNS = 4096
 
 
 def derive_features(rows: list[dict[str, Any]], arrow_schema: pa.Schema | None = None) -> list[FeatureSchema]:
     """The row schema. Uses the declared arrow schema when present, else infers from ``rows``.
 
-    Truncated at :data:`MAX_COLUMNS`. Use :func:`columns_were_capped` to tell a dataset that really
-    is that wide from one whose keys are runaway; the caller reports the difference rather than
-    silently describing part of a file as though it were all of it.
+    Truncated at :data:`MAX_COLUMNS`. Use :func:`columns_were_capped` to distinguish a dataset that
+    really is that wide from one with runaway keys, so the caller can report the difference rather
+    than describe part of a file as though it were all of it.
     """
     if arrow_schema is not None:
         return [
@@ -156,13 +155,13 @@ def _python_dtype(value: Any) -> str:
 
 
 def _resolve_scalar(dtypes: set[str]) -> str:
-    """The one dtype a column of these observed types has. Ints and floats widen; anything else in
-    disagreement is ``json``, which is the honest answer for a column that holds two shapes."""
+    """The one dtype a column of these observed types has. Ints and floats widen; any other
+    disagreement is ``json``, the honest answer for a column holding two shapes."""
     if dtypes <= {"int64", "float64"} and dtypes:
         return "float64" if "float64" in dtypes else "int64"
     if len(dtypes) == 1:
-        # `next(iter(...))`, never `pop()`: this set belongs to a SchemaFold that is still using it,
-        # and emptying it made a second call resolve the same column to `json`.
+        # `next(iter(...))`, never `pop()`: the set belongs to a SchemaFold still using it, and
+        # emptying it made a second call resolve the same column to `json`.
         return next(iter(dtypes))
     return "json"
 
@@ -174,14 +173,12 @@ def _scalar_dtype(values: list[Any]) -> str:
 class SchemaFold:
     """One column's schema, folded from values as they arrive rather than decided over all of them.
 
-    The dtype of an inferred column is a whole-column question -- the observed types are unioned and
-    a disagreement widens to ``json`` -- which is why a partition with no declared schema could not
-    be folded: an accumulator is chosen *by* dtype, and the dtype is not known until the last row.
+    An inferred dtype is a whole-column question -- the observed types are unioned and a disagreement
+    widens to ``json`` -- so it is not known until the last row.
 
-    It is a fold, though, and always was. :func:`_infer_feature` is a set union over observed types,
-    a union over a struct's child keys, and a recursion over a list's flattened elements: state
-    proportional to the *schema*, not to the row count. This is that computation written incrementally
-    so a caller can hand over batches and keep none of them.
+    Folding costs nothing extra. :func:`_infer_feature` is already a set union over observed types, a
+    union over a struct's child keys, and a recursion over a list's flattened elements: state
+    proportional to the schema, not the row count.
     """
 
     def __init__(self, name: str = "") -> None:

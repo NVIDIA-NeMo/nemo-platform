@@ -7,16 +7,12 @@ Runs as a platform job: it reads a step config naming what to profile, runs the 
 publishes the resulting ``DatasetProfile`` as a job result artifact named ``profile``
 (``profile.json``).
 
-This is deliberately *not* a ``nemo`` CLI subcommand. The profiler is new enough that its inputs and
-its output contract are both still moving, and a published subcommand is a promise to keep them
-still. A task module is invoked by the platform and by tests, which is the whole audience today.
+Not a ``nemo`` CLI subcommand: the profiler's inputs and output contract are both still moving, and a
+published subcommand is a promise to keep them still.
 
 Only a local directory is profiled here. Reading a platform fileset through ranged requests, and
-storing the profile back onto that fileset, both need Files-service surface this plugin does not
-depend on; they arrive with the Files integration and change only :func:`_build_source` and the
-publish step. The profiler core stays blind to where its bytes come from — that is what the
-``FileSource`` seam is for.
-"""
+storing the profile back onto it, arrive with the Files integration and change only
+:func:`_build_source` and the publish step."""
 
 from __future__ import annotations
 
@@ -40,9 +36,9 @@ from nemo_platform_plugin.sdk_provider import get_platform_sdk
 
 logger = logging.getLogger(__name__)
 
-# The service identity the task authenticates as. Any ``service:*`` principal is granted the internal
-# ``ServiceSystem`` role, so no registration is required; a dedicated name just keeps audit logs and
-# traces attributable.
+# The service identity the task authenticates as. Any ``service:*`` principal gets the internal
+# ``ServiceSystem`` role, so no registration is required; a dedicated name keeps audit logs and traces
+# attributable.
 _SERVICE_IDENTITY = "datasets"
 
 # Result artifact published back to the job's fileset.
@@ -82,8 +78,8 @@ def _profile_and_publish(
     dataset_profile = profile(source, row_budget=row_budget, column_roles=column_roles)
 
     # Scoped to the job's ephemeral storage when the platform provided one, and cleaned up either
-    # way — under the local subprocess backend this runs on a developer's machine, where an
-    # abandoned mkdtemp accumulates one directory per profiling run.
+    # way: under the local subprocess backend this runs on a developer's machine, where an abandoned
+    # mkdtemp accumulates one directory per profiling run.
     with tempfile.TemporaryDirectory(
         prefix="dataset-profile-",
         dir=os.environ.get(EPHEMERAL_TASK_STORAGE_PATH_ENVVAR) or None,
@@ -110,14 +106,11 @@ def _build_source(config: dict) -> FileSource:
 def _resolve_row_budget(config: dict) -> int | None:
     """Rows the profiler may read per partition, from the step config.
 
-    Defaults to reading everything, which it did not used to. A partition was materialised before it
-    was measured, so an uncapped run held every row of every file at roughly 20x the on-disk parquet
-    size and a large fileset killed the job outright. The profiler folds now: memory is flat in rows,
-    so the only thing a budget buys is a shorter run, and the default should not be to answer a
-    question worse than it can be answered.
+    Defaults to reading everything: the profiler folds, so memory is flat in rows and a budget buys
+    only a shorter run.
 
-    ``0`` and ``null`` both ask for every row -- the same thing the default does -- and are kept so a
-    caller that was setting them explicitly still means what it meant.
+    ``0`` and ``null`` both ask for every row, and are kept so a caller that set them explicitly
+    still means what it meant.
     """
     if "row_budget" not in config:
         return DEFAULT_ROW_BUDGET
@@ -136,8 +129,8 @@ def _resolve_column_roles(config: dict) -> dict[str, str]:
     """Caller-declared column roles, for datasets whose column names the role table does not know.
 
     Not validated against the role vocabulary here. The profiler applies its own dtype gates and
-    reports a hint the data cannot support as evidence on the profile, which is a better place for
-    the finding than a task that fails before producing anything.
+    reports an unsupportable hint as evidence on the profile, which is a better place for the finding
+    than a task that fails before producing anything.
     """
     roles = config.get("column_roles") or {}
     if not isinstance(roles, dict):

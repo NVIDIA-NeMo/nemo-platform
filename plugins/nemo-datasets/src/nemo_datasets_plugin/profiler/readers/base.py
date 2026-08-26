@@ -29,9 +29,9 @@ class ReadResult:
     rows_scanned: int  # number of rows actually parsed
     num_rows: int | None = None  # exact total when cheaply known (e.g. a parquet footer), else None
     arrow_schema: pa.Schema | None = None  # the declared column schema, when the format carries one
-    # Why the read understood less than the whole file, when that happened. None means nothing was
-    # lost. This is the only channel a reader has to explain a partial result, so a consumer can tell
-    # "corrupt input" from "unsupported format" from "profiler bug" instead of seeing a silent gap.
+    # Why the read understood less than the whole file; None means nothing was lost. A reader's only
+    # channel for explaining a partial result, so a consumer can tell corrupt input from a bad format
+    # from a profiler bug instead of seeing a silent gap.
     error: str | None = None
 
 
@@ -39,10 +39,10 @@ class ReadResult:
 class FilePreview:
     """What a reader can learn about a file without reading a single row.
 
-    A parquet footer carries both; a line-delimited format carries neither. The pipeline asks every
-    file this before it reads any of them, because knowing the schema up front is what lets a
-    partition be measured without first being materialised, and knowing the row count up front is
-    what lets a split report an exact ``num_examples`` from a run that never read to the end.
+    A parquet footer carries both; a line-delimited format carries neither. Every file is asked this
+    before any is read: the schema up front is what lets a partition be measured without being
+    materialised, and the row count is what lets a split report an exact ``num_examples`` from a run
+    that never reached the end.
     """
 
     arrow_schema: pa.Schema | None = None
@@ -72,10 +72,10 @@ class FormatReader(Protocol):
     ) -> Iterator[list[dict[str, Any]]]:
         """The same rows :meth:`read` would return, handed over in chunks and never all at once.
 
-        ``errors`` collects any reason the read understood less than the whole file, the way
-        :attr:`ReadResult.error` does for the batched-up path. A generator cannot return one --
-        by the time it knows, the caller has consumed everything it yielded -- and the caller has
-        to know, or a partially parsed file would fold silently and look complete.
+        ``errors`` collects any reason the read understood less than the whole file, as
+        :attr:`ReadResult.error` does for :meth:`read`. A generator cannot return one -- by the time
+        it knows, the caller has consumed everything it yielded -- and the caller has to know, or a
+        partially parsed file folds silently and looks complete.
         """
         ...
 
@@ -87,8 +87,8 @@ _builtins_loaded = False
 def _load_builtin_readers() -> None:
     """Import the built-in reader modules so their self-registration runs (once).
 
-    Deferred to call time — not import time — so there is no cycle with the reader modules that import
-    from this one, and pyarrow stays out of the import graph until a reader is actually resolved.
+    Deferred to call time so there is no cycle with the reader modules that import from this one,
+    and so pyarrow stays out of the import graph until a reader is resolved.
     """
     global _builtins_loaded
     if _builtins_loaded:
@@ -121,9 +121,9 @@ def detect_format(path: str) -> str | None:
     return _EXTENSION_FORMATS.get(Path(path).suffix.lower())
 
 
-# Extensions that plainly hold dataset records but have no reader yet. Naming them explicitly is what
-# lets the profiler say "there is data here I cannot read" instead of treating a dataset it does not
-# understand as an empty one — a README or a LICENSE is genuinely not data and stays ignored.
+# Extensions that hold dataset records but have no reader yet. Naming them lets the profiler say
+# "there is data here I cannot read" rather than treating an unreadable dataset as an empty one. A
+# README or LICENSE is genuinely not data and stays ignored.
 _UNSUPPORTED_DATA_EXTENSIONS = {".csv", ".tsv", ".arrow", ".feather", ".json", ".avro", ".orc"}
 
 

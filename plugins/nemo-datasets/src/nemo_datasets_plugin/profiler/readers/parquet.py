@@ -13,8 +13,8 @@ import pyarrow.parquet as pq
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.readers.base import FilePreview, ReadResult, register_reader
 
-# Rows handed over at a time. Small enough that the working set is a knob independent of the
-# dataset, large enough that per-batch overhead stays invisible.
+# Rows per batch. Small enough that the working set is independent of the dataset, large enough
+# that per-batch overhead stays invisible.
 _BATCH_ROWS = 1024
 
 # Every parquet file opens and closes with these four bytes; the trailing copy is what marks the
@@ -25,20 +25,15 @@ _MAGIC = b"PAR1"
 def _check_magic(stream: BinaryIO) -> None:
     """Confirm the stream is a parquet file before pyarrow tries to read one.
 
-    Format is decided by extension, so anything named ``.parquet`` reaches this reader — a truncated
+    Format is decided by extension, so anything named ``.parquet`` reaches this reader: a truncated
     upload, a file that was never parquet, an HTML error page saved under the wrong name. Left to
-    pyarrow, all three come back as a decode failure from somewhere inside the footer, which tells a
-    consumer that the profiler could not read the file but not that the file is the wrong shape.
+    pyarrow all three come back as a decode failure from inside the footer.
 
-    Checking *both* markers is what separates the two answers worth having: a missing leading marker
-    means this was never a parquet file, while a missing trailing one means it was and the bytes
-    stop early. Eight bytes at known offsets, so it costs one extra seek against the footer read
-    that follows it.
+    Checking both markers separates the two answers worth having: a missing leading marker means this
+    was never parquet, a missing trailing one means it was and the bytes stop early.
 
-    Called from every entry point, not just :meth:`ParquetReader.peek`. The pipeline peeks a whole
-    partition before it reads any of it and discards the failures, on the grounds that a file that
-    cannot be peeked will fail again with a reason when it is read -- so the read path is where this
-    message has to be raised for it to reach a ``FileError`` at all.
+    Called from every entry point, because the pipeline discards peek failures and the read path is
+    where this reaches a ``FileError``.
     """
     size = stream.seek(0, io.SEEK_END)
     if size < len(_MAGIC) * 2:
@@ -56,8 +51,8 @@ class ParquetReader:
     file_format = "parquet"
 
     def peek(self, source: FileSource, entry: FileEntry) -> FilePreview:
-        """Schema and exact row count from the footer. Reads no rows, so a partition's whole shape is
-        knowable for the cost of one seek per file."""
+        """Schema and exact row count from the footer. Reads no rows, so a partition's shape costs
+        one seek per file."""
         with source.open(entry.path) as stream:
             _check_magic(stream)
             parquet_file = pq.ParquetFile(stream)
