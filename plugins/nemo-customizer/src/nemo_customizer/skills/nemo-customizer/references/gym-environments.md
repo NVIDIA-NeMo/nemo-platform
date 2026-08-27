@@ -9,7 +9,7 @@ GRPO scores sampled responses against an **environment** — code that runs a ro
 
 **Two FileSets, never one.** The environment package holds code and config; the dataset holds prompt rows. Validation **rejects any `.jsonl` inside the environment package** (`validate_manifest_against_listing`), so a Gym config that points at an in-tree `jsonl_fpath` — which is how environments are shipped in the Gym source tree — will not work here unchanged. Prompts come from the dataset FileSet.
 
-```
+```text
 environment FileSet (purpose=environment)   dataset FileSet (purpose=dataset)
   nemo-environment.yaml   ← manifest          training.jsonl    ← required
   configs/ or server dirs                     validation.jsonl  ← optional
@@ -21,6 +21,18 @@ Job JSON then references both as strings:
 ```json
 { "environment": "default/<env-fileset>", "dataset": "default/<dataset-fileset>" }
 ```
+
+## Before you start
+
+Confirm all of these before building a package — each one invalidates the work if it turns out false:
+
+| Check | How | If it fails |
+|---|---|---|
+| Platform dispatches to Kubernetes | `nemo jobs list-execution-profiles -f json` shows `backend: kubernetes_job` | Stop — `rl-kubernetes-runtime.md` |
+| Cluster runs sandboxed Gym | Operator confirms `sandbox_cluster_capable` + job-storage PVC claim | Stop — fails at submit, no package change helps |
+| Whether the cluster has egress | Operator confirms `NMP_RL_SANDBOX_ALLOW_INTERNET` | Decides `native-v1` vs `wheels-v1` — settle **before** layout |
+| Which Gym agent the environment runs | `verifiers` env → `verifiers_agent`; a resources server → usually `simple_agent` | Decides the format and every dataset row's `agent_ref.name` |
+| Training-image versions | `nemo-gym`, `ray`, `openai` as the Gym actor venv reports them | Needed for a wheels closure that installs offline |
 
 ## Pick a format
 
@@ -69,7 +81,7 @@ weather_simple_agent:          # 1. INSTANCE — unique at runtime; what refs an
 
 `domain` is required on every `resources_servers` block and validated against `Domain` in `nemo_gym/config_types.py`:
 
-```
+```text
 math  coding  agent  knowledge  instruction_following  long_context
 safety  games  translation  e2e  rlhf  other
 ```
@@ -182,7 +194,7 @@ Use when the user names an environment that ships with NeMo Gym (`resources_serv
 
 This is Gym's own `resources_servers/example_single_tool_call` restated as a package. It exercises every concept above: a custom resources server, an image agent referenced by config only, and the `policy_model` server.
 
-```
+```text
 weather-env/
   nemo-environment.yaml
   resources_servers/weather_verifier/
@@ -277,7 +289,7 @@ if __name__ == "__main__":
     WeatherResourcesServer.run_webserver()
 ```
 
-```
+```text
 # resources_servers/weather_verifier/requirements.txt
 # nemo-gym is prepended automatically; list anything else app.py imports
 ```
@@ -332,7 +344,7 @@ uv run --package nmp-rl pi-to-gym-conversion \
 
 What it writes:
 
-```
+```text
 ascii-tree-pkg/
   nemo-environment.yaml
   configs/policy_model.yaml       ← points Gym at the job's own vLLM engine
@@ -385,7 +397,7 @@ The catch-all, and the right answer more often than its "bring your own code" fr
 
 Gym runs `{server_type}/{implementation}/` and requires `requirements.txt` or `pyproject.toml` there. A `configs/` + `wheels/` package with **no** server directories only works when every YAML implementation is already in the image (`simple_agent`, `vllm_model`, `verifiers_agent`). A custom `resources_servers/my_env` **must** ship that directory, even if the YAML itself lives under `configs/`.
 
-```
+```text
 my-env/
   nemo-environment.yaml
   configs/policy_model.yaml     ← required; see Path B
@@ -449,7 +461,7 @@ The sub-venv is created with `uv venv --seed`, so nothing carries over from the 
 
 This is the common `wheels-v1` shape — a Gym source slice, not a repackaged Python distribution:
 
-```
+```text
 math-with-judge/
   nemo-environment.yaml
   configs/policy_model.yaml

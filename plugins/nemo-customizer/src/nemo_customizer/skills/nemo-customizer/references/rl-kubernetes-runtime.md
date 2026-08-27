@@ -75,10 +75,13 @@ platform configuration gap, not a problem with the user's package. Say so and st
 
 Installing OpenSandbox is an operator task with its own guide:
 `docs/set-up/helm/opensandbox.mdx` (and `opensandbox-kata.mdx` for the Kata runtime).
-Once installed, the platform also needs `platform.sandbox_server_domain`, optionally
-`platform.sandbox_server_protocol` (in-cluster Services speak `http`; unset defaults
-to `https`), and `platform.sandbox_api_key_secret` — the OpenSandbox API-key Secret
-copied from `opensandbox-system` into the release namespace.
+Once installed, the platform also needs:
+
+| Setting | Required? |
+|---|---|
+| `platform.sandbox_server_domain` | Yes — the in-cluster OpenSandbox Service DNS, no scheme |
+| `platform.sandbox_server_protocol` | **Set it to `http` for the normal in-cluster install.** Unset, NeMo-RL builds health URLs as `https`, which an in-cluster Service does not speak — the job then stalls waiting for a sandbox that never reports ready. Only leave it unset when OpenSandbox is genuinely reachable over HTTPS |
+| `platform.sandbox_api_key_secret` | Yes — the OpenSandbox API-key Secret, copied from `opensandbox-system` into the release namespace (key: `platform.sandbox_api_key_secret_key`, default `api-key`) |
 
 ### Egress from the sandbox
 

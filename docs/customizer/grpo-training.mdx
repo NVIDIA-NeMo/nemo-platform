@@ -86,7 +86,7 @@ Pin `--hub-version`. Left unset, the converter takes whatever the index offers a
 
 The converter writes:
 
-```
+```text
 ascii-tree-pkg/
   nemo-environment.yaml
   configs/policy_model.yaml       # points Gym at the job's own vLLM engine
@@ -111,7 +111,7 @@ Prints `{"valid": true, "format": "...", "name": "..."}` or exits non-zero with 
 
 For `native-v1`, the package is a slice of the Gym source tree with its directory structure preserved, plus a manifest you add at the root:
 
-```
+```text
 resources_servers/example_single_tool_call/
   app.py
   configs/example_single_tool_call.yaml
@@ -419,3 +419,9 @@ GRPO fails at submit, before any GPU is claimed, unless the platform operator ha
 If a submit fails on either of the first two, that is a platform configuration gap, not a problem with your package. Neither is settable per job.
 
 Installing OpenSandbox is a separate operator task: [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox), or [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) for the Kata runtime.
+
+## Next Steps
+
+- Build the environment FileSet itself in [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages).
+- Monitor reward and the other training curves in [Check Customization Job Metrics](/documentation/customizer-reference/tutorials/metrics).
+- Compare a trained model against its base in [Evaluate Models & Agents](/documentation/evaluate-models).

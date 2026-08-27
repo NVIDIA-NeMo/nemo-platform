@@ -19,6 +19,16 @@ A GRPO job takes **two** FileSets:
 
 Do not put `.jsonl` in the environment package. If a Gym config lists `datasets[].jsonl_fpath`, omit that block and the `data/` directory; prompts belong in the dataset FileSet.
 
+## Prerequisites
+
+Before packaging an environment, ensure you have:
+
+1. **A NeMo Platform configured with `platform.runtime: kubernetes`** — GRPO provisions a Ray cluster and has no local Docker fallback
+2. **Sandboxed Gym enabled on the cluster** by your platform operator (`sandbox_cluster_capable` and a job-storage PVC claim). Refer to [Cluster prerequisites](/documentation/customizer-reference/grpo-and-reward-environments#cluster-prerequisites); installing OpenSandbox is covered in [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox)
+3. **The `nemo` CLI on your `PATH`**, or a source checkout where `uv run --package nmp-rl` resolves
+4. **The training image tag** your cluster runs — vendoring a wheel closure requires the `nemo-gym`, `ray`, and `openai` versions it reports
+5. **A machine with internet access** for the packaging step. Training clusters consume uploaded FileSets only
+
 ## Pick a format
 
 | You have | Format | `config_paths` live under |
@@ -409,3 +419,9 @@ nemo files list weather-env --workspace default
 ```
 
 Job JSON: [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments#submit-the-job). Sandboxed Gym is configured on the platform (`NMP_RL_SANDBOXED_GYM_DEFAULT`), not in the job payload. Cluster setup: [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox).
+
+## Next Steps
+
+- Submit the job and tune its hyperparameters in [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments).
+- Shape prompt rows for your environment's agent in [Format a Training Dataset](/documentation/customizer-reference/tutorials/format-training-dataset).
+- Monitor reward and the other training curves in [Check Customization Job Metrics](/documentation/customizer-reference/tutorials/metrics).
