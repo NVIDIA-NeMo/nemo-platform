@@ -25,37 +25,35 @@ __all__ = ["CategoricalStats"]
 class CategoricalStats(BaseModel):
     """The vocabulary of a column that has one.
 
-    Present only when the column really is a bounded controlled vocabulary. Absent otherwise, and
-    the absence *is* the claim: this column is not a vocabulary.
+    Present only when the column really is a bounded controlled vocabulary. Absent otherwise, and the
+    absence *is* the claim: this column is not a vocabulary.
 
-    It used to be a general cardinality count on every string and numeric column. Counting distinct
-    values exactly means *retaining* them, and for a column of prompts the set of distinct values is
-    the column. What that bought was a reading of "9,954 distinct in 10,000 rows", which says free
-    text, which ``semantic_role`` and the length quantiles already said for free. Nothing read it
-    either: the only consumers of the number are a ``<= 2`` test that confirms a binary label and
-    the ``<= 32`` gate on ``values`` below.
-
-    The values themselves ARE row content, so they appear only for a column whose detected role makes
-    it a controlled vocabulary — the assert-only-what-was-proven rule applied to the one place the
-    profiler would otherwise leak the data it is describing.
+    Not a general cardinality count -- counting distinct values exactly means *retaining* them, and
+    for a column of prompts the distinct set is the column. The number has two consumers: a ``<= 2``
+    test confirming a binary label, and the ``<= 32`` gate on ``values``.
     """
 
     distinct_count: int
     """How many distinct values the vocabulary holds.
 
-    Exact, with no cap to have silently hit: this model is built only for a column
-    that stayed inside the vocabulary bounds all the way through, so there is
-    nothing to caveat. A small bounded set corroborates score / category roles, and
-    `<= 2` is what confirms a binary preference label.
+    Present only for a column that stayed a bounded vocabulary throughout -- absence
+    means the column is not one, not that counting was skipped. Exact over the rows
+    that were read; where the partition's `rows_complete` is false, a shard was
+    missed or a read was cut short, and this is a LOWER BOUND for the partition.
     """
 
     values: Optional[List[str]] = None
     """
-    The observed values, present only when this column's `semantic_role` marks it a
-    controlled vocabulary (label | provenance | meta | rank) and it holds at most 32
-    of them. Cardinality alone cannot be the gate: it inverts on small data, where
-    every column holds few distinct values — free text included — so a three-row
-    dataset had its prompts stored verbatim. A role says what a column _is_, at any
-    size. Read `PartitionProfile.rows_complete` to know whether this is the whole
-    vocabulary or only what the sampled rows showed.
+    The observed values, present only when this column's `semantic_role` makes it a
+    controlled vocabulary and the count is small enough to quote. Absent whenever
+    any file in the partition was read only part-way -- by a row budget or by a
+    failure mid-read -- since a prefix cannot prove an enumeration and quoting one
+    would store a sample of row content as though it were the whole vocabulary. A
+    partition that lost a shard before it yielded a row still quotes: that file
+    contributed nothing to measure, so the values gathered from the rest are entire,
+    and `rows_complete` reports the loss. This is the one place _column_ content
+    reaches the stored profile under a role gate rather than a size gate, since
+    cardinality inverts on small data, where every column looks like an enumeration.
+    It is not the only place row content reaches the profile: see
+    `MessageStats.roles_seen`.
     """

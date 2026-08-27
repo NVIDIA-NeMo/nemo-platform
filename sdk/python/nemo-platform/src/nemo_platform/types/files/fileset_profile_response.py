@@ -48,20 +48,17 @@ class FilesetProfileResponse(BaseModel):
     """
 
     profile: Optional["DatasetProfile"] = None
-    """The machine-owned dataset profile — the root of the stored contract.
+    """The machine-owned dataset profile -- the root of the stored contract.
 
-    Deliberately carries no staleness marker, and no per-file manifest to
-    reconstruct one from. A stored digest would freeze "which files count as inputs"
-    into the data at write time, and that judgment moves: once card front-matter
-    drives split declaration, `README.md` becomes an input. Changing the rule would
-    then invalidate every stored profile at once, with no way to tell a real change
-    from a definition change.
+    It carries no staleness marker, and no per-file manifest to reconstruct one
+    from. A stored digest would freeze "which files count as inputs" into the data
+    at write time, and that judgment moves: once card front-matter drives split
+    declaration, `README.md` becomes an input, and changing the rule would
+    invalidate every stored profile at once.
 
     So a profile says when it was made and nothing about whether it still holds.
-    `created_at` is the whole of it. That is deliberate while profiling is
-    user-triggered and nothing consumes freshness; when something does, the cheap
-    primitive is a fileset version token from the storage backend, which costs no
-    listing and freezes no policy — not a manifest reconstructed here.
+    When something does consume freshness, the cheap primitive is a fileset version
+    token from the storage backend.
     """
 
 

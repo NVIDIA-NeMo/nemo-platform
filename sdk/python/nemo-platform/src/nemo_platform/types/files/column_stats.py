@@ -30,11 +30,10 @@ class ColumnStats(BaseModel):
     """
     Measurements for one top-level column (keyed by name in ``PartitionProfile.stats``).
 
-    The kind-specific block is populated by dtype; deep measurements fold into it (e.g.
-    ``MessageStats.content_chars``) so stats stay flat — no path addressing to drift against the
-    schema tree. Never row values — profiles stay safe to display / export without leaking data —
-    with one role-gated exception: ``categorical.values``, and only for a column whose role makes it
-    a controlled vocabulary rather than free text that happens to repeat.
+    The kind-specific block is populated by dtype, and deep measurements fold into it (e.g.
+    ``MessageStats.content_chars``) so stats stay flat -- no path addressing to drift against the
+    schema tree. Almost never row values: the two exceptions are ``categorical.values``, gated on
+    role, and ``messages.roles_seen``, gated on nothing but bounded in count and in length.
     """
 
     categorical: Optional[CategoricalStats] = None
@@ -43,18 +42,10 @@ class ColumnStats(BaseModel):
     Present only when the column really is a bounded controlled vocabulary. Absent
     otherwise, and the absence _is_ the claim: this column is not a vocabulary.
 
-    It used to be a general cardinality count on every string and numeric column.
-    Counting distinct values exactly means _retaining_ them, and for a column of
-    prompts the set of distinct values is the column. What that bought was a reading
-    of "9,954 distinct in 10,000 rows", which says free text, which `semantic_role`
-    and the length quantiles already said for free. Nothing read it either: the only
-    consumers of the number are a `<= 2` test that confirms a binary label and the
-    `<= 32` gate on `values` below.
-
-    The values themselves ARE row content, so they appear only for a column whose
-    detected role makes it a controlled vocabulary — the assert-only-what-was-proven
-    rule applied to the one place the profiler would otherwise leak the data it is
-    describing.
+    Not a general cardinality count -- counting distinct values exactly means
+    _retaining_ them, and for a column of prompts the distinct set is the column.
+    The number has two consumers: a `<= 2` test confirming a binary label, and the
+    `<= 32` gate on `values`.
     """
 
     messages: Optional[MessageStats] = None

@@ -57,41 +57,32 @@ class PartitionProfile(BaseModel):
     Only then can a consumer assert enum / required in a bridged JSON Schema, or
     read a verifiability coverage of 1.0 as literal.
 
-    Named for what it measures. It was `stats_complete`, which promised more than it
-    delivered: `Quantiles` is an estimate by construction however much was read,
-    bounded for the cost reason its own docstring gives. Whether a number is exact
-    is a property of that number, and every one of them says so; this says only
-    whether anything was missed on the way in.
-
-    Scoped to the partition because that is where it is decided — a corrupt shard in
-    one partition says nothing about the measurements in another, and a fileset-wide
-    flag quietly downgraded every partition to the worst one.
+    It says whether anything was missed on the way in, not whether a given number is
+    exact -- that is a property of the number, and each one says so. Scoped to the
+    partition, because a corrupt shard in one says nothing about the measurements in
+    another.
     """
 
     splits: List[SplitProfile]
-    """card-declared > path-detected > single 'default' split."""
+    """Path-detected, else a single 'default' split."""
 
     file_formats: Optional[List[str]] = None
-    """
-    The distinct formats this partition's files are in, sorted — normally exactly
-    one, and more than one when a stray .jsonl sits beside .parquet shards. That is
-    noise, not a second dataset, so it stays in this partition and shows up here
-    rather than splitting it. jsonl | parquet are read today; csv | arrow are
-    reserved vocabulary the profiler cannot read yet and reports on
-    `DatasetProfile.file_errors` instead.
+    """The distinct formats this partition's files are in, sorted -- normally one.
+
+    Observed rather than chosen: a directory holding two formats has a stray file,
+    not a second dataset, and splitting the partition to keep a single value true
+    made partition names unstable.
     """
 
     name: Optional[str] = None
     """Identifies this partition, and unique within a profile.
 
-    It is the path prefix its files share within the fileset: a top-level directory,
-    or "" when they sit at the fileset root. Empty is a safe sentinel precisely
-    because no directory can be named it, so root-level files stay distinct from a
-    directory literally called 'default'. Once card front-matter is parsed, a
-    declared config name populates this field instead — the same claim from a better
-    source. For display, read it as `name or "default"`: storing that default was a
-    lossy habit, because a lone partition under `data/` then reported "default" and
-    threw away the only thing identifying it.
+    The path prefix its files share within the fileset: a top-level directory, or ""
+    when they sit at the fileset root. Empty is a safe sentinel because no directory
+    can be named it. Once card front-matter is parsed, a declared config name
+    populates this instead. For display, read it as `name or "default"` rather than
+    storing that default, which would throw away the only thing identifying the
+    partition.
     """
 
     stats: Optional[Dict[str, ColumnStats]] = None

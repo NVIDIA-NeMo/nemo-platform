@@ -33,24 +33,20 @@ class PartitionClassification(BaseModel):
     on the feature nodes they describe, but the evidence for *why* they were assigned is recorded here.
     """
 
-    dataset_type: str
-    """Dataset-type vocabulary (prompt_completion, preference_pair, ...).
-
-    A SUMMARY, not the basis for a decision — it is the most specific single
-    structure the roles satisfy, and a dataset routinely satisfies several. The
-    `semantic_role` markers are what a consumer should match on; `candidates` lists
-    everything this one is a projection of.
-    """
-
     candidates: Optional[List[str]] = None
     """
-    Every dataset type the assigned roles satisfy, most specific first, so
-    `candidates[0] == dataset_type`. prompt + completion + score + label is
-    genuinely both scored_response and unpaired_preference; reporting only the first
-    made rule order an invisible tie-break and hid that the data supports more than
-    one use. Deliberately not a capability list ("supports DPO") — trainer
-    requirements shift and differ per framework, so that mapping belongs in the
-    consumer, computed from the roles.
+    Every dataset type the assigned roles satisfy (prompt_completion,
+    preference_pair, ...), most specific first. `candidates[0]` is the best single
+    answer and the tail is structures the same columns also satisfy: prompt +
+    completion + score + label is genuinely both `scored_response` and
+    `unpaired_preference`, and a consumer that cares picks by its own rule rather
+    than by ours. EMPTY means the roles matched no known structure, which is also
+    what a partition that could not be classified at all reports; the two are not
+    distinguishable from this model alone, because an `error` evidence entry is also
+    how a partition that classified fine reports a degradation along the way -- a
+    column cap, a column whose measurement failed, a probe that could not run. A
+    SUMMARY either way: the `semantic_role` markers are what a consumer should match
+    on.
     """
 
     evidence: Optional[List[Evidence]] = None
