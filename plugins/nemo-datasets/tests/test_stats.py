@@ -347,6 +347,20 @@ def test_the_fold_reports_the_cap_it_hit_at_either_level():
     assert ordinary.columns_were_capped() is False
 
 
+def test_asking_for_the_schema_mid_stream_does_not_freeze_it():
+    # The folded schema is kept once asked for, because `finalize` asks three times -- the feature
+    # itself, then `_stat_blocks` and `vocabulary`, each needing the dtype to pick a measurement --
+    # and every ask recurses the column's whole nested schema. It is dropped on each batch, so the
+    # kept value can never be older than the data behind it.
+    fold = RowFold(None)
+    fold.update([{"a": 1}])
+    assert fold._accumulators["a"].feature().dtype == "int64"
+    fold.update([{"a": "x"}])
+    assert fold._accumulators["a"].feature().dtype == "json"
+    features, _ = fold.finalize()
+    assert features[0].dtype == "json"
+
+
 # --- routing -------------------------------------------------------------------------------------
 
 # A column's values are routed to their measurements by exact class, which cannot place a subclass
