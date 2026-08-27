@@ -50,13 +50,16 @@ def task_slug_for_tool(tool_name: str) -> str:
 
 def _assign_unique_task_slugs(gaps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return gaps with unique ``task_slug`` values, suffixing ``-2``, ``-3``, ... on collisions."""
-    usage: dict[str, int] = {}
+    assigned: set[str] = set()
     enriched: list[dict[str, Any]] = []
     for gap in sorted(gaps, key=lambda item: str(item["name"])):
         base_slug = task_slug_for_tool(str(gap["name"]))
-        collisions = usage.get(base_slug, 0)
-        task_slug = base_slug if collisions == 0 else f"{base_slug}-{collisions + 1}"
-        usage[base_slug] = collisions + 1
+        task_slug = base_slug
+        suffix = 2
+        while task_slug in assigned:
+            task_slug = f"{base_slug}-{suffix}"
+            suffix += 1
+        assigned.add(task_slug)
         enriched.append({**gap, "task_slug": task_slug, "paths": _artifact_paths(task_slug)})
     return enriched
 

@@ -94,7 +94,7 @@ def test_select_returns_task_slug_and_paths(tmp_path: Path) -> None:
 
 
 def test_select_assigns_deduped_slugs_for_colliding_tool_names(tmp_path: Path) -> None:
-    """Colliding base slugs receive deterministic ``-2``, ``-3``, ... suffixes."""
+    """Colliding base and final slugs receive deterministic ``-2``, ``-3``, ... suffixes."""
     report = tmp_path / "report.json"
     _write_report(report, covered=[], uncovered=["server:foo", "server.foo"])
     payload = json.loads(_run("select", "--report", str(report)).stdout)
@@ -102,6 +102,16 @@ def test_select_assigns_deduped_slugs_for_colliding_tool_names(tmp_path: Path) -
     assert slugs == {
         "server.foo": "cover-server-foo",
         "server:foo": "cover-server-foo-2",
+    }
+
+    report_three = tmp_path / "report-three.json"
+    _write_report(report_three, covered=[], uncovered=["server:foo", "server.foo-2", "server.foo"])
+    payload_three = json.loads(_run("select", "--report", str(report_three)).stdout)
+    slugs_three = {gap["name"]: gap["task_slug"] for gap in payload_three["actionable_tools"]}
+    assert slugs_three == {
+        "server.foo": "cover-server-foo",
+        "server.foo-2": "cover-server-foo-2",
+        "server:foo": "cover-server-foo-3",
     }
 
 
