@@ -55,11 +55,17 @@ export const ExperimentTrendChart: FC<ExperimentTrendChartProps> = ({
   const hasPreloaded = preloadedEvaluations !== undefined;
   const {
     rows: fetchedRows,
+    total: fetchedTotal,
     isLoading: isFetching,
     isError,
   } = useGroupEvaluations(workspace, group.id, { enabled: !hasPreloaded && !preloadPending });
   const points = hasPreloaded ? preloadedEvaluations : fetchedRows;
   const isLoading = hasPreloaded ? false : preloadPending || isFetching;
+
+  // The fetch takes one page, so a group larger than that plots a partial history. A trend that
+  // quietly starts partway through reads as the whole story, so say when it does not. The preloaded
+  // path is whole by construction — the caller only passes rows when the group fits one page.
+  const omittedCount = hasPreloaded ? 0 : Math.max(0, fetchedTotal - fetchedRows.length);
   const metrics = useMemo(() => deriveTrendMetrics(points), [points]);
 
   const [metricId, setMetricId] = useState<string | undefined>(undefined);
@@ -139,7 +145,14 @@ export const ExperimentTrendChart: FC<ExperimentTrendChartProps> = ({
   return (
     <div className="flex flex-col gap-3 rounded border border-base bg-surface p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <Text kind="title/xs">{`${metric?.label ?? 'Metric'} over time`}</Text>
+        <div className="flex flex-col gap-1">
+          <Text kind="title/xs">{`${metric?.label ?? 'Metric'} over time`}</Text>
+          {omittedCount > 0 && (
+            <Text kind="body/regular/xs" color="subtle">
+              {`Showing the ${plotPoints.length.toLocaleString()} most recent of ${fetchedTotal.toLocaleString()} evaluations.`}
+            </Text>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-4">
           <MetricSelect
             label="Metric"

@@ -31,13 +31,25 @@ const isChoice = (value: unknown): value is TrendVisibilityChoice =>
   typeof (value as TrendVisibilityChoice).flag === 'boolean';
 
 /**
+ * Whether a stored value is a choice that still speaks for the flag as it now reads.
+ *
+ * False covers three cases the caller treats alike: nothing stored, a value in the older
+ * bare-boolean format, and a choice stamped against a flag that has since moved.
+ */
+export const isTrendChoiceCurrent = (stored: unknown, flag: boolean): boolean =>
+  isChoice(stored) && stored.flag === flag;
+
+/**
  * Whether to show the chart: the viewer's choice while the flag still reads as it did when they
  * made it, and the flag itself once it has changed.
  *
  * Keying on the flag value rather than on a change event means this holds however the flag moved —
  * the edit modal, the API, the CLI, another tab, another user — and not only for edits this app
- * happened to witness. A value in the older bare-boolean format fails {@link isChoice} and so is
- * ignored, which retires it on first read rather than stranding viewers on a stale choice.
+ * happened to witness.
+ *
+ * Suspending a mismatched choice is not enough on its own: turn the flag off and back on and the
+ * stamp lines up again, reviving a choice the owner has twice overruled. So the reader is expected
+ * to discard what this call declines to honour — see the route's cleanup effect.
  */
 export const resolveTrendVisible = (stored: unknown, flag: boolean): boolean =>
-  isChoice(stored) && stored.flag === flag ? stored.visible : flag;
+  isTrendChoiceCurrent(stored, flag) ? (stored as TrendVisibilityChoice).visible : flag;

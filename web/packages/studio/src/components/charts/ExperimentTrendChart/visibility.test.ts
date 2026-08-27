@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  isTrendChoiceCurrent,
   resolveTrendVisible,
   trendVisibilityStorageKey,
 } from '@studio/components/charts/ExperimentTrendChart/visibility';
@@ -13,6 +14,18 @@ describe('trendVisibilityStorageKey', () => {
 
   it('still returns a usable key before the group has loaded', () => {
     expect(trendVisibilityStorageKey(undefined)).toBe('nemo-studio:experiment-trend:');
+  });
+});
+
+describe('isTrendChoiceCurrent', () => {
+  it('is true only for a well-formed choice stamped with the flag as it now reads', () => {
+    expect(isTrendChoiceCurrent({ visible: false, flag: true }, true)).toBe(true);
+    expect(isTrendChoiceCurrent({ visible: false, flag: false }, true)).toBe(false);
+  });
+
+  it('is false for nothing stored and for the older bare-boolean format', () => {
+    expect(isTrendChoiceCurrent(undefined, true)).toBe(false);
+    expect(isTrendChoiceCurrent(false, false)).toBe(false);
   });
 });
 

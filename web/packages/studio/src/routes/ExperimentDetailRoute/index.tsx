@@ -7,6 +7,7 @@ import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import {
+  isTrendChoiceCurrent,
   resolveTrendVisible,
   type TrendVisibilityChoice,
   trendVisibilityStorageKey,
@@ -23,7 +24,7 @@ import { getExperimentRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ChartLine, ChartScatter, Pencil } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { type FC, useEffect, useState } from 'react';
 
 export const ExperimentDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -46,11 +47,19 @@ export const ExperimentDetailRoute: FC = () => {
   // flag — a flagged experiment is one whose owner has said its evaluations are comparable, so the
   // chart is worth showing unasked. A viewer's own toggle wins, but only until the flag changes;
   // `resolveTrendVisible` retires the stored choice at that point so the owner's edit takes effect.
-  const [storedTrendChoice, setTrendChoice] = useLocalStorage<TrendVisibilityChoice>(
-    trendVisibilityStorageKey(group?.id)
-  );
+  const [storedTrendChoice, setTrendChoice, clearTrendChoice] =
+    useLocalStorage<TrendVisibilityChoice>(trendVisibilityStorageKey(group?.id));
   const trendFlag = Boolean(group?.show_evaluations_over_time);
   const trendVisible = resolveTrendVisible(storedTrendChoice, trendFlag);
+
+  // Drop a choice the flag has moved out from under, rather than leaving it suspended: the stamp
+  // lines up again if the flag is turned off and back on, which would revive a choice the owner has
+  // twice overruled. Gated on `group` because the flag reads false until it loads, which would
+  // otherwise look like a mismatch and delete a live choice on every mount.
+  useEffect(() => {
+    if (!group || storedTrendChoice === undefined) return;
+    if (!isTrendChoiceCurrent(storedTrendChoice, trendFlag)) clearTrendChoice();
+  }, [group, storedTrendChoice, trendFlag, clearTrendChoice]);
 
   useBreadcrumbs({
     items: [

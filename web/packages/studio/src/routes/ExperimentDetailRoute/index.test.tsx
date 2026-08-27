@@ -6,6 +6,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { ExperimentDetailRoute } from '@studio/routes/ExperimentDetailRoute';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import { waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 
 vi.hoisted(() => {
@@ -111,6 +112,27 @@ describe('ExperimentDetailRoute', () => {
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
       expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('deletes a stored choice the flag has moved under, so a round trip cannot revive it', async () => {
+      const key = `nemo-studio:experiment-trend:${group.id}`;
+      // Chosen while the flag was off; the owner has since turned it on.
+      window.localStorage.setItem(key, JSON.stringify({ visible: true, flag: false }));
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      // Merely ignoring it would leave it to apply again the next time the flag reads false.
+      await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
+    });
+
+    it('discards a value left in the older bare-boolean format', async () => {
+      const key = `nemo-studio:experiment-trend:${group.id}`;
+      window.localStorage.setItem(key, 'false');
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('retires a stored choice once the flag has moved under it', async () => {
