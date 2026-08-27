@@ -120,6 +120,23 @@ def test_numeric_all_non_finite_yields_no_numeric_summary():
     assert stats.get("n") is None or stats["n"].numeric is None
 
 
+def test_non_finite_floats_are_not_distinct_values():
+    # NaN compares unequal to itself, so a set counts every one as its own distinct value: a parquet
+    # float column of NaNs reported its own row count as its cardinality, and past the vocabulary
+    # bound it saturated and took the column's whole `categorical` block with it. Dropped from the
+    # vocabulary for the same reason they are already dropped from the extrema.
+    stats = _stats([_feature("score", "float64")], _rows("score", [float("nan") for _ in range(100)]))
+    assert stats["score"].categorical.distinct_count == 0
+    assert stats["score"].numeric is None
+
+
+def test_finite_values_are_still_counted_alongside_non_finite_ones():
+    values = [1.0, 2.0, 1.0, float("nan"), float("inf"), float("-inf")]
+    stats = _stats([_feature("score", "float64")], _rows("score", values))
+    assert stats["score"].categorical.distinct_count == 2
+    assert (stats["score"].numeric.min, stats["score"].numeric.max) == (1.0, 2.0)
+
+
 # --- messages ------------------------------------------------------------------------------------
 
 

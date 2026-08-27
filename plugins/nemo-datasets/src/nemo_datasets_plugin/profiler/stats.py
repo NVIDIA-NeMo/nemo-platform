@@ -379,17 +379,26 @@ class NumericAccumulator(ColumnAccumulator):
         self._vocabulary = _Vocabulary()
 
     def _observe(self, present: list[Any]) -> None:
+        countable: list[Any] = []
         for value in present:
-            # Non-finite floats are dropped: they serialize to JSON null and fail to re-validate
-            # against NumericStats, making the profile unreadable. bool is an int here, and is not a
-            # number.
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            # Non-finite floats are dropped, and dropped from the *vocabulary* as well as from the
+            # extrema. They serialize to JSON null and fail to re-validate against NumericStats,
+            # which is why the extrema skip them; the vocabulary skips them because NaN compares
+            # unequal to itself, so a set counts every NaN as its own distinct value. A parquet
+            # column of NaNs reported its own row count as its cardinality -- and past
+            # `_MAX_VOCABULARY_VALUES` of them it saturated, taking the column's whole `categorical`
+            # block with it.
+            if isinstance(value, float) and not math.isfinite(value):
+                continue
+            countable.append(value)
+            # bool is an int here, and is not a number.
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
                 number = float(value)
                 self._min = min(self._min, number)
                 self._max = max(self._max, number)
                 self._sum += number
                 self._count += 1
-        self._vocabulary.update(present)
+        self._vocabulary.update(countable)
 
     def _stat_blocks(self) -> dict[str, Any]:
         numeric = None
