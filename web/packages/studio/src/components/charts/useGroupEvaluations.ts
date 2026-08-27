@@ -7,19 +7,19 @@ import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataV
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { useMemo } from 'react';
 
-export interface ParetoEvaluations {
+export interface GroupEvaluations {
   rows: EvaluationRow[];
   isLoading: boolean;
   isError: boolean;
 }
 
-/** Loads every evaluation in a group in one request for the Pareto chart, reusing the list endpoint
- * (each evaluation already carries the rollup means the chart plots). */
-export function useParetoEvaluations(
+/** Loads every evaluation in a group in one request for the group's charts, reusing the list endpoint
+ * (each evaluation already carries the rollup means the charts plot). */
+export function useGroupEvaluations(
   workspace: string,
   experimentId: string,
   options?: { enabled?: boolean }
-): ParetoEvaluations {
+): GroupEvaluations {
   // Disabled by callers that already hold the whole group, to avoid a redundant all-evaluations fetch.
   const enabled = (options?.enabled ?? true) && !!experimentId;
   const { data, isLoading, isError } = useListEvaluations(

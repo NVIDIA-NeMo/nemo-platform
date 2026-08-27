@@ -17,7 +17,7 @@ import { ExperimentMetrics } from '@studio/routes/ExperimentDetailRoute/Experime
 import { getExperimentRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { ChartScatter, Pencil } from 'lucide-react';
+import { ChartLine, ChartScatter, Pencil } from 'lucide-react';
 import { type FC, useState } from 'react';
 
 export const ExperimentDetailRoute: FC = () => {
@@ -36,6 +36,16 @@ export const ExperimentDetailRoute: FC = () => {
     false
   );
   const paretoVisible = storedParetoVisible ?? false;
+
+  // Over-time trend visibility, persisted per group like the Pareto view. Unlike it, the default
+  // is the experiment's own `show_evaluations_over_time` flag — a flagged experiment is one whose
+  // owner has said its evaluations are comparable, so the chart is worth showing unasked. Once a
+  // viewer toggles it, their stored choice wins over the flag.
+  const [storedTrendVisible, setTrendVisible] = useLocalStorage<boolean>(
+    `nemo-studio:experiment-trend:${group?.id ?? ''}`,
+    false
+  );
+  const trendVisible = storedTrendVisible ?? Boolean(group?.show_evaluations_over_time);
 
   useBreadcrumbs({
     items: [
@@ -98,17 +108,33 @@ export const ExperimentDetailRoute: FC = () => {
               <div className="flex items-center gap-3">
                 <Text kind="title/sm">Evaluations</Text>
                 {group && (
-                  <Button
-                    kind="tertiary"
-                    aria-pressed={paretoVisible}
-                    onClick={() => setParetoVisible(!paretoVisible)}
-                  >
-                    <ChartScatter width={12} height={12} className="text-brand" />
-                    {paretoVisible ? 'Hide Pareto' : 'Pareto view'}
-                  </Button>
+                  <>
+                    <Button
+                      kind="tertiary"
+                      aria-pressed={trendVisible}
+                      onClick={() => setTrendVisible(!trendVisible)}
+                    >
+                      <ChartLine width={12} height={12} className="text-brand" />
+                      {trendVisible ? 'Hide over time' : 'Over time'}
+                    </Button>
+                    <Button
+                      kind="tertiary"
+                      aria-pressed={paretoVisible}
+                      onClick={() => setParetoVisible(!paretoVisible)}
+                    >
+                      <ChartScatter width={12} height={12} className="text-brand" />
+                      {paretoVisible ? 'Hide Pareto' : 'Pareto view'}
+                    </Button>
+                  </>
                 )}
               </div>
-              {group && <ExperimentDataView group={group} paretoVisible={paretoVisible} />}
+              {group && (
+                <ExperimentDataView
+                  group={group}
+                  paretoVisible={paretoVisible}
+                  trendVisible={trendVisible}
+                />
+              )}
             </div>
           </>
         )}
