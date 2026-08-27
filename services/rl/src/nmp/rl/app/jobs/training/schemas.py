@@ -34,6 +34,18 @@ class OptimizerType(str, Enum):
     ADAM_WITH_FLAT_LR = "adam_with_flat_lr"
 
 
+class BatchingStrategy(str, Enum):
+    """How the trainer groups rollouts into micro-batches.
+
+    One enum, not two flags: NeMo-RL asserts the modes are mutually exclusive in
+    ``lm_policy`` and ``BatchedDataDict.shard_by_batch_size``.
+    """
+
+    STATIC = "static"  # one rollout per slot, padded
+    DYNAMIC = "dynamic"  # bucket rollouts up to a token budget
+    SEQUENCE_PACKING = "sequence_packing"  # concatenate into packed sequences
+
+
 class ModelConfig(BaseModel):
     """Internal model configuration with a resolved local path."""
 
@@ -92,9 +104,20 @@ class GRPOConfig(BaseModel):
     batch_multiplier: float = Field(default=1.0, gt=0.0)
     reward_shaping: dict[str, Any] | None = None
     reward_scaling: dict[str, Any] | None = None
+    # Defaults to DYNAMIC: this backend always trains on DTensor, and dynamic batching is the
+    # DTensor/Automodel norm in NeMo-RL's recipes (sequence packing is the Megatron norm).
+    # It is also the only mode with no architecture restrictions on the GRPO + DTensor path --
+    # packing is rejected for VLM, multimodal and context parallel.
+    batching_strategy: BatchingStrategy = BatchingStrategy.DYNAMIC
+    # None derives max_seq_length * micro_batch_size: the peak STATIC already provisions for.
+    train_mb_tokens: int | None = Field(default=None, gt=0)
+    sequence_length_round: int = Field(default=64, gt=0)
     # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
     automodel_kwargs: dict[str, Any] | None = None
     router_aux_loss_coef: float | None = Field(default=None, ge=0.0)
+    # Passed to NeMo-RL's policy.hf_config_overrides verbatim, so nested keys reach models
+    # that namespace their config (Qwen3.5 reads router_aux_loss_coef under text_config).
+    hf_config_overrides: dict[str, Any] | None = None
     vllm_tensor_parallel_size: int | None = Field(default=None, gt=0)
     vllm_gpu_memory_utilization: float = Field(default=0.5, gt=0.0, le=1.0)
 
