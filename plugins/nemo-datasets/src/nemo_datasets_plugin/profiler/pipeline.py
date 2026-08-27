@@ -168,7 +168,12 @@ def _per_file_cap(row_budget: int | None, file_count: int) -> int | None:
     """
     if row_budget is None:
         return None
-    if file_count <= 1:
+    # Zero is passed through rather than floored. `max(MIN_ROWS_PER_FILE, 0 // n)` turned "read no
+    # rows" into ten rows per file as soon as a partition had more than one, so the same argument
+    # meant nothing for a single-file partition and ten per file for a sharded one. (The task layer
+    # maps a config `row_budget: 0` to None -- "every row" -- before this is ever reached, which is
+    # its own documented choice; this only has to be consistent with itself.)
+    if file_count <= 1 or row_budget == 0:
         return row_budget
     return max(MIN_ROWS_PER_FILE, row_budget // file_count)
 
