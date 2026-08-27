@@ -129,7 +129,11 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
           id: 'duration',
           header: 'Duration',
           enableSorting: false,
-          cell: ({ getValue }) => <Text>{formatDurationMs(getValue<number | undefined>())}</Text>,
+          cell: ({ getValue }) => (
+            <Text>
+              {formatDurationMs(getValue<number | undefined>(), { hideMsAboveMinute: true })}
+            </Text>
+          ),
         }),
         accessor('created_at', {
           header: 'Created',
