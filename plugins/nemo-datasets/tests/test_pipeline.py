@@ -281,7 +281,7 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert partition.features[0].dtype == "string"
     assert partition.features[0].semantic_role == "prompt"
     assert partition.stats["prompt"].text is not None
-    assert partition.classification.dataset_type == "prompt_only"  # a lone prompt column, no target
+    assert partition.classification.primary == "prompt_only"  # a lone prompt column, no target
 
     # A budgeted run over files that all fit under their share is still a complete scan, which is
     # why the budget and the outcome are separate fields.
@@ -414,7 +414,7 @@ def test_profile_is_invariant_to_shard_order(tmp_path, tmp_path_factory):
     second = profile(LocalFileSource(reverse), created_at=FIXED_TIME).partitions[0]
 
     assert [(f.name, f.dtype) for f in first.features] == [(f.name, f.dtype) for f in second.features]
-    assert first.classification.dataset_type == second.classification.dataset_type == "scored_response"
+    assert first.classification.primary == second.classification.primary == "scored_response"
 
 
 def test_profile_survives_conflicting_shard_schemas(tmp_path):
@@ -576,7 +576,7 @@ def test_profile_classifies_roles_type_and_verifiability(tmp_path):
     partition = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
 
     assert {f.semantic_role for f in partition.features} == {"prompt", "completion"}
-    assert partition.classification.dataset_type == "prompt_completion"
+    assert partition.classification.primary == "prompt_completion"
     assert partition.classification.verifiability.method == "extractable_final_answer"
     assert partition.classification.verifiability.coverage == 1.0
 
@@ -591,7 +591,7 @@ def test_profile_from_value_dataset_is_a_chat_dataset(tmp_path):
 
     assert partition.features[0].dtype == "messages"
     assert partition.features[0].semantic_role == "messages"
-    assert partition.classification.dataset_type == "messages"
+    assert partition.classification.primary == "messages"
     assert partition.stats["conversations"].messages.roles_seen == ["human", "gpt"]
 
 
@@ -608,7 +608,7 @@ def test_profile_degrades_one_partition_when_measurement_fails(tmp_path, monkeyp
     partition = result.partitions[0]
     assert partition.splits[0].num_examples == 2  # structure survives
     assert partition.stats == {}
-    assert partition.classification.dataset_type == "unknown"
+    assert partition.classification.primary is None
     assert [e.kind for e in partition.classification.evidence] == ["error"]
     assert "RuntimeError" in partition.classification.evidence[0].detail  # says what failed
 
@@ -624,7 +624,7 @@ def test_a_read_failure_does_not_look_like_a_measurement_failure(tmp_path):
 
     part = result.partitions[0]
     assert [e.path for e in result.file_errors] == ["train-00001-of-00002.parquet"]
-    assert part.classification.dataset_type == "prompt_completion"  # the readable rows still classify
+    assert part.classification.primary == "prompt_completion"  # the readable rows still classify
     assert "error" not in {e.kind for e in part.classification.evidence}
     assert part.stats  # ...and are still measured
 
@@ -663,7 +663,7 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
     part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
 
     assert "prompt" in part.stats and "completion" not in part.stats
-    assert part.classification.dataset_type == "prompt_completion"  # roles come from names, not stats
+    assert part.classification.primary == "prompt_completion"  # roles come from names, not stats
     assert any(e.kind == "error" and "'completion'" in e.detail for e in part.classification.evidence)
     # The reasoning for the classification still reads first; the failure is a caveat on it.
     assert part.classification.evidence[0].kind != "error"
@@ -685,11 +685,13 @@ def test_a_measurement_failure_is_scoped_to_its_own_partition(tmp_path, monkeypa
 
     partitions = {p.name: p for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions}
 
-    assert partitions["bad"].classification.dataset_type == "unknown"
-    # `candidates[0]` is documented to be `dataset_type`, and the wide guard is the one path that
-    # never runs the classifier, so it has to supply the head itself rather than leave the list empty.
-    assert partitions["bad"].classification.candidates == ["unknown"]
-    assert partitions["good"].classification.dataset_type == "prompt_completion"
+    # The wide guard is the one path that never runs the classifier, so it concludes nothing and
+    # says so with an empty list -- the same shape as a partition nothing matched, distinguished by
+    # the error evidence rather than by a coined type.
+    assert partitions["bad"].classification.candidates == []
+    assert partitions["bad"].classification.primary is None
+    assert any(e.kind == "error" for e in partitions["bad"].classification.evidence)
+    assert partitions["good"].classification.primary == "prompt_completion"
     assert partitions["good"].stats  # a neighbour's bad data costs this partition nothing
 
 
@@ -849,7 +851,7 @@ def test_profile_survives_a_hostile_directory(tmp_path):
     partition = result.partitions[0]
     assert partition.file_formats == ["jsonl", "parquet"]
     # The readable parquet rows still produced a real classification...
-    assert partition.classification.dataset_type == "prompt_completion"
+    assert partition.classification.primary == "prompt_completion"
     # ...and the odd jsonl rows were measured rather than aborting the run.
     assert partition.stats["messages"].messages.roles_seen == ["1", "user"]
 

@@ -84,13 +84,13 @@ def test_format_standard_conversational_and_mixed():
 
 def test_prompt_completion_with_explicit_prompt():
     result = classify([_f("prompt", "string"), _f("completion", "string")], {})
-    assert result.dataset_type == "prompt_completion"
+    assert result.primary == "prompt_completion"
     assert result.prompt_form == "explicit"
 
 
 def test_preference_pair_is_implicit_without_a_prompt():
     result = classify([_f("chosen", "string"), _f("rejected", "string")], {})
-    assert result.dataset_type == "preference_pair"
+    assert result.primary == "preference_pair"
     assert result.prompt_form == "implicit"
 
 
@@ -101,12 +101,12 @@ def test_scored_response_beats_prompt_completion():
         _f("helpfulness", "int64"),
         _f("correctness", "int64"),
     ]
-    assert classify(features, {}).dataset_type == "scored_response"
+    assert classify(features, {}).primary == "scored_response"
 
 
 def test_unpaired_preference_accepts_a_boolean_label():
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "bool")]
-    assert classify(features, {}).dataset_type == "unpaired_preference"
+    assert classify(features, {}).primary == "unpaired_preference"
 
 
 def test_unpaired_preference_accepts_a_binary_integer_label():
@@ -114,7 +114,7 @@ def test_unpaired_preference_accepts_a_binary_integer_label():
     # most real datasets.
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "int64")]
     stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=2))}
-    assert classify(features, stats).dataset_type == "unpaired_preference"
+    assert classify(features, stats).primary == "unpaired_preference"
     assert features[2].semantic_role == "label"
 
 
@@ -124,7 +124,7 @@ def test_unpaired_preference_accepts_a_binary_string_label():
     # on the role. The encoding is not the question; the number of distinct values is.
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
     stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=2))}
-    assert classify(features, stats).dataset_type == "unpaired_preference"
+    assert classify(features, stats).primary == "unpaired_preference"
     assert features[2].semantic_role == "label"
 
 
@@ -132,7 +132,7 @@ def test_wide_string_label_is_not_a_preference_label():
     # Symmetric with the integer rule: three classes is a class label, not a binary preference.
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
     stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=3))}
-    assert classify(features, stats).dataset_type == "prompt_completion"
+    assert classify(features, stats).primary == "prompt_completion"
     assert features[2].semantic_role is None
 
 
@@ -140,7 +140,7 @@ def test_wide_integer_label_is_not_a_preference_label():
     # A multi-class index or a rating is a different claim from a binary preference.
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "int64")]
     stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=7))}
-    assert classify(features, stats).dataset_type == "prompt_completion"
+    assert classify(features, stats).primary == "prompt_completion"
     assert features[2].semantic_role is None
 
 
@@ -150,42 +150,42 @@ def test_wide_integer_label_is_not_a_preference_label():
 def test_rank_needs_something_to_rank():
     # A lone numeric column named "rank" used to short-circuit every more specific structure.
     features = [_f("rank", "int64")]
-    assert classify(features, {}).dataset_type == "unknown"
+    assert classify(features, {}).primary is None
 
 
 def test_rank_does_not_override_a_preference_pair():
     features = [_f("chosen", "string"), _f("rejected", "string"), _f("rank", "int64")]
-    assert classify(features, {}).dataset_type == "preference_pair"
+    assert classify(features, {}).primary == "preference_pair"
 
 
 def test_rank_does_not_override_scored_responses():
     features = [_f("prompt", "string"), _f("response", "string"), _f("helpfulness", "int64"), _f("rank", "int64")]
-    assert classify(features, {}).dataset_type == "scored_response"
+    assert classify(features, {}).primary == "scored_response"
 
 
 def test_rank_alongside_a_completion_is_ranked_responses():
     features = [_f("prompt", "string"), _f("completion", "string"), _f("rank", "int64")]
-    assert classify(features, {}).dataset_type == "ranked_responses"
+    assert classify(features, {}).primary == "ranked_responses"
 
 
 def test_messages_ending_on_assistant_is_messages_type():
     result = classify([_f("messages", "messages")], {"messages": _messages_column(1.0)})
-    assert result.dataset_type == "messages"
+    assert result.primary == "messages"
     assert result.prompt_form == "n/a"
 
 
 def test_messages_ending_on_user_is_prompt_only():
     result = classify([_f("messages", "messages")], {"messages": _messages_column(0.0)})
-    assert result.dataset_type == "prompt_only"
+    assert result.primary == "prompt_only"
 
 
 def test_single_text_column_is_text():
-    assert classify([_f("text", "string")], {}).dataset_type == "text"
+    assert classify([_f("text", "string")], {}).primary == "text"
 
 
 def test_unrecognized_columns_are_unknown():
     result = classify([_f("foo", "int64"), _f("bar", "int64")], {})
-    assert result.dataset_type == "unknown"
+    assert result.primary is None
     assert result.prompt_form is None  # no axes asserted for unknown data
 
 
@@ -328,7 +328,7 @@ def test_verifiability_survives_an_unrecognized_column_name():
     result = classify_rows(features, {}, rows)
 
     assert {f.semantic_role for f in features} == {None}  # still unroled, and honest about it
-    assert result.dataset_type == "unknown"
+    assert result.primary is None
     assert result.verifiability.method == "extractable_final_answer"
     assert result.verifiability.coverage == 1.0
     assert "'a'" in result.verifiability.evidence[0].detail
@@ -374,7 +374,7 @@ def test_candidates_list_every_structure_the_roles_satisfy():
     result = classify(features, {"label": _binary_column()})
 
     assert result.candidates == ["scored_response", "unpaired_preference", "prompt_completion"]
-    assert result.dataset_type == result.candidates[0]  # the summary is the head, never more
+    assert result.primary == "scored_response"  # the head, derived from the list and never stored beside it
 
 
 def test_candidates_collapse_to_one_when_the_structure_is_unambiguous():
@@ -382,10 +382,11 @@ def test_candidates_collapse_to_one_when_the_structure_is_unambiguous():
     assert result.candidates == ["prompt_completion"]
 
 
-def test_unknown_is_still_reported_as_a_candidate():
+def test_nothing_recognised_reports_no_candidates():
+    # Absence of a type, not a type named "unknown". The classifier ran and matched no structure.
     result = classify([_f("foo", "int64"), _f("bar", "int64")], {})
-    assert result.dataset_type == "unknown"
-    assert result.candidates == ["unknown"]
+    assert result.candidates == []
+    assert result.primary is None
 
 
 def test_prompt_only_is_not_claimed_alongside_a_training_target():
@@ -406,7 +407,7 @@ def test_a_hint_names_a_column_the_alias_table_does_not_know():
         ("prompt", "declared"),
         ("completion", "declared"),
     ]
-    assert result.dataset_type == "prompt_completion"
+    assert result.primary == "prompt_completion"
 
 
 def test_a_hint_takes_precedence_over_the_name_alias():

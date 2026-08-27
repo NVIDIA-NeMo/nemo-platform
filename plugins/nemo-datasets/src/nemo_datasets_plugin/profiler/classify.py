@@ -275,7 +275,9 @@ def _detect_types(features: list[FeatureSchema], stats: dict[str, ColumnStats]) 
         candidates.append("prompt_only")
     if len(features) == 1 and features[0].dtype == "string" and features[0].semantic_role is None:
         candidates.append("text")
-    return candidates or ["unknown"]
+    # Empty when nothing matched, rather than a coined "unknown". Absence of a type is not a type,
+    # and a vocabulary field naming one had to be special-cased by every reader of it.
+    return candidates
 
 
 # --- interpreting the content probes --------------------------------------------------------------
@@ -443,9 +445,8 @@ def classify(
     evidence = _assign_roles(features, stats, column_roles or {})
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
     candidates = _detect_types(features, stats)
-    dataset_type = candidates[0]
     fmt = _detect_format(features)
-    prompt_form = _detect_prompt_form(roles) if dataset_type != "unknown" else None
+    prompt_form = _detect_prompt_form(roles) if candidates else None
 
     role_columns = [f"{feature.name} -> {feature.semantic_role}" for feature in features if feature.semantic_role]
     if role_columns:
@@ -459,7 +460,6 @@ def classify(
 
     return PartitionClassification(
         modality=_detect_modality(features),
-        dataset_type=dataset_type,
         candidates=candidates,
         format=fmt,
         prompt_form=prompt_form,
