@@ -372,3 +372,36 @@ def test_an_over_long_line_costs_that_line_and_not_the_file(monkeypatch):
     # The line is named and skipped; numbering survives it and the rows around it still parse.
     assert [record for record, _ in out] == [{"a": 1}, None, {"b": 2}]
     assert out[1][1] == "line 2: longer than 64 bytes; not read"
+
+
+def test_a_line_of_exactly_the_bound_is_read_not_discarded(monkeypatch):
+    # Reading exactly `_MAX_LINE_BYTES` could not tell "stopped at the limit" from "longer than the
+    # limit", so a final line of exactly the bound -- read whole, with nothing left of it -- was
+    # thrown away as over-long.
+    from nemo_datasets_plugin.profiler.readers import jsonl as jsonl_module
+
+    monkeypatch.setattr(jsonl_module, "_MAX_LINE_BYTES", 16)
+    exactly = b'{"bb": 1234567}'  # 15 bytes of JSON
+    assert len(exactly) < 16
+
+    for tail, expected in ((exactly, {"bb": 1234567}), (exactly + b"\n", {"bb": 1234567})):
+        out = list(jsonl_module._records(io.BytesIO(b'{"a": 1}\n' + tail)))
+        assert [record for record, _ in out] == [{"a": 1}, expected]
+
+    # One byte past the bound is still refused.
+    out = list(jsonl_module._records(io.BytesIO(b'{"a": 1}\n' + b"x" * 17)))
+    assert out[1] == (None, "line 2: longer than 16 bytes; not read")
+
+
+def test_the_prefix_pair_columns_are_found_when_they_appear_in_a_later_batch():
+    # Resolution is bounded by rows examined, not by "the first batch": line-delimited rows are
+    # ragged and a column can first appear well into a file.
+    from nemo_datasets_plugin.profiler.classify import PrefixPairFold
+
+    shared = "The capital of France is " * 4
+    fold = PrefixPairFold()
+    fold.update([{"a": 1}])
+    fold.update([{"Chosen": shared + "Paris", "Rejected": shared + "Lyon"}])
+
+    assert fold.result().pairs == 1
+    assert fold.result().shared == 1

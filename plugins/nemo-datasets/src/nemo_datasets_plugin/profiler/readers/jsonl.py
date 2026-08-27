@@ -64,12 +64,13 @@ def _lines(stream: BinaryIO) -> Iterator[bytes | None]:
     remaining rows still parse.
     """
     while True:
-        chunk = stream.readline(_MAX_LINE_BYTES)
+        # One byte past the bound, so that "stopped at the limit" and "the line is longer than the
+        # limit" are different lengths. Reading exactly the bound conflated them, and a final line of
+        # exactly `_MAX_LINE_BYTES` -- read whole, nothing left of it -- was discarded as over-long.
+        chunk = stream.readline(_MAX_LINE_BYTES + 1)
         if not chunk:
             return
-        # `readline` stops at the limit without a newline; so does the last line of a file. Only the
-        # first is over-long, and only that one has more of itself still to come.
-        if len(chunk) >= _MAX_LINE_BYTES and not chunk.endswith(b"\n"):
+        if len(chunk) > _MAX_LINE_BYTES and not chunk.endswith(b"\n"):
             while True:
                 more = stream.readline(_MAX_LINE_BYTES)
                 if not more or more.endswith(b"\n"):
