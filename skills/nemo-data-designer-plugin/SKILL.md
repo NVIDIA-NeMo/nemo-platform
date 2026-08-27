@@ -83,9 +83,8 @@ def generator_function(row: dict) -> dict:
 
 def load_config_builder() -> dd.DataDesignerConfigBuilder:
     config_builder = dd.DataDesignerConfigBuilder(
-        # Declaring model configs programmatically here is the portable path:
-        # it works for both local `run` and cluster `submit`, while the local
-        # YAML registry alternative only works for `run`. The provider below
+        # Declaring model configs programmatically here is optional in the upstream
+        # library, but required for workloads running on NeMo Platform. The provider below
         # is a common default created during `nemo setup` — confirm it (or
         # discover others) with `nemo inference providers list`. See
         # references/nemo-platform-plugin-additions.md for the local-YAML alternative.
@@ -108,4 +107,4 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
-Only include Pydantic models, custom generators, seed datasets, and extra dependencies when the task requires them. Prefer including `model_configs` when the dataset uses LLM columns — declaring it in the script keeps the config portable between local `run` and cluster `submit`, while the local YAML registry alternative only works for `run`.
+Only include Pydantic models, custom generators, seed datasets, and extra dependencies when the task requires them.
