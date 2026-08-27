@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+SESSION_ID_HEADER = "X-Nemo-Session-Id"
+
 
 class ChatCompletionMessage(BaseModel):
     """Supported OpenAI-compatible chat message."""

@@ -19,6 +19,7 @@ from typing import Annotated, Any
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
+from nemo_agents_plugin.fabric.manifest import AgentManifest, build_agent_manifest
 from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricRuntimeExecutionError,
@@ -27,6 +28,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeTimeoutError,
 )
 from nemo_agents_plugin.fabric.serving_models import (
+    SESSION_ID_HEADER,
     ChatCompletionChoice,
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -249,6 +251,10 @@ def create_fabric_serving_app(
         app.state.agent_config = agent_config
         app.state.base_dir = config_path.parent
         app.state.validation_result = validation_result
+        app.state.manifest = build_agent_manifest(
+            agent_config,
+            max_concurrent_invocations=settings.max_concurrent_invocations,
+        )
         session_registry = FabricSessionRegistry()
         app.state.session_registry = session_registry
         session_manager = FabricSessionManager(
@@ -282,6 +288,10 @@ def create_fabric_serving_app(
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/manifest", response_model=AgentManifest)
+    async def manifest() -> AgentManifest:
+        return app.state.manifest
 
     @app.post("/v1/chat/completions", response_model=None, response_model_exclude_none=True)
     async def chat_completions(
