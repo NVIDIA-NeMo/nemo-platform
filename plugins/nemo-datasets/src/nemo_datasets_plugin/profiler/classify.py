@@ -102,8 +102,20 @@ def _is_numeric(dtype: str) -> bool:
 
 
 def _is_binary(column: ColumnStats | None) -> bool:
-    """Whether a column was observed to hold at most two distinct values."""
-    return column is not None and column.categorical is not None and column.categorical.distinct_count <= 2
+    """Whether a column was observed to hold one or two distinct values.
+
+    Two is what a binary label has. One is accepted as well, because a partition is classified on
+    its own: a shard whose labels happen to all be one class, or a read that stopped before the
+    second class appeared, is still a label column, and must not classify differently from its
+    sibling over class balance. `distinct_count` is a lower bound wherever `rows_complete` is false,
+    which makes the looser bound the safe one.
+
+    Zero is not that judgment call. A column with no values at all carries no label, and counting it
+    as one let an all-null column decide the whole dataset type.
+    """
+    if column is None or column.categorical is None:
+        return False
+    return 1 <= column.categorical.distinct_count <= 2
 
 
 def _is_label_column(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> bool:
