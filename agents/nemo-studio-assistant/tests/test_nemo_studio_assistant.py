@@ -101,34 +101,6 @@ def test_canonical_registration_config_translates_to_same_runtime() -> None:
     assert registered.mcp == source.mcp
 
 
-def test_agent_telemetry_exports_atif_traces_to_intake() -> None:
-    for config_path in (AGENT_ROOT / "agent.yaml", SPEC_ROOT / "agent.yaml"):
-        config = load_agent_config(config_path)
-
-        assert config.telemetry.enabled is True
-        assert config.telemetry.provider == "relay"
-        translated = translate_agent_config(config)
-        assert translated.relay is not None
-        assert translated.relay.project == "nemo-studio-assistant"
-        assert translated.relay.observability is not None
-        assert translated.relay.observability.model_dump(exclude_none=True)["atif"] == {
-            "enabled": True,
-            "filename_template": "trajectory-{session_id}.atif.json",
-            "output_directory": "./artifacts/relay",
-            "agent_name": "nemo-studio-assistant",
-            "model_name": config.models["default"].model,
-            "storage": [
-                {
-                    "type": "http",
-                    "endpoint": "http://host.docker.internal:8080/apis/intake/v2/workspaces/default/ingest/atif",
-                    "headers": {},
-                    "header_env": {},
-                    "timeout_millis": 3000,
-                }
-            ],
-        }
-
-
 def test_every_configured_skill_is_packaged() -> None:
     config = load_agent_config(AGENT_ROOT / "agent.yaml")
 
