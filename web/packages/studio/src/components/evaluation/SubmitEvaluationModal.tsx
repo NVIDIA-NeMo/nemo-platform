@@ -59,7 +59,7 @@ import {
   parseUploadedDatasetConfig,
   serializeEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
-import { LINK_EVAL_DOCS, LINK_EVAL_DOCS_APPROACHES } from '@studio/constants/links';
+import { LINK_DOCS_STUDIO_EXPERIMENTS, LINK_EVAL_DOCS } from '@studio/constants/links';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -745,7 +745,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     <Anchor
                       kind="inline"
                       textKind="body/regular/md"
-                      href={LINK_EVAL_DOCS_APPROACHES}
+                      href={LINK_DOCS_STUDIO_EXPERIMENTS}
                       target="_blank"
                       rel="noreferrer"
                     >

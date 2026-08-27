@@ -8,6 +8,7 @@ const GITHUB_REPO_URL = 'https://github.com/NVIDIA-NeMo/nemo-platform';
 export const LINK_DOCS_STUDIO = `${DOCS_BASE_URL}studio`;
 export const LINK_DOCS_STUDIO_CUSTOMIZATION = `${DOCS_BASE_URL}customizer-reference`;
 export const LINK_DOCS_STUDIO_EVALUATION = `${DOCS_BASE_URL}evaluate-models`;
+export const LINK_DOCS_STUDIO_EXPERIMENTS = `${DOCS_BASE_URL}studio/experiments`;
 export const LINK_DOCS_PROJECT = `${DOCS_BASE_URL}get-started/core-concepts/projects`;
 export const LINK_DOCS_DATASETS = `${DOCS_BASE_URL}get-started/core-concepts/manage-files`;
 export const LINK_DOCS_MODELS = `${DOCS_BASE_URL}models-and-inference`;
