@@ -27,7 +27,7 @@ Before packaging an environment, ensure you have:
 2. **Sandboxed Gym enabled on the cluster** by your platform operator (`sandbox_cluster_capable` and a job-storage PVC claim). Refer to [Cluster prerequisites](/documentation/customizer-reference/grpo-and-reward-environments#cluster-prerequisites); installing OpenSandbox is covered in [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox)
 3. **The `nemo` CLI on your `PATH`**, or a source checkout where `uv run --package nmp-rl` resolves
 4. **The training image tag** your cluster runs — vendoring a wheel closure requires the `nemo-gym`, `ray`, and `openai` versions it reports
-5. **A machine with internet access** for the packaging step. Training clusters consume uploaded FileSets only
+5. **A machine with internet access** for the packaging step. Training clusters consume uploaded FileSets only. For details on which environment type require internet access too, see details below.
 
 ## Pick a format
 
