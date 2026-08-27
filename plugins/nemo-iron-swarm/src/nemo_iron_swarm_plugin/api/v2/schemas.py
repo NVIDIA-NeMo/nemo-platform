@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from nemo_iron_swarm_plugin.entities import ManifestSource
 from nemo_iron_swarm_plugin.model_config import WarGameModels
 from nemo_platform_plugin.schema import NemoFilter
 from pydantic import BaseModel, Field
@@ -39,55 +38,29 @@ class ManifestFilter(NemoFilter):
     """Query filter for ``GET /v2/workspaces/{workspace}/manifests``."""
 
     agent: str | None = Field(default=None, description="Filter to manifests for this agent reference.")
-    source_type: str | None = Field(default=None, description="Filter by source ('agent' or 'project').")
 
 
 class ManifestInit(BaseModel):
     """Body for ``POST /v2/workspaces/{workspace}/manifests`` — scaffold a named manifest.
 
-    ``agent`` resolves a deployed agent; ``project`` builds the manifest from an uploaded NAT project
-    (``project_fileset`` + the confirmed detection answers) by shelling ``iron-swarm init --yes``.
+    The only source is a registered platform agent. The project-upload path is gone: it existed to
+    carry a NAT project, and Iron Swarm no longer runs one. An agent with custom tool code reaches
+    the platform as an MCP server, which keeps it registrable and therefore war-gameable.
     """
 
     name: str = Field(description="User-defined manifest id (unique within the workspace).")
-    source_type: ManifestSource = Field(default="agent", description="Scaffold source ('agent' or 'project').")
-    agent: str | None = Field(default=None, description="Agent reference (required when source_type='agent').")
-    # Project source (source_type='project') — the confirmed answers from the inspect step.
-    project_fileset: str | None = Field(default=None, description="Fileset ref of the uploaded NAT project bundle.")
-    manifest_yaml: str | None = Field(
-        default=None,
-        description="Pre-built iron-swarm manifest (project source). The CLI runs iron-swarm's own "
-        "interactive `init` at the operator's terminal and sends the result; omit it and the server "
-        "builds one with `init --yes`, which is what Studio does since it has no TTY.",
-    )
-    workflow: str | None = Field(
-        default=None, description="Chosen workflow path within the project (project-relative)."
-    )
-    launch_mode: str | None = Field(
-        default=None,
-        description="Victim launch mode: 'workflow' (a generic image built from the project) or 'byo' "
-        "(built from the project's own Dockerfile). 'byo' needs either a `dockerfile` here or a "
-        "`manifest_yaml` that already carries one. Derived from the manifest when omitted.",
-    )
-    dockerfile: str | None = Field(
-        default=None,
-        description="Project-relative Dockerfile to build the victim image from, instead of a generic one — "
-        "for agents needing system packages or a custom base image. Requires `binaries`, and a `workflow` "
-        "(given or detected): the image is how the environment is built, the workflow is what gets served "
-        "and hardened. The image must carry a 'sandbox' user/group, iproute2, and `nat` on the default PATH.",
-    )
-    binaries: list[str] | None = Field(
-        default=None,
-        description="In-container glob patterns scoping which processes may egress, e.g. '/app/.venv/bin/**'. "
-        "Required with `dockerfile`: a BYO image's layout is unknown, so the sandbox policy cannot infer it.",
-    )
+    agent: str = Field(description="Agent reference (``name`` or ``workspace/name``) to war-game.")
     port: int | None = Field(default=None, description="Victim port (defaults to 8000).")
-    secrets: list[str] | None = Field(default=None, description="Secret names the victim requires.")
-    secrets_file: str | None = Field(default=None, description="Dotenv path within the project holding the secrets.")
+    secrets: list[str] | None = Field(
+        default=None,
+        description="Env-var names the victim requires. Derived from the agent's own declarations "
+        "(``models.*.api_key_env``, MCP server env) when omitted.",
+    )
     egress: list[str] | None = Field(
         default=None,
         description="Allow-listed egress host[:port] entries the victim may reach (external hosts the agent "
-        "calls, e.g. inference-api.nvidia.com); baked into the manifest by `init --egress`.",
+        "calls, e.g. inference-api.nvidia.com). The sandbox is default-deny, so a host missing here has its "
+        "traffic dropped mid-run.",
     )
     env: dict[str, str] | None = Field(
         default=None,
@@ -99,7 +72,7 @@ class ManifestInit(BaseModel):
         default=None,
         description="Route-only host backends the agent's tools call, each 'NAME:PORT[,PORT2]' (e.g. "
         "'finance:8086'). Rewrites the agent's localhost:PORT to host.docker.internal:PORT and opens the "
-        "sandbox->host route; passed to `init --backend`.",
+        "sandbox->host route.",
     )
     models: WarGameModels | None = Field(
         default=None,
@@ -131,24 +104,6 @@ class InspectProjectRequest(BaseModel):
     """Body for ``POST /v2/workspaces/{workspace}/manifests/inspect`` — detect an uploaded project."""
 
     project_fileset: str = Field(description="Fileset ref of the uploaded NAT project bundle to inspect.")
-
-
-class InspectProjectResponse(BaseModel):
-    """Detection facts + defaults for the upload wizard (the parsed ``iron-swarm inspect --json`` output)."""
-
-    project_dir: str = Field(default="", description="Detected installable project root (relative to the bundle).")
-    workflows: list[str] = Field(default_factory=list, description="Discovered workflow paths (project-relative).")
-    dockerfiles: list[str] = Field(default_factory=list, description="Discovered Dockerfile paths (project-relative).")
-    suggested_launch_mode: str = Field(default="workflow", description="'workflow' or 'byo'.")
-    default_agent_name: str = Field(default="", description="Suggested agent name.")
-    default_port: int = Field(default=8000, description="Suggested victim port.")
-    secrets_file: str = Field(default="", description="Detected dotenv path (project-relative), or empty.")
-    secret_names: list[str] = Field(default_factory=list, description="Secret names found in the dotenv file.")
-    egress: list[str] = Field(default_factory=list, description="External hosts the agent reaches (allow-list).")
-    backend_ports: list[int] = Field(
-        default_factory=list,
-        description="Local host-backend ports detected in the workflow (localhost:PORT the tools call).",
-    )
 
 
 class InspectAgentRequest(BaseModel):
