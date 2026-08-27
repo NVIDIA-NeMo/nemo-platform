@@ -286,7 +286,7 @@ async def _resolve_and_store_scaffold(
 ) -> tuple[ResolvedManifest, str]:
     """Resolve *agent_ref* and persist its scaffold as a fileset; return the resolution and the ref.
 
-    Resolution *writes* an installable project (``scaffold_project`` + ``materialize_workflow``), so
+    Resolution *writes* a runnable agent package (``materialize_agent_package``), so
     the scaffold is an artifact, not a by-product. Storing it is what makes a manifest a frozen
     target: the run downloads this instead of re-resolving, so nothing it depends on can be silently
     re-derived. Shared by create and refresh — the only two ways a scaffold is produced.
