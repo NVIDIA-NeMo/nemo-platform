@@ -388,6 +388,24 @@ def test_classification_without_probes_claims_nothing_rather_than_guessing():
 # --- candidates ------------------------------------------------------------------------------------
 
 
+def test_the_prefix_probe_reads_capitalised_chosen_and_rejected_columns():
+    # `_role_for` lowercases the column name, so `Chosen`/`Rejected` took both roles and reached
+    # `_implicit_prompt_evidence` -- but the probe looked the columns up with the row's own casing,
+    # found no pairs, and the "prompt is embedded" finding was dropped. Silently, since the roles
+    # themselves landed and the classification looked complete.
+    shared = "The capital of France is " * 4
+    for chosen_name, rejected_name in (("chosen", "rejected"), ("Chosen", "Rejected")):
+        fold = PrefixPairFold()
+        fold.update([{chosen_name: shared + "Paris", rejected_name: shared + "Lyon"}])
+        assert fold.result().pairs == 1, chosen_name
+        assert fold.result().shared == 1, chosen_name
+
+        features = [_f(chosen_name, "string"), _f(rejected_name, "string")]
+        result = classify(features, {}, prefix_pair=fold.result())
+        assert [f.semantic_role for f in features] == ["chosen", "rejected"]
+        assert any("prompt is embedded" in e.detail for e in result.evidence), chosen_name
+
+
 def test_candidates_list_every_structure_the_roles_satisfy():
     # prompt + completion + score + label is genuinely both scored_response and unpaired_preference.
     # Reporting only the first made rule order an invisible tie-break.
