@@ -200,9 +200,9 @@ class ProbeConfig:
 
 
 # NVIDIA's gateway routes by model name before checking auth, so a fake model
-# returns 404 without ever validating the key.  We use a real, stable model so
-# the gateway reaches the auth layer and returns 401/403 for bad credentials.
-_NVIDIA_BUILD_PROBE_MODEL = "meta/llama-3.1-8b-instruct"
+# returns 404 without ever validating the key. We use a supported model so the
+# gateway reaches the auth layer and returns 401/403 for bad credentials.
+_NVIDIA_BUILD_PROBE_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
 
 _PROBE_CONFIGS: dict[str, ProbeConfig] = {
     "nvidia-build": ProbeConfig(
@@ -243,6 +243,7 @@ _AUTO_ENV_VARS: tuple[tuple[str, str], ...] = (
 
 _KEY_VALIDATION_TIMEOUT = 10.0
 _KEY_REJECTED_STATUS_CODES = (401, 403)
+_TERMINAL_PROBE_STATUS_CODES = (404, 405, 410)
 _KEY_REJECTED_MESSAGE = "API key validation failed. The provider rejected the credentials."
 
 _MODEL_DISCOVERY_ROUND_SECONDS = 30
@@ -791,6 +792,26 @@ def _get_all_model_entity_ids(
     except Exception:
         logger.debug("Failed to list model entity IDs", exc_info=True)
     return sorted(set(entity_ids))
+
+
+_NON_CHAT_MODEL_MARKERS = ("embed", "embedding", "vision", "guard", "rerank", "fuyu")
+
+
+def _is_usable_chat_model_entity(entity_id: str) -> bool:
+    """Return whether an entity ID looks like a chat LLM rather than a specialist model."""
+    haystack = entity_id.lower().replace("_", "-")
+    return not any(marker in haystack for marker in _NON_CHAT_MODEL_MARKERS)
+
+
+def _pick_default_chat_entity(entity_ids: list[str]) -> str | None:
+    """Pick the first discovered chat model, skipping embedding/vision/guard/rerank names.
+
+    ``entity_ids`` is already scoped to a provider's ``served_models``.
+    """
+    for entity_id in entity_ids:
+        if _is_usable_chat_model_entity(entity_id):
+            return entity_id
+    return None
 
 
 def _get_all_model_choices(
@@ -1879,9 +1900,10 @@ def _validate_api_key(
     """Probe the provider with the API key to detect auth failures early.
 
     Makes a single lightweight request to an auth-required endpoint.
-    Returns ``passed=False`` only on a definitive 401/403 rejection.
-    Network errors and unknown providers are treated as *passed* to avoid
-    blocking setup when the provider is unreachable.
+    Returns ``passed=False`` on a definitive credential rejection or when the
+    configured probe target is unavailable. Network errors and unknown
+    providers are treated as *passed* to avoid blocking setup during transient
+    failures.
     """
     if not api_key:
         return KeyValidationResult(passed=True, message="")
@@ -1915,6 +1937,14 @@ def _validate_api_key(
         )
         if resp.status_code in _KEY_REJECTED_STATUS_CODES:
             return KeyValidationResult(passed=False, message=_KEY_REJECTED_MESSAGE)
+        if resp.status_code in _TERMINAL_PROBE_STATUS_CODES:
+            return KeyValidationResult(
+                passed=False,
+                message=(
+                    f"Provider validation failed (HTTP {resp.status_code}). "
+                    "The configured probe endpoint or model is unavailable."
+                ),
+            )
         if 200 <= resp.status_code < 300:
             return KeyValidationResult(passed=True, message="")
         return KeyValidationResult(
@@ -1941,11 +1971,15 @@ def _select_model_pair(
         console.print(f"  {WARN} No models discovered yet. You can select models later.")
         return None
 
-    first_model = display_models[0][0]
+    suggested = _pick_default_chat_entity([entity_id for entity_id, _ in display_models])
+    if suggested is None:
+        console.print(f"  {WARN} No usable chat models discovered yet. You can select models later.")
+        return None
+
     default_model = prompt_select(
         "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=first_model,
+        default=suggested,
         hint="Press Enter to accept the default.",
     )
     fast = prompt_select(
@@ -2327,7 +2361,7 @@ def _run_auto_mode(
 
     default_model = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
     if not default_model and entity_ids:
-        default_model = entity_ids[0]
+        default_model = _pick_default_chat_entity(entity_ids) or ""
     fast_model = os.environ.get("NEMO_FAST_MODEL", "").strip() or default_model
 
     if default_model:

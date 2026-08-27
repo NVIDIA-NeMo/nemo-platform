@@ -31,7 +31,7 @@ vi.mock('@nemo/common/src/api/models/useModelsFromWorkspace', () => ({
 const MODEL_GROUPS = [
   {
     workspace: WORKSPACE,
-    models: [{ name: 'llama-3.1-8b-instruct', workspace: WORKSPACE, model_providers: ['p'] }],
+    models: [{ name: 'nemotron-3-nano-30b-a3b', workspace: WORKSPACE, model_providers: ['p'] }],
   },
 ];
 
@@ -104,7 +104,7 @@ describe('CreateGuardrailModal', () => {
               type: 'main',
               engine: 'nim',
               mode: 'chat',
-              model: `${WORKSPACE}/llama-3.1-8b-instruct`,
+              model: `${WORKSPACE}/nemotron-3-nano-30b-a3b`,
             },
           ],
         },

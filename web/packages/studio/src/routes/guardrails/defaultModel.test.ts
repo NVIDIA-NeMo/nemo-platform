@@ -23,10 +23,10 @@ describe('resolveDefaultGuardrailModel', () => {
 
   it('prefers the requested model by bare name', () => {
     const result = resolveDefaultGuardrailModel(
-      groups(model('other'), model('llama-3.1-8b-instruct')),
-      'meta/llama-3.1-8b-instruct'
+      groups(model('other'), model('nemotron-3-nano-30b-a3b')),
+      'nvidia/nemotron-3-nano-30b-a3b'
     );
-    expect(result).toBe('default/llama-3.1-8b-instruct');
+    expect(result).toBe('default/nemotron-3-nano-30b-a3b');
   });
 
   it('falls back to the first usable model', () => {
