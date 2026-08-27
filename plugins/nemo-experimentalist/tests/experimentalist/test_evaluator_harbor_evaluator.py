@@ -66,6 +66,7 @@ def _write_trial(
     task_dir: Path,
     rewards: dict[str, float] | None = None,
     exception_info: dict[str, str] | None = None,
+    agent_result: dict[str, int] | None = None,
 ) -> None:
     trial_dir = job_dir / trial_name
     _write(
@@ -77,6 +78,7 @@ def _write_trial(
                 "task_id": {"path": str(task_dir.resolve())},
                 "verifier_result": {"rewards": rewards if rewards is not None else {}},
                 "exception_info": exception_info,
+                "agent_result": agent_result,
             }
         ),
     )
@@ -560,6 +562,7 @@ async def test_both_evaluators_produce_equivalent_trials(
             task_name="hello/sum-two",
             task_dir=dataset_dir / "sum-two",
             rewards={"reward": 1.0, "format_ok": 1.0},
+            agent_result={"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1},
         )
         _write_trial(
             job_dir,
@@ -567,6 +570,7 @@ async def test_both_evaluators_produce_equivalent_trials(
             task_name="hello/sum-three",
             task_dir=dataset_dir / "sum-three",
             rewards={"reward": 0.0, "format_ok": 1.0},
+            agent_result={"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1},
         )
 
     fake_job.on_run = write_results
