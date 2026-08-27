@@ -529,7 +529,7 @@ flowchart TD
 
     AXES --> QUOTE["quote_enumerations(features, stats, vocabularies)"]
     QUOTE --> GATE{"role in _QUOTABLE_ROLES?<br/><i>label, provenance, meta, rank</i>"}
-    GATE -->|"yes"| VALS["categorical.values<br/><b>the only path row content<br/>reaches the stored profile</b>"]
+    GATE -->|"yes"| VALS["categorical.values<br/><b>row content, under a role gate<br/>(roles_seen is the other path)</b>"]
     GATE -->|"no"| NONE["values = None"]
 
     GUARD["wide try/except wraps all of this<br/>failure → candidates=[] + error Evidence"]
@@ -596,10 +596,17 @@ for a profile whose reproducibility does not rest on a random draw.
 
 ### Why the profile almost never contains row content
 
-`categorical.values` is the single exception, and it is gated on a column's **role** — `label`,
+There are two exceptions. `categorical.values` is gated on a column's **role** — `label`,
 `provenance`, `meta`, `rank` — not on its cardinality. Cardinality inverts on small data: in a
 three-row dataset every column holds few distinct values, free text included, so a cardinality gate
-stored prompts verbatim. A role says what a column *is*, at any size.
+stored prompts verbatim. A role says what a column *is*, at any size. It is additionally withheld
+whenever any file in the partition was read only part-way, by a budget or by a failure mid-read,
+since a prefix of a vocabulary is indistinguishable from a vocabulary.
+
+`messages.roles_seen` is the other, and it is gated on nothing: an unexpected role is exactly the
+finding worth reporting, so normalising it away would defeat the field. It is bounded twice instead
+— in how many distinct roles it holds, and in the length of each — so a mis-shaped export puts a
+truncated fragment in the profile rather than whole message bodies.
 
 ### Why absence is a claim
 

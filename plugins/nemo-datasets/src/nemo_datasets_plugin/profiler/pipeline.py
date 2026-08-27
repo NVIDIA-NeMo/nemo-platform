@@ -451,12 +451,22 @@ def _profile_partition(
             # Counted outside the guard, for what was consumed: a fold cannot give rows back, so a
             # file that failed on its fifth batch still contributed four.
             rows_scanned += scanned
-            # `scanned_all` is the honest test, and `scanned >= row_cap` was not: a file holding
-            # exactly `row_cap` rows reaches the cap having been read from end to end, and was
-            # reported as cut short -- suppressing `categorical.values` for a partition whose
-            # `rows_complete` said, correctly, that nothing was missed. A failed read is excluded
-            # because that is the other cause, the one that still quotes.
-            if row_cap is not None and error is None and not scanned_all:
+            # Truncated when the partition holds a *prefix* of some file rather than the whole of
+            # it. The test is on what the file contributed, not on why it stopped: a row budget and
+            # a decode error both leave a prefix behind, and `quote_enumerations` cannot tell a
+            # prefix of a vocabulary from a vocabulary.
+            #
+            # Gating on `error is None` assumed a failed file failed *to open*, and a file that
+            # dies on its third batch does neither -- it opens, folds a prefix, and raises. That
+            # published the first 1024 rows' distinct values as a column's controlled vocabulary
+            # while `rows_complete` said False three fields away. The row-cap test was wrong the
+            # same way, in the other direction: with no budget set there was no gate at all, so
+            # every mid-read failure quoted.
+            #
+            # A file that raised before yielding a row is still excluded, and deliberately: it
+            # contributed nothing to measure, so it leaves the vocabulary of the files that *were*
+            # read entire. `rows_complete` is what reports that loss.
+            if scanned and not scanned_all:
                 partition_truncated = True
             if scanned or error is None:
                 files_read += 1

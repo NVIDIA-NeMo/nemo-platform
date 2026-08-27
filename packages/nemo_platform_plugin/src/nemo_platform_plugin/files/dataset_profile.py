@@ -158,11 +158,13 @@ class MessageStats(BaseModel):
     roles_seen: list[str] = Field(
         default_factory=list,
         description=(
-            'The distinct role strings present in the sampled rows, verbatim -- e.g. ["system", "user", '
-            '"assistant", "tool"], but equally ["human", "gpt"]. A measurement of row content, not a closed '
-            "vocabulary: an unexpected role is the finding worth reporting, and normalizing it away would hide "
-            "what a consumer needs before choosing a chat template. Bounded, since a column with more distinct "
-            "roles than fit here is not a chat column."
+            'The distinct role strings present in the sampled rows -- e.g. ["system", "user", "assistant", '
+            '"tool"], but equally ["human", "gpt"]. A measurement of row content, not a closed vocabulary: an '
+            "unexpected role is the finding worth reporting, and normalizing it away would hide what a consumer "
+            "needs before choosing a chat template. This is row content in the stored profile, under no role gate, "
+            "so it is bounded twice: a column showing more distinct roles than fit here is not a chat column, and "
+            "each string is truncated to a fixed length -- a role is a short token by nature, so anything long "
+            "enough to be truncated is itself the finding. Do not match on these exactly; a value may be a prefix."
         ),
     )
     ends_with_assistant_rate: float = Field(
@@ -258,12 +260,14 @@ class CategoricalStats(BaseModel):
         default=None,
         description=(
             "The observed values, present only when this column's `semantic_role` makes it a controlled "
-            "vocabulary and the count is small enough to quote. Absent when a row budget cut the read short, "
-            "since a prefix cannot prove an enumeration and quoting one would store a sample of row content as "
-            "though it were the whole vocabulary; a partition that merely lost a shard still quotes, because every "
-            "file it could open was read to the end. This is the one place row content reaches the stored profile, "
-            "so it is gated on role rather than on size: cardinality inverts on small data, where every column "
-            "looks like an enumeration."
+            "vocabulary and the count is small enough to quote. Absent whenever any file in the partition was read "
+            "only part-way -- by a row budget or by a failure mid-read -- since a prefix cannot prove an enumeration "
+            "and quoting one would store a sample of row content as though it were the whole vocabulary. A partition "
+            "that lost a shard before it yielded a row still quotes: that file contributed nothing to measure, so "
+            "the values gathered from the rest are entire, and `rows_complete` reports the loss. This is the one "
+            "place *column* content reaches the stored profile under a role gate rather than a size gate, since "
+            "cardinality inverts on small data, where every column looks like an enumeration. It is not the only "
+            "place row content reaches the profile: see `MessageStats.roles_seen`."
         ),
     )
 
@@ -273,7 +277,8 @@ class ColumnStats(BaseModel):
 
     The kind-specific block is populated by dtype, and deep measurements fold into it (e.g.
     ``MessageStats.content_chars``) so stats stay flat -- no path addressing to drift against the
-    schema tree. Never row values, with one role-gated exception: ``categorical.values``.
+    schema tree. Almost never row values: the two exceptions are ``categorical.values``, gated on
+    role, and ``messages.roles_seen``, gated on nothing but bounded in count and in length.
     """
 
     null_rate: float = Field(default=0.0, ge=0.0, le=1.0)
