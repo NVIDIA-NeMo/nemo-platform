@@ -115,6 +115,7 @@ const sampleReport = {
 const els = {
   file: document.querySelector("#file-input"),
   input: document.querySelector("#report-input"),
+  toggleInput: document.querySelector("#toggle-input"),
   sample: document.querySelector("#sample-button"),
   message: document.querySelector("#message"),
   dashboard: document.querySelector("#dashboard"),
@@ -128,7 +129,7 @@ const els = {
   uncoveredItems: document.querySelector("#uncovered-items"),
 };
 
-let currentReport = null;
+let inputCollapsed = false;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -295,13 +296,22 @@ function renderUncoveredItems(report) {
     .join("");
 }
 
-function renderReport(report) {
-  currentReport = report;
+function setInputCollapsed(collapsed) {
+  inputCollapsed = collapsed;
+  els.input.hidden = collapsed;
+  els.toggleInput.textContent = collapsed ? "Show JSON" : "Hide JSON";
+  els.toggleInput.setAttribute("aria-expanded", String(!collapsed));
+}
+
+function renderReport(report, { collapseInput = false } = {}) {
   const overall = report.coverage?.overall || { item_count: 0, covered_count: 0, uncovered_count: 0 };
   const gaps = actionableTools(report);
   els.dashboard.hidden = false;
   els.message.className = "message";
   els.message.hidden = true;
+  if (collapseInput) {
+    setInputCollapsed(true);
+  }
   els.agent.textContent = report.audit?.agent || "unknown";
   els.percent.textContent = `${percent(overall)}%`;
   els.actionableCount.textContent = gaps.length;
@@ -312,34 +322,37 @@ function renderReport(report) {
 }
 
 function renderError(message) {
-  currentReport = null;
   els.dashboard.hidden = true;
   els.message.hidden = false;
   els.message.className = "message error";
   els.message.textContent = message;
+  setInputCollapsed(false);
 }
 
-function renderFromInput() {
+function renderFromInput(options = {}) {
   const text = els.input.value.trim();
   if (!text) {
-    currentReport = null;
     els.dashboard.hidden = true;
     els.message.hidden = false;
     els.message.className = "message";
     els.message.textContent = `Paste or open a ${REPORT_SCHEMA} JSON report.`;
+    setInputCollapsed(false);
     return;
   }
   try {
-    renderReport(parseReport(text));
+    renderReport(parseReport(text), options);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "Could not parse report.");
   }
 }
 
 els.input.addEventListener("input", renderFromInput);
+els.toggleInput.addEventListener("click", () => {
+  setInputCollapsed(!inputCollapsed);
+});
 els.sample.addEventListener("click", () => {
   els.input.value = JSON.stringify(sampleReport, null, 2);
-  renderFromInput();
+  renderFromInput({ collapseInput: true });
 });
 els.file.addEventListener("change", async () => {
   const [file] = els.file.files;
@@ -347,6 +360,6 @@ els.file.addEventListener("change", async () => {
     return;
   }
   els.input.value = await file.text();
-  renderFromInput();
+  renderFromInput({ collapseInput: true });
 });
 renderFromInput();

@@ -173,6 +173,17 @@ button,
   overflow: hidden;
 }
 
+.input-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
 textarea {
   display: block;
   width: 100%;
