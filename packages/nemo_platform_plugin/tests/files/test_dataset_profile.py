@@ -58,7 +58,6 @@ partitions:
                               roles_seen: [assistant], ends_with_assistant_rate: 1.0, valid_alternation_rate: 1.0}}
     classification:
       modality: text
-      dataset_type: prompt_completion
       candidates: [prompt_completion]
       format: conversational
       prompt_form: explicit
@@ -103,7 +102,6 @@ partitions:
                             roles_seen: [assistant], ends_with_assistant_rate: 1.0, valid_alternation_rate: 1.0}}
     classification:
       modality: text
-      dataset_type: preference_pair
       candidates: [preference_pair]
       format: conversational
       prompt_form: explicit
@@ -146,7 +144,6 @@ partitions:
       verbosity:   {numeric: {min: 0, max: 4, mean: 1.5}, categorical: {distinct_count: 5}}
     classification:
       modality: text
-      dataset_type: scored_response
       candidates: [scored_response, prompt_completion]
       format: standard
       prompt_form: explicit
@@ -195,7 +192,6 @@ def _build_profile() -> DatasetProfile:
                     "response": ColumnStats(numeric=None),
                 },
                 classification=PartitionClassification(
-                    dataset_type="prompt_completion",
                     candidates=["prompt_completion"],
                     format="standard",
                     prompt_form="explicit",
@@ -236,7 +232,7 @@ def test_fixture_deserializes(name):
 def test_openmathreasoning_locks_contract_shape():
     profile = DatasetProfile.model_validate(yaml.safe_load(OPENMATHREASONING))
     part = profile.partitions[0]
-    assert part.classification.dataset_type == "prompt_completion"
+    assert part.classification.primary == "prompt_completion"
     assert part.classification.format == "conversational"
     # semantic_role is stacked on the feature node; message struct spelled out under items.
     prompt_feature = part.features[0]
@@ -294,11 +290,10 @@ def test_a_split_weighs_something_even_when_its_row_count_does_not():
 def test_helpsteer2_flat_schema_and_no_verifiability():
     profile = DatasetProfile.model_validate(yaml.safe_load(HELPSTEER2))
     part = profile.partitions[0]
-    assert part.classification.dataset_type == "scored_response"
-    # A scored prompt/completion set is also a plain prompt_completion set. `dataset_type` is the
-    # most specific reading; `candidates` is what the same columns otherwise support.
+    # A scored prompt/completion set is also a plain prompt_completion set. The head is the most
+    # specific reading; the tail is what the same columns otherwise support.
     assert part.classification.candidates == ["scored_response", "prompt_completion"]
-    assert part.classification.candidates[0] == part.classification.dataset_type
+    assert part.classification.primary == "scored_response"
     assert part.classification.format == "standard"
     # Absence of a verifiability object *is* the "not verifiable" claim.
     assert part.classification.verifiability is None
@@ -338,10 +333,10 @@ def test_vocabularies_are_open():
     """Unknown vocabulary values must be accepted so the vocabulary can grow."""
     classification = PartitionClassification(
         modality="video_text",
-        dataset_type="some_future_type",
+        candidates=["some_future_type"],
         format="mixed",
     )
-    assert classification.dataset_type == "some_future_type"
+    assert classification.primary == "some_future_type"
     feature = FeatureSchema(dtype="tensor", semantic_role="a_role_added_next_year")
     assert feature.semantic_role == "a_role_added_next_year"
 
@@ -372,7 +367,7 @@ def test_unknown_fields_are_ignored_for_forward_compat():
     doc["some_future_top_level_field"] = {"anything": 1}
     doc["partitions"][0]["classification"]["future_axis"] = "value"
     profile = DatasetProfile.model_validate(doc)
-    assert profile.partitions[0].classification.dataset_type == "scored_response"
+    assert profile.partitions[0].classification.primary == "scored_response"
 
 
 def test_file_errors_are_the_only_channel_for_trouble():
@@ -408,7 +403,28 @@ def test_a_profile_written_before_the_digest_was_dropped_still_loads():
     doc["content_digest"] = "sha256:7be1c0ffee"
     profile = DatasetProfile.model_validate(doc)
     assert not hasattr(profile, "content_digest")
-    assert profile.partitions[0].classification.dataset_type == "scored_response"
+    assert profile.partitions[0].classification.primary == "scored_response"
+
+
+def test_a_profile_written_before_dataset_type_was_dropped_still_loads():
+    # `dataset_type` was removed rather than validated: it restated `candidates[0]` as its own stored
+    # field, and the one code path that built a classification without running the classifier let the
+    # two disagree. A summary computed from the list cannot contradict the list. Profiles already
+    # written with the field have to keep loading, which `extra="ignore"` is what gives us.
+    doc = yaml.safe_load(HELPSTEER2)
+    doc["partitions"][0]["classification"]["dataset_type"] = "scored_response"
+    profile = DatasetProfile.model_validate(doc)
+    classification = profile.partitions[0].classification
+    assert not hasattr(classification, "dataset_type")
+    assert classification.primary == "scored_response"
+
+
+def test_primary_is_derived_and_never_stored():
+    # The whole point of the shape: there is no second field to drift, in memory or on the wire.
+    classification = PartitionClassification(candidates=["preference_pair", "prompt_completion"])
+    assert classification.primary == "preference_pair"
+    assert "primary" not in classification.model_dump()
+    assert PartitionClassification().primary is None
 
 
 def test_quantiles_and_message_stats_construct():

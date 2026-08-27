@@ -82,7 +82,9 @@ def test_task_passes_column_role_hints_to_the_profiler(tmp_path, monkeypatch):
 
     assert run_mod.run(_SDK) == 0
     classification = published["profile"]["partitions"][0]["classification"]
-    assert classification["dataset_type"] == "prompt_completion"
+    # `primary` is derived and deliberately not serialized, so the stored shape is the list alone.
+    assert classification["candidates"] == ["prompt_completion"]
+    assert "dataset_type" not in classification
 
 
 def test_task_reads_everything_by_default(tmp_path, monkeypatch):

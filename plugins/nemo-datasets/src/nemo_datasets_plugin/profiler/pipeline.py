@@ -311,14 +311,10 @@ class _PartitionFolds:
             return (
                 [],
                 {},
-                # `candidates` carries `dataset_type` at its head, so it cannot be left empty here:
-                # the field is documented as `candidates[0] == dataset_type` and a consumer reading
-                # the primary candidate would hit an IndexError on the one path that never classified.
-                PartitionClassification(
-                    dataset_type="unknown",
-                    candidates=["unknown"],
-                    evidence=[Evidence(kind="error", detail=detail)],
-                ),
+                # No candidates, which is what a partition nothing could be concluded about looks
+                # like. The `error` evidence below is what separates this from one the classifier
+                # ran over and recognised nothing in.
+                PartitionClassification(evidence=[Evidence(kind="error", detail=detail)]),
             )
 
 

@@ -26,7 +26,7 @@ One artifact, described by `nemo_platform_plugin.files.dataset_profile.DatasetPr
 | `partitions[].splits[]` | the splits, their exact row counts, and a glob that selects each one's files |
 | `partitions[].features[]` | the row schema, with a `semantic_role` assigned per column |
 | `partitions[].stats{}` | per-column measurements — length distributions, numeric ranges, chat structure, null rates |
-| `partitions[].classification` | `dataset_type`, `format`, `prompt_form`, `modality`, `verifiability`, plus the evidence for each |
+| `partitions[].classification` | `candidates`, `format`, `prompt_form`, `modality`, `verifiability`, plus the evidence for each |
 | `file_errors[]` | every file the profiler could not use, named, with a reason |
 
 The profile is designed to be a **substitute for having the data**. A consumer picking a
@@ -250,7 +250,7 @@ reading the row is the expensive part.
 `classify()` takes features, stats and probes, and never touches a row:
 
 ```
-dataset_type  = "messages"
+candidates    = ["messages"]    # most specific first; empty means nothing matched
 format        = "conversational"
 verifiability = None            # checked; there is nothing to auto-grade
 ```
@@ -417,7 +417,7 @@ Rank is exact — every row counted, none sampled — so only the value is round
       "categorical": {"distinct_count": 3,
                       "values": ["lmsys-chat", "oasst2", "self-instruct"]}}},
 "rows_complete": true,
-"classification": {"modality": "text", "dataset_type": "messages", "format": "conversational",
+"classification": {"modality": "text", "candidates": ["messages"], "format": "conversational",
                    "prompt_form": "n/a"}
 ```
 
@@ -511,14 +511,14 @@ flowchart TD
 
     M --> CLS["classify(features, stats, probes, prefix_pair)<br/><i>reads no rows</i>"]
     CLS --> ROLES["assigns semantic_role onto features"]
-    ROLES --> AXES["dataset_type · candidates · format<br/>prompt_form · modality · verifiability"]
+    ROLES --> AXES["candidates · format<br/>prompt_form · modality · verifiability"]
 
     AXES --> QUOTE["quote_enumerations(features, stats, vocabularies)"]
     QUOTE --> GATE{"role in _QUOTABLE_ROLES?<br/><i>label, provenance, meta, rank</i>"}
     GATE -->|"yes"| VALS["categorical.values<br/><b>the only path row content<br/>reaches the stored profile</b>"]
     GATE -->|"no"| NONE["values = None"]
 
-    GUARD["wide try/except wraps all of this<br/>failure → dataset_type='unknown' + error Evidence"]
+    GUARD["wide try/except wraps all of this<br/>failure → candidates=[] + error Evidence"]
     GUARD -.->|"guards"| CLS
 ```
 

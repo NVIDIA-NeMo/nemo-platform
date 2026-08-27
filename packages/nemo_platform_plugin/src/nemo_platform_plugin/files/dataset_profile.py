@@ -9,10 +9,10 @@ It has two stored layers:
 
 * **structure** -- predominantly facts: file layout, splits, the derived row schema (``features``)
   and per-column ``stats``. The one detected attribute here is ``FeatureSchema.semantic_role``.
-* **classification** -- what the data *is*: ``dataset_type``, the ``format`` / ``prompt_form`` axes,
-  and ``verifiability``.
+* **classification** -- what the data *is*: the ``candidates`` a partition's roles satisfy, the
+  ``format`` / ``prompt_form`` axes, and ``verifiability``.
 
-Vocabularies (``dataset_type``, ``semantic_role``, ``modality``, ...) are open ``str`` values with
+Vocabularies (``candidates`` entries, ``semantic_role``, ``modality``, ...) are open ``str`` values
 documented canonical sets, not closed enums: only known values are emitted, but consumers must
 tolerate unknown ones so the vocabulary can grow without a breaking change. Pydantic's default
 ``extra="ignore"`` gives the same forward-compatibility for unknown *fields*.
@@ -84,21 +84,16 @@ class PartitionClassification(BaseModel):
     """
 
     modality: str = Field(default="text", description="text | image_text | audio_text | ...")
-    dataset_type: str = Field(
-        description=(
-            "Dataset-type vocabulary (prompt_completion, preference_pair, ...). A SUMMARY, not the "
-            "basis for a decision — it is the most specific single structure the roles satisfy, and a "
-            "dataset routinely satisfies several. The `semantic_role` markers are what a consumer "
-            "should match on; `candidates` lists everything this one is a projection of."
-        ),
-    )
     candidates: list[str] = Field(
         default_factory=list,
         description=(
-            "Every dataset type the assigned roles satisfy, most specific first, so `candidates[0]` is "
-            "`dataset_type`. The tail is structures the same columns also satisfy: prompt + completion + score + "
-            "label is genuinely both `scored_response` and `unpaired_preference`, and a consumer that cares picks "
-            "by its own rule rather than by ours."
+            "Every dataset type the assigned roles satisfy (prompt_completion, preference_pair, ...), most "
+            "specific first. `candidates[0]` is the best single answer and the tail is structures the same "
+            "columns also satisfy: prompt + completion + score + label is genuinely both `scored_response` and "
+            "`unpaired_preference`, and a consumer that cares picks by its own rule rather than by ours. EMPTY "
+            "means the roles matched no known structure, which is also what a partition that could not be "
+            "classified at all reports — `evidence` carries an `error` entry in that case and not the other. "
+            "A SUMMARY either way: the `semantic_role` markers are what a consumer should match on."
         ),
     )
     format: str | None = Field(default=None, description="standard | conversational | mixed")
@@ -114,6 +109,17 @@ class PartitionClassification(BaseModel):
             "what they support. A profile-time snapshot; unrecoverable once the data or profiler version move."
         ),
     )
+
+    @property
+    def primary(self) -> str | None:
+        """The highest-priority dataset type, or None when the roles matched no known structure.
+
+        Derived rather than stored, and deliberately not serialized. A stored copy of this was the
+        earlier shape and it could disagree with the list it summarised -- which it did, on the one
+        path that built a classification without running the classifier. Nothing computed from
+        `candidates` can contradict `candidates`.
+        """
+        return self.candidates[0] if self.candidates else None
 
 
 # ---- structure: facts + the stacked semantic_role detection (computed) -------------------------
