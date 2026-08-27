@@ -3,6 +3,9 @@
 
 """Tests for per-column statistics."""
 
+import math
+import random
+
 import pytest
 from nemo_datasets_plugin.profiler.stats import (
     _MAX_ROLE_CHARS,
@@ -11,6 +14,9 @@ from nemo_datasets_plugin.profiler.stats import (
     _MAX_VOCABULARY_VALUES,
     RoutedAccumulator,
     RowFold,
+    _bucket_bounds,
+    _length_bucket,
+    _LengthHistogram,
     quote_enumerations,
 )
 from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
@@ -44,7 +50,7 @@ def _rows(name, values):
     return [{name: value} for value in values]
 
 
-# --- length histogram ----------------------------------------------------------------------------
+# --- cardinality and vocabulary --------------------------------------------------------------------
 
 
 def test_cardinality_is_counted_while_the_column_is_a_vocabulary():
@@ -94,6 +100,109 @@ def test_derive_stats_never_quotes_values():
 def test_bool_column_gets_a_measured_class_balance():
     stats = _stats([_feature("label", "bool")], _rows("label", [True, False, True]))
     assert stats["label"].categorical.distinct_count == 2
+
+
+# --- length histogram ----------------------------------------------------------------------------
+#
+# Every length assertion elsewhere in this file is on `.max`, which `add` keeps exactly and
+# separately from all the bucket arithmetic -- so none of them constrained the quantiles at all.
+# These do. The numbers below are written out rather than derived from `_HISTOGRAM_SLICES`, because
+# a test that recomputes the promise from the constant cannot detect the constant moving.
+
+
+def _histogram(values):
+    histogram = _LengthHistogram()
+    for value in values:
+        histogram.add(value)
+    return histogram
+
+
+def _exact_quantile(values, percentile):
+    """Nearest-rank, by sorting -- the definition `_at` approximates, computed independently."""
+    ordered = sorted(values)
+    return ordered[math.ceil(percentile / 100 * len(ordered)) - 1]
+
+
+def test_a_buckets_bounds_are_the_inverse_of_the_bucket_a_length_lands_in():
+    # The pair has to compose to the identity or every reported quantile is silently off. This is
+    # the property that fails loudest -- putting the octave one place out doubles every quantile,
+    # which reads as a plausible number rather than as a broken one.
+    checked = list(range(0, 20_000)) + [2**k + delta for k in range(15, 40) for delta in (-1, 0, 1, 7)]
+    for value in checked:
+        low, high = _bucket_bounds(_length_bucket(value))
+        assert low <= value < high, f"{value} fell outside {(low, high)}"
+
+
+def test_lengths_below_the_slice_count_are_recorded_exactly():
+    # Under the slice count a bucket would be narrower than one integer, so each length gets a
+    # counter of its own and no approximation happens at all.
+    for value in range(0, 32):
+        quantiles = _histogram([value]).quantiles()
+        assert (quantiles.p50, quantiles.p95, quantiles.p99, quantiles.max) == (value, value, value, value)
+
+
+def test_no_bucket_is_wider_than_a_thirty_second_of_its_own_magnitude():
+    # The constant-relative-error promise: an octave cut into 32 slices, so a bucket's width is at
+    # most 1/32 of where it sits, whatever the magnitude. Reported as ~1.6% because the midpoint
+    # halves it. Written as 1/32 and not as 1/_HISTOGRAM_SLICES on purpose -- coarsening the
+    # histogram has to fail here, and it cannot if the bound moves with it.
+    for value in [32, 33, 63, 64, 100, 1000, 10_000, 999_983, 2**32]:
+        low, high = _bucket_bounds(_length_bucket(value))
+        assert (high - low) / low <= 1 / 32, f"{value}: bucket {(low, high)} is too wide"
+
+
+def test_a_quantile_is_reported_at_its_buckets_midpoint():
+    # The low edge sits systematically under the truth and roughly doubles the average error, so
+    # the midpoint is the value reported. Both lengths here share one bucket, [992, 1008).
+    quantiles = _histogram([992, 1007]).quantiles()
+    assert quantiles.p50 == 1000  # not 992, the low edge
+    assert quantiles.max == 1007  # kept exactly, and separately
+
+
+def test_no_quantile_exceeds_the_largest_length_actually_present():
+    # A midpoint can overshoot every value in its own bucket: 992 is the low edge of [992, 1008),
+    # so the midpoint is 1000 -- a p99 above the maximum, which is nonsense on its face.
+    quantiles = _histogram([992]).quantiles()
+    assert quantiles.max == 992
+    assert quantiles.p50 == quantiles.p95 == quantiles.p99 == 992
+
+
+def test_the_rank_is_nearest_rank_rounded_up():
+    # Three lengths, each in a bucket of its own. p50 is the 2nd of 3 (ceil(1.5)), so it reports
+    # the middle one: rounding the rank down would report the first, and taking the bucket that
+    # strictly passes the rank rather than the one that reaches it would report the third.
+    quantiles = _histogram([1, 100, 10_000]).quantiles()
+    assert quantiles.p50 == 101  # midpoint of [100, 102), the bucket holding 100
+    assert quantiles.max == 10_000
+
+
+def test_quantiles_track_the_true_ones_within_the_error_the_bucketing_promises():
+    # The end the whole scheme exists for. Compared against quantiles computed by sorting, which is
+    # what the histogram is a bounded-memory substitute for.
+    rng = random.Random(0)
+    distributions = {
+        "lognormal": [max(1, int(rng.lognormvariate(6, 1.2))) for _ in range(20_000)],
+        "uniform": [rng.randint(1, 100_000) for _ in range(20_000)],
+        "one length repeated": [4096] * 20_000,
+        "bimodal": [rng.choice((12, 40_000)) for _ in range(20_000)],
+    }
+    for name, sample in distributions.items():
+        quantiles = _histogram(sample).quantiles()
+        for percentile, reported in ((50, quantiles.p50), (95, quantiles.p95), (99, quantiles.p99)):
+            exact = _exact_quantile(sample, percentile)
+            assert abs(reported - exact) / exact <= 0.016, f"{name} p{percentile}: {reported} vs {exact}"
+        assert quantiles.max == max(sample)
+
+
+def test_length_quantiles_reach_the_profile():
+    # ...and the whole path, since every assertion above is on the histogram in isolation.
+    lengths = [1 + (i * 37) % 4000 for i in range(2000)]
+    stats = _stats([_feature("a", "string")], _rows("a", ["x" * n for n in lengths]))["a"]
+
+    assert stats.text.chars.max == max(lengths)
+    for percentile, reported in ((50, stats.text.chars.p50), (95, stats.text.chars.p95), (99, stats.text.chars.p99)):
+        exact = _exact_quantile(lengths, percentile)
+        assert abs(reported - exact) / exact <= 0.016, f"p{percentile}: {reported} vs {exact}"
 
 
 # --- numeric -------------------------------------------------------------------------------------
