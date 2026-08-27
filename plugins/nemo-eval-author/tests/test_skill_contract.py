@@ -4,9 +4,9 @@
 """Contract tests for the bundled Eval Author skills.
 
 ``eval-author`` is the core skill: it owns the standard, the vocabulary, the
-boundaries, and the routing. ``eval-author-discover`` and ``eval-author-audit``
-bundle scripts. ``eval-author-inspect-trace`` uses the provider's supported
-commands. Sub-flows defer the standard to the core.
+boundaries, and the routing. ``eval-author-discover``, ``eval-author-audit``,
+and ``eval-author-task-create`` bundle scripts. ``eval-author-inspect-trace``
+uses the provider's supported commands. Sub-flows defer the standard to the core.
 
 These tests are that enforcement:
 
@@ -57,12 +57,14 @@ _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
 _DISCOVER_DIR = _SKILLS_DIR / "eval-author-discover"
 _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
+_TASK_CREATE_DIR = _SKILLS_DIR / "eval-author-task-create"
 _INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
+_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
+_TASK_CREATE_SCRIPTS_DIR = _TASK_CREATE_DIR / "scripts"
+_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR, _TASK_CREATE_SCRIPTS_DIR)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
@@ -447,6 +449,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
     discover_tools = set(_frontmatter_and_body(_DISCOVER_DIR)[0]["allowed-tools"])
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
+    task_create_tools = set(_frontmatter_and_body(_TASK_CREATE_DIR)[0]["allowed-tools"])
     inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
@@ -455,6 +458,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     )
     assert {"Bash", "Write"} <= audit_tools, (
         f"{_AUDIT_DIR.name} generates and validates audit files; it has {sorted(audit_tools)}"
+    )
+    assert {"Bash", "Write"} <= task_create_tools, (
+        f"{_TASK_CREATE_DIR.name} generates and proves task drafts; it has {sorted(task_create_tools)}"
     )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
@@ -560,6 +566,13 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
         assert (_DISCOVER_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_task_create_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_TASK_CREATE_DIR)
+    relative = "scripts/task_pipeline.py"
+    assert relative in body
+    assert (_TASK_CREATE_DIR / relative).is_file()
 
 
 def test_every_audit_spec_path_the_skill_names_exists() -> None:
