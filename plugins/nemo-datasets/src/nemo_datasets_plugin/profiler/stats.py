@@ -399,18 +399,19 @@ class NumericAccumulator(ColumnAccumulator):
     def _observe(self, present: list[Any]) -> None:
         countable: list[Any] = []
         for value in present:
-            # Non-finite floats are dropped, and dropped from the *vocabulary* as well as from the
-            # extrema. They serialize to JSON null and fail to re-validate against NumericStats,
-            # which is why the extrema skip them; the vocabulary skips them because NaN compares
-            # unequal to itself, so a set counts every NaN as its own distinct value. A parquet
-            # column of NaNs reported its own row count as its cardinality -- and past
-            # `_MAX_VOCABULARY_VALUES` of them it saturated, taking the column's whole `categorical`
-            # block with it.
-            if isinstance(value, float) and not math.isfinite(value):
+            # NaN alone leaves the vocabulary, and only because it compares unequal to itself: a set
+            # counts every NaN separately, so a parquet column of them reported its own row count as
+            # its cardinality and past `_MAX_VOCABULARY_VALUES` saturated, taking the column's whole
+            # `categorical` block with it. The infinities have none of that problem -- each equals
+            # itself and costs one entry -- and dropping them made `{0.0, 1.0, inf}` count as two
+            # distinct values, which is enough for `_is_binary` to call it a binary label.
+            if isinstance(value, float) and math.isnan(value):
                 continue
             countable.append(value)
-            # bool is an int here, and is not a number.
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
+            # bool is an int here, and is not a number. The extrema still skip every non-finite
+            # value, infinities included: those serialize to JSON null and fail to re-validate
+            # against NumericStats, which is a separate reason from the vocabulary's.
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
                 number = float(value)
                 self._min = min(self._min, number)
                 self._max = max(self._max, number)

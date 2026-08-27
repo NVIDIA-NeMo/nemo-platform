@@ -126,21 +126,36 @@ def test_numeric_all_non_finite_yields_no_numeric_summary():
     assert stats.get("n") is None or stats["n"].numeric is None
 
 
-def test_non_finite_floats_are_not_distinct_values():
+def test_nan_is_not_a_distinct_value():
     # NaN compares unequal to itself, so a set counts every one as its own distinct value: a parquet
     # float column of NaNs reported its own row count as its cardinality, and past the vocabulary
-    # bound it saturated and took the column's whole `categorical` block with it. Dropped from the
-    # vocabulary for the same reason they are already dropped from the extrema.
+    # bound it saturated and took the column's whole `categorical` block with it.
     stats = _stats([_feature("score", "float64")], _rows("score", [float("nan") for _ in range(100)]))
     assert stats["score"].categorical.distinct_count == 0
     assert stats["score"].numeric is None
 
 
-def test_finite_values_are_still_counted_alongside_non_finite_ones():
+def test_the_infinities_are_distinct_values_even_though_the_extrema_skip_them():
+    # Excluding every non-finite value was too wide. `inf` equals itself and costs the vocabulary one
+    # entry, and dropping it made `{0.0, 1.0, inf}` count as two -- enough for `_is_binary` to call a
+    # three-valued column a binary label. The extrema still skip it, for the unrelated reason that it
+    # serializes to JSON null and fails to re-validate against NumericStats.
     values = [1.0, 2.0, 1.0, float("nan"), float("inf"), float("-inf")]
     stats = _stats([_feature("score", "float64")], _rows("score", values))
-    assert stats["score"].categorical.distinct_count == 2
+    assert stats["score"].categorical.distinct_count == 4  # 1.0, 2.0, inf, -inf
     assert (stats["score"].numeric.min, stats["score"].numeric.max) == (1.0, 2.0)
+
+
+def test_an_infinity_does_not_turn_a_three_valued_column_into_a_label():
+    from nemo_datasets_plugin.profiler.classify import classify
+
+    features = [_feature("prompt", "string"), _feature("completion", "string"), _feature("label", "float64")]
+    rows = [{"prompt": "p", "completion": "c", "label": v} for v in (0.0, 1.0, float("inf"), 0.0, 1.0, float("inf"))]
+    stats = _stats(features, rows)
+    assert stats["label"].categorical.distinct_count == 3
+    result = classify(features, stats)
+    assert features[2].semantic_role is None
+    assert result.candidates == ["prompt_completion"]
 
 
 # --- messages ------------------------------------------------------------------------------------
