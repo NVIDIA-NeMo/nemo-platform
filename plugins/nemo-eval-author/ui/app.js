@@ -121,14 +121,11 @@ const els = {
   agent: document.querySelector("#agent-name"),
   percent: document.querySelector("#coverage-percent"),
   actionableCount: document.querySelector("#actionable-count"),
-  inputCount: document.querySelector("#input-count"),
   measuredKinds: document.querySelector("#measured-kinds"),
   kindBars: document.querySelector("#kind-bars"),
   actionableGaps: document.querySelector("#actionable-gaps"),
   uncoveredCount: document.querySelector("#uncovered-count"),
   uncoveredItems: document.querySelector("#uncovered-items"),
-  inputsAndWarnings: document.querySelector("#inputs-and-warnings"),
-  copySelect: document.querySelector("#copy-select-command"),
 };
 
 let currentReport = null;
@@ -298,55 +295,26 @@ function renderUncoveredItems(report) {
     .join("");
 }
 
-function renderInputsAndWarnings(report) {
-  const inputs = report.input_reports || [];
-  const warnings = report.warnings || [];
-  const inputCards = inputs.length
-    ? inputs
-        .map(
-          (input) => `
-            <article class="info-card">
-              <p><strong>${escapeHtml(input.subject?.task_id || "unknown task")}</strong> / ${escapeHtml(
-                input.subject?.run_id || "unknown run",
-              )}</p>
-              <p>${escapeHtml(input.method)} covered ${escapeHtml(input.covered_count)} ${escapeHtml(
-                input.item_kind,
-              )} item(s).</p>
-              <pre>${escapeHtml(input.path)}</pre>
-            </article>
-          `,
-        )
-        .join("")
-    : '<article class="info-card"><p>No input reports recorded.</p></article>';
-  const warningCards = warnings.length
-    ? warnings.map((warning) => `<article class="info-card"><pre>${escapeHtml(JSON.stringify(warning, null, 2))}</pre></article>`).join("")
-    : '<article class="info-card"><p>No warnings.</p></article>';
-  els.inputsAndWarnings.innerHTML = `<div>${inputCards}</div><div>${warningCards}</div>`;
-}
-
 function renderReport(report) {
   currentReport = report;
   const overall = report.coverage?.overall || { item_count: 0, covered_count: 0, uncovered_count: 0 };
   const gaps = actionableTools(report);
   els.dashboard.hidden = false;
   els.message.className = "message";
-  els.message.textContent = `${report.audit?.path || "audit.md"} is ${report.audit?.status || "unknown"} for ${
-    report.audit?.agent || "unknown agent"
-  }.`;
+  els.message.hidden = true;
   els.agent.textContent = report.audit?.agent || "unknown";
   els.percent.textContent = `${percent(overall)}%`;
   els.actionableCount.textContent = gaps.length;
-  els.inputCount.textContent = report.input_reports?.length || 0;
   els.measuredKinds.textContent = `measured: ${(report.measured_kinds || []).join(", ") || "none"}`;
   renderKindBars(report);
   renderActionableGaps(gaps);
   renderUncoveredItems(report);
-  renderInputsAndWarnings(report);
 }
 
 function renderError(message) {
   currentReport = null;
   els.dashboard.hidden = true;
+  els.message.hidden = false;
   els.message.className = "message error";
   els.message.textContent = message;
 }
@@ -356,6 +324,7 @@ function renderFromInput() {
   if (!text) {
     currentReport = null;
     els.dashboard.hidden = true;
+    els.message.hidden = false;
     els.message.className = "message";
     els.message.textContent = `Paste or open a ${REPORT_SCHEMA} JSON report.`;
     return;
@@ -365,22 +334,6 @@ function renderFromInput() {
   } catch (error) {
     renderError(error instanceof Error ? error.message : "Could not parse report.");
   }
-}
-
-async function copySelectCommand() {
-  const gaps = currentReport ? actionableTools(currentReport) : [];
-  const command = [
-    "uv run skills/eval-author-task-create/scripts/task_pipeline.py select \\",
-    "  --report .eval-author/audit-coverage-report.json",
-  ].join("\n");
-  const text = gaps.length
-    ? `${command}\n\n# ${gaps.length} actionable tool gap(s): ${gaps.map((gap) => gap.name).join(", ")}`
-    : command;
-  await navigator.clipboard.writeText(text);
-  els.copySelect.textContent = "Copied";
-  window.setTimeout(() => {
-    els.copySelect.textContent = "Copy select command";
-  }, 1200);
 }
 
 els.input.addEventListener("input", renderFromInput);
@@ -396,6 +349,4 @@ els.file.addEventListener("change", async () => {
   els.input.value = await file.text();
   renderFromInput();
 });
-els.copySelect.addEventListener("click", copySelectCommand);
-
 renderFromInput();

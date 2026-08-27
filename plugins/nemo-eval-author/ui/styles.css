@@ -206,7 +206,7 @@ textarea {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -307,8 +307,7 @@ textarea {
 }
 
 .gap-list,
-.item-list,
-.two-column {
+.item-list {
   display: grid;
   gap: 10px;
 }
@@ -403,10 +402,6 @@ pre {
   gap: 8px;
 }
 
-.two-column {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
 pre {
   margin: 0;
   padding: 10px;
@@ -421,8 +416,7 @@ pre {
 }
 
 .gap-list,
-.item-list,
-.two-column {
+.item-list {
   padding: 16px;
 }
 
@@ -441,7 +435,6 @@ pre {
   }
 
   .summary-grid,
-  .two-column,
   .path-grid {
     grid-template-columns: 1fr;
   }

@@ -11,7 +11,6 @@ with schema `nemo.eval_author.audit_coverage_report.v1`.
 The viewer shows:
 
 - overall and per-kind coverage
-- measured input reports and warnings
 - every uncovered audit item
 - actionable uncovered tool gaps for the task-creation flow proposed in
   NVIDIA-NeMo/nemo-platform#1576
