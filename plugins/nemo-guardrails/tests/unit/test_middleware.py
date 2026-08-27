@@ -696,6 +696,33 @@ class TestProcessRequest:
         assert run_rails.call_args.kwargs["messages"] == [current_user]
         assert result["messages"] == request_body["messages"]
 
+    async def test_input_rails_skip_request_ending_with_tool_result(self, middleware: GuardrailsMiddleware) -> None:
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "Look up the weather"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "weather", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+            ],
+        }
+
+        with patch.object(middleware, "_run_rails") as run_rails:
+            result = await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert result == request_body
+        assert result is not request_body
+        run_rails.assert_not_called()
+
     async def test_input_masking_skips_non_string_user_content(self, middleware: GuardrailsMiddleware) -> None:
         # Multimodal content is unsupported for PII write-back; leave the request alone
         # even when response.content looks like a redacted string (or a stringified list).
