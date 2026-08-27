@@ -9,38 +9,120 @@ interface CodingAgentPromptParams {
   baseUrl: string;
 }
 
-const agentLine = (agent?: string): string =>
-  agent ? `The agent is named "${agent}".` : 'Use the agent in the current repository.';
+/** Coding agents `nemo skills install --agent` knows how to write skill files for. */
+const SUPPORTED_CODING_AGENTS = 'claude, cursor, codex, opencode';
+
+const AGENT_PLACEHOLDER = '<agent-name>';
+
+const agentName = ({ agent }: CodingAgentPromptParams): string => agent ?? AGENT_PLACEHOLDER;
 
 /**
- * Prompts the user hands to a coding agent (Claude Code, Cursor, Codex) working in their own
- * repository. They name the NeMo skill that owns each path rather than restating its steps, so the
- * instructions stay correct as the skills change.
+ * Every prompt opens the same way: what the target platform is, and how to load the skills that
+ * own the work. Naming the skill instead of restating its steps keeps these prompts correct as the
+ * skills change.
  */
-export const traceImportPrompt = ({ workspace, agent, baseUrl }: CodingAgentPromptParams): string =>
+const preamble = (params: CodingAgentPromptParams, skills: string[]): string[] => {
+  const skillList = skills.map((skill) => `\`${skill}\``).join(' and ');
+  const many = skills.length > 1;
+  const noun = many ? 'skills' : 'skill';
+  const them = many ? 'them' : 'it';
+  const own = many ? 'own' : 'owns';
+  const theyPoint = many ? 'they point' : 'it points';
+
+  return [
+    `## Environment`,
+    ``,
+    `\`\`\`bash`,
+    `export NMP_BASE_URL=${params.baseUrl}`,
+    `export WORKSPACE=${params.workspace}`,
+    `export AGENT_NAME=${agentName(params)}`,
+    `\`\`\``,
+    ...(params.agent
+      ? []
+      : [
+          ``,
+          `Replace \`${AGENT_PLACEHOLDER}\` with the name of the agent in this repository, and use that exact name everywhere below.`,
+        ]),
+    ``,
+    `## How to do it`,
+    ``,
+    `NeMo Platform ships ${many ? 'skills' : 'a skill'} that ${own} this work end to end. Do not improvise a solution — install the ${noun} and follow ${them} step by step.`,
+    ``,
+    `1. Install the NeMo skills into this coding agent (\`--agent\` is one of: ${SUPPORTED_CODING_AGENTS}):`,
+    `   \`\`\`bash`,
+    `   nemo skills install --agent claude`,
+    `   \`\`\``,
+    `   If the \`nemo\` CLI is not on PATH here, install it (\`uv tool install nemo-platform\` or \`pip install nemo-platform\`) and re-run.`,
+    `2. Read the ${skillList} ${noun} and follow the documented steps in order. Run the exact commands documented there and read any \`references/\` file ${theyPoint} at.`,
+    `3. Do not invent CLI flags. If a flag you want is not in the skill, check \`nemo <subcommand> --help\`.`,
+  ];
+};
+
+const closing = [
+  ``,
+  `## Rules`,
+  ``,
+  `- Do not report a step complete until you have run its verification and seen it pass. If verification fails or times out, show me what you saw instead of moving on.`,
+  `- Make the smallest change that works. Do not refactor the agent while you are here.`,
+].join('\n');
+
+/**
+ * Prompt for the "Begin with traces" path: get the agent's telemetry into Intake so the overview,
+ * insights, and dataset generation have real runs to work from.
+ */
+export const traceImportPrompt = (params: CodingAgentPromptParams): string =>
   [
-    `Send my agent's telemetry to NeMo Intake so I can see traces, insights, and generate datasets from real runs.`,
-    agentLine(agent),
+    `# Send my agent's telemetry to NeMo Intake`,
     ``,
-    `Install the NeMo skills into this coding agent with \`nemo skills install --agent <your coding agent>\`, then read the nemo-intake skill and follow it step by step.`,
+    `I want to see traces, insights, and generate datasets from real runs of my agent in NeMo Studio.`,
     ``,
-    `Target: NMP_BASE_URL=${baseUrl}, WORKSPACE=${workspace}.`,
+    ...preamble(params, ['nemo-intake']),
     ``,
-    `Instrument the agent where it already emits telemetry — do not rewrite the agent. Pick the ingest format that fits what it emits (OTLP, chat completions, or ATIF), then run the agent once and verify the traces landed by querying Intake for this workspace.`,
+    `## What I want`,
+    ``,
+    `- Do not rewrite the agent. Instrument it where it already emits telemetry, or import telemetry it has already produced.`,
+    `- If my traces already live in MLflow, LangSmith, Arize Phoenix, or Braintrust, use the skill's importer for that provider instead of adding instrumentation.`,
+    `- Otherwise pick the ingest format that matches what the agent actually emits — OTLP (OpenInference or OTel GenAI semantic conventions), chat completions, or ATIF. Read the skill's comparison table before choosing; do not default to generic OpenTelemetry spans.`,
+    `- Every span must carry a stable agent name of \`${agentName(params)}\` (\`gen_ai.agent.name\`, or \`llm.agent.name\` / \`agent.name\` depending on the convention your instrumentation emits). Studio's agent overview is keyed on this value — if it is missing or inconsistent, the traces land but the agent page stays empty.`,
+    `- Set a stable session ID so multi-turn runs group into one session.`,
+    ``,
+    `## Done when`,
+    ``,
+    `1. The agent has been run at least once against real input with instrumentation enabled.`,
+    `2. Querying Intake back returns those spans with the expected hierarchy, inputs, outputs, and statuses:`,
+    `   \`\`\`bash`,
+    `   curl -g "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans?filter[agent_name]=$AGENT_NAME&page=1&page_size=100"`,
+    `   \`\`\``,
+    `3. The returned \`agent_name\` matches \`${agentName(params)}\` exactly.`,
+    `4. Tell me what to run to keep producing traces going forward, and what I would have to change to switch ingest formats later.`,
+    closing,
   ].join('\n');
 
-export const agentIntegrationPrompt = ({
-  workspace,
-  agent,
-  baseUrl,
-}: CodingAgentPromptParams): string =>
+/**
+ * Prompt for the "Integrate your agent" path: register a Platform-managed agent config so the
+ * agent can be evaluated, optimized, and deployed from Studio.
+ */
+export const agentIntegrationPrompt = (params: CodingAgentPromptParams): string =>
   [
-    `Integrate my agent with NeMo Platform so I can evaluate it, optimize it, and manage its deployments from Studio.`,
-    agentLine(agent),
+    `# Integrate my agent with NeMo Platform`,
     ``,
-    `Install the NeMo skills into this coding agent with \`nemo skills install --agent <your coding agent>\`, then read the nemo-agent-config and nemo-build-agent skills and follow them step by step.`,
+    `I want to evaluate this agent, run automatic optimization on it, and manage its deployments from NeMo Studio.`,
     ``,
-    `Target: NMP_BASE_URL=${baseUrl}, WORKSPACE=${workspace}.`,
+    ...preamble(params, ['nemo-agent-config', 'nemo-build-agent']),
     ``,
-    `Write the Fabric (nemo-agents-spec-v1) config for the agent, register it in this workspace, deploy it, and verify the deployment is healthy by invoking it once.`,
+    `## What I want`,
+    ``,
+    `- Write the Platform-managed agent config (\`nemo-agents-spec-v1\`) for this agent — \`nemo-agent-config\` owns that file's shape. Keep it as close to how the agent already runs as the spec allows.`,
+    `- If the agent is an existing NAT workflow YAML, tell me whether you are deploying it unchanged or migrating it to \`nemo-agents-spec-v1\`, and why, before you change anything.`,
+    `- Show me each \`nemo agents create\` and \`nemo agents deploy\` command and wait for my approval before running it.`,
+    `- Register the agent under the name \`${agentName(params)}\` in workspace \`${params.workspace}\` so it lines up with the agent page I am looking at.`,
+    `- Do not move fields into \`settings\` to silence a validation error. Fix the named field.`,
+    ``,
+    `## Done when`,
+    ``,
+    `1. \`nemo agents create\` validates and registers the config.`,
+    `2. \`nemo agents deploy\` reaches \`running\`.`,
+    `3. \`nemo agents invoke\` against the deployment returns a sensible answer for one real prompt, and you show me the prompt and the response.`,
+    `4. Tell me where the config file lives and what I edit to change the model, the instructions, or the tools.`,
+    closing,
   ].join('\n');
