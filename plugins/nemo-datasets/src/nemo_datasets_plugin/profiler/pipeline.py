@@ -277,20 +277,18 @@ class _PartitionFolds:
     neither. Keeping them side by side is what lets the file loop hand over a batch and forget it.
     """
 
-    def __init__(
-        self, features: list[FeatureSchema] | None, *, declared_capped: bool = False, discover: bool = False
-    ) -> None:
+    def __init__(self, features: list[FeatureSchema] | None, *, declared_capped: bool = False) -> None:
         # None means the partition declared no schema, which the fold reads as "discover the columns
         # as they appear". Either way the fold that measured them reports them, so there is one copy
         # of the schema rather than two that can drift.
-        self._columns = RowFold(features, discover=discover)
+        self._columns = RowFold(features)
         # A declared schema was already truncated before the fold saw it, so the fold cannot know.
         self._declared_capped = declared_capped
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
 
-    def update(self, rows: list[dict]) -> None:
-        self._columns.update(rows)
+    def update(self, rows: list[dict], *, discover: bool = False) -> None:
+        self._columns.update(rows, discover=discover)
         # Guarded like the columns are. Unguarded, only the per-file handler would catch it, and it
         # would report odd *data* as a bad *file*.
         if self._prefix_error is None:
@@ -387,12 +385,6 @@ def _profile_partition(
     folds = _PartitionFolds(
         derive_features(declared) if declared is not None else None,
         declared_capped=declared is not None and arrow_schema_was_capped(declared),
-        # A declared schema built from `askable` describes only the files that could be peeked, and
-        # `peek` and `batches` are separate opens -- so a file that failed the first and survives the
-        # second is read against a schema that never named its columns. `row.get(name)` over declared
-        # names alone dropped every column it was the only witness for, with no FileError to point
-        # at, since the read itself succeeded. Discovery back-fills exactly those.
-        discover=bool(unpeekable),
     )
     rows_scanned = 0
     files_read = 0
@@ -421,7 +413,15 @@ def _profile_partition(
                 preview = previews[entry.path]
                 read_errors: list[str] = []
                 for batch in reader.batches(source, entry, row_cap=row_cap, errors=read_errors):
-                    folds.update(batch)
+                    # A declared schema is built only from the files that could be peeked, and
+                    # `peek` and `batches` are separate opens -- so a file that failed the first and
+                    # survives the second is read against a schema that never named its columns.
+                    # `row.get(name)` over declared names alone dropped every column it was the only
+                    # witness for, with no FileError to point at, since the read itself succeeded.
+                    # Discovery back-fills exactly those, and only for the file that needs it: the
+                    # flag used to be set for the whole partition, so one unpeekable shard in five
+                    # hundred put a per-row key walk on every healthy shard as well.
+                    folds.update(batch, discover=entry.path in unpeekable)
                     scanned += len(batch)
                 # A file the reader only partly understood is named, the same as one it could not
                 # open at all. Folding it silently would make a corrupt shard look complete.

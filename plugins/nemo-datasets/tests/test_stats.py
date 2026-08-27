@@ -230,6 +230,26 @@ def test_numeric_stats_ignore_non_finite_values():
     ColumnStats.model_validate_json(stats.model_dump_json())  # round-trips: no NaN/inf leaked into JSON
 
 
+def test_the_mean_stays_finite_when_the_values_are():
+    # The extrema skip non-finite *inputs*; the mean was reaching `inf` by arithmetic instead, as
+    # `sum / count` on two values that are each perfectly representable. `inf` serializes to JSON
+    # null, so the published profile then failed to re-validate against its own NumericStats --
+    # the artifact could not be read back by the model it was built from.
+    stats = _stats([_feature("n", "float64")], _rows("n", [1e308, 1e308]))["n"]
+    assert stats.numeric.mean == 1e308
+    ColumnStats.model_validate_json(stats.model_dump_json())
+
+    # Opposite extremes overflow the *difference* the textbook incremental form takes, so the mean
+    # is weighted instead and this stays in range too.
+    opposite = _stats([_feature("n", "float64")], _rows("n", [1e308, -1e308]))["n"]
+    assert opposite.numeric.mean == 0.0
+    ColumnStats.model_validate_json(opposite.model_dump_json())
+
+    # ...and the ordinary case is still the ordinary answer.
+    plain = _stats([_feature("n", "float64")], _rows("n", [1.0, 2.0, 3.0, 4.0]))["n"]
+    assert (plain.numeric.min, plain.numeric.max, plain.numeric.mean) == (1.0, 4.0, 2.5)
+
+
 def test_numeric_all_non_finite_yields_no_numeric_summary():
     stats = _stats([_feature("n", "float64")], _rows("n", [float("nan"), float("inf")]))
     assert stats.get("n") is None or stats["n"].numeric is None

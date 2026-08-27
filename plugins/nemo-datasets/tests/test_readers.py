@@ -106,6 +106,27 @@ def test_local_file_source_open_does_not_follow_an_entry_swapped_after_listing(t
         source.open("train.jsonl")
 
 
+def test_local_file_source_open_does_not_leak_a_descriptor_when_wrapping_fails(tmp_path):
+    # `os.open` hands back a raw descriptor that nothing owns until `os.fdopen` wraps it. If the
+    # wrap raises, the caller never receives a handle and so cannot close it. The profiler opens a
+    # file per shard, so leaking one per failure exhausts the process rather than the request.
+    import os
+    from unittest import mock
+
+    (tmp_path / "a.jsonl").write_text("{}\n")
+    source = LocalFileSource(tmp_path)
+
+    def open_fds():
+        return len(os.listdir("/proc/self/fd"))
+
+    before = open_fds()
+    for _ in range(200):
+        with mock.patch("os.fdopen", side_effect=OSError("no memory for a buffer")):
+            with pytest.raises(OSError):
+                source.open("a.jsonl")
+    assert open_fds() == before
+
+
 def test_local_file_source_open_reads_bytes(tmp_path):
     (tmp_path / "f.jsonl").write_text('{"x": 1}\n')
     with LocalFileSource(tmp_path).open("f.jsonl") as stream:
