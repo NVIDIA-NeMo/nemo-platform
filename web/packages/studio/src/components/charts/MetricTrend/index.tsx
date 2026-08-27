@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import { SeriesButtonGroup } from '@studio/components/charts/MetricTrend/SeriesButtonGroup';
 import { useNvColorMode } from '@studio/components/DagCanvas/useNvColorMode';
 import { StackedSkeleton } from '@studio/components/StackedSkeleton';
 import { Triangle } from 'lucide-react';
@@ -137,23 +138,12 @@ export const MetricTrend: FC<MetricTrendProps> = ({
 
       <Stack gap="density-sm" className="min-w-0 flex-1">
         {series.length > 1 && (
-          <Flex align="center" gap="density-sm" wrap="wrap" role="group" aria-label={label}>
-            {series.map((s) => {
-              const isActive = s.id === active?.id;
-              return (
-                <Tag
-                  key={s.id}
-                  color={isActive ? 'green' : 'gray'}
-                  kind={isActive ? 'solid' : 'outline'}
-                  selected={isActive}
-                  aria-pressed={isActive}
-                  onClick={() => selectSeries(s.id)}
-                >
-                  {s.label}
-                </Tag>
-              );
-            })}
-          </Flex>
+          <SeriesButtonGroup
+            series={series}
+            activeId={active?.id}
+            label={label}
+            onSelect={selectSeries}
+          />
         )}
 
         <div className="overflow-hidden rounded-br-density-xl">
