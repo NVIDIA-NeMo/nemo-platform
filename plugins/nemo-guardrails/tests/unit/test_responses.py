@@ -144,6 +144,27 @@ class TestApplyInputRailModifications:
 
         assert apply_input_rail_modifications(messages, generation_response) is messages
 
+    def test_does_not_rewrite_earlier_user_when_current_message_is_tool_result(self) -> None:
+        messages = [
+            {"role": "user", "content": "Look up the weather"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {"name": "weather", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+        ]
+        generation_response = _make_generation_response(content="")
+
+        assert apply_input_rail_modifications(messages, generation_response) is messages
+        assert messages[0]["content"] == "Look up the weather"
+
 
 class TestApplyOutputRailModifications:
     def test_writes_back_from_response_content(self) -> None:
