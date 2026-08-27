@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -71,18 +72,44 @@ def test_drive_synth_hitl_relays_interview_then_review() -> None:
 def test_status_details_channel_publishes_and_matches_round() -> None:
     published: dict[str, Any] = {}
 
-    class _Jobs:
-        def update_status_details(self, _name: str, *, workspace: str, body: dict[str, Any]) -> None:
-            published.update(body)
+    job = {
+        "id": "job1",
+        "attempt_id": "att-1",
+        "name": "job1",
+        "workspace": "default",
+        "source": "test",
+        "spec": {},
+        "platform_spec": {
+            "steps": [{"name": "step-one", "executor": {"provider": "cpu", "container": {"image": "x"}}}]
+        },
+        "fileset": "fs-1",
+        "status": "active",
+        "status_details": {"interview_response": {"round": 1, "answers": [{"gap": "g", "answer": "a"}]}},
+    }
 
-        def retrieve(self, _name: str, *, workspace: str) -> Any:
-            return SimpleNamespace(
-                status_details={"interview_response": {"round": 1, "answers": [{"gap": "g", "answer": "a"}]}}
-            )
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PATCH" and request.url.path.endswith("/status-details"):
+            if request.content:
+                published.update(json.loads(request.content))
+            return httpx.Response(200, json={})
+        if request.method == "GET" and request.url.path.endswith("/jobs/job1"):
+            return httpx.Response(200, json=job)
+        return httpx.Response(404)
 
-    channel = hitl.StatusDetailsChannel(
-        SimpleNamespace(jobs=_Jobs()), name="job1", workspace="default", poll_interval=0.0
+    # The channel wraps the SDK via ``client_from_platform`` into a typed JobsClient;
+    # model that with a real JobsClient over a mocked transport.
+    http_client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://platform:8080")
+    platform = SimpleNamespace(
+        base_url="http://platform:8080",
+        workspace="default",
+        _custom_headers={"Authorization": "Bearer x"},
+        _client=http_client,
+        timeout=None,
+        max_retries=2,
+        _prepare_url=lambda url: url,
     )
+
+    channel = hitl.StatusDetailsChannel(platform, name="job1", workspace="default", poll_interval=0.0)
     channel.publish("interview", {"questions": [{"gap": "g"}]})
     assert published["interview"]["round"] == 1
     assert channel.await_response("interview") == [{"gap": "g", "answer": "a"}]

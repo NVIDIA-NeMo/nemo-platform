@@ -4,7 +4,7 @@
 import { formatEvaluatorScore } from '@nemo/common/src/utils/formatters';
 import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
-import { Card, Tag, Text } from '@nvidia/foundations-react-core';
+import { Anchor, Card, Tag, Text } from '@nvidia/foundations-react-core';
 import { MetricTrend } from '@studio/components/charts/MetricTrend';
 import {
   DELTA_COMPARISON_LABEL,
@@ -16,7 +16,7 @@ import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { type FC, useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 
 interface ExperimentCardProps {
   group: ExperimentResponse;
@@ -25,42 +25,46 @@ interface ExperimentCardProps {
 
 export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) => {
   const navigate = useNavigate();
-  const showTrend = Boolean(group.show_evaluations_over_time);
+  const detailRoute = getExperimentDetailRoute(workspace, group.name);
+  // Without an id there is nothing to filter evaluations by, so the trend cannot be built.
+  const showTrend = Boolean(group.show_evaluations_over_time) && Boolean(group.id);
 
   // Only experiments flagged to graph over time pay for this; the rest render the plain card.
   const { data: evaluationsPage, isPending } = useListEvaluations(
     workspace,
     { filter: { experiment_id: group.id }, page_size: TREND_EVALUATION_LIMIT },
-    { query: { enabled: showTrend && !!group.id } }
+    { query: { enabled: showTrend } }
   );
 
   const series = useMemo(() => toTrendSeries(evaluationsPage?.data ?? []), [evaluationsPage]);
 
+  // react-query reports a disabled query as pending forever, so this has to be gated on
+  // `showTrend` — otherwise a card whose query never runs would sit on the skeleton for good.
+  const isLoadingTrend = showTrend && isPending;
+
   // A flagged experiment with nothing to plot yet falls back to the plain card rather than
   // rendering an empty chart. Kept while the query is in flight so the card settles once,
   // into the skeleton, instead of flashing the count and then swapping to a chart.
-  const renderTrend = showTrend && (isPending || series.length > 0);
+  const renderTrend = showTrend && (isLoadingTrend || series.length > 0);
 
   return (
+    // The card is not itself a button: the trend it can contain has its own controls, and a
+    // button may not nest interactive content — assistive tech either hides the inner controls
+    // or exposes them unreliably. The name is the real link, so keyboard and screen reader
+    // users navigate through it; the card-wide click is a mouse-only convenience on top.
     <Card
       interactive
       attributes={{ CardContent: { className: 'flex flex-row items-center gap-6 p-6' } }}
-      onClick={() => navigate(getExperimentDetailRoute(workspace, group.name))}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          navigate(getExperimentDetailRoute(workspace, group.name));
-        } else if (e.key === ' ') {
-          e.preventDefault();
-          navigate(getExperimentDetailRoute(workspace, group.name));
-        }
-      }}
+      onClick={() => navigate(detailRoute)}
     >
       {/* Main info */}
       <div className="flex flex-col items-start gap-2 flex-1">
         <div className="flex items-center gap-2">
-          <Text kind="title/sm">{group.name}</Text>
+          <Anchor asChild>
+            <Link to={detailRoute} className="no-underline hover:underline">
+              <Text kind="title/sm">{group.name}</Text>
+            </Link>
+          </Anchor>
           {group.is_favorite && (
             <Tag kind="outline" color="green" density="compact" readOnly>
               Favorite
@@ -79,18 +83,11 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
 
       {/* Stats, or the trendline for experiments flagged to graph over time. */}
       {renderTrend ? (
-        // The evaluator pills are buttons inside an interactive card; without this, selecting a
-        // series would bubble up and navigate to the experiment instead of switching the chart.
-        <div
-          role="presentation"
-          className="w-1/2 shrink-0"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
+        <div className="w-1/2 shrink-0">
           <MetricTrend
             label={group.name}
             series={series}
-            isPending={isPending}
+            isPending={isLoadingTrend}
             chartHeight={48}
             comparisonLabel={DELTA_COMPARISON_LABEL}
             formatValue={formatEvaluatorScore}

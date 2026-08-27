@@ -18,12 +18,9 @@ from nemo_agents_plugin.cli import (
     MAX_ETHOS_STAGED_FILES,
     AgentsCLI,
     _check_agent_root_bounds,
+    _spec_package_warning,
 )
-from nemo_agents_plugin.ethos_migrate import (
-    LEGACY_CONTRACT_FILENAME,
-    LEGACY_PACKAGE_SUFFIX,
-    registration_migration_warning,
-)
+from nemo_agents_plugin.entities import AGENT_SPEC_FILENAME
 from typer.testing import CliRunner
 
 
@@ -279,12 +276,11 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         workspace="default",
         agent_root=tmp_path,
         base_url="http://test",
-        omit_legacy_contract=False,
     )
 
 
 def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    package = tmp_path / "agents" / f"fabric-agent{LEGACY_PACKAGE_SUFFIX}"
+    package = tmp_path / "agents" / "fabric-agent-spec"
     package.mkdir(parents=True)
     config = package / "agent.yaml"
     config.write_text(
@@ -300,7 +296,7 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
             ]
         )
     )
-    (package / LEGACY_CONTRACT_FILENAME).write_text("# Contract\n")
+    (package / AGENT_SPEC_FILENAME).write_text("# Contract\n")
     monkeypatch.chdir(tmp_path)
     normalized_config = {
         "config_format": "nemo-agents-spec-v1",
@@ -351,12 +347,39 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         )
 
     assert result.exit_code == 0, result.stderr
-    assert result.stderr.splitlines()[-3:] == list(registration_migration_warning("fabric-agent", "default", config))
+    warning = _spec_package_warning("fabric-agent", config)
+    assert result.stderr.splitlines()[-len(warning) :] == list(warning)
     assert uploaded["files"] == {"agent.yaml"}
-    assert uploaded["deleted"] == (LEGACY_CONTRACT_FILENAME, "fabric-agent-ethos", "default")
+    assert uploaded["deleted"] == (AGENT_SPEC_FILENAME, "fabric-agent-ethos", "default")
     assert uploaded["fileset"] == "fabric-agent-ethos"
     assert uploaded["workspace"] == "default"
     assert uploaded["sdk_base_url"] == "http://test"
+
+
+def test_spec_package_warning_points_at_nemo_ethos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package = tmp_path / "agents" / "acme-bot-spec"
+    package.mkdir(parents=True)
+    config = package / "agent.yaml"
+    config.write_text("name: acme-bot\n")
+    (package / AGENT_SPEC_FILENAME).write_text("# spec\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert _spec_package_warning("acme-bot", config) == (
+        "Warning: This package uses AGENT-SPEC.md.",
+        "Run the nemo-ethos skill to write ETHOS.md, then delete the acme-bot-spec package.",
+    )
+    assert _spec_package_warning("acme-bot", tmp_path / "agent.yaml") == ()
+    escaped = tmp_path / "escaped-spec"
+    escaped.mkdir()
+    (escaped / "agent.yaml").write_text("name: escaped\n")
+    (escaped / AGENT_SPEC_FILENAME).write_text("# spec\n")
+    assert _spec_package_warning("../escaped", escaped / "agent.yaml") == ()
+
+
+def test_agents_cli_has_no_ethos_migrate_command() -> None:
+    result = CliRunner().invoke(AgentsCLI().get_cli(), ["ethos", "migrate", "--help"])
+
+    assert result.exit_code != 0
 
 
 def test_check_agent_root_bounds_allows_small_agent_root(tmp_path) -> None:
@@ -772,3 +795,200 @@ def test_list_connection_error_prints_request_context_and_hint() -> None:
     assert "Request: GET http://test/apis/agents/v2/workspaces/default/agents" in result.stderr
     assert "Target: agents API route /apis/agents/v2/workspaces/default/agents" in result.stderr
     assert "nemo config view" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# environment / environment-spec / compute-spec commands
+# ---------------------------------------------------------------------------
+
+
+def test_deploy_forwards_environment_ref() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "deploy",
+                "--agent",
+                "a1",
+                "--environment",
+                "default/env1",
+                "--no-wait",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body["agent"] == "a1"
+    assert body["environment"] == "default/env1"
+
+
+def test_deploy_rejects_empty_environment() -> None:
+    called = False
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["deploy", "--agent", "a1", "--environment", "   ", "--no-wait", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 2
+    assert "--environment must not be empty." in result.stderr
+    assert not called  # no API call made
+
+
+def test_environment_spec_create_from_file(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    spec.write_text('{"env": {"LOG_LEVEL": "debug"}, "secrets": {"TOK": "default/tok"}}')
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "ben"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["environment-specs", "create", "ben", "--spec-file", str(spec), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    assert captured["url"].endswith("/environment-specs")
+    body = _j.loads(captured["body"])
+    assert body["name"] == "ben"
+    assert body["env"] == {"LOG_LEVEL": "debug"}
+    assert body["secrets"] == {"TOK": "default/tok"}
+
+
+def test_environment_spec_create_from_inline_json() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "prod"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["environment-specs", "create", "prod", "--spec", '{"provider": "local"}', "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body == {"provider": "local", "name": "prod"}
+
+
+def test_environment_spec_create_rejects_both_sources(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}")
+    app = AgentsCLI().get_cli()
+    result = CliRunner().invoke(
+        app,
+        ["environment-specs", "create", "x", "--spec-file", str(spec), "--spec", "{}", "--base-url", "http://test"],
+    )
+    assert result.exit_code == 2
+    assert "only one of --spec-file or --spec" in result.stderr
+
+
+def test_environment_create_with_ref_flags() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "env1"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "environments",
+                "create",
+                "env1",
+                "--environment-spec",
+                "default/ben",
+                "--compute-spec",
+                "default/big",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    assert captured["url"].endswith("/environments")
+    body = _j.loads(captured["body"])
+    assert body["name"] == "env1"
+    assert body["environment_spec"] == "default/ben"
+    assert body["compute_spec"] == "default/big"
+
+
+def test_compute_spec_create_and_list() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured.setdefault("methods", []).append(req.method)
+        if req.method == "POST":
+            captured["body"] = req.read()
+            return httpx.Response(201, json={"name": "big"})
+        return httpx.Response(200, json={"data": [{"name": "big", "workspace": "default"}], "pagination": {}})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        create = CliRunner().invoke(
+            app,
+            [
+                "compute-specs",
+                "create",
+                "big",
+                "--spec",
+                '{"resources": {"limits": {"cpu": "2"}}}',
+                "--base-url",
+                "http://test",
+            ],
+        )
+        listing = CliRunner().invoke(app, ["compute-specs", "list", "--format", "json", "--base-url", "http://test"])
+
+    assert create.exit_code == 0, create.stderr
+    assert listing.exit_code == 0, listing.stderr
+    import json as _j
+
+    assert _j.loads(captured["body"])["name"] == "big"
+
+
+def test_environment_delete_confirmation() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.method == "DELETE"
+        return httpx.Response(204)
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(app, ["environments", "delete", "env1", "--yes", "--base-url", "http://test"])
+
+    assert result.exit_code == 0, result.stderr
+    assert "Environment 'env1' deleted." in result.stdout

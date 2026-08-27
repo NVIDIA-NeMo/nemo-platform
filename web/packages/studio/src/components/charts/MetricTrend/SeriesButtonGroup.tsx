@@ -32,7 +32,12 @@ export const SeriesButtonGroup: FC<Props> = ({ series, activeId, label, onSelect
           color={isActive ? 'brand' : undefined}
           size="tiny"
           aria-pressed={isActive}
-          onClick={() => onSelect(s.id)}
+          // Stop the click here: a trend can sit inside a card that navigates on click, and
+          // picking a series should switch the chart rather than follow the card.
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(s.id);
+          }}
         >
           {s.label}
         </Button>

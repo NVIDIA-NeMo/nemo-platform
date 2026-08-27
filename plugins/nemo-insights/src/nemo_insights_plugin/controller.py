@@ -26,7 +26,8 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityConflictError,
     NemoEntityNotFoundError,
 )
-from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest, ListJobsQueryParams, PlatformJobSpec
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class InsightsAnalysisController(NemoController):
     def __init__(self) -> None:
         self._sdk: AsyncNeMoPlatform | None = None
         self._entities: NemoEntitiesClient | None = None
+        self._jobs: AsyncJobsClient | None = None
         self._config: InsightsConfig | None = None
 
     @property
@@ -75,6 +77,10 @@ class InsightsAnalysisController(NemoController):
     @property
     def entities(self) -> NemoEntitiesClient:
         return _require(self._entities, "entities")
+
+    @property
+    def jobs(self) -> AsyncJobsClient:
+        return _require(self._jobs, "jobs")
 
     @property
     def insights_config(self) -> InsightsConfig:
@@ -91,6 +97,7 @@ class InsightsAnalysisController(NemoController):
         self._config = get_nemo_config(InsightsConfig)
         self._sdk = get_async_platform_sdk(as_service="insights", internal=True)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
+        self._jobs = client_from_platform(self._sdk, AsyncJobsClient)
         logger.info("InsightsAnalysisController started.")
 
     async def on_shutdown(self) -> None:
@@ -193,11 +200,13 @@ class InsightsAnalysisController(NemoController):
 
     async def _has_active_job(self, config: AnalysisConfig) -> bool:
         try:
-            jobs = self.sdk.jobs.list(
+            jobs = await self.jobs.list_jobs(
                 workspace=config.workspace,
-                filter=cast(Any, {"source": "insights", "status": _ACTIVE_JOB_STATUSES}),
-                page_size=100,
-                sort="-created_at",
+                query_params=ListJobsQueryParams(
+                    filter=cast(Any, {"source": "insights", "status": _ACTIVE_JOB_STATUSES}),
+                    page_size=100,
+                    sort="-created_at",
+                ),
             )
         except Exception:
             logger.debug(
@@ -208,8 +217,8 @@ class InsightsAnalysisController(NemoController):
             return True
 
         try:
-            async for job in jobs:
-                if _job_targets_agent(job, config.agent):
+            async for item in jobs.items():
+                if _job_targets_agent(item, config.agent):
                     return True
         except Exception:
             logger.debug(
@@ -251,14 +260,18 @@ class InsightsAnalysisController(NemoController):
             spec=spec,
             job_name=job_name,
         )
-        await self.sdk.jobs.create(
-            workspace=config.workspace,
-            source="insights",
-            name=job_name,
-            spec=spec.model_dump(mode="json"),
-            platform_spec=platform_spec,
-            custom_fields={"insights_analysis_agent": config.agent},
-        )
+        (
+            await self.jobs.create_job(
+                workspace=config.workspace,
+                body=CreatePlatformJobRequest(
+                    source="insights",
+                    name=job_name,
+                    spec=spec.model_dump(mode="json"),
+                    platform_spec=platform_spec,
+                    custom_fields={"insights_analysis_agent": config.agent},
+                ),
+            )
+        ).data()
         logger.info(
             "Submitted insights analysis job '%s' for agent '%s' in workspace '%s'",
             job_name,
@@ -267,13 +280,16 @@ class InsightsAnalysisController(NemoController):
         )
 
     async def _compile_job_spec(self, *, workspace: str, spec: AnalyzeSpec, job_name: str) -> PlatformJobSpec:
-        return await AnalyzeJob.compile(
-            workspace=workspace,
-            spec=spec,
-            entity_client=self.entities,
-            job_name=job_name,
-            async_sdk=self.sdk,
-            profile=self.insights_config.analyst.job_profile,
+        return cast(
+            PlatformJobSpec,
+            await AnalyzeJob.compile(
+                workspace=workspace,
+                spec=spec,
+                entity_client=self.entities,
+                job_name=job_name,
+                async_sdk=self.sdk,
+                profile=self.insights_config.analyst.job_profile,
+            ),
         )
 
 

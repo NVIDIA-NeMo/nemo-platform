@@ -1,0 +1,63 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "Volcano"
+description: "Install Volcano as a cluster scheduler for multi-node NeMo Platform jobs."
+---
+<a id="install-volcano"></a>
+
+The NeMo Platform Helm chart does **not** install [Volcano](https://volcano.sh/en/docs/). Volcano is **optional**. It is needed for multi-node jobs on the `volcano_job` backend (Customizer multi-node). Skip it and set `rbac.volcanoEnabled: false` if you are not running those jobs.
+
+The chart grants the core controller Volcano RBAC when `rbac.volcanoEnabled` is `true` (the default).
+
+Job-level knobs (`queue`, `scheduler_name`, `plugins`) are documented in [Manage Jobs](/documentation/self-managed-deployment/setup/jobs). Multi-node NCCL injection still requires [Kyverno](/documentation/self-managed-deployment/setup/helm/multinode-networking) in addition to Volcano.
+
+## Install
+
+Pin the installer to Volcano **v1.9.0**:
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
+kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
+kubectl rollout status deployment/volcano-admission -n volcano-system
+```
+
+Wait for the admission webhook to finish initializing before installing the platform chart. The webhook registers immediately with `failurePolicy: Fail`, but TLS certificate generation runs asynchronously. If you proceed before the webhook is ready, pod creation can fail with certificate errors.
+
+## Troubleshooting
+
+### Volcano admission webhook blocks pod creation
+
+**Symptom:** Pod creation fails cluster-wide with an error like:
+
+```
+Internal error occurred: failed calling webhook "mutatepod.volcano.sh":
+failed to call webhook: Post "https://volcano-admission-service.volcano-system.svc:443/pods/mutate?timeout=10s":
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+**Cause:** The Volcano `MutatingWebhookConfiguration` registers with `failurePolicy: Fail` before the `volcano-admission-init` job finishes generating TLS certificates. This affects all namespaces, not just Volcano workloads.
+
+**Fix:** `kubectl rollout restart` does **not** rerun `volcano-admission-init` or replace `volcano-admission-secret`. Wait for the init Job first. If the webhook still fails, delete the Job and Secret, re-apply the v1.9.0 installer (or recreate the init Job), wait for the Job to complete, then wait for admission rollout:
+
+```sh
+kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
+
+# If the webhook still fails with unknown authority:
+kubectl delete job volcano-admission-init -n volcano-system --ignore-not-found
+kubectl delete secret volcano-admission-secret -n volcano-system --ignore-not-found
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
+kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
+kubectl rollout status deployment/volcano-admission -n volcano-system
+```
+
+The webhook registers with `failurePolicy: Fail` before TLS is ready, so pod creation can fail cluster-wide until the secret exists. Verify the webhook is accepting requests before retrying your Helm install:
+
+```sh
+until kubectl run volcano-webhook-test --image=busybox --restart=Never --dry-run=server -o yaml 2>/dev/null; do
+  echo "Volcano webhook not ready yet, waiting..."
+  sleep 5
+done
+kubectl delete pod volcano-webhook-test --ignore-not-found=true
+```

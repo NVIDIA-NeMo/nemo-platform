@@ -77,4 +77,11 @@ export const withoutPrompt = (data: RailsConfig, task: string): RailsConfig => {
 
 /** Set a prompt's body, creating the entry if the task doesn't have one yet. */
 export const withPromptContent = (data: RailsConfig, task: string, content: string): RailsConfig =>
-  withPrompt(data, { ...findPrompt(data, task), task, content });
+  withPromptFields(data, task, { content });
+
+/** Merge fields into a task's prompt, creating the entry if it doesn't have one yet. */
+export const withPromptFields = (
+  data: RailsConfig,
+  task: string,
+  patch: Partial<Omit<TaskPrompt, 'task'>>
+): RailsConfig => withPrompt(data, { ...findPrompt(data, task), task, ...patch });

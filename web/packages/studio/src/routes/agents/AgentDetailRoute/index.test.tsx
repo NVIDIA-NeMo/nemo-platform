@@ -11,6 +11,7 @@ import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { AgentDetailRoute } from '@studio/routes/agents/AgentDetailRoute';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import { waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const agentName = 'react-agent';
@@ -38,7 +39,9 @@ describe('AgentDetailRoute', () => {
     expect(screen.getByRole('tab', { name: 'Details' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Configuration' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open traces' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Run evaluation' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Run evaluation' })).toHaveLength(2);
+    });
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

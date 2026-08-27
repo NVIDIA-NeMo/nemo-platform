@@ -19,30 +19,34 @@ export interface AgentExperimentRow {
  *
  *  Keyed on the experiment id, which every evaluation carries, rather than the resolved name,
  *  which is only known for experiments inside the fetched page. Grouping therefore never drops a
- *  row and the counts stay honest; an unresolved row loses only its label and its link. */
+ *  row and the counts stay honest; an unresolved row loses only its label and its link.
+ *
+ *  An evaluation counts toward every experiment it belongs to, not just its first: membership is
+ *  many-to-many, so counting only `experiment_ids[0]` would make every experiment that shares an
+ *  evaluation under-report. */
 export const groupByExperiment = (evaluations: AgentEvaluationRow[]): AgentExperimentRow[] => {
   const byId = new Map<string, AgentExperimentRow>();
 
   for (const evaluation of evaluations) {
-    const id = evaluation.experiment_ids[0];
-    if (!id) continue;
-    const existing = byId.get(id) ?? {
-      id,
-      name: evaluation.experimentName,
-      evaluationCount: 0,
-      runCount: 0,
-      latestCreatedAt: null,
-    };
-    existing.name ??= evaluation.experimentName;
-    existing.evaluationCount += 1;
-    existing.runCount += evaluation.run_count ?? 0;
-    if (
-      evaluation.created_at &&
-      (!existing.latestCreatedAt || evaluation.created_at > existing.latestCreatedAt)
-    ) {
-      existing.latestCreatedAt = evaluation.created_at;
+    for (const experiment of evaluation.experiments) {
+      const existing = byId.get(experiment.id) ?? {
+        id: experiment.id,
+        name: experiment.name,
+        evaluationCount: 0,
+        runCount: 0,
+        latestCreatedAt: null,
+      };
+      existing.name ??= experiment.name;
+      existing.evaluationCount += 1;
+      existing.runCount += evaluation.run_count ?? 0;
+      if (
+        evaluation.created_at &&
+        (!existing.latestCreatedAt || evaluation.created_at > existing.latestCreatedAt)
+      ) {
+        existing.latestCreatedAt = evaluation.created_at;
+      }
+      byId.set(experiment.id, existing);
     }
-    byId.set(id, existing);
   }
 
   return [...byId.values()].sort((a, b) =>

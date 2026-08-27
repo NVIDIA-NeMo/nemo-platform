@@ -31,7 +31,7 @@ result can be verified:
 ```bash
 export NMP_BASE_URL=http://127.0.0.1:8080
 nemo agents create --name nemo-studio-assistant \
-  --agent-config agents/nemo-studio-assistant-spec/agent.yaml
+  --agent-config agents/nemo-studio-assistant-ethos/agent.yaml
 nemo agents package \
   --agent agents/nemo-studio-assistant/agent.yaml \
   --pyproject agents/nemo-studio-assistant/pyproject.toml \

@@ -17,17 +17,17 @@ from typing import Any, Protocol
 import yaml
 from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
+    AGENT_SPEC_FILENAME,
     ETHOS_FILENAME,
     MAX_ETHOS_STAGED_BYTES,
     ethos_fileset_name,
 )
-from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError as PlatformNotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 logger = logging.getLogger(__name__)
-_CONTRACT_FILENAMES = {ETHOS_FILENAME, LEGACY_CONTRACT_FILENAME}
+_CONTRACT_FILENAMES = {ETHOS_FILENAME, AGENT_SPEC_FILENAME}
 
 
 class FabricArtifactStagingError(ValueError):

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: nemo-model-selection
-description: Recommends an LLM for a NeMo Platform agent based on what the agent actually has to do, explained in plain English before any benchmark name appears. Use when the user is choosing a model for a new agent, assessing a model they already selected, or deciding what belongs in AGENT-SPEC.md or Platform agent.yaml. Invoked by nemo-explore at the model question; also runs standalone when the user starts mid-flow.
+description: Recommends an LLM for a NeMo Platform agent based on what the agent actually has to do, explained in plain English before any benchmark name appears. Use when the user is choosing a model for a new agent, assessing a model they already selected, or deciding what belongs in ETHOS.md or Platform agent.yaml. Invoked by nemo-explore at the model question; also runs standalone when the user starts mid-flow.
 triggers:
   - which model should I use
   - what model is best for this
@@ -14,8 +14,8 @@ triggers:
   - which LLM
 not-for:
   - nemo-explore (use first to capture the agent's job, audience, and tools)
-  - nemo-spec (use to persist the design once model is chosen)
-  - nemo-build-agent (use to scaffold the YAML once the spec is signed off)
+  - nemo-ethos (use to persist the design once model is chosen)
+  - nemo-build-agent (use to scaffold the YAML once the Ethos is signed off)
 compatibility: nemo-platform >= 0.1.0; read-only; loads references/benchmark_cache.json if present; works offline; safe under any sandbox.
 maturity: active
 license: Apache-2.0
@@ -27,7 +27,7 @@ allowed-tools: [Read, Bash]
 
 Recommend a model for a new agent from NIM or another provider configured on
 the running Platform. Explain the capability fit first and benchmark evidence
-second. Return the model choice in a form suitable for `AGENT-SPEC.md` and the
+second. Return the model choice in a form suitable for `ETHOS.md` and the
 Platform-managed `agent.yaml`. Preserve NAT model configuration only when the
 user is explicitly maintaining a legacy NAT workflow.
 
@@ -340,17 +340,11 @@ Platform `agent.yaml`. **When the chosen model's primary-axis score has
 include an explicit evidence caveat in the human-readable recommendation.** Do
 not encode benchmark commentary as unsupported config fields.
 
-If they're authoring an agent spec for `nemo-spec`:
-
-```markdown
-## Model
-
-- **Family/size:** <plain description, e.g. "Qwen3 235B MoE">
-- **NIM model id:** `<model-string>`
-- **Why this choice:** <one plain-English sentence — same words you used above>
-- **Evidence:** <"Direct BFCL and Arena measurements" | "BFCL inferred from ancestor <ancestor-id>; Arena measured directly" | "No public benchmark coverage — selection based on model-name intent only, eval recommended">
-- **Deployment:** <cloud | self-hosted (VRAM)>
-```
+If they're authoring an Ethos for `nemo-ethos`, do not emit a `## Model`
+section. Ethos has no such heading. Return the choice to `nemo-explore` with
+family/size, NIM model id, reason, evidence, and deployment mode so explore
+can record permitted providers and model families in `Constraints`. The
+selected model itself belongs in `agent.yaml`.
 
 If they are authoring Platform `agent.yaml`, emit a default model block:
 
@@ -461,7 +455,7 @@ Raw leaderboards:
 
 This skill writes nothing. Verification is conversational: summarize the recommendation in 3 lines (capability that mattered most, model chosen, one tradeoff) and ask "Does this match what you need?" Do not hand off until the user confirms.
 
-If `nemo-explore` invoked this skill, return control to `nemo-explore` with the chosen model so it can continue to the constraints question. If the user invoked standalone, hand off to `nemo-spec` if they want to persist the design.
+If `nemo-explore` invoked this skill, return control to `nemo-explore` with the chosen model so it can continue to the constraints question. If the user invoked standalone, hand off to `nemo-ethos` if they want to persist the design.
 
 ## If verification fails
 
@@ -485,9 +479,10 @@ If `nemo-explore` invoked this skill, return control to `nemo-explore` with the 
 - Never silently change the selected harness to accommodate an available model.
 - Never emit a model identifier without showing the plain-English reason alongside it.
 - **When the primary candidate's evidence is anything other than `direct`, the model name does not appear in your response until the user has resolved the trade-off in Pattern B.** Anchoring is the failure mode this guards against — users default to the first model named regardless of caveats. The withhold is non-negotiable.
-- When emitting the spec recommendation, always include an Evidence line naming
-  the source quality. For `agent.yaml`, present the evidence next to the YAML
-  rather than inventing a config field.
+- When returning a model choice for Ethos, include the evidence so
+  `nemo-explore` can put it in `Constraints`. Never write a `## Model`
+  heading. For `agent.yaml`, present the evidence next to the YAML rather
+  than inventing a config field.
 
 ## Gotchas
 
