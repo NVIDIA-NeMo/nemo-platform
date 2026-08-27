@@ -28,6 +28,7 @@ from nemo_datasets_plugin.profiler.classify import PrefixPairFold, classify
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import (
+    COMPRESSION_EXTENSIONS,
     FilePreview,
     detect_format,
     get_reader,
@@ -99,13 +100,7 @@ def profile(
         for entry in sorted(all_entries, key=lambda entry: entry.path)
         if detect_format(entry.path) is None and is_unsupported_data(entry.path)
     ]
-    file_errors = [
-        FileError(
-            path=entry.path,
-            error=f"no reader for '{PurePosixPath(entry.path).suffix.lower()}' files",
-        )
-        for entry in unreadable_entries
-    ]
+    file_errors = [FileError(path=entry.path, error=_no_reader_reason(entry.path)) for entry in unreadable_entries]
 
     partitions: list[PartitionProfile] = []
     rows_scanned = 0
@@ -176,6 +171,21 @@ def _per_file_cap(row_budget: int | None, file_count: int) -> int | None:
     if file_count <= 1 or row_budget == 0:
         return row_budget
     return max(MIN_ROWS_PER_FILE, row_budget // file_count)
+
+
+def _no_reader_reason(path: str) -> str:
+    """Why a data file was not read, in the terms the file itself offers.
+
+    The suffix alone said nothing useful for the two shapes that reach here without one: an
+    extension-less shard produced "no reader for '' files", and a compressed shard named only its
+    wrapper, which is the part a reader would have to strip rather than the part it cannot read.
+    """
+    suffix = PurePosixPath(path).suffix.lower()
+    if not suffix:
+        return "no reader for a file with no extension"
+    if suffix in COMPRESSION_EXTENSIONS:
+        return f"no reader for compressed '{suffix}' files"
+    return f"no reader for '{suffix}' files"
 
 
 def _add_known(total: int | None, addend: int | None) -> int | None:
