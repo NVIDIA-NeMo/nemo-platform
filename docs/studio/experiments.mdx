@@ -51,7 +51,7 @@ prompt_template: |
 Example configuration. For more configuration options, review [NeMo evaluator documentation](https://docs.nvidia.com/nemo/evaluator/tutorials/walkthrough). 
 
 ```yaml
-prompt_template: {{item.question}}
+prompt_template: '{{ item.question }}'
 
 metrics:
   # 1. Did the report end with a Sources section at all? Deterministic and free:
