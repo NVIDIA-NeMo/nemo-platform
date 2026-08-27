@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-import nemo_platform
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
+from nemo_platform import NotFoundError
 from nemo_platform.types.guardrail import GuardrailConfig
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nmp.testing.utils import short_unique_name
@@ -91,7 +91,7 @@ def detach_guardrail_config(harness: Any, config_name: str) -> None:
     for workspace, name in harness.virtual_models:
         try:
             virtual_model = harness.sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
-        except nemo_platform.NotFoundError:
+        except NotFoundError:
             continue
 
         remaining: dict[str, list[Any]] = {}
