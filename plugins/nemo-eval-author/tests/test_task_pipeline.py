@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -42,13 +43,20 @@ def _write_report(path: Path, *, covered: list[str], uncovered: list[str]) -> No
         }
         for name in uncovered
     ]
+    _write_report_with_items(path, covered=covered, uncovered_items=items)
+
+
+def _write_report_with_items(path: Path, *, covered: list[str], uncovered_items: list[dict[str, Any]]) -> None:
+    """Write an aggregate coverage report with explicit ``uncovered_items`` entries."""
+    uncovered = [str(item["name"]) for item in uncovered_items]
     path.write_text(
-        json.dumps({"covered": covered, "uncovered": uncovered, "uncovered_items": items}),
+        json.dumps({"covered": covered, "uncovered": uncovered, "uncovered_items": uncovered_items}),
         encoding="utf-8",
     )
 
 
 def test_task_slug_for_tool_is_deterministic() -> None:
+    """Base slugs are stable for common runtime tool names."""
     sys.path.insert(0, str(_SCRIPT.parent))
     try:
         from task_pipeline import task_slug_for_tool
@@ -60,6 +68,7 @@ def test_task_slug_for_tool_is_deterministic() -> None:
 
 
 def test_select_returns_task_slug_and_paths(tmp_path: Path) -> None:
+    """Select attaches canonical artifact paths for one actionable tool gap."""
     report = tmp_path / "report.json"
     _write_report(report, covered=["write"], uncovered=["read"])
     payload = json.loads(_run("select", "--report", str(report)).stdout)
@@ -84,8 +93,21 @@ def test_select_returns_task_slug_and_paths(tmp_path: Path) -> None:
     ]
 
 
+def test_select_assigns_deduped_slugs_for_colliding_tool_names(tmp_path: Path) -> None:
+    """Colliding base slugs receive deterministic ``-2``, ``-3``, ... suffixes."""
+    report = tmp_path / "report.json"
+    _write_report(report, covered=[], uncovered=["server:foo", "server.foo"])
+    payload = json.loads(_run("select", "--report", str(report)).stdout)
+    slugs = {gap["name"]: gap["task_slug"] for gap in payload["actionable_tools"]}
+    assert slugs == {
+        "server.foo": "cover-server-foo",
+        "server:foo": "cover-server-foo-2",
+    }
+
+
 @_needs_harbor
 def test_scaffold_uses_harbor_native_task_layout(tmp_path: Path) -> None:
+    """Scaffold installs the proposal into a Harbor-native task draft layout."""
     report = tmp_path / "report.json"
     _write_report(report, covered=["write"], uncovered=["read"])
     proposals = tmp_path / ".eval-author" / "proposals"
@@ -125,6 +147,7 @@ def test_scaffold_uses_harbor_native_task_layout(tmp_path: Path) -> None:
 
 
 def test_scaffold_rejects_mismatched_proposal_filename(tmp_path: Path) -> None:
+    """Scaffold rejects proposal filenames that do not match the assigned task slug."""
     report = tmp_path / "report.json"
     _write_report(report, covered=["write"], uncovered=["read"])
     proposals = tmp_path / ".eval-author" / "proposals"
@@ -157,6 +180,7 @@ def test_scaffold_rejects_mismatched_proposal_filename(tmp_path: Path) -> None:
 
 
 def test_verify_rejects_single_after_report(tmp_path: Path) -> None:
+    """Verify requires at least two after-reports."""
     before = tmp_path / "before.json"
     first = tmp_path / "first.json"
     _write_report(before, covered=["write"], uncovered=["read"])
@@ -178,6 +202,7 @@ def test_verify_rejects_single_after_report(tmp_path: Path) -> None:
 
 
 def test_verify_rejects_duplicate_after_reports(tmp_path: Path) -> None:
+    """Verify rejects duplicate after-report paths."""
     before = tmp_path / "before.json"
     first = tmp_path / "first.json"
     _write_report(before, covered=["write"], uncovered=["read"])
@@ -200,7 +225,61 @@ def test_verify_rejects_duplicate_after_reports(tmp_path: Path) -> None:
     assert "distinct" in payload["error"]
 
 
+def test_verify_rejects_non_actionable_uncovered_item(tmp_path: Path) -> None:
+    """Verify rejects targets that are uncovered but not actionable tool gaps."""
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    _write_report_with_items(
+        before,
+        covered=["write"],
+        uncovered_items=[
+            {
+                "name": "read",
+                "kind": "tool",
+                "reason": "not_covered_by_any_input_report",
+                "description": "Use read.",
+                "generation": {
+                    "focus": "Exercise read.",
+                    "needed_tools": ["read"],
+                    "evidence_required": [{"kind": "tool_call", "tool": "read"}],
+                },
+            },
+            {
+                "name": "account_recovery",
+                "kind": "capability",
+                "reason": "not_measured_by_any_method",
+                "description": "Recover account access.",
+                "generation": {
+                    "focus": "Exercise capability account_recovery.",
+                    "needed_tools": ["read"],
+                    "evidence_required": [],
+                },
+            },
+        ],
+    )
+    _write_report(first, covered=["read"], uncovered=[])
+    _write_report(second, covered=["read"], uncovered=[])
+
+    result = _run(
+        "verify",
+        "--before",
+        str(before),
+        "--after",
+        str(first),
+        "--after",
+        str(second),
+        "--target",
+        "account_recovery",
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == 1
+    assert payload["valid"] is False
+    assert "not an actionable uncovered tool" in payload["error"]
+
+
 def test_verify_requires_every_repeat_to_cover_target(tmp_path: Path) -> None:
+    """Verify accepts only when every distinct after-report covers the target tool."""
     before = tmp_path / "before.json"
     first = tmp_path / "first.json"
     second = tmp_path / "second.json"

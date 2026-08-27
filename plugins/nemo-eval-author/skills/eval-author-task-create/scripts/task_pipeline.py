@@ -37,7 +37,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def task_slug_for_tool(tool_name: str) -> str:
-    """Return the stable Harbor artifact slug for one uncovered audit tool."""
+    """Return the base Harbor artifact slug for one uncovered audit tool name."""
     normalized = tool_name.strip()
     if not normalized:
         raise PipelineError("tool name is empty")
@@ -46,6 +46,27 @@ def task_slug_for_tool(tool_name: str) -> str:
     if not slug_body or not slug_body[0].isalpha():
         slug_body = f"tool-{slug_body}" if slug_body else "tool"
     return f"{_SLUG_PREFIX}{slug_body}"
+
+
+def _assign_unique_task_slugs(gaps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return gaps with unique ``task_slug`` values, suffixing ``-2``, ``-3``, ... on collisions."""
+    usage: dict[str, int] = {}
+    enriched: list[dict[str, Any]] = []
+    for gap in sorted(gaps, key=lambda item: str(item["name"])):
+        base_slug = task_slug_for_tool(str(gap["name"]))
+        collisions = usage.get(base_slug, 0)
+        task_slug = base_slug if collisions == 0 else f"{base_slug}-{collisions + 1}"
+        usage[base_slug] = collisions + 1
+        enriched.append({**gap, "task_slug": task_slug, "paths": _artifact_paths(task_slug)})
+    return enriched
+
+
+def _task_slug_for_target(report: dict[str, Any], target: str) -> str:
+    """Return the assigned task slug for one actionable uncovered tool in ``report``."""
+    for gap in _actionable_tools(report):
+        if gap["name"] == target:
+            return gap["task_slug"]
+    raise PipelineError(f"{target!r} is not an actionable uncovered tool")
 
 
 def _artifact_paths(task_slug: str) -> dict[str, str]:
@@ -58,38 +79,30 @@ def _artifact_paths(task_slug: str) -> dict[str, str]:
     }
 
 
-def _enrich_gap(gap: dict[str, Any]) -> dict[str, Any]:
-    """Attach ``task_slug`` and ``paths`` to one actionable tool gap record."""
-    tool_name = gap.get("name")
-    if not isinstance(tool_name, str) or not tool_name.strip():
-        raise PipelineError("actionable tool gap is missing a tool name")
-    task_slug = task_slug_for_tool(tool_name)
-    return {**gap, "task_slug": task_slug, "paths": _artifact_paths(task_slug)}
+def _gap_from_uncovered_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Build one actionable tool gap record from an aggregate ``uncovered_items`` entry."""
+    generation = item.get("generation") or {}
+    return {
+        "name": item.get("name"),
+        "kind": "tool",
+        "reason": item.get("reason"),
+        "description": item.get("description"),
+        "focus": generation.get("focus"),
+        "needed_tools": generation.get("needed_tools") or [],
+        "evidence_required": generation.get("evidence_required") or [],
+    }
 
 
 def _actionable_tools(report: dict[str, Any]) -> list[dict[str, Any]]:
     """Return uncovered tool items that are eligible for task generation."""
-    gaps = []
+    gaps: list[dict[str, Any]] = []
     for item in report.get("uncovered_items") or []:
         if not isinstance(item, dict):
             continue
         if item.get("kind") != "tool" or item.get("reason") != _ACTIONABLE_REASON:
             continue
-        generation = item.get("generation") or {}
-        gaps.append(
-            _enrich_gap(
-                {
-                    "name": item.get("name"),
-                    "kind": "tool",
-                    "reason": item.get("reason"),
-                    "description": item.get("description"),
-                    "focus": generation.get("focus"),
-                    "needed_tools": generation.get("needed_tools") or [],
-                    "evidence_required": generation.get("evidence_required") or [],
-                }
-            )
-        )
-    return sorted(gaps, key=lambda gap: str(gap["name"]))
+        gaps.append(_gap_from_uncovered_item(item))
+    return _assign_unique_task_slugs(gaps)
 
 
 def _select(report_path: Path, target: str | None) -> dict[str, Any]:
@@ -149,8 +162,8 @@ def _scaffold(
     instruction_file: Path,
 ) -> dict[str, Any]:
     """Initialize a Harbor-native draft and install the supplied instruction."""
-    _select(report_path, target)
-    task_slug = task_slug_for_tool(target)
+    report = _read_json(report_path)
+    task_slug = _task_slug_for_target(report, target)
     _require_draft_destination(output)
     _require_task_slug_paths(
         task_slug=task_slug,
@@ -207,11 +220,9 @@ def _scaffold(
 
 
 def _verify(before_path: Path, after_paths: list[Path], target: str) -> tuple[int, dict[str, Any]]:
-    """Accept only when ``target`` was uncovered before and covered in every repeat report."""
+    """Accept only when ``target`` was an actionable gap before and covered in every repeat report."""
     before = _read_json(before_path)
-    before_uncovered = set(before.get("uncovered") or [])
-    if target not in before_uncovered:
-        raise PipelineError(f"{target!r} was not uncovered in the before report")
+    _task_slug_for_target(before, target)
     if len(after_paths) < _MIN_VERIFY_REPORTS:
         raise PipelineError(f"at least {_MIN_VERIFY_REPORTS} --after reports are required")
     resolved_paths = [path.resolve() for path in after_paths]
