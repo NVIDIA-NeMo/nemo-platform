@@ -121,6 +121,7 @@ const els = {
   dashboard: document.querySelector("#dashboard"),
   agent: document.querySelector("#agent-name"),
   percent: document.querySelector("#coverage-percent"),
+  coverageDetail: document.querySelector("#coverage-detail"),
   actionableCount: document.querySelector("#actionable-count"),
   measuredKinds: document.querySelector("#measured-kinds"),
   kindBars: document.querySelector("#kind-bars"),
@@ -150,11 +151,25 @@ function parseReport(text) {
   return report;
 }
 
-function percent(summary) {
-  if (!summary?.item_count) {
+function coveragePercent(summary) {
+  const itemCount = Number(summary?.item_count || 0);
+  const coveredCount = Number(summary?.covered_count || 0);
+  if (!itemCount) {
     return 0;
   }
-  return Math.round((summary.covered_count / summary.item_count) * 100);
+  return Math.max(0, Math.min(100, Math.round((coveredCount / itemCount) * 100)));
+}
+
+function coverageLabel(summary) {
+  const itemCount = Number(summary?.item_count || 0);
+  const coveredCount = Number(summary?.covered_count || 0);
+  if (!itemCount) {
+    return { detail: "0 denominator items", percent: "n/a" };
+  }
+  return {
+    detail: `${coveredCount} of ${itemCount} audit items`,
+    percent: `${coveragePercent(summary)}%`,
+  };
 }
 
 function taskSlugForTool(toolName) {
@@ -224,7 +239,7 @@ function renderKindBars(report) {
   els.kindBars.innerHTML = kinds
     .map((kind) => {
       const summary = report.coverage?.by_kind?.[kind] || { item_count: 0, covered_count: 0, uncovered_count: 0 };
-      const value = percent(summary);
+      const value = coveragePercent(summary);
       return `
         <div class="kind-row">
           <strong>${escapeHtml(kind.replace("_", " "))}</strong>
@@ -305,6 +320,7 @@ function setInputCollapsed(collapsed) {
 
 function renderReport(report, { collapseInput = false } = {}) {
   const overall = report.coverage?.overall || { item_count: 0, covered_count: 0, uncovered_count: 0 };
+  const coverage = coverageLabel(overall);
   const gaps = actionableTools(report);
   els.dashboard.hidden = false;
   els.message.className = "message";
@@ -313,7 +329,8 @@ function renderReport(report, { collapseInput = false } = {}) {
     setInputCollapsed(true);
   }
   els.agent.textContent = report.audit?.agent || "unknown";
-  els.percent.textContent = `${percent(overall)}%`;
+  els.percent.textContent = coverage.percent;
+  els.coverageDetail.textContent = coverage.detail;
   els.actionableCount.textContent = gaps.length;
   els.measuredKinds.textContent = `measured: ${(report.measured_kinds || []).join(", ") || "none"}`;
   renderKindBars(report);
