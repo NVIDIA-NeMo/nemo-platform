@@ -408,6 +408,53 @@ def test_the_prefix_probe_reads_capitalised_chosen_and_rejected_columns():
         assert any("prompt is embedded" in e.detail for e in result.evidence), chosen_name
 
 
+def test_two_shards_spelling_the_pair_differently_are_both_counted():
+    # Resolving the columns once and reusing the spelling made a column name a fact about the
+    # *partition*, which it only is when the partition came from one export. Two shards written by
+    # different tools put `chosen` and `Chosen` in one directory, and the pinned spelling dropped
+    # every row using the other -- turning 3 shared prefixes out of 303 pairs into 3 out of 3, so
+    # the profile asserted an embedded prompt in "100% of pairs". Losing evidence would have been
+    # bad; asserting the opposite of the truth is worse.
+    prompt = "Explain the causes of the war in detail. "
+    embedded = [{"chosen": prompt + "yes", "rejected": prompt + "no"} for _ in range(3)]
+    plain = [{"Chosen": f"answer {i} alpha", "Rejected": f"reply {i} beta"} for i in range(300)]
+
+    for title, batches in (("one batch", [embedded + plain]), ("two shards", [embedded, plain])):
+        fold = PrefixPairFold()
+        for batch in batches:
+            fold.update(batch)
+        assert fold.result().pairs == 303, title
+        assert fold.result().shared == 3, title
+
+    features = [_f("chosen", "string"), _f("rejected", "string")]
+    fold = PrefixPairFold()
+    fold.update(embedded + plain)
+    result = classify(features, {}, prefix_pair=fold.result())
+    assert not any("prompt is embedded" in e.detail for e in result.evidence)  # 1%, not 100%
+
+
+def test_the_pair_is_found_after_the_first_batch_has_gone_by():
+    # The search is bounded by rows rather than by "the first batch" because line-delimited rows are
+    # ragged: an optional column can first appear well into a file. That was the stated design and
+    # it never worked, because the budget was set to exactly one batch of rows.
+    from nemo_datasets_plugin.profiler.classify import _RESOLVE_ROW_BUDGET
+    from nemo_datasets_plugin.profiler.readers.jsonl import _BATCH_ROWS
+
+    assert _RESOLVE_ROW_BUDGET > _BATCH_ROWS, "a budget of one batch is not a budget"
+
+    prompt = "Explain the causes of the war in detail. "
+    for first_at, expected in ((_BATCH_ROWS + 1, 5), (_RESOLVE_ROW_BUDGET, 0)):
+        fold = PrefixPairFold()
+        sent = 0
+        while sent < first_at:
+            take = min(_BATCH_ROWS, first_at - sent)
+            fold.update([{"question": "q"} for _ in range(take)])
+            sent += take
+        fold.update([{"chosen": prompt + "a", "rejected": prompt + "b"} for _ in range(5)])
+        # Found when it arrives inside the budget, and deliberately not once the budget is spent.
+        assert fold.result().pairs == expected, first_at
+
+
 def test_candidates_list_every_structure_the_roles_satisfy():
     # prompt + completion + score + label is genuinely both scored_response and unpaired_preference.
     # Reporting only the first made rule order an invisible tie-break.
