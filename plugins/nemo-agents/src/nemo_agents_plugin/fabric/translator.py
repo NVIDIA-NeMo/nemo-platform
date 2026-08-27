@@ -52,6 +52,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             "default": fabric.ModelConfig(**model_payload),
         },
         instructions=_instructions_config(config),
+        runtime=fabric.RuntimeConfig(**config.runtime.model_dump(exclude_none=True)),
         environment=_environment_config(config, runtime_env),
         skills=_skills_config(config),
         mcp=_mcp_config(config),

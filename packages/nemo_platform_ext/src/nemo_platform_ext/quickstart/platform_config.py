@@ -12,6 +12,24 @@ from pydantic import BaseModel, Field
 from typing_extensions import Self
 
 
+class SecretsConfig(BaseModel):
+    """Secrets service configuration for quickstart development/demo runs."""
+
+    model_config = {"extra": "allow"}
+
+    allow_key_creation: bool = Field(
+        default=True,
+        description=(
+            "Allow quickstart to create a local encryption key when no explicit "
+            "secrets encryption provider is configured."
+        ),
+    )
+    local_key_creation_path: str = Field(
+        default="/data/nmp-encryption-key.txt",
+        description="Container path where quickstart persists the local secrets encryption key.",
+    )
+
+
 class PlatformConfig(BaseModel):
     """Platform configuration passed to the nmp-api container.
 
@@ -20,9 +38,15 @@ class PlatformConfig(BaseModel):
     2. Mounted YAML file at /etc/nmp/platform-config.yaml
     """
 
+    model_config = {"extra": "allow"}
+
     nvidia_api_key: str | None = Field(
         default=None,
         description="NVIDIA API key for inference services",
+    )
+    secrets: SecretsConfig = Field(
+        default_factory=SecretsConfig,
+        description="Secrets service configuration for quickstart.",
     )
 
     @classmethod
@@ -78,5 +102,9 @@ class PlatformConfig(BaseModel):
 
         if self.nvidia_api_key:
             env["NVIDIA_API_KEY"] = self.nvidia_api_key
+
+        env["NMP_SECRETS_ALLOW_KEY_CREATION"] = "1" if self.secrets.allow_key_creation else "0"
+        if self.secrets.local_key_creation_path:
+            env["NMP_SECRETS_LOCAL_KEY_CREATION_PATH"] = self.secrets.local_key_creation_path
 
         return env
