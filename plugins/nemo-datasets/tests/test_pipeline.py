@@ -949,6 +949,33 @@ def test_a_duplicate_column_name_is_described_once(tmp_path):
     assert set(part.stats) == {f.name for f in part.features}
 
 
+def test_a_dictionary_encoded_column_profiles_as_its_value_type(tmp_path):
+    # The whole partition turned on this. A dictionary-encoded `prompt` typed as `json`, which has no
+    # measurement and passes no role gate, so the column lost its stats, lost the `prompt` role, and
+    # with the role gone the partition classified as nothing at all.
+    encoded = tmp_path / "encoded"
+    plain = tmp_path / "plain"
+    encoded.mkdir()
+    plain.mkdir()
+    pq.write_table(
+        pa.table({"prompt": pa.array(["a", "b", "c"]).dictionary_encode(), "completion": pa.array(["x", "y", "z"])}),
+        encoded / "train.parquet",
+    )
+    pq.write_table(
+        pa.table({"prompt": pa.array(["a", "b", "c"]), "completion": pa.array(["x", "y", "z"])}),
+        plain / "train.parquet",
+    )
+
+    encoded_part = profile(LocalFileSource(encoded), created_at=FIXED_TIME).partitions[0]
+    plain_part = profile(LocalFileSource(plain), created_at=FIXED_TIME).partitions[0]
+
+    assert [(f.name, f.dtype, f.semantic_role) for f in encoded_part.features] == [
+        (f.name, f.dtype, f.semantic_role) for f in plain_part.features
+    ]
+    assert encoded_part.classification.candidates == plain_part.classification.candidates == ["prompt_completion"]
+    assert encoded_part.stats["prompt"].text is not None
+
+
 def test_a_declared_dtype_measures_every_value_it_was_given(tmp_path):
     # The other half of duplicate field names: `to_pylist` collapses the pair to the *last* one's
     # values, so the schema says `string` while the rows hold ints. A declared column skips the
