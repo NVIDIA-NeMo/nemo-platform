@@ -519,6 +519,71 @@ def test_profile_reports_unsupported_data_files(tmp_path):
     assert all("no reader" in e.error for e in result.file_errors)
 
 
+def test_a_compressed_shard_is_data_the_profiler_cannot_read(tmp_path):
+    # The worst shape this list guards against, because it is the silent one. `train.jsonl.gz`
+    # reports `.gz` as its suffix, so it matched no reader and no unsupported extension and was
+    # dropped before anything counted it: no partition, no error, `rows_present` 0, and the
+    # completeness test the README documents still answering True. A real dataset profiled as an
+    # exhaustively scanned empty one -- byte-identical to profiling an empty directory.
+    import gzip
+
+    with gzip.open(tmp_path / "train.jsonl.gz", "wt") as handle:
+        handle.write('{"prompt": "a", "completion": "b"}\n')
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.coverage.files_present == 1  # it is there, and it is data
+    assert result.coverage.bytes_present == (tmp_path / "train.jsonl.gz").stat().st_size
+    assert result.coverage.rows_present is None  # not 0: "empty" would be the lie
+    assert [e.path for e in result.file_errors] == ["train.jsonl.gz"]
+    # The reason names the wrapper, which is the part that would have to be stripped -- not the
+    # empty suffix the old message printed.
+    assert result.file_errors[0].error == "no reader for compressed '.gz' files"
+
+
+def test_a_data_file_with_no_extension_is_data(tmp_path):
+    # Same silence, reached the other way: no suffix matches no table. Guessing "data" wrongly costs
+    # one FileError; guessing "not data" wrongly hides the whole dataset, so the ambiguous case goes
+    # to data and documentation is excluded by name instead.
+    (tmp_path / "train").write_text('{"prompt": "a", "completion": "b"}\n')
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.coverage.files_present == 1
+    assert result.coverage.rows_present is None
+    assert [e.path for e in result.file_errors] == ["train"]
+    assert result.file_errors[0].error == "no reader for a file with no extension"
+
+
+def test_a_dataset_card_does_not_unknow_a_fileset_that_was_read_whole(tmp_path):
+    # `.json` is on the unsupported list because it genuinely can be records, and one unreadable
+    # data file unknows `rows_present` for the entire fileset. That put the ordinary HuggingFace
+    # layout -- shards plus `dataset_infos.json` -- in the position of reporting an unknown size
+    # after reading every row of every shard.
+    _write_parquet(tmp_path / "train.parquet", [{"a": 1}, {"a": 2}])
+    (tmp_path / "dataset_infos.json").write_text('{"default": {"splits": {"train": {}}}}')
+    (tmp_path / ".gitattributes").write_text("*.parquet filter=lfs diff=lfs merge=lfs -text\n")
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.file_errors == []
+    assert result.coverage.rows_present == 2
+    assert result.coverage.files_present == 1  # the shard; the card and the dotfile are not data
+    assert result.partitions[0].rows_complete is True
+
+
+def test_a_json_file_that_is_not_a_known_sidecar_is_still_data(tmp_path):
+    # The exclusion is by name, not by extension: `.json` stays on the unsupported list, so a JSON
+    # file that is not one of the known sidecars is still records the profiler cannot read.
+    _write_parquet(tmp_path / "train.parquet", [{"a": 1}])
+    (tmp_path / "extra_rows.json").write_text('[{"a": 2}]')
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert [e.path for e in result.file_errors] == ["extra_rows.json"]
+    assert result.coverage.rows_present is None
+
+
 def test_profile_ignores_non_data_files_without_penalty(tmp_path):
     # A README is genuinely not data, so it must not cost exhaustiveness the way a .csv does.
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])

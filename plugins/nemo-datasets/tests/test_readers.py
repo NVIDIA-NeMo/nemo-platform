@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
-from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader
+from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
 
 PARQUET_ROWS = [
     {"prompt": "a", "score": 1},
@@ -120,6 +120,23 @@ def test_local_file_source_rejects_non_directory(tmp_path):
 
 
 # --- registry ------------------------------------------------------------------------------------
+
+
+def test_is_unsupported_data_separates_records_from_plumbing():
+    # The asymmetry the classification rests on: a false "data" costs one FileError, a false
+    # "not data" hides a dataset. So the ambiguous middle -- no extension -- goes to data.
+    assert is_unsupported_data("train.csv") is True
+    assert is_unsupported_data("train.jsonl.gz") is True  # compressed shard, wrapper suffix only
+    assert is_unsupported_data("shard.zst") is True
+    assert is_unsupported_data("train") is True  # no extension: assumed data
+    # ...and the things that are genuinely not records.
+    assert is_unsupported_data("README.md") is False
+    assert is_unsupported_data("LICENSE") is False  # no extension, but documentation by name
+    assert is_unsupported_data("licence") is False  # matched case-insensitively, either spelling
+    assert is_unsupported_data(".gitattributes") is False  # a dotfile reports no suffix at all
+    assert is_unsupported_data("dataset_infos.json") is False  # a card, not records
+    assert is_unsupported_data("records.json") is True  # plain .json still reads as records
+    assert is_unsupported_data("data/dataset_infos.json") is False  # matched on the name, not the path
 
 
 def test_detect_format_by_extension():

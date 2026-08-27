@@ -65,6 +65,20 @@ reader (`.csv`, `.json`, `.arrow`, `.avro`, `.orc`, …) is reported as a `FileE
 ignored — otherwise a directory of CSV shards would profile as an exhaustively-scanned *empty*
 dataset, which is indistinguishable from a dataset that really is empty.
 
+Two shapes reach that rule without an extension it can match, and both are treated as data:
+
+- **Compressed shards** (`.gz`, `.zst`, `.bz2`, `.xz`, `.lz4`, `.zip`). `train.jsonl.gz` reports
+  `.gz` as its suffix, so the data extension underneath is invisible to a suffix lookup.
+- **Files with no extension at all.** The ambiguous case resolves to data on purpose: guessing
+  "data" wrongly costs one `FileError`, and guessing "not data" wrongly hides a whole dataset.
+  Documentation is excluded by name (`README`, `LICENSE`, `NOTICE`, …), and a dotfile such as
+  `.gitattributes` reports no suffix at all, so it is excluded the same way.
+
+Going the other way, a **dataset card** (`dataset_infos.json`, `dataset_info.json`, `state.json`) is
+metadata, not records, even though `.json` is on the unsupported list. One unreadable data file
+unknows `rows_present` for the entire fileset, so without this the ordinary HuggingFace layout —
+shards beside a card — reported an unknown size after reading every row of every shard.
+
 ## How the measurement works
 
 The diagrams under [Architecture](#architecture) are the formal version of this. Read this section
@@ -441,8 +455,8 @@ flowchart TD
     LIST --> DET{"detect_format<br/>by extension"}
 
     DET -->|".parquet / .jsonl"| DATA["data_entries"]
-    DET -->|".csv .json .arrow …<br/>is_unsupported_data"| UNSUP["FileError:<br/>'no reader for X'"]
-    DET -->|"README, LICENSE"| IGNORE["ignored:<br/>not data, counted nowhere"]
+    DET -->|".csv .json .arrow …<br/>.gz .zst … / no extension<br/>is_unsupported_data"| UNSUP["FileError:<br/>'no reader for X'"]
+    DET -->|"README, LICENSE, .gitattributes<br/>dataset_infos.json"| IGNORE["ignored:<br/>not data, counted nowhere"]
 
     DATA --> GRP["group_partitions<br/><i>by top-level dir; split dirs excluded</i>"]
     GRP --> LOOP{{"for each partition"}}

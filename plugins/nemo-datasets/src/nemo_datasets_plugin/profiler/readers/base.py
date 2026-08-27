@@ -132,7 +132,50 @@ def detect_format(path: str) -> str | None:
 # README or LICENSE is genuinely not data and stays ignored.
 _UNSUPPORTED_DATA_EXTENSIONS = {".csv", ".tsv", ".arrow", ".feather", ".json", ".avro", ".orc"}
 
+# Compression wrappers. A shard keeps its data extension underneath -- `train.jsonl.gz` -- but the
+# suffix a path reports is the outer one, so a compressed shard matched neither the reader table nor
+# the list above and was dropped before anything could count it. A directory of them profiled as an
+# exhaustively scanned *empty* dataset: no partition, no error, `rows_present` 0, and the documented
+# completeness test still answering True. That is the one failure this whole list exists to prevent,
+# and it read as a clean profile of nothing rather than as a profiler that could not read the data.
+COMPRESSION_EXTENSIONS = {".gz", ".zst", ".zstd", ".bz2", ".xz", ".lz4", ".zip"}
+
+# Metadata a fileset ships beside its shards, spelled with a data extension. `.json` is on the
+# unsupported list because it genuinely can be records, which made every one of these an unreadable
+# data file -- and one such file unknows `rows_present` for the whole fileset (see `profile`). The
+# cost landed on the ordinary HuggingFace layout, where a fileset read to its last row reported an
+# unknown size because a card sat next to it.
+_METADATA_FILENAMES = {"dataset_infos.json", "dataset_info.json", "state.json"}
+
+# Extension-less files that are documentation or repository plumbing. Everything else without an
+# extension is taken to be data, which is the asymmetry this whole module is built on: guessing
+# "data" wrongly costs one FileError on one file, and guessing "not data" wrongly hides an entire
+# dataset. Dotfiles (`.gitattributes`, which every HuggingFace repo carries) report no suffix at
+# all, so they are excluded by name rather than by extension.
+_NON_DATA_STEMS = {
+    "authors",
+    "changelog",
+    "citation",
+    "codeowners",
+    "contributing",
+    "copying",
+    "dockerfile",
+    "licence",
+    "license",
+    "makefile",
+    "notice",
+    "readme",
+    "version",
+}
+
 
 def is_unsupported_data(path: str) -> bool:
     """Whether a path looks like dataset records this profiler has no reader for."""
-    return Path(path).suffix.lower() in _UNSUPPORTED_DATA_EXTENSIONS
+    name = Path(path).name
+    if name.lower() in _METADATA_FILENAMES:
+        return False
+    suffix = Path(path).suffix.lower()
+    if suffix:
+        return suffix in _UNSUPPORTED_DATA_EXTENSIONS or suffix in COMPRESSION_EXTENSIONS
+    # No extension at all: a dotfile is plumbing, a known stem is documentation, the rest is data.
+    return not name.startswith(".") and name.lower() not in _NON_DATA_STEMS
