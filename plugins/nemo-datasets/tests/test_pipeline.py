@@ -1080,6 +1080,60 @@ def test_a_zero_row_cap_means_zero_however_many_files_a_partition_has():
     assert _per_file_cap(100, 10_000) == MIN_ROWS_PER_FILE
 
 
+def test_a_file_abandoned_mid_read_does_not_quote_the_prefix_it_managed(tmp_path, monkeypatch):
+    # `values` is the one place row content reaches the stored profile, so it may only be written
+    # when the read proves it is the whole vocabulary. A file that dies part-way through opens,
+    # folds a prefix, and raises -- and the gate used to exclude any file that reported an error,
+    # on the assumption that a failed file failed *to open*. So the first batch's distinct values
+    # were published as the column's controlled vocabulary while `rows_complete` said False.
+    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+
+    # `label` shows only en/fr before the failure point and de/ja/zh after it.
+    rows = [{"label": ("en", "fr")[i % 2] if i < 2048 else ("de", "ja", "zh")[i % 3]} for i in range(4000)]
+    _write_parquet(tmp_path / "train.parquet", rows)
+    real_update = pipeline_module._PartitionFolds.update
+    calls = {"n": 0}
+
+    def fail_on_the_third_batch(self, batch):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("row group failed to decode")
+        return real_update(self, batch)
+
+    monkeypatch.setattr(pipeline_module._PartitionFolds, "update", fail_on_the_third_batch)
+    # No row budget: the gate was `row_cap is not None and ...`, so with nothing capping the read
+    # there was no gate at all and every mid-read failure quoted.
+    partition = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert partition.rows_complete is False
+    assert partition.stats["label"].categorical.values is None  # not ['en', 'fr']
+    # The count still describes what was read; only the vocabulary claim is withheld.
+    assert partition.stats["label"].categorical.distinct_count == 2
+
+
+def test_a_shard_lost_before_it_yielded_a_row_still_quotes(tmp_path, monkeypatch):
+    # The other side of the same gate, and the reason it cannot simply be "any error suppresses".
+    # A file that raised before yielding a row contributed nothing to measure, so the vocabulary of
+    # the files that *were* read is entire. Pinned here against the mid-read case above, which is
+    # the distinction the two share a line of code for.
+    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+
+    _write_parquet(tmp_path / "train.parquet", [{"label": t} for t in ("en", "fr", "en")])
+    _write_parquet(tmp_path / "extra.parquet", [{"label": "de"}])
+    real_update = pipeline_module._PartitionFolds.update
+
+    def fail_before_the_first_batch(self, batch):
+        if any(row.get("label") == "de" for row in batch):
+            raise RuntimeError("storage went away")
+        return real_update(self, batch)
+
+    monkeypatch.setattr(pipeline_module._PartitionFolds, "update", fail_before_the_first_batch)
+    partition = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert partition.rows_complete is False  # a shard was lost, and that is reported
+    assert partition.stats["label"].categorical.values == ["en", "fr"]  # ...but these are entire
+
+
 def test_a_budgeted_read_does_not_quote_an_unproven_enumeration(tmp_path):
     # `categorical.values` is the one path row content reaches the stored profile, and it claims to
     # be the column's controlled vocabulary. A budgeted read saw a prefix, so what it collected is a
