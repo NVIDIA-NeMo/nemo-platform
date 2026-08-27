@@ -4,16 +4,17 @@
 
 name: eval-author-audit
 description: >-
-  Generate, validate, and measure an audit-spec coverage denominator for Eval
-  Author. Use when the user wants a hand-editable audit.md file derived from
-  Ethos, needs schema enforcement for declared tools, capabilities, failure
-  cases, evidence, and references, or wants to measure which audit items one
-  ATIF trace covers. Changes none of the user's source, and saves audit
-  artifacts under `.eval-author/`.
+  Generate, validate, measure, and report on an audit-spec coverage denominator
+  for Eval Author. Use when the user wants a hand-editable audit.md file derived
+  from Ethos, needs schema enforcement for declared tools, capabilities, failure
+  cases, evidence, and references, wants to measure which audit items one ATIF
+  trace covers, or wants to aggregate coverage across measured traces. Changes
+  none of the user's source, and saves audit artifacts under `.eval-author/`.
 triggers:
   - generate audit.md from ETHOS.md
   - validate audit.md coverage schema
   - measure audit.md coverage against a harbor trace
+  - aggregate audit.md coverage reports
   - check audit.md coverage denominator
   - what should my evals cover from the agent ethos
   - review the audit coverage denominator
@@ -25,8 +26,8 @@ not-for:
 compatibility: >-
   Python 3.11 or later for generation and validation; Python 3.12 or later for
   ATIF measurement via Harbor's trajectory model. Dependencies are listed in requirements.txt.
-  Generation, validation, and measurement read local files only; they do not
-  start Harbor jobs or call platform services.
+  Generation, validation, measurement, and aggregation read local files only;
+  they do not start Harbor jobs or call platform services.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -37,8 +38,8 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 
 Read `eval-author` for the shared standard, vocabulary, and boundaries. This
 sub-flow generates and validates a finite coverage denominator from `ETHOS.md`
-and reviewed audit items, then can measure one ATIF trace against it. It
-does not generate tasks or aggregate coverage reports yet.
+and reviewed audit items, then can measure one ATIF trace and aggregate coverage
+reports against it. It does not generate tasks yet.
 
 The audit-spec approach has three item kinds in v1:
 
@@ -63,12 +64,14 @@ existing evals, source-of-truth documents, or `ETHOS.md`.
 Audit-spec mechanics live under `scripts/audit_spec/`:
 
 Read `scripts/audit_spec/README.md` for the current measurement assumptions:
-ATIF input, Harbor trajectory parsing, and v1 `tool_calls` coverage only.
+ATIF input, Harbor trajectory parsing, v1 `tool_calls` coverage only, and
+coverage aggregation from `coverage.json` files.
 
 | Script | Use it to |
 |---|---|
 | `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
 | `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write coverage/details files for each selected method |
+| `scripts/audit_spec/report.py` | Aggregate per-trace `coverage.json` files into one coverage report with uncovered audit items |
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Shared helpers are private modules in the same tree:
@@ -77,10 +80,13 @@ Measurement uses Harbor's `harbor.models.trajectories.Trajectory` to read ATIF
 files. Measurement methods live under `scripts/audit_spec/measurements/`; v1 ships
 `scripts/audit_spec/measurements/tool_calls.py`.
 Shared coverage output is defined by `schemas/audit_coverage.schema.json`.
+Aggregate coverage output is defined by
+`schemas/audit_coverage_report.schema.json`.
 Tool-call debug output is defined by
 `schemas/audit_tool_calls_details.schema.json`.
-Concrete instances live under `examples/schemas/tool_calls.coverage.json` and
-`examples/schemas/tool_calls.details.json`.
+Concrete instances live under `examples/schemas/tool_calls.coverage.json`,
+`examples/schemas/tool_calls.details.json`, and
+`examples/schemas/coverage_report.json`.
 Runtime dependencies are listed in `requirements.txt`.
 
 ## Step 1: Draft Or Update Audit Items
@@ -123,7 +129,8 @@ Create or update `.eval-author/audit.md` from `ETHOS.md` and the reviewed item
 proposals:
 
 ```bash
-uv run <skill_dir>/scripts/audit_spec/generate.py \
+uv run --with pyyaml --with jsonschema \
+  <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md
@@ -145,20 +152,23 @@ omitted from the proposal are reported as `possibly_stale_items`.
 Use the explicit modes when the default is not what the user wants:
 
 ```bash
-uv run <skill_dir>/scripts/audit_spec/generate.py \
+uv run --with pyyaml --with jsonschema \
+  <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode suggest
 
-uv run <skill_dir>/scripts/audit_spec/generate.py \
+uv run --with pyyaml --with jsonschema \
+  <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode reconcile \
   --items-mode full
 
-uv run <skill_dir>/scripts/audit_spec/generate.py \
+uv run --with pyyaml --with jsonschema \
+  <skill_dir>/scripts/audit_spec/generate.py \
   --ethos ETHOS.md \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
@@ -193,7 +203,8 @@ defines that reference format.
 Run validation after every generated or hand-edited audit file:
 
 ```bash
-uv run <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md
+uv run --with pyyaml --with jsonschema \
+  <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md
 ```
 
 `schemas/audit.schema.json` is the canonical structural schema. The Python
@@ -264,5 +275,46 @@ other evidence kinds.
 
 The script validates `coverage.json` against `schemas/audit_coverage.schema.json`
 and validates `details.json` against the selected method's details schema before
-writing. It does not union coverage across tasks; treat coverage aggregation as
-the next audit PR.
+writing. Use the next step to union coverage across tasks and runs.
+
+## Step 5: Aggregate Coverage Reports
+
+After measuring one or more traces, aggregate the per-trace `coverage.json`
+files into a coverage report:
+
+```bash
+uv run --with-requirements <skill_dir>/requirements.txt \
+  <skill_dir>/scripts/audit_spec/report.py \
+  --audit .eval-author/audit.md \
+  --coverage-dir .eval-author/audit-measurements \
+  --out .eval-author/audit-coverage-report.json
+```
+
+Use `--coverage <path-to-coverage.json>` for explicit files, or repeat
+`--coverage-dir` and `--coverage` when the inputs are split across directories.
+The script scans coverage directories recursively for files named
+`coverage.json`, validates every input against
+`schemas/audit_coverage.schema.json`, and rejects inputs whose audit metadata no
+longer matches the current `audit.md`. A status-only mismatch, such as
+measurements produced while the audit was `draft` and aggregated after it became
+`approved`, is reported as a warning instead of forcing a re-measure.
+
+The aggregate report uses `schemas/audit_coverage_report.schema.json`. It
+contains overall and per-kind count summaries, the union of covered item names,
+warnings, the measured item kinds, and `uncovered_items`. Each uncovered item
+includes the original audit item plus generation-oriented context: a stable
+`reason`, a one-sentence `focus`, likely `needed_tools`, and the item's
+`evidence_required`.
+Use `reason: not_measured_by_any_method` to distinguish gaps that no included
+measurement method could close from `reason: not_covered_by_any_input_report`,
+which means the item kind was measured but no input report covered that item.
+Treat that list as the input for a later task-generation step.
+
+## Next Steps
+
+- For audit-generation inputs and reconciliation modes, return to
+  [Step 2: Generate Or Reconcile Audit.md](#step-2-generate-or-reconcile-auditmd).
+- For task-generation planning, read the parent
+  [Eval Author task boundary](../eval-author/SKILL.md#sub-flows), then treat
+  aggregate report `uncovered_items` as planning input only. This skill does not
+  create runnable tasks yet.
