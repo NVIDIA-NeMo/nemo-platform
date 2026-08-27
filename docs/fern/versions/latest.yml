@@ -283,6 +283,9 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
+          - page: Add Guardrails
+            path: ../../agents/add-guardrails.mdx
+            slug: add-guardrails
           - page: Observe Agents
             path: ../../agents/observability.mdx
           - page: Scan Trace Data
@@ -293,9 +296,6 @@ navigation:
                 path: ../../agents/optimization.mdx
               - page: Insight-Driven Optimization
                 path: ../../agents/insight-driven-optimization.mdx
-          - page: Add Guardrails to an Agent
-            path: ../../agents/add-guardrails.mdx
-            slug: add-guardrails
           - page: Plugins and Skills
             path: ../../agents/plugins.mdx
       - section: Design Synthetic Data
