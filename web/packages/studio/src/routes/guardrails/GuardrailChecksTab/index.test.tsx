@@ -86,6 +86,24 @@ describe('GuardrailChecksTab', () => {
     expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeInTheDocument();
   });
 
+  // The entity-store sorts `-created_at` by default, which put every newly created test at the
+  // top of the list while the "Add Another Test" button that produced it sits at the bottom.
+  // Seeded rather than clicked: invalidateGuardrailChecksCaches targets the module-singleton
+  // queryClient, not the one TestProviders renders, so a created entity never reaches the list.
+  it('lists tests oldest-first, so the newest lands at the end', async () => {
+    seedMockGuardrailCheck('newest-check', {
+      data: { messages: [{ role: 'user', content: 'Added last' }], runs: [] },
+    });
+    renderChecks('pii-filter');
+
+    await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+    expect(
+      screen
+        .getAllByTestId('guardrail-check-message-content')
+        .map((body) => (body as HTMLTextAreaElement).value)
+    ).toEqual(['My SSN is 123-45-6789', 'Hello there', 'Added last']);
+  });
+
   it('redirects the bare checks URL onto the default sub-tab', async () => {
     renderChecks('pii-filter');
 

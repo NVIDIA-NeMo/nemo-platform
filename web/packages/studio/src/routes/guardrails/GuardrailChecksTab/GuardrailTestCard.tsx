@@ -24,6 +24,8 @@ interface GuardrailTestCardProps {
   workspace: string;
   /** Registers this card's flusher with the editor; called with `null` on unmount. */
   registerFlush: (name: string, flush: (() => Promise<GuardrailCheckEntity>) | null) => void;
+  /** Set on a just-created card: scrolls it into view and focuses its first message body. */
+  autoFocus?: boolean;
 }
 
 type ViewMode = 'chat' | 'json';
@@ -56,6 +58,7 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
   index,
   workspace,
   registerFlush,
+  autoFocus = false,
 }) => {
   const toast = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
@@ -170,6 +173,17 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
 
   const watchedMessages = useWatch({ control: form.control, name: 'messages' });
 
+  // A newly added test lands at the end of a list that is usually taller than the viewport,
+  // so reveal it rather than leaving the user to hunt for the card their click produced.
+  const messagesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const body = messagesRef.current?.querySelector('textarea');
+    body?.focus();
+    // Not implemented in jsdom; focus() alone already scrolls in a real browser.
+    body?.scrollIntoView?.({ block: 'nearest' });
+  }, [autoFocus]);
+
   return (
     <Panel elevation="high">
       <Stack gap="density-md">
@@ -189,7 +203,7 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
 
         {/* Chat view */}
         {viewMode === 'chat' ? (
-          <div onBlur={handleContainerBlur}>
+          <div ref={messagesRef} onBlur={handleContainerBlur}>
             <Stack gap="density-md">
               {fields.map((field, i) => (
                 <GuardrailMessageRow

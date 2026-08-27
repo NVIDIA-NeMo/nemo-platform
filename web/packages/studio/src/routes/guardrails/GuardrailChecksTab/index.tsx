@@ -40,7 +40,9 @@ export const GuardrailChecksTab: FC = () => {
   } = useGuardrailChecksForConfig(
     workspace,
     config?.id ?? '',
-    { page_size: 1000 },
+    // Oldest-first: the entity-store defaults to `-created_at`, which would drop each newly
+    // created check at the top of the list while "Add Another Test" sits at the bottom.
+    { page_size: 1000, sort: 'created_at' },
     { enabled: isValidSubTab && Boolean(config?.id) }
   );
 

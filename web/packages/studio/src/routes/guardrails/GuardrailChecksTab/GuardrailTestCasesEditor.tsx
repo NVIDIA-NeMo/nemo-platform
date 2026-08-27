@@ -80,7 +80,12 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
     },
   });
 
+  // The card to reveal once the created check lands in the refetched list. Without it the new
+  // card renders below the fold, under the button that was just clicked.
+  const [newCheckId, setNewCheckId] = useState<string | null>(null);
+
   const createMutation = useCreateGuardrailCheck({
+    onSuccess: (entity) => setNewCheckId(entity.id),
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Failed to create test'));
     },
@@ -209,6 +214,7 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
               index={i}
               workspace={workspace}
               registerFlush={registerFlush}
+              autoFocus={check.id === newCheckId}
             />
           ))}
           <LoadingButton

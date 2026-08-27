@@ -147,6 +147,22 @@ export const seedMockGuardrailCheck = (
   return entity;
 };
 
+/**
+ * Apply the entity-store `sort` param (`field` / `-field`), defaulting to the service's own
+ * `-created_at`. Without this the stub would hand back insertion order and hide any bug in
+ * what the client actually asks for.
+ */
+const sortEntities = <T extends object>(data: T[], sort: string | null): T[] => {
+  const spec = sort ?? '-created_at';
+  const descending = spec.startsWith('-');
+  const field = descending ? spec.slice(1) : spec;
+  return [...data].sort((a, b) => {
+    const left = String((a as Record<string, unknown>)[field] ?? '');
+    const right = String((b as Record<string, unknown>)[field] ?? '');
+    return descending ? right.localeCompare(left) : left.localeCompare(right);
+  });
+};
+
 const page = <T>(data: T[]) => ({
   data,
   pagination: {
@@ -170,11 +186,13 @@ export const guardrailsHandlers = [
   http.get(
     `${PLATFORM_BASE_URL}/apis/entities/v2/workspaces/:workspace/entities/${GUARDRAIL_CHECKS_ENTITY_TYPE}`,
     ({ request }) => {
-      const filter = new URL(request.url).searchParams.get('filter');
+      const params = new URL(request.url).searchParams;
+      const filter = params.get('filter');
       const parent = filter ? (JSON.parse(filter) as { parent?: string }).parent : undefined;
-      return HttpResponse.json(
-        page(parent ? guardrailChecks.filter((check) => check.parent === parent) : guardrailChecks)
-      );
+      const matched = parent
+        ? guardrailChecks.filter((check) => check.parent === parent)
+        : [...guardrailChecks];
+      return HttpResponse.json(page(sortEntities(matched, params.get('sort'))));
     }
   ),
 
