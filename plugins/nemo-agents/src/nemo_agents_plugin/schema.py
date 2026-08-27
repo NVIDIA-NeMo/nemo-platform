@@ -30,11 +30,13 @@ from nemo_agents_plugin.entities import (
     AgentEnvironment,
     AgentEnvironmentInline,
     AgentEnvironmentSpec,
+    AgentSandboxSpec,
     AgentSession,
     ComputeSpecInline,
     DeploymentMode,
     DeploymentStatus,
     EnvironmentSpecInline,
+    SandboxSpecInline,
 )
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
@@ -142,6 +144,12 @@ class CreateComputeSpecRequest(ComputeSpecInline):
     name: str = Field(description="Unique compute-spec name within the workspace.")
 
 
+class CreateSandboxSpecRequest(SandboxSpecInline):
+    """Request body for ``POST /v2/workspaces/{workspace}/sandbox-specs``."""
+
+    name: str = Field(description="Unique sandbox-spec name within the workspace.")
+
+
 class EnvironmentFilter(NemoFilter):
     """Query filter for ``GET /v2/workspaces/{workspace}/environments``."""
 
@@ -154,6 +162,10 @@ class ComputeSpecFilter(NemoFilter):
     """Query filter for ``GET /v2/workspaces/{workspace}/compute-specs``."""
 
 
+class SandboxSpecFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/sandbox-specs``."""
+
+
 # ---------------------------------------------------------------------------
 # List response type aliases
 # ---------------------------------------------------------------------------
@@ -164,3 +176,4 @@ SessionPage = NemoListResponse[AgentSession]
 EnvironmentPage = NemoListResponse[AgentEnvironment]
 EnvironmentSpecPage = NemoListResponse[AgentEnvironmentSpec]
 ComputeSpecPage = NemoListResponse[AgentComputeSpec]
+SandboxSpecPage = NemoListResponse[AgentSandboxSpec]

@@ -197,18 +197,38 @@ class EnvironmentSpecInline(BaseModel):
     )
 
 
+class SandboxSpecInline(BaseModel):
+    """Inline sandbox spec - the isolation posture around an agent run.
+
+    Provider-specific in its extension fields. ``provider`` names a registered
+    sandbox provider (open set, discovered via entry points); ``provider_config``
+    carries provider-specific fields the platform does not interpret.
+    """
+
+    description: str = Field(default="", description="Human-readable description.")
+    provider: str = Field(description="Sandbox provider name (e.g. 'openshell', 'opensandbox').")
+    provider_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provider-specific sandbox configuration; the platform does not interpret these fields.",
+    )
+
+
 class AgentEnvironmentInline(BaseModel):
-    """Inline AgentEnvironment - a composition of environment + compute specs.
+    """Inline AgentEnvironment - a composition of environment, sandbox, and compute specs.
 
     Each part is a ``ref | inline | None`` union: a ``"workspace/name"`` string
     references a stored spec entity, an object provides the spec inline, and
-    ``None`` omits it. (A ``sandbox_spec`` is out of scope for now and omitted.)
+    ``None`` omits it.
     """
 
     description: str = Field(default="", description="Human-readable description.")
     environment_spec: str | EnvironmentSpecInline | None = Field(
         default=None,
         description='"workspace/name" ref to an AgentEnvironmentSpec, an inline spec, or None.',
+    )
+    sandbox_spec: str | SandboxSpecInline | None = Field(
+        default=None,
+        description='"workspace/name" ref to an AgentSandboxSpec, an inline spec, or None.',
     )
     compute_spec: str | ComputeSpecInline | None = Field(
         default=None,
@@ -319,8 +339,16 @@ class AgentEnvironmentSpec(NemoEntity, EnvironmentSpecInline, entity_type="agent
     """
 
 
+class AgentSandboxSpec(NemoEntity, SandboxSpecInline, entity_type="agent_sandbox_spec"):
+    """A reusable sandbox spec (the isolation posture around an agent run).
+
+    Entity type: ``agent_sandbox_spec``
+    Referenced by an AgentEnvironment's ``sandbox_spec`` (by name or inline).
+    """
+
+
 class AgentEnvironment(NemoEntity, AgentEnvironmentInline, entity_type="agent_environment"):
-    """A composition of an environment spec and a compute spec.
+    """A composition of an environment spec, a sandbox spec, and a compute spec.
 
     Entity type: ``agent_environment``
     The single thing an AgentDeployment references. Each part is a
@@ -401,6 +429,14 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
             "Resolved secret env references from the referenced environment, as "
             "ENV_VAR_NAME -> 'workspace/secret-name'. Compiled into secret-backed container env "
             "vars (never plaintext) for docker/k8s modes; ignored for subprocess."
+        ),
+    )
+    sandbox: SandboxSpecInline | None = Field(
+        default=None,
+        description=(
+            "Resolved sandbox spec snapshot from the referenced environment. "
+            "Records the isolation posture (provider + provider_config) for the deployment; "
+            "the runner uses it when the sandbox provider is wired."
         ),
     )
     status: DeploymentStatus = Field(

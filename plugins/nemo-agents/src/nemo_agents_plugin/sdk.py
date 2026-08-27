@@ -311,11 +311,9 @@ class _DeploymentResource:
             image: Container image for ``docker``/``k8s`` modes. Falls back to
                 ``agents.deployments.default_image`` when omitted. Rejected in
                 ``subprocess`` mode.
-            environment: Optional AgentEnvironment to deploy under — a
-                ``"workspace/name"`` ref to a stored AgentEnvironment, or an
-                inline environment dict. Its EnvironmentSpec is merged into the
-                agent config and its ComputeSpec/secret refs are snapshotted onto
-                the deployment at creation time.
+            environment: Optional AgentEnvironment: a ``"workspace/name"`` ref
+                string, an inline dict, or None. Resolved and snapshotted onto
+                the deployment at create time.
             workspace: Target workspace.
 
         Returns:
