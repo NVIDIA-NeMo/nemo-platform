@@ -1159,6 +1159,44 @@ async def test_build_next_request_request_headers_override_drops_sensitive_heade
 
 
 @pytest.mark.asyncio
+async def test_build_next_request_drops_x_api_key(mock_request):
+    """A client-supplied x-api-key is dropped so it never reaches the upstream.
+
+    The platform injects provider auth from Secrets; forwarding a client placeholder
+    x-api-key (e.g. "not-used") makes Anthropic/Bedrock backends 401. It must be
+    stripped like ``authorization``.
+    """
+    mock_request.headers = {
+        "content-type": "application/json",
+        "x-api-key": "not-used",
+    }
+
+    result = await build_next_request(mock_request, "http://example.com", "v1/messages")
+
+    assert "x-api-key" not in result.headers  # provider auth injected separately
+    assert result.headers["content-type"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_build_next_request_request_headers_override_drops_x_api_key(mock_request):
+    """x-api-key is filtered from a request_headers override too (the model-scoped path)."""
+    middleware_headers = {
+        "x-custom": "keep-me",
+        "x-api-key": "not-used",
+    }
+
+    result = await build_next_request(
+        mock_request,
+        "http://example.com",
+        "v1/messages",
+        request_headers=middleware_headers,
+    )
+
+    assert result.headers["x-custom"] == "keep-me"
+    assert "x-api-key" not in result.headers  # provider auth injected separately
+
+
+@pytest.mark.asyncio
 async def test_build_next_request_request_headers_none_falls_back_to_request(mock_request):
     """When request_headers is None (the default), request.headers is used as before."""
     mock_request.headers = {"x-from-request": "yes", "content-type": "application/json"}
