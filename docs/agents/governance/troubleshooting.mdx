@@ -1,0 +1,117 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "Troubleshooting"
+description: ""
+---
+<a id="agents-governance-troubleshooting"></a>
+
+<Warning>
+
+Agent Governance is released with _early access_ availability and is subject to limited support and potential API changes in future releases.
+
+</Warning>
+
+Start with `nemo iron-swarm doctor`. It is read-only and checks the four host
+prerequisites: the iron-swarm virtual environment, the garak virtual
+environment, the Docker daemon and the OpenShell gateway.
+
+## Setup
+
+**`openshell status` reports "connection refused" or "no compute driver" on macOS.**
+The gateway is running but has no driver. Point OpenShell at Docker:
+
+```bash
+DOCKER_SOCK=$(docker context inspect --format '{{.Endpoints.docker.Host}}')
+brew services stop openshell
+launchctl setenv OPENSHELL_DRIVERS docker
+launchctl setenv DOCKER_HOST "$DOCKER_SOCK"
+brew services restart openshell
+openshell status
+```
+
+Then re-run `nemo iron-swarm setup` to re-register the `auto-defender` gateway.
+
+**The OpenShell CLI is present but a war-game says the gateway is missing.**
+Installing OpenShell as a standalone CLI tool gives you the command without the
+gateway service. Use the native installer instead.
+
+## Runs
+
+**A run fails immediately with `smart-benign validation requires an explicit benign suite`.**
+`nemo iron-swarm run` consumes a benign suite and never generates one. Create it
+first:
+
+```bash
+nemo iron-swarm synth-benign --manifest-id <name>
+```
+
+The suite is cached on the manifest and reused by later runs.
+
+**A run reports success but the agent's tools were never exercised.**
+The sandbox drops outbound traffic that the manifest does not allow-list. When a
+tool call is dropped, the model usually answers from its own knowledge, so the
+run looks clean. Add the hosts and re-create the manifest:
+
+```bash
+nemo iron-swarm init --agent <name> --egress <host>
+```
+
+A bare host opens port 443 only. Write `host:80` for plain HTTP. Hosts cannot be
+discovered automatically for an agent whose tool code lives in an installed
+package.
+
+**A run does not reflect a change made to the agent.**
+Runs target a frozen manifest, so editing the agent does not change an existing
+one. Pick up the change deliberately:
+
+```bash
+nemo iron-swarm refresh --manifest-id <name>
+```
+
+**A guardrail fails only once the run reaches validation.**
+`--safety-model` is not preflighted. It runs inside the victim against Iron
+Swarm's own endpoint, so an unresolvable model name surfaces at that point rather
+than at launch.
+
+## The Victim Sandbox
+
+**`Missing required secrets: <NAME>`.**
+The agent config references `${<NAME>}` and nothing supplies it. Required secrets
+are derived from the agent's stored config, so this means the variable was unset
+when the agent was registered. Export it and re-run `nemo agents create`, or
+supply it with `--env-file`.
+
+**The victim never becomes healthy, and its log shows a pydantic `union_tag_invalid` for a `_type`.**
+The agent references a component the scaffolded victim cannot resolve. The victim
+installs a minimal dependency set, not the platform's full plugin list. Platform
+telemetry is stripped automatically; anything else means the agent needs a real
+project, so pass `--project-dir` to `init` and let the project's own
+dependencies supply it.
+
+**The victim is healthy but every request returns 422 with `Invalid model`.**
+The workflow's `model_name` is not a model entity the platform knows. Entity names
+are lowercase letters, digits and hyphens, so a provider id containing a slash is
+rejected. Check `nemo models list`, then re-register the agent with that exact
+name. The value is resolved when the agent is registered, so it must be correct
+at `nemo agents create` time.
+
+## Studio
+
+**Iron Swarm is missing from the Studio side nav.**
+The UI ships with the plugin, so a missing entry means Studio did not load its
+bundle. Confirm the plugin is registered and the bundle is served:
+
+```bash
+curl -s $NMP_BASE_URL/apis/plugins
+curl -sI $NMP_BASE_URL/plugin-ui/iron-swarm/index.js
+```
+
+The first should list `iron-swarm` with a `bundleUrl`. Then hard-reload the
+browser.
+
+**Applied guardrails have no effect on the running agent.**
+Applying updates the stored agent config without redeploying. Redeploy the agent
+for the guardrails to take effect.
+
