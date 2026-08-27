@@ -397,7 +397,7 @@ paths:
       tags:
       - Iron Swarm Manifests
       summary: List Manifests
-      description: List saved manifests in the workspace, with pagination and an ``agent``/``source_type``
+      description: List saved manifests in the workspace, with pagination and an ``agent``
         filter.
       operationId: list_manifests_apis_iron_swarm_v2_workspaces__workspace__manifests_get
       parameters:
@@ -463,8 +463,8 @@ paths:
       tags:
       - Iron Swarm Manifests
       summary: Create Manifest
-      description: '`init`: build a manifest (from a deployed agent or an uploaded
-        project) and persist it by ``name``.'
+      description: '`init`: resolve a registered agent into a manifest and persist
+        it by ``name``.'
       operationId: create_manifest_apis_iron_swarm_v2_workspaces__workspace__manifests_post
       parameters:
       - name: workspace
@@ -486,43 +486,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IronSwarmManifest'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/iron-swarm/v2/workspaces/{workspace}/manifests/inspect:
-    post:
-      tags:
-      - Iron Swarm Manifests
-      summary: Inspect Project
-      description: "Detect an uploaded NAT project's layout (`iron-swarm inspect`)\
-        \ to pre-fill the create wizard.\n\nDownloads the project bundle, expands\
-        \ it, and runs the read-only, offline detector \u2014 no code is\nexecuted.\
-        \ Returns the discovered workflows, launch mode, name, secrets, and egress\
-        \ as defaults."
-      operationId: inspect_project_apis_iron_swarm_v2_workspaces__workspace__manifests_inspect_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InspectProjectRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InspectProjectResponse'
         '422':
           description: Validation Error
           content:
@@ -1625,80 +1588,6 @@ components:
       title: InspectAgentResponse
       description: Auto-derived defaults for the deployed-agent create form (port
         + secret names, editable).
-    InspectProjectRequest:
-      properties:
-        project_fileset:
-          type: string
-          title: Project Fileset
-          description: Fileset ref of the uploaded NAT project bundle to inspect.
-      type: object
-      required:
-      - project_fileset
-      title: InspectProjectRequest
-      description: "Body for ``POST /v2/workspaces/{workspace}/manifests/inspect``\
-        \ \u2014 detect an uploaded project."
-    InspectProjectResponse:
-      properties:
-        project_dir:
-          type: string
-          title: Project Dir
-          description: Detected installable project root (relative to the bundle).
-          default: ''
-        workflows:
-          items:
-            type: string
-          type: array
-          title: Workflows
-          description: Discovered workflow paths (project-relative).
-        dockerfiles:
-          items:
-            type: string
-          type: array
-          title: Dockerfiles
-          description: Discovered Dockerfile paths (project-relative).
-        suggested_launch_mode:
-          type: string
-          title: Suggested Launch Mode
-          description: '''workflow'' or ''byo''.'
-          default: workflow
-        default_agent_name:
-          type: string
-          title: Default Agent Name
-          description: Suggested agent name.
-          default: ''
-        default_port:
-          type: integer
-          title: Default Port
-          description: Suggested victim port.
-          default: 8000
-        secrets_file:
-          type: string
-          title: Secrets File
-          description: Detected dotenv path (project-relative), or empty.
-          default: ''
-        secret_names:
-          items:
-            type: string
-          type: array
-          title: Secret Names
-          description: Secret names found in the dotenv file.
-        egress:
-          items:
-            type: string
-          type: array
-          title: Egress
-          description: External hosts the agent reaches (allow-list).
-        backend_ports:
-          items:
-            type: integer
-          type: array
-          title: Backend Ports
-          description: Local host-backend ports detected in the workflow (localhost:PORT
-            the tools call).
-      type: object
-      title: InspectProjectResponse
-      description: Detection facts + defaults for the upload wizard (the parsed ``iron-swarm
-        inspect --json`` output).
     IronSwarmManifest:
       properties:
         name:
@@ -1718,54 +1607,30 @@ components:
         agent:
           type: string
           title: Agent
-          description: Deployed agent reference (workspace/name) this manifest targets.
-          default: ''
-        source_type:
-          type: string
-          enum:
-          - agent
-          - project
-          title: Source Type
-          description: How the manifest was built ('agent'|'project').
-          default: agent
-        project_fileset:
-          type: string
-          title: Project Fileset
-          description: Fileset ref holding the uploaded NAT project bundle (source_type
-            'project'); the run re-downloads it to a project_dir before launching
-            the victim.
+          description: Registered agent reference (workspace/name) this manifest targets.
           default: ''
         agent_fileset:
           type: string
           title: Agent Fileset
-          description: Fileset ref holding the scaffold resolved from the agent (source_type
-            'agent'). Empty on manifests created before targets were frozen; those
-            re-resolve once, then store a ref.
-          default: ''
-        workflow:
-          type: string
-          title: Workflow
-          description: Chosen workflow path within the project (project source, display).
-          default: ''
-        launch_mode:
-          type: string
-          title: Launch Mode
-          description: Victim launch mode ('workflow'|'byo'; project source).
+          description: "Fileset ref holding the agent package resolved from the agent\
+            \ \u2014 its config plus the Dockerfile that serves it. Empty on manifests\
+            \ created before targets were frozen; those re-resolve once, then store\
+            \ a ref."
           default: ''
         dockerfile:
           type: string
           title: Dockerfile
-          description: Project-relative Dockerfile the victim image is built from
-            ('byo' launch mode). Stored alongside launch_mode so a manifest says which
-            image it uses, not merely that it brings one.
+          description: Path within the package to the Dockerfile the victim image
+            is built from, so a manifest records which image it ran rather than only
+            that it had one.
           default: ''
         binaries:
           items:
             type: string
           type: array
           title: Binaries
-          description: In-container glob patterns scoping which processes may egress
-            ('byo' launch mode); iron-swarm requires them because a BYO image's layout
+          description: In-container glob patterns scoping which processes may egress;
+            iron-swarm requires them because the layout of an image it did not write
             cannot be inferred.
         manifest_yaml:
           type: string
@@ -1908,23 +1773,17 @@ components:
       - parent
       - db_version
       title: IronSwarmManifest
-      description: 'A named, reusable war-game target scaffolded via `init` (its ``name``
-        is the user-defined id).
+      description: 'A named, reusable war-game target scaffolded from a registered
+        agent (``name`` is its id).
 
 
-        Both sources persist their victim project as a fileset the run re-downloads,
+        The resolved agent package is persisted as a fileset the run re-downloads,
         so a manifest is a
 
-        frozen target rather than a query re-evaluated each run: ``agent`` stores
-        the scaffold resolved
+        frozen target rather than a query re-evaluated each run: editing the agent
+        does not change an
 
-        from a deployed agent ref, ``project`` stores an uploaded NAT project (which
-        is also how
-
-        custom-tool agents, unregistrable as config-only agents, are targeted). Editing
-        the agent does
-
-        not change an existing manifest until it is refreshed.'
+        existing manifest until it is refreshed.'
     IronSwarmRun:
       properties:
         name:
@@ -2081,10 +1940,6 @@ components:
           description: Filter to manifests for this agent reference.
           title: Agent
           type: string
-        source_type:
-          description: Filter by source ('agent' or 'project').
-          title: Source Type
-          type: string
       title: ManifestFilter
       type: object
     ManifestInit:
@@ -2093,76 +1948,26 @@ components:
           type: string
           title: Name
           description: User-defined manifest id (unique within the workspace).
-        source_type:
-          type: string
-          enum:
-          - agent
-          - project
-          title: Source Type
-          description: Scaffold source ('agent' or 'project').
-          default: agent
         agent:
+          type: string
           title: Agent
-          description: Agent reference (required when source_type='agent').
-          type: string
-        project_fileset:
-          title: Project Fileset
-          description: Fileset ref of the uploaded NAT project bundle.
-          type: string
-        manifest_yaml:
-          title: Manifest Yaml
-          description: Pre-built iron-swarm manifest (project source). The CLI runs
-            iron-swarm's own interactive `init` at the operator's terminal and sends
-            the result; omit it and the server builds one with `init --yes`, which
-            is what Studio does since it has no TTY.
-          type: string
-        workflow:
-          title: Workflow
-          description: Chosen workflow path within the project (project-relative).
-          type: string
-        launch_mode:
-          title: Launch Mode
-          description: 'Victim launch mode: ''workflow'' (a generic image built from
-            the project) or ''byo'' (built from the project''s own Dockerfile). ''byo''
-            needs either a `dockerfile` here or a `manifest_yaml` that already carries
-            one. Derived from the manifest when omitted.'
-          type: string
-        dockerfile:
-          title: Dockerfile
-          description: "Project-relative Dockerfile to build the victim image from,\
-            \ instead of a generic one \u2014 for agents needing system packages or\
-            \ a custom base image. Requires `binaries`, and a `workflow` (given or\
-            \ detected): the image is how the environment is built, the workflow is\
-            \ what gets served and hardened. The image must carry a 'sandbox' user/group,\
-            \ iproute2, and `nat` on the default PATH."
-          type: string
-        binaries:
-          title: Binaries
-          description: 'In-container glob patterns scoping which processes may egress,
-            e.g. ''/app/.venv/bin/**''. Required with `dockerfile`: a BYO image''s
-            layout is unknown, so the sandbox policy cannot infer it.'
-          items:
-            type: string
-          type: array
+          description: Agent reference (``name`` or ``workspace/name``) to war-game.
         port:
           title: Port
           description: Victim port (defaults to 8000).
           type: integer
         secrets:
           title: Secrets
-          description: Secret names the victim requires.
+          description: Env-var names the victim requires. Derived from the agent's
+            own declarations (``models.*.api_key_env``, MCP server env) when omitted.
           items:
             type: string
           type: array
-        secrets_file:
-          title: Secrets File
-          description: Dotenv path within the project holding the secrets.
-          type: string
         egress:
           title: Egress
           description: Allow-listed egress host[:port] entries the victim may reach
-            (external hosts the agent calls, e.g. inference-api.nvidia.com); baked
-            into the manifest by `init --egress`.
+            (external hosts the agent calls, e.g. inference-api.nvidia.com). The sandbox
+            is default-deny, so a host missing here has its traffic dropped mid-run.
           items:
             type: string
           type: array
@@ -2179,7 +1984,7 @@ components:
           title: Backends
           description: Route-only host backends the agent's tools call, each 'NAME:PORT[,PORT2]'
             (e.g. 'finance:8086'). Rewrites the agent's localhost:PORT to host.docker.internal:PORT
-            and opens the sandbox->host route; passed to `init --backend`.
+            and opens the sandbox->host route.
           items:
             type: string
           type: array
@@ -2191,11 +1996,13 @@ components:
       type: object
       required:
       - name
+      - agent
       title: ManifestInit
       description: "Body for ``POST /v2/workspaces/{workspace}/manifests`` \u2014\
-        \ scaffold a named manifest.\n\n``agent`` resolves a deployed agent; ``project``\
-        \ builds the manifest from an uploaded NAT project\n(``project_fileset`` +\
-        \ the confirmed detection answers) by shelling ``iron-swarm init --yes``."
+        \ scaffold a named manifest.\n\nThe only source is a registered platform agent.\
+        \ The project-upload path is gone: it existed to\ncarry a NAT project, and\
+        \ Iron Swarm no longer runs one. An agent with custom tool code reaches\n\
+        the platform as an MCP server, which keeps it registrable and therefore war-gameable."
     ManifestUpdate:
       properties:
         benign_suite:
