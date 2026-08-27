@@ -7,7 +7,6 @@ import {
 } from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
-import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
@@ -74,8 +73,6 @@ const listEvaluationSessionsWithModeFallback = async (
 // translation is needed beyond listing the sortable ids.
 const SESSION_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   test_case_name: 'test_case_name',
-  started_at: 'started_at',
-  ended_at: 'ended_at',
   latency_ms: 'latency_ms',
   status: 'status',
   tokens: 'tokens',
@@ -210,24 +207,8 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       size: 400,
       cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.output} emptyValue="-" />,
     }),
-    accessor('started_at', {
-      header: 'Started at',
-      enableSorting: true,
-      cell: ({ row }) =>
-        row.original.started_at ? (
-          <RelativeTime datetime={row.original.started_at} />
-        ) : (
-          <Text>-</Text>
-        ),
-    }),
-    accessor('ended_at', {
-      header: 'Ended at',
-      enableSorting: true,
-      cell: ({ row }) =>
-        row.original.ended_at ? <RelativeTime datetime={row.original.ended_at} /> : <Text>-</Text>,
-    }),
     accessor('latency_ms', {
-      header: 'Latency',
+      header: 'Duration',
       enableSorting: true,
       meta: { alignment: 'right' },
       cell: ({ row }) => {
