@@ -48,6 +48,37 @@ def _check_magic(stream: BinaryIO) -> None:
             raise ValueError(f"not line-delimited JSON: the file begins with the magic bytes of {description}")
 
 
+# The longest single line the reader will hold in memory. A `.jsonl` whose rows are rows never comes
+# near this; what does is the malformed input this module already anticipates -- a pretty-printed
+# JSON array saved under the wrong extension, which is one line as long as the file. Reading that
+# with `for line in stream` allocated the whole file as one bytes object, then another for `.strip()`,
+# then the parsed tree, before discovering it was not a row. `row_cap` cannot help, because the cap
+# is checked after the line has been read.
+_MAX_LINE_BYTES = 64 * 1024 * 1024
+
+
+def _lines(stream: BinaryIO) -> Iterator[bytes | None]:
+    """Each line of the stream, or None for one too long to hold.
+
+    An over-long line is drained rather than buffered, so the file keeps its line numbering and its
+    remaining rows still parse.
+    """
+    while True:
+        chunk = stream.readline(_MAX_LINE_BYTES)
+        if not chunk:
+            return
+        # `readline` stops at the limit without a newline; so does the last line of a file. Only the
+        # first is over-long, and only that one has more of itself still to come.
+        if len(chunk) >= _MAX_LINE_BYTES and not chunk.endswith(b"\n"):
+            while True:
+                more = stream.readline(_MAX_LINE_BYTES)
+                if not more or more.endswith(b"\n"):
+                    break
+            yield None
+            continue
+        yield chunk
+
+
 def _records(stream) -> Iterator[tuple[dict | None, str | None]]:
     """Each line of the stream as either a record or a reason it was not one.
 
@@ -58,7 +89,10 @@ def _records(stream) -> Iterator[tuple[dict | None, str | None]]:
     Shared by :meth:`JsonlReader.read` and :meth:`JsonlReader.batches` so the two cannot disagree
     on what counts as a row.
     """
-    for line_number, raw_line in enumerate(stream, start=1):
+    for line_number, raw_line in enumerate(_lines(stream), start=1):
+        if raw_line is None:
+            yield None, f"line {line_number}: longer than {_MAX_LINE_BYTES} bytes; not read"
+            continue
         stripped = raw_line.strip()
         if not stripped:  # tolerate blank lines between records
             continue
