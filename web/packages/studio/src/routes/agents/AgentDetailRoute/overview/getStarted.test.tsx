@@ -73,7 +73,7 @@ describe('Agent overview before the agent reports anything', () => {
 
     expect(
       await screen.findByText(
-        'Insights requires importing traces or integrating your agent with NeMo Platform.'
+        'Generating insights requires importing traces or integrating your agent with NeMo Platform.'
       )
     ).toBeInTheDocument();
     expect(screen.getByText('0 total')).toBeInTheDocument();

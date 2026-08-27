@@ -128,6 +128,8 @@ export const AgentDetailRoute: FC = () => {
   const modelNames = getAgentModelNames(agent?.config);
   const canDeploy = !!agent?.config;
 
+  const canRunEvaluation = !!agentName && canDeploy && healthyDeployments.length > 0;
+
   const status = healthyDeployments.length > 0 ? 'running' : agentDeployments[0]?.status;
   const statusPillLabel =
     healthyDeployments.length > 0
@@ -179,7 +181,7 @@ export const AgentDetailRoute: FC = () => {
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}
-                disabled={!agentName}
+                disabled={!canRunEvaluation}
               >
                 <ClipboardCheck className="size-4" aria-hidden />
                 Run evaluation
@@ -223,11 +225,7 @@ export const AgentDetailRoute: FC = () => {
                 evals={agentEvals}
                 isEvalsPending={isAgentEvalsPending}
                 onRunAgent={() => setSelectedTab('chat')}
-                onRunEvaluation={
-                  agentName && healthyDeployments.length > 0
-                    ? () => setSubmitEvalOpen(true)
-                    : undefined
-                }
+                onRunEvaluation={canRunEvaluation ? () => setSubmitEvalOpen(true) : undefined}
               />
             </TabsContent>
           )}
