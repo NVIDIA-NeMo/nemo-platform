@@ -3,9 +3,8 @@
 
 """Per-column statistics and content probes.
 
-:func:`measure_columns` measures each top-level column by dtype: length quantiles for text,
-min/max/mean for numbers, chat-shape signals for messages, and a bounded vocabulary where the column
-has one. The result is sparse, and each column is isolated, so one the detectors cannot handle costs
+:class:`RowFold` measures each top-level column by dtype: length quantiles for text, min/max/mean
+for numbers, chat-shape signals for messages, and a bounded vocabulary where the column has one. The result is sparse, and each column is isolated, so one the detectors cannot handle costs
 only itself.
 
 The same pass counts each column's *content* -- answer markers, embedded transcripts -- into
@@ -201,18 +200,6 @@ class RowFold:
             if column is not None:
                 stats[name] = column
         return features, PartitionMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
-
-
-def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> PartitionMeasurements:
-    """Measure every top-level column over rows already in hand.
-
-    The whole partition as a single batch. :class:`RowFold` is the same measurement taken as the
-    rows arrive; this is the shape for a caller that has them all anyway.
-    """
-    fold = RowFold(features)
-    fold.update(rows)
-    _, measured = fold.finalize()
-    return measured
 
 
 def quote_enumerations(

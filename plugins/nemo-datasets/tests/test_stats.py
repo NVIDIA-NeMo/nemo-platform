@@ -11,23 +11,29 @@ from nemo_datasets_plugin.profiler.stats import (
     _MAX_VOCABULARY_VALUES,
     RoutedAccumulator,
     RowFold,
-    measure_columns,
     quote_enumerations,
 )
 from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
 
 
+def _measure(features, rows):
+    """One partition's columns, folded as a single batch -- the shape a test has its rows in."""
+    fold = RowFold(features)
+    fold.update(rows)
+    return fold.finalize()[1]
+
+
 def _stats(features, rows):
     """Statistics only. Asserts nothing failed: these tests measure values, not the guard, and a
     swallowed exception would surface here as a confusing KeyError instead of its own message."""
-    measured = measure_columns(features, rows)
+    measured = _measure(features, rows)
     assert not measured.errors, measured.errors
     return measured.stats
 
 
 def _probes(features, rows):
-    """The content probes alone. `measure_columns` measures both in one pass; these tests want one."""
-    return measure_columns(features, rows).probes
+    """The content probes alone. The fold measures both in one pass; these tests want one."""
+    return _measure(features, rows).probes
 
 
 def _feature(name, dtype):
@@ -288,7 +294,7 @@ def _quoted(name, dtype, values, role):
     feature = _feature(name, dtype)
     feature.semantic_role = role
     rows = _rows(name, values)
-    measured = measure_columns([feature], rows)
+    measured = _measure([feature], rows)
     quote_enumerations([feature], measured.stats, measured.vocabularies)
     return measured.stats[name].categorical.values
 

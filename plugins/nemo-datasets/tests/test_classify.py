@@ -4,7 +4,7 @@
 """Tests for classification: role assignment, format/prompt-form axes, and dataset type."""
 
 from nemo_datasets_plugin.profiler.classify import PrefixPairFold, classify
-from nemo_datasets_plugin.profiler.stats import measure_columns
+from nemo_datasets_plugin.profiler.stats import RowFold
 from nemo_platform_plugin.files.dataset_profile import (
     CategoricalStats,
     ColumnStats,
@@ -15,7 +15,9 @@ from nemo_platform_plugin.files.dataset_profile import (
 
 
 def _probes(features, rows):
-    return measure_columns(features, rows).probes
+    fold = RowFold(features)
+    fold.update(rows)
+    return fold.finalize()[1].probes
 
 
 def classify_rows(features, stats, rows, **kwargs):
