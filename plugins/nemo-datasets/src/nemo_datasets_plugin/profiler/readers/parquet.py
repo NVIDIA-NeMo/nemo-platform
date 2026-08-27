@@ -97,9 +97,11 @@ class ParquetReader:
                 return ReadResult(rows=[], rows_scanned=0, num_rows=num_rows, arrow_schema=arrow_schema)
 
             rows: list[dict] = []
-            # Same ceiling `batches` applies. Passing `row_cap` straight through asked pyarrow for
-            # one RecordBatch that size and then `to_pylist`-ed it, so a large cap materialized the
-            # cap in memory -- from the contract method whose sibling exists to avoid exactly that.
+            # Same ceiling `batches` applies. Passing `row_cap` straight through asked pyarrow for a
+            # single RecordBatch that size, so a large cap allocated it in arrow before any of it was
+            # converted. This bounds that transient allocation only: `read` returns the rows, so
+            # `rows` still grows to `row_cap` by contract. `batches` is the method whose working set
+            # is independent of the cap.
             for batch in parquet_file.iter_batches(batch_size=min(row_cap or _BATCH_ROWS, _BATCH_ROWS)):
                 rows.extend(batch.to_pylist())
                 if row_cap is not None and len(rows) >= row_cap:

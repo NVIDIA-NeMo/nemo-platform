@@ -386,6 +386,11 @@ class PrefixPair:
 # casing meant a `Chosen`/`Rejected` pair took both roles and reached `_implicit_prompt_evidence`
 # with no pairs counted, so the "prompt is embedded" finding was dropped for any dataset that
 # capitalizes its columns -- silently, since the roles themselves still landed.
+# How many rows the pair probe will spend looking for its two columns before concluding a partition
+# has none. Well above any batch, and far below a file: a ragged jsonl can introduce a column late,
+# and a partition without the pair must not pay a walk per row forever to keep discovering that.
+_RESOLVE_ROW_BUDGET = 1024
+
 _CHOSEN_NAMES = frozenset(name for name, role in _ALIAS_ROLES.items() if role == "chosen")
 _REJECTED_NAMES = frozenset(name for name, role in _ALIAS_ROLES.items() if role == "rejected")
 
@@ -404,22 +409,45 @@ class PrefixPairFold:
     def __init__(self) -> None:
         self._pairs = 0
         self._shared = 0
+        self._left_key: str | None = None
+        self._right_key: str | None = None
+        self._searched = 0  # rows spent looking for the pair's columns
+
+    def _resolve(self, rows: list[dict]) -> None:
+        """Which two columns hold the pair, matched case-insensitively as `_role_for` matches names.
+
+        Searched for until found, then never again: a column name is a fact about the partition, not
+        about the row, and re-deriving it by walking every row cost 68x two dict lookups on a wide
+        one -- paid by every partition, the great majority of which have no such pair at all.
+
+        Bounded by :data:`_RESOLVE_ROW_BUDGET` rather than stopping after the first batch, because
+        line-delimited rows are ragged and a column can first appear well into a file. A partition
+        that has not shown the pair within that many rows is taken not to have one.
+        """
+        for row in rows:
+            if self._searched >= _RESOLVE_ROW_BUDGET:
+                return
+            self._searched += 1
+            for name in row:
+                lowered = name.lower()
+                if self._left_key is None and lowered in _CHOSEN_NAMES:
+                    self._left_key = name
+                elif self._right_key is None and lowered in _REJECTED_NAMES:
+                    self._right_key = name
+            if self._left_key is not None and self._right_key is not None:
+                return
 
     def update(self, rows: list[dict]) -> None:
+        left_key, right_key = self._left_key, self._right_key
+        if left_key is None or right_key is None:
+            self._resolve(rows)
+            left_key, right_key = self._left_key, self._right_key
+        if left_key is None or right_key is None:
+            return
         for row in rows:
-            left: str | None = None
-            right: str | None = None
-            # One pass over the row rather than a lookup per alias, so the lowercasing costs a walk
-            # the row was going to get anyway.
-            for name, value in row.items():
-                if not isinstance(value, str):
-                    continue
-                lowered = name.lower()
-                if left is None and lowered in _CHOSEN_NAMES:
-                    left = value
-                elif right is None and lowered in _REJECTED_NAMES:
-                    right = value
-            if left is None or right is None:
+            left = row.get(left_key)
+            right = row.get(right_key)
+            if not isinstance(left, str) or not isinstance(right, str):
                 continue
             self._pairs += 1
             if _common_prefix_len(left, right) >= _EMBEDDED_PROMPT_PREFIX_CHARS:
