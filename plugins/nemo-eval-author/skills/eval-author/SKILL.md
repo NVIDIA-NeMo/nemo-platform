@@ -20,7 +20,7 @@ triggers:
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
-  - eval-author-audit (use to validate existing audit.md coverage denominators)
+  - eval-author-audit (use to generate and validate audit.md coverage denominators)
   - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
   - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
@@ -82,15 +82,15 @@ and the boundaries; the sub-flow carries the steps.
 | Sub-flow | Use it to |
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
-| `eval-author-audit` | Validate an existing finite `audit.md` coverage denominator |
+| `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, then write per-method coverage/details files for one ATIF trace |
 | `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
 
-Authoring or generating audit specs, runnable tasks, and verifier metrics is not
-built yet. `eval-author-audit` works one level above tasks: it validates the
-coverage denominator that future generation, task authoring, and measurement can
-target. When a user asks for new runnable tasks, say so plainly rather than
-improvising a task layout by hand. A task written against a guessed convention
-scores nothing and costs a full evaluation run to discover.
+Runnable tasks, verifier metrics, and coverage aggregation are not built yet.
+`eval-author-audit` works one level above tasks: it generates and validates the
+coverage denominator and can measure one ATIF trace against it. When a user asks
+for new runnable tasks, say so plainly rather than improvising a task layout by
+hand. A task written against a guessed convention scores nothing and costs a full
+evaluation run to discover.
 
 ## Boundaries
 
@@ -98,9 +98,10 @@ These hold for every sub-flow. They exist because the repository belongs to the
 user, not to you.
 
 - **Propose, never mutate.** Read the user's source and report on it. Do not edit,
-  move, or reformat any of it, including its `.gitignore`. The one thing you add is
-  your own report under `.eval-author/`, which is theirs to commit or ignore. The
-  bundled scripts write nothing at all; saving is your job, not theirs.
+  move, or reformat any of it, including its `.gitignore`. The only files you add
+  belong under `.eval-author/`, which is theirs to commit or ignore.
+  `eval-author-discover` scripts write nothing; `eval-author-audit` writes only
+  the audit output path the user explicitly requested.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
