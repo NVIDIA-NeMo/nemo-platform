@@ -79,9 +79,12 @@ def profile(
 ) -> DatasetProfile:
     """Profile the dataset behind ``source`` into a ``DatasetProfile``.
 
-    ``row_budget`` bounds how many rows each *partition* reads in total, divided across its files.
-    It defaults to ``None``, which reads every row: memory is flat in rows either way, so a budget
-    buys only a shorter run. Files smaller than their share are read to the end.
+    ``row_budget`` is roughly how many rows each *partition* reads in total, divided across its
+    files. A target rather than a ceiling: `MIN_ROWS_PER_FILE` is a floor under each file's share,
+    so a budget spread thin across many files is exceeded rather than honoured -- 20 files under a
+    budget of 5 read 200 rows, not 5. A file sampled below that floor cannot contribute the columns
+    it alone witnesses. It defaults to ``None``, which reads every row: memory is flat in rows
+    either way, so a budget buys only a shorter run. Files smaller than their share are read whole.
 
     ``column_roles`` maps a column name to a role the caller is asserting, for datasets whose column
     names the role table does not recognize. Hints take precedence over name detection but still

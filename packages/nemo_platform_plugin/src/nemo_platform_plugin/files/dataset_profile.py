@@ -19,9 +19,11 @@ tolerate unknown ones so the vocabulary can grow without a breaking change. Pyda
 
 It lives in a shared package rather than with the profiler because the Files service stores and
 serves a profile as its own entity, so a deployment that installs no profiler still needs the type
-to deserialize its own rows. The module is pydantic-only: the profiler imports it standalone, and
-Files imports it as the type it persists. A profile is a separate entity from fileset metadata, so
-writing one cannot clobber an unrelated metadata edit."""
+to deserialize its own rows. The module is pydantic-only, so the profiler imports it standalone and
+Files will import it as the type it persists -- that second half is why it lives here, not something
+that has happened yet: today the profiler and these tests are its only importers, which is the same
+reason ``PROFILE_SCHEMA_VERSION`` is still 1.0. A profile is a separate entity from fileset
+metadata, so writing one cannot clobber an unrelated metadata edit."""
 
 from __future__ import annotations
 
@@ -92,7 +94,9 @@ class PartitionClassification(BaseModel):
             "columns also satisfy: prompt + completion + score + label is genuinely both `scored_response` and "
             "`unpaired_preference`, and a consumer that cares picks by its own rule rather than by ours. EMPTY "
             "means the roles matched no known structure, which is also what a partition that could not be "
-            "classified at all reports — `evidence` carries an `error` entry in that case and not the other. "
+            "classified at all reports; the two are not distinguishable from this model alone, because an "
+            "`error` evidence entry is also how a partition that classified fine reports a degradation along "
+            "the way -- a column cap, a column whose measurement failed, a probe that could not run. "
             "A SUMMARY either way: the `semantic_role` markers are what a consumer should match on."
         ),
     )
@@ -312,14 +316,14 @@ class FileError(BaseModel):
 class SplitProfile(BaseModel):
     """A split within a partition.
 
-    Resolution precedence, declared structure beating detection:
+    Resolved from file paths (train/test/validation markers, sharded layouts). Markers are matched
+    against canonical names and common aliases (val/valid/dev -> validation); the normalized concept
+    lands in ``canonical`` and the split keeps its on-disk ``name``. Failing any marker, a single
+    "default" split holds all files.
 
-    1. HF card front-matter when the fileset ships a README -- ``configs[].data_files`` maps splits
-       to file globs explicitly;
-    2. detection from file paths (train/test/validation markers, sharded layouts). Markers are
-       matched against canonical names and common aliases (val/valid/dev -> validation); the
-       normalized concept lands in ``canonical`` and the split keeps its on-disk ``name``;
-    3. otherwise a single "default" split holding all files.
+    A dataset card's ``configs[].data_files`` would take precedence over that, mapping splits to
+    globs explicitly rather than by inference -- but card parsing is not implemented, so path
+    detection is the only source today, and ``card_metadata`` is a kind no evidence yet carries.
 
     A split encoded as a *data column* rather than a file grouping is not resolved here.
     """
@@ -397,7 +401,7 @@ class PartitionProfile(BaseModel):
             "partition to keep a single value true made partition names unstable."
         ),
     )
-    splits: list[SplitProfile] = Field(description="card-declared > path-detected > single 'default' split.")
+    splits: list[SplitProfile] = Field(description="Path-detected, else a single 'default' split.")
     features: list[FeatureSchema] = Field(
         description="The row schema: measured layout plus detected role markers, derived de novo (nested).",
     )
@@ -457,8 +461,9 @@ class Coverage(BaseModel):
     )
     files_read: int = Field(
         description=(
-            "Files actually opened and read from. A count, not a list: the paths worth naming are the ones that "
-            "failed, and those are on `file_errors`."
+            "Files the profiler opened and did not fail on. This counts a file it opened and took no rows "
+            "from, which a zero `row_budget` makes every file. A count, not a list: the paths worth naming "
+            "are the ones that failed, and those are on `file_errors`."
         )
     )
     files_present: int = Field(
