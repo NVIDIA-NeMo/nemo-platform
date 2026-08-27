@@ -133,7 +133,11 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
       className="w-[800px] min-h-[400px]"
     >
       <Stack gap="density-2xl" className="w-full min-w-0">
-        <FormField slotLabel="Name" slotError={errors.name?.message} status={errors.name && 'error'}>
+        <FormField
+          slotLabel="Name"
+          slotError={errors.name?.message}
+          status={errors.name && 'error'}
+        >
           <TextInput
             autoFocus
             disabled={formDisabled}

@@ -129,8 +129,7 @@ export const ExperimentRoute: FC = () => {
   // `is_favorite: false` matches rows stored as false *and* legacy rows with no stored value,
   // so filtering here does not hide older experiments.
   const listFilter = useMemo<ExperimentFilter | undefined>(
-    () =>
-      favoritesTruncated ? filter : ({ ...filter, is_favorite: false } as ExperimentFilter),
+    () => (favoritesTruncated ? filter : ({ ...filter, is_favorite: false } as ExperimentFilter)),
     [filter, favoritesTruncated]
   );
 
