@@ -26,11 +26,9 @@ from __future__ import annotations
 import logging
 import time
 from datetime import UTC, datetime
-from typing import ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
-import httpx
 from nemo_agents_plugin.config import ControllerConfig
-from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
 from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     AgentDeployment,
@@ -40,13 +38,15 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.runner.backend import RunnerBackend
 from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
-from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
     NemoEntityNotFoundError,
 )
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ class AgentDeploymentController(NemoController):
         """Reconcile deployments, then independently expire due sessions."""
         if not self._startup_sessions_reconciled:
             await self._reconcile_sessions_after_controller_start()
-            if not self._startup_sessions_reconciled or self.stop_requested():
+            if self.stop_requested():
                 return
         await self._reconcile_deployments()
         if not self.stop_requested():
@@ -337,6 +337,8 @@ class AgentDeploymentController(NemoController):
         at: datetime,
     ) -> AgentSession | None:
         """Move an invoked active session to expired or lost with one conflict retry."""
+        from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
+
         session_to_update = session
         for attempt in range(2):
             if session_to_update.status is not SessionStatus.ACTIVE:
@@ -409,10 +411,14 @@ class AgentDeploymentController(NemoController):
 
     async def _read_runtime_instance_id(self, dep: AgentDeployment) -> str | None:
         """Read the current Fabric server process identity without persisting it."""
+        from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
+
         endpoint = get_deployment_endpoint(dep)
         if endpoint is None:
             return None
         if self._runtime_health_client is None:
+            import httpx
+
             self._runtime_health_client = httpx.AsyncClient(
                 timeout=_RUNTIME_HEALTH_TIMEOUT_SECONDS,
                 follow_redirects=False,
@@ -443,6 +449,8 @@ class AgentDeploymentController(NemoController):
         running. That invocation may finish, but its completion cannot reactivate
         the terminal session.
         """
+        from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
+
         session_to_update = session
         for attempt in range(2):
             if session_to_update.status is not SessionStatus.ACTIVE:

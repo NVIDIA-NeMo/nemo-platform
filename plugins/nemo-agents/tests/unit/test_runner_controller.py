@@ -22,6 +22,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from nemo_agents_plugin import session_lifecycle as session_lifecycle_module
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
@@ -29,7 +30,6 @@ from nemo_agents_plugin.entities import (
     AgentSession,
     SessionStatus,
 )
-from nemo_agents_plugin.runner import controller as controller_module
 from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
@@ -80,6 +80,37 @@ async def test_startup_session_reconciliation_retries_after_entity_list_failure(
 
     await ctrl._reconcile_sessions_after_controller_start()
     assert ctrl._startup_sessions_reconciled is True
+
+
+@pytest.mark.asyncio
+async def test_reconcile_continues_deployments_while_startup_session_retry_is_pending() -> None:
+    ctrl, _ = _make_controller()
+    ctrl._startup_sessions_reconciled = False
+    ctrl._reconcile_sessions_after_controller_start = AsyncMock()  # type: ignore[method-assign]
+    ctrl._reconcile_deployments = AsyncMock()  # type: ignore[method-assign]
+    ctrl._retry_pending_restart_reconciliations = AsyncMock()  # type: ignore[method-assign]
+    ctrl._reconcile_expired_sessions = AsyncMock()  # type: ignore[method-assign]
+
+    await ctrl.reconcile()
+
+    ctrl._reconcile_sessions_after_controller_start.assert_awaited_once_with()
+    ctrl._reconcile_deployments.assert_awaited_once_with()
+    ctrl._retry_pending_restart_reconciliations.assert_awaited_once_with()
+    ctrl._reconcile_expired_sessions.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stops_after_startup_session_retry_when_stop_is_requested() -> None:
+    ctrl, _ = _make_controller()
+    ctrl._startup_sessions_reconciled = False
+    ctrl._reconcile_sessions_after_controller_start = AsyncMock()  # type: ignore[method-assign]
+    ctrl._reconcile_deployments = AsyncMock()  # type: ignore[method-assign]
+    ctrl.stop_requested = MagicMock(return_value=True)  # type: ignore[method-assign]
+
+    await ctrl.reconcile()
+
+    ctrl._reconcile_sessions_after_controller_start.assert_awaited_once_with()
+    ctrl._reconcile_deployments.assert_not_awaited()
 
 
 def _make_controller() -> tuple[AgentDeploymentController, Any]:
@@ -181,7 +212,7 @@ async def test_restart_reconciliation_expires_loses_and_preserves_never_invoked_
     )
     ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
 
-    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
         reconciled = await ctrl._reconcile_sessions_after_restart(at=EXPIRATION_NOW)
 
     assert reconciled is True
@@ -206,7 +237,7 @@ async def test_restart_wins_activity_conflict_for_refetched_invoked_session() ->
     ctrl.entities.update = AsyncMock(side_effect=[NemoEntityConflictError("conflict"), refreshed])
     ctrl.entities.get_by_id = AsyncMock(return_value=refreshed)
 
-    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
         result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
 
     assert result is refreshed
@@ -227,7 +258,7 @@ async def test_terminal_state_wins_restart_conflict(terminal_status: SessionStat
     ctrl.entities.update = AsyncMock(side_effect=NemoEntityConflictError("conflict"))
     ctrl.entities.get_by_id = AsyncMock(return_value=terminal)
 
-    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
         result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
 
     assert result is terminal
@@ -447,7 +478,7 @@ async def test_expire_session_transitions_due_session_and_cleans_runtime() -> No
     session = _make_session(expires_at=EXPIRATION_NOW)
     ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
 
-    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
         result = await ctrl._expire_session_if_due(session, at=EXPIRATION_NOW)
 
     assert result is session
@@ -462,7 +493,7 @@ async def test_expire_session_leaves_session_before_deadline_active(expires_at: 
     ctrl, _ = _make_controller()
     session = _make_session(expires_at=expires_at)
 
-    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
         result = await ctrl._expire_session_if_due(
             session,
             at=EXPIRATION_NOW,
@@ -499,7 +530,7 @@ async def test_expiration_conflict_resolves_from_refetched_session(
     ctrl.entities.update = AsyncMock(side_effect=[NemoEntityConflictError("conflict"), refreshed])
     ctrl.entities.get_by_id = AsyncMock(return_value=refreshed)
 
-    with patch.object(controller_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
         result = await ctrl._expire_session_if_due(stale, at=EXPIRATION_NOW)
 
     assert (result is refreshed) is expected_cleanup
