@@ -102,14 +102,27 @@ describe('ExperimentDetailRoute', () => {
       expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
     });
 
-    it("lets a viewer's stored choice override the flag", async () => {
-      // The absent-key case must stay distinguishable from a stored `false`, or the flag would win
-      // back and the viewer could never dismiss the chart on a flagged experiment.
-      window.localStorage.setItem(`nemo-studio:experiment-trend:${group.id}`, 'false');
+    it("lets a viewer's stored choice override the flag it was made against", async () => {
+      window.localStorage.setItem(
+        `nemo-studio:experiment-trend:${group.id}`,
+        JSON.stringify({ visible: false, flag: true })
+      );
       mockGroup({ show_evaluations_over_time: true });
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
       expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('retires a stored choice once the flag has moved under it', async () => {
+      // The viewer hid the chart while the flag was off; the owner has since turned it on.
+      window.localStorage.setItem(
+        `nemo-studio:experiment-trend:${group.id}`,
+        JSON.stringify({ visible: false, flag: false })
+      );
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
     });
   });
 });

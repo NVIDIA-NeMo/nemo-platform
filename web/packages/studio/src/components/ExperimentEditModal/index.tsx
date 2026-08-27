@@ -64,11 +64,12 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
     [experimentsPage]
   );
 
-  // The detail page's chart visibility defers to `show_evaluations_over_time` only until a viewer
-  // toggles it; after that their stored choice wins. Flipping the flag here has to drop that choice,
-  // or the save appears to do nothing on the page behind the modal. Deleting through the hook also
-  // notifies the open page, so the chart appears or disappears without a reload.
-  const [, , clearTrendVisibility] = useLocalStorage<boolean>(trendVisibilityStorageKey(group.id));
+  // `resolveTrendVisible` already retires a stored choice whose stamped flag no longer matches, which
+  // covers the flag moving anywhere else — API, CLI, another tab. It cannot cover a round trip: turn
+  // the flag off and back on and the stamp matches again, so a viewer who had hidden the chart would
+  // watch the owner's edit do nothing. An explicit edit here is unambiguous, so drop the choice
+  // outright. Deleting through the hook notifies the open page, so the chart follows without a reload.
+  const [, , clearTrendChoice] = useLocalStorage(trendVisibilityStorageKey(group.id));
 
   const { mutateAsync: updateExperiment, isPending } = useUpdateExperiment({
     mutation: {
@@ -102,7 +103,7 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
         },
       });
       if (showEvaluationsOverTime !== (group.show_evaluations_over_time ?? false)) {
-        clearTrendVisibility();
+        clearTrendChoice();
       }
       onClose();
     } catch (error) {

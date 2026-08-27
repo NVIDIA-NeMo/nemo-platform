@@ -23,8 +23,6 @@ const group: ExperimentResponse = {
   evaluation_count: 0,
 };
 
-const TREND_KEY = `nemo-studio:experiment-trend:${group.id}`;
-
 describe('ExperimentEditModal', () => {
   it('resends the fields it does not edit, which a full-replace update would otherwise clear', async () => {
     let body: Record<string, unknown> | undefined;
@@ -62,7 +60,9 @@ describe('ExperimentEditModal', () => {
     });
   });
 
-  describe('over-time flag and the chart visibility a viewer stored', () => {
+  describe('the chart choice a viewer stored', () => {
+    const TREND_KEY = `nemo-studio:experiment-trend:${group.id}`;
+
     const mockRequests = () => {
       let saved = false;
       server.use(
@@ -90,10 +90,10 @@ describe('ExperimentEditModal', () => {
       window.localStorage.clear();
     });
 
-    it('drops the stored choice when the flag is flipped, so the new flag decides', async () => {
+    it('drops it when the over-time flag is flipped, so the owner edit is not a no-op', async () => {
       const isSaved = mockRequests();
-      // A viewer who had hidden the chart on an unflagged experiment.
-      window.localStorage.setItem(TREND_KEY, 'false');
+      // Stamped against the flag's current value, so it would otherwise survive a round trip.
+      window.localStorage.setItem(TREND_KEY, JSON.stringify({ visible: false, flag: false }));
 
       render(<ExperimentEditModal open onClose={vi.fn()} workspace={WORKSPACE} group={group} />);
       await userEvent.click(await screen.findByRole('switch', { name: /evaluate over time/i }));
@@ -103,17 +103,18 @@ describe('ExperimentEditModal', () => {
       await waitFor(() => expect(window.localStorage.getItem(TREND_KEY)).toBeNull());
     });
 
-    it('keeps the stored choice when the flag is left alone', async () => {
+    it('keeps it when the over-time flag is left alone', async () => {
       const isSaved = mockRequests();
-      window.localStorage.setItem(TREND_KEY, 'false');
+      const stored = JSON.stringify({ visible: false, flag: false });
+      window.localStorage.setItem(TREND_KEY, stored);
 
       render(<ExperimentEditModal open onClose={vi.fn()} workspace={WORKSPACE} group={group} />);
-      // Edit something else entirely; the viewer's chart choice is not this save's business.
+      // Edit something else; a viewer's chart choice is not this save's business.
       await userEvent.click(await screen.findByRole('switch', { name: /favorite/i }));
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(isSaved()).toBe(true));
-      expect(window.localStorage.getItem(TREND_KEY)).toBe('false');
+      expect(window.localStorage.getItem(TREND_KEY)).toBe(stored);
     });
   });
 });

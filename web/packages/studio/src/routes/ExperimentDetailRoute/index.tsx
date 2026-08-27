@@ -6,7 +6,11 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
-import { trendVisibilityStorageKey } from '@studio/components/charts/ExperimentTrendChart/visibility';
+import {
+  resolveTrendVisible,
+  type TrendVisibilityChoice,
+  trendVisibilityStorageKey,
+} from '@studio/components/charts/ExperimentTrendChart/visibility';
 import { ExperimentDataView } from '@studio/components/dataViews/ExperimentDataView';
 import { ExperimentEditModal } from '@studio/components/ExperimentEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
@@ -38,17 +42,15 @@ export const ExperimentDetailRoute: FC = () => {
   );
   const paretoVisible = storedParetoVisible ?? false;
 
-  // Over-time trend visibility, persisted per group like the Pareto view. Unlike it, the default
-  // is the experiment's own `show_evaluations_over_time` flag — a flagged experiment is one whose
-  // owner has said its evaluations are comparable, so the chart is worth showing unasked. Once a
-  // viewer toggles it, their stored choice wins over the flag.
-  // No default passed, deliberately: `useLocalStorage` returns its default when the key is absent,
-  // so passing `false` here would make "never toggled" indistinguishable from "toggled off" and the
-  // flag below would never be consulted.
-  const [storedTrendVisible, setTrendVisible] = useLocalStorage<boolean>(
+  // Over-time trend visibility. The default is the experiment's own `show_evaluations_over_time`
+  // flag — a flagged experiment is one whose owner has said its evaluations are comparable, so the
+  // chart is worth showing unasked. A viewer's own toggle wins, but only until the flag changes;
+  // `resolveTrendVisible` retires the stored choice at that point so the owner's edit takes effect.
+  const [storedTrendChoice, setTrendChoice] = useLocalStorage<TrendVisibilityChoice>(
     trendVisibilityStorageKey(group?.id)
   );
-  const trendVisible = storedTrendVisible ?? Boolean(group?.show_evaluations_over_time);
+  const trendFlag = Boolean(group?.show_evaluations_over_time);
+  const trendVisible = resolveTrendVisible(storedTrendChoice, trendFlag);
 
   useBreadcrumbs({
     items: [
@@ -115,7 +117,7 @@ export const ExperimentDetailRoute: FC = () => {
                     <Button
                       kind="tertiary"
                       aria-pressed={trendVisible}
-                      onClick={() => setTrendVisible(!trendVisible)}
+                      onClick={() => setTrendChoice({ visible: !trendVisible, flag: trendFlag })}
                     >
                       <ChartLine width={12} height={12} className="text-brand" />
                       {trendVisible ? 'Hide over time' : 'Over time'}
