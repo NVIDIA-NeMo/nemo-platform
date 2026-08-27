@@ -176,10 +176,10 @@ def _dataset_csv(rows: int = DEFAULT_INPUT_ROWS) -> str:
 def _upload_dataset(sdk: NeMoPlatform, workspace: str, *, rows: int = DEFAULT_INPUT_ROWS) -> tuple[str, str]:
     fileset = _unique_name("nss-inputs")
     _create_fileset(sdk, workspace, fileset)
-    sdk.files.upload_content(
-        fileset=fileset,
+    client_from_platform(sdk, FilesClient).upload_file(
+        name=fileset,
         workspace=workspace,
-        remote_path=INPUT_REMOTE_PATH,
+        path=INPUT_REMOTE_PATH,
         content=_dataset_csv(rows),
     )
     return fileset, f"{workspace}/{fileset}#{INPUT_REMOTE_PATH}"
@@ -488,10 +488,14 @@ def test_safe_synthesizer_fileset_upload_download_round_trips(
     nss_dataset: tuple[str, str],
 ) -> None:
     fileset, _ = nss_dataset
-    downloaded = sdk.files.download_content(
-        fileset=fileset,
-        workspace=workspace,
-        remote_path=INPUT_REMOTE_PATH,
+    downloaded = (
+        client_from_platform(sdk, FilesClient)
+        .download_file(
+            name=fileset,
+            workspace=workspace,
+            path=INPUT_REMOTE_PATH,
+        )
+        .read()
     )
 
     assert downloaded.decode("utf-8") == _dataset_csv()

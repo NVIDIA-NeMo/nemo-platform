@@ -125,11 +125,11 @@ def test_usage_show_with_fileset_ref_uses_sdk(app, tmp_natjobs_dir: Path, fake_s
     # The resolved-target banner goes to stderr; stdout stays clean JSON.
     payload = json.loads(result.stdout)
     assert len(payload["runs"]) == 4
-    assert len(fake.files.calls) == 1
-    call = fake.files.calls[0]
-    assert call["fileset"] == "my-fileset"
-    assert call["workspace"] == "ws-test"
-    assert call["remote_path"] == ""
+    # Typed contract: one list_files call, then a download_file per file.
+    assert fake.files.list_calls == [{"name": "my-fileset", "workspace": "ws-test"}]
+    assert len(fake.files.calls) == 4
+    assert all(c["name"] == "my-fileset" and c["workspace"] == "ws-test" for c in fake.files.calls)
+    assert all(c["path"].endswith("/result.json") for c in fake.files.calls)
 
 
 def test_usage_show_batch_partial_null_tokens_nulls_compute_units_total(
@@ -182,18 +182,28 @@ def test_usage_show_rejects_non_finite_total_params(app, tmp_run_dir: Path) -> N
         assert bad in result.output, (bad, result.output)
 
 
-def test_usage_show_sdk_download_failure_exits_cleanly(app) -> None:
+def test_usage_show_sdk_download_failure_exits_cleanly(app, monkeypatch) -> None:
     """An SDK download error exits 1 with a clean message — no Python traceback."""
 
-    class BoomSDK:
-        class _Files:
-            def download(self, **_):
-                raise RuntimeError("simulated SDK failure: fileset not found")
+    class BoomFiles:
+        def list_files(self, *, workspace=None, name, query_params=None):
+            listing = [type("_Entry", (), {"path": "result.json"})()]
 
-        def __init__(self) -> None:
-            self.files = BoomSDK._Files()
+            class Resp:
+                def data(self):
+                    return type("_Listing", (), {"data": listing})()
 
-    with patch("nemo_agents_plugin.usage.cli._build_sdk", return_value=BoomSDK()):
+            return Resp()
+
+        def download_file(self, *, workspace=None, name, path):
+            raise RuntimeError("simulated SDK failure: fileset not found")
+
+    sdk = type("_BoomSDK", (), {"build_files_client": lambda self: BoomFiles()})()
+    monkeypatch.setattr(
+        "nemo_agents_plugin.usage.sources.fileset.client_from_platform",
+        lambda _platform, _client_cls: BoomFiles(),
+    )
+    with patch("nemo_agents_plugin.usage.cli._build_sdk", return_value=sdk):
         result = runner.invoke(app, ["usage", "show", "missing-fileset"])
 
     assert result.exit_code == 1
@@ -320,6 +330,29 @@ def test_usage_show_fileset_single_run_rel_dot(app, tmp_path: Path, fake_sdk_fac
     assert payload["task"]["source_dir"] == "single-fileset"
 
 
+def test_fileset_path_stages_nested_paths_preserving_relative(app, tmp_path: Path, fake_sdk_factory) -> None:
+    """fileset_path stages fileset files under their relative (nested) paths.
+
+    Each file is downloaded to ``tmp/<relative-path>`` rather than flattened to
+    the staging root, so a fileset with subdirectories round-trips intact.
+    """
+    staged = tmp_path / "staged-fileset"
+    nested = staged / "configs" / "v1"
+    nested.mkdir(parents=True)
+    (nested / "config.json").write_text('{"a": 1}')
+    (staged / "top.txt").write_text("top")
+    fake = fake_sdk_factory(staged)
+
+    from nemo_agents_plugin.usage.sources.fileset import FilesetRef, fileset_path
+
+    with fileset_path(FilesetRef("nested-fs"), sdk=fake, workspace="default") as staged_dir:
+        assert (staged_dir / "top.txt").read_text() == "top"
+        assert (staged_dir / "configs" / "v1" / "config.json").read_text() == '{"a": 1}'
+
+    # The fake recorded per-file downloads under their relative paths.
+    assert {c["path"] for c in fake.files.calls} == {"top.txt", "configs/v1/config.json"}
+
+
 def test_usage_show_rejects_multi_segment_fileset_ref(app, tmp_path: Path, fake_sdk_factory) -> None:
     """A multi-segment fileset ref (``ws/sub/path``) errors cleanly, not as a tempdir crash."""
     fake = fake_sdk_factory(tmp_path)
@@ -386,6 +419,5 @@ def test_usage_show_with_workspace_qualified_fileset_ref(app, tmp_natjobs_dir: P
         )
 
     assert result.exit_code == 0, result.output
-    call = fake.files.calls[0]
-    assert call["fileset"] == "eval-results"
-    assert call["workspace"] == "other-ws"
+    assert fake.files.list_calls == [{"name": "eval-results", "workspace": "other-ws"}]
+    assert all(c["name"] == "eval-results" and c["workspace"] == "other-ws" for c in fake.files.calls)

@@ -238,34 +238,30 @@ class TestS3StorageBackend:
         upload_file = tmp_path / "test-file.txt"
         upload_file.write_bytes(test_content)
 
-        sdk.files.upload(
-            local_path=str(upload_file),
-            remote_path="test-file.txt",
-            fileset=s3_fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            content=test_content,
+            path="test-file.txt",
+            name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
         # Verify via list
-        files = sdk.files.list(fileset=s3_fileset.name, workspace=s3_fileset.workspace)
-        assert len(files.data) == 1
-        assert files.data[0].path == "test-file.txt"
-        assert files.data[0].size == len(test_content)
+        listing = files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data
+        assert len(listing) == 1
+        assert listing[0].path == "test-file.txt"
+        assert listing[0].size == len(test_content)
 
         # Download to memory and verify
-        downloaded_content = sdk.files.download_content(
-            remote_path="test-file.txt",
-            fileset=s3_fileset.name,
-            workspace=s3_fileset.workspace,
-        )
+        downloaded_content = files.download_file(
+            name=s3_fileset.name, workspace=s3_fileset.workspace, path="test-file.txt"
+        ).read()
         assert downloaded_content == test_content
 
-        # Download to file and verify
+        # Download to a file and verify
         download_path = tmp_path / "downloaded.txt"
-        sdk.files.download(
-            remote_path="test-file.txt",
-            local_path=str(download_path),
-            fileset=s3_fileset.name,
-            workspace=s3_fileset.workspace,
+        download_path.write_bytes(
+            files.download_file(name=s3_fileset.name, workspace=s3_fileset.workspace, path="test-file.txt").read()
         )
         assert download_path.read_bytes() == test_content
 
@@ -279,25 +275,24 @@ class TestS3StorageBackend:
         upload_file = tmp_path / "empty-file.txt"
         upload_file.write_bytes(test_content)
 
-        sdk.files.upload(
-            local_path=str(upload_file),
-            remote_path="empty-file.txt",
-            fileset=s3_fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            content=upload_file.read_bytes(),
+            path="empty-file.txt",
+            name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
         # Verify via list
-        files = sdk.files.list(fileset=s3_fileset.name, workspace=s3_fileset.workspace)
-        assert len(files.data) == 1
-        assert files.data[0].path == "empty-file.txt"
-        assert files.data[0].size == 0
+        listing = files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data
+        assert len(listing) == 1
+        assert listing[0].path == "empty-file.txt"
+        assert listing[0].size == 0
 
         # Download to memory and verify
-        downloaded_content = sdk.files.download_content(
-            remote_path="empty-file.txt",
-            fileset=s3_fileset.name,
-            workspace=s3_fileset.workspace,
-        )
+        downloaded_content = files.download_file(
+            name=s3_fileset.name, workspace=s3_fileset.workspace, path="empty-file.txt"
+        ).read()
         assert downloaded_content == test_content
 
     def test_upload_large_file(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
@@ -311,22 +306,21 @@ class TestS3StorageBackend:
         upload_file = tmp_path / "large-file.bin"
         upload_file.write_bytes(test_content)
 
-        sdk.files.upload(
-            local_path=str(upload_file),
-            remote_path="large-file.bin",
-            fileset=s3_fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            content=upload_file.read_bytes(),
+            path="large-file.bin",
+            name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
-        files = sdk.files.list(fileset=s3_fileset.name, workspace=s3_fileset.workspace)
-        assert len(files.data) == 1
-        assert files.data[0].size == len(test_content)
+        listing = files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data
+        assert len(listing) == 1
+        assert listing[0].size == len(test_content)
 
-        downloaded_content = sdk.files.download_content(
-            remote_path="large-file.bin",
-            fileset=s3_fileset.name,
-            workspace=s3_fileset.workspace,
-        )
+        downloaded_content = files.download_file(
+            name=s3_fileset.name, workspace=s3_fileset.workspace, path="large-file.bin"
+        ).read()
         assert downloaded_content == test_content
 
     def test_download_with_byte_range(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
@@ -335,47 +329,45 @@ class TestS3StorageBackend:
         upload_file = tmp_path / "range-test.txt"
         upload_file.write_bytes(test_content)
 
-        sdk.files.upload(
-            local_path=str(upload_file),
-            remote_path="range-test.txt",
-            fileset=s3_fileset.name,
+        client_from_platform(sdk, FilesClient).upload_file(
+            content=upload_file.read_bytes(),
+            path="range-test.txt",
+            name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
         # Download bytes 5-10 (inclusive) using range header
-        range_response = sdk.files._download_file(
-            "range-test.txt",
-            workspace=s3_fileset.workspace,
-            name=s3_fileset.name,
-            extra_headers={"Range": "bytes=5-10"},
+        range_response = (
+            client_from_platform(sdk, FilesClient)
+            .with_headers({"Range": "bytes=5-10"})
+            .download_file(name=s3_fileset.name, workspace=s3_fileset.workspace, path="range-test.txt")
         )
-
-        assert range_response.status_code == 206  # Partial Content
-        assert range_response.read() == b"56789A"
+        range_content = range_response.read()
+        assert range_response.http_response.status_code == 206  # Partial Content
+        assert range_content == b"56789A"
 
     def test_delete_file(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test upload, delete, verify gone."""
         upload_file = tmp_path / "to-delete.txt"
         upload_file.write_bytes(b"Delete me!")
 
-        sdk.files.upload(
-            local_path=str(upload_file),
-            remote_path="to-delete.txt",
-            fileset=s3_fileset.name,
+        files = client_from_platform(sdk, FilesClient)
+        files.upload_file(
+            content=upload_file.read_bytes(),
+            path="to-delete.txt",
+            name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
-        files = sdk.files.list(fileset=s3_fileset.name, workspace=s3_fileset.workspace)
-        assert len(files.data) == 1
+        assert len(files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data) == 1
 
-        sdk.files.delete(
-            remote_path="to-delete.txt",
-            fileset=s3_fileset.name,
+        files.delete_file(
+            path="to-delete.txt",
+            name=s3_fileset.name,
             workspace=s3_fileset.workspace,
         )
 
-        files = sdk.files.list(fileset=s3_fileset.name, workspace=s3_fileset.workspace)
-        assert len(files.data) == 0
+        assert len(files.list_files(name=s3_fileset.name, workspace=s3_fileset.workspace).data().data) == 0
 
     def test_delete_fileset_with_files(
         self,
@@ -414,17 +406,17 @@ class TestS3StorageBackend:
             }
 
             for remote_path, content in files_to_upload.items():
-                local_file = tmp_path / "upload.tmp"
-                local_file.write_bytes(content)
-                sdk.files.upload(
-                    local_path=str(local_file),
-                    remote_path=remote_path,
-                    fileset=fileset.name,
+                files_client.upload_file(
+                    content=content,
+                    path=remote_path,
+                    name=fileset.name,
                     workspace=fileset.workspace,
                 )
 
             # Verify files exist
-            file_list = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
+            file_list = (
+                client_from_platform(sdk, FilesClient).list_files(name=fileset.name, workspace=fileset.workspace).data()
+            )
             assert len(file_list.data) == 3
 
             # Delete the fileset - this calls delete_all() on the S3 backend
@@ -453,17 +445,20 @@ class TestS3StorageBackend:
         }
 
         for remote_path, content in files_to_upload.items():
-            local_file = tmp_path / "upload.tmp"
-            local_file.write_bytes(content)
-            sdk.files.upload(
-                local_path=str(local_file),
-                remote_path=remote_path,
-                fileset=s3_fileset.name,
+            client_from_platform(sdk, FilesClient).upload_file(
+                content=content,
+                path=remote_path,
+                name=s3_fileset.name,
                 workspace=s3_fileset.workspace,
             )
 
-        files = sdk.files.list(fileset=s3_fileset.name, workspace=s3_fileset.workspace)
-        paths = {f.path for f in files.data}
+        files = (
+            client_from_platform(sdk, FilesClient)
+            .list_files(name=s3_fileset.name, workspace=s3_fileset.workspace)
+            .data()
+            .data
+        )
+        paths = {f.path for f in files}
         assert paths == set(files_to_upload.keys())
 
     def test_prefix_isolation(
@@ -489,41 +484,46 @@ class TestS3StorageBackend:
                 storage=s3_storage_config(s3_test_bucket, access_key_secret, secret_key_secret, prefix=prefix2),
             ) as fileset2:
                 # Upload to each fileset
-                file1 = tmp_path / "file1.txt"
-                file1.write_bytes(b"fileset1 content")
-                sdk.files.upload(
-                    local_path=str(file1),
-                    remote_path="file.txt",
-                    fileset=fileset1.name,
+                files = client_from_platform(sdk, FilesClient)
+                files.upload_file(
+                    content=b"fileset1 content",
+                    path="file.txt",
+                    name=fileset1.name,
                     workspace=fileset1.workspace,
                 )
 
-                file2 = tmp_path / "file2.txt"
-                file2.write_bytes(b"fileset2 content")
-                sdk.files.upload(
-                    local_path=str(file2),
-                    remote_path="file.txt",
-                    fileset=fileset2.name,
+                files.upload_file(
+                    content=b"fileset2 content",
+                    path="file.txt",
+                    name=fileset2.name,
                     workspace=fileset2.workspace,
                 )
 
                 # Verify isolation
-                files1 = sdk.files.list(fileset=fileset1.name, workspace=fileset1.workspace)
+                files1 = (
+                    client_from_platform(sdk, FilesClient)
+                    .list_files(name=fileset1.name, workspace=fileset1.workspace)
+                    .data()
+                )
                 assert len(files1.data) == 1
 
-                files2 = sdk.files.list(fileset=fileset2.name, workspace=fileset2.workspace)
+                files2 = (
+                    client_from_platform(sdk, FilesClient)
+                    .list_files(name=fileset2.name, workspace=fileset2.workspace)
+                    .data()
+                )
                 assert len(files2.data) == 1
 
                 # Verify content isolation
-                content1 = sdk.files.download_content(
-                    remote_path="file.txt",
-                    fileset=fileset1.name,
-                    workspace=fileset1.workspace,
+                content1 = (
+                    client_from_platform(sdk, FilesClient)
+                    .download_file(name=fileset1.name, workspace=fileset1.workspace, path="file.txt")
+                    .read()
                 )
-                content2 = sdk.files.download_content(
-                    remote_path="file.txt",
-                    fileset=fileset2.name,
-                    workspace=fileset2.workspace,
+                content2 = (
+                    client_from_platform(sdk, FilesClient)
+                    .download_file(name=fileset2.name, workspace=fileset2.workspace, path="file.txt")
+                    .read()
                 )
                 assert content1 == b"fileset1 content"
                 assert content2 == b"fileset2 content"
@@ -606,20 +606,20 @@ class TestS3DefaultStorageConfig:
             upload_file = tmp_path / "test.txt"
             upload_file.write_bytes(test_content)
 
-            sdk_with_s3_default.files.upload(
-                local_path=str(upload_file),
-                remote_path="test.txt",
-                fileset=fileset.name,
+            files.upload_file(
+                content=upload_file.read_bytes(),
+                path="test.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
             # List files
-            files = sdk_with_s3_default.files.list(
+            files_response = sdk_with_s3_default.files.list(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
-            assert len(files.data) == 1
-            assert files.data[0].path == "test.txt"
+            assert len(files_response) == 1
+            assert files_response[0].path == "test.txt"
 
             # Download and verify content
             downloaded = sdk_with_s3_default.files.download_content(
@@ -652,19 +652,19 @@ class TestS3DefaultStorageConfig:
             # Upload same filename to each
             file1 = tmp_path / "file1.txt"
             file1.write_bytes(b"content for fileset 1")
-            sdk_with_s3_default.files.upload(
-                local_path=str(file1),
-                remote_path="shared-name.txt",
-                fileset=fileset1.name,
+            files.upload_file(
+                content=file1.read_bytes(),
+                path="shared-name.txt",
+                name=fileset1.name,
                 workspace=fileset1.workspace,
             )
 
             file2 = tmp_path / "file2.txt"
             file2.write_bytes(b"content for fileset 2")
-            sdk_with_s3_default.files.upload(
-                local_path=str(file2),
-                remote_path="shared-name.txt",
-                fileset=fileset2.name,
+            files.upload_file(
+                content=file2.read_bytes(),
+                path="shared-name.txt",
+                name=fileset2.name,
                 workspace=fileset2.workspace,
             )
 
@@ -717,12 +717,12 @@ class TestS3DefaultStorageConfig:
                 fileset=fileset.name,
                 workspace=fileset.workspace,
             )
-            assert len(files.data) > 0, "Expected files in the HuggingFace repo"
+            assert len(files) > 0, "Expected files in the HuggingFace repo"
 
             # Find config.json (typically small and always present in model repos)
             config_file = next(
-                (f for f in files.data if f.path == "config.json"),
-                files.data[0],  # fallback to first file
+                (f for f in files if f.path == "config.json"),
+                files[0],  # fallback to first file
             )
 
             # Download the file - this exercises preflight validation
