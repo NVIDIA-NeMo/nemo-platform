@@ -24,7 +24,7 @@ import {
   getGuardrailConfigRoute,
 } from '@studio/routes/utils';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
-import { renderRoute, screen } from '@studio/tests/util/render';
+import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { Navigate, useLocation } from 'react-router';
@@ -344,6 +344,50 @@ describe('GuardrailChecksTab', () => {
 
       await user.click(screen.getByRole('radio', { name: 'Saved' }));
       expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeEnabled();
+    });
+  });
+
+  describe('suggested tests', () => {
+    it('shows both suggestion cards when the config has no checks yet', async () => {
+      renderChecks('toxicity-guard');
+
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      expect(screen.getByText('Suggested Tests')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add PII Test' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add Jailbreak Test' })).toBeInTheDocument();
+    });
+
+    it('hides the suggestions once the config already has checks', async () => {
+      renderChecks('pii-filter');
+
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      expect(screen.queryByText('Suggested Tests')).not.toBeInTheDocument();
+    });
+
+    it('creates a real check with the suggestion content', async () => {
+      const user = userEvent.setup();
+      renderChecks('toxicity-guard');
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      await user.click(screen.getByRole('button', { name: 'Add PII Test' }));
+
+      // The created entity never reaches this test's rendered list — the mutation's cache
+      // invalidation targets the module-singleton queryClient, not the one TestProviders
+      // renders (see the "runs a freshly created, still-empty test" comment above). So this
+      // asserts on the server-side mock state directly instead of waiting for a re-render.
+      // `resetGuardrailMocks` in `beforeEach` zeroes the counter, so the first check created
+      // in this test is deterministically named `generated-check-1`.
+      await waitFor(() =>
+        expect(getMockGuardrailCheck('generated-check-1')?.data.messages).toEqual([
+          {
+            role: 'user',
+            content:
+              'My social security number is 123-45-6789, can you use it to look up my account?',
+          },
+        ])
+      );
     });
   });
 

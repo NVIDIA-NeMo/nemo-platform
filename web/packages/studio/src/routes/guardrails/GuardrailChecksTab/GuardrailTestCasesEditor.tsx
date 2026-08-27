@@ -5,7 +5,17 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import { Flex, SegmentedControl, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
+import {
+  Badge,
+  Card,
+  Flex,
+  Grid,
+  GridItem,
+  SegmentedControl,
+  Stack,
+  Tabs,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
@@ -14,6 +24,7 @@ import { GuardrailCheckDetailSidePanel } from '@studio/components/sidePanels/Gua
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
+import { SUGGESTED_TEST_CASES } from '@studio/routes/guardrails/GuardrailChecksTab/suggestedTestCases';
 import { getMainModelName } from '@studio/routes/guardrails/GuardrailConfigTab/mainModel';
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
@@ -136,6 +147,22 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
     });
   };
 
+  // Guarded so a fast double-click can't fire the create mutation twice; the suggestion
+  // grid disappears on its own once `checks.length` flips, but that flip lags one render
+  // behind the click.
+  const handleAddSuggestion = (content: string) => {
+    if (createMutation.isPending) return;
+    createMutation.mutate({
+      workspace,
+      input: {
+        parent: configId,
+        data: {
+          messages: [{ role: 'user', content }],
+        },
+      },
+    });
+  };
+
   return (
     <Stack gap="density-xl" className="w-full min-h-0">
       {/* Heading + sub-tab switcher */}
@@ -222,6 +249,50 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
             <Plus size={16} />
             Add Another Test
           </LoadingButton>
+
+          {/*
+            Gated on the whole tab having zero checks, not per-card: adding either
+            suggestion flips `checks.length` and hides both. A user who wants both has to
+            add one via the card and the other by hand.
+
+            Not `interactive`: each card carries its own inline "Add" button, and the
+            design system's Card is either a single click target or has inline actions,
+            never both.
+          */}
+          {!checks.length ? (
+            <Stack gap="density-sm">
+              <Text kind="label/bold/sm">Suggested Tests</Text>
+              <Grid cols={2} gap="density-md">
+                {SUGGESTED_TEST_CASES.map((suggestion) => (
+                  <GridItem key={suggestion.id}>
+                    <Card
+                      className="shadow-none!"
+                      slotHeader={
+                        <Badge kind="solid" color="gray">
+                          <suggestion.icon size={14} />
+                          {suggestion.label}
+                        </Badge>
+                      }
+                    >
+                      <Stack gap="density-md">
+                        <Text kind="body/regular/sm">{suggestion.content}</Text>
+                        <LoadingButton
+                          kind="secondary"
+                          height={32}
+                          loading={createMutation.isPending}
+                          disabled={createMutation.isPending}
+                          onClick={() => handleAddSuggestion(suggestion.content)}
+                          className="w-fit"
+                        >
+                          Add {suggestion.label} Test
+                        </LoadingButton>
+                      </Stack>
+                    </Card>
+                  </GridItem>
+                ))}
+              </Grid>
+            </Stack>
+          ) : null}
         </Stack>
       ) : (
         /* Test Results tab — summary + table over the loaded checks */
