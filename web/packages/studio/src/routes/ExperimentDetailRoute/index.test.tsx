@@ -79,4 +79,37 @@ describe('ExperimentDetailRoute', () => {
     expect(await screen.findByText('Editable group description')).toBeInTheDocument();
     expect(screen.queryByText('Summary')).not.toBeInTheDocument();
   });
+
+  describe('over-time chart visibility', () => {
+    const trendToggle = () => screen.getByRole('button', { name: /over time/i });
+
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it('shows the chart unasked when the experiment is flagged to evaluate over time', async () => {
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      // aria-pressed is the toggle's own view of whether the chart is showing.
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('hides the chart on an unflagged experiment', async () => {
+      mockGroup({ show_evaluations_over_time: false });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it("lets a viewer's stored choice override the flag", async () => {
+      // The absent-key case must stay distinguishable from a stored `false`, or the flag would win
+      // back and the viewer could never dismiss the chart on a flagged experiment.
+      window.localStorage.setItem(`nemo-studio:experiment-trend:${group.id}`, 'false');
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
 });

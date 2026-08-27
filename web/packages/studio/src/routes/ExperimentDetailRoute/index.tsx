@@ -41,9 +41,11 @@ export const ExperimentDetailRoute: FC = () => {
   // is the experiment's own `show_evaluations_over_time` flag — a flagged experiment is one whose
   // owner has said its evaluations are comparable, so the chart is worth showing unasked. Once a
   // viewer toggles it, their stored choice wins over the flag.
+  // No default passed, deliberately: `useLocalStorage` returns its default when the key is absent,
+  // so passing `false` here would make "never toggled" indistinguishable from "toggled off" and the
+  // flag below would never be consulted.
   const [storedTrendVisible, setTrendVisible] = useLocalStorage<boolean>(
-    `nemo-studio:experiment-trend:${group?.id ?? ''}`,
-    false
+    `nemo-studio:experiment-trend:${group?.id ?? ''}`
   );
   const trendVisible = storedTrendVisible ?? Boolean(group?.show_evaluations_over_time);
 
