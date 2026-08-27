@@ -27,6 +27,39 @@ DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/rl/Dockerfile.nmp-rl-base"),
     Path("docker/unsloth/no_override_requirements.txt"),
 )
+CVE_PACKAGE_FLOORS = (
+    (
+        "mlflow",
+        "3.15.0",
+        (
+            Path("docker/automodel/Dockerfile.nmp-automodel-base"),
+            Path("docker/rl/Dockerfile.nmp-rl-base"),
+        ),
+    ),
+    (
+        "mlflow-skinny",
+        "3.15.0",
+        (
+            Path("pyproject.toml"),
+            Path("services/rl/pyproject.toml"),
+            Path("services/unsloth/pyproject.toml"),
+            Path("docker/automodel/Dockerfile.nmp-automodel-base"),
+            Path("docker/Dockerfile.nmp-unsloth-training"),
+            Path("docker/locks/nmp-gym-tasks/pyproject.toml"),
+        ),
+    ),
+    (
+        "sqlparse",
+        "0.6.0",
+        (
+            Path("pyproject.toml"),
+            Path("docker/automodel/Dockerfile.nmp-automodel-base"),
+            Path("docker/Dockerfile.nmp-unsloth-training"),
+            Path("docker/rl/Dockerfile.nmp-rl-base"),
+            Path("docker/locks/nmp-gym-tasks/pyproject.toml"),
+        ),
+    ),
+)
 
 
 def _load_pyproject(path: Path) -> dict:
@@ -36,6 +69,12 @@ def _load_pyproject(path: Path) -> dict:
 
 def _normalize_package_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _package_name_from_spec(spec: str) -> str:
+    match = re.match(r"[A-Za-z0-9_.-]+", spec)
+    assert match is not None
+    return _normalize_package_name(match.group())
 
 
 def _notice_wandb_version() -> str:
@@ -50,6 +89,15 @@ def _wandb_package_specs(path: Path) -> list[str]:
     for line in path.read_text(encoding="utf-8").splitlines():
         line_without_comment = line.split("#", maxsplit=1)[0]
         specs.extend(WANDB_PACKAGE_SPEC_RE.findall(line_without_comment))
+    return specs
+
+
+def _package_specs(path: Path, package: str) -> list[str]:
+    pattern = re.compile(rf"(?<![\w./-]){re.escape(package)}(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
+    specs: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line_without_comment = line.split("#", maxsplit=1)[0]
+        specs.extend(pattern.findall(line_without_comment))
     return specs
 
 
@@ -75,6 +123,26 @@ def test_distributed_image_wandb_specs_use_notice_floor(path: Path) -> None:
 
     assert specs
     assert all(spec == expected for spec in specs)
+
+
+@pytest.mark.parametrize(
+    ("package", "floor", "path"),
+    [
+        pytest.param(package, floor, ROOT / path, id=f"{package}-{path}")
+        for package, floor, paths in CVE_PACKAGE_FLOORS
+        for path in paths
+    ],
+)
+def test_distributed_image_cve_package_specs_use_reviewed_floor(
+    package: str,
+    floor: str,
+    path: Path,
+) -> None:
+    """CVE-remediated package constraints must retain their reviewed floor."""
+    specs = _package_specs(path, package)
+
+    assert specs
+    assert all(spec.startswith(f"{package}>={floor}") for spec in specs)
 
 
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
@@ -127,10 +195,7 @@ def test_sdk_editable_workspace_slice_includes_sdk_alias_package(slice_name: str
 def test_deployments_plugin_is_optional_for_models_service():
     """The lazily loaded deployments backend must remain an optional package."""
     models = _load_pyproject(ROOT / "services/core/models/pyproject.toml")
-    dependency_names = {
-        _normalize_package_name(re.match(r"[A-Za-z0-9_.-]+", dependency).group())
-        for dependency in models["project"]["dependencies"]
-    }
+    dependency_names = {_package_name_from_spec(dependency) for dependency in models["project"]["dependencies"]}
 
     assert "nemo-deployments-plugin" not in dependency_names, (
         "nmp-models loads the deployments backend lazily, so nemo-deployments-plugin "
