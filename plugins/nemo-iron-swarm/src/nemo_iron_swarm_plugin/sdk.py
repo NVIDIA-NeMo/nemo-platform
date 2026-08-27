@@ -167,12 +167,6 @@ class _ManifestsResource:
         """Re-resolve a frozen agent-source manifest against the agent as it is now."""
         return self._platform.post(f"{self._base(workspace)}/{name}/refresh", body={}, cast_to=dict[str, Any])
 
-    def inspect(self, *, project_fileset: str, workspace: str = "default") -> dict[str, Any]:
-        """Detect an uploaded project's layout (``POST /manifests/inspect``) to pre-fill creation."""
-        return self._platform.post(
-            f"{self._base(workspace)}/inspect", body={"project_fileset": project_fileset}, cast_to=dict[str, Any]
-        )
-
 
 class IronSwarmPluginResource:
     """Sync SDK namespace mounted as ``client.iron_swarm``."""

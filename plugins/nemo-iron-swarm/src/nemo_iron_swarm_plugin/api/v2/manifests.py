@@ -15,12 +15,10 @@ manifest only via ``POST /manifests/{name}/refresh`` — which ``apply-mitigatio
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,8 +33,6 @@ from nemo_iron_swarm_plugin.api.v2._filters import make_filter_dep
 from nemo_iron_swarm_plugin.api.v2.schemas import (
     InspectAgentRequest,
     InspectAgentResponse,
-    InspectProjectRequest,
-    InspectProjectResponse,
     ManifestFilter,
     ManifestInit,
     ManifestUpdate,
@@ -45,9 +41,8 @@ from nemo_iron_swarm_plugin.api.v2.schemas import (
 )
 from nemo_iron_swarm_plugin.authz import scope
 from nemo_iron_swarm_plugin.cli.client import base_url
-from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.entities import IronSwarmManifest
-from nemo_iron_swarm_plugin.filesets import delete_fileset, download_and_extract_project, upload_project_dir
+from nemo_iron_swarm_plugin.filesets import delete_fileset, upload_project_dir
 from nemo_iron_swarm_plugin.jobs._common import resolve_model_key
 from nemo_iron_swarm_plugin.model_config import ModelConfigDefaults, WarGameModels, model_config_defaults
 from nemo_iron_swarm_plugin.model_preflight import validate_choice
@@ -112,7 +107,7 @@ async def list_manifests(
     filter: ManifestFilter = Depends(_manifest_filter_dep),
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> dict:
-    """List saved manifests in the workspace, with pagination and an ``agent``/``source_type`` filter."""
+    """List saved manifests in the workspace, with pagination and an ``agent`` filter."""
     filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
     try:
         result = await entity_client.list(
@@ -186,42 +181,6 @@ async def validate_model_config(workspace: str, body: ValidateModelRequest) -> V
     return await run_in_threadpool(_validate)
 
 
-@router.post("/manifests/inspect", response_model=InspectProjectResponse, tags=["Iron Swarm Manifests"])
-@scope.read
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
-async def inspect_project(
-    workspace: str,
-    body: InspectProjectRequest,
-) -> InspectProjectResponse:
-    """Detect an uploaded NAT project's layout (`iron-swarm inspect`) to pre-fill the create wizard.
-
-    Downloads the project bundle, expands it, and runs the read-only, offline detector — no code is
-    executed. Returns the discovered workflows, launch mode, name, secrets, and egress as defaults.
-    """
-    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
-    bin_path = IronSwarmConfig.get().iron_swarm_bin
-
-    def _inspect() -> dict:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = download_and_extract_project(sdk, body.project_fileset, Path(tmp))
-            result = _run_iron_swarm(
-                [str(bin_path), "inspect", "--project-dir", str(project_dir), "--json"],
-                cwd=str(project_dir),
-                action="inspect",
-            )
-            return json.loads(result.stdout)
-
-    try:
-        detected = await run_in_threadpool(_inspect)
-    except _SubprocessTimeout as exc:
-        raise HTTPException(status_code=504, detail=f"Failed to inspect project: {exc}") from exc
-    except _SubprocessError as exc:
-        raise HTTPException(status_code=400, detail=f"Failed to inspect project: {exc}") from exc
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=400, detail=f"Could not read the uploaded project: {exc}") from exc
-    return InspectProjectResponse(**detected)
-
-
 @router.post("/manifests/inspect-agent", response_model=InspectAgentResponse, tags=["Iron Swarm Manifests"])
 @scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
@@ -242,6 +201,34 @@ async def inspect_agent_endpoint(workspace: str, body: InspectAgentRequest) -> I
     return InspectAgentResponse(agent=ref, port=port, secrets=secrets, warnings=warnings)
 
 
+def _yaml_with_agent_settings(manifest_yaml: str, manifest: IronSwarmManifest) -> str:
+    """Return *manifest_yaml* with the manifest's stored agent settings written into it.
+
+    The run layers these on at materialization anyway, so this is not what makes them take effect —
+    it is what makes the stored YAML *honest*. Without it the manifest we show (and that `init -o`
+    writes) is the frozen base rather than what will actually run, so an operator who sets `env` sees
+    no trace of it and reasonably concludes it was lost.
+
+    Unparseable YAML is returned untouched: a display concern must never cost someone their manifest.
+    """
+    try:
+        data = yaml.safe_load(manifest_yaml) or {}
+    except yaml.YAMLError:
+        return manifest_yaml
+    if not (isinstance(data, dict) and isinstance(data.get("agent"), dict)):
+        return manifest_yaml
+    agent = data["agent"]
+    if manifest.port:
+        agent["port"] = manifest.port
+    if manifest.egress:
+        agent["egress"] = list(manifest.egress)
+    if manifest.secrets:
+        agent["secrets"] = list(manifest.secrets)
+    if manifest.env:
+        agent["env"] = dict(manifest.env)
+    return yaml.safe_dump(data, sort_keys=False)
+
+
 @router.post("/manifests", response_model=IronSwarmManifest, status_code=201, tags=["Iron Swarm Manifests"])
 @scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.WRITE])
@@ -250,11 +237,8 @@ async def create_manifest(
     body: ManifestInit,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> IronSwarmManifest:
-    """`init`: build a manifest (from a deployed agent or an uploaded project) and persist it by ``name``."""
-    if body.source_type == "project":
-        manifest = await _build_project_manifest(workspace, body)
-    else:
-        manifest = await _build_agent_manifest(workspace, body)
+    """`init`: resolve a registered agent into a manifest and persist it by ``name``."""
+    manifest = await _build_agent_manifest(workspace, body)
     try:
         return await entity_client.create(manifest)
     except NemoEntityConflictError as exc:
@@ -319,8 +303,6 @@ async def _resolve_and_store_scaffold(
 
 async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
     """Resolve a deployed agent into a manifest and freeze its scaffold as a fileset."""
-    if not body.agent:
-        raise HTTPException(status_code=422, detail="source_type 'agent' requires an 'agent' reference.")
 
     resolved, fileset = await _resolve_and_store_scaffold(
         workspace, body.agent, egress=body.egress, port=body.port, secrets=body.secrets
@@ -342,191 +324,6 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
     # resolve_agent_to_manifest has no `env` parameter, so it is absent from the YAML it produced.
     manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
     return manifest
-
-
-def _validate_launch_mode(body: ManifestInit) -> None:
-    """Reject a launch mode we can't build, before the bundle is downloaded."""
-    if body.launch_mode and body.launch_mode not in ("workflow", "byo"):
-        raise HTTPException(
-            status_code=422, detail=f"launch_mode must be 'workflow' or 'byo'; got {body.launch_mode!r}."
-        )
-    if body.launch_mode == "byo" and not body.dockerfile and not body.manifest_yaml:
-        raise HTTPException(
-            status_code=422,
-            detail="launch_mode 'byo' requires a 'dockerfile' (or a 'manifest_yaml' that already sets one).",
-        )
-    if body.dockerfile and not body.binaries:
-        # iron-swarm's NatVictimSpec rejects BYO without them.
-        raise HTTPException(
-            status_code=422,
-            detail="'dockerfile' requires 'binaries' — glob patterns scoping which processes may egress, "
-            "e.g. ['/app/.venv/bin/**'].",
-        )
-
-
-async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
-    """Build a manifest from an uploaded NAT project by shelling ``iron-swarm init --yes``.
-
-    The bundle is expanded to a temp dir and ``init`` runs there (so ``project_dir`` resolves to ``.``);
-    the war-game re-downloads the bundle and repoints ``project_dir`` at the restored copy.
-    """
-    fileset = body.project_fileset
-    if not fileset:
-        raise HTTPException(status_code=422, detail="source_type 'project' requires a 'project_fileset'.")
-    _validate_launch_mode(body)
-
-    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
-    bin_path = IronSwarmConfig.get().iron_swarm_bin
-    port = body.port or 8000
-
-    def _init() -> str:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = download_and_extract_project(sdk, fileset, Path(tmp))
-            output = Path(tmp) / "iron-swarm.yaml"
-            cmd = [
-                str(bin_path),
-                "init",
-                "--yes",
-                "--force",
-                "--project-dir",
-                ".",
-                "--name",
-                body.name,
-                "--port",
-                str(port),
-                "-o",
-                str(output),
-            ]
-            if body.workflow:
-                cmd += ["--workflow", body.workflow]
-            if body.dockerfile:
-                # Same containment check as `secrets_file` below. The flag keeps the relative path:
-                # the run re-materializes the manifest against a different directory.
-                candidate = (project_dir / body.dockerfile).resolve()
-                if not candidate.is_relative_to(project_dir.resolve()):
-                    raise ValueError("'dockerfile' must be inside the uploaded project.")
-                if not candidate.is_file():
-                    raise ValueError(f"'dockerfile' not found in the uploaded project: {body.dockerfile}")
-                cmd += ["--dockerfile", body.dockerfile]
-                for glob in body.binaries or []:
-                    cmd += ["--binary", glob]
-            if body.secrets:
-                cmd += ["--secrets", ",".join(body.secrets)]
-            if body.secrets_file:
-                # Client-supplied, and `init` reads it on the platform host: without this it could
-                # name any readable file (e.g. /proc/self/environ) and fold it into the manifest.
-                candidate = (project_dir / body.secrets_file).resolve()
-                if not candidate.is_relative_to(project_dir.resolve()):
-                    raise ValueError("'secrets_file' must be inside the uploaded project.")
-                cmd += ["--secrets-file", str(candidate)]
-            for host in body.egress or []:
-                cmd += ["--egress", host]
-            for spec in body.backends or []:
-                cmd += ["--backend", spec]
-            _run_iron_swarm(cmd, cwd=str(project_dir), action="init")
-            return output.read_text(encoding="utf-8")
-
-    if body.manifest_yaml:
-        # The CLI already ran iron-swarm's interactive `init` at the operator's terminal; rebuilding
-        # it here with `--yes` would silently discard the answers they gave.
-        manifest_yaml = body.manifest_yaml
-    else:
-        try:
-            manifest_yaml = await run_in_threadpool(_init)
-        except _SubprocessTimeout as exc:
-            raise HTTPException(status_code=504, detail=f"Failed to build manifest from project: {exc}") from exc
-        except _SubprocessError as exc:
-            raise HTTPException(status_code=400, detail=f"Failed to build manifest from project: {exc}") from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=f"Could not read the uploaded project: {exc}") from exc
-
-    # The persisted manifest can't hold the temp project path; the run repoints it. Force project_dir='.'.
-    manifest_yaml = _with_project_dir_dot(manifest_yaml)
-    agent_section = _agent_section(manifest_yaml)
-    if not agent_section:
-        raise HTTPException(status_code=422, detail="manifest_yaml has no 'agent' section; not an iron-swarm manifest.")
-
-    # The manifest itself is what the run executes, so the entity's fields describe it rather than
-    # the request — otherwise the two disagree whenever a client omits a field iron-swarm detected.
-    manifest = IronSwarmManifest(
-        name=body.name,
-        workspace=workspace,
-        source_type="project",
-        project_fileset=fileset,
-        workflow=body.workflow or str(agent_section.get("workflow") or ""),
-        # Derived, not defaulted: the CLI sends a pre-built manifest_yaml with no launch_mode, so
-        # defaulting to "workflow" mislabels every BYO manifest it creates.
-        launch_mode=body.launch_mode or ("byo" if agent_section.get("dockerfile") else "workflow"),
-        dockerfile=body.dockerfile or str(agent_section.get("dockerfile") or ""),
-        binaries=body.binaries or list(agent_section.get("binaries") or []),
-        manifest_yaml=manifest_yaml,
-        port=body.port or int(agent_section.get("port") or port),
-        secrets=body.secrets or list(agent_section.get("secrets") or []),
-        egress=body.egress or list(agent_section.get("egress") or []),
-        env=body.env or dict(agent_section.get("env") or {}),
-        models=body.models or WarGameModels(),
-    )
-    if manifest.launch_mode == "byo" and not manifest.workflow:
-        # iron-swarm needs `workflow` or `start_command` to launch a BYO victim, and the platform
-        # never sets start_command — so this manifest would raise at run time, not merely degrade.
-        raise HTTPException(
-            status_code=422,
-            detail="A BYO image needs a workflow to serve: none was given or detected in the project. "
-            "Pass 'workflow' (the image is how the environment is built; the workflow is what gets "
-            "served and hardened).",
-        )
-    manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
-    return manifest
-
-
-def _agent_section(manifest_yaml: str) -> dict[str, Any]:
-    """Return the manifest's ``agent`` mapping, or ``{}`` if it is absent or the YAML is unparseable."""
-    try:
-        data = yaml.safe_load(manifest_yaml) or {}
-    except yaml.YAMLError:
-        return {}
-    agent = data.get("agent") if isinstance(data, dict) else None
-    return agent if isinstance(agent, dict) else {}
-
-
-def _with_project_dir_dot(manifest_yaml: str) -> str:
-    """Return *manifest_yaml* with ``agent.project_dir`` normalized to ``.`` (unchanged if unparseable)."""
-    try:
-        data = yaml.safe_load(manifest_yaml) or {}
-    except yaml.YAMLError:
-        return manifest_yaml
-    if isinstance(data, dict) and isinstance(data.get("agent"), dict):
-        data["agent"]["project_dir"] = "."
-        return yaml.safe_dump(data, sort_keys=False)
-    return manifest_yaml
-
-
-def _yaml_with_agent_settings(manifest_yaml: str, manifest: IronSwarmManifest) -> str:
-    """Return *manifest_yaml* with the manifest's stored agent settings written into it.
-
-    The run layers these on at materialization anyway, so this is not what makes them take effect —
-    it is what makes the stored YAML *honest*. Without it the manifest we show (and that `init -o`
-    writes) is the frozen base rather than what will actually run, so an operator who sets `env` sees
-    no trace of it and reasonably concludes it was lost.
-
-    Unparseable YAML is returned untouched: a display concern must never cost someone their manifest.
-    """
-    try:
-        data = yaml.safe_load(manifest_yaml) or {}
-    except yaml.YAMLError:
-        return manifest_yaml
-    if not (isinstance(data, dict) and isinstance(data.get("agent"), dict)):
-        return manifest_yaml
-    agent = data["agent"]
-    if manifest.port:
-        agent["port"] = manifest.port
-    if manifest.egress:
-        agent["egress"] = list(manifest.egress)
-    if manifest.secrets:
-        agent["secrets"] = list(manifest.secrets)
-    if manifest.env:
-        agent["env"] = dict(manifest.env)
-    return yaml.safe_dump(data, sort_keys=False)
 
 
 @router.patch("/manifests/{name}", response_model=IronSwarmManifest, tags=["Iron Swarm Manifests"])
@@ -589,7 +386,7 @@ async def refresh_manifest(
     the cached benign suite. Only the scaffold and its rendered manifest are rebuilt.
     """
     existing = await _get_manifest_or_404(entity_client, workspace, name)
-    if existing.source_type != "agent" or not existing.agent:
+    if not existing.agent:
         raise HTTPException(
             status_code=422,
             detail=f"manifest '{name}' has no agent source to refresh from; re-upload the project instead.",

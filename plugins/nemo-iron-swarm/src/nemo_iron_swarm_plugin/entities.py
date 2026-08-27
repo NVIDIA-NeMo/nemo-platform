@@ -22,7 +22,6 @@ IRON_SWARM_RUN_TYPE = "iron_swarm_run"
 IRON_SWARM_MANIFEST_TYPE = "iron_swarm_manifest"
 
 RunStatus = Literal["running", "completed", "failed"]
-ManifestSource = Literal["agent", "project"]
 
 
 class IronSwarmRun(NemoEntity, entity_type=IRON_SWARM_RUN_TYPE):
@@ -61,38 +60,29 @@ class IronSwarmRun(NemoEntity, entity_type=IRON_SWARM_RUN_TYPE):
 
 
 class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
-    """A named, reusable war-game target scaffolded via `init` (its ``name`` is the user-defined id).
+    """A named, reusable war-game target scaffolded from a registered agent (``name`` is its id).
 
-    Both sources persist their victim project as a fileset the run re-downloads, so a manifest is a
-    frozen target rather than a query re-evaluated each run: ``agent`` stores the scaffold resolved
-    from a deployed agent ref, ``project`` stores an uploaded NAT project (which is also how
-    custom-tool agents, unregistrable as config-only agents, are targeted). Editing the agent does
-    not change an existing manifest until it is refreshed.
+    The resolved agent package is persisted as a fileset the run re-downloads, so a manifest is a
+    frozen target rather than a query re-evaluated each run: editing the agent does not change an
+    existing manifest until it is refreshed.
     """
 
-    agent: str = Field(default="", description="Deployed agent reference (workspace/name) this manifest targets.")
-    source_type: ManifestSource = Field(default="agent", description="How the manifest was built ('agent'|'project').")
-    project_fileset: str = Field(
-        default="",
-        description="Fileset ref holding the uploaded NAT project bundle (source_type 'project'); the run "
-        "re-downloads it to a project_dir before launching the victim.",
-    )
+    agent: str = Field(default="", description="Registered agent reference (workspace/name) this manifest targets.")
     agent_fileset: str = Field(
         default="",
-        description="Fileset ref holding the scaffold resolved from the agent (source_type 'agent'). Empty "
-        "on manifests created before targets were frozen; those re-resolve once, then store a ref.",
+        description="Fileset ref holding the agent package resolved from the agent — its config plus the "
+        "Dockerfile that serves it. Empty on manifests created before targets were frozen; those "
+        "re-resolve once, then store a ref.",
     )
-    workflow: str = Field(default="", description="Chosen workflow path within the project (project source, display).")
-    launch_mode: str = Field(default="", description="Victim launch mode ('workflow'|'byo'; project source).")
     dockerfile: str = Field(
         default="",
-        description="Project-relative Dockerfile the victim image is built from ('byo' launch mode). Stored "
-        "alongside launch_mode so a manifest says which image it uses, not merely that it brings one.",
+        description="Path within the package to the Dockerfile the victim image is built from, so a manifest "
+        "records which image it ran rather than only that it had one.",
     )
     binaries: list[str] = Field(
         default_factory=list,
-        description="In-container glob patterns scoping which processes may egress ('byo' launch mode); "
-        "iron-swarm requires them because a BYO image's layout cannot be inferred.",
+        description="In-container glob patterns scoping which processes may egress; iron-swarm requires them "
+        "because the layout of an image it did not write cannot be inferred.",
     )
     manifest_yaml: str = Field(default="", description="The resolved iron-swarm.yaml content (for display).")
     port: int = Field(default=0, description="Victim port the war-game will target.")
@@ -168,7 +158,6 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
             name=name,
             workspace=workspace,
             agent=agent_ref,
-            source_type="agent",
             manifest_yaml=manifest_yaml,
             agent_fileset=agent_fileset,
             port=port,
