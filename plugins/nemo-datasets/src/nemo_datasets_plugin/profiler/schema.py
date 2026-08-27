@@ -30,19 +30,22 @@ _MESSAGE_KEY_SETS = ({"role", "content"}, {"from", "value"})
 MAX_COLUMNS = 4096
 
 
-def derive_features(rows: list[dict[str, Any]], arrow_schema: pa.Schema | None = None) -> list[FeatureSchema]:
-    """The row schema. Uses the declared arrow schema when present, else infers from ``rows``.
+def derive_features(arrow_schema: pa.Schema) -> list[FeatureSchema]:
+    """The row schema a declared arrow schema states, for a format that carries one.
 
-    Truncated at :data:`MAX_COLUMNS`. Use :func:`columns_were_capped` to distinguish a dataset that
-    really is that wide from one with runaway keys, so the caller can report the difference rather
-    than describe part of a file as though it were all of it.
+    Inferring a schema from rows instead is :class:`SchemaFold`'s job, and only its: the profiler
+    folds batch by batch and never has the rows in hand at once. There was a second implementation
+    here that took them as a list, kept only because tests called it, and the two drifted -- one
+    grew a bound on a struct's fields and the other did not.
+
+    Truncated at :data:`MAX_COLUMNS`. Use :func:`arrow_schema_was_capped` to distinguish a dataset
+    that really is that wide from one with runaway keys, so the caller can report the difference
+    rather than describe part of a file as though it were all of it.
     """
-    if arrow_schema is not None:
-        return [
-            _feature_from_arrow(arrow_schema.field(i).name, arrow_schema.field(i).type)
-            for i in range(min(len(arrow_schema), MAX_COLUMNS))
-        ]
-    return _features_from_rows(rows)
+    return [
+        _feature_from_arrow(arrow_schema.field(i).name, arrow_schema.field(i).type)
+        for i in range(min(len(arrow_schema), MAX_COLUMNS))
+    ]
 
 
 def arrow_schema_was_capped(arrow_schema: pa.Schema) -> bool:
@@ -126,47 +129,7 @@ def _feature_from_arrow(name: str, arrow_type: pa.DataType) -> FeatureSchema:
     return FeatureSchema(name=name, dtype=_arrow_scalar_dtype(arrow_type))
 
 
-# --- inferred from sampled rows (jsonl) ----------------------------------------------------------
-
-
-def _features_from_rows(rows: list[dict[str, Any]]) -> list[FeatureSchema]:
-    ordered_keys: list[str] = []
-    seen: set[str] = set()
-    for row in rows:
-        for key in row:
-            if key not in seen:
-                seen.add(key)
-                ordered_keys.append(key)
-                if len(ordered_keys) >= MAX_COLUMNS:
-                    break
-        if len(ordered_keys) >= MAX_COLUMNS:
-            break
-    return [_infer_feature(key, [row.get(key) for row in rows]) for key in ordered_keys]
-
-
-def _infer_feature(name: str, values: list[Any]) -> FeatureSchema:
-    present = [value for value in values if value is not None]
-    if not present:
-        return FeatureSchema(name=name, dtype="json")
-
-    if all(isinstance(value, dict) for value in present):
-        child_keys: list[str] = []
-        seen: set[str] = set()
-        for record in present:
-            for key in record:
-                if key not in seen:
-                    seen.add(key)
-                    child_keys.append(key)
-        fields = [_infer_feature(key, [record.get(key) for record in present]) for key in child_keys]
-        return FeatureSchema(name=name, dtype="struct", fields=fields)
-
-    if all(isinstance(value, list) for value in present):
-        item = _infer_feature("", [element for value in present for element in value])
-        if _is_message_struct(item):
-            return FeatureSchema(name=name, dtype="messages", items=item)
-        return FeatureSchema(name=name, dtype="list", items=item)
-
-    return FeatureSchema(name=name, dtype=_scalar_dtype(present))
+# --- inferred from rows, one batch at a time --------------------------------------------------
 
 
 def _python_dtype(value: Any) -> str:
@@ -194,19 +157,16 @@ def _resolve_scalar(dtypes: set[str]) -> str:
     return "json"
 
 
-def _scalar_dtype(values: list[Any]) -> str:
-    return _resolve_scalar({_python_dtype(value) for value in values})
-
-
 class SchemaFold:
     """One column's schema, folded from values as they arrive rather than decided over all of them.
 
     An inferred dtype is a whole-column question -- the observed types are unioned and a disagreement
     widens to ``json`` -- so it is not known until the last row.
 
-    Folding costs nothing extra. :func:`_infer_feature` is already a set union over observed types, a
-    union over a struct's child keys, and a recursion over a list's flattened elements: state
-    proportional to the schema, not the row count.
+    Folding costs nothing extra, which is why it can be the only implementation. Deciding over all
+    the values at once is the same three operations -- a set union over observed types, a union over
+    a struct's child keys, a recursion over a list's elements -- and all three are state proportional
+    to the schema rather than to the row count, so there is nothing to gain by holding the rows.
     """
 
     def __init__(self, name: str = "") -> None:

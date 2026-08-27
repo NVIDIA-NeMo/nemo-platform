@@ -375,7 +375,7 @@ def _profile_partition(
     # the first batch; without one they are discovered as they appear and typed at the end.
     row_cap = _per_file_cap(row_budget, len(entries))
     folds = _PartitionFolds(
-        derive_features([], declared) if declared is not None else None,
+        derive_features(declared) if declared is not None else None,
         declared_capped=declared is not None and arrow_schema_was_capped(declared),
         # A declared schema built from `askable` describes only the files that could be peeked, and
         # `peek` and `batches` are separate opens -- so a file that failed the first and survives the
