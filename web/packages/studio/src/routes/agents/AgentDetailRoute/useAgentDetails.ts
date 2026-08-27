@@ -6,25 +6,48 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getAgentsListDeploymentsQueryKey,
   useAgentsDeleteDeployment,
-  useAgentsListAgents,
+  useAgentsGetAgent,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
+import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
+import { fetchExperimentsByIds } from '@studio/api/evaluation/experiments';
 import { type EvalJobRow, targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
 import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-/** Backend caps page_size at 100. Enough to name the experiments behind a panel's worth of rows. */
-const EXPERIMENT_PAGE_SIZE = 100;
-
 /** Statuses that will not change again, so polling can stop. */
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'error', 'cancelled']);
 
-/** A published evaluation plus the experiment name its detail route is nested under. */
-export type AgentEvaluationRow = EvaluationResponse & { experimentName: string | null };
+/** One of the experiments an evaluation belongs to: the name its detail route is nested under, the
+ *  description the overview cards label it with, and the two display flags the overview groups and
+ *  filters on. Name and description are null when the experiment fell outside the fetched page and
+ *  could not be resolved, in which case both flags read false. */
+export interface EvaluationExperiment {
+  id: string;
+  name: string | null;
+  description: string | null;
+  isFavorite: boolean;
+  showsEvaluationsOverTime: boolean;
+}
+
+/** A published evaluation plus every experiment it belongs to.
+ *
+ *  Membership is many-to-many — `AddToGroupModal` adds an evaluation to further experiments by
+ *  appending to `experiment_ids` — so this is a list, in `experiment_ids` order, with unresolved
+ *  ids keeping their place. Consumers that roll evaluations up by experiment must visit every
+ *  entry, or a shared evaluation goes missing from all but one of its experiments. */
+export type AgentEvaluationRow = EvaluationResponse & {
+  experiments: EvaluationExperiment[];
+};
+
+/** The experiment an evaluation's detail route is nested under. Any of them addresses the same
+ *  evaluation, so this takes the first one whose name resolved; undefined when none did, which
+ *  leaves the caller with no linkable route. */
+export const primaryExperimentName = (evaluation: AgentEvaluationRow): string | undefined =>
+  evaluation.experiments.find((experiment) => experiment.name)?.name ?? undefined;
 
 interface UseAgentPanelParams {
   workspace: string;
@@ -40,8 +63,8 @@ export const useAgentDetails = ({
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const { data: agentsResponse } = useAgentsListAgents(workspace, undefined, {
-    query: { enabled: !!agentName },
+  const { data: agent } = useAgentsGetAgent(workspace, agentName ?? '', {
+    query: { enabled: !!agentName && !!workspace },
   });
 
   const { data: deploymentsResponse, isLoading: isDeploymentsLoading } = useAgentsListDeployments(
@@ -66,10 +89,9 @@ export const useAgentDetails = ({
     }
   );
 
-  const agentsData = agentsResponse?.data;
   const deploymentsData = deploymentsResponse?.data;
 
-  const { data: agentEvalsResponse } = useListEvaluations(
+  const { data: agentEvalsResponse, isPending: isAgentEvalsPending } = useListEvaluations(
     workspace,
     {
       filter: { agent_name: agentName ?? '' },
@@ -107,28 +129,41 @@ export const useAgentDetails = ({
     },
   });
 
-  const agent = agentName ? (agentsData ?? []).find((a) => a.name === agentName) : undefined;
   const agentDeployments = useMemo(
     () => (deploymentsData ?? []).filter((d) => d.agent === agentName),
     [deploymentsData, agentName]
   );
 
-  const { data: experimentsResponse } = useListExperiments(
-    workspace,
-    { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
-    { query: { enabled: !!agentName && !!workspace } }
-  );
+  const experimentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const evaluation of agentEvalsResponse?.data ?? []) {
+      for (const id of evaluation.experiment_ids) ids.add(id);
+    }
+    return [...ids].sort();
+  }, [agentEvalsResponse]);
+
+  const { data: experimentsById } = useQuery({
+    queryKey: ['experiments-by-id', workspace, experimentIds] as const,
+    queryFn: ({ signal }) => fetchExperimentsByIds(workspace, experimentIds, signal),
+    enabled: !!workspace && experimentIds.length > 0,
+  });
 
   const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    const namesById = new Map(
-      (experimentsResponse?.data ?? []).map((experiment) => [experiment.id, experiment.name])
-    );
     return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
       ...evaluation,
-      experimentName: namesById.get(evaluation.experiment_ids[0] ?? '') ?? null,
+      experiments: evaluation.experiment_ids.map((id) => {
+        const experiment = experimentsById?.get(id);
+        return {
+          id,
+          name: experiment?.name ?? null,
+          description: experiment?.description ?? null,
+          isFavorite: experiment?.is_favorite ?? false,
+          showsEvaluationsOverTime: experiment?.show_evaluations_over_time ?? false,
+        };
+      }),
     }));
-  }, [agentEvalsResponse, experimentsResponse, agentName]);
+  }, [agentEvalsResponse, experimentsById, agentName]);
 
   const agentJobs: EvalJobRow[] = useMemo(() => {
     if (!agentName) return [];
@@ -160,6 +195,7 @@ export const useAgentDetails = ({
     agent,
     agentDeployments,
     agentEvals,
+    isAgentEvalsPending,
     agentJobs,
     healthyDeployments,
     isDeploying,

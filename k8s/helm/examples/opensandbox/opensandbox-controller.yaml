@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenSandbox controller — shared by shared-kernel and kata-qemu server profiles.
+# Pause/resume snapshots need containerd and a snapshot registry. Controller
+# v0.2.0 does not honor containerdSocketPath for CRI-O; this CRI-O example
+# leaves snapshot fields unused. An empty socket path does not enable CRI-O
+# snapshots.
+
+controller:
+  replicaCount: 1
+  logLevel: info
+
+  image:
+    repository: docker.io/opensandbox/controller
+    tag: "v0.2.0"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  # Prefer CPU workers; leave H100 / kata nodes for sandbox workloads.
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: NotIn
+                values: ["true"]
+
+  snapshot:
+    imageCommitterImage: "docker.io/opensandbox/image-committer:v0.1.1"
+    containerdSocketPath: ""
+    registry: ""
+    registryInsecure: false
+    snapshotPushSecret: ""
+    resumePullSecret: ""
+
+crds:
+  install: true
+  keep: true
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true

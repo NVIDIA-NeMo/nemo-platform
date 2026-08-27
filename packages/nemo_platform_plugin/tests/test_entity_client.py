@@ -7,12 +7,24 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import BadRequestError, NotFoundError
-from nemo_platform_plugin.entities import EntityBase, EntityClient, EntityStoreError
+from nemo_platform_plugin.entities import EntityBase, EntityClient, EntityStoreError, _convert_filter_obj_to_filter_str
 from nemo_platform_plugin.entities.types import Entity
 
 
 class ExperimentGroup:
     __entity_type__ = "experiment_group"
+
+
+def test_filter_obj_keeps_created_by_at_the_entity_root() -> None:
+    assert _convert_filter_obj_to_filter_str(
+        {
+            "created_by": "session-owner",
+            "deployment_id": "deployment-id",
+        }
+    ) == {
+        "created_by": "session-owner",
+        "data.deployment_id": "deployment-id",
+    }
 
 
 def _entities_page(group_counts: dict[str, int] | None = None) -> Mock:

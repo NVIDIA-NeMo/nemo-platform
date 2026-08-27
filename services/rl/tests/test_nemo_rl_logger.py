@@ -80,8 +80,8 @@ class _RecordingCallback:
         self.time_series_metrics: Any = None
         self.min_report_interval_seconds: Any = None
 
-    def report_training_start(self, max_steps: int, num_epochs: int) -> None:
-        self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
+    def report_training_start(self, max_steps: int, num_epochs: int, *, run_facts=None) -> None:
+        self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs, "run_facts": run_facts})
 
     def report_train_step(self, step, epoch, metrics, *, backend=None):
         self.train_steps.append({"step": step, "epoch": epoch, "metrics": metrics})
@@ -499,8 +499,9 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
 
     Before the GRPO entries existed this recorded four series out of eighty-odd
     metrics and none of them was a reward, which is the one curve a policy-gradient
-    run is read on. The `/max /min /median /stddev` siblings staying out is the
-    other half of the intent: a family costs one series, not six.
+    run is read on. The `/max /min /median` siblings staying out is the other half
+    of the intent: a family costs one series, not six. `/stddev` is the exception,
+    and only for reward, where the spread is the band Studio draws around the mean.
     """
     train = {
         "loss": -0.041,
@@ -511,10 +512,19 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "approx_entropy": 0.49,
         "token_mult_prob_error": 1.011,
         "gen_kl_error": 0.0041,
+        "policy_kl_error": 0.00071,
+        "js_divergence_error": 6.47e-05,
+        "sampling_importance_ratio": 1.0000072,
         "advantages/mean": 0.003,
         "advantages/max": 2.49,
+        "baseline_reward/pct_0": 46.09,
+        "baseline_reward/pct_1": 0.78,
+        "baseline_reward/pct_mixed": 53.13,
         "total_reward/mean": 0.617,
         "total_reward/stddev": 0.486,
+        "total_reward/p25": 0.0,
+        "total_reward/p75": 1.0,
+        "total_reward/median": 0.0,
         "gen_tokens_per_sample/mean": 689.3,
         "gen_tokens_per_sample/max": 2048.0,
         "turns_per_sample/mean": 3.41,
@@ -528,6 +538,9 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "accuracy": 0.703,
         "avg_length": 604.2,
         "total_reward/mean": 0.703,
+        "total_reward/stddev": 0.457,
+        "total_reward/p25": 0.0,
+        "total_reward/p75": 1.0,
         "truncation_rate": 0.023,
     }
 
@@ -542,16 +555,33 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "train_loss",
         "train_grad_norm",
         "train_lr",
-        # Reward, on both phases -- the point of the change. `*total_reward/mean`
-        # is deliberately not here: on this service it is the same number as
-        # `train_reward`, and `val_total_reward/mean` is the last-batch-only
-        # version of `val_accuracy`. Both arrive in the dicts above and are
-        # reported as current values; neither keeps a history.
+        # Reward, on both phases -- the point of the change.
         "train_reward",
         "val_accuracy",
+        # The raw verifier reward. Equal to `train_reward` here, and to `train_filtered_reward`
+        # when dynamic sampling drops zero-variance groups; the two separate as soon as reward
+        # shaping or dynamic sampling is enabled, which is when the pair earns its series.
+        # `val_total_reward/mean` stays out: it is the last batch's mean, not the whole pass,
+        # so `val_accuracy` is the honest validation number and this would shadow it.
+        "train_total_reward/mean",
+        # Reward dispersion, which is the band around the mean. Its `/median` and
+        # `/max` siblings above stay out.
+        "train_total_reward/stddev",
+        "val_total_reward/stddev",
+        "train_total_reward/p25",
+        "train_total_reward/p75",
+        "val_total_reward/p25",
+        "val_total_reward/p75",
+        # Group diversity: how many prompt groups had anything to learn from.
+        "train_baseline_reward/pct_0",
+        "train_baseline_reward/pct_1",
+        "train_baseline_reward/pct_mixed",
         # Off-policy drift and advantage centering.
         "train_kl_penalty",
         "train_gen_kl_error",
+        "train_policy_kl_error",
+        "train_js_divergence_error",
+        "train_sampling_importance_ratio",
         "train_token_mult_prob_error",
         "train_advantages/mean",
         "train_approx_entropy",
@@ -565,7 +595,7 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
     # Excluded from the series, still reported as a current value -- dropping a
     # metric's history never drops the metric.
     assert reporter.reports[-1]["train_total_reward/mean"] == 0.617
-    assert reporter.reports[-1]["train_total_reward/stddev"] == 0.486
+    assert reporter.reports[-1]["train_total_reward/median"] == 0.0
     assert reporter.reports[-1]["train_global_valid_toks"] == 176432.0
     # The redundancy the exclusion rests on: same number, two names.
     assert reporter.reports[-1]["train_total_reward/mean"] == reporter.reports[-1]["train_reward"]
@@ -582,7 +612,7 @@ def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _Recordi
     logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=2, val_period=100)
     logger.log_hyperparams({})
 
-    assert callback.training_starts == [{"max_steps": 20_000, "num_epochs": 2}]
+    assert callback.training_starts == [{"max_steps": 20_000, "num_epochs": 2, "run_facts": {}}]
 
 
 # --------------------------------------------------------------------------- #
@@ -671,6 +701,97 @@ def test_a_loss_free_validation_is_still_a_reported_pass(callback: _RecordingCal
     assert len(callback.validations) == 2
 
 
+# --------------------------------------------------------------------------- #
+# Step timing — arrives under its own prefix
+# --------------------------------------------------------------------------- #
+
+
+def test_step_timings_are_reported_under_the_timing_prefix(callback: _RecordingCallback) -> None:
+    """NeMo-RL logs these separately from the train metrics, at the same step.
+
+    Dropped whole before this, which is why a job could report eighty metrics and
+    not how long a step took.
+    """
+    _make_logger().log_metrics(
+        {"total_step_time": 41.2, "generation": 28.0, "policy_training": 9.1},
+        step=3,
+        prefix="timing/train",
+    )
+
+    reported = callback.train_steps[0]["metrics"]
+    assert reported["timing/total_step_time"] == 41.2
+    assert reported["timing/generation"] == 28.0
+    assert callback.train_steps[0]["step"] == 3
+
+
+def test_step_timings_do_not_displace_the_train_metrics_at_that_step(
+    callback: _RecordingCallback,
+) -> None:
+    """Both arrive at one step; the store merges by name, so both survive."""
+    logger = _make_logger()
+    logger.log_metrics(TRAIN_METRICS, step=3, prefix="train")
+    logger.log_metrics({"total_step_time": 41.2}, step=3, prefix="timing/train")
+
+    assert [r["step"] for r in callback.train_steps] == [3, 3]
+    assert "loss" in callback.train_steps[0]["metrics"]
+    assert "timing/total_step_time" in callback.train_steps[1]["metrics"]
+
+
+def test_timing_names_keep_their_prefix_so_durations_are_not_mistaken_for_counts(
+    callback: _RecordingCallback,
+) -> None:
+    """Bare, `generation` and `policy_training` read like counts rather than seconds."""
+    _make_logger().log_metrics({"generation": 28.0}, step=3, prefix="timing/train")
+
+    reported = callback.train_steps[0]["metrics"]
+    assert "generation" not in reported
+    assert reported["timing/generation"] == 28.0
+
+
+def test_other_timing_prefixes_are_still_ignored(callback: _RecordingCallback) -> None:
+    """Only the per-step train timer is charted; setup and validation timings are not."""
+    logger = _make_logger()
+    logger.log_metrics({"total_validation_time": 12.0}, step=3, prefix="timing/validation")
+    logger.log_metrics({"policy_init_time_s": 90.0}, step=0, prefix="timing/setup")
+
+    assert callback.train_steps == []
+    assert callback.validations == []
+
+
+# --------------------------------------------------------------------------- #
+# Run facts — constants the driver states once, at training start
+# --------------------------------------------------------------------------- #
+
+
+def test_run_facts_ride_along_with_the_training_start_report(callback: _RecordingCallback) -> None:
+    """Which algorithm ran, and how many rollouts a step makes, are constants.
+
+    They belong on the one report that fires before the first step rather than on
+    every metric report after it.
+    """
+    facts = {"training_type": "grpo", "rollouts_per_step": 128}
+    logger = NemoRLLogger.for_schedule(max_steps=30, num_epochs=1, run_facts=facts)
+    logger.log_hyperparams({})
+
+    assert callback.training_starts[0]["run_facts"] == facts
+
+
+def test_run_facts_are_optional(callback: _RecordingCallback) -> None:
+    """A driver that states none reports the schedule alone, as before."""
+    NemoRLLogger.for_schedule(max_steps=30, num_epochs=1).log_hyperparams({})
+
+    assert callback.training_starts[0]["run_facts"] == {}
+
+
+def test_run_facts_reach_the_report_intact(callback: _RecordingCallback) -> None:
+    """Whatever the driver states is forwarded as-is; nothing filters it here."""
+    NemoRLLogger.for_schedule(
+        max_steps=30, num_epochs=1, run_facts={"training_type": "grpo", "rollouts_per_step": 128}
+    ).log_hyperparams({})
+
+    assert callback.training_starts[0]["run_facts"] == {"training_type": "grpo", "rollouts_per_step": 128}
+
+
 def test_one_dataset_keeps_the_bare_metric_names(callback: _RecordingCallback) -> None:
     """NeMo-RL names the dataloader even when there is only one, so val_loss must survive."""
     logger = _make_logger()
@@ -746,7 +867,8 @@ def test_all_validation_prefixes_are_handled(callback: _RecordingCallback, prefi
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("prefix", ["timing/train", "timing/validation", "timing/setup", "performance", "refit", ""])
+# `timing/train` used to be here and is now routed; see the step-timing section.
+@pytest.mark.parametrize("prefix", ["timing/validation", "timing/setup", "performance", "refit", ""])
 def test_unhandled_prefixes_produce_no_reports(callback: _RecordingCallback, prefix: str) -> None:
     _make_logger().log_metrics({"loss": 0.1, "total_step_time": 12.0}, step=0, prefix=prefix)
 

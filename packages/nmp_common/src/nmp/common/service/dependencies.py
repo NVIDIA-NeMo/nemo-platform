@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Callable, TypeVar
 
 from fastapi import Request
+from nemo_platform_plugin.dependencies import get_effective_principal_id as get_effective_principal_id
 from nemo_platform_plugin.dependencies import get_entity_client as get_entity_client
 from nemo_platform_plugin.dependencies import get_nemo_client as get_nemo_client
 from nemo_platform_plugin.dependencies import get_platform_config as get_platform_config

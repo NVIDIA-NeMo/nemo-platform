@@ -26,13 +26,13 @@ from pathlib import Path
 FENCED_BASH = re.compile(r"```bash\n(.*?)```", re.DOTALL)
 # Match `nemo …`, `./venv/bin/nemo …`, `.venv/bin/nemo …`, `/abs/path/nemo …`,
 # optionally preceded by env-var assignments or a `$ ` prompt. Capture from the
-# `nemo` token onward.
+# `nemo` token up to any optional shell comment.
 NEMO_LINE = re.compile(
     r"""^\s*                             # leading whitespace
         \$?\s*                           # optional shell prompt
         (?:[A-Z_][A-Z0-9_]*=\S+\s+)*     # optional env-var assignments
         (?:[^\s]+/)?                     # optional path prefix (e.g. .venv/bin/)
-        (nemo\b[^\n]*)                   # the command itself
+        (nemo(?=\s|$)[^#\n]*)            # the command itself
     """,
     re.MULTILINE | re.VERBOSE,
 )
@@ -42,6 +42,7 @@ SKIP_PREFIXES = ("#", "export ", "set ", "echo ", "$(", "&&", "||")
 SKILL_GLOBS = [
     "packages/nemo_platform_ext/src/nemo_platform_ext/skills/**/SKILL.md",
     ".agents/skills/**/SKILL.md",
+    "plugins/*/skills/**/SKILL.md",
     "plugins/*/src/*/skills/**/SKILL.md",
     "sdk/python/nemo-platform/src/nemo_platform/cli/commands/skills/content/**/SKILL.md",
     "packages/*/src/*/.agents/skills/**/SKILL.md",

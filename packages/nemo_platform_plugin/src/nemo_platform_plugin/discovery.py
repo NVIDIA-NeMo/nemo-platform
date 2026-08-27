@@ -64,6 +64,7 @@ from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nemo_platform_plugin.interface import PluginManifest
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.sandbox import SandboxImageProfile
+from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from nemo_platform_plugin.seed import NemoSeedJob
 from nemo_platform_plugin.service import NemoService
 
@@ -425,22 +426,35 @@ def discover_seed_jobs() -> dict[str, type[NemoSeedJob]]:
     return result
 
 
-def discover_sdk() -> dict[str, Any]:
-    """Wrapper: discover ``nemo.sdk`` → SDK plugin resource container.
+def discover_sdk() -> dict[str, NemoPluginSDKResources[Any, Any]]:
+    """Typed wrapper: discover ``nemo.sdk`` → :class:`~nemo_platform_plugin.sdk.NemoPluginSDKResources`.
 
-    Each entry-point value should be a :class:`~nemo_platform_plugin.sdk.NemoPluginSDKResources`
-    instance with one or both of these attributes:
+    Each container carries one or both of:
 
-    - ``sync_resource``: resource class for ``NeMoPlatform``.
-    - ``async_resource``: resource class for ``AsyncNeMoPlatform``.
+    - ``sync_resource``: resource class for the sync client.
+    - ``async_resource``: resource class for the async client.
 
     If one side is omitted, accessing that plugin namespace on the corresponding
     client raises ``AttributeError``.
 
     The platform lazily instantiates these through ``__getattr__`` so plugin
     SDK namespaces appear as client attributes (for example ``client.example``).
+
+    Entry points whose value is not a
+    :class:`~nemo_platform_plugin.sdk.NemoPluginSDKResources` are logged as a
+    warning and excluded.
     """
-    return discover("nemo.sdk")
+    result: dict[str, NemoPluginSDKResources[Any, Any]] = {}
+    for key, value in discover("nemo.sdk").items():
+        if not isinstance(value, NemoPluginSDKResources):
+            logger.warning(
+                "nemo.sdk entry %r: expected a NemoPluginSDKResources instance, got %s — skipping",
+                key,
+                type(value).__qualname__,
+            )
+            continue
+        result[key] = value
+    return result
 
 
 def discover_mcp() -> dict[str, Any]:

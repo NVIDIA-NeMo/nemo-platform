@@ -29,6 +29,7 @@ class CreateJob(NemoJob):
     name: ClassVar[str] = "create"
     description: ClassVar[str] = "Generate a synthetic dataset"
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
 
     input_spec_schema = DataDesignerJobConfig
     spec_schema = DataDesignerStepConfig

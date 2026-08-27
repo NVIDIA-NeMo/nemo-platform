@@ -89,6 +89,20 @@ class NemoResponse(Generic[ResponseT]):
     body: ResponseT
     request: PreparedRequest[ResponseT]
 
+    def __getattr__(self, name: str) -> object:
+        """Delegate unknown attribute access to the parsed body.
+
+        Allows callers to use ``resp.name`` instead of ``resp.data().name``,
+        smoothing the migration from the old SDK which returned models directly.
+        Only triggered when normal attribute lookup fails — ``NemoResponse``'s
+        own attributes (``body``, ``http_response``, ``request``, ``data``)
+        always win.
+        """
+        body = self.__dict__.get("body")
+        if body is None:
+            raise AttributeError(name)
+        return getattr(body, name)
+
     def data(self) -> ResponseT:
         """Return the parsed response body.
 

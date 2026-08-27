@@ -21,6 +21,10 @@ dependencies = [
 version = "0.0.0"
 
 [project.optional-dependencies]
+# Container-only: checkpoints.py imports peft to merge LoRA adapters. Keeping it out of the base
+# deps leaves plugin discovery and the compiler torch-free, and the >=0.20 floor avoids peft's
+# import of torchao's removed LinearActivationQuantizedTensor.
+training = ["peft>=0.20.0"]
 dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "pytest-mock>=3.14.0"]
 
 [project.scripts]

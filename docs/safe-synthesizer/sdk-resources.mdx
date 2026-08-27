@@ -7,7 +7,7 @@ description: ""
 ---
 <a id="safe-synthesizer-nmp-sdk-resources"></a>
 
-The `nemo_safe_synthesizer_plugin.sdk` module provides NeMo Platform-specific helpers for creating and monitoring NeMo Safe Synthesizer jobs. Use these objects when you want to submit jobs through the platform Jobs service and retrieve platform-managed results.
+The `nemo_safe_synthesizer_plugin.sdk` module provides NeMo Platform-specific helpers for creating and monitoring NeMo Safe Synthesizer jobs. Use these objects when you want to create jobs through the platform Jobs service and retrieve platform-managed results.
 
 ## SafeSynthesizerResource
 
@@ -43,7 +43,7 @@ The async resource exposes the same methods as `async def` methods.
 
 ## SafeSynthesizerJobBuilder
 
-`SafeSynthesizerJobBuilder` assembles a job spec, uploads local datasets to Files, submits the job, and returns a `SafeSynthesizerJob` wrapper.
+`SafeSynthesizerJobBuilder` assembles a job spec, uploads local datasets to Files, creates the job, and returns a `SafeSynthesizerJob` wrapper.
 
 ```python
 import pandas as pd
@@ -76,8 +76,8 @@ job = (
 | `with_classify_model_provider(provider_name)` | Sets the Inference Gateway provider used for PII column classification. Pair with `with_replace_pii()`. |
 | `with_hf_token_secret(secret_name)` | Passes a platform secret name as `HF_TOKEN` to the runtime job. |
 | `with_pretrained_model_job(job_name)` | Reuses a prior job's `adapter` result for generation-only synthesis. |
-| `resolve_job_config()` | Uploads data and validates the generated job spec without submitting. |
-| `create_job(**kwargs)` | Submits the job and returns `SafeSynthesizerJob`. |
+| `resolve_job_config()` | Uploads data and validates the generated job spec without creating a job. |
+| `create_job(**kwargs)` | Creates the job and returns `SafeSynthesizerJob`. |
 
 ## SafeSynthesizerJob
 
@@ -98,6 +98,6 @@ job = (
 
 ## Related Topics
 
-- [Safe Synthesizer 101](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - submit and monitor a first job
+- [Safe Synthesizer 101](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - create and monitor a first job
 - [Safe Synthesizer Jobs](/documentation/synthesize-safe-data/about/jobs) - understand job lifecycle and troubleshooting
 - [Parameters Reference](/documentation/synthesize-safe-data/about/parameters-reference) - review job spec and configuration fields

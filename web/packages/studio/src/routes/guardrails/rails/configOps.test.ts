@@ -11,6 +11,7 @@ import {
   withoutPrompt,
   withPrompt,
   withPromptContent,
+  withPromptFields,
 } from '@studio/routes/guardrails/rails/configOps';
 
 describe('flow operations', () => {
@@ -152,5 +153,39 @@ describe('prompt operations', () => {
 
   it('finds nothing for a task the config does not have', () => {
     expect(findPrompt({}, 'self_check_input')).toBeUndefined();
+  });
+});
+
+describe('withPromptFields', () => {
+  it('creates the prompt when the task has none yet', () => {
+    const result = withPromptFields({}, 'self_check_input', { max_tokens: 256 });
+
+    expect(result.prompts).toEqual([{ task: 'self_check_input', max_tokens: 256 }]);
+  });
+
+  it('merges into an existing prompt without disturbing its other fields', () => {
+    const data: RailsConfig = {
+      prompts: [{ task: 'self_check_input', content: 'Block?', output_parser: 'is_content_safe' }],
+    };
+
+    const result = withPromptFields(data, 'self_check_input', { max_tokens: 256, stop: ['STOP'] });
+
+    expect(result.prompts?.[0]).toEqual({
+      task: 'self_check_input',
+      content: 'Block?',
+      output_parser: 'is_content_safe',
+      max_tokens: 256,
+      stop: ['STOP'],
+    });
+  });
+
+  it('overwrites a field set to undefined, clearing it', () => {
+    const data: RailsConfig = {
+      prompts: [{ task: 'self_check_input', content: 'Block?', max_tokens: 256 }],
+    };
+
+    const result = withPromptFields(data, 'self_check_input', { max_tokens: undefined });
+
+    expect(result.prompts?.[0]).toEqual({ task: 'self_check_input', content: 'Block?' });
   });
 });

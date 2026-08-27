@@ -32,9 +32,9 @@ workflow:
   verbose: false
   parse_agent_response_max_retries: 3
   system_prompt: |
-    <one-paragraph role description from the spec>
+    <one-paragraph role description from the Ethos>
 
-    Your job: <one sentence from the spec>.
+    Your job: <one sentence from the Ethos>.
 
     You handle these categories:
     - <category 1>
@@ -42,8 +42,8 @@ workflow:
     - <category 3>
 
     Constraints:
-    - <constraint from spec>
-    - <constraint from spec>
+    - <constraint from the Ethos>
+    - <constraint from the Ethos>
 
     You have access to the following tools:
     {tools}

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
-from importlib import import_module, resources
+from importlib import import_module, resources, util
 from pathlib import Path
 
 import tomlkit
@@ -150,6 +150,53 @@ def test_alias_package_exposes_source_resource_metadata(tmp_path: Path, monkeypa
         assert resources.files(alias).joinpath("data.txt").read_text(encoding="utf-8") == "source-data\n"
     finally:
         for module_name in ("alias_pkg", "source_pkg", "nemo_platform._alias", "nemo_platform"):
+            sys.modules.pop(module_name, None)
+
+
+def test_alias_package_loader_provides_runpy_get_code(tmp_path: Path, monkeypatch) -> None:
+    source_package = tmp_path / "source_pkg"
+    source_package.mkdir()
+    (source_package / "__init__.py").write_text("VALUE = 'source'\n", encoding="utf-8")
+    (source_package / "child.py").write_text("VALUE = 7\n", encoding="utf-8")
+
+    alias_package = tmp_path / "alias_pkg"
+    alias_package.mkdir()
+    (alias_package / "__init__.py").write_text(
+        "from nemo_platform._alias import alias_package\n\nalias_package('source_pkg', globals())\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.syspath_prepend(str(vendor_package.NMP_ROOT_PATH / "sdk/python/nemo-platform/src"))
+    for module_name in (
+        "alias_pkg",
+        "alias_pkg.child",
+        "source_pkg",
+        "source_pkg.child",
+        "nemo_platform._alias",
+        "nemo_platform",
+    ):
+        sys.modules.pop(module_name, None)
+
+    try:
+        import_module("alias_pkg")
+        spec = util.find_spec("alias_pkg.child")
+        assert spec is not None
+        assert spec.loader is not None
+        get_code = getattr(spec.loader, "get_code", None)
+        assert get_code is not None
+        code = get_code("alias_pkg.child")
+        assert code is not None
+        assert code.co_filename == str(source_package / "child.py")
+    finally:
+        for module_name in (
+            "alias_pkg",
+            "alias_pkg.child",
+            "source_pkg",
+            "source_pkg.child",
+            "nemo_platform._alias",
+            "nemo_platform",
+        ):
             sys.modules.pop(module_name, None)
 
 
@@ -1028,16 +1075,41 @@ name = "example"
     assert "entry-points" not in wrapper_updated["project"]
 
 
-def test_replace_client_methods_updates_init_and_getattr(tmp_path: Path) -> None:
+def test_replace_client_methods_updates_init_and_getattr(tmp_path: Path, monkeypatch) -> None:
     sdk_path = tmp_path / "sdk/python/nemo-platform"
     client_path = sdk_path / "src/nemo_platform/_client.py"
     source_path = tmp_path / "packages/nemo_platform_ext/src/nemo_platform_ext/client/enhanced.py"
     client_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.parent.mkdir(parents=True, exist_ok=True)
+    plugin_client_path = tmp_path / "nemo_platform_plugin/client"
+    plugin_client_path.mkdir(parents=True)
+    (client_path.parent / "__init__.py").write_text("", encoding="utf-8")
+    (client_path.parent / "_base_client.py").write_text(
+        """
+class DefaultAsyncHttpxClient:
+    pass
+
+
+class DefaultHttpxClient:
+    pass
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "nemo_platform_plugin/__init__.py").write_text("", encoding="utf-8")
+    (plugin_client_path / "__init__.py").write_text("", encoding="utf-8")
+    (plugin_client_path / "constants.py").write_text(
+        'WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR = "NMP_WORKLOAD_IDENTITY_TOKEN_FILE"\n',
+        encoding="utf-8",
+    )
+    (plugin_client_path / "tls.py").write_text(
+        "def client_verify_from_env() -> bool:\n    return True\n",
+        encoding="utf-8",
+    )
 
     client_path.write_text(
         """
 from typing import Any
+from nemo_platform_ext.client.tls import client_verify_from_env
 
 
 def _should_bootstrap_config(config_path: object | None = None) -> bool:
@@ -1096,8 +1168,9 @@ class AsyncNeMoPlatform:
 
     assert "from pathlib import Path" in updated
     assert "from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient" in updated
-    assert "from nemo_platform_ext.client.tls import client_verify_from_env" in updated
     assert "from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR" in updated
+    assert "from nemo_platform_plugin.client.tls import client_verify_from_env" in updated
+    assert "from nemo_platform_ext.client.tls import client_verify_from_env" not in updated
     assert "def _should_bootstrap_config(config_path: Path | None = None) -> bool:" in updated
     assert "return config_path is not None" in updated
     assert "return False" not in updated
@@ -1106,3 +1179,41 @@ class AsyncNeMoPlatform:
     assert updated.count("def __getattr__(self, name: str) -> Any:") == 2
     assert "self.value = 1" not in updated
     assert "self.value = 2" not in updated
+
+    class BlockNemoPlatformExt:
+        def find_spec(
+            self,
+            fullname: str,
+            path: object | None = None,
+            target: object | None = None,
+        ) -> None:
+            del path, target
+            if fullname == "nemo_platform_ext" or fullname.startswith("nemo_platform_ext."):
+                raise ModuleNotFoundError("nemo_platform_ext must not be imported")
+            return None
+
+    blocked_finder = BlockNemoPlatformExt()
+    module_names = (
+        "nemo_platform",
+        "nemo_platform._base_client",
+        "nemo_platform._client",
+        "nemo_platform_plugin",
+        "nemo_platform_plugin.client",
+        "nemo_platform_plugin.client.constants",
+        "nemo_platform_plugin.client.tls",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.syspath_prepend(str(sdk_path / "src"))
+    sys.meta_path.insert(0, blocked_finder)
+    try:
+        for module_name in module_names:
+            sys.modules.pop(module_name, None)
+
+        generated_client = import_module("nemo_platform._client")
+
+        assert generated_client.NeMoPlatform(config_path=Path("config.yaml")).should_bootstrap is True
+    finally:
+        if blocked_finder in sys.meta_path:
+            sys.meta_path.remove(blocked_finder)
+        for module_name in module_names:
+            sys.modules.pop(module_name, None)

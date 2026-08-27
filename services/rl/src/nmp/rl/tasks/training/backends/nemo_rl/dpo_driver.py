@@ -128,6 +128,11 @@ def main():
             time_series_metrics=getattr(config.dpo, "progress_time_series_metrics", None),
             min_report_interval_seconds=getattr(config.dpo, "progress_min_report_interval_seconds", None),
             default_time_series_metrics=DPO_DEFAULT_TIME_SERIES_METRICS,
+            # `backend` is `nemo_rl` for both algorithms, so this is the only field
+            # in a job's status that says which one ran. Set here as well as in the
+            # GRPO driver: a field only one algorithm fills in looks like missing
+            # data rather than like "not GRPO".
+            run_facts={"training_type": "dpo"},
         )
         # The setup() logger is a composite with a `.loggers` list; guard in case
         # that internal shape changes.

@@ -50,56 +50,6 @@ def _get_api_key_from_env(api_key_env_var: str | None) -> str | None:
     return api_key
 
 
-def download_personas_command(
-    locales: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--locale",
-            "-l",
-            help=f"Locales to download ({', '.join(_SUPPORTED_LOCALE_NAMES)}). Can be specified multiple times.",
-        ),
-    ] = None,
-    all_locales: Annotated[
-        bool,
-        typer.Option(
-            "--all",
-            help="Download all available locales",
-        ),
-    ] = False,
-    dry_run: Annotated[
-        bool,
-        typer.Option(
-            "--dry-run",
-            help="Show what would be downloaded without actually downloading",
-        ),
-    ] = False,
-    list_available: Annotated[
-        bool,
-        typer.Option(
-            "--list",
-            help="List available persona datasets and their sizes",
-        ),
-    ] = False,
-) -> None:
-    """Download Nemotron-Personas datasets for synthetic data generation.
-
-    Examples:
-    # List available datasets
-    nemo data-designer personas download --list
-    # Interactive selection
-    nemo data-designer personas download
-    # Download specific locales
-    nemo data-designer personas download --locale en_US --locale ja_JP
-    # Download all available locales
-    nemo data-designer personas download --all
-    # Preview what would be downloaded
-    nemo data-designer personas download --all --dry-run
-    """
-    from data_designer.cli.commands.download import personas_command
-
-    personas_command(locales=locales or [], all_locales=all_locales, dry_run=dry_run, list_available=list_available)
-
-
 def make_fileset_command(
     locale: Annotated[
         str,

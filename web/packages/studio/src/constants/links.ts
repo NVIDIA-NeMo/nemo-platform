@@ -46,6 +46,7 @@ export const LINK_EVAL_DOCS_METRICS = `${DOCS_BASE_URL}evaluate-models/metrics`;
 export const LINK_EVAL_DOCS_APPROACHES = `${DOCS_BASE_URL}evaluate-models/dataset-driven-vs-task-driven-evaluation`;
 export const LINK_EVAL_DOCS_BENCHMARKS = `${DOCS_BASE_URL}evaluate-models`;
 export const LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY = `${DOCS_BASE_URL}evaluate-models`;
+export const LINK_EVAL_DOCS = `${DOCS_BASE_URL}evaluate-models`;
 
 // Jobs documentation links
 export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;
@@ -54,4 +55,4 @@ export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;
 export const LINK_DOCS_SECRETS = `${DOCS_BASE_URL}get-started/core-concepts/manage-secrets`;
 
 // Evaluations
-export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}reference/cli-reference`;
+export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}evaluate-models/experiments`;

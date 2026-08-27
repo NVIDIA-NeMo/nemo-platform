@@ -183,6 +183,8 @@ class Docker(E2EBackend):
             # Models Docker backend: use DonD mode so the API (in a container) can reach NIM
             # containers by name on the same network. Without this, health_url is localhost:port
             # and the API container cannot reach the NIM (localhost is the API itself).
+            self.container.with_env("NEMO_DEPLOYMENTS_DOCKER_NETWORK", self.network.name)
+            self.container.with_env("NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE", "network")
             self.container.with_env("MODELS_DOCKER_NETWORKING_MODE", "dond")
             self.container.with_env("MODELS_DOCKER_NETWORK", self.network.name)
             self.container.with_env("MODELS_DOCKER_CONTAINER_NAME", NMP_API_NETWORK_ALIAS)

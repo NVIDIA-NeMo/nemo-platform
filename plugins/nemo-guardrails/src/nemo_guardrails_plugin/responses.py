@@ -18,7 +18,7 @@ from nemo_platform_plugin.inference_middleware import (
     ResponseResult,
 )
 from nemoguardrails.exceptions import LLMCallException
-from nemoguardrails.rails.llm.options import GenerationResponse
+from nemoguardrails.rails.llm.options import GenerationLog, GenerationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -128,19 +128,9 @@ def build_chat_completion_response_id() -> str:
     return f"chatcmpl-{uuid.uuid4()}"
 
 
-def is_blocked_generation_response(generation_response: GenerationResponse) -> bool:
-    """
-    Returns True if the GenerationResponse indicates the request was blocked by a guardrail.
-    """
-    log = generation_response.log
-
-    if not log:
-        logger.debug("Received GenerationResponse with empty log. ")
-        return True
-
-    activated_rails = log.activated_rails or []
-
-    return any(rail.stop is True for rail in activated_rails)
+def is_blocked_generation_response(log: GenerationLog) -> bool:
+    """Return True if the activation log indicates the request was blocked by a guardrail."""
+    return any(rail.stop is True for rail in log.activated_rails)
 
 
 def extract_response_content(generation_response: GenerationResponse) -> str:

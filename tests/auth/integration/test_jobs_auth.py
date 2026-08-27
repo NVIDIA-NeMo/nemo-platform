@@ -25,6 +25,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobSpec,
     PlatformJobStep,
 )
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.common.entities import ALL_WORKSPACES
 from nmp.core.jobs.controllers.diagnostics import collect_job_diagnostics
 from nmp.testing import TEST_ADMIN_EMAIL, grant_workspace_role, short_unique_name, unique_email
@@ -96,26 +98,32 @@ def test_job_principal_propagation(services_pool_sdk: NeMoPlatform):
         grant_workspace_role(admin_sdk, workspace=workspace_name, principal=user_email, roles=["Editor"])
 
         user_sdk = _as_bearer_user(services_pool_sdk, user_email, principal_id=_oidc_subject())
-        job = user_sdk.jobs.create(
-            workspace=workspace_name,
-            source=JOB_SOURCE,
-            spec={"test": "auth-propagation"},
-            platform_spec=PlatformJobSpec(
-                steps=[
-                    PlatformJobStep(
-                        name="auth-test-step",
-                        executor=CPUExecutionProviderSpec(
-                            provider="cpu",
-                            container=ContainerSpec(
-                                entrypoint=["nemo-platform"],
-                                command=["run", "task", "--task", "nmp.hello_world.tasks.hello_world"],
-                            ),
-                        ),
-                        environment=[EnvironmentVariable(name="BUSY_LOOP_DURATION_SECONDS", value="0")],
-                        config={"message": "auth propagation test"},
-                    )
-                ]
-            ),
+        job = (
+            client_from_platform(user_sdk, JobsClient)
+            .create_job(
+                workspace=workspace_name,
+                body=CreatePlatformJobRequest(
+                    source=JOB_SOURCE,
+                    spec={"test": "auth-propagation"},
+                    platform_spec=PlatformJobSpec(
+                        steps=[
+                            PlatformJobStep(
+                                name="auth-test-step",
+                                executor=CPUExecutionProviderSpec(
+                                    provider="cpu",
+                                    container=ContainerSpec(
+                                        entrypoint=["nemo-platform"],
+                                        command=["run", "task", "--task", "nmp.hello_world.tasks.hello_world"],
+                                    ),
+                                ),
+                                environment=[EnvironmentVariable(name="BUSY_LOOP_DURATION_SECONDS", value="0")],
+                                config={"message": "auth propagation test"},
+                            )
+                        ]
+                    ),
+                ),
+            )
+            .data()
         )
 
         completed_job = wait_for_platform_job(user_sdk, job.name, workspace_name)
@@ -155,28 +163,34 @@ def test_job_cannot_access_unauthorized_workspace(services_pool_sdk: NeMoPlatfor
         files = client_from_platform(owner_sdk, FilesClient)
         files.create_fileset(workspace=restricted_workspace, body=CreateFilesetRequest(name=fileset_name))
 
-        job = other_sdk.jobs.create(
-            workspace=runner_workspace,
-            source=JOB_SOURCE,
-            spec={"test": "auth-denial"},
-            platform_spec=PlatformJobSpec(
-                steps=[
-                    PlatformJobStep(
-                        name="access-test-step",
-                        executor=CPUExecutionProviderSpec(
-                            provider="cpu",
-                            container=ContainerSpec(
-                                entrypoint=["nemo-platform"],
-                                command=["run", "task", "--task", "nmp.hello_world.tasks.access_fileset"],
-                            ),
-                        ),
-                        config={
-                            "workspace": restricted_workspace,
-                            "fileset": fileset_name,
-                        },
-                    )
-                ]
-            ),
+        job = (
+            client_from_platform(other_sdk, JobsClient)
+            .create_job(
+                workspace=runner_workspace,
+                body=CreatePlatformJobRequest(
+                    source=JOB_SOURCE,
+                    spec={"test": "auth-denial"},
+                    platform_spec=PlatformJobSpec(
+                        steps=[
+                            PlatformJobStep(
+                                name="access-test-step",
+                                executor=CPUExecutionProviderSpec(
+                                    provider="cpu",
+                                    container=ContainerSpec(
+                                        entrypoint=["nemo-platform"],
+                                        command=["run", "task", "--task", "nmp.hello_world.tasks.access_fileset"],
+                                    ),
+                                ),
+                                config={
+                                    "workspace": restricted_workspace,
+                                    "fileset": fileset_name,
+                                },
+                            )
+                        ]
+                    ),
+                ),
+            )
+            .data()
         )
 
         completed_job = wait_for_platform_job(other_sdk, job.name, runner_workspace)
@@ -190,7 +204,11 @@ def test_job_cannot_access_unauthorized_workspace(services_pool_sdk: NeMoPlatfor
             )
         assert completed_job.status == "error"
 
-        tasks_response = other_sdk.jobs.tasks.list("access-test-step", job=job.name, workspace=runner_workspace)
+        tasks_response = (
+            client_from_platform(other_sdk, JobsClient)
+            .list_job_step_tasks(name="access-test-step", job=job.name, workspace=runner_workspace)
+            .data()
+        )
         if not tasks_response.data:
             _log_auth_job_diagnostics(
                 other_sdk,
@@ -222,28 +240,33 @@ def test_job_admin_can_list_jobs_in_all_workspaces(services_pool_sdk: NeMoPlatfo
         grant_workspace_role(admin_sdk, workspace=workspace_name, principal=user_email, roles=["Editor"])
 
         user_sdk = _as_bearer_user(services_pool_sdk, user_email, principal_id=_oidc_subject())
-        job = user_sdk.jobs.create(
-            workspace=workspace_name,
-            source=JOB_SOURCE,
-            spec={"test": "admin-list"},
-            platform_spec=PlatformJobSpec(
-                steps=[
-                    PlatformJobStep(
-                        name="admin-list-step",
-                        executor=CPUExecutionProviderSpec(
-                            provider="cpu",
-                            container=ContainerSpec(
-                                command=["echo", "admin list jobs"],
-                            ),
-                        ),
-                    )
-                ]
-            ),
+        job = (
+            client_from_platform(user_sdk, JobsClient)
+            .create_job(
+                workspace=workspace_name,
+                body=CreatePlatformJobRequest(
+                    source=JOB_SOURCE,
+                    spec={"test": "admin-list"},
+                    platform_spec=PlatformJobSpec(
+                        steps=[
+                            PlatformJobStep(
+                                name="admin-list-step",
+                                executor=CPUExecutionProviderSpec(
+                                    provider="cpu",
+                                    container=ContainerSpec(
+                                        command=["echo", "admin list jobs"],
+                                    ),
+                                ),
+                            )
+                        ]
+                    ),
+                ),
+            )
+            .data()
         )
 
         completed_job = wait_for_platform_job(user_sdk, job.name, workspace_name)
         assert completed_job.status == "completed"
 
-        jobs = admin_sdk.jobs.list(workspace=ALL_WORKSPACES)
-        assert jobs.pagination is not None
-        assert job_exists_in_pages(jobs, job.name)
+        jobs = client_from_platform(admin_sdk, JobsClient).list_jobs(workspace=ALL_WORKSPACES)
+        assert job_exists_in_pages(jobs.items(), job.name)

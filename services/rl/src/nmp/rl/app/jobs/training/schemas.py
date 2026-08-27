@@ -66,13 +66,32 @@ class GRPOConfig(BaseModel):
     # sandboxed rollouts alike.
     temperature: float = Field(default=1.0, gt=0.0)
     max_new_tokens: int | None = Field(default=None, gt=0)
+    top_k: int | None = Field(default=None, gt=0)
+    # Advantage shaping. normalize_rewards and use_leave_one_out_baseline reach NeMo-RL
+    # through the grpo.adv_estimator block; the clip bounds sit on grpo itself.
     normalize_rewards: bool = True
+    use_leave_one_out_baseline: bool = True
+    advantage_clip_low: float | None = None
+    advantage_clip_high: float | None = None
     overlong_filtering: bool = False
     max_rollout_turns: int = Field(default=1, gt=0)
     ref_policy_kl_penalty: float = Field(default=0.0, ge=0.0)
     ratio_clip_min: float = Field(default=0.2, ge=0.0)
     ratio_clip_max: float = Field(default=0.28, ge=0.0)
+    ratio_clip_c: float | None = Field(default=None, gt=1.0)
+    use_on_policy_kl_approximation: bool = True
+    use_importance_sampling_correction: bool = True
     max_grad_norm: float = Field(default=1.0, ge=0.0)
+    # DAPO components; see GRPOTraining in nmp.rl.schemas.job for what each does. All three
+    # sit off by default so an unstated job compiles to the same NeMo-RL config as before.
+    truncated_importance_sampling_type: str | None = None
+    truncated_importance_sampling_ratio: float | None = Field(default=None, gt=0.0)
+    truncated_importance_sampling_ratio_min: float | None = Field(default=None, ge=0.0)
+    use_dynamic_sampling: bool = False
+    dynamic_sampling_max_gen_batches: int = Field(default=10, gt=0)
+    batch_multiplier: float = Field(default=1.0, gt=0.0)
+    reward_shaping: dict[str, Any] | None = None
+    reward_scaling: dict[str, Any] | None = None
     # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
     automodel_kwargs: dict[str, Any] | None = None
     router_aux_loss_coef: float | None = Field(default=None, ge=0.0)
@@ -145,6 +164,10 @@ class TrainingStepConfig(BaseModel):
         # Operator-scoped, from platformConfig.rl.sandbox_resources / sandbox_ttl_s.
         sandbox_resources: dict[str, str] | None = None
         sandbox_ttl_s: int | None = None
+        # Rollouts per POST to the sandbox, and how many of those POSTs may run at once.
+        # None takes NeMo-RL's default. In-flight rollouts are the product of the two.
+        sandbox_rollout_chunk_size: int | None = Field(default=None, gt=0)
+        sandbox_rollout_max_in_flight: int | None = Field(default=None, gt=0)
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1

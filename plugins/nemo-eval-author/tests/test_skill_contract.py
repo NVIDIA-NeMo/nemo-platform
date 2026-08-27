@@ -4,9 +4,10 @@
 """Contract tests for the bundled Eval Author skills.
 
 ``eval-author`` is the core skill: it owns the standard, the vocabulary, the
-boundaries, and the routing. ``eval-author-discover`` is a sub-flow that carries
-the steps and defers the standard to the core. Both ship as directories customers
-copy into their own repository, so nothing at runtime enforces their promises.
+boundaries, and the routing. ``eval-author-discover`` and ``eval-author-audit``
+bundle scripts. ``eval-author-inspect-trace`` uses the provider's supported
+commands. Sub-flows defer the standard to the core.
+
 These tests are that enforcement:
 
 - The frontmatter of each skill carries every field ``docs/contributing/skills-spec.mdx`` requires.
@@ -56,8 +57,9 @@ _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
 _DISCOVER_DIR = _SKILLS_DIR / "eval-author-discover"
 _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR)
+_INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
+_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
 _SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
@@ -201,6 +203,11 @@ def _audit_payload(path: Path) -> dict:
     )
     assert block is not None
     return yaml.safe_load(block.group("body"))
+
+
+def _assert_literal_block_scalar(text: str, field: str, first_line: str) -> None:
+    pattern = rf"(?:^|\n)(?:\s*-\s+|\s+){re.escape(field)}: \|[-+]?\n\s+{re.escape(first_line)}"
+    assert re.search(pattern, text), text
 
 
 def _template_payload() -> dict:
@@ -440,6 +447,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
     discover_tools = set(_frontmatter_and_body(_DISCOVER_DIR)[0]["allowed-tools"])
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
+    inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     assert {"Bash", "Write"} <= discover_tools, (
@@ -448,6 +456,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     assert {"Bash", "Write"} <= audit_tools, (
         f"{_AUDIT_DIR.name} generates and validates audit files; it has {sorted(audit_tools)}"
     )
+    assert {"Bash", "Write"} <= inspect_tools, (
+        f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
+    )
 
 
 def test_the_core_names_every_sub_flow() -> None:
@@ -455,6 +466,63 @@ def test_the_core_names_every_sub_flow() -> None:
     _, body = _frontmatter_and_body(_CORE_DIR)
     for skill_dir in _SUB_FLOW_DIRS:
         assert skill_dir.name in body, f"the core does not route to {skill_dir.name}"
+
+
+def test_inspect_flow_is_reached_only_through_eval_author() -> None:
+    """Generic Intake questions must not match the inspect-trace sub-flow.
+
+    ``nemo-intake`` already owns instrumentation, ingest, and query. If this
+    sub-flow stays user-invocable and repeats those phrases, an agent with both
+    skills loaded cannot tell which one to start.
+    """
+    inspect_frontmatter, inspect_body = _frontmatter_and_body(_INSPECT_DIR)
+    core_frontmatter, _ = _frontmatter_and_body(_CORE_DIR)
+    overlapping = (
+        "inspect this agent trace",
+        "what happened in this agent trace",
+        "explain this production agent run",
+        "did this trace succeed",
+        "why did this trace fail",
+        "inspecting agent runs",
+    )
+
+    assert inspect_frontmatter["user-invocable"] is False
+    assert "eval-author has routed" in inspect_frontmatter["description"]
+    assert "nemo-intake" in inspect_frontmatter["description"]
+    assert "nemo-intake" in _not_for_names(inspect_frontmatter)
+    assert "nemo-intake" in _not_for_names(core_frontmatter)
+    assert "what happened in this agent trace" in core_frontmatter["triggers"]
+    for phrase in overlapping:
+        assert phrase not in inspect_frontmatter["triggers"]
+        assert phrase not in inspect_frontmatter["description"]
+    assert "after `eval-author` selects it" in inspect_body
+
+
+def test_inspect_flow_is_only_a_cli_driven_skill() -> None:
+    _, body = _frontmatter_and_body(_INSPECT_DIR)
+
+    assert {path.name for path in _INSPECT_DIR.iterdir()} == {"SKILL.md"}
+    for command in (
+        "nemo intake traces",
+        "nemo intake spans",
+        "nemo intake evaluator-results",
+    ):
+        assert command in body
+
+
+def test_inspect_flow_resolves_the_cli_without_changing_the_environment() -> None:
+    """The trace reader must handle installed and source-checkout CLI invocations."""
+    _, body = _frontmatter_and_body(_INSPECT_DIR)
+
+    candidates = (
+        "caller-supplied invocation",
+        "command -v nemo",
+        ".venv/bin/nemo",
+        "uv run --no-sync nemo",
+    )
+    positions = [body.index(candidate) for candidate in candidates]
+    assert positions == sorted(positions), "CLI candidates must appear in priority order"
+    assert "Use the resolved invocation for every command" in body
 
 
 @pytest.mark.parametrize("skill_dir", _SUB_FLOW_DIRS, ids=lambda path: path.name)
@@ -529,6 +597,26 @@ def test_audit_skill_reads_schema_before_drafting_items() -> None:
     assert "templates/audit.md" in step_one
     assert "schemas/audit.schema.json" in step_one
     assert "Do not use validation as the primary way to discover the format" in normalized_step
+
+
+def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:
+    """Tool names should match traces, not plausible aliases from prose."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    step_one = body.split("## Step 2:", 1)[0]
+    normalized_step = re.sub(r"\s+", " ", step_one)
+
+    assert "actual runtime traces or tool registry" in normalized_step
+    assert "eval-specific tools" in normalized_step
+    assert "Do not invent tool names that will not appear in the measurement surface" in normalized_step
+
+
+def test_audit_skill_runs_audit_scripts_through_uv() -> None:
+    """Documented script commands should use the repository Python environment."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+
+    assert "python <skill_dir>/scripts/audit_spec/" not in body
+    assert body.count("uv run <skill_dir>/scripts/audit_spec/generate.py") == 4
+    assert "uv run <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md" in body
 
 
 def test_audit_json_schema_is_valid() -> None:
@@ -908,7 +996,11 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     items = tmp_path / "items.yaml"
-    _write_audit_items(items, _template_payload()["items"])
+    items_payload = _template_payload()["items"]
+    items_payload[0]["expected_use"] = (
+        "Used when account-specific information is required.\nDo not use for unrelated billing questions."
+    )
+    _write_audit_items(items, items_payload)
     out = tmp_path / ".eval-author" / "audit.md"
 
     result = _run_script(_AUDIT_GENERATE, "--ethos", str(ethos), "--items", str(items), "--out", str(out))
@@ -916,6 +1008,7 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
     code, report, stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(out))
     summary = json.loads(result.stdout)
     payload = _audit_payload(out)
+    text = out.read_text(encoding="utf-8")
 
     assert code == 0, stderr or report
     assert summary["mode"] == "reconcile"
@@ -928,6 +1021,89 @@ def test_audit_generate_renders_valid_audit_from_items(tmp_path: Path) -> None:
     assert payload["sources"] == [{"name": "ethos", "path": "../ETHOS.md", "sha256": _digest(ethos)}]
     assert "source_ethos" not in payload
     assert "source_ethos_sha256" not in payload
+    _assert_literal_block_scalar(text, "description", "Looks up customer profile, plan, account status")
+    _assert_literal_block_scalar(text, "expected_use", "Used when account-specific information is required.")
+    _assert_literal_block_scalar(
+        text,
+        "expected_behavior",
+        "The agent grounds recovery in customer identity and routes to an approved recovery path.",
+    )
+
+
+def test_audit_generate_rejects_outputs_outside_eval_author(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / "README.md"
+    out.write_text("customer source must stay intact\n", encoding="utf-8")
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(ethos),
+        "--items",
+        str(items),
+        "--out",
+        str(out),
+        "--mode",
+        "replace",
+    )
+
+    assert result.returncode == 1
+    assert "--out must resolve inside a .eval-author/ directory" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert out.read_text(encoding="utf-8") == "customer source must stay intact\n"
+
+
+def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    del items_payload[0]["name"]
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 1
+    assert "name" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert audit.read_bytes() == before
+
+
+def test_audit_generate_rejects_duplicate_candidate_names_before_reconcile(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    before = audit.read_bytes()
+    items_payload = _template_payload()["items"]
+    duplicate = dict(items_payload[0])
+    duplicate["expected_use"] = "Different proposal for the existing tool."
+    items_payload.append(duplicate)
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, items_payload)
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+
+    assert result.returncode == 1
+    assert "duplicated" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert audit.read_bytes() == before
 
 
 def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> None:
@@ -978,6 +1154,7 @@ def test_audit_generate_reconciles_existing_audit_by_default(tmp_path: Path) -> 
     assert items_by_name["ticket.create"]["kind"] == "tool"
     assert "Manual reviewer notes must stay outside the block." in text
     assert "Manual footer must stay too." in text
+    _assert_literal_block_scalar(text, "description", "Hand reviewed lookup tool description.")
 
 
 def test_audit_generate_suggests_without_writing(tmp_path: Path) -> None:
