@@ -175,6 +175,13 @@ image pre-loaded onto the nodes) — the k8s backend does not use image pull
 secrets. Pass the image with `--image`, or set
 `agents.deployments.default_image` in the platform configuration.
 
+For hand-built images that already contain an agent server, pass
+`--use-image-entrypoint` so the deployment preserves the image ENTRYPOINT/CMD
+instead of injecting the platform-packaged agent server command. The platform
+still mounts the agent config and sets `PORT`, the runtime `NMP_*` environment
+variables, and the matching config path variable (`AGENT_CONFIG_PATH` for
+`nemo-agents-spec-v1`, `NAT_CONFIG_PATH` for NAT workflow configs).
+
 </Note>
 
 **2. A configured deployments executor.** The platform operator defines named

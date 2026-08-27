@@ -99,6 +99,7 @@ class RunnerBackend(ABC):
         created_by: str | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
+        use_image_entrypoint: bool = False,
     ) -> DeploymentInfo:
         """Start the agent process; returns status="starting".
 
@@ -117,6 +118,10 @@ class RunnerBackend(ABC):
         resolved environment. Container backends compile these into secret-backed
         container env vars (never plaintext); the deployments-plugin substrate
         materializes/mounts them. Subprocess mode ignores it.
+
+        ``use_image_entrypoint`` is only meaningful for container backends. When
+        true, those backends preserve the image ENTRYPOINT/CMD instead of
+        injecting the platform-owned server command.
         """
         ...
 

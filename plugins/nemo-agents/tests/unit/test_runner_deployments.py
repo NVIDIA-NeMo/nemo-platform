@@ -380,6 +380,22 @@ def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(res
         )
 
 
+def test_build_deployment_config_rejects_port_secret_when_using_image_entrypoint() -> None:
+    with pytest.raises(ReservedSecretEnvVarError, match="PORT"):
+        build_deployment_config(
+            name="hello-dep",
+            workspace="default",
+            image="custom-agent:latest",
+            port=8000,
+            agent_config={},
+            platform_base_url="http://nmp-api:8080",
+            config_mount_path="/workspace/config.yaml",
+            mode="docker",
+            secrets={"PORT": "default/some-secret"},
+            use_image_entrypoint=True,
+        )
+
+
 def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
     cfg = build_deployment_config(
         name="hello-dep",
@@ -472,6 +488,30 @@ def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
         PLATFORM_IGW_API_KEY_PLACEHOLDER
     )
     assert cfg.config_files[0].path == "/tmp/nemo/agent.yaml"
+    assert container.readiness_probe is not None
+    assert container.readiness_probe.http_get is not None
+    assert container.readiness_probe.http_get.path == "/health"
+
+
+def test_build_deployment_config_fabric_can_preserve_image_entrypoint() -> None:
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="custom-fabric-runtime:latest",
+        port=8000,
+        agent_config=_FABRIC_AGENT_CONFIG,
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/tmp/nemo/config.yaml",
+        mode="docker",
+        use_image_entrypoint=True,
+    )
+    container = cfg.containers[0]
+    assert container.command == []
+    assert container.args == []
+    assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/tmp/nemo/agent.yaml" for e in container.env)
+    assert any(e.name == "PORT" and e.value == "8000" for e in container.env)
+    assert cfg.config_files[0].path == "/tmp/nemo/agent.yaml"
+    assert "nemo_agents_plugin.fabric.server" not in " ".join(container.command + container.args)
     assert container.readiness_probe is not None
     assert container.readiness_probe.http_get is not None
     assert container.readiness_probe.http_get.path == "/health"
@@ -863,6 +903,45 @@ async def test_create_deployment_fabric_docker_rewrites_model_base_url() -> None
     assert created_config.labels["nemo.agents/runtime"] == "fabric"
     assert created_config.containers[0].command == ["python"]
     assert "nemo_agents_plugin.fabric.server" in created_config.containers[0].args
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_can_preserve_image_entrypoint() -> None:
+    backend = _backend(default_image="fabric:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "harnesses": {
+            "main": {
+                "provider": "codex",
+                "model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                },
+            }
+        },
+    }
+    with patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"):
+        info = await backend.create_deployment(
+            workspace="default",
+            name="fabric-dep",
+            config=config,
+            port=0,
+            deployment_mode="docker",
+            image="hand-built-agent:latest",
+            use_image_entrypoint=True,
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    container = created_config.containers[0]
+    assert container.image == "hand-built-agent:latest"
+    assert container.command == []
+    assert container.args == []
+    assert any(e.name == "PORT" and e.value == "8000" for e in container.env)
 
 
 @pytest.mark.asyncio
