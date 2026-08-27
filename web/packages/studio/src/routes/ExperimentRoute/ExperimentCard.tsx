@@ -5,7 +5,7 @@ import { formatEvaluatorScore } from '@nemo/common/src/utils/formatters';
 import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Card, Tag, Text } from '@nvidia/foundations-react-core';
-import { MetricTrendPanel } from '@studio/components/charts/MetricTrendPanel';
+import { MetricTrend } from '@studio/components/charts/MetricTrend';
 import {
   DELTA_COMPARISON_LABEL,
   formatTrendDelta,
@@ -87,9 +87,8 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <MetricTrendPanel
-            chartOnly
-            title={group.name}
+          <MetricTrend
+            label={group.name}
             series={series}
             isPending={isPending}
             chartHeight={48}
