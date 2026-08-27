@@ -25,6 +25,7 @@ import type {
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { evaluatorLabel } from '@studio/routes/agents/AgentDetailRoute/evaluations/formatRollups';
 import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { formatInteger } from '@studio/util/intakeTelemetry';
@@ -76,7 +77,6 @@ const SESSION_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   latency_ms: 'latency_ms',
   status: 'status',
   tokens: 'tokens',
-  cost_total_usd: 'cost_total_usd',
 };
 
 // Converts the table's multi-column sorting state to the comma-separated `sort` API param.
@@ -195,27 +195,6 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         );
       },
     }),
-    accessor('input', {
-      header: 'Input',
-      enableSorting: false,
-      size: 400,
-      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.input} emptyValue="-" />,
-    }),
-    accessor('output', {
-      header: 'Output',
-      enableSorting: false,
-      size: 400,
-      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.output} emptyValue="-" />,
-    }),
-    accessor('latency_ms', {
-      header: 'Duration',
-      enableSorting: true,
-      meta: { alignment: 'right' },
-      cell: ({ row }) => {
-        const ms = row.original.latency_ms;
-        return <Text>{ms != null ? formatDurationMs(ms) : '-'}</Text>;
-      },
-    }),
     accessor('status', {
       header: 'Status',
       enableSorting: true,
@@ -232,6 +211,27 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         },
       },
       cell: ({ row }) => <StatusBadge status={mapStatusForBadge(row.original.status)} />,
+    }),
+    accessor('latency_ms', {
+      header: 'Duration',
+      enableSorting: true,
+      meta: { alignment: 'right' },
+      cell: ({ row }) => {
+        const ms = row.original.latency_ms;
+        return <Text>{ms != null ? formatDurationMs(ms) : '-'}</Text>;
+      },
+    }),
+    accessor('input', {
+      header: 'Input',
+      enableSorting: false,
+      size: 400,
+      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.input} emptyValue="-" />,
+    }),
+    accessor('output', {
+      header: 'Output',
+      enableSorting: false,
+      size: 400,
+      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.output} emptyValue="-" />,
     }),
     accessor(
       (original) =>
@@ -250,19 +250,10 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         },
       }
     ),
-    accessor('cost_total_usd', {
-      header: 'Cost',
-      enableSorting: true,
-      meta: { alignment: 'right' },
-      cell: ({ row }) => {
-        const cost = row.original.cost_total_usd;
-        return <Text>{cost != null ? `$${cost.toFixed(3)}` : '-'}</Text>;
-      },
-    }),
     ...evaluatorNames.map((name, index) =>
       accessor((original) => original.evaluator_scores?.[name], {
         id: `score-${index}`,
-        header: snakeCaseToTitleCase(name),
+        header: snakeCaseToTitleCase(evaluatorLabel(name)),
         enableSorting: false,
         size: 130,
         meta: { alignment: 'right' },
