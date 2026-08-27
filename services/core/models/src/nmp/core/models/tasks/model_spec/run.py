@@ -18,10 +18,11 @@ import logging
 import os
 from pathlib import Path
 
-from nemo_platform import NeMoPlatform, NeMoPlatformError
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import (
     InternalServerError,
+    NemoClientError,
     NotFoundError,
 )
 from nemo_platform_plugin.client.errors import (
@@ -195,7 +196,7 @@ class ModelSpecRunner:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err
@@ -307,7 +308,7 @@ class ModelSpecRunner:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err

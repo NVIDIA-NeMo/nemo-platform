@@ -17,8 +17,8 @@ def test_strip_ty_ignore_comments():
                 "source": [
                     "# This is a regular comment\n",
                     "client_from_platform(sdk, ModelsClient).get_openai_route_base_url()\n",
-                    "sdk.models.get_model_entity_route_openai_url(entity) # ty: ignore[unresolved-reference]\n",
-                    "sdk.models.get_provider_route_openai_url(provider) # ty: ignore[unresolved-reference]\n",
+                    "client_from_platform(sdk, ModelsClient).get_model_entity_route_openai_url(entity) # ty: ignore[unresolved-reference]\n",
+                    "client_from_platform(sdk, ModelsClient).get_provider_route_openai_url(provider) # ty: ignore[unresolved-reference]\n",
                 ],
             }
         ]

@@ -18,6 +18,7 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoTransportError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.models.client import ModelsClient
 
@@ -282,7 +283,7 @@ def wait_for_customization_job(
         try:
             status = jobs.get_job_status(name=job_name, workspace=workspace).data()
             consecutive_errors = 0
-        except (httpx.TimeoutException, httpx.ConnectError, ConnectionError, OSError) as exc:
+        except NemoTransportError as exc:
             consecutive_errors += 1
             logger.warning(
                 f"Transient error polling customization job (attempt {consecutive_errors}/{max_consecutive_errors}, "

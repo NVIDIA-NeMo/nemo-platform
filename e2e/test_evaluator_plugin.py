@@ -46,11 +46,9 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import NeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
-from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.models.client import ModelsClient

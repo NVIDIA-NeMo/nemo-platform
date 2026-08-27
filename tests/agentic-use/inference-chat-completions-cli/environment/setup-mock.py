@@ -22,6 +22,9 @@ from nemo_platform import (
     NotFoundError,
     UnprocessableEntityError,
 )
+from nemo_platform import (
+    ConflictError as SDKConflictError,
+)
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError
 from nemo_platform_plugin.models.client import ModelsClient
@@ -210,7 +213,7 @@ def setup() -> None:
             host_url=MOCK_PROVIDER_HOST_URL,
             default_extra_headers=desired_headers,
         )
-    except ConflictError:
+    except SDKConflictError:
         print(f"Provider already exists, reconciling headers: {MOCK_PROVIDER_NAME}")
         sdk.inference.providers.update(
             name=MOCK_PROVIDER_NAME,

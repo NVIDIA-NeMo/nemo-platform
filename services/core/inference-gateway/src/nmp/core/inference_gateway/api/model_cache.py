@@ -9,11 +9,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
 from nemo_platform.types.inference import ModelProvider, ServedModelMapping
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
-from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError
+from nemo_platform_plugin.client.errors import NemoHTTPError as PluginHTTPError
+from nemo_platform_plugin.client.errors import NemoTransportError as PluginTransportError
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_platform_plugin.models.types import ModelEntity
@@ -214,9 +214,9 @@ def model_entity_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[], 
             )
             models = [model async for model in resp.items()]
             return models
-        except APIConnectionError as exc:
+        except PluginTransportError as exc:
             raise ModelProviderRefreshError(f"Error connecting to models service: {exc}") from exc
-        except APIStatusError as exc:
+        except PluginHTTPError as exc:
             raise ModelProviderRefreshError(f"Error refreshing model entities from models service: {exc}") from exc
 
     return _model_entity_getter

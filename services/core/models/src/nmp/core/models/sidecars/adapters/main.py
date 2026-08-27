@@ -13,9 +13,8 @@ import threading
 import urllib.error
 import urllib.request
 
-from nemo_platform import NeMoPlatform
+from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.models.client import ModelsClient
 from nemo_platform_plugin.models.types import Adapter, ModelEntity
 from nmp.common.config import get_platform_config
