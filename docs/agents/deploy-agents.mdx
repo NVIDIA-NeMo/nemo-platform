@@ -177,10 +177,7 @@ secrets. Pass the image with `--image`, or set
 
 For hand-built images that already contain an agent server, pass
 `--use-image-entrypoint` so the deployment preserves the image ENTRYPOINT/CMD
-instead of injecting the platform-packaged agent server command. The platform
-still mounts the agent config and sets `PORT`, the runtime `NMP_*` environment
-variables, and the matching config path variable (`AGENT_CONFIG_PATH` for
-`nemo-agents-spec-v1`, `NAT_CONFIG_PATH` for NAT workflow configs).
+instead of injecting the platform-packaged agent server command.
 
 </Note>
 
