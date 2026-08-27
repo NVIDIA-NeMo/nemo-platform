@@ -25,37 +25,44 @@ import {
   useListEvaluations,
   useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
-import { Anchor, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
-import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
+import {
+  Anchor,
+  FormField,
+  SegmentedControl,
+  Stack,
+  Text,
+  Upload,
+} from '@nvidia/foundations-react-core';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
-import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
+import { isConflictError } from '@studio/api/evaluation/eval-config-fileset';
 import {
   createRunEvaluation,
-  EVAL_CONFIG_FILENAME,
+  evalConfigFilename,
   evaluationConfigError,
   evaluationFilesetName,
+  findEvalConfigFile,
 } from '@studio/components/evaluation/experimentEvalConfig';
 import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
 import {
   bareName,
   buildAgentEvalRequestBody,
   buildDatasetEvalRequestBody,
-  buildPersistedSpec,
+  type DatasetEvalSpec,
+  type EvalConfigFormat,
   type EvalSpec,
   filesetNameForExperiment,
   injectJudgeModel,
-  type InlineMetricBundle,
   isDatasetEvalSpec,
-  generateEvalConfigName,
   MODE_DEFAULT,
   MODE_EXPERIMENT,
   parseEvalConfig,
+  parseUploadedDatasetConfig,
+  serializeEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
-import { LINK_EVAL_DOCS } from '@studio/constants/links';
-import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
+import { LINK_EVAL_DOCS, LINK_EVAL_DOCS_APPROACHES } from '@studio/constants/links';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -66,11 +73,11 @@ const EVAL_CONFIG_MODE_ITEMS = [
   { value: MODE_EXPERIMENT, children: 'Use existing evaluation' },
 ];
 
-const DATASET_FILENAME = 'dataset.jsonl';
+/** Stem the dataset is stored under in the run's fileset; the extension follows its content. */
+const DATASET_BASENAME = 'dataset';
 
 /** Backend caps page_size at 100; the picker shows the most recent page. */
 const LIST_PAGE_SIZE = 100;
-const README_FILENAME = 'README.md';
 
 const NO_EVALUATIONS_MESSAGE =
   'No evaluations with a reusable eval config yet. Create one to run and re-use it.';
@@ -79,11 +86,11 @@ const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
   judgeModel: z.string(),
   mode: z.enum([MODE_DEFAULT, MODE_EXPERIMENT]),
-  exampleKey: z.string(),
-  /** Name of the experiment to create in "Create experiment" mode. */
+  /** Name of the experiment to create in "Create experiment" mode. The fileset holding this
+   *  run's eval config and dataset is derived from it. */
   newName: z.string(),
-  /** Fileset created alongside it, holding eval-config.json and any data artifacts. */
-  filesetName: z.string(),
+  /** Name of the Intake Evaluation this run publishes under, in "Create experiment" mode. */
+  evaluationRecordName: z.string(),
   /** Name of the existing evaluation whose eval config is reused in "Use existing evaluation" mode. */
   evaluationName: z.string(),
 });
@@ -100,7 +107,12 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
       });
     }
     if (data.mode === MODE_DEFAULT) {
-      const nameError = getEntityNameError(data.newName.trim());
+      // The derived fileset name is validated too — it is longer, so a name that is legal on
+      // its own can still overflow once "-data" is appended, and there is no fileset field to
+      // correct it in.
+      const nameError =
+        getEntityNameError(data.newName.trim(), 'Experiment name') ??
+        getEntityNameError(filesetNameForExperiment(data.newName.trim()), 'Derived fileset name');
       if (nameError) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -108,12 +120,15 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
           path: ['newName'],
         });
       }
-      const filesetError = getEntityNameError(data.filesetName.trim());
-      if (filesetError) {
+      const recordNameError = getEntityNameError(
+        data.evaluationRecordName.trim(),
+        'Evaluation name'
+      );
+      if (recordNameError) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: filesetError,
-          path: ['filesetName'],
+          message: recordNameError,
+          path: ['evaluationRecordName'],
         });
       }
     }
@@ -126,17 +141,73 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
     }
   });
 
-const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => {
-  const newName = generateEvalConfigName();
-  return {
-    agent: agent ?? '',
-    judgeModel: '',
-    mode: MODE_DEFAULT,
-    exampleKey: DATASET_EVAL_CONFIG_KEY,
-    newName,
-    filesetName: filesetNameForExperiment(newName),
-    evaluationName: '',
-  };
+const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => ({
+  agent: agent ?? '',
+  judgeModel: '',
+  mode: MODE_DEFAULT,
+  newName: '',
+  evaluationRecordName: '',
+  evaluationName: '',
+});
+
+/** A file the user picked, plus why it was rejected when it was. */
+interface FilePick {
+  file: File;
+  error?: string;
+}
+
+/** The picked dataset, with the name it will be stored under once it validates. */
+interface DatasetPick extends FilePick {
+  storedName?: string;
+}
+
+/** The picked eval config, with its parsed spec once it validates. ``format`` follows the
+ *  uploaded extension, not the detected syntax: a file named .yaml is stored as YAML even if
+ *  its contents happen to be valid JSON, which is the mapping an author expects. */
+interface ConfigPick extends FilePick {
+  spec?: DatasetEvalSpec;
+  format?: EvalConfigFormat;
+}
+
+const configFormatForFile = (name: string): EvalConfigFormat =>
+  /\.ya?ml$/i.test(name) ? 'yaml' : 'json';
+
+const isRecord = (value: unknown): boolean =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Validate the dataset and settle the name it is stored under. The evaluator's loader takes
+ *  ``.json`` and ``.jsonl`` interchangeably, sniffing a leading ``[`` to tell an array from
+ *  line-delimited records — so the name follows the detected content, not the uploaded
+ *  extension, and the dataset ref written into the config matches.
+ *
+ *  Every record must be an object: the evaluator turns each one into a row keyed by its own
+ *  fields, and a file of scalars only fails once the job is running. Parsed here rather than
+ *  through ``validateFileFormat``, which does not check record shape and would mean reading a
+ *  large dataset into memory twice. */
+const inspectDatasetFile = async (file: File): Promise<Omit<DatasetPick, 'file'>> => {
+  const text = (await file.text()).trim();
+  if (!text) return { error: 'File is empty' };
+
+  let records: unknown[];
+  let format: 'json' | 'jsonl';
+  try {
+    const parsed: unknown = JSON.parse(text);
+    records = Array.isArray(parsed) ? parsed : [parsed];
+    format = 'json';
+  } catch {
+    try {
+      records = text.split('\n').flatMap((line) => (line.trim() ? [JSON.parse(line)] : []));
+      format = 'jsonl';
+    } catch {
+      return { error: 'File is not valid JSON or JSONL' };
+    }
+  }
+
+  if (records.length === 0) return { error: 'File contains no data' };
+  if (!records.every(isRecord)) {
+    return { error: 'Every dataset record must be a JSON object.' };
+  }
+  return { storedName: `${DATASET_BASENAME}.${format}` };
 };
 
 interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -188,90 +259,71 @@ const discardSeeded = async (
   );
 };
 
+/** The two files the user uploaded in "Create experiment" mode, already validated. */
+interface UploadedEvalInputs {
+  dataset: File;
+  datasetName: string;
+  spec: DatasetEvalSpec;
+  /** Serialization the config was uploaded in; the stored file keeps it. */
+  configFormat: EvalConfigFormat;
+}
+
 /** Resolves the persisted yardstick spec for this submission. In "Create experiment" mode
- *  it builds the spec from the sample template (fanning the metric onto every task with
- *  the picked judge baked in) and seeds it into a new fileset; in "Use existing evaluation"
- *  mode it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
+ *  it takes the uploaded config, bakes in the picked judge and a ref to the dataset that is
+ *  about to be uploaded beside it, and seeds both into a new fileset; in "Use existing
+ *  evaluation" mode it reads the saved spec back verbatim (no re-bake, no judge re-pick). */
 const loadPersistedSpec = async (
   workspace: string,
   formData: SubmitEvaluationFormData,
-  configFileset: string | null
+  configFileset: string | null,
+  uploads: UploadedEvalInputs | null
 ): Promise<EvalSpec> => {
   if (formData.mode === MODE_DEFAULT) {
+    if (!uploads) throw new Error('Upload a dataset and an eval config before submitting');
     const signal = new AbortController().signal;
-    const name = formData.filesetName.trim();
-    const example = getEvalConfigSample(formData.exampleKey);
-    const template = parseEvalConfig(await fetchSampleText(example.configPath));
-    const files: EvalSeedFile[] = [];
-    let spec: EvalSpec;
-
-    if (isDatasetEvalSpec(template)) {
-      const judgeModel = formData.judgeModel || null;
-      const bakedMetrics = judgeModel
-        ? template.metrics.map((m) => injectJudgeModel(m, judgeModel))
-        : template.metrics;
-      if (example.datasetPath) {
-        const datasetFile = example.datasetPath.split('/').pop() ?? DATASET_FILENAME;
-        files.push({
-          path: datasetFile,
-          content: await fetchSampleText(example.datasetPath),
-          type: 'application/jsonl',
-        });
-        spec = {
-          ...template,
-          dataset: `${workspace}/${name}#${datasetFile}`,
-          metrics: bakedMetrics,
-        };
-      } else {
-        spec = { ...template, dataset: [], metrics: bakedMetrics };
-      }
-    } else {
-      spec = buildPersistedSpec(template, formData.judgeModel || null);
-    }
-
-    files.push({
-      path: EVAL_CONFIG_FILENAME,
-      content: JSON.stringify(spec, null, 2),
-      type: 'application/json',
-    });
-
-    if (example.readmePath) {
-      const readme = await fetchSampleText(example.readmePath).catch(() => null);
-      if (readme) {
-        files.push({ path: README_FILENAME, content: readme, type: 'text/markdown' });
-      }
-    }
+    const name = filesetNameForExperiment(formData.newName.trim());
+    const judgeModel = formData.judgeModel || null;
+    const spec: DatasetEvalSpec = {
+      ...uploads.spec,
+      dataset: `${workspace}/${name}#${uploads.datasetName}`,
+      metrics: judgeModel
+        ? uploads.spec.metrics.map((m) => injectJudgeModel(m, judgeModel))
+        : uploads.spec.metrics,
+    };
 
     try {
       await filesCreateFileset(workspace, { name, description: 'Agent Evaluation Config' }, signal);
     } catch (err) {
       if (isConflictError(err)) {
-        throw new Error(`A fileset named "${name}" already exists — choose a different name`);
+        throw new Error(
+          `A fileset named "${name}" already exists — choose a different experiment name`
+        );
       }
       throw err;
     }
     try {
-      for (const f of files) {
-        await filesUploadFile(
-          workspace,
-          name,
-          f.path,
-          new Blob([f.content], { type: f.type }),
-          signal
-        );
-      }
+      await filesUploadFile(workspace, name, uploads.datasetName, uploads.dataset, signal);
+      await filesUploadFile(
+        workspace,
+        name,
+        evalConfigFilename(uploads.configFormat),
+        new Blob([serializeEvalConfig(spec, uploads.configFormat)], {
+          type: uploads.configFormat === 'yaml' ? 'application/yaml' : 'application/json',
+        }),
+        signal
+      );
     } catch (uploadErr) {
       throw await discardSeeded(workspace, { filesetName: name }, uploadErr);
     }
     return spec;
   }
   if (!configFileset) throw new Error('The selected evaluation has no eval config fileset');
-  const blob = await filesDownloadFile(
-    workspace,
-    configFileset,
-    EVAL_CONFIG_FILENAME,
-    new AbortController().signal
-  );
+  const signal = new AbortController().signal;
+  // The stored config keeps whichever serialization its author uploaded, so resolve the file
+  // by listing rather than assuming an extension. parseEvalConfig reads either.
+  const configFile = await findEvalConfigFile(workspace, configFileset, signal);
+  if (!configFile) throw new Error("Failed to read the selected evaluation's eval config");
+  const blob = await filesDownloadFile(workspace, configFileset, configFile, signal);
   if (!blob) throw new Error("Failed to read the selected evaluation's eval config");
   return parseEvalConfig(await blob.text());
 };
@@ -291,6 +343,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const isLlmJudgeRef = useRef(false);
   const [schema] = useState(() => makeSubmitEvaluationSchema(() => isLlmJudgeRef.current));
 
+  const [datasetPick, setDatasetPick] = useState<DatasetPick | null>(null);
+  const [configPick, setConfigPick] = useState<ConfigPick | null>(null);
+
+  // Bumped whenever a pick is replaced, removed, or reset, so an async validation that is
+  // still running when that happens knows to drop its result instead of committing it.
+  const datasetToken = useRef(0);
+  const configToken = useRef(0);
+
   const { data: agentsResponse, isLoading: isAgentsLoading } = useAgentsListAgents(
     workspace,
     undefined,
@@ -306,7 +366,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   });
   const {
     control,
-    register,
     reset: resetForm,
     setValue,
     getValues,
@@ -320,7 +379,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const selectedAgent = useWatch({ control, name: 'agent' });
 
   const agentFieldError = errors.agent?.message;
-  const exampleKey = useWatch({ control, name: 'exampleKey' });
   const evaluationName = useWatch({ control, name: 'evaluationName' });
 
   const { data: evaluationsResponse, isLoading: isEvaluationsLoading } = useListEvaluations(
@@ -337,7 +395,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     { query: { enabled: open && mode === MODE_EXPERIMENT } }
   );
   const evaluations = evaluationsResponse?.data ?? [];
-  /* The eval-config.json is identified on each Evaluation by convention in Studio.
+  /* The eval config is identified on each Evaluation by convention in Studio.
    * It's not persisted by the CLI or API at all. Only Studio created jobs will
    * have this field written to the Evaluation's metadata (dict[str,str]).
    * Unfortunately there's no existing way for Evaluations to be matched to the
@@ -373,33 +431,26 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const evaluationFileset = selectedEvaluation ? evaluationFilesetName(selectedEvaluation) : null;
   const evaluationFieldError = errors.evaluationName?.message ?? evaluationConfigIssue ?? undefined;
 
-  const canRunSelectedEvaluation =
-    mode !== MODE_EXPERIMENT ||
-    (!isValidatingEvaluation && !!selectedEvaluation && !evaluationConfigIssue);
+  const uploads: UploadedEvalInputs | null =
+    datasetPick?.storedName && !datasetPick.error && configPick?.spec && !configPick.error
+      ? {
+          dataset: datasetPick.file,
+          datasetName: datasetPick.storedName,
+          spec: configPick.spec,
+          configFormat: configPick.format ?? 'json',
+        }
+      : null;
 
-  // Fetch and parse the selected example config early to detect metric type and default model.
-  const { data: exampleConfig } = useQuery({
-    queryKey: ['eval-config-preview', exampleKey],
-    queryFn: async () => {
-      const example = getEvalConfigSample(exampleKey);
-      if (!example) return null;
-      const text = await fetchSampleText(example.configPath);
-      return parseEvalConfig(text);
-    },
-    enabled: open && mode === MODE_DEFAULT && !!exampleKey,
-    staleTime: Infinity,
-    // Retain the prior example's parsed config while the next one loads so the
-    // judge picker stays mounted (all examples are llm-judge) — no flicker.
-    placeholderData: keepPreviousData,
-  });
+  const canSubmit =
+    mode === MODE_DEFAULT
+      ? !!uploads
+      : !isValidatingEvaluation && !!selectedEvaluation && !evaluationConfigIssue;
 
-  const configMetrics: InlineMetricBundle[] = !exampleConfig
-    ? []
-    : isDatasetEvalSpec(exampleConfig)
-      ? exampleConfig.metrics
-      : exampleConfig.tasks.flatMap((task) => task.metrics);
-
-  const judgeMetric = configMetrics.find((metric) => metric.metric_type === 'llm-judge');
+  // Mirrors injectJudgeModel's own guard, so the picker is shown exactly when a metric would
+  // have a model written into it — not just for the llm-judge type.
+  const judgeMetric = configPick?.spec?.metrics.find(
+    (metric) => metric.metric_type === 'llm-judge' || 'model' in metric.payload.metric
+  );
 
   const isLlmJudge = mode === MODE_DEFAULT && !!judgeMetric;
   isLlmJudgeRef.current = isLlmJudge;
@@ -425,6 +476,56 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     }
   }, [open, isLlmJudge, defaultModelRef, judgeModels, getValues, setValue]);
 
+  const clearDatasetPick = () => {
+    datasetToken.current += 1;
+    setDatasetPick(null);
+  };
+
+  const clearConfigPick = () => {
+    configToken.current += 1;
+    setConfigPick(null);
+  };
+
+  // Both handlers clear first: validation is async, and leaving the previous pick in place
+  // would keep the submit gate open against a file the user has already replaced. Each also
+  // drops its own result if the pick it belongs to is no longer current — a slow read of a
+  // replaced file would otherwise land after a faster one and submit a file the card no
+  // longer shows. The tokens are per input: one shared counter would let a config pick
+  // cancel an in-flight dataset read, stranding the form with no pick and no error.
+  // Removing a file calls onValueChange with no item, so the argument is optional.
+  const handleDatasetPicked = async (item?: { file: File }) => {
+    clearDatasetPick();
+    if (!item?.file) return;
+    const token = datasetToken.current;
+    const inspected = await inspectDatasetFile(item.file);
+    if (token !== datasetToken.current) return;
+    setDatasetPick({ file: item.file, ...inspected });
+  };
+
+  // A fresh config also means a fresh judge: the preselect effect above bails once judgeModel
+  // is set, so leaving it would keep the previous file's judge.
+  const handleConfigPicked = async (item?: { file: File }) => {
+    setValue('judgeModel', '');
+    clearConfigPick();
+    if (!item?.file) return;
+    const token = configToken.current;
+    let pick: ConfigPick;
+    try {
+      pick = {
+        file: item.file,
+        spec: parseUploadedDatasetConfig(await item.file.text()),
+        format: configFormatForFile(item.file.name),
+      };
+    } catch (err) {
+      pick = {
+        file: item.file,
+        error: err instanceof Error ? err.message : 'Could not read the file',
+      };
+    }
+    if (token !== configToken.current) return;
+    setConfigPick(pick);
+  };
+
   const {
     mutateAsync: submitEvaluation,
     error: submitError,
@@ -432,10 +533,12 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     reset: resetMutation,
   } = useMutation({
     mutationFn: async (formData: SubmitEvaluationFormData) => {
-      const spec = await loadPersistedSpec(workspace, formData, evaluationFileset);
+      const spec = await loadPersistedSpec(workspace, formData, evaluationFileset, uploads);
 
       const isNew = formData.mode === MODE_DEFAULT;
-      const filesetName = isNew ? formData.filesetName.trim() : (evaluationFileset ?? '');
+      const filesetName = isNew
+        ? filesetNameForExperiment(formData.newName.trim())
+        : (evaluationFileset ?? '');
 
       const seeded: SeededEntities = isNew ? { filesetName } : {};
 
@@ -465,9 +568,17 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
         const evaluationId = await createRunEvaluation(workspace, {
           experimentIds,
+          name: isNew ? formData.evaluationRecordName.trim() : undefined,
           nameStem,
           filesetName,
           parentEvaluationId,
+        }).catch((err: unknown) => {
+          if (isConflictError(err)) {
+            throw new Error(
+              `An evaluation named "${formData.evaluationRecordName.trim()}" already exists — choose a different evaluation name`
+            );
+          }
+          throw err;
         });
         seeded.evaluationName = evaluationId;
 
@@ -503,7 +614,12 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   });
 
   useEffect(() => {
-    if (!open) resetForm(makeDefaultValues(agentProp));
+    if (open) return;
+    resetForm(makeDefaultValues(agentProp));
+    datasetToken.current += 1;
+    configToken.current += 1;
+    setDatasetPick(null);
+    setConfigPick(null);
   }, [open, agentProp, resetForm]);
 
   // Seed the locked agent on open. A blanket reset here would clobber the judge-model
@@ -515,6 +631,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const resetAndClose = () => {
     resetMutation();
     resetForm(makeDefaultValues(agentProp));
+    clearDatasetPick();
+    clearConfigPick();
     onClose();
   };
 
@@ -541,7 +659,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       submitButtonText="Submit"
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
-      submitDisabled={!canRunSelectedEvaluation}
+      submitDisabled={!canSubmit}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
@@ -597,32 +715,89 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
               {mode === MODE_DEFAULT ? (
                 <>
-                  <input type="hidden" {...register('exampleKey')} />
-                  {isLlmJudge && (
-                    <JudgeModelSelect<SubmitEvaluationFormData>
-                      formFieldName="judgeModel"
-                      slotLabel="Judge Model"
-                    />
-                  )}
                   <ControlledTextInput
                     useControllerProps={{ control, name: 'newName' }}
-                    selectOnFocus
+                    placeholder="e.g. Model update tests"
                     formFieldProps={{
-                      slotLabel: 'New Experiment Name',
-                      slotHelp:
-                        'Groups this run and future ones against the same config. Select it later to re-run.',
+                      slotLabel: 'Experiment Name',
+                      required: true,
+                      slotHelp: 'Groups multiple evaluation runs together for comparison.',
                       slotError: errors.newName?.message,
                     }}
                   />
+
                   <ControlledTextInput
-                    useControllerProps={{ control, name: 'filesetName' }}
-                    selectOnFocus
+                    useControllerProps={{ control, name: 'evaluationRecordName' }}
+                    placeholder="e.g. Initial baseline"
                     formFieldProps={{
-                      slotLabel: 'Fileset Name',
-                      slotHelp: `Stores this experiment's ${EVAL_CONFIG_FILENAME} and any data files.`,
-                      slotError: errors.filesetName?.message,
+                      slotLabel: 'Evaluation Name',
+                      required: true,
+                      slotHelp: 'Names this run within the experiment. Results publish under it.',
+                      slotError: errors.evaluationRecordName?.message,
                     }}
                   />
+
+                  <Text kind="label/bold/sm" color="secondary">
+                    Select evaluation set
+                  </Text>
+                  <Text kind="body/regular/md" color="secondary">
+                    Learn more about evaluation set requirements in the{' '}
+                    <Anchor
+                      kind="inline"
+                      textKind="body/regular/md"
+                      href={LINK_EVAL_DOCS_APPROACHES}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      evaluation documentation
+                    </Anchor>
+                    .
+                  </Text>
+
+                  <Upload
+                    accept=".jsonl,.json"
+                    onValueChange={handleDatasetPicked}
+                    onFileRemove={clearDatasetPick}
+                    status={datasetPick?.error ? 'error' : undefined}
+                    renderInput={(slotInput) => (
+                      <FormField
+                        name="dataset"
+                        required
+                        slotLabel="Add dataset"
+                        slotHelp="JSONL, or a JSON array of objects."
+                        slotError={datasetPick?.error}
+                        status={datasetPick?.error ? 'error' : undefined}
+                      >
+                        {datasetPick ? null : slotInput}
+                      </FormField>
+                    )}
+                  />
+
+                  <Upload
+                    accept=".json,.yaml,.yml"
+                    onValueChange={handleConfigPicked}
+                    onFileRemove={clearConfigPick}
+                    status={configPick?.error ? 'error' : undefined}
+                    renderInput={(slotInput) => (
+                      <FormField
+                        name="evalConfig"
+                        required
+                        slotLabel="Select evaluator config"
+                        slotHelp="Select a JSON or YAML config."
+                        slotError={configPick?.error}
+                        status={configPick?.error ? 'error' : undefined}
+                      >
+                        {configPick ? null : slotInput}
+                      </FormField>
+                    )}
+                  />
+
+                  {isLlmJudge && (
+                    <JudgeModelSelect<SubmitEvaluationFormData>
+                      formFieldName="judgeModel"
+                      slotLabel="Model for LLM evaluators"
+                    />
+                  )}
                 </>
               ) : (
                 <>
@@ -639,7 +814,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                       )}
                       formFieldProps={{
                         slotLabel: 'Evaluation',
-                        slotHelp: `Reuses the selected evaluation's ${EVAL_CONFIG_FILENAME}.`,
+                        slotHelp: "Reuses the selected evaluation's saved eval config.",
                         slotError: evaluationFieldError,
                         status: evaluationFieldError ? 'error' : undefined,
                       }}
