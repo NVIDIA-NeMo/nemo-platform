@@ -85,10 +85,14 @@ class RowFold:
     measure stage and catches anything structural that no single column owns.
     """
 
-    def __init__(self, features: list[FeatureSchema] | None = None) -> None:
+    def __init__(self, features: list[FeatureSchema] | None = None, *, discover: bool = False) -> None:
         # None means the partition declared no schema. It is not the same as an empty list, which is
         # a declared schema that happens to have no columns and must not then discover any.
-        self._infer = features is None
+        #
+        # `discover` turns discovery back on *alongside* a declared schema, for a partition whose
+        # declaration is known to be partial. A well-formed declared partition never uses it: no row
+        # carries a key the schema did not name, so nothing is ever discovered.
+        self._infer = features is None or discover
         self._accumulators: dict[str, RoutedAccumulator] = {}
         self._declared: dict[str, FeatureSchema] = {}
         self._order: list[str] = []
