@@ -49,7 +49,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from pkgutil import resolve_name
-from typing import Any, ClassVar, Literal, Optional, cast
+from types import SimpleNamespace
+from typing import Any, Callable, ClassVar, Literal, Optional, cast
 from urllib.parse import urlencode
 
 import click
@@ -1598,8 +1599,10 @@ def _register_environment_commands(app: typer.Typer) -> None:
         """Create an environment spec from a file or inline JSON."""
         base_url = _resolve_base_url(base_url)
         body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
-        resp = _api_request(
-            "POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs", json_body=body
+        sdk = _agents_sdk(base_url, workspace)
+        resp = _run_sdk(
+            "POST agent API",
+            lambda: sdk.environment_specs.create(name=body.pop("name"), workspace=workspace, **body),
         )
         typer.echo(json.dumps(resp, indent=2))
 
@@ -1694,7 +1697,11 @@ def _register_environment_commands(app: typer.Typer) -> None:
             body["environment_spec"] = environment_spec
         if compute_spec is not None:
             body["compute_spec"] = compute_spec
-        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments", json_body=body)
+        sdk = _agents_sdk(base_url, workspace)
+        resp = _run_sdk(
+            "POST agent API",
+            lambda: sdk.environments.create(name=body.pop("name"), workspace=workspace, spec=body),
+        )
         typer.echo(json.dumps(resp, indent=2))
 
     @env_app.command(name="list")
@@ -1771,7 +1778,11 @@ def _register_environment_commands(app: typer.Typer) -> None:
         """Create a compute spec from a file or inline JSON."""
         base_url = _resolve_base_url(base_url)
         body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
-        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs", json_body=body)
+        sdk = _agents_sdk(base_url, workspace)
+        resp = _run_sdk(
+            "POST agent API",
+            lambda: sdk.compute_specs.create(name=body.pop("name"), workspace=workspace, **body),
+        )
         typer.echo(json.dumps(resp, indent=2))
 
     @cspec_app.command(name="list")
@@ -2513,6 +2524,41 @@ def _platform_sdk(base_url: str) -> Any:
     if headers:
         return NeMoPlatform(base_url=base_url, default_headers=headers)
     return NeMoPlatform(base_url=base_url)
+
+
+def _agents_sdk(base_url: str, workspace: str) -> Any:
+    """Return the agents-plugin SDK resource bound to *base_url* / *workspace*.
+
+    The CLI reuses the plugin SDK (:class:`~nemo_agents_plugin.sdk.AgentsResource`)
+    so request paths and payload shapes are defined once. The SDK reads
+    ``base_url``, ``workspace``, and ``default_headers`` off the object it is
+    handed — mirroring the auth-header threading ``_api_request`` does.
+    """
+    from nemo_agents_plugin.sdk import AgentsResource
+
+    platform = SimpleNamespace(
+        base_url=base_url,
+        workspace=workspace,
+        default_headers=_resolve_context_headers() or None,
+    )
+    return AgentsResource(platform)
+
+
+def _run_sdk(action: str, call: Callable[[], Any]) -> Any:
+    """Invoke an SDK *call*, translating HTTP errors to CLI-friendly output.
+
+    The plugin SDK raises raw ``httpx`` errors; the CLI wants the same rich
+    messages ``_api_request`` prints. This keeps error UX identical whether a
+    command talks to the API directly or through the SDK.
+    """
+    try:
+        return call()
+    except httpx.HTTPStatusError as exc:
+        print_http_status_error(exc, action=action)
+        raise typer.Exit(code=1)
+    except httpx.RequestError as exc:
+        print_http_request_error(exc, action=action)
+        raise typer.Exit(code=1)
 
 
 def _collect_text_agent_artifacts(

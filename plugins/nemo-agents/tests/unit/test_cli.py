@@ -1159,3 +1159,42 @@ def test_environment_delete_confirmation() -> None:
 
     assert result.exit_code == 0, result.stderr
     assert "Environment 'env1' deleted." in result.stdout
+
+
+def test_environment_spec_create_routes_through_sdk() -> None:
+    """The CLI builds the request via the plugin SDK (single source of truth).
+
+    Spy the SDK resource method to prove the CLI delegates to it rather than
+    hand-rolling the request path/body.
+    """
+    from nemo_agents_plugin import sdk as sdk_module
+
+    captured: dict[str, Any] = {}
+
+    def _spy(self, *, name, workspace=None, spec=None, **spec_kwargs):
+        captured["name"] = name
+        captured["workspace"] = workspace
+        captured["spec_kwargs"] = spec_kwargs
+        return {"name": name}
+
+    app = AgentsCLI().get_cli()
+    with patch.object(sdk_module._EnvironmentSpecResource, "create", _spy):
+        result = CliRunner().invoke(
+            app,
+            [
+                "environment-specs",
+                "create",
+                "ben",
+                "--spec",
+                '{"env": {"LOG_LEVEL": "debug"}}',
+                "--workspace",
+                "team-a",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert captured["name"] == "ben"
+    assert captured["workspace"] == "team-a"
+    assert captured["spec_kwargs"]["env"] == {"LOG_LEVEL": "debug"}

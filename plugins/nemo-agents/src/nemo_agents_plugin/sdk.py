@@ -29,11 +29,16 @@ Usage (once the SDK hub is wired up)::
 
     # Environments / specs (the request/fulfill split)
     spec = nemo.agents.environment_specs.create(
-        name="ben", env={"LOG_LEVEL": "debug"},
-        secrets={"GITHUB_PERSONAL_ACCESS_TOKEN": "default/ben-pat"},
+        name="ben",
+        spec=EnvironmentSpecInline(
+            env={"LOG_LEVEL": "debug"},
+            secrets={"GITHUB_PERSONAL_ACCESS_TOKEN": "default/ben-pat"},
+        ),
     )
     env = nemo.agents.environments.create(name="repo-research-ben", environment_spec="default/ben")
-    cs = nemo.agents.compute_specs.create(name="big", resources={"limits": {"cpu": "2"}})
+    cs = nemo.agents.compute_specs.create(
+        name="big", spec=ComputeSpecInline(resources=ComputeResources(limits={"cpu": "2"})),
+    )
     dep = nemo.agents.deployments.create(agent="calculator", environment="default/repo-research-ben")
 
     # Invocation (routes through the agents gateway)
@@ -60,8 +65,14 @@ import re
 from typing import Any, List, Mapping
 
 import httpx
+from nemo_agents_plugin.entities import (
+    AgentEnvironmentInline,
+    ComputeSpecInline,
+    EnvironmentSpecInline,
+)
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
+from pydantic import BaseModel
 
 _DEFAULT_WORKSPACE = "default"
 _DEFAULT_TIMEOUT = 30
@@ -70,6 +81,21 @@ _DEFAULT_MODEL_PLACEHOLDER = re.compile(r"\$(?:\{NEMO_DEFAULT_MODEL\}|NEMO_DEFAU
 
 def _resolve_workspace(platform: Any, workspace: str | None) -> str:
     return workspace or getattr(platform, "workspace", None) or _DEFAULT_WORKSPACE
+
+
+def _spec_to_dict(spec: BaseModel | dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize a typed ``*Inline`` model (or a loose dict) to a request body.
+
+    Accepts one of the shared backend ``*Inline`` models, a plain dict, or
+    ``None``. Pydantic models are dumped with ``exclude_unset=True`` so only the
+    fields the caller actually set are sent — matching the ``**spec`` behavior
+    where unspecified fields simply were not in the payload.
+    """
+    if spec is None:
+        return {}
+    if isinstance(spec, BaseModel):
+        return spec.model_dump(exclude_unset=True, mode="json")
+    return dict(spec)
 
 
 def _contains_default_model_placeholder(value: Any) -> bool:
@@ -92,6 +118,9 @@ class AgentsResource:
         Args:
             platform: The ``NeMo`` hub object (or any object with a
                 ``base_url`` attribute).  Provides the base URL for all API calls.
+                An optional ``default_headers`` attribute (a ``dict[str, str]``)
+                is attached to every request — this is how the CLI threads its
+                resolved auth token through the SDK.
         """
         self._platform = platform
         self._deployments: _DeploymentResource | None = None
@@ -280,9 +309,15 @@ class AgentsResource:
     def _agents_url(self, path: str) -> str:
         return self._base_url() + "/apis/agents" + path
 
+    def _default_headers(self) -> dict[str, str] | None:
+        headers = getattr(self._platform, "default_headers", None)
+        if isinstance(headers, dict) and headers:
+            return {str(key): str(value) for key, value in headers.items()}
+        return None
+
     def _get(self, path: str) -> Any:
         with httpx.Client(timeout=_DEFAULT_TIMEOUT) as client:
-            resp = client.get(self._agents_url(path))
+            resp = client.get(self._agents_url(path), headers=self._default_headers())
             resp.raise_for_status()
             return resp.json()
 
@@ -293,14 +328,15 @@ class AgentsResource:
         timeout: int = _DEFAULT_TIMEOUT,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
+        merged = {**(self._default_headers() or {}), **(headers or {})} or None
         with httpx.Client(timeout=timeout) as client:
-            resp = client.post(self._agents_url(path), json=payload, headers=headers)
+            resp = client.post(self._agents_url(path), json=payload, headers=merged)
             resp.raise_for_status()
             return resp.json()
 
     def _delete(self, path: str) -> None:
         with httpx.Client(timeout=_DEFAULT_TIMEOUT) as client:
-            resp = client.delete(self._agents_url(path))
+            resp = client.delete(self._agents_url(path), headers=self._default_headers())
             resp.raise_for_status()
 
 
@@ -386,21 +422,32 @@ class _EnvironmentSpecResource:
     def __init__(self, parent: AgentsResource) -> None:
         self._parent = parent
 
-    def create(self, *, name: str, workspace: str | None = None, **spec: Any) -> dict[str, Any]:
+    def create(
+        self,
+        *,
+        name: str,
+        spec: EnvironmentSpecInline | dict[str, Any] | None = None,
+        workspace: str | None = None,
+        **spec_kwargs: Any,
+    ) -> dict[str, Any]:
         """Create an environment spec.
 
         Args:
             name: Unique environment-spec name within the workspace.
+            spec: The environment spec, as a shared :class:`EnvironmentSpecInline`
+                model (the typed, discoverable path) or a plain dict. Only the
+                fields explicitly set on the model are sent.
             workspace: Target workspace.
-            **spec: EnvironmentSpecInline fields (``env``, ``secrets``, ``mcp``,
-                ``provider``, ``model_provider_override``, ``workspace_path``,
-                ``artifacts_path``, ``connection``, ``metadata``, ``settings``,
-                ...). See :class:`EnvironmentSpecInline`.
+            **spec_kwargs: Back-compat loose EnvironmentSpecInline fields (``env``,
+                ``secrets``, ``mcp``, ``provider``, ``model_provider_override``,
+                ``workspace_path``, ``artifacts_path``, ``connection``,
+                ``metadata``, ``settings``, ...). Merged over ``spec`` when both
+                are given. Prefer the typed ``spec=`` argument.
 
         Returns:
             The created AgentEnvironmentSpec as a dict.
         """
-        payload: dict[str, Any] = {"name": name, **spec}
+        payload: dict[str, Any] = {"name": name, **_spec_to_dict(spec), **spec_kwargs}
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
@@ -431,6 +478,7 @@ class _EnvironmentResource:
         self,
         *,
         name: str,
+        spec: AgentEnvironmentInline | dict[str, Any] | None = None,
         environment_spec: str | dict[str, Any] | None = None,
         compute_spec: str | dict[str, Any] | None = None,
         description: str = "",
@@ -440,6 +488,12 @@ class _EnvironmentResource:
 
         Args:
             name: Unique environment name within the workspace.
+            spec: The full environment composition as a shared
+                :class:`AgentEnvironmentInline` model (the typed, discoverable
+                path) or a plain dict. Only the fields explicitly set are sent.
+                The ``environment_spec`` / ``compute_spec`` / ``description``
+                arguments below override the matching keys from ``spec`` when
+                given — handy for the common ref case.
             environment_spec: A ``"workspace/name"`` ref to a stored
                 AgentEnvironmentSpec, an inline spec dict, or ``None``.
             compute_spec: A ``"workspace/name"`` ref to a stored AgentComputeSpec,
@@ -450,7 +504,9 @@ class _EnvironmentResource:
         Returns:
             The created AgentEnvironment as a dict.
         """
-        payload: dict[str, Any] = {"name": name, "description": description}
+        payload: dict[str, Any] = {"description": "", **_spec_to_dict(spec), "name": name}
+        if description:
+            payload["description"] = description
         if environment_spec is not None:
             payload["environment_spec"] = environment_spec
         if compute_spec is not None:
@@ -480,18 +536,30 @@ class _ComputeSpecResource:
     def __init__(self, parent: AgentsResource) -> None:
         self._parent = parent
 
-    def create(self, *, name: str, workspace: str | None = None, **spec: Any) -> dict[str, Any]:
+    def create(
+        self,
+        *,
+        name: str,
+        spec: ComputeSpecInline | dict[str, Any] | None = None,
+        workspace: str | None = None,
+        **spec_kwargs: Any,
+    ) -> dict[str, Any]:
         """Create a compute spec.
 
         Args:
             name: Unique compute-spec name within the workspace.
+            spec: The compute spec, as a shared :class:`ComputeSpecInline` model
+                (the typed, discoverable path) or a plain dict. Only the fields
+                explicitly set on the model are sent.
             workspace: Target workspace.
-            **spec: ComputeSpecInline fields (``resources``, ``description``).
+            **spec_kwargs: Back-compat loose ComputeSpecInline fields
+                (``resources``, ``description``). Merged over ``spec`` when both
+                are given. Prefer the typed ``spec=`` argument.
 
         Returns:
             The created AgentComputeSpec as a dict.
         """
-        payload: dict[str, Any] = {"name": name, **spec}
+        payload: dict[str, Any] = {"name": name, **_spec_to_dict(spec), **spec_kwargs}
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
