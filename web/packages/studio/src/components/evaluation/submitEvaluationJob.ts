@@ -244,11 +244,38 @@ export const serializeEvalConfig = (spec: EvalSpec, format: EvalConfigFormat): s
 /** Reject metric entries that cannot be read as a metric bundle. Studio does not validate the
  *  metric body, but it does reach into ``payload.metric`` to decide whether a judge applies —
  *  so an entry without one would throw at render, past every error boundary this form has. */
+/** The evaluator recomputes an llm-judge's ``output_spec()`` from ``payload.metric.scores`` and
+ *  rejects the job if it disagrees with the declared ``outputs`` — but only after the run's
+ *  fileset already exists, so the mismatch is caught here instead. llm-judge only: other metric
+ *  types derive their outputs by different rules. */
+const assertJudgeOutputsMatchScores = (metric: InlineMetricBundle, where: string): void => {
+  if (metric.metric_type !== 'llm-judge') return;
+  const scores = metric.payload.metric.scores;
+  if (!Array.isArray(scores) || !Array.isArray(metric.outputs)) return;
+
+  const scoreNames = scores
+    .map((score) => (score as { name?: unknown })?.name)
+    .filter((name): name is string => typeof name === 'string');
+  const declared = new Set(
+    metric.outputs
+      .map((output) => (output as { name?: unknown })?.name)
+      .filter((name): name is string => typeof name === 'string')
+  );
+
+  const missing = scoreNames.filter((name) => !declared.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `${where} has an llm-judge metric whose "outputs" do not list its score${missing.length > 1 ? 's' : ''} ${missing.map((name) => `"${name}"`).join(', ')}. Every entry in "scores" needs a matching entry in "outputs".`
+    );
+  }
+};
+
 const assertMetricBundles = (metrics: InlineMetricBundle[], where: string): void => {
   for (const metric of metrics) {
     if (!metric?.payload?.metric || typeof metric.payload.metric !== 'object') {
       throw new Error(`${where} has a metric without a "payload.metric" object`);
     }
+    assertJudgeOutputsMatchScores(metric, where);
   }
 };
 

@@ -5,9 +5,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
+import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { getEntityNameError } from '@nemo/common/src/utils/entityName';
+import {
+  getEntityNameError,
+  sanitizeEntityName,
+  toValidEntityName,
+} from '@nemo/common/src/utils/entityName';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
 import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type {
@@ -66,6 +71,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
+import { useDebounce } from 'use-debounce';
 import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
@@ -82,15 +88,87 @@ const LIST_PAGE_SIZE = 100;
 const NO_EVALUATIONS_MESSAGE =
   'No evaluations with a reusable eval config yet. Create one to run and re-use it.';
 
+/** An entity name as typed, sanitized on the way out. The field keeps the user's literal
+ *  keystrokes, so only unsalvageable input is an error — see the entity-naming contract. */
+const entityNameField = () => z.string().transform((value) => toValidEntityName(value, value));
+
+/** The message for a name with nothing salvageable in it, or undefined when there is. */
+const unsalvageableNameError = (value: string, label: string): string | undefined => {
+  if (sanitizeEntityName(value) !== undefined) return undefined;
+  return value ? `${label} must contain at least one letter or number.` : `${label} is required.`;
+};
+
+/** Where a name's uniqueness check stands. A debounced value that has fallen behind what is on
+ *  screen reads as still checking, never as a verdict for a name the user has moved on from. */
+type NameCheckStatus = 'checking' | 'conflict' | 'failed' | 'available' | undefined;
+
+const nameCheckStatus = (
+  preview: string,
+  debounced: string,
+  query: { data?: { data?: unknown[] }; isFetching: boolean; isError: boolean }
+): NameCheckStatus => {
+  if (!preview) return undefined;
+  if (debounced !== preview || query.isFetching) return 'checking';
+  if (query.isError) return 'failed';
+  return (query.data?.data?.length ?? 0) > 0 ? 'conflict' : 'available';
+};
+
+/** slotHelp/slotError for a name field, first match wins per the contract's precedence table. */
+const nameFieldSlots = ({
+  entity,
+  preview,
+  status,
+  schemaError,
+  describe,
+}: {
+  entity: string;
+  preview: string;
+  status: NameCheckStatus;
+  schemaError?: string;
+  describe: string;
+}): { slotHelp?: React.ReactNode; slotError?: string; status?: 'error' } => {
+  if (status === 'checking') return { slotHelp: 'Checking name...' };
+  if (status === 'conflict')
+    return { slotError: `An ${entity} named ${preview} already exists`, status: 'error' };
+  if (schemaError) return { slotError: schemaError, status: 'error' };
+  if (status === 'failed')
+    return { slotHelp: "Couldn't check name availability. You can still submit." };
+  if (!preview) return { slotHelp: describe };
+  return {
+    slotHelp: (
+      <>
+        Your {entity} will be created as <span className="text-primary">{preview}</span>
+      </>
+    ),
+  };
+};
+
+/** The server's own explanation for a failed submit, falling back to the transport error.
+ *  Without the `detail`, a 422 reads only as "Request failed with status code 422". */
+const submitErrorMessage = (error: unknown): string | undefined => {
+  if (!error) return undefined;
+  const detail = (error as { response?: { data?: { detail?: unknown } } } | undefined)?.response
+    ?.data?.detail;
+  if (typeof detail === 'string' && detail) return detail;
+  // Pydantic validation errors arrive as a list of {loc, msg} objects.
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => (item as { msg?: unknown })?.msg)
+      .filter((msg): msg is string => typeof msg === 'string' && msg.length > 0);
+    if (messages.length) return messages.join('; ');
+  }
+  return error instanceof Error ? error.message : 'An error occurred';
+};
+
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
   judgeModel: z.string(),
   mode: z.enum([MODE_DEFAULT, MODE_EXPERIMENT]),
   /** Name of the experiment to create in "Create experiment" mode. The fileset holding this
    *  run's eval config and dataset is derived from it. */
-  newName: z.string(),
+  newName: entityNameField(),
   /** Name of the Intake Evaluation this run publishes under, in "Create experiment" mode. */
-  evaluationRecordName: z.string(),
+  evaluationRecordName: entityNameField(),
   /** Name of the existing evaluation whose eval config is reused in "Use existing evaluation" mode. */
   evaluationName: z.string(),
 });
@@ -102,17 +180,18 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
     if (requiresJudgeModel() && !data.judgeModel) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Judge model is required',
+        message: 'Select a model to override the config',
         path: ['judgeModel'],
       });
     }
     if (data.mode === MODE_DEFAULT) {
-      // The derived fileset name is validated too — it is longer, so a name that is legal on
-      // its own can still overflow once "-data" is appended, and there is no fileset field to
-      // correct it in.
+      // Values here are already sanitized by the field transform, so the only naming failures
+      // left are "nothing salvageable" and the derived fileset name — which is longer, so a name
+      // that is legal on its own can still overflow once "-data" is appended, and there is no
+      // fileset field to correct it in.
       const nameError =
-        getEntityNameError(data.newName.trim(), 'Experiment name') ??
-        getEntityNameError(filesetNameForExperiment(data.newName.trim()), 'Derived fileset name');
+        unsalvageableNameError(data.newName, 'Experiment name') ??
+        getEntityNameError(filesetNameForExperiment(data.newName), 'Derived fileset name');
       if (nameError) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -120,10 +199,7 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
           path: ['newName'],
         });
       }
-      const recordNameError = getEntityNameError(
-        data.evaluationRecordName.trim(),
-        'Evaluation name'
-      );
+      const recordNameError = unsalvageableNameError(data.evaluationRecordName, 'Evaluation name');
       if (recordNameError) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -281,7 +357,7 @@ const loadPersistedSpec = async (
   if (formData.mode === MODE_DEFAULT) {
     if (!uploads) throw new Error('Upload a dataset and an eval config before submitting');
     const signal = new AbortController().signal;
-    const name = filesetNameForExperiment(formData.newName.trim());
+    const name = filesetNameForExperiment(formData.newName);
     const judgeModel = formData.judgeModel || null;
     const spec: DatasetEvalSpec = {
       ...uploads.spec,
@@ -339,10 +415,11 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // Ref keeps isLlmJudge current for the zod schema getter at validation time.
-  const isLlmJudgeRef = useRef(false);
-  const [schema] = useState(() => makeSubmitEvaluationSchema(() => isLlmJudgeRef.current));
+  // Ref keeps the override's required-ness current for the zod schema getter at validation time.
+  const judgeRequiredRef = useRef(false);
+  const [schema] = useState(() => makeSubmitEvaluationSchema(() => judgeRequiredRef.current));
 
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [datasetPick, setDatasetPick] = useState<DatasetPick | null>(null);
   const [configPick, setConfigPick] = useState<ConfigPick | null>(null);
 
@@ -364,16 +441,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     mode: 'onSubmit',
     reValidateMode: 'onChange',
   });
-  const {
-    control,
-    reset: resetForm,
-    setValue,
-    getValues,
-    handleSubmit,
-    clearErrors,
-    formState,
-  } = methods;
-  const { errors } = formState;
+  const { control, reset: resetForm, setValue, handleSubmit, clearErrors, formState } = methods;
+  const { errors, touchedFields } = formState;
 
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
@@ -441,40 +510,108 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         }
       : null;
 
-  const canSubmit =
-    mode === MODE_DEFAULT
-      ? !!uploads
-      : !isValidatingEvaluation && !!selectedEvaluation && !evaluationConfigIssue;
+  const rawExperimentName = useWatch({ control, name: 'newName' });
+  const rawRecordName = useWatch({ control, name: 'evaluationRecordName' });
+  const experimentPreview = toValidEntityName(rawExperimentName, '');
+  const recordPreview = toValidEntityName(rawRecordName, '');
 
-  // Mirrors injectJudgeModel's own guard, so the picker is shown exactly when a metric would
-  // have a model written into it — not just for the llm-judge type.
-  const judgeMetric = configPick?.spec?.metrics.find(
-    (metric) => metric.metric_type === 'llm-judge' || 'model' in metric.payload.metric
+  const [debouncedExperimentName] = useDebounce(experimentPreview, DEFAULT_DEBOUNCE_MS);
+  const [debouncedRecordName] = useDebounce(recordPreview, DEFAULT_DEBOUNCE_MS);
+  const isCreateMode = mode === MODE_DEFAULT;
+
+  const experimentConflictQuery = useListExperiments(
+    workspace,
+    { page_size: 1, filter: { name: debouncedExperimentName } },
+    { query: { enabled: open && isCreateMode && !!debouncedExperimentName } }
+  );
+  const recordConflictQuery = useListEvaluations(
+    workspace,
+    { page_size: 1, filter: { name: debouncedRecordName } },
+    { query: { enabled: open && isCreateMode && !!debouncedRecordName } }
   );
 
-  const isLlmJudge = mode === MODE_DEFAULT && !!judgeMetric;
-  isLlmJudgeRef.current = isLlmJudge;
+  const datasetError =
+    datasetPick?.error ?? (submitAttempted && !datasetPick ? 'Add a dataset' : undefined);
+  const configError =
+    configPick?.error ??
+    (submitAttempted && !configPick ? 'Select an evaluator config' : undefined);
 
-  const defaultModelRef =
-    isLlmJudge && typeof judgeMetric?.payload.metric.model === 'string'
-      ? judgeMetric.payload.metric.model
+  const experimentNameStatus = nameCheckStatus(
+    experimentPreview,
+    debouncedExperimentName,
+    experimentConflictQuery
+  );
+  const recordNameStatus = nameCheckStatus(recordPreview, debouncedRecordName, recordConflictQuery);
+
+  const experimentNameSlots = nameFieldSlots({
+    entity: 'experiment',
+    preview: experimentPreview,
+    status: experimentNameStatus,
+    schemaError: touchedFields.newName ? errors.newName?.message : undefined,
+    describe: 'Groups multiple evaluation runs together for comparison.',
+  });
+
+  const recordNameSlots = nameFieldSlots({
+    entity: 'evaluation',
+    preview: recordPreview,
+    status: recordNameStatus,
+    schemaError: touchedFields.evaluationRecordName
+      ? errors.evaluationRecordName?.message
+      : undefined,
+    describe: 'Names this run within the experiment. Results publish under it.',
+  });
+
+  // Only a conflict blocks here. The schema's own errors already stop handleSubmit; a conflict
+  // lives outside formState, so without this the request would fire and come back a 409.
+  const hasNameConflict =
+    isCreateMode && (experimentNameStatus === 'conflict' || recordNameStatus === 'conflict');
+
+  // Mirrors injectJudgeModel's own guard, so the picker is shown exactly when a metric would
+  // have a model written into it — not just for the llm-judge type. Every match is collected,
+  // not just the first: the override rewrites all of them, so all of them must be checked.
+  const judgeMetrics =
+    configPick?.spec?.metrics.filter(
+      (metric) => metric.metric_type === 'llm-judge' || 'model' in metric.payload.metric
+    ) ?? [];
+
+  const isLlmJudge = mode === MODE_DEFAULT && judgeMetrics.length > 0;
+
+  // A different query from the one behind the dropdown (lazy, paginated for search); this is the
+  // only complete workspace list, so it decides what counts as valid.
+  const { data: judgeModels, isLoading: isJudgeModelsLoading } = useJudgeModels({ enabled: open });
+
+  const workspaceModelUrns = new Set<string>(
+    judgeModels
+      ?.map((model) => getURNFromNamedEntityRef(model))
+      .filter((urn): urn is NonNullable<typeof urn> => urn !== undefined) ?? []
+  );
+
+  // Nothing to validate, but it still cannot run — so it requires the override just the same.
+  const hasModellessJudge =
+    isLlmJudge && judgeMetrics.some((metric) => typeof metric.payload.metric.model !== 'string');
+
+  // Full `workspace/name` ModelRefs: an unqualified bare name is unreachable to the evaluator's
+  // resolver. Empty while loading, or every model would read as unusable.
+  const invalidModelRefs =
+    isLlmJudge && !isJudgeModelsLoading
+      ? [
+          ...new Set(
+            judgeMetrics
+              .map((metric) => metric.payload.metric.model)
+              .filter((model): model is string => typeof model === 'string')
+              .filter((model) => !workspaceModelUrns.has(model))
+          ),
+        ]
+      : [];
+
+  const judgeModel = useWatch({ control, name: 'judgeModel' });
+  const invalidModelsError =
+    invalidModelRefs.length > 0 && !judgeModel
+      ? `The following llm judge models in the config are not valid in this workspace: [${invalidModelRefs.join(', ')}]`
       : undefined;
 
-  // Fetch judge models eagerly so they're ready when isLlmJudge resolves.
-  const { data: judgeModels } = useJudgeModels({ enabled: open });
-
-  // Pre-populate judge model from the config's ModelRef when modal opens or data arrives.
-  // Uses getValues (not a reactive watch) to avoid re-running on every model change.
-  useEffect(() => {
-    if (!open || !isLlmJudge || !defaultModelRef || !judgeModels?.length) return;
-    if (getValues('judgeModel')) return;
-    const target = bareName(defaultModelRef);
-    const match = judgeModels.find((m) => m.name === target);
-    if (match) {
-      const urn = getURNFromNamedEntityRef(match);
-      if (urn) setValue('judgeModel', urn);
-    }
-  }, [open, isLlmJudge, defaultModelRef, judgeModels, getValues, setValue]);
+  const judgeRequired = isLlmJudge && (invalidModelRefs.length > 0 || hasModellessJudge);
+  judgeRequiredRef.current = judgeRequired;
 
   const clearDatasetPick = () => {
     datasetToken.current += 1;
@@ -537,7 +674,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
       const isNew = formData.mode === MODE_DEFAULT;
       const filesetName = isNew
-        ? filesetNameForExperiment(formData.newName.trim())
+        ? filesetNameForExperiment(formData.newName)
         : (evaluationFileset ?? '');
 
       const seeded: SeededEntities = isNew ? { filesetName } : {};
@@ -549,7 +686,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         let nameStem: string;
         let parentEvaluationId: string | undefined;
         if (isNew) {
-          const experiment = await createExperiment(workspace, { name: formData.newName.trim() });
+          const experiment = await createExperiment(workspace, { name: formData.newName });
           seeded.experimentName = experiment.name;
           experimentIds = [experiment.id];
           nameStem = experiment.name;
@@ -568,14 +705,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
         const evaluationId = await createRunEvaluation(workspace, {
           experimentIds,
-          name: isNew ? formData.evaluationRecordName.trim() : undefined,
+          name: isNew ? formData.evaluationRecordName : undefined,
           nameStem,
           filesetName,
           parentEvaluationId,
         }).catch((err: unknown) => {
           if (isConflictError(err)) {
             throw new Error(
-              `An evaluation named "${formData.evaluationRecordName.trim()}" already exists — choose a different evaluation name`
+              `An evaluation named "${formData.evaluationRecordName}" already exists — choose a different evaluation name`
             );
           }
           throw err;
@@ -620,6 +757,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     configToken.current += 1;
     setDatasetPick(null);
     setConfigPick(null);
+    setSubmitAttempted(false);
   }, [open, agentProp, resetForm]);
 
   // Seed the locked agent on open. A blanket reset here would clobber the judge-model
@@ -633,10 +771,18 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     resetForm(makeDefaultValues(agentProp));
     clearDatasetPick();
     clearConfigPick();
+    setSubmitAttempted(false);
     onClose();
   };
 
   const onSubmit: SubmitHandler<SubmitEvaluationFormData> = async (formData) => {
+    // The resolver has passed; these are the gates held outside form state.
+    if (mode === MODE_DEFAULT && (!uploads || hasNameConflict)) return;
+    if (
+      mode === MODE_EXPERIMENT &&
+      (isValidatingEvaluation || !selectedEvaluation || evaluationConfigIssue)
+    )
+      return;
     try {
       await submitEvaluation(formData);
     } catch {
@@ -644,12 +790,13 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     }
   };
 
-  const errorMessage =
-    submitError instanceof Error
-      ? submitError.message
-      : submitError
-        ? 'An error occurred'
-        : undefined;
+  // Submit stays enabled and reports what is missing on click; the pickers carry no asterisk.
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    setSubmitAttempted(true);
+    void handleSubmit(onSubmit)(event);
+  };
+
+  const errorMessage = submitErrorMessage(submitError);
 
   return (
     <FormModal
@@ -657,11 +804,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       onClose={resetAndClose}
       title="Run Agent Evaluation"
       submitButtonText="Submit"
-      onSubmit={handleSubmit(onSubmit)}
+      onSubmit={handleFormSubmit}
       disabled={isPending}
-      submitDisabled={!canSubmit}
       loading={isPending}
-      errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
     >
       <FormProvider {...methods}>
@@ -717,23 +862,19 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                 <>
                   <ControlledTextInput
                     useControllerProps={{ control, name: 'newName' }}
-                    placeholder="e.g. Model update tests"
+                    placeholder="e.g. model-update-tests"
                     formFieldProps={{
                       slotLabel: 'Experiment Name',
-                      required: true,
-                      slotHelp: 'Groups multiple evaluation runs together for comparison.',
-                      slotError: errors.newName?.message,
+                      ...experimentNameSlots,
                     }}
                   />
 
                   <ControlledTextInput
                     useControllerProps={{ control, name: 'evaluationRecordName' }}
-                    placeholder="e.g. Initial baseline"
+                    placeholder="e.g. initial-baseline"
                     formFieldProps={{
                       slotLabel: 'Evaluation Name',
-                      required: true,
-                      slotHelp: 'Names this run within the experiment. Results publish under it.',
-                      slotError: errors.evaluationRecordName?.message,
+                      ...recordNameSlots,
                     }}
                   />
 
@@ -758,15 +899,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     accept=".jsonl,.json"
                     onValueChange={handleDatasetPicked}
                     onFileRemove={clearDatasetPick}
-                    status={datasetPick?.error ? 'error' : undefined}
+                    status={datasetError ? 'error' : undefined}
                     renderInput={(slotInput) => (
                       <FormField
                         name="dataset"
-                        required
                         slotLabel="Add dataset"
                         slotHelp="JSONL, or a JSON array of objects."
-                        slotError={datasetPick?.error}
-                        status={datasetPick?.error ? 'error' : undefined}
+                        slotError={datasetError}
+                        status={datasetError ? 'error' : undefined}
                       >
                         {datasetPick ? null : slotInput}
                       </FormField>
@@ -777,15 +917,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     accept=".json,.yaml,.yml"
                     onValueChange={handleConfigPicked}
                     onFileRemove={clearConfigPick}
-                    status={configPick?.error ? 'error' : undefined}
+                    status={configError ? 'error' : undefined}
                     renderInput={(slotInput) => (
                       <FormField
                         name="evalConfig"
-                        required
                         slotLabel="Select evaluator config"
                         slotHelp="Select a JSON or YAML config."
-                        slotError={configPick?.error}
-                        status={configPick?.error ? 'error' : undefined}
+                        slotError={configError}
+                        status={configError ? 'error' : undefined}
                       >
                         {configPick ? null : slotInput}
                       </FormField>
@@ -795,7 +934,12 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                   {isLlmJudge && (
                     <JudgeModelSelect<SubmitEvaluationFormData>
                       formFieldName="judgeModel"
-                      slotLabel="Model for LLM evaluators"
+                      slotLabel={
+                        judgeRequired
+                          ? 'Override all LLM models'
+                          : 'Override all LLM models (optional)'
+                      }
+                      slotError={invalidModelsError}
                     />
                   )}
                 </>
@@ -824,6 +968,12 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
               )}
             </Stack>
           ) : null}
+
+          {errorMessage && (
+            <Text kind="body/regular/md" className="text-feedback-danger whitespace-normal">
+              {errorMessage}
+            </Text>
+          )}
         </Stack>
       </FormProvider>
     </FormModal>
