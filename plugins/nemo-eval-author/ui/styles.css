@@ -2,19 +2,19 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 :root {
-  --bg: #f6f3ec;
-  --surface: #fffdf8;
-  --ink: #24272d;
-  --muted: #68717e;
-  --line: #ddd4c7;
-  --green: #3f7a4b;
-  --amber: #c59025;
-  --red: #b9574f;
-  --blue: #456f91;
-  --soft-green: #eaf3e8;
-  --soft-amber: #fff2cf;
-  --soft-blue: #eaf1f6;
-  --shadow: 0 14px 34px rgba(36, 39, 45, 0.1);
+  --bg: #fafaf6;
+  --surface: #f4f1e8;
+  --surface-raised: #ffffff;
+  --ink: #0f0f0f;
+  --muted: #5a5a5a;
+  --line: #d4d0c7;
+  --green: #76b900;
+  --green-dark: #33470f;
+  --green-soft: #f0f7e0;
+  --amber: #b78d00;
+  --red: #ba3f32;
+  --rail: #0f0f0f;
+  --shadow: 0 20px 60px rgba(15, 15, 15, 0.08);
 }
 
 * {
@@ -26,10 +26,13 @@ body {
   min-width: 320px;
   min-height: 100vh;
   color: var(--ink);
-  background: var(--bg);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  background:
+    linear-gradient(90deg, rgba(212, 208, 199, 0.42) 1px, transparent 1px),
+    linear-gradient(rgba(212, 208, 199, 0.42) 1px, transparent 1px),
+    var(--bg);
+  background-size: 64px 64px;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
 }
 
 button,
@@ -39,10 +42,10 @@ textarea {
 
 .shell {
   display: grid;
-  gap: 16px;
-  width: min(1180px, 100%);
+  gap: 18px;
+  width: min(1240px, 100%);
   margin: 0 auto;
-  padding: 24px;
+  padding: 22px;
 }
 
 .masthead,
@@ -51,8 +54,8 @@ textarea {
 .panel,
 .metric {
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
+  border-radius: 0;
+  background: rgba(250, 250, 246, 0.94);
   box-shadow: var(--shadow);
 }
 
@@ -61,16 +64,34 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  min-height: 210px;
+  padding: 24px;
+  color: #fafaf6;
+  background:
+    radial-gradient(circle at 82% 20%, rgba(118, 185, 0, 0.22), transparent 28%),
+    linear-gradient(135deg, #0f0f0f 0%, #161913 58%, #263311 100%);
+  border-color: #0f0f0f;
 }
 
 .eyebrow {
-  margin: 0 0 4px;
-  color: var(--green);
-  font-size: 0.76rem;
-  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  color: #b8d680;
+  font-size: 0.72rem;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(118, 185, 0, 0.14);
 }
 
 h1,
@@ -88,7 +109,10 @@ h3 {
 }
 
 h1 {
-  font-size: clamp(1.8rem, 4vw, 3rem);
+  max-width: 780px;
+  font-size: clamp(2.25rem, 6vw, 5.6rem);
+  font-weight: 300;
+  letter-spacing: 0;
 }
 
 h2 {
@@ -100,8 +124,11 @@ h3 {
 }
 
 .lede {
-  margin: 8px 0 0;
-  color: var(--muted);
+  max-width: 680px;
+  margin: 18px 0 0;
+  color: #d4d0c7;
+  font-size: 1rem;
+  line-height: 1.7;
 }
 
 .actions {
@@ -116,19 +143,22 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--ink);
-  background: #ffffff;
-  font-weight: 750;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid #0f0f0f;
+  border-radius: 0;
+  color: #fafaf6;
+  background: #0f0f0f;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
 .file-button {
-  border-color: #a87f1c;
-  background: #f0c85a;
+  color: #0f0f0f;
+  border-color: var(--green);
+  background: var(--green);
 }
 
 .file-button input {
@@ -146,26 +176,27 @@ button,
 textarea {
   display: block;
   width: 100%;
-  min-height: 160px;
+  min-height: 170px;
   resize: vertical;
-  padding: 14px;
+  padding: 16px;
   border: 0;
   outline: 0;
   color: var(--ink);
-  background: #fffaf1;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.88rem;
-  line-height: 1.45;
+  background: #fafaf6;
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.55;
 }
 
 .message {
   padding: 14px 16px;
   color: var(--muted);
+  background: var(--surface);
 }
 
 .message.error {
   color: var(--red);
-  background: #fff1ee;
+  background: #fff0ed;
 }
 
 .dashboard {
@@ -180,27 +211,31 @@ textarea {
 }
 
 .metric {
-  min-height: 96px;
-  padding: 14px;
+  min-height: 112px;
+  padding: 16px;
+  background: var(--surface-raised);
 }
 
 .metric span {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 18px;
   color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 800;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .metric strong {
   display: block;
-  font-size: 1.55rem;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  font-weight: 400;
   overflow-wrap: anywhere;
 }
 
 .panel {
-  padding: 16px;
+  padding: 0;
+  background: var(--surface-raised);
 }
 
 .panel-title {
@@ -208,7 +243,10 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  min-height: 58px;
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .pill,
@@ -218,32 +256,34 @@ textarea {
   min-height: 26px;
   padding: 4px 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--muted);
-  background: #ffffff;
-  font-size: 0.76rem;
-  font-weight: 800;
+  background: #fafaf6;
+  font-size: 0.68rem;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .tag.tool {
-  color: var(--green);
-  background: var(--soft-green);
+  color: var(--green-dark);
+  border-color: var(--green);
+  background: var(--green-soft);
 }
 
 .tag.capability {
-  color: var(--blue);
-  background: var(--soft-blue);
+  color: #0f0f0f;
+  background: #e5e2d8;
 }
 
 .tag.failure_case {
   color: var(--amber);
-  background: var(--soft-amber);
+  background: #fff7db;
 }
 
 .kind-bars {
   display: grid;
   gap: 10px;
+  padding: 16px;
 }
 
 .kind-row {
@@ -254,16 +294,15 @@ textarea {
 }
 
 .bar-track {
-  height: 12px;
+  height: 8px;
   overflow: hidden;
-  border-radius: 999px;
-  background: #ece5db;
+  border-radius: 0;
+  background: #e5e2d8;
 }
 
 .bar-fill {
   width: var(--coverage-width);
   height: 100%;
-  border-radius: inherit;
   background: var(--green);
 }
 
@@ -278,14 +317,14 @@ textarea {
 .item-card,
 .info-card {
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #ffffff;
+  border-radius: 0;
+  background: #fafaf6;
 }
 
 .gap-card {
   display: grid;
   gap: 10px;
-  padding: 14px;
+  padding: 16px;
 }
 
 .gap-heading {
@@ -297,7 +336,7 @@ textarea {
 
 .gap-heading code,
 .item-card code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: inherit;
   font-size: 0.92rem;
 }
 
@@ -330,16 +369,17 @@ textarea {
 .path-card {
   min-height: 64px;
   padding: 10px;
-  border-radius: 8px;
-  background: #f8f5ef;
+  border: 1px solid #e5e2d8;
+  border-radius: 0;
+  background: #ffffff;
 }
 
 .path-card span {
   display: block;
   margin-bottom: 5px;
   color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: 0.68rem;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -355,7 +395,7 @@ pre {
 
 .item-card,
 .info-card {
-  padding: 12px;
+  padding: 14px;
 }
 
 .item-card {
@@ -371,12 +411,19 @@ pre {
   margin: 0;
   padding: 10px;
   overflow: auto;
-  border-radius: 8px;
-  background: #f8f5ef;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.86rem;
+  border: 1px solid #e5e2d8;
+  border-radius: 0;
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 0.78rem;
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.gap-list,
+.item-list,
+.two-column {
+  padding: 16px;
 }
 
 @media (max-width: 860px) {
