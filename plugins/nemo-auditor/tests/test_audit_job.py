@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
+from nemo_auditor.config import AuditorPluginConfig
 from nemo_auditor.entities import (
     AuditConfig,
     AuditPluginsData,
@@ -38,6 +39,7 @@ from nemo_auditor.jobs.audit import (
     _rewrite_options_uris,
 )
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.config import clear_nemo_config_override, set_nemo_config_override
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -698,6 +700,9 @@ class TestAuditJobRun:
 
 
 class TestCompileProfileDefault:
+    def teardown_method(self) -> None:
+        clear_nemo_config_override(AuditorPluginConfig)
+
     def _compile(self, profile: str | None) -> dict:
         result = asyncio.run(
             AuditJob.compile(
@@ -711,11 +716,25 @@ class TestCompileProfileDefault:
         )
         return cast(dict, result)
 
-    def test_defaults_to_auditor_profile_when_unset(self) -> None:
+    def test_defaults_to_default_profile_when_unset(self) -> None:
+        """ "default" is registered out of the box everywhere (Docker and Kubernetes),
+        so audit jobs work without extra config in CI/k8s."""
+        result = self._compile(None)
+        assert result["steps"][0]["executor"]["profile"] == "default"
+
+    def test_explicit_profile_overrides_default(self) -> None:
+        result = self._compile("gpu-pool")
+        assert result["steps"][0]["executor"]["profile"] == "gpu-pool"
+
+    def test_plugin_config_overrides_unset_profile(self) -> None:
+        """Deployments (e.g. local dev) that need a dedicated container-backed profile
+        can point audit jobs at it via the auditor plugin config."""
+        set_nemo_config_override(AuditorPluginConfig(job_executor_profile="auditor"))
         result = self._compile(None)
         assert result["steps"][0]["executor"]["profile"] == "auditor"
 
-    def test_explicit_profile_overrides_default(self) -> None:
+    def test_explicit_profile_wins_over_plugin_config(self) -> None:
+        set_nemo_config_override(AuditorPluginConfig(job_executor_profile="auditor"))
         result = self._compile("gpu-pool")
         assert result["steps"][0]["executor"]["profile"] == "gpu-pool"
 

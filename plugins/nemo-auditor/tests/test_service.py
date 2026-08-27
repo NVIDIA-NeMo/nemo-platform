@@ -28,12 +28,13 @@ def test_audit_job_submit_route_is_mounted() -> None:
     assert submit_path_for(AuditJob, workspace="{workspace}") in _mounted_post_paths()
 
 
-def test_audit_job_routes_default_to_auditor_profile() -> None:
-    """Jobs submitted without an explicit --profile land on the "auditor" profile,
-    not the platform-wide "default" one."""
+def test_audit_job_routes_do_not_override_default_profile() -> None:
+    """The execution profile audit jobs land on is controlled by the auditor plugin
+    config (see AuditJob.compile / nemo_auditor.config), not by add_job_routes'
+    default_profile — that would be dead code, since compile() always sets a profile."""
     with patch("nemo_auditor.service.add_job_routes") as mock_add_job_routes:
         mock_add_job_routes.return_value = APIRouter()
         AuditorPluginService().get_routers()
 
     mock_add_job_routes.assert_called_once()
-    assert mock_add_job_routes.call_args.kwargs["default_profile"] == "auditor"
+    assert "default_profile" not in mock_add_job_routes.call_args.kwargs

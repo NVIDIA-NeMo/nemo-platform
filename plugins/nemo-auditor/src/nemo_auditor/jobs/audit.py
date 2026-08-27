@@ -411,6 +411,7 @@ class AuditJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> object:
+        from nemo_auditor.config import get_config
         from nemo_platform_plugin.jobs.api_factory import (
             ContainerSpec,
             CPUExecutionProviderSpec,
@@ -426,7 +427,7 @@ class AuditJob(NemoJob):
                 PlatformJobStep(
                     name="audit-job",
                     executor=CPUExecutionProviderSpec(
-                        profile=profile or "auditor",
+                        profile=profile or get_config().job_executor_profile,
                         provider="cpu",
                         container=ContainerSpec(
                             image=get_qualified_image("auditor-tasks"),
