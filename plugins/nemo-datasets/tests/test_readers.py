@@ -274,3 +274,30 @@ def test_a_failed_reader_import_is_not_latched(monkeypatch):
         base.get_reader("parquet")
     # Not latched: the next call tries the import again instead of reporting a missing reader.
     assert base._builtins_loaded is False
+
+
+def test_parquet_read_honours_the_same_batch_ceiling_as_batches(tmp_path):
+    # `read` passed `row_cap` straight to `iter_batches`, so a large cap asked pyarrow for one
+    # RecordBatch that size and `to_pylist`-ed it -- materializing the cap, from the contract method
+    # whose sibling exists precisely to avoid that.
+    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+
+    pq.write_table(pa.table({"a": pa.array(range(50))}), tmp_path / "train.parquet")
+    entry = FileEntry(path="train.parquet", size_bytes=1)
+    source = LocalFileSource(tmp_path)
+
+    seen: list[int] = []
+    real = parquet_module.pq.ParquetFile.iter_batches
+
+    def spy(self, *args, batch_size=None, **kwargs):
+        seen.append(batch_size)
+        return real(self, *args, batch_size=batch_size, **kwargs)
+
+    parquet_module.pq.ParquetFile.iter_batches = spy
+    try:
+        result = parquet_module.ParquetReader().read(source, entry, row_cap=5_000_000)
+    finally:
+        parquet_module.pq.ParquetFile.iter_batches = real
+
+    assert seen == [parquet_module._BATCH_ROWS]
+    assert len(result.rows) == 50
