@@ -949,6 +949,29 @@ def test_a_duplicate_column_name_is_described_once(tmp_path):
     assert set(part.stats) == {f.name for f in part.features}
 
 
+def test_a_budgeted_read_does_not_quote_an_unproven_enumeration(tmp_path):
+    # `categorical.values` is the one path row content reaches the stored profile, and it claims to
+    # be the column's controlled vocabulary. A budgeted read saw a prefix, so what it collected is a
+    # *sample* -- here the values are grouped, so the first ten rows witness one of four.
+    #
+    # Gated on truncation and not on `rows_complete`, which is the distinction
+    # `test_rows_completeness_is_per_partition` pins from the other side: a partition that merely
+    # lost a shard read every file it could open to the end, and still quotes.
+    lines = [json.dumps({"prompt": f"q{i}", "source": ["aaa", "bbb", "ccc", "ddd"][i // 25]}) for i in range(100)]
+    (tmp_path / "train.jsonl").write_text("\n".join(lines) + "\n")
+
+    budgeted = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=10).partitions[0]
+    assert budgeted.rows_complete is False
+    assert budgeted.stats["source"].categorical.values is None
+    # The count survives as the lower bound the field documents, rather than vanishing entirely.
+    assert budgeted.stats["source"].categorical.distinct_count == 1
+
+    whole = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+    assert whole.rows_complete is True
+    assert whole.stats["source"].categorical.values == ["aaa", "bbb", "ccc", "ddd"]
+    assert whole.stats["source"].categorical.distinct_count == 4
+
+
 def test_a_dictionary_encoded_column_profiles_as_its_value_type(tmp_path):
     # The whole partition turned on this. A dictionary-encoded `prompt` typed as `json`, which has no
     # measurement and passes no role gate, so the column lost its stats, lost the `prompt` role, and
