@@ -14,8 +14,11 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from nemo_insights_plugin._perms import AnalysisRunPerms
 from nemo_insights_plugin.analyst.agent_config import AGENT_CONFIG_FORMAT, build_analyst_agent_config
+from nemo_insights_plugin.authz import scope
 from nemo_platform import APIStatusError, AsyncNeMoPlatform
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_sdk_client
 from pydantic import BaseModel, Field
 
@@ -63,6 +66,8 @@ class CreateAnalysisRunResponse(BaseModel):
 
 
 @router.post("/analysis-runs", response_model=CreateAnalysisRunResponse)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[AnalysisRunPerms.CREATE])
 async def create_analysis_run(
     workspace: str,
     request: CreateAnalysisRunRequest,
