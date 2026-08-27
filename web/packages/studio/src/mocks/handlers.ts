@@ -9,6 +9,7 @@ import {
   PlatformJobLogPage,
   PlatformJobResponsesPage,
   Project,
+  type TraceMetricBucketParam,
 } from '@nemo/sdk/generated/platform/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { customizerHandlers } from '@studio/mocks/handlers/customizer';
@@ -35,6 +36,7 @@ import {
   mockSpanById,
   mockSpansPage,
   mockTraceById,
+  mockTraceMetrics,
   mockTracesPage,
 } from '@studio/mocks/intake/telemetry';
 import { randomUUID } from 'crypto';
@@ -548,6 +550,12 @@ export const handlers = [
       return HttpResponse.json(mockEvaluationSessionsPage(String(params['name']), testCaseName));
     }
   ),
+  http.get('*/apis/intake/v2/workspaces/:workspace/traces/metrics', ({ request }) => {
+    const url = new URL(request.url);
+    const bucket = (url.searchParams.get('bucket') ?? 'total') as TraceMetricBucketParam;
+    const timezone = url.searchParams.get('timezone') ?? 'UTC';
+    return HttpResponse.json(mockTraceMetrics(bucket, timezone));
+  }),
   http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
     const url = new URL(request.url);
     const sessionId = url.searchParams.get('filter[session_id]');

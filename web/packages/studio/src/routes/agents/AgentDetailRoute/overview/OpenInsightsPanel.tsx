@@ -3,11 +3,10 @@
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
-import { Button, Flex, Skeleton, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
 import type { InsightListItem } from '@studio/api/optimizer';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
 import { OpenInsightRow } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightRow';
-import { Lightbulb } from 'lucide-react';
 import type { FC } from 'react';
 
 interface OpenInsightsPanelProps {
@@ -17,6 +16,7 @@ interface OpenInsightsPanelProps {
   readonly isPending?: boolean;
   readonly error?: unknown;
   readonly onOpenInsight: (insight: InsightListItem) => void;
+  readonly awaitingTelemetry?: boolean;
   /** Omit to hide the "View all" action. */
   readonly onViewAll?: () => void;
 }
@@ -32,6 +32,7 @@ export const OpenInsightsPanel: FC<OpenInsightsPanelProps> = ({
   totalCount,
   isPending,
   error,
+  awaitingTelemetry,
   onOpenInsight,
   onViewAll,
 }) => {
@@ -42,12 +43,12 @@ export const OpenInsightsPanel: FC<OpenInsightsPanelProps> = ({
       title="Open insights"
       flush
       slotAction={
-        isEmpty || error || isPending ? null : (
+        error || isPending ? null : (
           <Flex gap="3" align="center">
             <Text kind="body/regular/sm" className="text-secondary">
               {`${totalCount} total`}
             </Text>
-            {onViewAll ? (
+            {!isEmpty && onViewAll ? (
               <Button kind="tertiary" size="small" onClick={onViewAll}>
                 View all
               </Button>
@@ -72,12 +73,12 @@ export const OpenInsightsPanel: FC<OpenInsightsPanelProps> = ({
           <Skeleton className="h-5 w-3/5" />
         </Stack>
       ) : isEmpty ? (
-        <Flex justify="center" padding="density-xl">
-          <StatusMessage
-            slotMedia={<Lightbulb className="size-10 text-placeholder" />}
-            slotHeading="No open insights"
-            slotSubheading="Insights are filed by the analyst from this agent's traces, feedback, and evaluation scores. Once analysis has run, recurring problems show up here with the traces that prove them."
-          />
+        <Flex justify="center" align="center" padding="density-xl" className="min-h-60">
+          <Text kind="body/regular/md" className="max-w-72 text-center text-secondary">
+            {awaitingTelemetry
+              ? 'Insights requires importing traces or integrating your agent with NeMo Platform.'
+              : "Insights are filed by the analyst from this agent's traces, feedback, and evaluation scores. Once analysis has run, recurring problems show up here with the traces that prove them."}
+          </Text>
         </Flex>
       ) : (
         <div>
