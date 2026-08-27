@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { evalDurationMs } from '@studio/api/evaluation/utils';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { evaluatorLabel } from '@studio/routes/agents/AgentDetailRoute/evaluations/formatRollups';
 
@@ -34,11 +36,20 @@ const formatScore = (value: number): string =>
   value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
 /**
- * The evaluation-level rollups graphable alongside evaluator scores. Cost, latency and tokens are
- * the three the API aggregates onto an evaluation; run duration is not aggregated there (Intake
- * tracks `duration_ms` per session only), so it is absent until that rollup exists.
+ * The evaluation-level measures graphable alongside evaluator scores.
+ *
+ * Cost, latency and tokens are typed rollups the API aggregates onto an evaluation. Duration is not
+ * one: the evaluator stamps the run's wall-clock seconds into `metadata.eval_duration_sec` at
+ * publish time, which is why `evalDurationMs` reads it rather than a field. It is therefore present
+ * only for runs that published successfully, and `buildTrendPoints` drops the rest.
  */
 const RESOURCE_METRICS: readonly TrendMetric[] = [
+  {
+    id: 'duration_ms',
+    label: 'Duration',
+    format: (value) => formatDurationMs(value),
+    accessor: (row) => evalDurationMs(row.metadata),
+  },
   {
     id: 'cost_usd',
     label: 'Cost (USD)',

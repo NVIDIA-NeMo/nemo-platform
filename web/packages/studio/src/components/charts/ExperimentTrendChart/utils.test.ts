@@ -16,12 +16,14 @@ const row = (opts: {
   cost?: number;
   latency?: number;
   tokens?: number;
+  durationSec?: string;
   evaluators?: Record<string, number>;
 }): EvaluationRow =>
   ({
     name: opts.name,
     id: opts.name,
     created_at: opts.createdAt,
+    metadata: opts.durationSec == null ? undefined : { eval_duration_sec: opts.durationSec },
     cost_usd: opts.cost == null ? undefined : { mean: opts.cost },
     latency_ms: opts.latency == null ? undefined : { mean: opts.latency },
     tokens: opts.tokens == null ? undefined : { mean: opts.tokens },
@@ -45,6 +47,7 @@ describe('deriveTrendMetrics', () => {
     expect(metrics.map((m) => m.id)).toEqual([
       'evaluators.answers_question',
       'evaluators.report_style',
+      'duration_ms',
       'cost_usd',
       'latency_ms',
       'tokens',
@@ -58,7 +61,7 @@ describe('deriveTrendMetrics', () => {
 
   it('offers the rollups even when no evaluation carries an evaluator score', () => {
     const metrics = deriveTrendMetrics([row({ name: 'a', cost: 1 })]);
-    expect(metrics.map((m) => m.id)).toEqual(['cost_usd', 'latency_ms', 'tokens']);
+    expect(metrics.map((m) => m.id)).toEqual(['duration_ms', 'cost_usd', 'latency_ms', 'tokens']);
   });
 
   it('formats each metric in its own units', () => {
@@ -67,6 +70,24 @@ describe('deriveTrendMetrics', () => {
     expect(getMetric(metrics, 'latency_ms').format(1234.6)).toBe('1,235 ms');
     expect(getMetric(metrics, 'tokens').format(16000)).toBe('16,000');
     expect(getMetric(metrics, 'evaluators.solved').format(0.60349)).toBe('0.603');
+  });
+
+  it('reads duration from the metadata the evaluator stamps, not from a rollup field', () => {
+    const rows = [row({ name: 'a', createdAt: '2026-06-01T00:00:00Z', durationSec: '114.2' })];
+    const [point] = buildTrendPoints(rows, getMetric(deriveTrendMetrics(rows), 'duration_ms'));
+    expect(point.y).toBe(114200);
+  });
+
+  it('drops a run whose duration metadata is absent or unparseable', () => {
+    // Metadata is free-form and only written on a successful publish, so both are ordinary states.
+    const rows = [
+      row({ name: 'no-metadata', createdAt: '2026-06-01T00:00:00Z' }),
+      row({ name: 'blank', createdAt: '2026-06-02T00:00:00Z', durationSec: '' }),
+      row({ name: 'junk', createdAt: '2026-06-03T00:00:00Z', durationSec: 'n/a' }),
+      row({ name: 'good', createdAt: '2026-06-04T00:00:00Z', durationSec: '12' }),
+    ];
+    const points = buildTrendPoints(rows, getMetric(deriveTrendMetrics(rows), 'duration_ms'));
+    expect(points.map((p) => p.name)).toEqual(['good']);
   });
 });
 
