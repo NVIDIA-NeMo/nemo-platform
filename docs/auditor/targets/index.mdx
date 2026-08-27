@@ -38,7 +38,7 @@ Use a `provider` name from this output in the target below. The model identifier
 ```python
 target = client.auditor.targets.create(
     workspace="default",
-    name="llama-31-8b",
+    name="nemotron-3-nano-30b",
     type="nim.NVOpenAIChat",
     model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
     options={
@@ -110,7 +110,7 @@ for entry in listing["data"]:
 ## Retrieve a Target
 
 ```python
-target = client.auditor.targets.get(workspace="default", name="llama-31-8b")
+target = client.auditor.targets.get(workspace="default", name="nemotron-3-nano-30b")
 ```
 
 ## Update a Target
@@ -120,7 +120,7 @@ target = client.auditor.targets.get(workspace="default", name="llama-31-8b")
 ```python
 updated = client.auditor.targets.update(
     workspace="default",
-    name="llama-31-8b",
+    name="nemotron-3-nano-30b",
     type="nim.NVOpenAIChat",
     model="nvidia/meta/llama-3.3-70b-instruct",
     options={
@@ -137,5 +137,5 @@ updated = client.auditor.targets.update(
 ## Delete a Target
 
 ```python
-client.auditor.targets.delete(workspace="default", name="llama-31-8b")
+client.auditor.targets.delete(workspace="default", name="nemotron-3-nano-30b")
 ```

@@ -2145,6 +2145,28 @@ class TestInteractiveModelPairSelection:
         assert fast_call.kwargs["default"] == "default/qwen2.5:1.5b"
         assert fast_call.kwargs["hint"] == "Press Enter to reuse the default model."
 
+    def test_returns_none_when_only_specialist_models_are_available(self):
+        client = MagicMock()
+        provider = MagicMock()
+        provider.name = "nvidia-build"
+        provider.served_models = [
+            MagicMock(model_entity_id="default/adept-fuyu-8b"),
+            MagicMock(model_entity_id="default/nvidia-nv-embedqa-e5-v5"),
+            MagicMock(model_entity_id="default/llama-3.1-nemoguard-8b-content-safety"),
+        ]
+        client.inference.providers.list.return_value = MagicMock(data=[provider])
+
+        with (
+            patch(f"{self._MOD}.prompt_select") as mock_prompt_select,
+            patch(f"{self._MOD}.console.print") as mock_print,
+        ):
+            result = _select_model_pair(client, "default", provider_name="nvidia-build")
+
+        assert result is None
+        mock_prompt_select.assert_not_called()
+        printed = " ".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        assert "No usable chat models discovered yet" in printed
+
 
 class TestPickDefaultChatEntity:
     def test_skips_embedding_vision_guard_and_rerank(self):

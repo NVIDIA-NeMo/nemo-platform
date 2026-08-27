@@ -1970,11 +1970,14 @@ def _select_model_pair(
         return None
 
     suggested = _pick_default_chat_entity([entity_id for entity_id, _ in display_models])
-    first_model = suggested or display_models[0][0]
+    if suggested is None:
+        console.print(f"  {WARN} No usable chat models discovered yet. You can select models later.")
+        return None
+
     default_model = prompt_select(
         "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=first_model,
+        default=suggested,
         hint="Press Enter to accept the default.",
     )
     fast = prompt_select(
