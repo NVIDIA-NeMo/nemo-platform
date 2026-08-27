@@ -77,7 +77,9 @@ class ParquetReader:
             parquet_file = pq.ParquetFile(stream)
             if row_cap == 0:
                 return
-            for batch in parquet_file.iter_batches(batch_size=min(row_cap or _BATCH_ROWS, _BATCH_ROWS)):
+            for batch in parquet_file.iter_batches(
+                batch_size=_BATCH_ROWS if row_cap is None else min(row_cap, _BATCH_ROWS)
+            ):
                 rows = batch.to_pylist()
                 if row_cap is not None and scanned + len(rows) > row_cap:
                     rows = rows[: row_cap - scanned]
@@ -102,7 +104,9 @@ class ParquetReader:
             # converted. This bounds that transient allocation only: `read` returns the rows, so
             # `rows` still grows to `row_cap` by contract. `batches` is the method whose working set
             # is independent of the cap.
-            for batch in parquet_file.iter_batches(batch_size=min(row_cap or _BATCH_ROWS, _BATCH_ROWS)):
+            for batch in parquet_file.iter_batches(
+                batch_size=_BATCH_ROWS if row_cap is None else min(row_cap, _BATCH_ROWS)
+            ):
                 rows.extend(batch.to_pylist())
                 if row_cap is not None and len(rows) >= row_cap:
                     break

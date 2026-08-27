@@ -4,8 +4,9 @@
 """Per-column statistics and content probes.
 
 :class:`RowFold` measures each top-level column by dtype: length quantiles for text, min/max/mean
-for numbers, chat-shape signals for messages, and a bounded vocabulary where the column has one. The result is sparse, and each column is isolated, so one the detectors cannot handle costs
-only itself.
+for numbers, chat-shape signals for messages, and a bounded vocabulary where the column has one.
+The result is sparse, and each column is isolated, so one the detectors cannot handle costs only
+itself.
 
 The same pass counts each column's *content* -- answer markers, embedded transcripts -- into
 :class:`ColumnProbes`. Those are measurements; what they mean is classification's job. Measuring
@@ -47,8 +48,13 @@ _MAX_ENUM_VALUES = 32
 # They bound a *column*, and there is deliberately no bound across columns. The pipeline's promise is
 # that nothing kept grows with the *file*, which these keep: a column's vocabulary stops at 64 KiB
 # however many rows it is fed. The working set does still grow with the column *count*, and the
-# arithmetic worth stating is `MAX_COLUMNS` * `_MAX_VOCABULARY_BYTES` -- about 256 MiB of live sets
-# for a partition wide enough to hit the column cap, held for one partition's read.
+# figure worth stating is not the one this comment first gave.
+#
+# `_MAX_VOCABULARY_BYTES` counts string *content*. Measured at the bound, a saturated vocabulary is
+# about 137 KiB resident -- 2.1x -- once per-`str` overhead and the set's own table are counted. And
+# a `RoutedAccumulator` builds one `_Vocabulary` per shape it sees, so a column holding strings,
+# numbers and bools holds three. Worst case for a partition wide enough to hit the column cap is
+# nearer 1.7 GB than the 256 MB that content alone suggests, held for one partition's read.
 #
 # Left as a bound rather than turned into a shared budget on purpose. A partition-wide byte budget
 # would have to be threaded through every accumulator and consulted per value, and it would make one

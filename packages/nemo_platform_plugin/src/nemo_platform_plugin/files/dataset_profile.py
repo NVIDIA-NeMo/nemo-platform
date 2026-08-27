@@ -196,7 +196,8 @@ class FeatureSchema(BaseModel):
     name: str = Field(default="", description='Column / struct-field name; "" for a list element.')
     dtype: str = Field(
         description=(
-            "string | bool | int8..int64 / uint8..uint64 | float16/32/64 | struct | list | messages | "
+            "string | bool | int8..int64 / uint8..uint64 | float16/32/64 | date | time | timestamp | "
+            "duration | binary | decimal | struct | list | messages | "
             "image | audio | video | json | ... — fixed-width numeric widths as the source file reports them."
         ),
     )

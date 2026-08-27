@@ -200,7 +200,7 @@ class SchemaFold:
         self._fields: dict[str, SchemaFold] = {}
         self._field_order: list[str] = []
         self._item: SchemaFold | None = None
-        self.capped = False  # a key this fold declined to describe, at this level or below it
+        self.capped = False  # a key *this* fold declined; `was_capped` is what asks the children
 
     def update(self, values: list[Any]) -> None:
         for value in values:
