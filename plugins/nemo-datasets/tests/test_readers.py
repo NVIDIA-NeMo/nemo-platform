@@ -250,3 +250,27 @@ def test_jsonl_reader_accepts_an_empty_file(tmp_path):
     result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0))
 
     assert result.rows == [] and result.num_rows == 0 and result.error is None
+
+
+def test_a_failed_reader_import_is_not_latched(monkeypatch):
+    # The flag was set *before* the import it guards, so a broken environment became permanent. The
+    # real ImportError surfaced exactly once -- inside `_peek_files`' guard, where it is swallowed --
+    # and every call after it raised "no reader registered for 'parquet'" instead, so the profile
+    # blamed a missing reader for a broken pyarrow and the real cause reached nobody.
+    import builtins
+
+    from nemo_datasets_plugin.profiler.readers import base
+
+    monkeypatch.setattr(base, "_builtins_loaded", False)
+    real_import = builtins.__import__
+
+    def failing(name, *args, **kwargs):
+        if name.startswith("nemo_datasets_plugin.profiler.readers"):
+            raise ImportError("simulated broken pyarrow")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing)
+    with pytest.raises(ImportError, match="simulated broken pyarrow"):
+        base.get_reader("parquet")
+    # Not latched: the next call tries the import again instead of reporting a missing reader.
+    assert base._builtins_loaded is False
