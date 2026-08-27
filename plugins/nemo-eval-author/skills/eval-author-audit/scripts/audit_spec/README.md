@@ -27,8 +27,8 @@ Current assumptions:
   digest.
 - Aggregation input is one or more per-trace `coverage.json` files. `report.py`
   validates those files against `schemas/audit_coverage.schema.json`, rejects
-  hard denominator mismatches against the current `audit.md`, and writes one
-  `coverage_report.json` file.
+  hard denominator mismatches against the current `audit.md`, and writes the
+  aggregate report to the path supplied with `--out`.
 - Aggregation treats audit status as review metadata, not denominator content.
   Status-only mismatches, such as measuring while an audit is `draft` and
   reporting after it becomes `approved`, are emitted in `warnings` without

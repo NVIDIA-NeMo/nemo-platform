@@ -304,3 +304,12 @@ Use `reason: not_measured_by_any_method` to distinguish gaps that no included
 measurement method could close from `reason: not_covered_by_any_input_report`,
 which means the item kind was measured but no input report covered that item.
 Treat that list as the input for a later task-generation step.
+
+## Next Steps
+
+- For audit-generation inputs and reconciliation modes, return to
+  [Step 2: Generate Or Reconcile Audit.md](#step-2-generate-or-reconcile-auditmd).
+- For task-generation planning, read the parent
+  [Eval Author task boundary](../eval-author/SKILL.md#sub-flows), then treat
+  aggregate report `uncovered_items` as planning input only. This skill does not
+  create runnable tasks yet.
