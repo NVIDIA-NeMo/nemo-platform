@@ -529,6 +529,7 @@ class TestListVirtualModels:
         assert names == {"vm-alpha"}
 
     def _guardrail_call(self, config_id: str) -> dict:
+        """A middleware call applying the stored guardrail config ``config_id``."""
         return {"name": "nemo-guardrails", "config_type": "guardrail_config", "config_id": config_id}
 
     def test_list_filters_by_guardrail_config(self, client: TestClient):

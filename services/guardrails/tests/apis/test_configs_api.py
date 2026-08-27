@@ -21,6 +21,7 @@ from nmp.testing import create_test_client
 
 
 def _empty_page() -> ListResponse:
+    """An empty single-page list response, for mocked entity-store lookups."""
     return ListResponse(
         data=[],
         pagination=PaginationInfo(page=1, page_size=200, current_page_size=0, total_pages=0, total_results=0),
@@ -294,6 +295,7 @@ class TestDeleteConfigInUse:
 
     @pytest.fixture
     def client(self) -> Iterator[TestClient]:
+        """Guardrails and the Inference Gateway over one in-process entity store."""
         with create_test_client(
             GuardrailsService,
             InferenceGatewayService,
@@ -313,9 +315,11 @@ class TestDeleteConfigInUse:
 
     @staticmethod
     def _rail(config_id: str) -> dict:
+        """A middleware call applying the stored guardrail config ``config_id``."""
         return {"name": "nemo-guardrails", "config_type": "guardrail_config", "config_id": config_id}
 
     def _create_config(self, client: TestClient, name: str) -> None:
+        """Create a guardrail config, asserting it was stored."""
         assert client.post(CONFIGS, json={"name": name}).status_code == 201
 
     def test_delete_refused_while_a_virtual_model_applies_the_config(self, client: TestClient):
