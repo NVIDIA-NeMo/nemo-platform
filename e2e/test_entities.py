@@ -20,7 +20,11 @@ import time
 import uuid
 
 import pytest
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as APIStatusError
+from nemo_platform_plugin.entities.client import EntitiesClient
+from nemo_platform_plugin.entities.types import EntityCreateInput, EntityUpdate, ListEntitiesQueryParams
 from nmp.testing import as_service_for
 
 ENTITY_TYPE = "e2e-test-entity"
@@ -66,57 +70,60 @@ def test_entity_crud_lifecycle(entity_store_sdk: NeMoPlatform, workspace: str):
     4. Delete the entity
     5. Verify it no longer exists
     """
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
     entity_name = _unique_name()
     initial_data = {"key": "initial-value", "nested": {"field": 123}}
 
     # Create entity
-    entity = entity_store_sdk.entities.create(
+    entity = entities.create_entity(
         entity_type=ENTITY_TYPE,
         workspace=workspace,
-        name=entity_name,
-        data=initial_data,
-    )
+        body=EntityCreateInput(
+            name=entity_name,
+            data=initial_data,
+        ),
+    ).data()
     assert entity.name == entity_name
     assert entity.workspace == workspace
     assert entity.entity_type == ENTITY_TYPE
     assert entity.data["key"] == "initial-value"
-    assert entity.data["nested"]["field"] == 123  # ty: ignore[not-subscriptable]
+    assert entity.data["nested"]["field"] == 123
 
     try:
         # Retrieve by name
-        retrieved = entity_store_sdk.entities.get_entity_by_name(
+        retrieved = entities.get_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        )
+        ).data()
         assert retrieved.name == entity_name
         assert retrieved.id == entity.id
         assert retrieved.data == initial_data
 
         # Update entity
         updated_data = {"key": "updated-value", "nested": {"field": 456}, "new_field": True}
-        updated = entity_store_sdk.entities.update_entity_by_name(
+        updated = entities.update_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            data=updated_data,
-        )
+            body=EntityUpdate(data=updated_data),
+        ).data()
         assert updated.name == entity_name
         assert updated.data["key"] == "updated-value"
-        assert updated.data["nested"]["field"] == 456  # ty: ignore[not-subscriptable]
+        assert updated.data["nested"]["field"] == 456
         assert updated.data["new_field"] is True
 
         # Verify update persisted
-        retrieved_after_update = entity_store_sdk.entities.get_entity_by_name(
+        retrieved_after_update = entities.get_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        )
+        ).data()
         assert retrieved_after_update.data == updated_data
 
     finally:
         # Delete entity
-        entity_store_sdk.entities.delete_entity_by_name(
+        entities.delete_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
@@ -124,7 +131,7 @@ def test_entity_crud_lifecycle(entity_store_sdk: NeMoPlatform, workspace: str):
 
     # Verify entity no longer exists
     with pytest.raises(APIStatusError) as exc_info:
-        entity_store_sdk.entities.get_entity_by_name(
+        entities.get_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
@@ -139,6 +146,7 @@ def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, 
     CRUD uses service credentials. Verifies that entities can be associated
     with projects and that the association is persisted and retrievable.
     """
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
     project_name = _unique_name("project")
     entity_name = _unique_name()
 
@@ -152,26 +160,28 @@ def test_entity_with_project(sdk: NeMoPlatform, entity_store_sdk: NeMoPlatform, 
 
     try:
         # Create entity within project
-        entity = entity_store_sdk.entities.create(
+        entity = entities.create_entity(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            name=entity_name,
-            data={"project_data": "value"},
-            project=project_name,
-        )
+            body=EntityCreateInput(
+                name=entity_name,
+                data={"project_data": "value"},
+                project=project_name,
+            ),
+        ).data()
         assert entity.name == entity_name
         assert entity.project == project_name
 
         # Retrieve and verify project association
-        retrieved = entity_store_sdk.entities.get_entity_by_name(
+        retrieved = entities.get_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        )
+        ).data()
         assert retrieved.project == project_name
 
         # Delete entity
-        entity_store_sdk.entities.delete_entity_by_name(
+        entities.delete_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
@@ -188,28 +198,31 @@ def test_entity_without_project(entity_store_sdk: NeMoPlatform, workspace: str):
     Verifies that entities can exist at the workspace level without
     being associated with any project.
     """
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
     entity_name = _unique_name()
 
-    entity = entity_store_sdk.entities.create(
+    entity = entities.create_entity(
         entity_type=ENTITY_TYPE,
         workspace=workspace,
-        name=entity_name,
-        data={"standalone": True},
-    )
+        body=EntityCreateInput(
+            name=entity_name,
+            data={"standalone": True},
+        ),
+    ).data()
 
     try:
         assert entity.name == entity_name
         assert entity.project is None
 
-        retrieved = entity_store_sdk.entities.get_entity_by_name(
+        retrieved = entities.get_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        )
+        ).data()
         assert retrieved.project is None
 
     finally:
-        entity_store_sdk.entities.delete_entity_by_name(
+        entities.delete_entity_by_name(
             name=entity_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
@@ -224,62 +237,65 @@ def test_entity_list_and_sorting(entity_store_sdk: NeMoPlatform, workspace: str)
     2. Sorting by created_at works (ascending and descending)
     3. Sorting by name works
     """
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
     entity_names = [_unique_name(f"sort-{i:02d}") for i in range(5)]
     created_entities = []
 
     try:
         # Create entities in order
         for name in entity_names:
-            entity = entity_store_sdk.entities.create(
+            entity = entities.create_entity(
                 entity_type=ENTITY_TYPE,
                 workspace=workspace,
-                name=name,
-                data={"order": name},
-            )
+                body=EntityCreateInput(
+                    name=name,
+                    data={"order": name},
+                ),
+            ).data()
             time.sleep(1)
             created_entities.append(entity)
 
         # List all entities of this type
-        response = entity_store_sdk.entities.list(
+        response = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
         )
-        listed_names = {e.name for e in response.data}
+        listed_names = {e.name for e in response.items()}
         for name in entity_names:
             assert name in listed_names
 
         # Test descending sort by created_at (default, newest first)
-        response_desc = entity_store_sdk.entities.list(
+        response_desc = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            sort="-created_at",
+            query_params=ListEntitiesQueryParams(sort="-created_at"),
         )
-        desc_names = [e.name for e in response_desc.data if e.name in entity_names]
+        desc_names = [e.name for e in response_desc.items() if e.name in entity_names]
         assert desc_names == list(reversed(entity_names))
 
         # Test ascending sort by created_at (oldest first)
-        response_asc = entity_store_sdk.entities.list(
+        response_asc = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            sort="created_at",
+            query_params=ListEntitiesQueryParams(sort="created_at"),
         )
-        asc_names = [e.name for e in response_asc.data if e.name in entity_names]
+        asc_names = [e.name for e in response_asc.items() if e.name in entity_names]
         assert asc_names == entity_names
 
         # Test sort by name
-        response_by_name = entity_store_sdk.entities.list(
+        response_by_name = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            sort="name",
+            query_params=ListEntitiesQueryParams(sort="name"),
         )
-        name_sorted = [e.name for e in response_by_name.data if e.name in entity_names]
+        name_sorted = [e.name for e in response_by_name.items() if e.name in entity_names]
         assert name_sorted == sorted(entity_names)
 
     finally:
         # Clean up all created entities
         for name in entity_names:
             try:
-                entity_store_sdk.entities.delete_entity_by_name(
+                entities.delete_entity_by_name(
                     name=name,
                     entity_type=ENTITY_TYPE,
                     workspace=workspace,
@@ -298,56 +314,63 @@ def test_entity_search_filter(entity_store_sdk: NeMoPlatform, workspace: str):
     entity_alpha = f"{prefix}-alpha"
     entity_beta = f"{prefix}-beta"
 
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
     try:
         # Create two entities with different data
-        entity_store_sdk.entities.create(
+        entities.create_entity(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            name=entity_alpha,
-            data={"category": "alpha", "value": 100},
-        )
-        entity_store_sdk.entities.create(
+            body=EntityCreateInput(
+                name=entity_alpha,
+                data={"category": "alpha", "value": 100},
+            ),
+        ).data()
+        entities.create_entity(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            name=entity_beta,
-            data={"category": "beta", "value": 200},
-        )
+            body=EntityCreateInput(
+                name=entity_beta,
+                data={"category": "beta", "value": 200},
+            ),
+        ).data()
 
         # Filter by exact name match
         filter_query = json.dumps({"name": {"$eq": entity_alpha}})
-        response = entity_store_sdk.entities.list(
+        response = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            filter=filter_query,
+            query_params=ListEntitiesQueryParams(filter=filter_query),
         )
-        assert len(response.data) == 1
-        assert response.data[0].name == entity_alpha
+        response_list = list(response.items())
+        assert len(response_list) == 1
+        assert response_list[0].name == entity_alpha
 
         # Filter by name pattern (like)
         filter_query = json.dumps({"name": {"$like": f"{prefix}%"}})
-        response = entity_store_sdk.entities.list(
+        response = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            filter=filter_query,
+            query_params=ListEntitiesQueryParams(filter=filter_query),
         )
-        found_names = {e.name for e in response.data}
+        found_names = {e.name for e in response.items()}
         assert entity_alpha in found_names
         assert entity_beta in found_names
 
         # Filter by data field
         filter_query = json.dumps({"data.category": {"$eq": "beta"}})
-        response = entity_store_sdk.entities.list(
+        response = entities.list_entities(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            filter=filter_query,
+            query_params=ListEntitiesQueryParams(filter=filter_query),
         )
-        assert len(response.data) == 1
-        assert response.data[0].name == entity_beta
+        response_list = list(response.items())
+        assert len(response_list) == 1
+        assert response_list[0].name == entity_beta
 
     finally:
         for name in [entity_alpha, entity_beta]:
             try:
-                entity_store_sdk.entities.delete_entity_by_name(
+                entities.delete_entity_by_name(
                     name=name,
                     entity_type=ENTITY_TYPE,
                     workspace=workspace,
@@ -362,31 +385,33 @@ def test_entity_rename(entity_store_sdk: NeMoPlatform, workspace: str):
     Verifies that entities can be renamed and the old name
     no longer works after rename.
     """
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
     old_name = _unique_name("old")
     new_name = _unique_name("new")
 
-    entity = entity_store_sdk.entities.create(
+    entity = entities.create_entity(
         entity_type=ENTITY_TYPE,
         workspace=workspace,
-        name=old_name,
-        data={"test": "rename"},
-    )
+        body=EntityCreateInput(
+            name=old_name,
+            data={"test": "rename"},
+        ),
+    ).data()
 
     try:
         # Rename entity
-        renamed = entity_store_sdk.entities.update_entity_by_name(
+        renamed = entities.update_entity_by_name(
             name=old_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-            data=entity.data,
-            new_name=new_name,
-        )
+            body=EntityUpdate(data=entity.data, new_name=new_name),
+        ).data()
         assert renamed.name == new_name
         assert renamed.id == entity.id
 
         # Verify old name no longer works
         with pytest.raises(APIStatusError) as exc_info:
-            entity_store_sdk.entities.get_entity_by_name(
+            entities.get_entity_by_name(
                 name=old_name,
                 entity_type=ENTITY_TYPE,
                 workspace=workspace,
@@ -394,17 +419,17 @@ def test_entity_rename(entity_store_sdk: NeMoPlatform, workspace: str):
         assert exc_info.value.status_code == 404
 
         # Verify new name works
-        retrieved = entity_store_sdk.entities.get_entity_by_name(
+        retrieved = entities.get_entity_by_name(
             name=new_name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        )
+        ).data()
         assert retrieved.name == new_name
 
     finally:
         # Clean up with new name
         try:
-            entity_store_sdk.entities.delete_entity_by_name(
+            entities.delete_entity_by_name(
                 name=new_name,
                 entity_type=ENTITY_TYPE,
                 workspace=workspace,
@@ -418,11 +443,14 @@ def test_entity_auto_generated_name(entity_store_sdk: NeMoPlatform, workspace: s
 
     When no name is provided, the API should auto-generate a unique name.
     """
-    entity = entity_store_sdk.entities.create(
+    entities = client_from_platform(entity_store_sdk, EntitiesClient)
+    entity = entities.create_entity(
         entity_type=ENTITY_TYPE,
         workspace=workspace,
-        data={"auto_name": True},
-    )
+        body=EntityCreateInput(
+            data={"auto_name": True},
+        ),
+    ).data()
 
     try:
         assert entity.name is not None
@@ -431,15 +459,15 @@ def test_entity_auto_generated_name(entity_store_sdk: NeMoPlatform, workspace: s
         assert ENTITY_TYPE.replace("_", "-").replace("-", "") in entity.name.replace("-", "") or entity.name
 
         # Verify we can retrieve by the generated name
-        retrieved = entity_store_sdk.entities.get_entity_by_name(
+        retrieved = entities.get_entity_by_name(
             name=entity.name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,
-        )
+        ).data()
         assert retrieved.id == entity.id
 
     finally:
-        entity_store_sdk.entities.delete_entity_by_name(
+        entities.delete_entity_by_name(
             name=entity.name,
             entity_type=ENTITY_TYPE,
             workspace=workspace,

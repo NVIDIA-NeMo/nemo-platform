@@ -19,6 +19,9 @@ from typing import Generator
 
 import pytest
 from nemo_platform import ConflictError, NeMoPlatform, PermissionDeniedError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import EntitiesClient
+from nemo_platform_plugin.entities.types import EntityCreateInput
 from nmp.core.entities.service import EntitiesService
 from nmp.testing import TEST_USER_EMAIL, create_test_client, short_unique_name
 
@@ -560,12 +563,14 @@ class TestWorkspaceCRUDWithAuth:
 
         # Create entity as service principal (generic entities API requires service credentials)
         with as_service(sdk, "entities"):
-            sdk.entities.create(
+            client_from_platform(sdk, EntitiesClient).create_entity(
                 workspace=workspace_name,
                 entity_type="test-entity-type",
-                name="test-entity",
-                data={"key": "value"},
-            )
+                body=EntityCreateInput(
+                    name="test-entity",
+                    data={"key": "value"},
+                ),
+            ).data()
 
         with as_user(sdk, admin_email):
             sdk.workspaces.delete(workspace_name)
