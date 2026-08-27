@@ -22,6 +22,7 @@ from nemo_guardrails_plugin.benchmarks.seeding import (
     build_guardrail_config_data,
     seed_benchmark,
 )
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -64,6 +65,25 @@ def _write_upstream_configs(ng_root: Path) -> Path:
         encoding="utf-8",
     )
     return cs_dir
+
+
+@pytest.fixture
+
+def stub_workspaces(monkeypatch) -> MagicMock:
+    """Point seed_benchmark's client_from_platform at a recording WorkspacesClient stub.
+
+    seed_benchmark creates the benchmark workspace through the typed
+    WorkspacesClient (client_from_platform), which a MagicMock platform cannot
+    drive (client_from_platform reads real SDK internals such as max_retries
+    to build its transport). The stub records create_workspace calls instead.
+    """
+    stub = MagicMock()
+    stub.create_workspace.return_value = SimpleNamespace(data=lambda: SimpleNamespace(name=WORKSPACE))
+    monkeypatch.setattr(
+        "nemo_guardrails_plugin.benchmarks.seeding.client_from_platform",
+        lambda platform, client_cls: stub,
+    )
+    return stub
 
 
 @pytest.fixture
@@ -117,7 +137,9 @@ class TestBuildGuardrailConfigData:
 
 
 class TestSeedBenchmark:
-    def test_calls_sdk_with_expected_payloads(self, fake_client: MagicMock, tmp_path: Path) -> None:
+    def test_calls_sdk_with_expected_payloads(
+        self, fake_client: MagicMock, stub_workspaces: MagicMock, tmp_path: Path
+    ) -> None:
         ng_root = tmp_path / "NeMo-Guardrails"
         _write_upstream_configs(ng_root)
         generated_dir = tmp_path / "generated"
@@ -129,10 +151,12 @@ class TestSeedBenchmark:
             provider_wait_timeout=1.0,
         )
 
-        fake_client.workspaces.create.assert_called_once_with(
-            name=WORKSPACE,
-            description="Local IGW guardrails benchmark workspace",
+        stub_workspaces.create_workspace.assert_called_once_with(
             exist_ok=True,
+            body=CreateWorkspaceRequest(
+                name=WORKSPACE,
+                description="Local IGW guardrails benchmark workspace",
+            ),
         )
         # Both providers registered.
         provider_create_names = [c.kwargs["name"] for c in fake_client.inference.providers.create.call_args_list]
@@ -174,7 +198,9 @@ class TestSeedBenchmark:
         assert control_vm_call.kwargs["request_middleware"] == []
         assert control_vm_call.kwargs["response_middleware"] == []
 
-    def test_generated_dir_contains_artifacts(self, fake_client: MagicMock, tmp_path: Path) -> None:
+    def test_generated_dir_contains_artifacts(
+        self, fake_client: MagicMock, stub_workspaces: MagicMock, tmp_path: Path
+    ) -> None:
         ng_root = tmp_path / "NeMo-Guardrails"
         _write_upstream_configs(ng_root)
         generated_dir = tmp_path / "generated"
@@ -198,7 +224,9 @@ class TestSeedBenchmark:
         assert request_payload["exist_ok"] is True
         assert request_payload["data"]["models"][0]["type"] == "content_safety"
 
-    def test_returns_seeded_resources(self, fake_client: MagicMock, tmp_path: Path) -> None:
+    def test_returns_seeded_resources(
+        self, fake_client: MagicMock, stub_workspaces: MagicMock, tmp_path: Path
+    ) -> None:
         ng_root = tmp_path / "NeMo-Guardrails"
         _write_upstream_configs(ng_root)
 
@@ -214,7 +242,7 @@ class TestSeedBenchmark:
         assert seeded.no_guardrails_vm_name == NO_GUARDRAILS_VM_NAME
         assert seeded.guardrail_config_ref == f"{WORKSPACE}/{GUARDRAIL_CONFIG}"
 
-    def test_raises_if_served_models_never_populated(self, tmp_path: Path) -> None:
+    def test_raises_if_served_models_never_populated(self, stub_workspaces: MagicMock, tmp_path: Path) -> None:
         ng_root = tmp_path / "NeMo-Guardrails"
         _write_upstream_configs(ng_root)
 
