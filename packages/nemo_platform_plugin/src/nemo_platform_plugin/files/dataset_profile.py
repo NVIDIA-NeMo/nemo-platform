@@ -503,7 +503,10 @@ class DatasetProfile(BaseModel):
         description=(
             "Every file the profiler could not fully use, from anywhere in the fileset, sorted by path. Files "
             "that read cleanly are counted rather than listed, so this is a findings list and not a manifest. A "
-            "non-empty list is what makes `rows_present` unknown."
+            "non-empty list does NOT by itself make `rows_present` unknown: a file that failed part-way through "
+            "the data keeps the exact count its footer already declared. What unknows the total is a file whose "
+            "count could not be established at all -- one with no registered reader, or a line-delimited file "
+            "whose read fell short of its end."
         ),
     )
 
