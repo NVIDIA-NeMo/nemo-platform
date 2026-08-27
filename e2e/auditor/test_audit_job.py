@@ -22,6 +22,8 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import add_mock_provider, short_unique_name
 
 from e2e.auditor.utils import minimal_audit_config, unique_name
@@ -90,13 +92,14 @@ def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> 
 
 @pytest.fixture(scope="module")
 def audit_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = short_unique_name("e2e-audit")
-    sdk.workspaces.create(name=name)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
     try:
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
 
 @pytest.fixture(scope="module")

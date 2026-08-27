@@ -31,6 +31,8 @@ from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.common.config import nmp_user_data_dir
 from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
 from pydantic import SecretStr
@@ -2220,18 +2222,19 @@ def setup_command(
     cli_context.reset_sdk_context()
 
     client = cli_context.get_client()
+    workspaces = client_from_platform(client, WorkspacesClient)
 
     try:
-        client.workspaces.retrieve(workspace)
+        workspaces.get_workspace(name=workspace).data()
     except Exception:
         try:
-            client.workspaces.create(name=workspace)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace)).data()
             console.print(f"  {CHECK} Created workspace '{workspace}'")
         except Exception as create_err:
             # Distinguish a race (workspace appeared between retrieve and create)
             # from a real failure (permissions, server error).
             try:
-                client.workspaces.retrieve(workspace)
+                workspaces.get_workspace(name=workspace).data()
             except Exception:
                 raise create_err from None
 

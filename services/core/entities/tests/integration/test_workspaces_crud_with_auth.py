@@ -18,10 +18,18 @@ from time import monotonic, sleep
 from typing import Generator
 
 import pytest
-from nemo_platform import ConflictError, NeMoPlatform, PermissionDeniedError
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError, PermissionDeniedError
 from nemo_platform_plugin.entities.client import EntitiesClient
 from nemo_platform_plugin.entities.types import EntityCreateInput
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import (
+    CreateWorkspaceMemberRequest,
+    CreateWorkspaceRequest,
+    UpdateWorkspaceMemberRequest,
+    UpdateWorkspaceRequest,
+)
 from nmp.core.entities.service import EntitiesService
 from nmp.testing import TEST_USER_EMAIL, create_test_client, short_unique_name
 
@@ -93,12 +101,11 @@ def as_service(sdk: NeMoPlatform, service_name: str) -> Generator[None, None, No
 def restrict_workspace_creation_to_named_users(sdk: NeMoPlatform) -> None:
     """Revoke the seeded wildcard WorkspaceCreator binding while preserving Viewer."""
     with as_service(sdk, "auth"):
-        sdk.workspaces.members.update(
+        client_from_platform(sdk, WorkspacesClient).update_workspace_member(
             principal_id="*",
             workspace="system",
-            roles=["Viewer"],
-            wait_role_propagation=True,
-        )
+            body=UpdateWorkspaceMemberRequest(roles=["Viewer"]),
+        ).data()
 
 
 def wait_for_workspace_create_authz(
@@ -145,19 +152,20 @@ class TestWorkspaceCRUDWithAuth:
 
     def test_default_workspaces_created_on_startup(self, sdk: NeMoPlatform):
         """Test that 'default' and 'system' workspaces are created automatically on startup."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         # These workspaces are created by EntitiesService.startup() and are public
         with as_user(sdk, TEST_USER_EMAIL):
-            default_ws = sdk.workspaces.retrieve("default")
+            default_ws = workspaces.get_workspace(name="default").data()
             assert default_ws.name == "default"
             assert default_ws.description == "General-purpose workspace (all users have write access)"
 
-            system_ws = sdk.workspaces.retrieve("system")
+            system_ws = workspaces.get_workspace(name="system").data()
             assert system_ws.name == "system"
             assert system_ws.description == "Platform-provided resources (read-only for users)"
 
             # Verify regular user can see public workspaces when listing
-            result = sdk.workspaces.list()
-            workspace_names = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            workspace_names = [ws.name for ws in result.items()]
             assert "default" in workspace_names, "Regular user should see 'default' workspace in list"
             assert "system" in workspace_names, "Regular user should see 'system' workspace in list"
 
@@ -178,9 +186,10 @@ class TestWorkspaceCRUDWithAuth:
         workspace_name = short_unique_name("auth-ws")
 
         with as_user(sdk, TEST_USER_EMAIL):
-            workspace = sdk.workspaces.create(
-                name=workspace_name,
-                description="Auth test workspace",
+            workspace = (
+                client_from_platform(sdk, WorkspacesClient)
+                .create_workspace(body=CreateWorkspaceRequest(name=workspace_name, description="Auth test workspace"))
+                .data()
             )
 
         assert workspace.name == workspace_name
@@ -194,13 +203,18 @@ class TestWorkspaceCRUDWithAuth:
         workspace_name = short_unique_name("default-open")
 
         with as_user(sdk, creator_email):
-            created = sdk.workspaces.create(name=workspace_name)
+            created = (
+                client_from_platform(sdk, WorkspacesClient)
+                .create_workspace(body=CreateWorkspaceRequest(name=workspace_name))
+                .data()
+            )
 
         assert created.name == workspace_name
         assert created.created_by == creator_email
 
     def test_workspace_create_can_be_restricted_by_rebinding_system_role(self, sdk: NeMoPlatform):
         """Operators can rebind system workspace creation access to specific principals."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
         denied_email = f"denied-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("restricted")
@@ -212,20 +226,20 @@ class TestWorkspaceCRUDWithAuth:
 
             with as_user(sdk, denied_email):
                 with pytest.raises(PermissionDeniedError):
-                    sdk.workspaces.create(name=short_unique_name("restricted-denied"))
+                    workspaces.create_workspace(
+                        body=CreateWorkspaceRequest(name=short_unique_name("restricted-denied"))
+                    ).data()
 
             with as_service(sdk, "auth"):
-                sdk.workspaces.members.create(
+                workspaces.create_workspace_member(
                     workspace="system",
-                    principal=creator_email,
-                    roles=["Viewer", "WorkspaceCreator"],
-                    wait_role_propagation=True,
-                )
+                    body=CreateWorkspaceMemberRequest(principal=creator_email, roles=["Viewer", "WorkspaceCreator"]),
+                ).data()
 
             wait_for_workspace_create_authz(sdk, creator_email, expected=True)
 
             with as_service(sdk, "auth"):
-                members = sdk.workspaces.members.list(workspace="system")
+                members = workspaces.list_workspace_members(workspace="system").data()
 
             wildcard_member = next((m for m in members.data if m.principal == "*"), None)
             creator_member = next((m for m in members.data if m.principal == creator_email), None)
@@ -239,53 +253,56 @@ class TestWorkspaceCRUDWithAuth:
 
             with as_user(sdk, denied_email):
                 with pytest.raises(PermissionDeniedError):
-                    sdk.workspaces.create(name=short_unique_name("restricted-still-denied"))
+                    workspaces.create_workspace(
+                        body=CreateWorkspaceRequest(name=short_unique_name("restricted-still-denied"))
+                    ).data()
 
             with as_user(sdk, creator_email):
-                created = sdk.workspaces.create(name=workspace_name)
+                created = workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
                 assert created.name == workspace_name
         finally:
             with as_service(sdk, "auth"):
-                sdk.workspaces.members.update(
+                workspaces.update_workspace_member(
                     principal_id="*",
                     workspace="system",
-                    roles=seeded_wildcard_roles,
-                    wait_role_propagation=True,
-                )
+                    body=UpdateWorkspaceMemberRequest(roles=seeded_wildcard_roles),
+                ).data()
 
     def test_creator_gets_admin_role(self, sdk: NeMoPlatform):
         """Test that workspace creator automatically gets Admin role."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("admin-ws")
         creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
 
         with as_user(sdk, creator_email):
             # Create workspace
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # Verify creator can access the workspace (has Admin role)
-            workspace = sdk.workspaces.retrieve(workspace_name)
+            workspace = workspaces.get_workspace(name=workspace_name).data()
             assert workspace.name == workspace_name
             assert workspace.created_by == creator_email
             assert workspace.updated_by == creator_email
 
             # Verify creator is listed as a member with Admin role
-            members = sdk.workspaces.members.list(workspace=workspace_name)
+            members = workspaces.list_workspace_members(workspace=workspace_name).data()
             creator_member = next((m for m in members.data if m.principal == creator_email), None)
             assert creator_member is not None, "Creator should be listed as a member"
             assert "Admin" in creator_member.roles, "Creator should have Admin role"
 
     def test_creator_admin_binding_prefers_email_when_id_differs(self, sdk: NeMoPlatform):
         """Admin role binding principal is email when sub/oid differs from email (IdP-style headers)."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("email-bind")
         principal_id = str(uuid.uuid4())
         creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
 
         with as_user_with_id_and_email(sdk, principal_id, creator_email):
-            sdk.workspaces.create(name=workspace_name)
-            workspace = sdk.workspaces.retrieve(workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
+            workspace = workspaces.get_workspace(name=workspace_name).data()
             assert workspace.created_by == principal_id
 
-            members = sdk.workspaces.members.list(workspace=workspace_name)
+            members = workspaces.list_workspace_members(workspace=workspace_name).data()
         creator_member = next((m for m in members.data if "Admin" in m.roles), None)
         assert creator_member is not None
         assert creator_member.principal == creator_email
@@ -294,12 +311,13 @@ class TestWorkspaceCRUDWithAuth:
 
     def test_creator_admin_binding_uses_id_when_email_header_absent(self, sdk: NeMoPlatform):
         """Admin role binding falls back to principal id when X-NMP-Principal-Email is not set."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("id-bind")
         principal_id = str(uuid.uuid4())
 
         with as_user_id_only(sdk, principal_id):
-            sdk.workspaces.create(name=workspace_name)
-            members = sdk.workspaces.members.list(workspace=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
+            members = workspaces.list_workspace_members(workspace=workspace_name).data()
 
         creator_member = next((m for m in members.data if "Admin" in m.roles), None)
         assert creator_member is not None
@@ -307,123 +325,131 @@ class TestWorkspaceCRUDWithAuth:
 
     def test_member_added_by_email_lists_workspace_when_subject_is_uuid(self, sdk: NeMoPlatform):
         """Email-keyed role bindings must count for list_workspaces when JWT id is oid/sub, not email."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("invite-email")
         owner_email = f"owner-{uuid.uuid4().hex[:8]}@example.com"
         member_id = str(uuid.uuid4())
         member_email = f"member-{uuid.uuid4().hex[:8]}@example.com"
 
         with as_user(sdk, owner_email):
-            sdk.workspaces.create(name=workspace_name)
-            sdk.workspaces.members.create(
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
+            workspaces.create_workspace_member(
                 workspace=workspace_name,
-                principal=member_email,
-                roles=["Editor"],
-                wait_role_propagation=True,
-            )
+                body=CreateWorkspaceMemberRequest(principal=member_email, roles=["Editor"]),
+            ).data()
 
         with as_user_with_id_and_email(sdk, member_id, member_email):
-            result = sdk.workspaces.list()
-            names = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            names = [ws.name for ws in result.items()]
 
         assert workspace_name in names
 
     def test_member_added_by_group_lists_workspace_when_user_in_group(self, sdk: NeMoPlatform):
         """Group-keyed role bindings must count for list_workspaces when the user carries that group."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         workspace_name = short_unique_name("invite-group")
         owner_email = f"owner-{uuid.uuid4().hex[:8]}@example.com"
         group_principal = f"team-{uuid.uuid4().hex[:12]}"
         member_user_id = str(uuid.uuid4())
 
         with as_user(sdk, owner_email):
-            sdk.workspaces.create(name=workspace_name)
-            sdk.workspaces.members.create(
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
+            workspaces.create_workspace_member(
                 workspace=workspace_name,
-                principal=group_principal,
-                roles=["Editor"],
-                wait_role_propagation=True,
-            )
+                body=CreateWorkspaceMemberRequest(principal=group_principal, roles=["Editor"]),
+            ).data()
 
         with as_user_with_id_and_groups(sdk, member_user_id, [group_principal]):
-            result = sdk.workspaces.list()
-            names = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            names = [ws.name for ws in result.items()]
 
         assert workspace_name in names
 
     def test_list_workspaces_only_shows_accessible(self, sdk: NeMoPlatform):
         """Test that listing workspaces only shows workspaces the user can access."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         user1_email = f"user1-{uuid.uuid4().hex[:8]}@example.com"
         user2_email = f"user2-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("priv-ws")
 
         # User1 creates a workspace
         with as_user(sdk, user1_email):
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # User1 should see the workspace
-            result = sdk.workspaces.list()
-            user1_workspaces = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            user1_workspaces = [ws.name for ws in result.items()]
             assert workspace_name in user1_workspaces
 
         # User2 should NOT see the workspace (no role binding)
         with as_user(sdk, user2_email):
-            result = sdk.workspaces.list()
-            user2_workspaces = [ws.name for ws in result.data]
+            result = workspaces.list_workspaces()
+            user2_workspaces = [ws.name for ws in result.items()]
             assert workspace_name not in user2_workspaces
 
     def test_user_without_role_cannot_access_workspace(self, sdk: NeMoPlatform):
         """Test that a user without a role cannot access a workspace."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         owner_email = f"owner-{uuid.uuid4().hex[:8]}@example.com"
         other_email = f"other-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("no-access")
 
         # Owner creates workspace
         with as_user(sdk, owner_email):
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
         # Other user tries to access - should fail
         with as_user(sdk, other_email):
             with pytest.raises(PermissionDeniedError):
-                sdk.workspaces.retrieve(workspace_name)
+                workspaces.get_workspace(name=workspace_name).data()
 
     def test_admin_can_update_workspace(self, sdk: NeMoPlatform):
         """Test that an Admin can update their workspace."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("upd-auth")
 
         with as_user(sdk, admin_email):
             # Create workspace (admin gets Admin role automatically)
-            created = sdk.workspaces.create(name=workspace_name, description="Original")
+            created = workspaces.create_workspace(
+                body=CreateWorkspaceRequest(name=workspace_name, description="Original")
+            ).data()
             assert created.created_by == admin_email
 
             # Update workspace
-            updated = sdk.workspaces.update(workspace_name, description="Updated by admin")
+            updated = workspaces.update_workspace(
+                name=workspace_name, body=UpdateWorkspaceRequest(description="Updated by admin")
+            ).data()
             assert updated.description == "Updated by admin"
             assert updated.created_by == admin_email
             assert updated.updated_by == admin_email
 
     def test_updated_by_changes_when_different_user_updates(self, sdk: NeMoPlatform):
         """Test that updated_by reflects the user who made the update, not the creator."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
         updater_email = f"updater-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("upd-by")
 
         # Creator creates workspace
         with as_user(sdk, creator_email):
-            created = sdk.workspaces.create(name=workspace_name, description="Original")
+            created = workspaces.create_workspace(
+                body=CreateWorkspaceRequest(name=workspace_name, description="Original")
+            ).data()
             assert created.created_by == creator_email
             assert created.updated_by == creator_email
 
             # Add updater as Admin so they can update
-            sdk.workspaces.members.create(
+            workspaces.create_workspace_member(
                 workspace=workspace_name,
-                principal=updater_email,
-                roles=["Admin"],
-                wait_role_propagation=True,
-            )
+                body=CreateWorkspaceMemberRequest(principal=updater_email, roles=["Admin"]),
+            ).data()
 
         # Different user updates the workspace
         with as_user(sdk, updater_email):
-            updated = sdk.workspaces.update(workspace_name, description="Updated by different user")
+            updated = workspaces.update_workspace(
+                name=workspace_name, body=UpdateWorkspaceRequest(description="Updated by different user")
+            ).data()
             assert updated.description == "Updated by different user"
             # created_by should remain the original creator
             assert updated.created_by == creator_email
@@ -432,114 +458,117 @@ class TestWorkspaceCRUDWithAuth:
 
     def test_viewer_cannot_update_workspace(self, sdk: NeMoPlatform):
         """Test that a Viewer cannot update a workspace."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         owner_email = f"owner-{uuid.uuid4().hex[:8]}@example.com"
         viewer_email = f"viewer-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("view-only")
 
         # Owner creates workspace and adds viewer
         with as_user(sdk, owner_email):
-            sdk.workspaces.create(name=workspace_name)
-            sdk.workspaces.members.create(
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
+            workspaces.create_workspace_member(
                 workspace=workspace_name,
-                principal=viewer_email,
-                roles=["Viewer"],
-                wait_role_propagation=True,
-            )
+                body=CreateWorkspaceMemberRequest(principal=viewer_email, roles=["Viewer"]),
+            ).data()
 
         # Viewer can read but cannot update
         with as_user(sdk, viewer_email):
-            workspace = sdk.workspaces.retrieve(workspace_name)
+            workspace = workspaces.get_workspace(name=workspace_name).data()
             assert workspace.name == workspace_name
 
             with pytest.raises(PermissionDeniedError):
-                sdk.workspaces.update(workspace_name, description="Updated by viewer")
+                workspaces.update_workspace(
+                    name=workspace_name, body=UpdateWorkspaceRequest(description="Updated by viewer")
+                ).data()
 
     def test_delete_workspace_deletes_role_bindings(self, sdk: NeMoPlatform):
         """Test that workspace deletion automatically deletes role bindings.
 
         Role bindings are system-managed and should not block workspace deletion.
         """
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("del-ok")
 
         with as_user(sdk, admin_email):
             # Create workspace (creates Admin role binding automatically)
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # Verify role binding exists
-            members = sdk.workspaces.members.list(workspace=workspace_name)
+            members = workspaces.list_workspace_members(workspace=workspace_name).data()
             assert len(members.data) > 0
 
             # Delete workspace - should succeed, role bindings are deleted automatically
-            sdk.workspaces.delete(workspace_name)
+            workspaces.delete_workspace(name=workspace_name).data()
 
         # Verify workspace is deleted by checking it's not in the list
         # (after deletion, user no longer has access so we check via list)
         with as_user(sdk, admin_email):
-            workspaces = sdk.workspaces.list()
-            workspace_names = [ws.name for ws in workspaces.data]
+            ws_list = workspaces.list_workspaces()
+            workspace_names = [ws.name for ws in ws_list.items()]
             assert workspace_name not in workspace_names
 
     def test_cannot_remove_last_admin_via_member_delete(self, sdk: NeMoPlatform):
         """Test that removing the last Admin via member delete fails."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
 
         admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("last-admin")
 
         with as_user(sdk, admin_email):
             # Create workspace (admin is the only Admin)
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # Try to remove self (the last admin) - should fail
             with pytest.raises(ConflictError) as exc_info:
-                sdk.workspaces.members.delete(workspace=workspace_name, principal_id=admin_email)
+                workspaces.delete_workspace_member(workspace=workspace_name, principal_id=admin_email).data()
 
             assert "last admin" in str(exc_info.value).lower()
 
     def test_cannot_remove_last_admin_via_role_update(self, sdk: NeMoPlatform):
         """Test that removing the Admin role via update when they're the last Admin fails."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
 
         admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("upd-admin")
 
         with as_user(sdk, admin_email):
             # Create workspace (admin is the only Admin)
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # Try to change own role from Admin to Viewer - should fail
             with pytest.raises(ConflictError) as exc_info:
-                sdk.workspaces.members.update(
+                workspaces.update_workspace_member(
                     workspace=workspace_name,
                     principal_id=admin_email,
-                    roles=["Viewer"],
-                )
+                    body=UpdateWorkspaceMemberRequest(roles=["Viewer"]),
+                ).data()
 
             assert "last admin" in str(exc_info.value).lower()
 
     def test_can_remove_admin_when_another_admin_exists(self, sdk: NeMoPlatform):
         """Test that removing an Admin succeeds when another Admin exists."""
+        workspaces = client_from_platform(sdk, WorkspacesClient)
         admin1_email = f"admin1-{uuid.uuid4().hex[:8]}@example.com"
         admin2_email = f"admin2-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("two-admins")
 
         with as_user(sdk, admin1_email):
             # Create workspace (admin1 is the Admin)
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
             # Add admin2 as another Admin
-            sdk.workspaces.members.create(
+            workspaces.create_workspace_member(
                 workspace=workspace_name,
-                principal=admin2_email,
-                roles=["Admin"],
-                wait_role_propagation=True,
-            )
+                body=CreateWorkspaceMemberRequest(principal=admin2_email, roles=["Admin"]),
+            ).data()
 
             # Now admin1 can remove themselves since admin2 is also an Admin
-            sdk.workspaces.members.delete(workspace=workspace_name, principal_id=admin1_email)
+            workspaces.delete_workspace_member(workspace=workspace_name, principal_id=admin1_email).data()
 
         # Verify admin1 is no longer a member (check as admin2 since admin1 lost access)
         with as_user(sdk, admin2_email):
-            members = sdk.workspaces.members.list(workspace=workspace_name)
+            members = workspaces.list_workspace_members(workspace=workspace_name).data()
             member_principals = [m.principal for m in members.data]
             assert admin1_email not in member_principals
             assert admin2_email in member_principals
@@ -553,13 +582,14 @@ class TestWorkspaceCRUDWithAuth:
         Note: After deletion, the user may get 403 (role bindings deleted) or 404
         (workspace marked for deletion). Both indicate the workspace is inaccessible.
         """
-        from nemo_platform import NotFoundError, PermissionDeniedError
+        workspaces = client_from_platform(sdk, WorkspacesClient)
+        from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 
         admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("has-ent")
 
         with as_user(sdk, admin_email):
-            sdk.workspaces.create(name=workspace_name)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
         # Create entity as service principal (generic entities API requires service credentials)
         with as_service(sdk, "entities"):
@@ -573,10 +603,10 @@ class TestWorkspaceCRUDWithAuth:
             ).data()
 
         with as_user(sdk, admin_email):
-            sdk.workspaces.delete(workspace_name)
+            workspaces.delete_workspace(name=workspace_name).data()
 
             # Verify workspace is inaccessible (403 or 404)
             # 403: Role bindings deleted, user has no access
             # 404: Workspace marked for deletion
             with pytest.raises((NotFoundError, PermissionDeniedError)):
-                sdk.workspaces.retrieve(workspace_name)
+                workspaces.get_workspace(name=workspace_name).data()

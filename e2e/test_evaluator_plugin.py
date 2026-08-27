@@ -46,13 +46,17 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.models.client import ModelsClient
 from nemo_platform_plugin.models.types import CreateModelEntityRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
@@ -127,7 +131,7 @@ def _add_mock_provider_or_skip(
                 "Configure NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX=igw-mock- to run this test."
             )
         raise
-    except APIStatusError as exc:
+    except NemoHTTPError as exc:
         error_body = None if exc.body is None else json.dumps(exc.body, default=str)
         mock_mode_unavailable = (
             exc.status_code == 502 and error_body is not None and "Cannot connect to host mock.local" in error_body
@@ -140,8 +144,8 @@ def _add_mock_provider_or_skip(
         raise
 
 
-def _assert_http_status(exc: APIStatusError | httpx.HTTPStatusError, status_code: int) -> None:
-    actual = exc.status_code if isinstance(exc, APIStatusError) else exc.response.status_code
+def _assert_http_status(exc: NemoHTTPError | httpx.HTTPStatusError, status_code: int) -> None:
+    actual = exc.status_code if isinstance(exc, NemoHTTPError) else exc.response.status_code
     assert actual == status_code
 
 
@@ -219,7 +223,7 @@ def _wait_for_stable_model_chat_route(sdk: NeMoPlatform, workspace: str, model_n
         except APIConnectionError as exc:
             stable_since = None
             last_error = repr(exc)
-        except APIStatusError as exc:
+        except NemoHTTPError as exc:
             stable_since = None
             last_status = exc.status_code
             last_body = str(exc)
@@ -351,13 +355,14 @@ def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
 
 @pytest.fixture(scope="module")
 def evaluator_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = short_unique_name("e2e-eval")
     try:
-        sdk.workspaces.create(name=name)
+        workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
 
 @pytest.fixture(scope="module")
@@ -410,12 +415,12 @@ def test_stored_metric_lifecycle(evaluator_sdk: NeMoPlatform) -> None:
         listing = evaluator_sdk.evaluator.metrics.list(sort="-created_at")
         assert any(metric.name == name for metric in listing.data)
 
-        with pytest.raises((httpx.HTTPStatusError, APIStatusError)) as exc_info:
+        with pytest.raises((httpx.HTTPStatusError, NemoHTTPError)) as exc_info:
             evaluator_sdk.evaluator.metrics.create(name, metric=_exact_match_metric())
         _assert_http_status(exc_info.value, 409)
 
         evaluator_sdk.evaluator.metrics.delete(name)
-        with pytest.raises((httpx.HTTPStatusError, APIStatusError)) as exc_info:
+        with pytest.raises((httpx.HTTPStatusError, NemoHTTPError)) as exc_info:
             evaluator_sdk.evaluator.metrics.retrieve(name)
         _assert_http_status(exc_info.value, 404)
     finally:

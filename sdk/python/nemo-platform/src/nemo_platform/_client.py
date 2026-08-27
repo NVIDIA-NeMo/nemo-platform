@@ -569,11 +569,14 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             import asyncio
             from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.adapter import client_from_platform
+            from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
             async def main() -> None:
                 client = AsyncNeMoPlatform()
-                page = await client.workspaces.list()
-                print(page.data)
+                workspaces = await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()
+                async for ws in workspaces.items():
+                    print(ws.name)
 
             asyncio.run(main())
 
@@ -583,6 +586,8 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             import asyncio, os
             from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.adapter import client_from_platform
+            from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
             async def main() -> None:
                 client = AsyncNeMoPlatform(
@@ -590,8 +595,9 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                     access_token=os.environ["NMP_ACCESS_TOKEN"],
                     workspace="default",
                 )
-                page = await client.workspaces.list()
-                print(page.data)
+                workspaces = await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()
+                async for ws in workspaces.items():
+                    print(ws.name)
 
             asyncio.run(main())
 
