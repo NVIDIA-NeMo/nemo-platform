@@ -159,6 +159,64 @@ def test_data_files_glob_means_the_same_thing_to_pythons_own_glob(tmp_path):
         assert all(name.startswith(f"data/{split.name}") for name in resolved)
 
 
+def test_a_path_holding_a_glob_metacharacter_gets_no_pattern(tmp_path):
+    # `_glob_matches` escapes everything but `*`, so verification read `[` and `?` as literals --
+    # while the pattern it blessed goes to a consumer whose glob reads them as syntax. The two
+    # directions of the same bug: `data[a]/train*.jsonl` selects nothing at all, and
+    # `what?/train*.jsonl` also selects `whatX/`, which is the near miss the contract promises
+    # cannot happen. Escaping is no answer, since the escape syntax is what the dialects do not
+    # share, so the honest pattern is no pattern.
+    for directory in ("data[a]", "what?"):
+        (tmp_path / directory).mkdir()
+        _write_parquet(tmp_path / directory / "train.parquet", [{"a": 1}])
+        (tmp_path / directory.replace("[a]", "Xa").replace("?", "X")).mkdir()
+
+    for partition in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions:
+        for split in partition.splits:
+            assert split.data_files is None, f"{partition.name}: {split.data_files}"
+
+
+def test_ordinary_shard_numbering_is_one_split(tmp_path):
+    # The padded form had to be four characters, so `train-001.parquet` was not a shard suffix and
+    # every shard became a split of its own -- each with its own name, its own num_examples and its
+    # own glob. The leading zero is what separates a shard from a year, so three characters is
+    # enough, and `N-of-M` needs no padding rule at all since nothing else is spelled that way.
+    for shard in ("001", "002", "003"):
+        _write_parquet(tmp_path / f"train-{shard}.parquet", [{"a": 1}])
+    _write_parquet(tmp_path / "test-1-of-1.parquet", [{"a": 1}])
+
+    splits = {s.name: s for s in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0].splits}
+
+    assert sorted(splits) == ["test", "train"]
+    assert splits["train"].num_files == 3
+    assert splits["test"].num_files == 1
+
+
+def test_a_year_in_a_filename_is_still_not_a_shard_number(tmp_path):
+    # The other side of the same rule, and the reason it is not simply `-\d+$`: widening it to
+    # reach `train-001` must not reach `covid-19` or `data-2024`, neither of which is padded.
+    _write_parquet(tmp_path / "covid-19.parquet", [{"a": 1}])
+    _write_parquet(tmp_path / "data-2024.parquet", [{"a": 1}])
+
+    splits = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0].splits
+
+    # Neither name is a recognised split, so both land in the single "default" split intact.
+    assert [s.name for s in splits] == ["default"]
+    assert splits[0].num_files == 2
+
+
+def test_a_dot_prefixed_file_does_not_make_a_split_named_nothing(tmp_path):
+    # `.split(".")[0]` reads everything before the first dot, which for `._train.jsonl` -- the
+    # AppleDouble files a macOS-made tarball is full of -- is the empty string. `SplitProfile.name`
+    # is documented as the on-disk name, and "" is not one.
+    (tmp_path / "train.jsonl").write_text('{"a": 1}\n')
+    (tmp_path / "._train.jsonl").write_text('{"a": 1}\n')
+
+    splits = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0].splits
+
+    assert all(s.name for s in splits), [s.name for s in splits]
+
+
 # --- the fold ------------------------------------------------------------------------------------
 
 
