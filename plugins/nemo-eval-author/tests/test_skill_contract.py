@@ -611,12 +611,48 @@ def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None
 
 
 def test_audit_skill_runs_audit_scripts_through_uv() -> None:
-    """Documented script commands should use the repository Python environment."""
+    """Every documented script command must run through uv *and* supply its dependencies.
+
+    ``uv run script.py`` with no dependency flags builds an ephemeral environment
+    with neither PyYAML nor jsonschema, so the command fails with an environment
+    error before it reads a single audit file. Asserting the literal command
+    string cannot catch that; asserting the dependency flags can.
+    """
     _, body = _frontmatter_and_body(_AUDIT_DIR)
 
     assert "python <skill_dir>/scripts/audit_spec/" not in body
-    assert body.count("uv run <skill_dir>/scripts/audit_spec/generate.py") == 4
-    assert "uv run <skill_dir>/scripts/audit_spec/validate.py --audit .eval-author/audit.md" in body
+
+    commands = [command for block in _bash_blocks(body) for command in _shell_commands(block)]
+    invocations = [command for command in commands if "scripts/audit_spec/" in command]
+    assert invocations, "SKILL.md documents no audit_spec script commands"
+
+    for command in invocations:
+        assert command.startswith("uv run "), f"not run through uv: {command}"
+        supplies_deps = "--with-requirements" in command or (
+            "--with pyyaml" in command and "--with jsonschema" in command
+        )
+        assert supplies_deps, f"uv run without PyYAML and jsonschema: {command}"
+
+
+def _bash_blocks(body: str) -> list[str]:
+    """Return the contents of every ```bash fenced block in a skill body."""
+    blocks: list[str] = []
+    current: list[str] | None = None
+    for line in body.splitlines():
+        if line.strip() == "```bash":
+            current = []
+        elif line.strip() == "```" and current is not None:
+            blocks.append("\n".join(current))
+            current = None
+        elif current is not None:
+            current.append(line)
+    return blocks
+
+
+def _shell_commands(block: str) -> list[str]:
+    """Split a bash block into logical commands, joining backslash continuations."""
+    joined = re.sub(r"\\\n\s*", " ", block)
+    return [line.strip() for line in joined.splitlines() if line.strip()]
 
 
 def test_audit_json_schema_is_valid() -> None:
