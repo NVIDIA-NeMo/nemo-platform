@@ -112,6 +112,34 @@ describe('useCustomAssistantChatRuntime', () => {
     ]);
   });
 
+  it('keeps a visible incomplete assistant message when a run fails', async () => {
+    const onError = vi.fn();
+    const onRun = vi.fn(async () => {
+      throw new Error('Connection to NeMo Assistant was interrupted.');
+    });
+    const { result } = renderHook(() =>
+      useCustomAssistantChatRuntime({ onError, onRun })
+    );
+
+    await act(async () => {
+      await result.current.submitPrompt('Create a guardrail');
+    });
+
+    const messages = getMockRuntime(result.current.runtime).messages;
+    expect(messages.map(getMessageText)).toEqual([
+      'Create a guardrail',
+      'NeMo Assistant stopped before completing: Connection to NeMo Assistant was interrupted.',
+    ]);
+    expect(messages[1]?.status).toEqual({
+      type: 'incomplete',
+      reason: 'error',
+      error: 'Connection to NeMo Assistant was interrupted.',
+    });
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Connection to NeMo Assistant was interrupted.' })
+    );
+  });
+
   it('shows user interventions between agent messages', async () => {
     let runContext: CustomAssistantRunContext | undefined;
     const onRun = vi.fn(async (context: CustomAssistantRunContext) => {

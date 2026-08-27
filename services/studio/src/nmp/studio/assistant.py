@@ -74,7 +74,7 @@ DEFAULT_STUDIO_ASSISTANT_NAME = "nemo-studio-assistant"
 DEFAULT_STUDIO_ASSISTANT_BASE_URL = "http://127.0.0.1:8080"
 STUDIO_ASSISTANT_TIMEOUT_SECONDS = 600.0
 MAX_RETAINED_SESSIONS = 100
-MAX_RETAINED_TURNS_PER_SESSION = 50
+MAX_MODEL_CONTEXT_TURNS_PER_SESSION = 8
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
@@ -154,9 +154,18 @@ _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
 def _recent_conversation_messages(conversation: list[AssistantMessage]) -> list[AssistantMessage]:
-    """Bound model context without truncating the persisted chat history."""
-    max_messages = MAX_RETAINED_TURNS_PER_SESSION * 2
-    return conversation[-max_messages:]
+    """Bound and normalize model context without truncating persisted history."""
+    max_messages = MAX_MODEL_CONTEXT_TURNS_PER_SESSION * 2
+    return [
+        message.model_copy(
+            update={
+                "content": (
+                    _strip_studio_context_from_prompt(message.content) if message.role == "user" else message.content
+                )
+            }
+        )
+        for message in conversation[-max_messages:]
+    ]
 
 
 def _append_conversation_turn(
@@ -1510,6 +1519,11 @@ def _assistant_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) ->
     """Return a safe client-facing error without leaking exception or upstream response details."""
     if isinstance(exc, httpx.HTTPStatusError):
         return f"The deployed NeMo Assistant returned HTTP {exc.response.status_code}."
+    if isinstance(exc, httpx.ReadTimeout):
+        return (
+            "NeMo Assistant timed out before completing. The operation may still finish; "
+            "check History and Intake traces before retrying."
+        )
     if isinstance(exc, httpx.HTTPError):
         return "The deployed NeMo Assistant could not be reached."
     return "The deployed NeMo Assistant returned an invalid response."

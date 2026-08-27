@@ -369,11 +369,15 @@ export const useCustomAssistantChatRuntime = ({
 
         const errorMessage = error instanceof Error ? error.message : 'Unknown Error';
         ensureAssistantMessage();
-        updateAssistantMessageText(assistantMessageId!, errorMessage, {
-          type: 'incomplete',
-          reason: 'error',
-          error: errorMessage,
-        });
+        completeActiveAssistantMessage(
+          {
+            type: 'incomplete',
+            reason: 'error',
+            error: errorMessage,
+          },
+          [{ type: 'text', text: `NeMo Assistant stopped before completing: ${errorMessage}` }],
+          { collapseAssistantContent: false }
+        );
         onError?.(error instanceof Error ? error : new Error(errorMessage));
       } finally {
         if (abortControllerRef.current === runController) {

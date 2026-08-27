@@ -101,6 +101,34 @@ def test_canonical_registration_config_translates_to_same_runtime() -> None:
     assert registered.mcp == source.mcp
 
 
+def test_agent_telemetry_exports_atif_traces_to_intake() -> None:
+    for config_path in (AGENT_ROOT / "agent.yaml", SPEC_ROOT / "agent.yaml"):
+        config = load_agent_config(config_path)
+
+        assert config.telemetry.enabled is True
+        assert config.telemetry.provider == "relay"
+        translated = translate_agent_config(config)
+        assert translated.relay is not None
+        assert translated.relay.project == "nemo-studio-assistant"
+        assert translated.relay.observability is not None
+        assert translated.relay.observability.model_dump(exclude_none=True)["atif"] == {
+            "enabled": True,
+            "filename_template": "trajectory-{session_id}.atif.json",
+            "output_directory": "./artifacts/relay",
+            "agent_name": "nemo-studio-assistant",
+            "model_name": config.models["default"].model,
+            "storage": [
+                {
+                    "type": "http",
+                    "endpoint": "http://host.docker.internal:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                    "headers": {},
+                    "header_env": {},
+                    "timeout_millis": 3000,
+                }
+            ],
+        }
+
+
 def test_every_configured_skill_is_packaged() -> None:
     config = load_agent_config(AGENT_ROOT / "agent.yaml")
 
@@ -366,15 +394,7 @@ def test_deploy_guardrail_preserves_created_virtual_model_when_routing_is_delaye
 
     monkeypatch.setattr(register, "_clients", {"default": client})
     monkeypatch.setattr(register, "_call_studio_tool", callback)
-    monkeypatch.setattr(
-        register,
-        "_wait_for_virtual_model",
-        lambda *_args: (_ for _ in ()).throw(
-            register.GuardrailWorkflowError(
-                "VirtualModel default/guarded-model did not become routable within 90 seconds"
-            )
-        ),
-    )
+    monkeypatch.setattr(register, "_routable_virtual_model", lambda *_args: False)
 
     response = json.loads(
         register.deploy_guardrail(
@@ -396,7 +416,7 @@ def test_deploy_guardrail_preserves_created_virtual_model_when_routing_is_delaye
     assert response["routable"] is False
     assert response["studio_link"].endswith("virtualModel=guarded-model&tab=chat)")
     assert "was created and verified, but routing is still propagating" in response["warning"]
-    assert "did not become routable within 90 seconds" in response["warning"]
+    assert "Open the chat link in a moment; do not redeploy it" in response["warning"]
     pending_activity = callbacks[-1][1]
     assert pending_activity["step"] == "virtual_model_pending"
     assert pending_activity["status"] == "completed"
@@ -465,18 +485,6 @@ def test_deploy_guardrail_caches_setup_failure_instead_of_leaving_run_in_progres
     assert second == first
     assert "RuntimeError: client setup failed" in first
     assert "duplicate guardrail deployment attempt" not in second
-
-
-def test_wait_for_virtual_model_uses_progressive_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
-    routing_results = iter([False, False, True])
-    sleeps: list[float] = []
-    monkeypatch.setattr(register.time, "monotonic", lambda: 0.0)
-    monkeypatch.setattr(register.time, "sleep", sleeps.append)
-    monkeypatch.setattr(register, "_routable_virtual_model", lambda *_args: next(routing_results))
-
-    register._wait_for_virtual_model(SimpleNamespace(), "default", "guarded-model")
-
-    assert sleeps == [0.5, 1.0]
 
 
 def test_matches_fields_allows_server_normalized_nested_defaults() -> None:
@@ -1223,3 +1231,25 @@ def test_ask_user_question_rejects_invalid_payload() -> None:
     response = register.ask_user_question("90a877d5-19f6-49a8-bf09-d0020ae0833a", "{}")
 
     assert response == "Error: `questions` must be a non-empty JSON array of question objects."
+
+
+def test_ask_user_question_accepts_structured_model_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    questions = [
+        {
+            "question": "Which workspace?",
+            "header": "Workspace",
+            "options": [{"label": "default", "description": "Use default"}],
+        }
+    ]
+    callback_input: dict[str, object] = {}
+
+    def callback(_session_id: str, _tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+        callback_input.update(arguments)
+        return {"behavior": "allow", "updatedInput": {"workspace": "default"}}
+
+    monkeypatch.setattr(register, "_call_studio_tool", callback)
+
+    response = register.ask_user_question("90a877d5-19f6-49a8-bf09-d0020ae0833a", questions)
+
+    assert json.loads(response) == {"workspace": "default"}
+    assert callback_input == {"tool_name": "AskUserQuestion", "input": {"questions": questions}}
