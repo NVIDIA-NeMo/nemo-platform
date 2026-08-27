@@ -53,7 +53,7 @@ export NVIDIA_API_KEY=...   # required for inference-api.nvidia.com
 ```
 
 The example YAMLs call `https://inference-api.nvidia.com/v1` with full model ids
-such as `nvidia/meta/llama-3.1-70b-instruct`. Confirm your key can list those
+such as `nvidia/nvidia/nemotron-3-nano-30b-a3b`. Confirm your key can list those
 models (`GET /v1/models`).
 
 ### 4. Shell env used by every example
