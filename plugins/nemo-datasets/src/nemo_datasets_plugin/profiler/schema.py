@@ -49,14 +49,33 @@ def derive_features(arrow_schema: pa.Schema) -> list[FeatureSchema]:
 
 
 def arrow_schema_was_capped(arrow_schema: pa.Schema) -> bool:
-    """Whether :func:`derive_features` had to stop short of this declared schema's end.
+    """Whether :func:`derive_features` had to stop short of this declared schema, at any depth.
 
     Asked of the schema rather than of the result, because the result cannot answer it: a file with
     exactly :data:`MAX_COLUMNS` columns is described completely and looks identical to one that was
     truncated. Reporting the first as truncated is the same failure as leaving the second silent --
     a reader still cannot tell a wide table from a broken one.
+
+    Recursive, because this is the only signal a declared partition has. A declared column's
+    `RoutedAccumulator` folds no schema of its own, so `RowFold.columns_were_capped` is structurally
+    False for one, and a runaway struct inside a parquet would otherwise be described with no
+    evidence at all.
     """
-    return len(arrow_schema) > MAX_COLUMNS
+    if len(arrow_schema) > MAX_COLUMNS:
+        return True
+    return any(_type_was_capped(arrow_schema.field(i).type) for i in range(len(arrow_schema)))
+
+
+def _type_was_capped(arrow_type: pa.DataType) -> bool:
+    if pa.types.is_dictionary(arrow_type):
+        return _type_was_capped(arrow_type.value_type)
+    if pa.types.is_struct(arrow_type):
+        if arrow_type.num_fields > MAX_COLUMNS:
+            return True
+        return any(_type_was_capped(arrow_type.field(i).type) for i in range(arrow_type.num_fields))
+    if pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type) or pa.types.is_fixed_size_list(arrow_type):
+        return _type_was_capped(arrow_type.value_type)
+    return False
 
 
 def _is_message_struct(item: FeatureSchema) -> bool:
@@ -117,9 +136,12 @@ def _feature_from_arrow(name: str, arrow_type: pa.DataType) -> FeatureSchema:
     if pa.types.is_dictionary(arrow_type):
         return _feature_from_arrow(name, arrow_type.value_type)
     if pa.types.is_struct(arrow_type):
+        # Bounded like a row's columns and like an inferred struct's fields. A declared schema can
+        # carry a runaway struct as easily as rows can mint one, and this half was left open when
+        # the inferred half was closed.
         fields = [
             _feature_from_arrow(arrow_type.field(i).name, arrow_type.field(i).type)
-            for i in range(arrow_type.num_fields)
+            for i in range(min(arrow_type.num_fields, MAX_COLUMNS))
         ]
         return FeatureSchema(name=name, dtype="struct", fields=fields)
     if pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type) or pa.types.is_fixed_size_list(arrow_type):

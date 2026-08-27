@@ -164,6 +164,22 @@ def test_a_declared_schema_reports_truncation_from_the_schema_not_the_result():
     assert arrow_schema_was_capped(over) is True
 
 
+def test_a_declared_structs_fields_are_bounded_too():
+    # The inferred half was closed first and this one was left open, so a parquet carrying a runaway
+    # struct kept its whole tree. It is also the only signal a declared partition has: a declared
+    # column folds no schema of its own, so `RowFold.columns_were_capped` is structurally False.
+    wide = pa.schema([("meta", pa.struct([(f"k{i}", pa.int64()) for i in range(MAX_COLUMNS + 500)]))])
+    assert len(_fields(derive_features(wide)[0])) == MAX_COLUMNS
+    assert arrow_schema_was_capped(wide) is True
+
+    # And it has to look inside containers, not just at the top level.
+    in_list = pa.schema([("a", pa.list_(pa.struct([(f"k{i}", pa.int64()) for i in range(MAX_COLUMNS + 1)])))])
+    assert arrow_schema_was_capped(in_list) is True
+
+    narrow = pa.schema([("meta", pa.struct([(f"k{i}", pa.int64()) for i in range(10)]))])
+    assert arrow_schema_was_capped(narrow) is False
+
+
 def test_a_structs_fields_are_bounded_like_a_rows_columns():
     # One level of nesting used to defeat the cap outright: rows carrying a unique key inside `meta`
     # left the top level at one column while minting a fold per row underneath it, and the whole
