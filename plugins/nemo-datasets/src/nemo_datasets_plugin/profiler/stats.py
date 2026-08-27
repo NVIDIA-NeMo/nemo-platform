@@ -44,6 +44,18 @@ _MAX_ENUM_VALUES = 32
 
 # Where a column stops being a plausible controlled vocabulary. Three bounds, because a count alone
 # bounds cardinality but not bytes; all three sit well above real vocabularies.
+#
+# They bound a *column*, and there is deliberately no bound across columns. The pipeline's promise is
+# that nothing kept grows with the *file*, which these keep: a column's vocabulary stops at 64 KiB
+# however many rows it is fed. The working set does still grow with the column *count*, and the
+# arithmetic worth stating is `MAX_COLUMNS` * `_MAX_VOCABULARY_BYTES` -- about 256 MiB of live sets
+# for a partition wide enough to hit the column cap, held for one partition's read.
+#
+# Left as a bound rather than turned into a shared budget on purpose. A partition-wide byte budget
+# would have to be threaded through every accumulator and consulted per value, and it would make one
+# column's cardinality depend on how many other columns happened to be measured first -- an answer
+# that changes with column order, for a shape (4,096 columns each holding a large distinct
+# vocabulary) that is already the malformed input `MAX_COLUMNS` exists to bound.
 _MAX_VOCABULARY_VALUES = 1024
 _MAX_VOCABULARY_VALUE_CHARS = 256
 _MAX_VOCABULARY_BYTES = 64 * 1024
