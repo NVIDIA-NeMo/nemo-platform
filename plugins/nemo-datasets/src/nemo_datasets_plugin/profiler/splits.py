@@ -19,8 +19,16 @@ from nemo_datasets_plugin.profiler.file_source import FileEntry
 
 # Strips a shard suffix like "-00000" or "-00000-of-00003" from a file stem. A bare trailing number
 # must be zero-padded to count: `-\d{2,}` alone also matched years and versions, turning
-# covid-19.jsonl into a "covid" split and data-2024.jsonl into "data".
-_SHARD_SUFFIX = re.compile(r"-(?:\d{2,}-of-\d{2,}|0\d{3,})$")
+# covid-19.jsonl into a "covid" split and data-2024.jsonl into "data". The leading zero is what
+# carries that distinction, so the padded form only needs to be three characters -- requiring four
+# excluded `train-001.jsonl`, an ordinary numbering, and gave every such shard a split of its own.
+#
+# `N-of-M` needs no padding rule at all: nothing but a shard count is spelled that way, so any
+# number of digits is safe there.
+#
+# An unpadded trailing number (`train-1.jsonl`) is deliberately still not a shard suffix. On a
+# single path it cannot be told from a version, and this function sees one path at a time.
+_SHARD_SUFFIX = re.compile(r"-(?:\d+-of-\d+|0\d{2,})$")
 
 # Common on-disk split words -> the canonical concept they normalize to.
 _CANONICAL_ALIASES = {
@@ -72,7 +80,10 @@ def _split_name(path: str) -> str:
     for directory in reversed(parts[:-1]):
         if is_split_directory(directory):
             return directory
-    return _SHARD_SUFFIX.sub("", parts[-1].split(".")[0])
+    # Leading dots are stripped before the extension is: `.split(".")[0]` reads everything before
+    # the first dot, which for a dot-prefixed name (`._train.jsonl`, the AppleDouble files a
+    # macOS-made tarball is full of) is the empty string -- a split whose on-disk name was "".
+    return _SHARD_SUFFIX.sub("", parts[-1].lstrip(".").split(".")[0])
 
 
 def _glob_matches(pattern: str, path: str) -> bool:
@@ -83,6 +94,15 @@ def _glob_matches(pattern: str, path: str) -> bool:
     never produced, since its meaning differs between those tools.
     """
     return re.fullmatch("[^/]*".join(re.escape(part) for part in pattern.split("*")), path) is not None
+
+
+# Glob metacharacters other than the `*` this module produces on purpose. `_glob_matches` escapes
+# them, so verification reads them as literals -- but the pattern is handed to a consumer, and every
+# tool the dialect note names reads them as syntax. `data[a]/train*.jsonl` then selects nothing, and
+# `what?/train*.jsonl` selects a neighbouring partition's shards as well, which is exactly the near
+# miss the contract promises cannot happen. Escaping is no answer either: the escape syntax is the
+# part those tools do not share. A path holding one gets no pattern, which is what None already says.
+_GLOB_METACHARACTERS = frozenset("*?[]")
 
 
 def infer_data_files(split_name: str, entries: list[FileEntry], all_paths: list[str]) -> str | None:
@@ -118,6 +138,10 @@ def infer_data_files(split_name: str, entries: list[FileEntry], all_paths: list[
     # only when every filename in the split carries it, so it can never exclude a file it should
     # match.
     stems = [split_name] + [f"{split_name}{sep}" for sep in ("-", ".", "_")] if split_name else []
+    # Checked over every literal the pattern is built from, since one is enough to change what the
+    # whole pattern selects.
+    if any(_GLOB_METACHARACTERS & set(text) for text in [prefix, suffix or "", *stems]):
+        return None
     candidates: list[str] = []
     for stem in stems:
         if not all(name.startswith(stem) for name in names):
