@@ -4,6 +4,7 @@
 import { FILESET_NAME_MAX_LENGTH, toValidFilesetName } from '@nemo/common/src/utils/filesetName';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
 export const CREATE_NEW = '__create_new__';
@@ -232,12 +233,18 @@ export const buildDatasetEvalRequestBody = (
   },
 });
 
-/** Parse an eval-config.json. Every task must carry its own ``metrics[]`` —
+/** The serialization an eval config is stored in. Both are accepted on upload and read back
+ *  on reuse; a run keeps whichever the author uploaded. */
+export type EvalConfigFormat = 'json' | 'yaml';
+
+/** Serialize a spec for storage in a fileset, in the format its author uploaded. */
+export const serializeEvalConfig = (spec: EvalSpec, format: EvalConfigFormat): string =>
+  format === 'yaml' ? stringifyYaml(spec) : JSON.stringify(spec, null, 2);
+
+/** Validate a parsed eval config. Every task must carry its own ``metrics[]`` —
  *  the config is submitted as authored, with only the judge model and the
  *  per-run agent target applied on top. */
-export const parseEvalConfig = (text: string): EvalSpec => {
-  const raw = JSON.parse(text) as Partial<PersistedEvalSpec & DatasetEvalSpec>;
-
+const validateEvalConfig = (raw: Partial<PersistedEvalSpec & DatasetEvalSpec>): EvalSpec => {
   if (raw.dataset !== undefined) {
     if (!Array.isArray(raw.metrics) || raw.metrics.length === 0) {
       throw new Error('a dataset-driven eval-config.json must contain a non-empty "metrics" array');
@@ -274,16 +281,38 @@ export const parseEvalConfig = (text: string): EvalSpec => {
   return { tasks: parsed.tasks, max_concurrent_tasks: parsed.max_concurrent_tasks };
 };
 
-/** Parse a user-uploaded eval-config.json for the "create experiment" flow, which only runs
+/** Parse a stored eval config, in either serialization. */
+export const parseEvalConfig = (text: string): EvalSpec =>
+  validateEvalConfig(parseConfigDocument(text));
+
+/** Read a config as JSON or YAML. JSON is tried first even though YAML 1.2 is a
+ *  superset of it: a JSON document indented with tabs is legal JSON but illegal YAML, and
+ *  a JSON file should fail with a JSON parser's message rather than a YAML one. */
+const parseConfigDocument = (text: string): Partial<PersistedEvalSpec & DatasetEvalSpec> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (jsonErr) {
+    try {
+      parsed = parseYaml(text);
+    } catch {
+      throw jsonErr;
+    }
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('An eval config must be a JSON or YAML object.');
+  }
+  return parsed as Partial<PersistedEvalSpec & DatasetEvalSpec>;
+};
+
+/** Parse a user-uploaded eval config for the "create experiment" flow, which only runs
  *  dataset-driven configs. The dataset arrives as a separate upload and its ref is written in
  *  at submit, so a config that omits ``dataset`` entirely is accepted and filled in here —
  *  otherwise an author would have to hand-write a placeholder that is immediately discarded. */
 export const parseUploadedDatasetConfig = (text: string): DatasetEvalSpec => {
-  const raw = JSON.parse(text) as Partial<PersistedEvalSpec & DatasetEvalSpec>;
-  const spec = parseEvalConfig(
-    JSON.stringify(
-      raw.tasks === undefined && raw.dataset === undefined ? { ...raw, dataset: '' } : raw
-    )
+  const raw = parseConfigDocument(text);
+  const spec = validateEvalConfig(
+    raw.tasks === undefined && raw.dataset === undefined ? { ...raw, dataset: '' } : raw
   );
   if (!isDatasetEvalSpec(spec)) {
     throw new Error(
