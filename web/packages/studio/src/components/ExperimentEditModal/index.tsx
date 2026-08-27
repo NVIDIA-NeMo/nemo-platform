@@ -12,8 +12,10 @@ import {
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
+import { trendVisibilityStorageKey } from '@studio/components/charts/ExperimentTrendChart/visibility';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
 import { ExperimentFlagSwitch } from '@studio/components/ExperimentFlagSwitch';
+import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { AxiosError } from 'axios';
 import { type FC, type FormEvent, useEffect, useMemo, useState } from 'react';
 
@@ -62,6 +64,12 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
     [experimentsPage]
   );
 
+  // The detail page's chart visibility defers to `show_evaluations_over_time` only until a viewer
+  // toggles it; after that their stored choice wins. Flipping the flag here has to drop that choice,
+  // or the save appears to do nothing on the page behind the modal. Deleting through the hook also
+  // notifies the open page, so the chart appears or disappears without a reload.
+  const [, , clearTrendVisibility] = useLocalStorage<boolean>(trendVisibilityStorageKey(group.id));
+
   const { mutateAsync: updateExperiment, isPending } = useUpdateExperiment({
     mutation: {
       onSuccess: () => {
@@ -93,6 +101,9 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
           show_evaluations_over_time: showEvaluationsOverTime,
         },
       });
+      if (showEvaluationsOverTime !== (group.show_evaluations_over_time ?? false)) {
+        clearTrendVisibility();
+      }
       onClose();
     } catch (error) {
       const detail = error instanceof AxiosError ? error.response?.data?.detail : undefined;

@@ -6,6 +6,7 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
+import { trendVisibilityStorageKey } from '@studio/components/charts/ExperimentTrendChart/visibility';
 import { ExperimentDataView } from '@studio/components/dataViews/ExperimentDataView';
 import { ExperimentEditModal } from '@studio/components/ExperimentEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
@@ -45,7 +46,7 @@ export const ExperimentDetailRoute: FC = () => {
   // so passing `false` here would make "never toggled" indistinguishable from "toggled off" and the
   // flag below would never be consulted.
   const [storedTrendVisible, setTrendVisible] = useLocalStorage<boolean>(
-    `nemo-studio:experiment-trend:${group?.id ?? ''}`
+    trendVisibilityStorageKey(group?.id)
   );
   const trendVisible = storedTrendVisible ?? Boolean(group?.show_evaluations_over_time);
 
