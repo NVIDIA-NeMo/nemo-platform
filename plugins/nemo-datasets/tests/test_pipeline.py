@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.pipeline import _peek_files, profile
+from nemo_datasets_plugin.profiler.pipeline import MIN_ROWS_PER_FILE, _peek_files, _per_file_cap, profile
 from nemo_datasets_plugin.profiler.readers.base import FilePreview
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
@@ -947,6 +947,18 @@ def test_a_duplicate_column_name_is_described_once(tmp_path):
 
     assert [(f.name, f.dtype) for f in part.features] == [("prompt", "string")]
     assert set(part.stats) == {f.name for f in part.features}
+
+
+def test_a_zero_row_cap_means_zero_however_many_files_a_partition_has():
+    # `max(MIN_ROWS_PER_FILE, 0 // n)` floored a zero budget up to ten rows per file as soon as a
+    # partition had more than one, so the same argument meant "no rows" for a single-file partition
+    # and "ten per file" for a sharded one.
+    assert _per_file_cap(0, 1) == 0
+    assert _per_file_cap(0, 3) == 0
+    assert _per_file_cap(None, 3) is None
+    assert _per_file_cap(100, 3) == 33
+    # The floor still applies to a real budget, so a thousand shards do not get one row each.
+    assert _per_file_cap(100, 10_000) == MIN_ROWS_PER_FILE
 
 
 def test_a_budgeted_read_does_not_quote_an_unproven_enumeration(tmp_path):
