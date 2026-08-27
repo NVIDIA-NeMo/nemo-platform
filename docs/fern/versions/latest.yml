@@ -252,6 +252,9 @@ navigation:
               - page: Format Training Dataset
                 path: ../../customizer/tutorials/format-training-dataset.mdx
                 slug: format-training-dataset
+              - page: GRPO Environment Packages
+                path: ../../customizer/tutorials/grpo-environment-packages.mdx
+                slug: grpo-environment-packages
               - page: Import HuggingFace Models
                 path: ../../customizer/tutorials/import-hf-model.mdx
                 slug: import-hugging-face-models
