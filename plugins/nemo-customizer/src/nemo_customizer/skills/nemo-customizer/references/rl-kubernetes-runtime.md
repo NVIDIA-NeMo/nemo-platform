@@ -3,7 +3,7 @@
 
 # rl backend — Kubernetes job execution requirement
 
-The `rl` (DPO) backend runs **each job step as a Kubernetes pod** via the
+The `rl` (DPO **and GRPO**) backend runs **each job step as a Kubernetes pod** via the
 `kubernetes_job` execution backend. This is different from `automodel` / `unsloth`,
 which use the **docker** job backend. So the platform you submit against must be
 deployed/configured for Kubernetes job execution — the docker job backend cannot
