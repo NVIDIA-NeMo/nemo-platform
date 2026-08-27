@@ -4,15 +4,7 @@
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
-import {
-  Button,
-  Card,
-  Flex,
-  PageHeader,
-  Stack,
-  Switch,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import {
   isTrendChoiceCurrent,
@@ -31,7 +23,7 @@ import { ExperimentMetrics } from '@studio/routes/ExperimentDetailRoute/Experime
 import { getExperimentRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { Pencil } from 'lucide-react';
+import { ChartLine, ChartScatter, Pencil } from 'lucide-react';
 import { type FC, useEffect, useState } from 'react';
 
 export const ExperimentDetailRoute: FC = () => {
@@ -129,28 +121,24 @@ export const ExperimentDetailRoute: FC = () => {
             <div className="flex flex-col gap-4 border-t border-base pt-4">
               <div className="flex items-center gap-3">
                 <Text kind="title/sm">Evaluations</Text>
-                {/* Switches rather than toggle buttons: each shows or hides a panel the moment it
-                    changes, which is what Switch is for, and the control carries the on/off state
-                    so the labels can stay put instead of flipping to "Hide …". `small` is the size
-                    for a dense row like this one. */}
                 {group && (
                   <>
-                    <Switch
-                      size="small"
-                      name="show-over-time"
-                      checked={trendVisible}
-                      onCheckedChange={(visible: boolean) =>
-                        setTrendChoice({ visible, flag: trendFlag })
-                      }
-                      slotLabel="Over time"
-                    />
-                    <Switch
-                      size="small"
-                      name="show-pareto"
-                      checked={paretoVisible}
-                      onCheckedChange={setParetoVisible}
-                      slotLabel="Pareto view"
-                    />
+                    <Button
+                      kind="tertiary"
+                      aria-pressed={trendVisible}
+                      onClick={() => setTrendChoice({ visible: !trendVisible, flag: trendFlag })}
+                    >
+                      <ChartLine width={12} height={12} className="text-brand" />
+                      {trendVisible ? 'Hide over time' : 'Over time'}
+                    </Button>
+                    <Button
+                      kind="tertiary"
+                      aria-pressed={paretoVisible}
+                      onClick={() => setParetoVisible(!paretoVisible)}
+                    >
+                      <ChartScatter width={12} height={12} className="text-brand" />
+                      {paretoVisible ? 'Hide Pareto' : 'Pareto view'}
+                    </Button>
                   </>
                 )}
               </div>

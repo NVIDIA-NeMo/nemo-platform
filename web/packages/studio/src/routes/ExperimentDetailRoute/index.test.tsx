@@ -82,7 +82,7 @@ describe('ExperimentDetailRoute', () => {
   });
 
   describe('over-time chart visibility', () => {
-    const trendToggle = () => screen.getByRole('switch', { name: /over time/i });
+    const trendToggle = () => screen.getByRole('button', { name: /over time/i });
 
     beforeEach(() => {
       window.localStorage.clear();
@@ -92,15 +92,15 @@ describe('ExperimentDetailRoute', () => {
       mockGroup({ show_evaluations_over_time: true });
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
-      // The switch's own checked state is the toggle's view of whether the chart is showing.
-      expect(trendToggle()).toBeChecked();
+      // aria-pressed is the toggle's own view of whether the chart is showing.
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('hides the chart on an unflagged experiment', async () => {
       mockGroup({ show_evaluations_over_time: false });
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
-      expect(trendToggle()).not.toBeChecked();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
     });
 
     it("lets a viewer's stored choice override the flag it was made against", async () => {
@@ -111,7 +111,7 @@ describe('ExperimentDetailRoute', () => {
       mockGroup({ show_evaluations_over_time: true });
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
-      expect(trendToggle()).not.toBeChecked();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
     });
 
     it('deletes a stored choice the flag has moved under, so a round trip cannot revive it', async () => {
@@ -132,7 +132,7 @@ describe('ExperimentDetailRoute', () => {
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
       await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
-      expect(trendToggle()).toBeChecked();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('retires a stored choice once the flag has moved under it', async () => {
@@ -144,7 +144,7 @@ describe('ExperimentDetailRoute', () => {
       mockGroup({ show_evaluations_over_time: true });
 
       expect(await screen.findByText('Editable group description')).toBeInTheDocument();
-      expect(trendToggle()).toBeChecked();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
     });
   });
 });
