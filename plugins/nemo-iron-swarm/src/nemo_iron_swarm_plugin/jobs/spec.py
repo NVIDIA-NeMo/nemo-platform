@@ -35,11 +35,11 @@ class WarGameSpec(BaseModel):
     rounds: int | None = None
     # Sanity-check (validate-only) mode: freeze a user-chosen set of defenses as the victim's baseline and
     # replay the recorded attacks + benign suite against it WITHOUT generating new mitigations, to measure
-    # which attacks are now blocked and which benign requests are wrongly blocked. `defense_workflow` /
-    # `defense_policy` are the composed YAMLs (see jobs.defenses.compose_defense); the run seeds them as the
+    # which attacks are now blocked and which benign requests are wrongly blocked. `defense_guardrails` /
+    # `defense_policy` are the composed documents (see jobs.defenses.compose_defense); the run seeds them as the
     # baseline and forces `overrides.defenders: []` (zero defenders → no new mitigations).
     validate_only: bool = False
-    defense_workflow: str | None = None
+    defense_guardrails: str | None = None
     defense_policy: str | None = None
     # Per-run model override (None = use the manifest's stored default / iron-swarm built-ins). The launch
     # merges these over the manifest's stored `models`; model names + base_urls become env vars for the

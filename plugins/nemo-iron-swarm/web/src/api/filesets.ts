@@ -17,8 +17,8 @@ export interface UploadFilesetParams {
 /**
  * Create a generic fileset and upload a single file into it; return its `workspace/name` ref.
  *
- * The Iron Swarm plugin re-downloads the fileset on the job host (project bundles when it inspects and
- * materializes the victim; hitlogs when it replays recorded attacks).
+ * The Iron Swarm plugin re-downloads the fileset on the job host (hitlogs when it replays recorded
+ * attacks; benign suites when it validates).
  */
 async function uploadToFileset(
   platform: PluginSdk['platform'],
@@ -32,15 +32,6 @@ async function uploadToFileset(
   await platform.filesUploadFile(fileset.workspace, fileset.name, file.name, blob);
   return `${fileset.workspace}/${fileset.name}`;
 }
-
-/** Store an uploaded NAT project zip; the ref feeds inspect + war-game materialization. */
-export const useUploadProjectFileset = () => {
-  const platform = usePlatformSdk();
-  return useMutation({
-    mutationFn: (params: UploadFilesetParams) =>
-      uploadToFileset(platform, params, 'project', 'application/zip'),
-  });
-};
 
 /** Store an uploaded garak hitlog (.jsonl); the ref feeds a replay-mode war-game via `--replay`. */
 export const useUploadHitlogFileset = () => {

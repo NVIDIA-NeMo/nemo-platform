@@ -389,7 +389,7 @@ async def refresh_manifest(
     if not existing.agent:
         raise HTTPException(
             status_code=422,
-            detail=f"manifest '{name}' has no agent source to refresh from; re-upload the project instead.",
+            detail=f"manifest '{name}' names no agent to refresh from; recreate it against a registered agent.",
         )
 
     resolved, fileset = await _resolve_and_store_scaffold(
@@ -432,9 +432,7 @@ async def delete_manifest(
     # Only after the entity is gone: a bundle with no manifest is garbage, but a manifest whose
     # bundle we deleted early would be unrunnable if the delete above had failed.
     #
-    # `agent_fileset` only — the service uploads that one itself. `project_fileset` is supplied by
-    # the caller and nothing stops two manifests naming the same bundle, so deleting it here would
-    # break the other one. The uploader owns it and removes it.
+    # The service uploads `agent_fileset` itself, so it owns it and is safe to remove it here.
     sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
     if existing.agent_fileset:
         await run_in_threadpool(delete_fileset, sdk, existing.agent_fileset)

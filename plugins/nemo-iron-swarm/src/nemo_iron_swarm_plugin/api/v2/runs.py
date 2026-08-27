@@ -12,8 +12,9 @@ on the wire as at rest, so it is returned directly.
 from __future__ import annotations
 
 import logging
+import tomllib
+from typing import Any
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.entities import Agent
 from nemo_iron_swarm_plugin._perms import IronSwarmRunPerms
@@ -40,6 +41,10 @@ from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_param
 from nemo_platform_plugin.log_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
+
+#: The plugin kind iron-swarm registers inside the victim. Duplicated rather than imported: iron-swarm
+#: is deliberately not a dependency of this plugin (its garak closure conflicts with the platform's).
+_PLUGIN_KIND = "iron_swarm.pre_tool_verifier"
 
 router = APIRouter()
 
@@ -121,17 +126,22 @@ async def apply_mitigation(
     body: ApplyMitigationRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> ApplyMitigationResponse:
-    """Adopt a run's hardened workflow: write it onto the run's target agent config (no redeploy).
+    """Adopt a run's hardened guardrails onto the run's target agent config (no redeploy).
 
-    Reverses the Inference-Gateway injection so the stored config stays deployment-neutral, then updates
-    the ``Agent`` entity in place. The user must redeploy the agent for the guardrails to take effect.
+    This is the *only* place ``relay.components[]`` is produced. The guardrail runs from a plugins.toml
+    inside the victim; the agent registry stores agent config, so adoption re-homes the same component
+    onto the entity. Near-identity, not a translation: the ``config`` object is the one Relay loaded.
+
+    Reverses the Inference-Gateway injection so the stored config stays deployment-neutral. The user
+    must redeploy the agent for the guardrails to take effect.
     """
     try:
-        config = yaml.safe_load(body.workflow_yaml)
-    except yaml.YAMLError as exc:
-        raise HTTPException(status_code=422, detail=f"workflow_yaml is not valid YAML: {exc}") from exc
-    if not isinstance(config, dict):
-        raise HTTPException(status_code=422, detail="workflow_yaml must be a NAT workflow mapping.")
+        guardrails = tomllib.loads(body.guardrails_toml)
+    except tomllib.TOMLDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"guardrails_toml is not valid TOML: {exc}") from exc
+    components = _relay_components(guardrails)
+    if not components:
+        raise HTTPException(status_code=422, detail="guardrails_toml declares no Iron Swarm guardrail component.")
 
     try:
         run = await entity_client.get(IronSwarmRun, name=name, workspace=workspace)
@@ -151,7 +161,7 @@ async def apply_mitigation(
             status_code=404, detail=f"Agent '{agent_name}' not found in workspace '{agent_ws}'."
         ) from exc
 
-    agent.config = strip_gateway_url(config)
+    agent.config = _with_relay_components(strip_gateway_url(dict(agent.config)), components)
     try:
         await entity_client.update(agent)
     except Exception as exc:
@@ -162,7 +172,7 @@ async def apply_mitigation(
     # Refresh the manifest this run came from, keeping "harden -> apply -> re-run to confirm" intact.
     refreshed = await _refresh_source_manifest(entity_client, workspace, run.manifest_id)
 
-    detail = f"Updated '{agent_name}' with the hardened workflow. Redeploy the agent to activate the guardrails."
+    detail = f"Updated '{agent_name}' with the hardened guardrails. Redeploy the agent to activate them."
     if run.manifest_id and not refreshed:
         detail += (
             f" Manifest '{run.manifest_id}' could not be refreshed automatically — run "
@@ -170,6 +180,30 @@ async def apply_mitigation(
             "war-game the agent as it was before this change."
         )
     return ApplyMitigationResponse(applied=True, agent=agent_name, detail=detail)
+
+
+def _relay_components(guardrails: dict[str, Any]) -> list[dict[str, Any]]:
+    """The Relay plugin components declared in a plugins.toml, in the shape ``relay.components[]`` takes."""
+    dynamic = guardrails.get("plugins", {}).get("dynamic", [])
+    return [
+        {"kind": _PLUGIN_KIND, "enabled": True, "config": entry["config"]}
+        for entry in dynamic
+        if isinstance(entry, dict) and isinstance(entry.get("config"), dict) and entry["config"].get("guardrails")
+    ]
+
+
+def _with_relay_components(config: dict[str, Any], components: list[dict[str, Any]]) -> dict[str, Any]:
+    """Attach *components* to a ``nemo-agents-spec-v1`` config.
+
+    Carried under ``telemetry`` because that is the section the spec already forwards to Relay. The
+    translator does not read ``relay_components`` yet — see the follow-up in
+    ``nemo_agents_plugin.fabric.translator._apply_telemetry`` — so today this records the adopted
+    guardrail on the entity rather than activating it on the next deploy. Storing it in the shape the
+    passthrough will take means adoption starts working when that lands, with no second migration.
+    """
+    telemetry = dict(config.get("telemetry") or {})
+    telemetry["relay_components"] = components
+    return {**config, "telemetry": telemetry}
 
 
 async def _refresh_source_manifest(entity_client: NemoEntitiesClient, workspace: str, manifest_id: str) -> bool:
@@ -209,10 +243,10 @@ async def compose_defense_route(
     the harden flow's live preview and feeds the composed YAMLs to a sanity-check (validate-only) run.
     """
     try:
-        workflow_yaml, policy_yaml = compose_defense(body.mitigations, body.selected_defense_ids)
+        guardrails_toml, policy_yaml = compose_defense(body.mitigations, body.selected_defense_ids)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Failed to compose the selected defenses: {exc}") from exc
-    return ComposeDefenseResponse(workflow_yaml=workflow_yaml, policy_yaml=policy_yaml)
+    return ComposeDefenseResponse(guardrails_toml=guardrails_toml, policy_yaml=policy_yaml)
 
 
 @router.delete("/runs/{name}", status_code=204, tags=["Iron Swarm Runs"])

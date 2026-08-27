@@ -7,41 +7,29 @@
  * iron-swarm (plugin)
  */
 import type { ManifestInitEnv } from './ManifestInitEnv.ts';
-import type { ManifestInitSourceType } from './ManifestInitSourceType.ts';
 import type { WarGameModels } from './WarGameModels.ts';
 
 /**
  * Body for ``POST /v2/workspaces/{workspace}/manifests`` — scaffold a named manifest.
  *
- * ``agent`` resolves a deployed agent; ``project`` builds the manifest from an uploaded NAT project
- * (``project_fileset`` + the confirmed detection answers) by shelling ``iron-swarm init --yes``.
+ * The only source is a registered platform agent. The project-upload path is gone: it existed to
+ * carry a NAT project, and Iron Swarm no longer runs one. An agent with custom tool code reaches
+ * the platform as an MCP server, which keeps it registrable and therefore war-gameable.
  */
 export interface ManifestInit {
   /** User-defined manifest id (unique within the workspace). */
   name: string;
-  /** Scaffold source ('agent' or 'project'). */
-  source_type?: ManifestInitSourceType;
-  /** Agent reference (required when source_type='agent'). */
-  agent?: string;
-  /** Fileset ref of the uploaded NAT project bundle. */
-  project_fileset?: string;
-  /** Pre-built iron-swarm manifest (project source). The CLI runs iron-swarm's own interactive `init` at the operator's terminal and sends the result; omit it and the server builds one with `init --yes`, which is what Studio does since it has no TTY. */
-  manifest_yaml?: string;
-  /** Chosen workflow path within the project (project-relative). */
-  workflow?: string;
-  /** Victim launch mode ('workflow'; BYO is Phase 2). */
-  launch_mode?: string;
+  /** Agent reference (``name`` or ``workspace/name``) to war-game. */
+  agent: string;
   /** Victim port (defaults to 8000). */
   port?: number;
-  /** Secret names the victim requires. */
+  /** Env-var names the victim requires. Derived from the agent's own declarations (``models.*.api_key_env``, MCP server env) when omitted. */
   secrets?: string[];
-  /** Dotenv path within the project holding the secrets. */
-  secrets_file?: string;
-  /** Allow-listed egress host[:port] entries the victim may reach (external hosts the agent calls, e.g. inference-api.nvidia.com); baked into the manifest by `init --egress`. */
+  /** Allow-listed egress host[:port] entries the victim may reach (external hosts the agent calls, e.g. inference-api.nvidia.com). The sandbox is default-deny, so a host missing here has its traffic dropped mid-run. */
   egress?: string[];
   /** Non-secret environment variables for the victim (iron-swarm's `agent.env`). Stored in plaintext on the manifest — credentials belong in `secrets`, which names them and resolves the values from the Secrets store at run time. */
   env?: ManifestInitEnv;
-  /** Route-only host backends the agent's tools call, each 'NAME:PORT[,PORT2]' (e.g. 'finance:8086'). Rewrites the agent's localhost:PORT to host.docker.internal:PORT and opens the sandbox->host route; passed to `init --backend`. */
+  /** Route-only host backends the agent's tools call, each 'NAME:PORT[,PORT2]' (e.g. 'finance:8086'). Rewrites the agent's localhost:PORT to host.docker.internal:PORT and opens the sandbox->host route. */
   backends?: string[];
   /** Stored default model selection (attack/analysis/agent groups); omit to use iron-swarm's built-in defaults. */
   models?: WarGameModels;

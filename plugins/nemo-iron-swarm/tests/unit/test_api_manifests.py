@@ -9,7 +9,6 @@ agent resolver are monkeypatched so `init` exercises the request/response flow w
 
 from __future__ import annotations
 
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -116,75 +115,6 @@ def test_init_agent_source_requires_agent(client) -> None:
         json={"name": "no-agent", "source_type": "agent"},
     )
     assert resp.status_code == 422
-
-
-def _stub_project_subprocess(
-    monkeypatch: pytest.MonkeyPatch, *, returncode: int, stdout: str = "", stderr: str = ""
-) -> None:
-    """Stub the fileset download + iron-swarm subprocess for the project manifest paths."""
-    monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: Path("/tmp/proj"))
-    monkeypatch.setattr(
-        manifests_module.IronSwarmConfig,
-        "get",
-        classmethod(lambda cls: MagicMock(iron_swarm_bin=Path("/bin/iron-swarm"))),
-    )
-
-    def fake_run(cmd, **_kwargs):
-        # `init` writes to the -o path; emulate it so _init can read the manifest back.
-        if returncode == 0 and "-o" in cmd:
-            out = Path(cmd[cmd.index("-o") + 1])
-            out.write_text("agent:\n  name: research\n  project_dir: /tmp/proj\n  port: 8000\n", encoding="utf-8")
-        return MagicMock(returncode=returncode, stdout=stdout, stderr=stderr)
-
-    monkeypatch.setattr(manifests_module.subprocess, "run", fake_run)
-
-
-def _stub_hanging_subprocess(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    """Make the iron-swarm subprocess time out, recording the timeout it was given."""
-    monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: Path("/tmp/proj"))
-    monkeypatch.setattr(
-        manifests_module.IronSwarmConfig,
-        "get",
-        classmethod(lambda cls: MagicMock(iron_swarm_bin=Path("/bin/iron-swarm"))),
-    )
-    seen: dict[str, object] = {}
-
-    def fake_run(cmd, **kwargs):
-        seen["timeout"] = kwargs.get("timeout")
-        raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout") or 0)
-
-    monkeypatch.setattr(manifests_module.subprocess, "run", fake_run)
-    return seen
-
-
-def _stub_byo_project(monkeypatch, project_dir: Path, captured: list[list[str]], agent_yaml: str) -> None:
-    """Stub the project paths against a real directory, so the dockerfile containment check can run."""
-    (project_dir / "deploy").mkdir(parents=True, exist_ok=True)
-    (project_dir / "deploy" / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
-    monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: project_dir)
-    monkeypatch.setattr(
-        manifests_module.IronSwarmConfig,
-        "get",
-        classmethod(lambda cls: MagicMock(iron_swarm_bin=Path("/bin/iron-swarm"))),
-    )
-
-    def fake_run(cmd, **_kwargs):
-        captured.append(cmd)
-        Path(cmd[cmd.index("-o") + 1]).write_text(agent_yaml, encoding="utf-8")
-        return MagicMock(returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(manifests_module.subprocess, "run", fake_run)
-
-
-_BYO_YAML = (
-    "agent:\n"
-    "  name: lab\n"
-    "  project_dir: .\n"
-    "  workflow: agents/lab/workflow.yaml\n"
-    "  dockerfile: deploy/Dockerfile\n"
-    "  binaries:\n"
-    "  - /app/.venv/bin/**\n"
-)
 
 
 def test_delete_missing_manifest_returns_404(client, mock_entity_client) -> None:
@@ -305,20 +235,6 @@ def test_refresh_rebuilds_the_scaffold_but_keeps_operator_settings(client, mock_
     assert len(body["benign_suite"]) == 1
 
 
-def test_refresh_rejects_a_project_manifest(client, mock_entity_client) -> None:
-    """There is no agent to re-resolve from; the fix is re-uploading, so say so instead of 500ing."""
-    mock_entity_client.get = AsyncMock(
-        return_value=IronSwarmManifest(
-            name="p1", workspace="default", source_type="project", project_fileset="default/proj"
-        )
-    )
-
-    resp = client.post("/apis/iron-swarm/v2/workspaces/default/manifests/p1/refresh")
-
-    assert resp.status_code == 422
-    assert "re-upload" in resp.json()["detail"]
-
-
 def test_delete_manifest_removes_its_bundle(client, mock_entity_client, monkeypatch) -> None:
     """A bundle outliving its manifest is unreachable storage nobody will ever clean up."""
     deleted: list[str] = []
@@ -332,23 +248,6 @@ def test_delete_manifest_removes_its_bundle(client, mock_entity_client, monkeypa
 
     assert resp.status_code == 204
     assert deleted == ["default/agent-fs-1"]
-
-
-def test_delete_manifest_keeps_a_caller_supplied_project_bundle(client, mock_entity_client, monkeypatch) -> None:
-    """Nothing stops two manifests naming one uploaded bundle, so deleting it would break the other."""
-    deleted: list[str] = []
-    monkeypatch.setattr(manifests_module, "delete_fileset", lambda _sdk, ref: deleted.append(ref))
-    mock_entity_client.get = AsyncMock(
-        return_value=IronSwarmManifest(
-            name="p1", workspace="default", source_type="project", project_fileset="default/proj-fs-1"
-        )
-    )
-    mock_entity_client.delete = AsyncMock(return_value=None)
-
-    resp = client.delete("/apis/iron-swarm/v2/workspaces/default/manifests/p1")
-
-    assert resp.status_code == 204
-    assert deleted == []
 
 
 def test_env_is_persisted_and_survives_refresh(client, mock_entity_client) -> None:

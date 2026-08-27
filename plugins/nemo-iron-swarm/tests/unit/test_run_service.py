@@ -235,7 +235,7 @@ async def test_compile_builds_subprocess_step_carrying_the_spec() -> None:
         "attack_intensity": None,
         "rounds": None,
         "validate_only": False,
-        "defense_workflow": None,
+        "defense_guardrails": None,
         "defense_policy": None,
         "source_run": None,
         "models": None,
@@ -700,39 +700,40 @@ def test_service_driven_records_manifest_id_on_run(tmp_path: Path, monkeypatch: 
     assert created["manifest_id"] == "clockbot-hardening"
 
 
-def test_seed_validation_manifest_zeros_defenders_and_seeds_baseline(tmp_path: Path) -> None:
-    # A materialized manifest points agent.workflow at a scaffold file under project_dir (relative here).
-    (tmp_path / "scaffold").mkdir()
-    (tmp_path / "scaffold" / "workflow.yaml").write_text("workflow: original\n", encoding="utf-8")
-    manifest = {"agent": {"name": "clockbot", "project_dir": "scaffold", "workflow": "workflow.yaml", "port": 1}}
-    manifest_path = tmp_path / "iron-swarm.yaml"
-    manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+GUARDRAILS_TOML = 'version = 1\n[[plugins.dynamic]]\nmanifest = "iron-swarm-guardrails/relay-plugin.toml"\n'
 
-    manifest_mod._seed_validation_manifest(str(manifest_path), "workflow: hardened\n", "version: 2\n", _ctx(tmp_path))
+
+def test_seed_validation_manifest_zeros_defenders_and_seeds_baseline(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "iron-swarm.yaml"
+    manifest_path.write_text(yaml.safe_dump({"agent": {"name": "clockbot", "port": 1}}), encoding="utf-8")
+
+    manifest_mod._seed_validation_manifest(str(manifest_path), GUARDRAILS_TOML, "version: 2\n", _ctx(tmp_path))
 
     seeded = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    overrides = seeded["overrides"]
     # Zero defenders → iron-swarm generates no new mitigations (frozen validation).
-    assert seeded["overrides"]["defenders"] == []
+    assert overrides["defenders"] == []
     # Composed policy seeded as the victim's baseline policy.
-    assert seeded["overrides"]["victim_control"]["config"]["policy_path"].endswith("composed-policy.yaml")
-    assert seeded["overrides"]["storage"]["victim_policy_path"].endswith("composed-policy.yaml")
+    assert overrides["victim_control"]["config"]["policy_path"].endswith("composed-policy.yaml")
+    assert overrides["storage"]["victim_policy_path"].endswith("composed-policy.yaml")
     assert (tmp_path / "composed-policy.yaml").read_text(encoding="utf-8") == "version: 2\n"
-    # Composed workflow overwrites the materialized scaffold workflow (victim boots already-hardened).
-    assert (tmp_path / "scaffold" / "workflow.yaml").read_text(encoding="utf-8") == "workflow: hardened\n"
+    # The composed guardrails become the baseline on all three paths iron-swarm derives from the
+    # plugins file — what defenders base on, what seeds init/, and what is uploaded into the victim.
+    composed = tmp_path / "composed-plugins.toml"
+    assert composed.read_text(encoding="utf-8") == GUARDRAILS_TOML
+    assert overrides["target"]["agent_relay_plugins"] == str(composed)
+    assert overrides["storage"]["victim_relay_plugins_path"] == str(composed)
+    assert overrides["victim_control"]["config"]["uploads"] == [f"{composed}:/etc/nemo-relay/plugins.toml"]
 
 
 def test_seed_validation_manifest_without_policy_only_zeros_defenders(tmp_path: Path) -> None:
-    (tmp_path / "scaffold").mkdir()
-    (tmp_path / "scaffold" / "workflow.yaml").write_text("workflow: original\n", encoding="utf-8")
-    manifest = {"agent": {"name": "x", "project_dir": "scaffold", "workflow": "workflow.yaml"}}
     manifest_path = tmp_path / "iron-swarm.yaml"
-    manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    manifest_path.write_text(yaml.safe_dump({"agent": {"name": "x"}}), encoding="utf-8")
 
-    manifest_mod._seed_validation_manifest(str(manifest_path), "workflow: hardened\n", None, _ctx(tmp_path))
+    manifest_mod._seed_validation_manifest(str(manifest_path), None, None, _ctx(tmp_path))
 
     seeded = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    assert seeded["overrides"]["defenders"] == []
-    assert "victim_control" not in seeded["overrides"]  # no policy chosen → no policy override
+    assert seeded["overrides"] == {"defenders": []}
     assert not (tmp_path / "composed-policy.yaml").exists()
 
 

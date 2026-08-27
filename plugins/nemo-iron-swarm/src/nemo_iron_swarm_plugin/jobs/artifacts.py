@@ -95,21 +95,21 @@ def _save_validation(ctx: JobContext) -> None:
         logger.warning("failed to save validation result", exc_info=True)
 
 
-def _save_composed_workflow(ctx: JobContext, defense_workflow: str | None) -> None:
-    """Persist the validated composed workflow YAML as a ``composed-workflow`` job result (best-effort).
+def _save_composed_guardrails(ctx: JobContext, defense_guardrails: str | None) -> None:
+    """Persist the validated composed plugins.toml as a ``composed-guardrails`` job result (best-effort).
 
-    Lets the Harden tab recover the exact workflow a sanity check validated after a page reload, so
+    Lets the Harden tab recover the exact guardrail set a sanity check validated after a page reload, so
     "Apply to Agent" stays available without re-running the check.
     """
-    if not defense_workflow:
+    if not defense_guardrails:
         return
     try:
-        path = ctx.storage.persistent / ".iron-swarm" / "composed-workflow.yaml"
+        path = ctx.storage.persistent / ".iron-swarm" / "composed-plugins.toml"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(defense_workflow, encoding="utf-8")
-        ctx.results.save("composed-workflow", path)
+        path.write_text(defense_guardrails, encoding="utf-8")
+        ctx.results.save("composed-guardrails", path)
     except Exception:  # capturing the artifact is best-effort, not part of the war-game
-        logger.warning("failed to save composed workflow result", exc_info=True)
+        logger.warning("failed to save composed guardrails result", exc_info=True)
 
 
 def _save_events_fileset(sdk: Any, *, workspace: str, run_name: str) -> str:
