@@ -387,6 +387,87 @@ def test_classification_without_probes_claims_nothing_rather_than_guessing():
     assert measured.verifiability.coverage == 1.0
 
 
+# --- thresholds ----------------------------------------------------------------------------------
+#
+# Each of these pins a constant from *both* sides, at the value and one step off it. The direction
+# of every comparison here was already covered; none of the values were, so any of them could move
+# anywhere inside its range without a test noticing -- and each one decides something a consumer
+# acts on.
+
+
+def test_a_chat_needs_half_its_conversations_to_end_on_an_assistant_turn():
+    # Under the rate there is no training target and the set is prompt_only. The threshold is 0.5
+    # exactly, and it was free to sit anywhere in (0, 1): at 0.9 a set where 60% of conversations
+    # end on an assistant turn -- an ordinary SFT set -- reports as having nothing to train on.
+    features = [_f("messages", "messages")]
+    at = classify(features, {"messages": _messages_column(0.5)})
+    below = classify([_f("messages", "messages")], {"messages": _messages_column(0.49)})
+
+    assert "messages" in at.candidates and "prompt_only" not in at.candidates
+    assert "prompt_only" in below.candidates and "messages" not in below.candidates
+
+
+def test_a_verification_target_must_cover_a_twentieth_of_the_rows():
+    # `_MIN_VERIFIABILITY_COVERAGE` is 0.05 and the comparison is `>=`, so a column present in
+    # exactly a twentieth of the rows clears it. One step under and the signal is noise.
+    for present, expected in ((5, "ground_truth_column"), (4, None)):
+        rows = [{"prompt": "q", "ground_truth": "a" if i < present else ""} for i in range(100)]
+        # Features are rebuilt per case: `classify` assigns `semantic_role` in place.
+        features = [_f("prompt", "string"), _f("ground_truth", "string")]
+        result = classify_rows(features, {}, rows)
+        method = result.verifiability.method if result.verifiability else None
+        assert method == expected, f"{present}/100 -> {method}"
+
+    # The extractable-answer arm has a floor of its own, on a different variable, and the two are
+    # separate comparisons against the same constant.
+    for present, expected in ((5, "extractable_final_answer"), (4, None)):
+        rows = [{"out": f"reasoning #### {i}" if i < present else "reasoning, no answer"} for i in range(100)]
+        result = classify_rows([_f("out", "string")], {}, rows)
+        method = result.verifiability.method if result.verifiability else None
+        assert method == expected, f"extractable {present}/100 -> {method}"
+
+
+def test_a_shared_prefix_has_to_be_long_enough_not_to_be_a_turn_of_phrase():
+    # `_EMBEDDED_PROMPT_PREFIX_CHARS` is 16, compared with `>=`. It was unconstrained from below,
+    # where the bug is: at 3, two answers sharing only "The " count as an embedded prompt, and the
+    # profile asserts a finding about the dataset that is not true of it.
+    for shared_chars, expected_pairs in ((16, 1), (15, 0)):
+        prefix = "x" * shared_chars
+        fold = PrefixPairFold()
+        fold.update([{"chosen": prefix + "aaaaaaaaaa", "rejected": prefix + "bbbbbbbbbb"}])
+        assert fold.result().pairs == 1
+        assert fold.result().shared == expected_pairs, shared_chars
+
+
+def test_an_embedded_prompt_is_claimed_at_half_the_pairs_and_not_below():
+    # The rate that turns counted pairs into a stated finding, `>= 0.5`.
+    from nemo_datasets_plugin.profiler.classify import PrefixPair, _implicit_prompt_evidence
+
+    features = [_f("chosen", "string"), _f("rejected", "string")]
+    classify(features, {})  # assigns the chosen/rejected roles the evidence function reads
+    at = _implicit_prompt_evidence(features, {}, PrefixPair(pairs=10, shared=5))
+    below = _implicit_prompt_evidence(features, {}, PrefixPair(pairs=10, shared=4))
+
+    assert at is not None and "prompt is embedded" in at.detail
+    assert below is None
+
+
+def test_the_first_column_wins_a_coverage_tie():
+    # `coverage > best_coverage` keeps the first of equals. With `>=` the reported column flips to
+    # the last, which changes which name a consumer is told to read without changing the number
+    # beside it -- the kind of difference that survives a review. Neither column is in the alias
+    # table, so there is no named completion and every column is searched.
+    rows = [{"aaa_out": "the answer is #### 42", "zzz_out": "so #### 42"} for _ in range(10)]
+    features = [_f("aaa_out", "string"), _f("zzz_out", "string")]
+
+    result = classify_rows(features, {}, rows)
+
+    assert result.verifiability is not None
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 1.0  # both columns tie at 1.0
+    assert "aaa_out" in result.verifiability.evidence[0].detail
+
+
 # --- candidates ------------------------------------------------------------------------------------
 
 
