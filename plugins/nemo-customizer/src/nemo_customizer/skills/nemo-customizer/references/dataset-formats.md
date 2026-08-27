@@ -82,7 +82,9 @@ The dataset FileSet holds `training.jsonl` (required) and optionally `validation
 
 ### Row schema
 
-Source of truth: `GymDatasetRow` / `GymVerifiersDatasetRow` in `services/rl/src/nmp/rl/schemas/environment.py`. Validated at submit time by `DatasetValidator` with `training_type=grpo`.
+Source of truth: `GymDatasetRow` / `GymVerifiersDatasetRow` in `services/rl/src/nmp/rl/schemas/environment.py`.
+
+**Where rows are actually checked.** Submit verifies only that the dataset FileSet has `training.jsonl` at its root (`check_gym_dataset_layout`). Row *shape* is checked later by `DatasetValidator` inside the training container, against `GRPO_SCHEMA` — which is built from the **agent-agnostic** `GymDatasetRow`, so it requires exactly `responses_create_params` and `agent_ref` and passes everything else through. A wrong `vf_env_id` is therefore not a validation error; it surfaces as the environment failing to load, one job start later. Validate rows locally.
 
 ```json
 {
@@ -120,8 +122,10 @@ Source of truth: `GymDatasetRow` / `GymVerifiersDatasetRow` in `services/rl/src/
 | `{"prompt": "...", "completion": "..."}` | GRPO has no completions; the environment produces and scores them |
 | `{"prompt": ..., "chosen": ..., "rejected": ...}` | That is DPO — see the next section |
 | `"agent_ref": "verifiers_agent"` | An **object**: `{"type": "responses_api_agents", "name": "verifiers_agent"}` |
-| `vf_env_id` differing from the manifest | They must match, or validation rejects the row |
+| `agent_ref.name` set to the implementation folder (`simple_agent`) | The **instance** name from the environment YAML (`weather_simple_agent`) — see `gym-environments.md` § **How a Gym config YAML is read** |
+| `vf_env_id` differing from the manifest's `metadata.vf_env_id` | Make them match. Nothing rejects the mismatch — the environment just fails to load at spin-up |
 | Prompt JSONL uploaded into the environment FileSet | Separate dataset FileSet; `.jsonl` in the env package is rejected |
+| Reusing Gym's own in-tree JSONL unchanged | Gym infers the agent from the owning config; the platform path requires `agent_ref` on every row. Add it |
 
 ### Converting a dataset to Gym rows
 
@@ -152,6 +156,30 @@ with open("training.jsonl", "w", encoding="utf-8") as f:
 ```
 
 Multi-turn context goes in `input` as additional messages, in order — the same `role`/`content` dicts, ending with the turn the model must respond to.
+
+### Rows for a non-verifiers environment
+
+`vf_env_id` and `task_idx` are `verifiers_agent`-specific. A `resources_servers` + `simple_agent` environment needs neither — but if its tools are function-calling tools, **each row must declare them**, because `simple_agent` reads the tool list from `responses_create_params`, not from the resources server:
+
+```json
+{
+  "responses_create_params": {
+    "input": [
+      {"role": "developer", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "what's it like in sf?"}
+    ],
+    "tools": [{"type": "function", "name": "get_weather", "description": "",
+               "parameters": {"type": "object", "properties": {"city": {"type": "string"}},
+                              "required": ["city"], "additionalProperties": false},
+               "strict": true}]
+  },
+  "agent_ref": {"type": "responses_api_agents", "name": "weather_simple_agent"},
+  "answer": "",
+  "info": {}
+}
+```
+
+One `tools` entry per route the server exposes, named after the route. Fields the environment's own `verify()` scores against (`answer`, or anything custom) ride along under `extra="allow"`. The full environment side of this example is in `gym-environments.md` § **Worked example**.
 
 ### Validation sampling
 

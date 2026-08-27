@@ -80,8 +80,6 @@ uv run --package nmp-rl pi-to-gym-conversion \
   --validation-fraction 0.1
 ```
 
-An end-to-end helper is [`scripts/gpu-grpo-smoke/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/scripts/gpu-grpo-smoke).
-
 <Note>
 Pin `--hub-version`. Left unset, the converter takes whatever the index offers at that moment; a later release can narrow `Requires-Python` and fail the download, or install but not run on the training image's Python.
 </Note>
@@ -160,21 +158,26 @@ The three interpolations resolve to the job’s vLLM endpoint. List this file fi
 | `adapter-wheels-v1`, `wheels-v1` | `configs/policy_model.yaml` |
 | `native-v1` | `responses_api_models/vllm_model/configs/policy_model.yaml` |
 
-Custom implementations need `{server_type}/{implementation}/` (with `app.py` and `requirements.txt`) in the FileSet for `native-v1` and `wheels-v1`. YAML under `configs/` does not replace that directory. Details: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages).
+For `native-v1` only the server-type prefix is checked, so `responses_api_models/policy_model/configs/policy_model.yaml` works too — Gym runs the directory named in the YAML body, not the one the config file sits in.
+
+Custom implementations need `{server_type}/{implementation}/` (with `app.py` and `requirements.txt`) in the FileSet for `native-v1` and `wheels-v1`. YAML under `configs/` does not replace that directory, and a directory without `requirements.txt` or `pyproject.toml` is not recognised as a server at all. Details: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages).
 
 ## How dependencies are installed
 
-The format you choose does not change *what runs*. It changes where dependencies come from, and that is what usually decides whether a job starts at all.
+The format you choose does not change *what runs* — all three start on the same Gym runtime. It changes where dependencies come from, and that is what usually decides whether a job starts at all.
 
-Gym builds **one venv per server** when the job starts, from that server's `pyproject.toml` or `requirements.txt`.
+There are two installs at job start:
 
-Wheels in a `wheels-v1` or `adapter-wheels-v1` package are used as local install sources. Distributions not present in `wheels/` are fetched from a package index.
+1. Gym builds **one venv per server** from that server's `pyproject.toml` or `requirements.txt`, plus `nemo-gym` at the image version and Gym's pinned `ray[default]` and `openai`. A package's `wheels/` directory is offered here as a *candidate pool* — **a package index is still enabled**, so anything the wheelhouse misses is fetched from it.
+2. The job then installs the package's vendored closure into each agent and resources-server venv with `--no-index`. Fully offline, but only for what `wheels/` already carries, and only after step 1 succeeded.
 
 | Format | Server dependencies come from | Needs egress at spin-up |
 | --- | --- | --- |
 | `native-v1` | A package index, resolved from the server's `requirements.txt` | Yes |
-| `wheels-v1` | The package's `wheels/`, for anything it vendors | No, if the closure is complete |
+| `wheels-v1` | The package's `wheels/`, for anything it vendors | No, **if the closure also covers step 1** |
 | `adapter-wheels-v1` | The package's `wheels/`, plus the agent harness's own requirements | Yes — see below |
+
+A `wheels-v1` job runs with no egress only when `wheels/` carries the server's full requirement closure, `nemo-gym` at exactly the training-image version, and Gym's pinned `ray[default]` and `openai` — the venv is seeded empty, so nothing carries over from the image. Completeness of `wheels/` is what makes an offline run work, not the format name. Full detail: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages#dependencies).
 
 <Warning>
 `adapter-wheels-v1` requires network access when the job starts. The package `wheels/` directory covers the hub environment; `verifiers_agent` also installs `verifiers` from GitHub.
@@ -249,7 +252,9 @@ nemo files filesets create "$DATA" --workspace default --purpose dataset --exist
 nemo files upload ./ascii-tree-data/ "$DATA" --workspace default
 ```
 
-The trailing slash on the local path matters — it selects the directory's *contents* rather than the directory itself.
+The trailing slash on the local path matters — it selects the directory's *contents* rather than the directory itself. Without it everything nests one level deeper under the directory's basename, which leaves the manifest off the FileSet root. Confirm with `nemo files list` before submitting.
+
+`--purpose environment` is enforced, not cosmetic: submit rejects an environment FileSet whose purpose is anything other than `environment` or `generic`.
 
 Relative paths must be preserved. `config_paths` is matched against the FileSet listing, so a package flattened during upload fails with `config_paths reference files that are not in the package`.
 
@@ -389,6 +394,11 @@ Monitor GRPO on **reward**, not loss. The GRPO surrogate loss oscillates near ze
 | `must carry a non-empty wheels/ directory` | Vendor the dependency closure |
 | `adapter.agent ... is not built into the training image` | Use a supported harness, or switch format |
 | `ServerRefNotFoundError: ... Available responses_api_models: (none)` | A config references a model server nothing defines — include `configs/policy_model.yaml` |
+| `Environment fileset ... has purpose 'dataset'; expected purpose='environment'` | Recreate the fileset with `--purpose environment` |
+| `AlmostServerError`, after an "Almost-Servers Detected" banner | A server block failed validation — most often a `domain` that is missing, empty, or not in the closed set. Set a valid `domain` on every `resources_servers` block |
+| `Missing pyproject.toml or requirements.txt for uv venv setup in server dir` | A custom implementation directory has no install marker. Add `requirements.txt` |
+| The job runs but scores an environment you did not ship | Same missing install marker, on a directory whose name matches a Gym built-in — the built-in was used instead. Add `requirements.txt`, or rename the implementation |
+| `ModuleNotFoundError` at the first rollout | The server's venv is missing an import: an empty or incomplete `requirements.txt`, or a wheelhouse that did not cover the venv build |
 | `your requirements are unsatisfiable` | `wheels/` vendors two versions of one project; clear it and rebuild the closure |
 | `OpenSandbox is not yet available on this cluster` | Operator setting. The cluster has not enabled sandboxed Gym — see [Cluster prerequisites](#cluster-prerequisites) |
 | `Sandboxed GRPO requires the job-storage PVC claim name` | Operator setting, same section |
@@ -401,8 +411,11 @@ GRPO fails at submit, before any GPU is claimed, unless the platform operator ha
 
 | Setting | Why |
 | --- | --- |
-| `NMP_RL_SANDBOX_CLUSTER_CAPABLE=true` | Declares that OpenSandbox is installed. GRPO defaults to sandboxed Gym (`NMP_RL_SANDBOXED_GYM_DEFAULT`) and fails closed without this |
+| `NMP_SANDBOX_CLUSTER_CAPABLE=true` (Helm: `sandboxClusterCapable`) | Declares that OpenSandbox is installed. The platform chart does **not** install it. GRPO defaults to sandboxed Gym (`NMP_RL_SANDBOXED_GYM_DEFAULT`) and fails closed without this |
 | `NMP_RL_JOB_STORAGE_PVC_CLAIM` | The Gym sandbox mounts the job-storage claim itself to read the downloaded environment and dataset, and only learns the claim by name |
 | `NMP_RL_SANDBOX_ALLOW_INTERNET` | Needed whenever an environment's venv build has to reach a package index — which is every `native-v1` package, and every `adapter-wheels-v1` one |
+| `NMP_RL_SANDBOX_PUBLIC_DNS_ALLOW` | Extra hosts, consulted only when the above is on. The built-in allowance covers `*.com` and `*.org`, so a host on another TLD (for example `hub.primeintellect.ai`) must be named |
 
 If a submit fails on either of the first two, that is a platform configuration gap, not a problem with your package. Neither is settable per job.
+
+Installing OpenSandbox is a separate operator task: [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox), or [OpenSandbox with Kata](/documentation/self-managed-deployment/setup/helm/opensandbox-kata) for the Kata runtime.

@@ -66,7 +66,7 @@ That writes the package plus `training.jsonl` / `validation.jsonl` and, with `--
 
 - `environment` is **required** for GRPO — a string ref to a FileSet with `purpose=environment` carrying a valid `nemo-environment.yaml`. Any of the three formats works. See `gym-environments.md`.
 - `dataset` is Gym JSONL (`training.jsonl` required, `validation.jsonl` optional) — rollout rows with the prompt under `responses_create_params.input`, **not** DPO preference triples and **not** `messages[]` at the top level. Schema and conversion: `dataset-formats.md` § **NeMo-RL (GRPO)**.
-- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is capable (`NMP_RL_SANDBOX_CLUSTER_CAPABLE=true`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are compile-time checks.
+- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is declared installed (`NMP_SANDBOX_CLUSTER_CAPABLE=true`, Helm `sandboxClusterCapable` — a **platform** setting, not `NMP_RL_*`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are compile-time checks — see `rl-kubernetes-runtime.md` § **Sandboxed Gym (GRPO)**.
 
 ## Field reference — shared training knobs
 
