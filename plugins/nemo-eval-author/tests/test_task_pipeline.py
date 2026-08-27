@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -85,13 +86,19 @@ def _write_report_with_items(
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def _load_task_pipeline_module():
+    """Load ``task_pipeline.py`` as a module without putting scripts/ on ``sys.path``."""
+    spec = importlib.util.spec_from_file_location("eval_author_task_pipeline", _SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load task pipeline module from {_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_task_slug_for_tool_is_deterministic() -> None:
     """Base slugs are stable for common runtime tool names."""
-    sys.path.insert(0, str(_SCRIPT.parent))
-    try:
-        from task_pipeline import task_slug_for_tool
-    finally:
-        sys.path.pop(0)
+    task_slug_for_tool = _load_task_pipeline_module().task_slug_for_tool
 
     assert task_slug_for_tool("read") == "cover-read"
     assert task_slug_for_tool("customer.lookup") == "cover-customer-lookup"
