@@ -94,6 +94,7 @@ class RowFold:
         self._order: list[str] = []
         self._failed: dict[str, Evidence] = {}
         self._rows_seen = 0
+        self._capped = False  # a column this fold declined to open, because the cap was reached
         for feature in features or []:
             # Parquet permits duplicate field names, and every map here is keyed by name. Keeping
             # the first makes which one wins deterministic rather than "whichever came last".
@@ -120,12 +121,26 @@ class RowFold:
         """Open an accumulator for every column this batch is the first to mention."""
         for row in rows:
             for name in row:
-                if name in self._accumulators or len(self._accumulators) >= MAX_COLUMNS:
+                if name in self._accumulators:
+                    continue
+                if len(self._accumulators) >= MAX_COLUMNS:
+                    self._capped = True
                     continue
                 accumulator = RoutedAccumulator(name)
                 accumulator.backfill_nulls(self._rows_seen)
                 self._accumulators[name] = accumulator
                 self._order.append(name)
+
+    def columns_were_capped(self) -> bool:
+        """Whether the cap stopped this fold describing a column, at the top level or nested.
+
+        Reported by the fold that did the stopping rather than inferred from how many columns came
+        back: a partition with exactly :data:`MAX_COLUMNS` columns is described completely and is
+        indistinguishable by length from one that was truncated.
+        """
+        if self._capped:
+            return True
+        return any(accumulator.schema_was_capped() for accumulator in self._accumulators.values())
 
     def _detail(self, name: str, verb: str, exc: Exception) -> str:
         """Why a column dropped out, naming its declared dtype when it had one."""
@@ -615,6 +630,10 @@ class RoutedAccumulator(ColumnAccumulator):
         lists = [value for value in present if isinstance(value, list)]
         if lists:
             self._measurement("messages")._observe(lists)
+
+    def schema_was_capped(self) -> bool:
+        """Whether this column's inferred schema declined a nested key."""
+        return self._schema is not None and self._schema.was_capped()
 
     def feature(self) -> FeatureSchema:
         """The column's schema -- declared before the fold, or folded out of the values."""

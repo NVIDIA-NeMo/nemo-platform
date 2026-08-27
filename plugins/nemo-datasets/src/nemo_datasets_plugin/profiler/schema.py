@@ -45,9 +45,15 @@ def derive_features(rows: list[dict[str, Any]], arrow_schema: pa.Schema | None =
     return _features_from_rows(rows)
 
 
-def columns_were_capped(features: list[FeatureSchema]) -> bool:
-    """Whether the schema stopped at the cap rather than at the end of the data."""
-    return len(features) >= MAX_COLUMNS
+def arrow_schema_was_capped(arrow_schema: pa.Schema) -> bool:
+    """Whether :func:`derive_features` had to stop short of this declared schema's end.
+
+    Asked of the schema rather than of the result, because the result cannot answer it: a file with
+    exactly :data:`MAX_COLUMNS` columns is described completely and looks identical to one that was
+    truncated. Reporting the first as truncated is the same failure as leaving the second silent --
+    a reader still cannot tell a wide table from a broken one.
+    """
+    return len(arrow_schema) > MAX_COLUMNS
 
 
 def _is_message_struct(item: FeatureSchema) -> bool:
@@ -212,6 +218,7 @@ class SchemaFold:
         self._fields: dict[str, SchemaFold] = {}
         self._field_order: list[str] = []
         self._item: SchemaFold | None = None
+        self.capped = False  # a key this fold declined to describe, at this level or below it
 
     def update(self, values: list[Any]) -> None:
         for value in values:
@@ -222,11 +229,9 @@ class SchemaFold:
             if isinstance(value, dict):
                 self._dicts += 1
                 for key, child in value.items():
-                    fold = self._fields.get(key)
+                    fold = self._field(key)
                     if fold is None:
-                        fold = SchemaFold(key)
-                        self._fields[key] = fold
-                        self._field_order.append(key)
+                        continue
                     fold.update([child])
             elif isinstance(value, list):
                 self._lists += 1
@@ -266,11 +271,9 @@ class SchemaFold:
             self._dtypes.add("json")
             for value in dicts:
                 for key, child in value.items():
-                    fold = self._fields.get(key)
+                    fold = self._field(key)
                     if fold is None:
-                        fold = SchemaFold(key)
-                        self._fields[key] = fold
-                        self._field_order.append(key)
+                        continue
                     fold.update([child])
         if lists:
             self._present += len(lists)
@@ -280,6 +283,32 @@ class SchemaFold:
                 self._item = SchemaFold()
             for value in lists:
                 self._item.update(value)
+
+    def _field(self, key: str) -> SchemaFold | None:
+        """The child fold for ``key``, or None once this struct is as wide as it may get.
+
+        :data:`MAX_COLUMNS` bounds a *row's* columns, and one level of nesting used to defeat it:
+        rows carrying `{"meta": {"<unique>": ...}}` minted a fold per row inside `meta` while the
+        top level stayed at one column, and the whole tree was serialized into the stored profile.
+        The bound is what the cap was for, so it applies wherever keys are minted from data.
+        """
+        fold = self._fields.get(key)
+        if fold is not None:
+            return fold
+        if len(self._fields) >= MAX_COLUMNS:
+            self.capped = True
+            return None
+        fold = self._fields[key] = SchemaFold(key)
+        self._field_order.append(key)
+        return fold
+
+    def was_capped(self) -> bool:
+        """Whether this fold, or anything under it, declined a key."""
+        if self.capped:
+            return True
+        if self._item is not None and self._item.was_capped():
+            return True
+        return any(fold.was_capped() for fold in self._fields.values())
 
     def finalize(self) -> FeatureSchema:
         if not self._present:

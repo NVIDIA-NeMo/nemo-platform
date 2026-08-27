@@ -4,7 +4,7 @@
 """Tests for row-schema derivation (from a declared arrow schema and from sampled rows)."""
 
 import pyarrow as pa
-from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
+from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, SchemaFold, arrow_schema_was_capped, derive_features
 from nemo_platform_plugin.files.dataset_profile import FeatureSchema
 
 
@@ -142,13 +142,38 @@ def test_derive_features_prefers_declared_arrow_schema():
     assert feature.dtype == "int32"  # declared width beats the int64 inference from rows
 
 
-def test_column_count_is_bounded_and_says_when_it_stopped():
+def test_column_count_is_bounded():
     # A malformed file whose rows carry unique keys would otherwise mint a column -- and later an
     # accumulator -- for every row. The row budget used to bound this by accident; an unbounded read
-    # does not, so the bound is stated and the truncation is reported rather than silent.
+    # does not, so the bound is stated.
     rows = [{f"col{i}": i} for i in range(MAX_COLUMNS + 500)]
-    features = derive_features(rows)
-    assert len(features) == MAX_COLUMNS
-    assert columns_were_capped(features)
+    assert len(derive_features(rows)) == MAX_COLUMNS
 
-    assert not columns_were_capped(derive_features([{"a": 1, "b": 2}]))
+
+def test_a_declared_schema_reports_truncation_from_the_schema_not_the_result():
+    # The result cannot answer this. A file with exactly MAX_COLUMNS columns is described completely
+    # and is the same length as one that was cut short, so asking the returned list called the first
+    # one broken -- the same failure as leaving the second silent, in the other direction.
+    exact = pa.schema([(f"c{i}", pa.int64()) for i in range(MAX_COLUMNS)])
+    over = pa.schema([(f"c{i}", pa.int64()) for i in range(MAX_COLUMNS + 1)])
+    assert len(derive_features([], exact)) == MAX_COLUMNS
+    assert arrow_schema_was_capped(exact) is False
+    assert arrow_schema_was_capped(over) is True
+
+
+def test_a_structs_fields_are_bounded_like_a_rows_columns():
+    # One level of nesting used to defeat the cap outright: rows carrying a unique key inside `meta`
+    # left the top level at one column while minting a fold per row underneath it, and the whole
+    # tree went into the stored profile.
+    fold = SchemaFold("meta")
+    for i in range(MAX_COLUMNS + 500):
+        fold.update([{f"k{i}": 1}])
+    feature = fold.finalize()
+    assert len(_fields(feature)) == MAX_COLUMNS
+    assert fold.was_capped() is True
+
+
+def test_a_struct_that_fits_is_not_reported_as_capped():
+    fold = SchemaFold("meta")
+    fold.update([{"a": 1, "b": 2}])
+    assert fold.was_capped() is False
