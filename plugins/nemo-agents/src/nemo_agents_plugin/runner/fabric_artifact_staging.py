@@ -64,7 +64,7 @@ async def stage_fabric_ethos_dir(
 
     The container byte cap does not apply here: it bounds ConfigMap and env
     delivery, neither of which is in this path. What lands on the platform host
-    is bounded by ``_check_agent_root_bounds`` at CLI upload time only — a
+    is bounded by ``_collect_text_agent_artifacts`` at CLI upload time only — a
     fileset written straight through the files API is unbounded here. That is
     the intended trust boundary for local subprocess mode, not an oversight.
 

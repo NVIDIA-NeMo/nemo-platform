@@ -271,6 +271,16 @@ class TestTranslateAgentConfig:
         assert fabric_config.environment.connection == {"url": "http://sandbox"}
         assert fabric_config.environment.metadata == {"team": "platform"}
 
+    def test_runtime_constraints_forwarded(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["runtime"] = {"max_turns": 20, "timeout_seconds": 120.5}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.runtime.max_turns == 20
+        assert fabric_config.runtime.timeout_seconds == 120.5
+
     @pytest.mark.parametrize(
         ("kind", "adapter_id"),
         [
