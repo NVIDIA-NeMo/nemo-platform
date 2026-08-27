@@ -853,6 +853,22 @@ class TestProcessRequest:
             with pytest.raises(InferenceMiddlewareUnavailableError, match="Failed to run input rails"):
                 await _process_request(middleware, request_body, {}, _entity_source())
 
+    async def test_missing_activation_log_raises_500(self, middleware: GuardrailsMiddleware) -> None:
+        """When NeMo Guardrails returns a ``GenerationResponse`` without a log,
+        ``process_request`` must surface a 500 rather than silently treating
+        the request as blocked (the old fail-closed behaviour that produced a
+        200 ``content_filter`` response indistinguishable from a genuine block).
+        """
+        request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}
+        no_log_response = GenerationResponse(response="ok", log=None)
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=no_log_response)):
+            with pytest.raises(InferenceMiddlewareError) as exc_info:
+                await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert exc_info.value.status_code == 500
+        assert "Unable to determine guardrail result" in exc_info.value.detail
+
 
 # ---------------------------------------------------------------------------
 # process_response
@@ -1366,6 +1382,33 @@ class TestProcessResponse:
                     {},
                     _entity_source(output_flows=["self check output"]),
                 )
+
+    async def test_missing_activation_log_raises_500(self, middleware: GuardrailsMiddleware) -> None:
+        """Companion to ``TestProcessRequest.test_missing_activation_log_raises_500``:
+        output rails must also surface a 500 when NeMo Guardrails returns a
+        ``GenerationResponse`` with no log, rather than silently treating the
+        response as blocked.
+        """
+        request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}
+        response_result = {
+            "id": "chatcmpl-123",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hi"}, "finish_reason": "stop"}],
+        }
+        no_log_response = GenerationResponse(response="ok", log=None)
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=no_log_response)):
+            with pytest.raises(InferenceMiddlewareError) as exc_info:
+                await _process_response(
+                    middleware,
+                    response_result,
+                    request_body,
+                    {},
+                    {},
+                    _entity_source(output_flows=["self check output"]),
+                )
+
+        assert exc_info.value.status_code == 500
+        assert "Unable to determine guardrail result" in exc_info.value.detail
 
     async def test_blocked_output_rail(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}

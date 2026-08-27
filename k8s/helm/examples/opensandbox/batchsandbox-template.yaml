@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# ConfigMap mounted by opensandbox-server-crun.
-# Shared-kernel profile: no runtimeClassName → cluster default (crun on this CRI-O cluster).
+# ConfigMap mounted by opensandbox-server.
+# Shared-kernel profile: no runtimeClassName → cluster default OCI runtime.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: opensandbox-batchsandbox-template-crun
+  name: opensandbox-batchsandbox-template
   namespace: opensandbox-system
   labels:
     app.kubernetes.io/part-of: opensandbox
@@ -16,7 +16,7 @@ data:
     metadata:
       labels:
         opensandbox.nvidia.com/isolation-class: shared-kernel
-        opensandbox.nvidia.com/runtime: crun
+        opensandbox.nvidia.com/runtime: shared-kernel
     spec:
       replicas: 1
       template:
@@ -24,9 +24,11 @@ data:
           restartPolicy: Never
           terminationGracePeriodSeconds: 30
           # Sandbox pods are built from this template by the OpenSandbox server,
-          # not by the jobs controller, so the `image_pull_secrets` under
-          # platformConfig.jobs.executor_defaults never reaches them and neither does the
-          # chart's top-level imagePullSecrets. The Secret must exist in the sandbox namespace
+          # not by the jobs controller, so neither jobs executor_defaults
+          # image_pull_secrets nor the chart's top-level imagePullSecrets apply.
+          # This name is required as written. If your NGC (or other) pull Secret
+          # is named differently, change it here before kubectl apply. The Secret
+          # must exist in the sandbox / job namespace.
           imagePullSecrets:
             - name: nvcrimagepullsecret
           # Prefer non-GPU / non-kata workers so H100 capacity stays for kata-qemu

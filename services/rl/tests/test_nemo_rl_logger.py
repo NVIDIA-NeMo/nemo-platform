@@ -555,13 +555,15 @@ def test_the_default_set_covers_grpos_reward_and_off_policy_diagnostics() -> Non
         "train_loss",
         "train_grad_norm",
         "train_lr",
-        # Reward, on both phases -- the point of the change. `*total_reward/mean`
-        # is deliberately not here: on this service it is the same number as
-        # `train_reward`, and `val_total_reward/mean` is the last-batch-only
-        # version of `val_accuracy`. Both arrive in the dicts above and are
-        # reported as current values; neither keeps a history.
+        # Reward, on both phases -- the point of the change.
         "train_reward",
         "val_accuracy",
+        # The raw verifier reward. Equal to `train_reward` here, and to `train_filtered_reward`
+        # when dynamic sampling drops zero-variance groups; the two separate as soon as reward
+        # shaping or dynamic sampling is enabled, which is when the pair earns its series.
+        # `val_total_reward/mean` stays out: it is the last batch's mean, not the whole pass,
+        # so `val_accuracy` is the honest validation number and this would shadow it.
+        "train_total_reward/mean",
         # Reward dispersion, which is the band around the mean. Its `/median` and
         # `/max` siblings above stay out.
         "train_total_reward/stddev",

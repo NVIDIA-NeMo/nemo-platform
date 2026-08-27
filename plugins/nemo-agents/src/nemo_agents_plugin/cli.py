@@ -102,6 +102,27 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("endpoint"),
     Column("created_at"),
 ]
+_ENVIRONMENT_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("environment_spec"),
+    Column("compute_spec"),
+    Column("description"),
+    Column("created_at"),
+]
+_ENVIRONMENT_SPEC_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("provider"),
+    Column("description"),
+    Column("created_at"),
+]
+_COMPUTE_SPEC_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("description"),
+    Column("created_at"),
+]
 
 
 class AgentsCLI(NemoCLI):
@@ -126,6 +147,7 @@ class AgentsCLI(NemoCLI):
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
+        _register_environment_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
         for name, cli_cls in discover_agent_cli().items():
@@ -922,6 +944,17 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "-i",
             help="Container image for docker/k8s modes (falls back to deployments.default_image).",
         ),
+        environment: Optional[str] = typer.Option(
+            None,
+            "--environment",
+            "-e",
+            help=(
+                "AgentEnvironment to deploy under, as a 'workspace/name' ref "
+                "(e.g. 'default/repo-research-ben'). Its EnvironmentSpec is merged "
+                "into the agent config and its ComputeSpec/secret refs are "
+                "snapshotted onto the deployment at create time."
+            ),
+        ),
         wait: bool = typer.Option(
             True,
             "--wait/--no-wait",
@@ -967,11 +1000,16 @@ def _register_platform_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
+        if environment is not None and not environment.strip():
+            typer.echo("--environment must not be empty.", err=True)
+            raise typer.Exit(code=2)
         payload: dict = {"agent": agent, "deployment_mode": mode}
         if name:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if environment is not None:
+            payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
@@ -1220,6 +1258,315 @@ def _register_platform_commands(app: typer.Typer) -> None:
         assert name  # guaranteed by the checks above
         success = _wait_for_deployment(base_url, workspace, name, timeout=timeout, interval=interval)
         raise typer.Exit(code=0 if success else 1)
+
+
+# ---------------------------------------------------------------------------
+# Environment / EnvironmentSpec / ComputeSpec commands
+# ---------------------------------------------------------------------------
+
+
+def _spec_body_from_inputs(
+    *,
+    name: str,
+    spec_file: Optional[Path],
+    spec_json: Optional[str],
+) -> dict:
+    """Build a create-request body from a ``--spec-file`` or ``--spec`` input.
+
+    Exactly one of *spec_file* / *spec_json* may be given. The resulting mapping
+    is merged under ``{"name": name, ...}`` (the caller's ``name`` wins). Returns
+    just ``{"name": name}`` when neither is provided (an empty inline spec).
+    """
+    if spec_file is not None and spec_json is not None:
+        typer.echo("Error: pass only one of --spec-file or --spec.", err=True)
+        raise typer.Exit(code=2)
+
+    body: dict = {}
+    if spec_file is not None:
+        try:
+            loaded = _load_yaml(spec_file)  # YAML is a superset of JSON
+        except (OSError, yaml.YAMLError) as exc:
+            typer.echo(f"Error: could not read spec file {spec_file}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not isinstance(loaded, dict):
+            typer.echo(f"Error: spec file {spec_file} must contain a mapping.", err=True)
+            raise typer.Exit(code=2)
+        body = loaded
+    elif spec_json is not None:
+        try:
+            loaded = json.loads(spec_json)
+        except json.JSONDecodeError as exc:
+            typer.echo(f"Error: --spec is not valid JSON: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not isinstance(loaded, dict):
+            typer.echo("Error: --spec must be a JSON object.", err=True)
+            raise typer.Exit(code=2)
+        body = loaded
+
+    return {**body, "name": name}
+
+
+def _register_environment_commands(app: typer.Typer) -> None:
+    """Register ``environment-specs``, ``environments``, and ``compute-specs`` sub-groups.
+
+    These are the request/fulfill entities an AgentDeployment or ``agents.execute``
+    job references via its ``environment`` field: an EnvironmentSpec fulfills the
+    dependencies an Agent declares (endpoints, plaintext env, secret refs); a
+    ComputeSpec supplies k8s-style resources; an AgentEnvironment composes the two.
+    Bodies are the ``*Inline`` shapes (see ``entities.py``); create takes a
+    ``--spec-file`` (JSON/YAML) or an inline ``--spec`` JSON string.
+    """
+    _PANEL = "Agent Resources (requires running cluster)"
+
+    # -- environment-specs ---------------------------------------------------
+    espec_app = typer.Typer(name="environment-specs", help="Manage agent environment specs.", no_args_is_help=True)
+    app.add_typer(espec_app, rich_help_panel=_PANEL)
+
+    @espec_app.command(name="create")
+    def environment_spec_create(
+        name: str = typer.Argument(..., help="Unique environment-spec name."),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML EnvironmentSpec body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(None, "--spec", help="Inline EnvironmentSpec body as a JSON object string."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create an environment spec from a file or inline JSON."""
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        resp = _api_request(
+            "POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs", json_body=body
+        )
+        typer.echo(json.dumps(resp, indent=2))
+
+    @espec_app.command(name="list")
+    def environment_spec_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List environment specs."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_ENVIRONMENT_SPEC_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @espec_app.command(name="get")
+    def environment_spec_get(
+        name: str = typer.Argument(..., help="Environment-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get an environment spec by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @espec_app.command(name="delete")
+    def environment_spec_delete(
+        name: str = typer.Argument(..., help="Environment-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete an environment spec by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete environment-spec '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs/{name}")
+        typer.echo(f"Environment-spec '{name}' deleted.")
+
+    # -- environments --------------------------------------------------------
+    env_app = typer.Typer(name="environments", help="Manage agent environments.", no_args_is_help=True)
+    app.add_typer(env_app, rich_help_panel=_PANEL)
+
+    @env_app.command(name="create")
+    def environment_create(
+        name: str = typer.Argument(..., help="Unique environment name."),
+        environment_spec: Optional[str] = typer.Option(
+            None, "--environment-spec", help="'workspace/name' ref to a stored AgentEnvironmentSpec."
+        ),
+        compute_spec: Optional[str] = typer.Option(
+            None, "--compute-spec", help="'workspace/name' ref to a stored AgentComputeSpec."
+        ),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML AgentEnvironment body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(
+            None, "--spec", help="Inline AgentEnvironment body as a JSON object string."
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create an AgentEnvironment.
+
+        Use --environment-spec / --compute-spec for the common ref case, or
+        --spec-file / --spec for a fully inline body. The ref flags override the
+        matching keys from a file/inline body.
+        """
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        if environment_spec is not None:
+            body["environment_spec"] = environment_spec
+        if compute_spec is not None:
+            body["compute_spec"] = compute_spec
+        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments", json_body=body)
+        typer.echo(json.dumps(resp, indent=2))
+
+    @env_app.command(name="list")
+    def environment_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List environments."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_ENVIRONMENT_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @env_app.command(name="get")
+    def environment_get(
+        name: str = typer.Argument(..., help="Environment name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get an environment by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @env_app.command(name="delete")
+    def environment_delete(
+        name: str = typer.Argument(..., help="Environment name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete an environment by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete environment '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments/{name}")
+        typer.echo(f"Environment '{name}' deleted.")
+
+    # -- compute-specs -------------------------------------------------------
+    cspec_app = typer.Typer(name="compute-specs", help="Manage agent compute specs.", no_args_is_help=True)
+    app.add_typer(cspec_app, rich_help_panel=_PANEL)
+
+    @cspec_app.command(name="create")
+    def compute_spec_create(
+        name: str = typer.Argument(..., help="Unique compute-spec name."),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML ComputeSpec body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(None, "--spec", help="Inline ComputeSpec body as a JSON object string."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create a compute spec from a file or inline JSON."""
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs", json_body=body)
+        typer.echo(json.dumps(resp, indent=2))
+
+    @cspec_app.command(name="list")
+    def compute_spec_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List compute specs."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_COMPUTE_SPEC_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @cspec_app.command(name="get")
+    def compute_spec_get(
+        name: str = typer.Argument(..., help="Compute-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get a compute spec by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @cspec_app.command(name="delete")
+    def compute_spec_delete(
+        name: str = typer.Argument(..., help="Compute-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete a compute spec by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete compute-spec '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs/{name}")
+        typer.echo(f"Compute-spec '{name}' deleted.")
 
 
 # ---------------------------------------------------------------------------
