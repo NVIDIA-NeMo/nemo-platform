@@ -39,5 +39,3 @@ export const BINARY_FILE_EXTENSIONS = new Set([
   // Documents
   'pdf',
 ]);
-
-export const COMPLETION_PROMPT_KEY_ORDER = ['prompt', 'instruction', 'question']; // Searches for a prompt in the following keys

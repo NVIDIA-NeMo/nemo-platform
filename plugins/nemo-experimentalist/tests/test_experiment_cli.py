@@ -66,7 +66,7 @@ class CapturedExperimentRun:
     client: AsyncNeMoPlatform | None
     config: EvolutionaryOptimizerConfig
     insight: Path | str | None
-    agent_spec: str | None
+    ethos: str | None
     framework_skills_dirs: list[Path] | None
 
 
@@ -110,7 +110,7 @@ class ExperimentRunRecorder:
         config: EvolutionaryOptimizerConfig,
         task_template: DatasetRef | None = None,
         insight: Path | str | None = None,
-        agent_spec: str | None = None,
+        ethos: str | None = None,
         framework_skills_dirs: list[Path] | None = None,
     ) -> str:
         self.captured = CapturedExperimentRun(
@@ -123,7 +123,7 @@ class ExperimentRunRecorder:
             client=client,
             config=config,
             insight=insight,
-            agent_spec=agent_spec,
+            ethos=ethos,
             framework_skills_dirs=framework_skills_dirs,
         )
         return self.result

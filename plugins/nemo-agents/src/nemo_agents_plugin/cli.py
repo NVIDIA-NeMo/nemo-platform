@@ -39,7 +39,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -62,20 +64,24 @@ from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
 from nemo_agents_plugin.entities import (
+    AGENT_SPEC_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
-    MAX_AGENT_SPEC_STAGED_BYTES,
-    MAX_AGENT_SPEC_STAGED_FILES,
+    ETHOS_FILENAME,
+    ETHOS_LOCAL_ROOT,
+    MAX_ETHOS_STAGED_BYTES,
+    MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
-    agent_spec_fileset_name,
+    ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
-from nemo_platform.cli.core.formatters import Column, format_output
+from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
 from nemo_platform_plugin.discovery import discover_agent_cli
+from nemo_platform_plugin.job import NemoJob
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +100,27 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("workspace"),
     Column("status"),
     Column("endpoint"),
+    Column("created_at"),
+]
+_ENVIRONMENT_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("environment_spec"),
+    Column("compute_spec"),
+    Column("description"),
+    Column("created_at"),
+]
+_ENVIRONMENT_SPEC_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("provider"),
+    Column("description"),
+    Column("created_at"),
+]
+_COMPUTE_SPEC_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("description"),
     Column("created_at"),
 ]
 
@@ -120,6 +147,7 @@ class AgentsCLI(NemoCLI):
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
+        _register_environment_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
         for name, cli_cls in discover_agent_cli().items():
@@ -130,6 +158,21 @@ class AgentsCLI(NemoCLI):
                 continue
             app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
+
+    def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
+        """Amend the auto-generated job groups with commands the three verbs cannot express.
+
+        ``optimize`` gains ``prepare-fileset``: ``submit`` requires an already-staged bundle, so
+        the staging step needs a home, and it belongs next to the verb that consumes it.
+        """
+        if job_cls.name != "optimize":
+            return
+        try:
+            from nemo_agents_plugin.jobs.optimize_cli import register_prepare_fileset_command
+        except ImportError:
+            logger.warning("nemo-optimization unavailable; skipping optimize prepare-fileset", exc_info=True)
+            return
+        register_prepare_fileset_command(group)
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +511,7 @@ def _register_package_command(app: typer.Typer) -> None:
             return
 
         from nemo_agents_plugin.container.builder import build_fabric_agent_image, build_nat_agent_image
+        from nemo_agents_plugin.container.errors import AgentPackagingError
 
         try:
             if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
@@ -488,6 +532,7 @@ def _register_package_command(app: typer.Typer) -> None:
                     skip_validation=skip_validation,
                     generate_ignore=generate_ignore,
                     platforms=platform,
+                    on_progress=typer.echo,
                 )
             else:
                 result_tag = build_nat_agent_image(
@@ -508,8 +553,9 @@ def _register_package_command(app: typer.Typer) -> None:
                     skip_validation=skip_validation,
                     generate_ignore=generate_ignore,
                     platforms=platform,
+                    on_progress=typer.echo,
                 )
-        except ValueError as exc:
+        except (ValueError, AgentPackagingError) as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1)
 
@@ -521,7 +567,11 @@ def _register_package_command(app: typer.Typer) -> None:
         from nemo_agents_plugin.container.publisher import docker_push
 
         assert registry is not None  # guaranteed by _validate_package_flags
-        remote = docker_push(local_tag=result_tag, registry=registry, push_tag=push_tag)
+        try:
+            remote = docker_push(local_tag=result_tag, registry=registry, push_tag=push_tag, on_progress=typer.echo)
+        except AgentPackagingError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
         typer.echo(f"Published: {remote}")
 
 
@@ -764,6 +814,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            for line in _spec_package_warning(name, agent_config):
+                typer.echo(line, err=True)
         elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
             # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
             # user context at deploy time.
@@ -788,7 +840,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             try:
-                _upload_agent_spec_fileset(
+                _upload_ethos_fileset(
                     agent_name=name,
                     workspace=workspace,
                     agent_root=agent_config.parent,
@@ -796,7 +848,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
                 )
             except Exception as exc:
                 typer.echo(
-                    f"Error: failed to upload agent spec fileset for {name!r}: {exc}",
+                    f"Error: failed to upload Ethos fileset for {name!r}: {exc}",
                     err=True,
                 )
                 try:
@@ -892,6 +944,17 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "-i",
             help="Container image for docker/k8s modes (falls back to deployments.default_image).",
         ),
+        environment: Optional[str] = typer.Option(
+            None,
+            "--environment",
+            "-e",
+            help=(
+                "AgentEnvironment to deploy under, as a 'workspace/name' ref "
+                "(e.g. 'default/repo-research-ben'). Its EnvironmentSpec is merged "
+                "into the agent config and its ComputeSpec/secret refs are "
+                "snapshotted onto the deployment at create time."
+            ),
+        ),
         wait: bool = typer.Option(
             True,
             "--wait/--no-wait",
@@ -937,11 +1000,16 @@ def _register_platform_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
+        if environment is not None and not environment.strip():
+            typer.echo("--environment must not be empty.", err=True)
+            raise typer.Exit(code=2)
         payload: dict = {"agent": agent, "deployment_mode": mode}
         if name:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if environment is not None:
+            payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
@@ -1190,6 +1258,315 @@ def _register_platform_commands(app: typer.Typer) -> None:
         assert name  # guaranteed by the checks above
         success = _wait_for_deployment(base_url, workspace, name, timeout=timeout, interval=interval)
         raise typer.Exit(code=0 if success else 1)
+
+
+# ---------------------------------------------------------------------------
+# Environment / EnvironmentSpec / ComputeSpec commands
+# ---------------------------------------------------------------------------
+
+
+def _spec_body_from_inputs(
+    *,
+    name: str,
+    spec_file: Optional[Path],
+    spec_json: Optional[str],
+) -> dict:
+    """Build a create-request body from a ``--spec-file`` or ``--spec`` input.
+
+    Exactly one of *spec_file* / *spec_json* may be given. The resulting mapping
+    is merged under ``{"name": name, ...}`` (the caller's ``name`` wins). Returns
+    just ``{"name": name}`` when neither is provided (an empty inline spec).
+    """
+    if spec_file is not None and spec_json is not None:
+        typer.echo("Error: pass only one of --spec-file or --spec.", err=True)
+        raise typer.Exit(code=2)
+
+    body: dict = {}
+    if spec_file is not None:
+        try:
+            loaded = _load_yaml(spec_file)  # YAML is a superset of JSON
+        except (OSError, yaml.YAMLError) as exc:
+            typer.echo(f"Error: could not read spec file {spec_file}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not isinstance(loaded, dict):
+            typer.echo(f"Error: spec file {spec_file} must contain a mapping.", err=True)
+            raise typer.Exit(code=2)
+        body = loaded
+    elif spec_json is not None:
+        try:
+            loaded = json.loads(spec_json)
+        except json.JSONDecodeError as exc:
+            typer.echo(f"Error: --spec is not valid JSON: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not isinstance(loaded, dict):
+            typer.echo("Error: --spec must be a JSON object.", err=True)
+            raise typer.Exit(code=2)
+        body = loaded
+
+    return {**body, "name": name}
+
+
+def _register_environment_commands(app: typer.Typer) -> None:
+    """Register ``environment-specs``, ``environments``, and ``compute-specs`` sub-groups.
+
+    These are the request/fulfill entities an AgentDeployment or ``agents.execute``
+    job references via its ``environment`` field: an EnvironmentSpec fulfills the
+    dependencies an Agent declares (endpoints, plaintext env, secret refs); a
+    ComputeSpec supplies k8s-style resources; an AgentEnvironment composes the two.
+    Bodies are the ``*Inline`` shapes (see ``entities.py``); create takes a
+    ``--spec-file`` (JSON/YAML) or an inline ``--spec`` JSON string.
+    """
+    _PANEL = "Agent Resources (requires running cluster)"
+
+    # -- environment-specs ---------------------------------------------------
+    espec_app = typer.Typer(name="environment-specs", help="Manage agent environment specs.", no_args_is_help=True)
+    app.add_typer(espec_app, rich_help_panel=_PANEL)
+
+    @espec_app.command(name="create")
+    def environment_spec_create(
+        name: str = typer.Argument(..., help="Unique environment-spec name."),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML EnvironmentSpec body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(None, "--spec", help="Inline EnvironmentSpec body as a JSON object string."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create an environment spec from a file or inline JSON."""
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        resp = _api_request(
+            "POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs", json_body=body
+        )
+        typer.echo(json.dumps(resp, indent=2))
+
+    @espec_app.command(name="list")
+    def environment_spec_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List environment specs."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_ENVIRONMENT_SPEC_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @espec_app.command(name="get")
+    def environment_spec_get(
+        name: str = typer.Argument(..., help="Environment-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get an environment spec by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @espec_app.command(name="delete")
+    def environment_spec_delete(
+        name: str = typer.Argument(..., help="Environment-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete an environment spec by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete environment-spec '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs/{name}")
+        typer.echo(f"Environment-spec '{name}' deleted.")
+
+    # -- environments --------------------------------------------------------
+    env_app = typer.Typer(name="environments", help="Manage agent environments.", no_args_is_help=True)
+    app.add_typer(env_app, rich_help_panel=_PANEL)
+
+    @env_app.command(name="create")
+    def environment_create(
+        name: str = typer.Argument(..., help="Unique environment name."),
+        environment_spec: Optional[str] = typer.Option(
+            None, "--environment-spec", help="'workspace/name' ref to a stored AgentEnvironmentSpec."
+        ),
+        compute_spec: Optional[str] = typer.Option(
+            None, "--compute-spec", help="'workspace/name' ref to a stored AgentComputeSpec."
+        ),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML AgentEnvironment body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(
+            None, "--spec", help="Inline AgentEnvironment body as a JSON object string."
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create an AgentEnvironment.
+
+        Use --environment-spec / --compute-spec for the common ref case, or
+        --spec-file / --spec for a fully inline body. The ref flags override the
+        matching keys from a file/inline body.
+        """
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        if environment_spec is not None:
+            body["environment_spec"] = environment_spec
+        if compute_spec is not None:
+            body["compute_spec"] = compute_spec
+        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments", json_body=body)
+        typer.echo(json.dumps(resp, indent=2))
+
+    @env_app.command(name="list")
+    def environment_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List environments."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_ENVIRONMENT_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @env_app.command(name="get")
+    def environment_get(
+        name: str = typer.Argument(..., help="Environment name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get an environment by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @env_app.command(name="delete")
+    def environment_delete(
+        name: str = typer.Argument(..., help="Environment name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete an environment by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete environment '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments/{name}")
+        typer.echo(f"Environment '{name}' deleted.")
+
+    # -- compute-specs -------------------------------------------------------
+    cspec_app = typer.Typer(name="compute-specs", help="Manage agent compute specs.", no_args_is_help=True)
+    app.add_typer(cspec_app, rich_help_panel=_PANEL)
+
+    @cspec_app.command(name="create")
+    def compute_spec_create(
+        name: str = typer.Argument(..., help="Unique compute-spec name."),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML ComputeSpec body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(None, "--spec", help="Inline ComputeSpec body as a JSON object string."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create a compute spec from a file or inline JSON."""
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs", json_body=body)
+        typer.echo(json.dumps(resp, indent=2))
+
+    @cspec_app.command(name="list")
+    def compute_spec_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List compute specs."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_COMPUTE_SPEC_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @cspec_app.command(name="get")
+    def compute_spec_get(
+        name: str = typer.Argument(..., help="Compute-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get a compute spec by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @cspec_app.command(name="delete")
+    def compute_spec_delete(
+        name: str = typer.Argument(..., help="Compute-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete a compute spec by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete compute-spec '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs/{name}")
+        typer.echo(f"Compute-spec '{name}' deleted.")
 
 
 # ---------------------------------------------------------------------------
@@ -1605,49 +1982,94 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
             continue
         file_count += 1
         total_bytes += path.stat().st_size
-        if file_count > MAX_AGENT_SPEC_STAGED_FILES:
+        if file_count > MAX_ETHOS_STAGED_FILES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} holds more than "
-                f"{MAX_AGENT_SPEC_STAGED_FILES} files; point --agent-config at a "
+                f"{MAX_ETHOS_STAGED_FILES} files; point --agent-config at a "
                 "directory containing only the agent's own artifacts"
             )
-        if total_bytes > MAX_AGENT_SPEC_STAGED_BYTES:
+        if total_bytes > MAX_ETHOS_STAGED_BYTES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} exceeds the "
-                f"{MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery; "
+                f"{MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery; "
                 "point --agent-config at a directory containing only the agent's own artifacts"
             )
 
 
-def _upload_agent_spec_fileset(
+def _spec_package_warning(agent: str, agent_config: Path) -> tuple[str, ...]:
+    """Return skill guidance when *agent_config* lives in a spec package."""
+    if not agent or agent in {".", ".."} or "\0" in agent:
+        return ()
+    if "/" in agent or "\\" in agent or Path(agent).is_absolute() or Path(agent).name != agent:
+        return ()
+    package = Path(ETHOS_LOCAL_ROOT) / f"{agent}-spec"
+    if agent_config.parent.resolve() != package.resolve():
+        return ()
+    if not (package / AGENT_SPEC_FILENAME).is_file():
+        return ()
+    return (
+        f"Warning: This package uses {AGENT_SPEC_FILENAME}.",
+        f"Run the nemo-ethos skill to write {ETHOS_FILENAME}, then delete the {agent}-spec package.",
+    )
+
+
+def _upload_ethos_fileset(
     *,
     agent_name: str,
     workspace: str,
     agent_root: Path,
     base_url: str,
 ) -> None:
-    """Upload *agent_root* into the conventional ``{agent}-spec`` fileset.
+    """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
     Agent YAML must live in a dedicated agent root so sibling artifacts
     (skills, prompts) upload without shipping an unrelated checkout tree.
+    ``AGENT-SPEC.md`` is omitted so a spec package does not land a leftover
+    contract in the Ethos fileset.
     """
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
     _check_agent_root_bounds(agent_root)
+    fileset = ethos_fileset_name(agent_name)
+    sdk = _platform_sdk(base_url)
+    spec = agent_root / AGENT_SPEC_FILENAME
+    if spec.is_file():
+        from nemo_platform import NotFoundError as PlatformNotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
+        with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
+            staged = Path(directory) / agent_root.name
+            shutil.copytree(agent_root, staged)
+            (staged / AGENT_SPEC_FILENAME).unlink()
+            upload_to_fileset(
+                staged,
+                fileset=fileset,
+                workspace=workspace,
+                sdk=sdk,
+            )
+        try:
+            sdk.files.delete(
+                remote_path=AGENT_SPEC_FILENAME,
+                fileset=fileset,
+                workspace=workspace,
+            )
+        except (PlatformNotFoundError, PluginNotFoundError):
+            pass
+        return
     upload_to_fileset(
         agent_root,
-        fileset=agent_spec_fileset_name(agent_name),
+        fileset=fileset,
         workspace=workspace,
-        sdk=_platform_sdk(base_url),
+        sdk=sdk,
     )
 
 
 def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:
-    """Delete the agent entity, leaving the ``{agent}-spec`` fileset in place.
+    """Delete the agent entity, leaving the ``{agent}-ethos`` fileset in place.
 
     The fileset outlives the agent on purpose: it is the canonical home of
-    ``AGENT-SPEC.md`` (see ``agent_spec_file_ref``), which ``nemo-spec`` writes
+    ``ETHOS.md`` (see ``ethos_file_ref``), which ``nemo-ethos`` writes
     before the agent exists and ``nemo-build-agent`` reads on every rebuild.
     Deleting the fileset here would destroy that durable contract, so the
     executable artifacts it also carries are left behind instead.

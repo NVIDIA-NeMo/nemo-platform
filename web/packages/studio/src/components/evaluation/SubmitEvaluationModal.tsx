@@ -8,8 +8,7 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
-import { useAgentsListAgents, useAgentsListDeployments } from '@nemo/sdk/generated/agents/api';
-import type { AgentsListDeploymentsParams } from '@nemo/sdk/generated/agents/schema/AgentsListDeploymentsParams';
+import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
 import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type {
   AgentEvaluateJobRequest,
@@ -26,7 +25,7 @@ import {
   useListEvaluations,
   useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
-import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import { Anchor, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
@@ -52,6 +51,7 @@ import {
   MODE_EXPERIMENT,
   parseEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
+import { LINK_EVAL_DOCS } from '@studio/constants/links';
 import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
@@ -62,7 +62,7 @@ import { useNavigate } from 'react-router';
 import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
-  { value: MODE_DEFAULT, children: 'Use Example' },
+  { value: MODE_DEFAULT, children: 'Create experiment' },
   { value: MODE_EXPERIMENT, children: 'Use existing evaluation' },
 ];
 
@@ -75,16 +75,12 @@ const README_FILENAME = 'README.md';
 const NO_EVALUATIONS_MESSAGE =
   'No evaluations with a reusable eval config yet. Create one to run and re-use it.';
 
-const NO_DEPLOYMENT_MESSAGE = 'This agent has no active deployment.';
-const DEPLOYMENT_CHECK_FAILED_MESSAGE =
-  'Could not verify this agent has a running deployment. Try again.';
-
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
   judgeModel: z.string(),
   mode: z.enum([MODE_DEFAULT, MODE_EXPERIMENT]),
   exampleKey: z.string(),
-  /** Name of the experiment to create in "Use Example" mode. */
+  /** Name of the experiment to create in "Create experiment" mode. */
   newName: z.string(),
   /** Fileset created alongside it, holding eval-config.json and any data artifacts. */
   filesetName: z.string(),
@@ -129,14 +125,6 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
       });
     }
   });
-
-/** Narrows the deployments list to one agent's running deployments, so the modal never
- *  pages through a workspace-wide list to answer a per-agent question. The endpoint
- *  accepts these as deepObject query params (``filter[agent]``, ``filter[status]``) and
- *  the fetcher serializes nested objects that way, but the generated params type omits
- *  ``filter`` — the agents plugin never declares it via ``openapi_extra`` — hence the cast. */
-const runningDeploymentsQuery = (agent: string): AgentsListDeploymentsParams =>
-  ({ filter: { agent: bareName(agent), status: 'running' } }) as AgentsListDeploymentsParams;
 
 const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => {
   const newName = generateEvalConfigName();
@@ -200,7 +188,7 @@ const discardSeeded = async (
   );
 };
 
-/** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
+/** Resolves the persisted yardstick spec for this submission. In "Create experiment" mode
  *  it builds the spec from the sample template (fanning the metric onto every task with
  *  the picked judge baked in) and seeds it into a new fileset; in "Use existing evaluation"
  *  mode it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
@@ -331,27 +319,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
 
-  const {
-    data: runningDeployments,
-    isLoading: isDeploymentsLoading,
-    isError: isDeploymentsError,
-  } = useAgentsListDeployments(workspace, runningDeploymentsQuery(selectedAgent), {
-    query: { enabled: open && Boolean(selectedAgent) },
-  });
-
-  const hasRunningDeployment = (runningDeployments?.data ?? []).length > 0;
-
-  const deploymentVerified =
-    Boolean(selectedAgent) && !isDeploymentsLoading && !isDeploymentsError && hasRunningDeployment;
-
-  const deploymentError = ((): string | undefined => {
-    if (!selectedAgent || isDeploymentsLoading) return undefined;
-    if (isDeploymentsError) return DEPLOYMENT_CHECK_FAILED_MESSAGE;
-    if (!hasRunningDeployment) return NO_DEPLOYMENT_MESSAGE;
-    return undefined;
-  })();
-
-  const agentFieldError = errors.agent?.message ?? deploymentError;
+  const agentFieldError = errors.agent?.message;
   const exampleKey = useWatch({ control, name: 'exampleKey' });
   const evaluationName = useWatch({ control, name: 'evaluationName' });
 
@@ -472,7 +440,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       const seeded: SeededEntities = isNew ? { filesetName } : {};
 
       try {
-        // "Use Example" creates a fresh ExperimentGroup to hold this run; "Use existing
+        // "Create experiment" creates a fresh ExperimentGroup to hold this run; "Use existing
         // evaluation" reuses the picked evaluation's group(s) and records the lineage.
         let experimentIds: string[];
         let nameStem: string;
@@ -573,7 +541,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       submitButtonText="Submit"
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
-      submitDisabled={!deploymentVerified || !canRunSelectedEvaluation}
+      submitDisabled={!canRunSelectedEvaluation}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
@@ -581,14 +549,20 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       <FormProvider {...methods}>
         <Stack gap="density-xl">
           {agentProp ? (
-            <Stack gap="density-xs">
-              <Text kind="body/semibold/lg">{agentProp}</Text>
-              {deploymentError && (
-                <Text kind="body/regular/sm" className="text-[var(--text-color-feedback-danger)]">
-                  {deploymentError}
-                </Text>
-              )}
-            </Stack>
+            <Text kind="body/regular/md">
+              Run evaluation via NeMo Evaluator&apos;s built-in runner. Evaluator also supports
+              Harbor and Gym as runners.{' '}
+              <Anchor
+                kind="inline"
+                textKind="body/regular/md"
+                href={LINK_EVAL_DOCS}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Learn more
+              </Anchor>
+              .
+            </Text>
           ) : (
             <ControlledSelect
               useControllerProps={{ control, name: 'agent' }}

@@ -14,9 +14,9 @@ from urllib.parse import urlparse
 
 import anyio
 from anonymizer.config.anonymizer_config import AnonymizerInput
+from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager, FilesetFileManager, TmpDirPath
 from pydantic import BaseModel, Field, ValidationError
 

@@ -16,6 +16,7 @@ from typing import Any
 
 from nmp.intake.config import DEFAULT_ATIF_MAX_SUBAGENT_DEPTH, MAX_ATIF_MAX_SUBAGENT_DEPTH
 from nmp.intake.spans.domain import (
+    NEMO_STEP_ID_ATTRIBUTE,
     EvaluatorResult,
     EvaluatorResultDataType,
     IntakeSpan,
@@ -267,6 +268,9 @@ def _trajectory_to_span(
         if final_metrics is not None and not _trajectory_has_step_cost_metrics(trajectory)
         else None
     )
+    trajectory_error = _dict_or_none((trajectory.extra or {}).get("error"))
+    error_type = _non_empty_string(trajectory_error.get("type")) if trajectory_error is not None else None
+    error_message = _non_empty_string(trajectory_error.get("message")) if trajectory_error is not None else None
     external_span_id = _trajectory_span_id(
         workspace=workspace,
         trace_session_id=trace_session_id,
@@ -282,11 +286,13 @@ def _trajectory_to_span(
         cached_tokens=cached_tokens,
         total_tokens=_sum_ints(input_tokens, output_tokens),
         cost_total_usd=cost_total_usd,
+        error_type=error_type,
+        error_message=error_message,
         raw_attributes=raw_attributes,
     )
     trajectory_started_at = _trajectory_started_at(trajectory, ingested_at)
-    # ATIF does not report a trajectory-level outcome status. Tool failures are
-    # represented by their TOOL spans and must not be rolled up to this parent.
+    # ATIF has no standard trajectory-level outcome field. Intake recognizes the
+    # root ``extra.error`` convention; tool failures remain on their TOOL spans.
     return IntakeSpan(
         workspace=workspace,
         session_id=trace_session_id,
@@ -296,7 +302,7 @@ def _trajectory_to_span(
         external_parent_span_id=external_parent_span_id or "",
         kind=SpanKind.AGENT,
         name=trajectory.agent.name,
-        status=SpanStatus.SUCCESS,
+        status=SpanStatus.ERROR if trajectory_error is not None else SpanStatus.SUCCESS,
         start_time=trajectory_started_at,
         end_time=_clamped_end(trajectory_started_at, _trajectory_ended_at(trajectory)),
         attributes_string=attribute_bags.string,
@@ -347,6 +353,7 @@ def _step_to_span(
         cost_total_usd=_decimal(metrics.cost_usd) if metrics is not None else None,
         raw_attributes=raw_step,
     )
+    attribute_bags.number[NEMO_STEP_ID_ATTRIBUTE] = float(step.step_id)
     step_started_at = _step_started_at(step, index, ingested_at)
     return IntakeSpan(
         workspace=workspace,
@@ -603,6 +610,7 @@ def _span_attributes(
     agent_version: str | None = None,
     evaluation_context: EvaluationContext | None = None,
     tool_name: str | None = None,
+    error_type: str | None = None,
     error_message: str | None = None,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
@@ -619,6 +627,7 @@ def _span_attributes(
         evaluation_name=evaluation_context.evaluation_name if evaluation_context is not None else None,
         test_case_name=evaluation_context.test_case_name if evaluation_context is not None else None,
         tool_name=tool_name,
+        error_type=error_type,
         error_message=error_message,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
@@ -1049,6 +1058,14 @@ def _step_extra_dict(step: AtifStep, key: str) -> dict[str, Any]:
 def _dict_or_none(value: Any) -> dict[str, Any] | None:
     """Narrow a value to a dictionary or None."""
     return value if isinstance(value, dict) else None
+
+
+def _non_empty_string(value: Any) -> str | None:
+    """Return a stripped non-empty string without coercing arbitrary metadata."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _evaluator_score(verifier_result: dict[str, Any]) -> bool | int | float | str | None:

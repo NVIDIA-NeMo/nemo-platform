@@ -359,6 +359,8 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             )
         if "PATH" not in env:
             env["PATH"] = self._executor_config.serve_path
+        if "VIRTUAL_ENV" not in env and self._executor_config.serve_virtual_env:
+            env["VIRTUAL_ENV"] = self._executor_config.serve_virtual_env
         all_labels = {
             **labels,
             **config.labels,

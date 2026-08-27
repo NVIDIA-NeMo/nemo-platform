@@ -10,13 +10,21 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parent.parent.parent
-WORKSPACE_SLICES = ("automodel", "rl", "unsloth")
+WORKSPACE_SLICES = ("automodel", "customizer", "rl", "unsloth")
+SDK_EDITABLE_DOCKERFILES = (
+    Path("docker/Dockerfile.nmp-customizer-tasks"),
+    Path("docker/Dockerfile.nmp-unsloth-training"),
+    Path("docker/automodel/Dockerfile.nmp-automodel-training"),
+    Path("docker/rl/Dockerfile.nmp-rl-training"),
+)
+SDK_ALIAS_PACKAGES = ("filesets", "models")
 WANDB_PACKAGE_SPEC_RE = re.compile(r"(?<![\w./-])wandb(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
 DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/Dockerfile.nmp-customizer-tasks"),
     Path("docker/Dockerfile.safe-synthesizer-tasks"),
     Path("docker/automodel/Dockerfile.nmp-automodel-base"),
     Path("docker/automodel/no_override_requirements.txt"),
+    Path("docker/rl/Dockerfile.nmp-rl-base"),
     Path("docker/unsloth/no_override_requirements.txt"),
 )
 
@@ -58,14 +66,15 @@ def _workspace_sources(pyproject: dict) -> set[str]:
     "path",
     [pytest.param(ROOT / path, id=str(path)) for path in DOCKER_IMAGE_WANDB_CONFIG_PATHS],
 )
-def test_distributed_image_wandb_specs_match_notice(path: Path) -> None:
-    """Docker image wandb pins must match the wandb-core NOTICE metadata."""
-    expected = f"wandb=={_notice_wandb_version()}"
+def test_distributed_image_wandb_specs_use_notice_floor(path: Path) -> None:
+    """Docker image wandb constraints must use the reviewed wandb-core floor."""
+    expected = f"wandb>={_notice_wandb_version()}"
     assert path.exists()
 
     specs = _wandb_package_specs(path)
 
-    assert specs == [expected]
+    assert specs
+    assert all(spec == expected for spec in specs)
 
 
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
@@ -85,6 +94,34 @@ def test_docker_workspace_slice_contains_all_workspace_sources(slice_name):
             f"{slice_name} workspace is missing {sorted(missing_sources)} referenced by "
             f"{project_path.relative_to(ROOT)}"
         )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [pytest.param(ROOT / path, id=str(path)) for path in SDK_EDITABLE_DOCKERFILES],
+)
+def test_sdk_editable_image_installs_sdk_alias_packages(path: Path) -> None:
+    """Editable SDK installs need source packages for SDK aliases available separately."""
+    text = path.read_text(encoding="utf-8")
+
+    assert "-e /app/sdk/python/nemo-platform" in text
+    for package in SDK_ALIAS_PACKAGES:
+        assert f"-e /app/packages/{package}" in text
+
+
+@pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
+@pytest.mark.parametrize("package", SDK_ALIAS_PACKAGES)
+def test_sdk_editable_workspace_slice_includes_sdk_alias_package(slice_name: str, package: str) -> None:
+    """The SDK imports alias packages lazily when those resources are accessed."""
+    workspace_path = ROOT / "docker" / slice_name / "pyproject.workspace.toml"
+    workspace = _load_pyproject(workspace_path)
+    member_paths = set(workspace["tool"]["uv"]["workspace"]["members"])
+    source_names = _workspace_sources(workspace)
+    dockerfile_text = (ROOT / "docker" / slice_name / "Dockerfile.platform-workspace").read_text(encoding="utf-8")
+
+    assert f"packages/{package}" in member_paths
+    assert package in source_names
+    assert f"COPY packages/{package} packages/{package}" in dockerfile_text
 
 
 def test_deployments_plugin_is_optional_for_models_service():

@@ -12,7 +12,7 @@ import type {
 /** Entity type discriminator used in the entity-store for guardrail checks. */
 export const GUARDRAIL_CHECKS_ENTITY_TYPE = 'guardrail_checks';
 
-/** Verdict of a check or an individual rail. UI: success -> "Allowed", blocked -> "Guarded". */
+/** Verdict of a check or an individual rail. UI: success -> "Allowed", blocked -> "Blocked". */
 export type Verdict = StatusEnum;
 
 /** A single message in a check's conversation (user input, optional assistant output, etc.). */

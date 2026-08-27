@@ -2964,6 +2964,9 @@
               "credits": [
                 {
                   "name": "KC1zs4 (https://github.com/KC1zs4)"
+                },
+                {
+                  "name": "Longwei Wang (https://github.com/gn00295120)"
                 }
               ],
               "database_specific": {
@@ -2972,7 +2975,7 @@
               },
               "details": "The ToASCII and ToUnicode functions incorrectly accept Punycode-encoded labels that decode to an ASCII-only label. For example, ToUnicode(\"xn--example-.com\") incorrectly returns the name \"example.com\" rather than an error.\n\nThis behavior can lead to privilege escalation in programs using the idna package. For example, a program which performs privilege checks on the ASCII hostname may reject \"example.com\" but permit \"xn--example-.com\". If that program subsequently converts the ASCII hostname to Unicode, it will inadvertently permits access to the Unicode name \"example.com\".",
               "id": "GO-2026-5026",
-              "modified": "2026-08-21T10:27:04.809947607Z",
+              "modified": "2026-08-21T21:00:13.783124772Z",
               "published": "2026-05-22T02:46:43Z",
               "references": [
                 {

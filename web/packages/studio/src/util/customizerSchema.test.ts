@@ -56,6 +56,57 @@ describe('detectCustomizerSchema', () => {
     });
   });
 
+  describe('GRPO', () => {
+    // Mirrors VERIFIERS_ROW / RESOURCES_SERVER_ROW in
+    // services/rl/tests/test_dataset_validation.py. The backend's GRPO_SCHEMA requires
+    // only responses_create_params and agent_ref, so requiring vf_env_id here would
+    // reject every dataset targeting a Gym agent other than verifiers_agent.
+    const verifiersRow = {
+      task_idx: 0,
+      vf_env_id: 'gsm8k',
+      responses_create_params: { input: [{ role: 'user', content: '2+2?' }] },
+      agent_ref: { type: 'responses_api_agents', name: 'verifiers_agent' },
+    };
+    const resourcesServerRow = {
+      task_idx: 0,
+      responses_create_params: { input: [{ role: 'user', content: '2+2?' }] },
+      question: '2+2?',
+      expected_answer: '4',
+      agent_ref: { type: 'responses_api_agents', name: 'math_with_judge_simple_agent' },
+    };
+
+    it.each([
+      ['verifiers', verifiersRow],
+      ['resources server', resourcesServerRow],
+    ])('detects a %s row as grpo-gym', (_name, row) => {
+      expect(detectCustomizerSchema(row, 'grpo')).toEqual({
+        variant: 'grpo-gym',
+        label: CUSTOMIZER_SCHEMA_LABELS['grpo-gym'],
+      });
+    });
+
+    it.each([
+      ['verifiers', verifiersRow],
+      ['resources server', resourcesServerRow],
+    ])('accepts a complete %s row', (_name, row) => {
+      expect(validateRowCompleteness(row, 'grpo-gym')).toBeNull();
+    });
+
+    it.each(['responses_create_params', 'agent_ref'])(
+      'rejects a row missing %s, which NeMo-RL reads unconditionally',
+      (missing) => {
+        const row = { ...verifiersRow, [missing]: undefined };
+        expect(validateRowCompleteness(row, 'grpo-gym')).toContain(missing);
+      }
+    );
+
+    it('rejects a wrong-typed task_idx even though it is optional', () => {
+      expect(
+        validateRowCompleteness({ ...resourcesServerRow, task_idx: 'first' }, 'grpo-gym')
+      ).toBe('task_idx must be a number when present');
+    });
+  });
+
   describe('DPO', () => {
     it('detects native PreferenceDataset (context + completions)', () => {
       const row = {
@@ -326,6 +377,7 @@ describe('CUSTOMIZER_SCHEMA_LABELS', () => {
       'dpo-helpsteer3': 'HelpSteer3',
       'dpo-tulu3': 'Tulu3',
       'dpo-binary-preference': 'Binary Preference',
+      'grpo-gym': 'GRPO Gym (responses_create_params + agent_ref)',
     });
   });
 });

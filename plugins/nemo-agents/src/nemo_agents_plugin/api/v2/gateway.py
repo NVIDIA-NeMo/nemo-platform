@@ -45,11 +45,13 @@ from nemo_agents_plugin.api.v2.openai_errors import (
     is_openai_compatible_uri,
     openai_error_response,
 )
+from nemo_agents_plugin.api.v2.session_access import get_owned_session_by_id
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.deployment_routing import get_deployment_endpoint, is_deployment_routable
 from nemo_agents_plugin.entities import Agent, AgentDeployment, AgentSession, SessionStatus
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.dependencies import get_effective_principal_id
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -117,6 +119,7 @@ async def _serve_agent_proxy(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
+    effective_principal_id: str,
 ) -> Response:
     """Resolve the target deployment for the named agent and forward the request to it.
 
@@ -125,7 +128,14 @@ async def _serve_agent_proxy(
     which differ only in their authorization scope (``agents:read`` vs ``agents:write``).
     """
     try:
-        return await _resolve_and_proxy_agent(workspace, name, trailing_uri, request, entity_client)
+        return await _resolve_and_proxy_agent(
+            workspace,
+            name,
+            trailing_uri,
+            request,
+            entity_client,
+            effective_principal_id,
+        )
     except HTTPException as exc:
         if not is_openai_compatible_uri(trailing_uri):
             raise
@@ -138,9 +148,10 @@ async def _resolve_and_proxy_agent(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
+    effective_principal_id: str,
 ) -> StreamingResponse:
     """Pick the deployment for *name* — session-bound if one was supplied — and forward."""
-    session = await _resolve_request_session(request, workspace, entity_client)
+    session = await _resolve_request_session(request, workspace, entity_client, effective_principal_id)
     if session is None:
         deployment = await _resolve_agent_deployment(name, workspace, entity_client)
     else:
@@ -177,9 +188,17 @@ async def proxy_by_agent_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> Response:
     """Read-scoped (GET/HEAD/OPTIONS) proxy to the active deployment for *agent name*."""
-    return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
+    return await _serve_agent_proxy(
+        workspace,
+        name,
+        trailing_uri,
+        request,
+        entity_client,
+        effective_principal_id,
+    )
 
 
 @router.api_route(
@@ -199,9 +218,17 @@ async def proxy_by_agent_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> Response:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy to the active deployment for *agent name*."""
-    return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
+    return await _serve_agent_proxy(
+        workspace,
+        name,
+        trailing_uri,
+        request,
+        entity_client,
+        effective_principal_id,
+    )
 
 
 async def _serve_deployment_proxy(
@@ -210,6 +237,7 @@ async def _serve_deployment_proxy(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
+    effective_principal_id: str,
 ) -> Response:
     """Proxy a request directly to the named deployment.
 
@@ -217,7 +245,14 @@ async def _serve_deployment_proxy(
     Shared by the read/write route handlers, which differ only in authorization scope.
     """
     try:
-        return await _resolve_and_proxy_deployment(workspace, name, trailing_uri, request, entity_client)
+        return await _resolve_and_proxy_deployment(
+            workspace,
+            name,
+            trailing_uri,
+            request,
+            entity_client,
+            effective_principal_id,
+        )
     except HTTPException as exc:
         if not is_openai_compatible_uri(trailing_uri):
             raise
@@ -230,6 +265,7 @@ async def _resolve_and_proxy_deployment(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
+    effective_principal_id: str,
 ) -> StreamingResponse:
     """Look the deployment up, check it against any supplied session, and forward."""
     try:
@@ -241,7 +277,7 @@ async def _resolve_and_proxy_deployment(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    session = await _resolve_request_session(request, workspace, entity_client)
+    session = await _resolve_request_session(request, workspace, entity_client, effective_principal_id)
     if session is not None and session.deployment_id != dep.id:
         raise _session_deployment_mismatch(
             session,
@@ -309,9 +345,17 @@ async def proxy_by_deployment_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> Response:
     """Read-scoped (GET/HEAD/OPTIONS) proxy directly to the named deployment."""
-    return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
+    return await _serve_deployment_proxy(
+        workspace,
+        name,
+        trailing_uri,
+        request,
+        entity_client,
+        effective_principal_id,
+    )
 
 
 @router.api_route(
@@ -331,9 +375,17 @@ async def proxy_by_deployment_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> Response:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy directly to the named deployment."""
-    return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
+    return await _serve_deployment_proxy(
+        workspace,
+        name,
+        trailing_uri,
+        request,
+        entity_client,
+        effective_principal_id,
+    )
 
 
 async def _resolve_agent_deployment(
@@ -368,6 +420,7 @@ async def _resolve_request_session(
     request: Request,
     workspace: str,
     entity_client: NemoEntitiesClient,
+    effective_principal_id: str,
 ) -> AgentSession | None:
     """Resolve and validate the persisted session supplied on a gateway request."""
     session_id = request.headers.get(SESSION_ID_HEADER)
@@ -376,20 +429,12 @@ async def _resolve_request_session(
     if not session_id:
         raise HTTPException(status_code=400, detail=f"Header '{SESSION_ID_HEADER}' must not be empty.")
 
-    try:
-        session = await entity_client.find_one(
-            AgentSession,
-            workspace=workspace,
-            filter_obj={"id": session_id},
-        )
-    except NemoEntityNotFoundError as exc:
-        raise _session_not_found(workspace, session_id) from exc
-    except Exception as exc:
-        logger.exception("Failed to look up session ID '%s'", session_id)
-        raise HTTPException(status_code=500, detail="Failed to look up session.") from exc
-
-    if session.id != session_id or session.workspace != workspace:
-        raise _session_not_found(workspace, session_id)
+    session = await get_owned_session_by_id(
+        entity_client,
+        workspace=workspace,
+        session_id=session_id,
+        effective_principal_id=effective_principal_id,
+    )
     if session.status is not SessionStatus.ACTIVE:
         raise HTTPException(
             status_code=409,
@@ -431,13 +476,6 @@ async def _resolve_session_deployment(
             ),
         )
     return deployment
-
-
-def _session_not_found(workspace: str, session_id: str) -> HTTPException:
-    return HTTPException(
-        status_code=404,
-        detail=f"Session ID '{session_id}' not found in workspace '{workspace}'.",
-    )
 
 
 def _session_deployment_mismatch(session: AgentSession, *, detail: str) -> HTTPException:

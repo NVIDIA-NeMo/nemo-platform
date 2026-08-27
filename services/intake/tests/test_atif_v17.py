@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
-from nmp.intake.spans.domain import SpanKind, SpanStatus
+from nmp.intake.spans.domain import NEMO_STEP_ID_ATTRIBUTE, SpanKind, SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -538,6 +538,29 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     assert "nemo.test_case.name" not in child.attributes_string
 
 
+def test_atif_mapping_persists_step_order_when_timestamps_match() -> None:
+    timestamp = datetime(2026, 8, 21, 13, 32, 49, 843000, tzinfo=timezone.utc)
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [
+                {"step_id": 1, "timestamp": timestamp.isoformat(), "source": "system", "message": "rules"},
+                {"step_id": 2, "timestamp": timestamp.isoformat(), "source": "user", "message": "task"},
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(workspace="default", trajectory=trajectory, ingested_at=timestamp)
+    steps = [span for span in spans if NEMO_STEP_ID_ATTRIBUTE in span.attributes_number]
+
+    assert [(span.name, span.start_time, span.attributes_number[NEMO_STEP_ID_ATTRIBUTE]) for span in steps] == [
+        ("system-1", timestamp, 1),
+        ("user-2", timestamp, 2),
+    ]
+
+
 def test_atif_mapping_uses_root_final_metrics_when_steps_have_no_metrics() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
@@ -704,6 +727,65 @@ def test_atif_mapping_keeps_tool_error_on_tool_span() -> None:
     assert root.status == SpanStatus.SUCCESS
     assert llm.status == SpanStatus.SUCCESS
     assert tool.status == SpanStatus.ERROR
+
+
+def test_atif_mapping_promotes_root_extra_error() -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "extra": {
+                "error": {
+                    "type": "AgentTimeoutError",
+                    "message": "Agent execution timed out after 900.0 seconds",
+                }
+            },
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "solve the task"},
+                {"step_id": 2, "source": "agent", "message": "partial answer"},
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    root = spans[0]
+    root_response = Span.from_domain(root)
+    llm = next(span for span in spans if span.kind == SpanKind.LLM)
+    assert root.status == SpanStatus.ERROR
+    assert root_response.error_type == "AgentTimeoutError"
+    assert root_response.error_message == "Agent execution timed out after 900.0 seconds"
+    assert json.loads(root_response.raw_attributes or "{}")["extra"]["error"] == {
+        "type": "AgentTimeoutError",
+        "message": "Agent execution timed out after 900.0 seconds",
+    }
+    assert llm.status == SpanStatus.SUCCESS
+
+
+@pytest.mark.parametrize("error", ["timeout", [], 42])
+def test_atif_mapping_ignores_non_object_root_extra_error(error: Any) -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "extra": {"error": error},
+            "steps": [{"step_id": 1, "source": "agent", "message": "answer"}],
+        }
+    )
+
+    root = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )[0]
+
+    assert root.status == SpanStatus.SUCCESS
 
 
 def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -> None:

@@ -28,6 +28,7 @@ import {
 // Layering wrinkle: this reaches into the components layer. Deliberate — it keeps one
 // definition of guardrail identity shared with the config editor's detector catalog.
 import { getActivatedGuardrails } from '@studio/components/sidePanels/GuardrailCheckDetailSidePanel/railLabels';
+import { getMainModelName } from '@studio/routes/guardrails/GuardrailConfigTab/mainModel';
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -173,17 +174,25 @@ export async function deleteGuardrailCheck(
 
 /**
  * Resolve the model to run a check against from its parent config's model list.
- * NeMo Guardrails configs mark the primary generation model with `type: 'main'`;
- * we fall back to the first model that declares a `model` reference.
+ *
+ * Only the `main` entry is eligible. Every other entry is a task LLM that a specific rail
+ * addresses by `$model=` — sending `system/nemoguard-8b-content-safety` as the generation
+ * model would produce a run that looks fine and means nothing.
+ *
+ * Studio-specific by design: the service reads `request.model`, not the config
+ * (`nemo_guardrails_plugin/rails.py:236` — "model name: always request_body['model']"), and
+ * injects a placeholder when a `main` entry omits one. Storing the name on the config and
+ * reading it back here is how Studio remembers the user's choice; it is not how the
+ * service routes. Do not delete the config field on the grounds that the service ignores it.
  */
 export function resolveConfigModel(config: RailsConfig | undefined, configLabel: string): string {
-  const models = config?.models ?? [];
-  const main = models.find((m) => m.type === 'main' && m.model);
-  const chosen = main ?? models.find((m) => m.model);
-  if (!chosen?.model) {
-    throw new Error(`Guardrail config '${configLabel}' has no usable model to run checks against.`);
+  const model = getMainModelName(config?.models);
+  if (!model) {
+    throw new Error(
+      `Guardrail config '${configLabel}' has no main model. Set one on the Configuration tab.`
+    );
   }
-  return chosen.model;
+  return model;
 }
 
 /** What the run targeted, for stamping onto the record. */

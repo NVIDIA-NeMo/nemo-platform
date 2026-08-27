@@ -41,6 +41,24 @@ def _make_model_entity(fileset: str | None = "default/base-model") -> ModelEntit
     )
 
 
+@pytest.fixture
+def sandbox_capable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cluster that can run sandboxed Gym, which GRPO compilation requires.
+
+    `_build_grpo_training_step_config` refuses to compile without these, so any
+    test that reaches the GRPO branch for some *other* reason has to set them.
+    Collected here so that setup is stated once. The negative tests override the
+    single value they are about and keep the rest.
+
+    `raising=False` on RL `config` fields: those are read off the module-level
+    object, and a test run without the RL service settings loaded may not have
+    every attribute present. Platform fields always exist on `NemoPlatformConfig`.
+    """
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", True)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+
+
 def _make_job_output(
     training: DPOTraining | GRPOTraining | None = None,
     integrations: IntegrationsSpec | None = None,
@@ -127,6 +145,38 @@ def test_the_reporting_budget_reaches_the_training_step_config() -> None:
     sc = _build_training_step_config(_make_job_output(t), trust_remote_code=False)
 
     assert sc.schedule.progress_reporting.time_series_metrics == ["*_loss", "*_accuracy"]
+
+
+def test_the_reporting_budget_reaches_the_training_step_config_for_grpo(sandbox_capable: None) -> None:
+    """The same chain from GRPOTraining, which is a separate branch of the compiler.
+
+    Written because it was broken: ``_build_grpo_training_step_config`` built its
+    ``ScheduleConfig`` without ``progress_reporting`` while the DPO branch passed it,
+    so the field was accepted and validated on the public spec and then dropped. The
+    only symptom was a GRPO run reporting under the backend defaults no matter what
+    was asked for -- nothing raised, and the two knobs still reached the compiled
+    config because ``ProgressReportingConfig()`` supplies them.
+
+    So this asserts the *value*, not the presence of the key: presence is what
+    test_grpo_config's equivalent checks, and presence is exactly what stayed true
+    while the wiring was gone.
+    """
+    from nmp.customization_common.training.reporting import ProgressReportingConfig
+
+    t = GRPOTraining(
+        type="grpo",
+        progress_reporting=ProgressReportingConfig(
+            time_series_metrics=["train_reward"],
+            min_report_interval_seconds=30.0,
+        ),
+    )
+    # environment is required for GRPO -- validate_for_training rejects None -- so
+    # compiling without it would exercise a spec the service cannot produce, even
+    # though _build_training_step_config is reached directly here and would not care.
+    sc = _build_training_step_config(_make_job_output(t, environment="default/env"), trust_remote_code=False)
+
+    assert sc.schedule.progress_reporting.time_series_metrics == ["train_reward"]
+    assert sc.schedule.progress_reporting.min_report_interval_seconds == 30.0
 
 
 def test_the_reporting_budget_defaults_when_unstated() -> None:
@@ -275,10 +325,7 @@ def test_grpo_download_includes_environment() -> None:
     assert len(cfg.download) == 3
 
 
-def test_grpo_training_step_config_sandboxed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+def test_grpo_training_step_config_sandboxed(sandbox_capable: None) -> None:
     sc = _build_training_step_config(
         _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
         trust_remote_code=False,
@@ -293,10 +340,7 @@ def test_grpo_training_step_config_sandboxed(monkeypatch: pytest.MonkeyPatch) ->
     assert sc.training.lora is None
 
 
-def test_grpo_lora_training_step_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+def test_grpo_lora_training_step_config(sandbox_capable: None) -> None:
     from nmp.rl.schemas import LoRAParams
 
     job = RlJobOutput(
@@ -318,7 +362,7 @@ def test_grpo_lora_training_step_config(monkeypatch: pytest.MonkeyPatch) -> None
     assert sc.training.lora.alpha == 64
 
 
-def test_grpo_lora_model_entity_peft(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_grpo_lora_model_entity_peft(sandbox_capable: None) -> None:
     from nmp.rl.app.jobs.compiler import _build_model_entity_config
     from nmp.rl.schemas import LoRAParams
 
@@ -336,9 +380,24 @@ def test_grpo_lora_model_entity_peft(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.peft.type is FinetuningType.LORA
 
 
+def test_grpo_compile_succeeds_when_platform_sandbox_capable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", True)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_server_protocol", "http")
+
+    sc = _build_training_step_config(
+        _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
+        trust_remote_code=False,
+    )
+    assert sc.gym is not None
+    assert sc.gym.sandboxed is True
+    assert sc.gym.sandbox_server_protocol == "http"
+
+
 def test_grpo_compile_fails_closed_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", False)
     with pytest.raises(PlatformJobCompilationError, match="sandbox_cluster_capable"):
         _build_training_step_config(
             _make_job_output(GRPOTraining(type="grpo"), environment="default/env"),
@@ -354,7 +413,7 @@ def test_dpo_compiles_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch
     compiling -- and DPO is the path that has no need of a sandbox at all.
     """
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", False)
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", None, raising=False)
 
     sc = _build_training_step_config(_make_job_output(), trust_remote_code=False)
@@ -364,11 +423,11 @@ def test_dpo_compiles_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch
 
 
 def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.platform_config.sandbox_cluster_capable", True)
     monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
     job = _make_job_output(GRPOTraining(type="grpo"), environment="default/env")
     step = _build_training_step(job, [], trust_remote_code=False, profile=None)
     assert step["name"] == "grpo-training"
-    env_names = {(env["name"] if isinstance(env, dict) else env.name) for env in step["environment"]}
+    env_names = {env["name"] for env in step["environment"]}
     assert "NMP_VLLM_SERVICE_HOST" in env_names
     assert "NMP_BROKER_SERVICE_PORT" in env_names

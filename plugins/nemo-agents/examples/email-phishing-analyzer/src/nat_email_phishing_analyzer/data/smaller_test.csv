@@ -15,11 +15,11 @@ http://invoice-example.com/view?invoice=12345
 If you have any questions, feel free to contact us.
 Best regards,
 Customer Service",2023-07-01 09:30:45,accounts@shop-example.com,"{'money': {'label': 'Money', 'id': 0, 'score': 0.9997}, 'banking': {'label': 'Personal', 'id': 1, 'score': 0.9998}, 'crypto': {'label': 'NonCrypto', 'id': 1, 'score': 0.9994}}",phishing,money,pending
-Benign: Project Meeting Reminder,"Hi Team,
+Project Meeting Reminder,"Hi Team,
 Just wanted to remind you about our project update meeting on Friday at 2pm. Please let me know if you can attend.
 Thanks!
 -Bob",2023-08-10 15:30:00,bob@example.com,"{'money': {'label': 'NonMoney', 'id': 1, 'score': 0.9995}, 'banking': {'label': 'NonPersonal', 'id': 1, 'score': 0.9995}, 'crypto': {'label': 'NonCrypto', 'id': 1, 'score': 0.9994}}",benign,meeting,trusted
-Benign: Invoice Follow-up,"Hi John,
+Invoice Follow-up,"Hi John,
 Please find the invoice #1234 attached for your recent purchase. Let me know if you have any questions.
 Best regards,
 Alice",2023-09-01 09:15:22,alice@company.com,"{'money': {'label': 'Money', 'id': 0, 'score': 0.9996}, 'banking': {'label': 'Personal', 'id': 1, 'score': 0.9996}, 'crypto': {'label': 'NonCrypto', 'id': 1, 'score': 0.9993}}",benign,finance,trusted

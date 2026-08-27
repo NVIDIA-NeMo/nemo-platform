@@ -3,6 +3,6 @@
 
 import { PaginationQueryState } from '@nemo/common/src/utils/useQueryFromSearchParams';
 
-export type SafeSynthesizerJobsFilterState = PaginationQueryState & {
+export type GenerateJobsFilterState = PaginationQueryState & {
   search?: undefined;
 };

@@ -449,8 +449,8 @@ def test_wait_for_openai_model_bounds_sleep_to_remaining_timeout(sdk):
             "get",
             side_effect=_not_found_error(),
         ),
-        patch("nemo_platform.models.resources.time.time", side_effect=clock.time),
-        patch("nemo_platform.models.resources.time.sleep", side_effect=clock.sleep),
+        patch("models.resources.time.time", side_effect=clock.time),
+        patch("models.resources.time.sleep", side_effect=clock.sleep),
     ):
         with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
             sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1.25, poll_interval=5)
@@ -631,8 +631,8 @@ async def test_async_wait_for_openai_model_bounds_sleep_to_remaining_timeout(asy
 
     with (
         patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get),
-        patch("nemo_platform.models.resources.time.time", side_effect=clock.time),
-        patch("nemo_platform.models.resources.asyncio.sleep", side_effect=clock.async_sleep),
+        patch("models.resources.time.time", side_effect=clock.time),
+        patch("models.resources.asyncio.sleep", side_effect=clock.async_sleep),
     ):
         with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
             await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1.25, poll_interval=5)

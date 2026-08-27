@@ -5,8 +5,9 @@ import { FilesetSearchableSelect } from '@nemo/common/src/components/FilesetSear
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { Flex, FormField, Tag, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, FormField, Tag, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
+import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
   SAMPLING_STRATEGY_OPTIONS,
@@ -17,7 +18,8 @@ import {
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { getContentColumns, getFileExtension } from '@studio/util/files';
-import { type FC, useEffect, useMemo, useRef } from 'react';
+import { Eye } from 'lucide-react';
+import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface SeedDatasetConfigProps {
@@ -51,12 +53,15 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
     name: availableColumnsPath,
   });
 
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
   const previousFilesetRef = useRef(filesetRef);
   useEffect(() => {
     if (previousFilesetRef.current === filesetRef) return;
     previousFilesetRef.current = filesetRef;
     setValue(filePathPath, '');
     setValue(availableColumnsPath, '');
+    setIsPreviewOpen(false);
   }, [availableColumnsPath, filePathPath, filesetRef, setValue]);
 
   const { workspace: filesetWorkspace, name: filesetName } = getPartsFromReference(filesetRef);
@@ -119,11 +124,29 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
         items={fileItems}
         useControllerProps={{ name: filePathPath }}
         formFieldProps={{
-          slotLabel: 'File',
+          slotLabel: (
+            <Flex align="center" gap="density-xxs">
+              File
+              <Button
+                kind="tertiary"
+                color="neutral"
+                size="small"
+                aria-label="Preview seed file"
+                disabled={!filePath}
+                onClick={() => setIsPreviewOpen(true)}
+                className="h-auto p-0"
+              >
+                <Eye size={14} aria-hidden />
+              </Button>
+            </Flex>
+          ),
           required: true,
           slotInfo: 'The file within the fileset to read rows from.',
         }}
-        onChange={() => setValue(availableColumnsPath, '')}
+        onChange={() => {
+          setValue(availableColumnsPath, '');
+          setIsPreviewOpen(false);
+        }}
         placeholder={
           !filesetRef
             ? 'Select a fileset first'
@@ -171,6 +194,15 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
           slotInfo: 'How rows are read from the seed dataset. Defaults to ordered.',
         }}
         placeholder="Ordered"
+      />
+
+      <FilesetFilePreviewPanel
+        open={isPreviewOpen}
+        onCloseClick={() => setIsPreviewOpen(false)}
+        onOutsideClick={() => setIsPreviewOpen(false)}
+        workspace={filesetWorkspace}
+        filesetName={filesetName}
+        filePath={filePath}
       />
     </>
   );

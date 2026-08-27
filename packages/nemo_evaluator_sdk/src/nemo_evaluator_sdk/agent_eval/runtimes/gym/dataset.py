@@ -22,7 +22,6 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
     NG_TASK_INDEX,
     _read_jsonl,
 )
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import GymRewardMetric
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 
 logger = logging.getLogger(__name__)
@@ -94,6 +93,13 @@ def _render_instruction(responses_create_params: Mapping[str, Any]) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
+def _default_gym_metric() -> object:
+    """The default reward metric, imported lazily (see ``metrics.runner_rewards``)."""
+    from nemo_evaluator_sdk.metrics.runner_rewards import GymRewardMetric
+
+    return GymRewardMetric()
+
+
 def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = None) -> list[AgentEvalTask]:
     """Build one :class:`AgentEvalTask` per distinct row in a Gym dataset (jsonl).
 
@@ -156,7 +162,7 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
                     **({"instruction": instruction} if instruction else {}),
                     "gym_row": params,
                 },
-                metrics=list(metrics) if metrics is not None else [GymRewardMetric()],
+                metrics=list(metrics) if metrics is not None else [_default_gym_metric()],
                 metadata={
                     "gym_dataset_path": str(dataset),
                     # Everything except responses_create_params, which already lives in inputs['gym_row'].

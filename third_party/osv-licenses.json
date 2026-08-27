@@ -17,6 +17,16 @@
         },
         {
           "package": {
+            "name": "accelerate",
+            "version": "1.14.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
             "name": "aioboto3",
             "version": "15.5.0",
             "ecosystem": "PyPI"
@@ -257,6 +267,16 @@
         },
         {
           "package": {
+            "name": "bitsandbytes",
+            "version": "0.50.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "boto3",
             "version": "1.40.61",
             "ecosystem": "PyPI"
@@ -433,6 +453,46 @@
           },
           "licenses": [
             "Apache-2.0 OR BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "cuda-bindings",
+            "version": "13.3.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "cuda-pathfinder",
+            "version": "1.6.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "cuda-toolkit",
+            "version": "13.0.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
+          ]
+        },
+        {
+          "package": {
+            "name": "cut-cross-entropy",
+            "version": "25.1.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
           ]
         },
         {
@@ -753,6 +813,16 @@
           "package": {
             "name": "diff-cover",
             "version": "10.4.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "diffusers",
+            "version": "0.39.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1137,6 +1207,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "hf-transfer",
+            "version": "0.1.9",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
           ]
         },
         {
@@ -1691,6 +1771,16 @@
         },
         {
           "package": {
+            "name": "llguidance",
+            "version": "1.7.6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "loguru",
             "version": "0.7.3",
             "ecosystem": "PyPI"
@@ -1801,12 +1891,72 @@
         },
         {
           "package": {
+            "name": "miniaudio",
+            "version": "1.71",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "mlflow-skinny",
             "version": "3.13.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
             "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "mlx",
+            "version": "0.32.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "mlx-audio",
+            "version": "0.4.6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "mlx-lm",
+            "version": "0.31.3",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "mlx-metal",
+            "version": "0.32.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
+          ]
+        },
+        {
+          "package": {
+            "name": "mlx-vlm",
+            "version": "0.6.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -1827,6 +1977,26 @@
           },
           "licenses": [
             "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "mpmath",
+            "version": "1.3.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "msgspec",
+            "version": "0.21.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
           ]
         },
         {
@@ -1853,6 +2023,16 @@
           "package": {
             "name": "mypy-extensions",
             "version": "1.0.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "narwhals",
+            "version": "2.24.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2061,6 +2241,116 @@
         },
         {
           "package": {
+            "name": "nvidia-cublas",
+            "version": "13.1.0.3",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cuda-cupti",
+            "version": "13.0.85",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cuda-nvrtc",
+            "version": "13.0.88",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cuda-runtime",
+            "version": "13.0.96",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cudnn-cu13",
+            "version": "9.19.0.56",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cufft",
+            "version": "12.0.0.61",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cufile",
+            "version": "1.15.1.6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-curand",
+            "version": "10.4.0.35",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cusolver",
+            "version": "12.0.4.66",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cusparse",
+            "version": "12.6.3.3",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-cusparselt-cu13",
+            "version": "0.8.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
             "name": "nvidia-ml-py",
             "version": "13.610.43",
             "ecosystem": "PyPI"
@@ -2131,6 +2421,46 @@
         },
         {
           "package": {
+            "name": "nvidia-nccl-cu13",
+            "version": "2.28.9",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-nvjitlink",
+            "version": "13.0.88",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-nvshmem-cu13",
+            "version": "3.4.5",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "nvidia-nvtx",
+            "version": "13.0.85",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "oauthlib",
             "version": "3.3.1",
             "ecosystem": "PyPI"
@@ -2191,6 +2521,16 @@
         },
         {
           "package": {
+            "name": "opencv-python",
+            "version": "5.0.0.93",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "openinference-instrumentation",
             "version": "0.1.56",
             "ecosystem": "PyPI"
@@ -2213,6 +2553,16 @@
           "package": {
             "name": "openinference-semantic-conventions",
             "version": "0.1.31",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openshell",
+            "version": "0.0.99",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2477,6 +2827,16 @@
           },
           "licenses": [
             "MPL-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "peft",
+            "version": "0.20.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -2857,6 +3217,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "python-on-whales",
+            "version": "0.81.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -3322,6 +3692,16 @@
         },
         {
           "package": {
+            "name": "scikit-learn",
+            "version": "1.9.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
             "name": "scikit-network",
             "version": "0.33.5",
             "ecosystem": "PyPI"
@@ -3348,6 +3728,26 @@
           },
           "licenses": [
             "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "sentence-transformers",
+            "version": "5.6.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "sentencepiece",
+            "version": "0.2.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
           ]
         },
         {
@@ -3438,6 +3838,16 @@
           },
           "licenses": [
             "Apache-2.0 OR MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "sounddevice",
+            "version": "0.5.5",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -4512,6 +4922,16 @@
         },
         {
           "package": {
+            "name": "sympy",
+            "version": "1.14.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
             "name": "tabulate",
             "version": "0.10.0",
             "ecosystem": "PyPI"
@@ -4538,6 +4958,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "threadpoolctl",
+            "version": "3.6.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
           ]
         },
         {
@@ -4592,6 +5022,201 @@
         },
         {
           "package": {
+            "name": "torch",
+            "version": "2.11.0",
+            "ecosystem": "PyPI"
+          },
+          "groups": [
+            {
+              "ids": [
+                "GHSA-rrmf-rvhw-rf47"
+              ],
+              "aliases": [
+                "BIT-pytorch-2025-3000",
+                "CVE-2025-3000",
+                "GHSA-rrmf-rvhw-rf47",
+                "PYSEC-2025-194"
+              ],
+              "max_severity": "5.3"
+            }
+          ],
+          "licenses": [
+            "BSD-3-Clause"
+          ],
+          "vulnerabilities": [
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 2.12.1",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2025/03/GHSA-rrmf-rvhw-rf47/GHSA-rrmf-rvhw-rf47.json"
+                  },
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "torch",
+                    "purl": "pkg:pypi/torch"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "2.13.0"
+                        }
+                      ],
+                      "type": "ECOSYSTEM"
+                    }
+                  ],
+                  "versions": [
+                    "1.0.0",
+                    "1.0.1",
+                    "1.1.0",
+                    "1.10.0",
+                    "1.10.1",
+                    "1.10.2",
+                    "1.11.0",
+                    "1.12.0",
+                    "1.12.1",
+                    "1.13.0",
+                    "1.13.1",
+                    "1.2.0",
+                    "1.3.0",
+                    "1.3.1",
+                    "1.4.0",
+                    "1.5.0",
+                    "1.5.1",
+                    "1.6.0",
+                    "1.7.0",
+                    "1.7.1",
+                    "1.8.0",
+                    "1.8.1",
+                    "1.9.0",
+                    "1.9.1",
+                    "2.0.0",
+                    "2.0.1",
+                    "2.1.0",
+                    "2.1.1",
+                    "2.1.2",
+                    "2.10.0",
+                    "2.11.0",
+                    "2.12.0",
+                    "2.12.1",
+                    "2.2.0",
+                    "2.2.1",
+                    "2.2.2",
+                    "2.3.0",
+                    "2.3.1",
+                    "2.4.0",
+                    "2.4.1",
+                    "2.5.0",
+                    "2.5.1",
+                    "2.6.0",
+                    "2.7.0",
+                    "2.7.1",
+                    "2.8.0",
+                    "2.9.0",
+                    "2.9.1"
+                  ]
+                }
+              ],
+              "aliases": [
+                "BIT-pytorch-2025-3000",
+                "CVE-2025-3000",
+                "PYSEC-2025-194"
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-119"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-06-10T18:02:14Z",
+                "nvd_published_at": "2025-03-31T15:15:46Z",
+                "severity": "LOW"
+              },
+              "details": "A vulnerability classified as critical has been found in PyTorch 2.6.0. This affects the function torch.jit.script. The manipulation leads to memory corruption. It is possible to launch the attack on the local host. The exploit has been disclosed to the public and may be used.",
+              "id": "GHSA-rrmf-rvhw-rf47",
+              "modified": "2026-07-17T17:15:51.452848951Z",
+              "published": "2025-03-31T15:30:48Z",
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-3000"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pytorch/pytorch/issues/149623"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pytorch/pytorch/issues/149623#issue-2935703015"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pytorch/pytorch/commit/b90c94991cdf8b87c8f7439f79518e0ef2c4ca4f"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pypa/advisory-database/tree/main/vulns/torch/PYSEC-2025-194.yaml"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/pytorch/pytorch"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://vuldb.com/?ctiid.302049"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://vuldb.com/?id.302049"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://vuldb.com/?submit.524197"
+                }
+              ],
+              "related": [
+                "CGA-hjpf-wwv2-49v4"
+              ],
+              "schema_version": "1.7.5",
+              "severity": [
+                {
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L",
+                  "type": "CVSS_V3"
+                },
+                {
+                  "score": "CVSS:4.0/AV:L/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
+                  "type": "CVSS_V4"
+                }
+              ],
+              "summary": "PyTorch is vulnerable to memory corruption through its torch.jit.script function"
+            }
+          ]
+        },
+        {
+          "package": {
+            "name": "torchao",
+            "version": "0.18.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
+          ]
+        },
+        {
+          "package": {
+            "name": "torchvision",
+            "version": "0.26.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
             "name": "tornado",
             "version": "6.5.7",
             "ecosystem": "PyPI"
@@ -4618,6 +5243,46 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "triton",
+            "version": "3.6.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "triton",
+            "version": "3.7.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "trl",
+            "version": "0.24.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "typeguard",
+            "version": "4.6.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -4712,6 +5377,16 @@
         },
         {
           "package": {
+            "name": "tyro",
+            "version": "1.0.15",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "tzdata",
             "version": "2026.2",
             "ecosystem": "PyPI"
@@ -4738,6 +5413,26 @@
           },
           "licenses": [
             "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "unsloth",
+            "version": "2026.8.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "unsloth-zoo",
+            "version": "2026.8.3",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "LGPL-3.0-or-later"
           ]
         },
         {
@@ -4862,6 +5557,16 @@
         },
         {
           "package": {
+            "name": "wheel",
+            "version": "0.47.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "wrapt",
             "version": "1.17.3",
             "ecosystem": "PyPI"
@@ -4878,6 +5583,16 @@
           },
           "licenses": [
             "ISC"
+          ]
+        },
+        {
+          "package": {
+            "name": "xformers",
+            "version": "0.0.35",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -8192,6 +8907,9 @@
               "credits": [
                 {
                   "name": "KC1zs4 (https://github.com/KC1zs4)"
+                },
+                {
+                  "name": "Longwei Wang (https://github.com/gn00295120)"
                 }
               ],
               "database_specific": {
@@ -8200,7 +8918,7 @@
               },
               "details": "The ToASCII and ToUnicode functions incorrectly accept Punycode-encoded labels that decode to an ASCII-only label. For example, ToUnicode(\"xn--example-.com\") incorrectly returns the name \"example.com\" rather than an error.\n\nThis behavior can lead to privilege escalation in programs using the idna package. For example, a program which performs privilege checks on the ASCII hostname may reject \"example.com\" but permit \"xn--example-.com\". If that program subsequently converts the ASCII hostname to Unicode, it will inadvertently permits access to the Unicode name \"example.com\".",
               "id": "GO-2026-5026",
-              "modified": "2026-08-21T10:27:04.809947607Z",
+              "modified": "2026-08-21T21:00:13.783124772Z",
               "published": "2026-05-22T02:46:43Z",
               "references": [
                 {
@@ -9211,27 +9929,27 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 155
+      "count": 169
     },
     {
       "name": "Apache-2.0",
-      "count": 144
+      "count": 153
     },
     {
       "name": "BSD-3-Clause",
-      "count": 70
+      "count": 74
     },
     {
       "name": "non-standard",
-      "count": 48
+      "count": 70
+    },
+    {
+      "name": "UNKNOWN",
+      "count": 10
     },
     {
       "name": "ISC",
       "count": 7
-    },
-    {
-      "name": "UNKNOWN",
-      "count": 5
     },
     {
       "name": "BSD-2-Clause",
@@ -9279,6 +9997,10 @@
     },
     {
       "name": "Apache-2.0 WITH LLVM-exception",
+      "count": 1
+    },
+    {
+      "name": "LGPL-3.0-or-later",
       "count": 1
     },
     {

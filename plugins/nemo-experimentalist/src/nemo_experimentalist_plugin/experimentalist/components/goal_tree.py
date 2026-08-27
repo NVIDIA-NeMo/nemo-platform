@@ -317,12 +317,12 @@ class GoalTreeGenerator(Agent):
         TokenBudgetSummarizer.install(self, llm=get_fast_model(), config=TokenBudgetConfig(max_tokens=80_000))
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, cell_timeout=3600.0)))
-    async def _generate(self, dataset: Dataset, agent_spec: Path | None = None) -> GoalTree:  # pyright: ignore[reportReturnType]
+    async def _generate(self, dataset: Dataset, ethos: Path | None = None) -> GoalTree:  # pyright: ignore[reportReturnType]
         """Generate a hierarchical goal tree describing what a successful agent run looks like.
 
         # Inputs you should consult
 
-        - `AGENT-SPEC.md` in the workspace root. Read it via self.shell. This is the
+        - `ETHOS.md` in the workspace root. Read it via self.shell. This is the
           canonical description of the domain and what the agent is being asked to do.
         - 3 to 5 examples from the dataset. Use task inputs, visible
           resources, and metric specs to understand the task shape and scoring surface.
@@ -447,7 +447,7 @@ class GoalTreeGenerator(Agent):
     async def generate(
         self,
         dataset: Dataset,
-        agent_spec: Path | None = None,
+        ethos: Path | None = None,
     ) -> GoalTree:
         """Generate and validate a goal tree. Caller is responsible for persistence.
 
@@ -455,7 +455,7 @@ class GoalTreeGenerator(Agent):
             GoalTree: a freshly generated, structurally valid goal tree.
 
         """
-        tree = await self._generate(dataset, agent_spec=agent_spec)
+        tree = await self._generate(dataset, ethos=ethos)
         validated_tree = GoalTree.model_validate(tree.model_dump())
         return self._config.validate_tree(validated_tree)
 
@@ -466,7 +466,7 @@ class GoalTreeGenerator(Agent):
         goal_tree: GoalTree,
         analysis: str,
         round_num: int,
-        agent_spec: Path | None = None,
+        ethos: Path | None = None,
     ) -> GoalTree:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Propose a reweighted goal tree informed by a round of agent analysis.
 
@@ -529,7 +529,7 @@ class GoalTreeGenerator(Agent):
         analysis: str,
         round_num: int,
         dataset: Dataset,
-        agent_spec: Path | None = None,
+        ethos: Path | None = None,
     ) -> GoalTree:
         """Produce an updated, validated goal tree. Caller is responsible for persistence.
 
@@ -537,12 +537,12 @@ class GoalTreeGenerator(Agent):
             goal_tree: the current goal tree to refine.
             analysis: round analysis markdown used to inform reweighting.
             round_num: the current generation number, stamped on any new nodes.
-            agent_spec: optional path to a materialized agent-spec file.
+            ethos: optional path to a materialized ETHOS.md file.
 
         Returns:
             GoalTree: the updated, structurally valid goal tree.
 
         """
-        tree = await self._update(dataset, goal_tree, analysis, round_num, agent_spec=agent_spec)
+        tree = await self._update(dataset, goal_tree, analysis, round_num, ethos=ethos)
         validated_tree = GoalTree.model_validate(tree.model_dump())
         return self._config.validate_tree(validated_tree)

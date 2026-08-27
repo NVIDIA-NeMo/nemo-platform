@@ -13,9 +13,9 @@ from data_designer.engine.resources.seed_reader import (
     SeedReaderFileSystemContext,
 )
 from data_designer_nemo.filesystem import make_filesystem
+from filesets import FilesetFileSystem, FilesetPathError, build_fileset_ref, parse_fileset_ref
 from fsspec.implementations.dirfs import DirFileSystem
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem, FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
 

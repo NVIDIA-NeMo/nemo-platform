@@ -43,7 +43,7 @@ class ClientConstructionError(Exception):
 async def run_analyst(
     *,
     agent: str,
-    agent_spec: str | None,
+    ethos: str | None,
     workspace: str,
     base_url: str | None,
     client: AsyncNeMoPlatform,
@@ -63,7 +63,7 @@ async def run_analyst(
 
     Args:
         agent: Agent under test.
-        agent_spec: Optional markdown spec content for the agent under test.
+        ethos: Optional Ethos Markdown for the agent under test.
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
         client: Platform client to use. This function closes it before returning.
@@ -112,7 +112,7 @@ async def run_analyst(
             analyst = build_analyst_agent(
                 deps=deps,
                 agent=agent,
-                agent_spec=agent_spec,
+                ethos=ethos,
             )
             result = await _run_agent(analyst, verbose=verbose)
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)

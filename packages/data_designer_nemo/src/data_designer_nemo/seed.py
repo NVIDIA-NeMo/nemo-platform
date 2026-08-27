@@ -10,8 +10,8 @@ from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from data_designer_nemo.fileset_filesystem_provider import is_local_directory
 from data_designer_nemo.secret_resolver import validate_secret
+from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.client import AsyncFilesClient

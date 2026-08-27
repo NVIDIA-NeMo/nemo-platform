@@ -297,6 +297,36 @@ def test_members_api_command_is_not_registered_at_top_level():
     assert "nemo_platform_ext.cli.commands.api.members" not in sys.modules
 
 
+def test_jobs_watch_command_is_registered():
+    runner = CliRunner()
+    result = runner.invoke(app, ["jobs", "watch", "--help"])
+
+    assert result.exit_code == 0
+    assert "Watch a platform job until it reaches a terminal status." in result.stdout
+    assert "--history" in result.stdout
+    assert "--no-history" in result.stdout
+
+
+def test_jobs_create_exposes_wait_and_watch_flags():
+    runner = CliRunner()
+    result = runner.invoke(app, ["jobs", "create", "--help"])
+
+    assert result.exit_code == 0
+    assert "--watch" in result.stdout
+    assert "--wait" in result.stdout
+
+
+def test_inference_deployments_create_exposes_wait_and_watch_flags():
+    runner = CliRunner()
+    result = runner.invoke(app, ["inference", "deployments", "create", "--help"])
+
+    assert result.exit_code == 0
+    assert "--watch" in result.stdout
+    assert "--wait" in result.stdout
+    assert "up and running" in result.stdout
+    assert "until it is stable" in result.stdout
+
+
 def test_root_help_excludes_hidden_commands_and_context_option():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
@@ -417,13 +447,13 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
     from nemo_platform_ext.cli.app import _build_top_level_lazy_entries
 
     plugin_entry_points = {
-        "safe-synthesizer": SimpleNamespace(value="nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"),
+        "custom-plugin": SimpleNamespace(value="nemo_custom_plugin.cli:CustomPluginCLI"),
     }
     api_entries = (
         TopLevelEntry(
-            import_path="nemo_platform_ext.cli.commands.api.safe_synthesizer:app",
-            name="safe-synthesizer",
-            help="Safe Synthesizer operations.",
+            import_path="nemo_platform_ext.cli.commands.api.custom_plugin:app",
+            name="custom-plugin",
+            help="Custom plugin operations.",
             panel="Functional plugins",
             kind="group",
         ),
@@ -447,9 +477,9 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
         entries = _build_top_level_lazy_entries()
 
     by_name = {entry.name: entry for entry in entries}
-    assert set(by_name) == {"files", "safe-synthesizer"}
+    assert set(by_name) == {"files", "custom-plugin"}
     assert by_name["files"].source == "module"
-    assert by_name["safe-synthesizer"].source == "plugin"
+    assert by_name["custom-plugin"].source == "plugin"
 
 
 def test_plugin_entry_point_name_collision_is_skipped(caplog):
@@ -499,7 +529,11 @@ def test_evaluator_plugin_entry_point_has_deliberate_order_before_unknown_plugin
     assert [entry.name for entry in visible_entries] == ["evaluator", "aardvark", "zeta"]
 
 
-@pytest.mark.parametrize("entry", TOP_LEVEL_ENTRIES, ids=lambda entry: entry.name)
+@pytest.mark.parametrize(
+    "entry",
+    [e for e in TOP_LEVEL_ENTRIES if e.source != "plugin"],
+    ids=lambda entry: entry.name,
+)
 def test_manifest_help_matches_loaded_manual_entry(entry):
     loader = lazy_group_loader(entry.import_path) if entry.kind == "group" else lazy_command_loader(entry.import_path)
 

@@ -78,9 +78,7 @@ single leader, so complementary strengths stay alive across rounds.
   analyze traces or host an Insight API.
 - [Eval Author](src/nemo_experimentalist_plugin/eval_author/README.md) builds the
   Insight-specific evaluation suite, and Insight mode invokes it automatically. It
-  ships inside this plugin; the separate
-  [Eval Author plugin](../nemo-eval-author/README.md) owns the
-  `nemo agents eval-author` commands.
+  ships inside this plugin.
 - **Harbor** runs the task containers that score every candidate.
 - **NeMo Experiments** mirrors each run and its candidates as an experiment
   group, so the lineage is visible in Studio. Structure only — rewards and
@@ -167,7 +165,7 @@ win. "Required" below means required *when the profile does not supply it*.
 | --- | --- | --- |
 | `--profile` | The `optimizer.yaml` holding agent, source, datasets, task template, and workspace. | No — discovered by walking up from the working directory. |
 | `--agent` | Baseline agent: a local directory, or a Git URL that also enables PR/MR publication. | Unless the profile or the Insight names one. |
-| `--agent-spec` | Markdown describing the agent under test. | No — falls back to the profile, then `AGENT-SPEC.md`. |
+| `--ethos` | Markdown describing the agent under test. | No — falls back to the profile, then `ETHOS.md`. |
 | `--insight` | The problem to work on: a local Insight file or a platform Insight ID. | No — defaults to `.nemo-optimizer/insights.yaml` beside the profile. |
 | `--insight-id` | Picks one entry out of a multi-Insight file: exact ID or title, otherwise a zero-based index. | Only for a file holding several Insights. |
 | `--no-insight` | Switches to dataset-driven mode. Cannot be combined with `--insight` or `--insight-id`. | Dataset-driven mode. |

@@ -19,7 +19,10 @@ from nemo_rl.models.generation import configure_generation_config
 from nemo_rl.utils.config import load_config, parse_hydra_overrides
 from nemo_rl.utils.logger import get_next_experiment_dir
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import NemoRLLogger
+from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (
+    GRPO_DEFAULT_TIME_SERIES_METRICS,
+    NemoRLLogger,
+)
 from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import assemble_master_egress_allow
 from omegaconf import OmegaConf
 
@@ -32,6 +35,28 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--id", type=str, help="Customization ID")
     parser.add_argument("--output-model", type=str, help="Output Model")
     return parser.parse_known_args()
+
+
+def _run_facts(config: MasterConfig) -> dict[str, object]:
+    """Constants about this run, reported once when training starts.
+
+    ``training_type`` says which algorithm produced the job. ``backend`` is
+    ``nemo_rl`` for both DPO and GRPO, so without this nothing in a job's status
+    tells the two apart.
+
+    ``rollouts_per_step`` is how many rollouts one step generates, so a reader can
+    get the running total by multiplying by the current step. It is computed here
+    rather than left to the reader because it only equals prompts times generations
+    while dynamic sampling is off, which ``grpo_config`` currently hardcodes. Turning
+    dynamic sampling on means fixing this one expression instead of every consumer.
+
+    Both fields are declared on NeMo-RL's ``GRPOConfig``, so plain attribute access
+    is safe here, unlike the platform's own extra fields beside them.
+    """
+    return {
+        "training_type": "grpo",
+        "rollouts_per_step": config.grpo.num_prompts_per_step * config.grpo.num_generations_per_prompt,
+    }
 
 
 def _maybe_bootstrap_environment(config: MasterConfig) -> None:
@@ -153,6 +178,8 @@ def main() -> None:
             steps_per_epoch=getattr(config.grpo, "steps_per_epoch", None),
             time_series_metrics=getattr(config.grpo, "progress_time_series_metrics", None),
             min_report_interval_seconds=getattr(config.grpo, "progress_min_report_interval_seconds", None),
+            default_time_series_metrics=GRPO_DEFAULT_TIME_SERIES_METRICS,
+            run_facts=_run_facts(config),
         )
         if hasattr(logger_inst, "loggers"):
             logger_inst.loggers.append(customizer_logger)

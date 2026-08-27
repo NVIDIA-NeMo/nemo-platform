@@ -29,7 +29,7 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
     _redact_url,
     looks_like_git,
     pr_cli_for_repo_url,
-    split_agent_spec,
+    split_agent_source_uri,
     split_git_ref,
 )
 from nemo_experimentalist_plugin.profile import AgentProfile
@@ -374,7 +374,7 @@ def _check_agent_source(
     repo: str | None = None
     if source is not None and looks_like_git(source):
         try:
-            core, _ = split_agent_spec(source)  # drop the #path fragment
+            core, _ = split_agent_source_uri(source)  # drop the #path fragment
         except ValueError as exc:
             return [
                 CheckResult(

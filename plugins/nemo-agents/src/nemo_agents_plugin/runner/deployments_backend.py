@@ -36,7 +36,7 @@ from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_crede
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
 from nemo_agents_plugin.runner.fabric_artifact_staging import (
     FabricArtifactStagingError,
-    stage_fabric_spec_config_files,
+    stage_fabric_ethos_config_files,
 )
 from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
 from nemo_deployments_plugin.auth_proxy import auth_proxy_port
@@ -601,7 +601,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             agent_yaml_path = _fabric_config_mount_path(self._config.config_mount_path)
             try:
                 sdk = get_async_platform_sdk(as_service="agents", internal=True)
-                staged_config_files = await stage_fabric_spec_config_files(
+                staged_config_files = await stage_fabric_ethos_config_files(
                     workspace=workspace,
                     agent_name=agent,
                     rewritten_agent_config=config,

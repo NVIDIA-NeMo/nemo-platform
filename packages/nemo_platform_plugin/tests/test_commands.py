@@ -82,6 +82,10 @@ class _RunNamedJob(NemoJob):
         return config
 
 
+class _FlatGreetJob(_GreetJob):
+    generate_legacy_verbs: ClassVar[bool] = False
+
+
 runner = CliRunner()
 
 
@@ -162,6 +166,20 @@ class TestSubgroupRegistration:
         assert "Show input/output schemas." in result.output
         assert "Run run locally" not in result.output
         assert "schemas for run" not in result.output
+
+    def test_non_legacy_job_registers_flat_submit_command(self) -> None:
+        app = _app_with_jobs(_FlatGreetJob)
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "greet" in result.output
+
+        help_result = runner.invoke(app, ["greet", "--help"])
+        assert help_result.exit_code == 0
+        output = _plain(help_result.output)
+        assert "COMMAND" not in output
+        assert "--base-url" in output
+        assert "--profile" in output
+        assert "explain" not in output
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +319,7 @@ class TestSubmitVerb:
         else:
             monkeypatch.setenv("NMP_BASE_URL", env_base_url)
         monkeypatch.setattr("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _capture)
-        monkeypatch.setattr("nemo_platform.config.config.Config.load", lambda: _FakeConfig())
+        monkeypatch.setattr("nemo_platform_ext.config.config.Config.load", lambda: _FakeConfig())
 
         app = _app_with_jobs(_GreetJob)
         state = _State(context_base_url)
@@ -366,6 +384,40 @@ class TestSubmitVerb:
 
         assert result.exit_code == 0, result.output
         assert captured["headers"] == {"Authorization": "Bearer test-token"}
+
+    def test_non_legacy_job_name_submits_remotely(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _capture(_self, job_cls, spec, *, base_url=None, workspace=None, **_kwargs) -> dict:
+            captured.update(
+                {
+                    "job_cls": job_cls,
+                    "spec": spec,
+                    "base_url": base_url,
+                    "workspace": workspace,
+                }
+            )
+            return {"id": "job-123"}
+
+        monkeypatch.setattr("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _capture)
+
+        app = _app_with_jobs(_FlatGreetJob)
+        result = runner.invoke(
+            app,
+            ["greet", "--spec", '{"name": "Ada"}', "--base-url", "http://platform", "--workspace", "team-alpha"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output) == {"id": "job-123"}
+        assert captured == {
+            "job_cls": _FlatGreetJob,
+            "spec": {"name": "Ada"},
+            "base_url": "http://platform",
+            "workspace": "team-alpha",
+        }
+
+        assert runner.invoke(app, ["greet", "run"]).exit_code != 0
+        assert runner.invoke(app, ["greet", "submit"]).exit_code != 0
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +608,10 @@ class _LocalityFunction(NemoFunction[_WorkspaceSpec]):
         return {"is_local": is_local}
 
 
+class _FlatGreetFunction(_GreetFunction):
+    generate_legacy_verbs: ClassVar[bool] = False
+
+
 def _app_with_functions(*function_classes: type[NemoFunction]) -> typer.Typer:
     app = typer.Typer()
 
@@ -598,6 +654,15 @@ class TestFunctionSubgroupRegistration:
         app = _app_with_functions(_GreetFunction)
         result = runner.invoke(app, ["greet"])
         assert result.exit_code != 0
+
+    def test_non_legacy_function_registers_flat_submit_command(self) -> None:
+        app = _app_with_functions(_FlatGreetFunction)
+        help_result = runner.invoke(app, ["greet", "--help"])
+        assert help_result.exit_code == 0
+        output = _plain(help_result.output)
+        assert "COMMAND" not in output
+        assert "--base-url" in output
+        assert "--request-id" in output
 
 
 # ---------------------------------------------------------------------------
@@ -877,6 +942,39 @@ class TestFunctionSubmitVerb:
         )
         assert result.exit_code == 0, result.output
         assert captured_url[0].startswith("http://from-env:1234/")
+
+    def test_non_legacy_function_name_submits_remotely(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _fake_post(url: str, body: dict, *, headers: dict, timeout: float = 30.0, **_kwargs) -> None:
+            captured.update({"url": url, "body": body, "headers": headers})
+            del timeout
+            typer.echo(json.dumps({"message": "ok"}))
+
+        monkeypatch.setattr("nemo_platform_plugin.commands._post_function_submit", _fake_post)
+
+        app = _app_with_functions(_FlatGreetFunction)
+        result = runner.invoke(
+            app,
+            [
+                "greet",
+                "--spec",
+                '{"name": "Ada"}',
+                "--base-url",
+                "http://platform",
+                "--workspace",
+                "team-alpha",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output) == {"message": "ok"}
+        assert str(captured["url"]).startswith("http://platform/apis/")
+        assert str(captured["url"]).endswith("/v2/workspaces/team-alpha/greet")
+        assert captured["body"] == {"name": "Ada"}
+
+        assert runner.invoke(app, ["greet", "run"]).exit_code != 0
+        assert runner.invoke(app, ["greet", "submit"]).exit_code != 0
 
 
 # ---------------------------------------------------------------------------

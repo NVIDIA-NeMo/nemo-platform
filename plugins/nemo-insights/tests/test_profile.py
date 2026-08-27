@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from nemo_insights_plugin.contracts.profile import ProfileError
-from nemo_insights_plugin.profile import load_profile, pick_agent_spec
+from nemo_insights_plugin.profile import load_profile, pick_ethos
 
 FULL_PROFILE = """\
 agent: flight-planner
@@ -18,7 +18,7 @@ experiment_config:
     rounds: 2
 framework_skills: [./skills]
 workspace: flight-workspace
-agent_spec: ./AGENT-SPEC.md
+ethos: ./ETHOS.md
 """
 
 
@@ -30,7 +30,7 @@ def test_load_profile_reads_analysis_fields_and_ignores_experiment_fields(tmp_pa
 
     assert profile.agent == "flight-planner"
     assert profile.workspace == "flight-workspace"
-    assert profile.agent_spec == "./AGENT-SPEC.md"
+    assert profile.ethos == "./ETHOS.md"
     assert profile.profile_dir == tmp_path.resolve()
 
 
@@ -42,10 +42,10 @@ def test_profile_requires_nonempty_agent(tmp_path: Path) -> None:
         load_profile(path)
 
 
-def test_pick_agent_spec_is_profile_relative(tmp_path: Path) -> None:
+def test_pick_ethos_is_profile_relative(tmp_path: Path) -> None:
     path = tmp_path / "optimizer.yaml"
-    path.write_text("agent: a\nagent_spec: ./AGENT-SPEC.md\n", encoding="utf-8")
-    expected = tmp_path / "AGENT-SPEC.md"
+    path.write_text("agent: a\nethos: ./ETHOS.md\n", encoding="utf-8")
+    expected = tmp_path / "ETHOS.md"
     expected.write_text("# Agent", encoding="utf-8")
 
-    assert pick_agent_spec(load_profile(path)) == expected.resolve()
+    assert pick_ethos(load_profile(path)) == expected.resolve()

@@ -97,6 +97,17 @@ def _build_dtensor_cfg(
     # Optional keys stay absent when unset so NeMo-RL's defaults apply.
     if expert_parallel_size > 1:
         dtensor_cfg["expert_parallel_size"] = expert_parallel_size
+        if parallelism.activation_checkpointing:
+            # The router's top-k runs in bf16 and is not deterministic, so the recomputed
+            # forward can route one token differently than the saved one did. The expert
+            # permutation buffers then come back a row short and backward dies in
+            # torch.utils.checkpoint with "Recomputed values ... have different metadata"
+            # -- pointing at a TE permutation kernel, which reads as a backend bug rather
+            # than a routing one. ignore_router_for_ac switches Automodel's apply_ac to a
+            # selective policy that SAVES the router output instead of recomputing it.
+            # There is no case where recomputing it is what a caller wants, so this is not
+            # a knob: NeMo-RL's own MoE recipes set it wherever AC is on.
+            dtensor_cfg["moe_parallelizer"] = {"ignore_router_for_ac": True}
     if automodel_kwargs:
         dtensor_cfg["automodel_kwargs"] = dict(automodel_kwargs)
     if lora_cfg["enabled"]:
@@ -231,39 +242,49 @@ def _build_nemo_gym_env_config(
             dataset_path=customizer_config.dataset.path,
         )
 
+        sandbox = SandboxConfig(
+            image=runtime_image,
+            env_mount_path=SANDBOX_ENVIRONMENT_PATH,
+            dataset_mount_path=SANDBOX_DATASET_PATH,
+            # Sandbox mount is /job/work; ephemeral host work prefers /scratch or /tmp.
+            work_mount_path=SANDBOX_WORK_PATH,
+            allow_internet=gym.allow_internet,
+            network_policy=SandboxNetworkPolicy(
+                # Defaults until the training master resolves live vLLM/broker endpoints.
+                egress_allow=assemble_master_egress_allow(),
+                public_dns_allow=tuple(gym.public_dns_allow),
+            ),
+            # Only emitted when the operator declared it, so an unset value leaves
+            # NeMo-RL's own default in place rather than this compiler asserting one.
+            host_provider_options=(
+                {"connection": {"protocol": gym.sandbox_server_protocol}} if gym.sandbox_server_protocol else {}
+            ),
+            # Same rule: unset leaves the OpenSandbox server's default in place.
+            resources=gym.sandbox_resources or None,
+            environment_pvc_claim=mounts.environment_pvc_claim,
+            environment_sub_path=mounts.environment_sub_path,
+            dataset_pvc_claim=mounts.dataset_pvc_claim,
+            dataset_sub_path=mounts.dataset_sub_path,
+            workspace_pvc_claim=mounts.workspace_pvc_claim,
+            workspace_sub_path=mounts.workspace_sub_path,
+        )
+
+        # Assigned after construction rather than passed in: these three carry non-null
+        # defaults mirroring NeMo-RL's, so handing them None would fail validation and
+        # asserting one here would override upstream on every job.
+        if gym.sandbox_ttl_s is not None:
+            sandbox.ttl_s = gym.sandbox_ttl_s
+        if gym.sandbox_rollout_chunk_size is not None:
+            sandbox.rollout_chunk_size = gym.sandbox_rollout_chunk_size
+        if gym.sandbox_rollout_max_in_flight is not None:
+            sandbox.rollout_max_in_flight = gym.sandbox_rollout_max_in_flight
+
         sandbox_cfg = NemoGymSandboxedConfig(
             sandboxed=True,
             host_provider="opensandbox",
             environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
             job_id=job_ctx.job_id,
-            sandbox=SandboxConfig(
-                image=runtime_image,
-                env_mount_path=SANDBOX_ENVIRONMENT_PATH,
-                dataset_mount_path=SANDBOX_DATASET_PATH,
-                # Sandbox mount is /job/work; ephemeral host work prefers /scratch or /tmp.
-                work_mount_path=SANDBOX_WORK_PATH,
-                allow_internet=gym.allow_internet,
-                network_policy=SandboxNetworkPolicy(
-                    # Defaults until the training master resolves live vLLM/broker endpoints.
-                    egress_allow=assemble_master_egress_allow(),
-                    public_dns_allow=tuple(gym.public_dns_allow),
-                ),
-                # Only emitted when the operator declared it, so an unset value leaves
-                # NeMo-RL's own default in place rather than this compiler asserting one.
-                host_provider_options=(
-                    {"connection": {"protocol": gym.sandbox_server_protocol}} if gym.sandbox_server_protocol else {}
-                ),
-                # Same rule: unset leaves the OpenSandbox server's default in place.
-                resources=gym.sandbox_resources or None,
-                # ttl_s has a non-null default, so it is only overridden when declared.
-                **({"ttl_s": gym.sandbox_ttl_s} if gym.sandbox_ttl_s else {}),
-                environment_pvc_claim=mounts.environment_pvc_claim,
-                environment_sub_path=mounts.environment_sub_path,
-                dataset_pvc_claim=mounts.dataset_pvc_claim,
-                dataset_sub_path=mounts.dataset_sub_path,
-                workspace_pvc_claim=mounts.workspace_pvc_claim,
-                workspace_sub_path=mounts.workspace_sub_path,
-            ),
+            sandbox=sandbox,
         )
         # mode="json", not "python": this dict is written straight to YAML with yaml.dump
         # and read back by OmegaConf's SafeLoader. "python" mode keeps
@@ -329,8 +350,25 @@ def compile_grpo_config(
         "steps_per_epoch": steps_per_epoch,
         "progress_time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
         "progress_min_report_interval_seconds": customizer_config.schedule.progress_reporting.min_report_interval_seconds,
+        # The advantage estimator reads these two from `grpo.adv_estimator`, not from
+        # `grpo` itself. NeMo-RL's own YAML recipes set the top-level pair and point
+        # adv_estimator at them with OmegaConf interpolation
+        # (`normalize_rewards: ${grpo.normalize_rewards}`), so both spellings appear
+        # in a resolved config. This dict is built in Python with no interpolation, so
+        # writing only the top-level pair left AdvEstimatorConfig on its own defaults
+        # and `normalize_rewards: false` did nothing. Both are written here so the
+        # config matches a resolved recipe either way.
         "normalize_rewards": grpo_hp.normalize_rewards,
-        "use_leave_one_out_baseline": True,
+        "use_leave_one_out_baseline": grpo_hp.use_leave_one_out_baseline,
+        "adv_estimator": {
+            "name": "grpo",
+            "normalize_rewards": grpo_hp.normalize_rewards,
+            "use_leave_one_out_baseline": grpo_hp.use_leave_one_out_baseline,
+        },
+        # Bounds on the normalized advantages. None means unbounded on that side, which
+        # is NeMo-RL's default and standard GRPO.
+        "advantage_clip_low": grpo_hp.advantage_clip_low,
+        "advantage_clip_high": grpo_hp.advantage_clip_high,
         "val_period": val_period,
         "val_start_at": -1,
         "val_at_start": val_at_start,
@@ -339,10 +377,23 @@ def compile_grpo_config(
         "max_val_samples": val_samples if val_samples else None,
         "val_batch_size": val_samples if val_samples else num_prompts,
         "seed": customizer_config.seed,
-        "use_dynamic_sampling": False,
-        "batch_multiplier": 1,
-        "reward_shaping": {"enabled": False},
-        "reward_scaling": {"enabled": False},
+        # These are the transforms NeMo-RL applies between the rollout's reward and the one
+        # the loss sees. All default off, so an unstated job still has grpo.py's `reward`
+        # equal to the NeMo-Gym aggregator's `total_reward/mean`; enabling any of them
+        # separates the two, which is why nemo_rl_logger's GRPO series carries both.
+        "use_dynamic_sampling": grpo_hp.use_dynamic_sampling,
+        "dynamic_sampling_max_gen_batches": grpo_hp.dynamic_sampling_max_gen_batches,
+        "batch_multiplier": grpo_hp.batch_multiplier,
+        # `enabled` is what NeMo-RL branches on; the penalty fields are only read when it is
+        # true, so an absent reward_shaping compiles to the same disabled block as before.
+        "reward_shaping": (
+            {"enabled": True, **grpo_hp.reward_shaping} if grpo_hp.reward_shaping else {"enabled": False}
+        ),
+        # Unlike shaping, every scaling bound has a non-null default, so the whole block is
+        # emitted and only `enabled` decides whether NeMo-RL applies it.
+        "reward_scaling": (
+            {"enabled": True, **grpo_hp.reward_scaling} if grpo_hp.reward_scaling else {"enabled": False}
+        ),
         "async_grpo": {"enabled": False, "max_trajectory_age_steps": 1},
     }
 
@@ -351,10 +402,19 @@ def compile_grpo_config(
         "reference_policy_kl_type": "k3",
         "ratio_clip_min": grpo_hp.ratio_clip_min,
         "ratio_clip_max": grpo_hp.ratio_clip_max,
-        "use_on_policy_kl_approximation": True,
-        "use_importance_sampling_correction": True,
+        # None leaves dual clipping off, which is NeMo-RL's default. The loss asserts
+        # the value exceeds 1 when it is set; the job schema rejects it earlier.
+        "ratio_clip_c": grpo_hp.ratio_clip_c,
+        "use_on_policy_kl_approximation": grpo_hp.use_on_policy_kl_approximation,
+        "use_importance_sampling_correction": grpo_hp.use_importance_sampling_correction,
         "sequence_level_importance_ratios": False,
         "token_level_loss": True,
+        # Truncated importance sampling. ClippedPGLossFn gates the whole block on the type
+        # being non-null, so leaving these three absent is how TIS stays off -- and
+        # sequence_level_importance_ratios is already False above, which seq-mask-tis requires.
+        "truncated_importance_sampling_type": grpo_hp.truncated_importance_sampling_type,
+        "truncated_importance_sampling_ratio": grpo_hp.truncated_importance_sampling_ratio,
+        "truncated_importance_sampling_ratio_min": grpo_hp.truncated_importance_sampling_ratio_min,
     }
 
     cfg["checkpointing"] = {
@@ -406,10 +466,11 @@ def compile_grpo_config(
             # prompt leaves. An explicit value bounds response length instead.
             "max_new_tokens": grpo_hp.max_new_tokens or customizer_config.model.max_seq_length,
             "temperature": grpo_hp.temperature,
-            # top_p/top_k stay neutral: these are their disabled values, and temperature is
-            # the one sampling knob the job schema exposes.
+            # top_p stays neutral -- 1.0 is its disabled value, and the job schema has no
+            # knob for it. top_k defaults to None, which is also disabled: sample from the
+            # whole distribution.
             "top_p": 1.0,
-            "top_k": None,
+            "top_k": grpo_hp.top_k,
             "stop_token_ids": None,
             "stop_strings": None,
             "vllm_cfg": {

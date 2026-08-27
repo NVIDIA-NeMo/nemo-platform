@@ -44,7 +44,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 import httpx
-from nemo_platform.auth.helpers import generate_unsigned_jwt as generate_unsigned_jwt_helper
+from nemo_platform_ext.auth.helpers import generate_unsigned_jwt as generate_unsigned_jwt_helper
 
 # Some packages do not have respx as a dependency
 try:

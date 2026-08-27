@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import sessions as sessions_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
+from nemo_platform_plugin.dependencies import get_effective_principal_id
 from nemo_platform_plugin.entity_client import (
     NemoEntityConflictError,
     NemoEntityNotFoundError,
@@ -23,6 +24,7 @@ from nemo_platform_plugin.entity_client import (
 
 NOW = datetime.now(timezone.utc)
 BASE = "/apis/agents/v2/workspaces/default/sessions"
+OWNER_PRINCIPAL_ID = "session-owner"
 
 
 def _make_deployment(
@@ -30,10 +32,12 @@ def _make_deployment(
     name: str = "fabric-dep",
     workspace: str = "default",
     deployment_id: str = "deployment-id",
+    created_by: str | None = None,
 ) -> AgentDeployment:
     deployment = AgentDeployment(name=name, workspace=workspace, agent="fabric-agent", status="running")
     deployment._id = deployment_id
     deployment._created_at = NOW
+    deployment._created_by = created_by
     return deployment
 
 
@@ -43,6 +47,7 @@ def _make_session(
     workspace: str = "default",
     deployment_id: str = "deployment-id",
     status: SessionStatus = SessionStatus.ACTIVE,
+    created_by: str | None = OWNER_PRINCIPAL_ID,
 ) -> AgentSession:
     session = AgentSession(
         name=name,
@@ -52,12 +57,15 @@ def _make_session(
     )
     session._id = f"session-{name}-id"
     session._created_at = NOW
+    session._created_by = created_by
     return session
 
 
 async def _persist_session(session: AgentSession) -> AgentSession:
+    assert session.created_by is None
     session._id = "session-id"
     session._created_at = NOW
+    session._created_by = OWNER_PRINCIPAL_ID
     return session
 
 
@@ -87,6 +95,7 @@ def client(mock_entity_client: AsyncMock) -> TestClient:
         prefix="/apis/agents/v2/workspaces/{workspace}",
     )
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
+    app.dependency_overrides[get_effective_principal_id] = lambda: OWNER_PRINCIPAL_ID
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -102,6 +111,7 @@ class TestCreateSession:
         assert body["name"] == "session-one"
         assert body["deployment_id"] == "deployment-id"
         assert body["status"] == "active"
+        assert body["created_by"] == OWNER_PRINCIPAL_ID
         mock_entity_client.find_one.assert_awaited_once_with(
             AgentDeployment,
             workspace="default",
@@ -116,6 +126,17 @@ class TestCreateSession:
 
         assert response.status_code == 201
         assert response.json()["name"] == "fabric-dep-a1b2c3d4"
+
+    def test_create_for_deployment_owned_by_another_principal(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.find_one.return_value = _make_deployment(created_by="deployment-owner")
+        mock_entity_client.create.side_effect = _persist_session
+
+        response = client.post(BASE, json={"deployment_id": "deployment-id", "name": "session-one"})
+
+        assert response.status_code == 201
+        assert response.json()["created_by"] == OWNER_PRINCIPAL_ID
 
     def test_create_requires_deployment_id(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         response = client.post(BASE, json={"name": "session-one"})
@@ -161,7 +182,7 @@ class TestListSessions:
         body = response.json()
         assert body["data"][0]["name"] == "session-one"
         assert body["pagination"]["total_results"] == 1
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] is None
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"created_by": OWNER_PRINCIPAL_ID}
 
     def test_list_filters_by_deployment_id(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list.return_value = _list_response(_make_session())
@@ -169,7 +190,10 @@ class TestListSessions:
         response = client.get(f"{BASE}?filter[deployment_id]=deployment-id")
 
         assert response.status_code == 200
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"deployment_id": "deployment-id"}
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {
+            "deployment_id": "deployment-id",
+            "created_by": OWNER_PRINCIPAL_ID,
+        }
 
     def test_list_rejects_unknown_filter(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         response = client.get(f"{BASE}?filter[unknown]=value")
@@ -194,6 +218,16 @@ class TestGetSession:
         response = client.get(f"{BASE}/missing")
 
         assert response.status_code == 404
+
+    def test_get_returns_404_for_session_owned_by_another_principal(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.get.return_value = _make_session(created_by="other-principal")
+
+        response = client.get(f"{BASE}/session-one")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Session 'session-one' not found in workspace 'default'."
 
 
 class TestCloseSession:
@@ -228,6 +262,16 @@ class TestCloseSession:
         response = client.post(f"{BASE}/missing/close")
 
         assert response.status_code == 404
+
+    def test_close_returns_404_for_session_owned_by_another_principal(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.get.return_value = _make_session(created_by="other-principal")
+
+        response = client.post(f"{BASE}/session-one/close")
+
+        assert response.status_code == 404
+        mock_entity_client.update.assert_not_awaited()
 
     def test_close_is_idempotent_after_concurrent_close(
         self, client: TestClient, mock_entity_client: AsyncMock
@@ -281,6 +325,16 @@ class TestDeleteSession:
         mock_entity_client.get.side_effect = NemoEntityNotFoundError("not found")
 
         response = client.delete(f"{BASE}/missing")
+
+        assert response.status_code == 404
+        mock_entity_client.delete.assert_not_awaited()
+
+    def test_delete_returns_404_for_session_owned_by_another_principal(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.get.return_value = _make_session(created_by="other-principal")
+
+        response = client.delete(f"{BASE}/session-one")
 
         assert response.status_code == 404
         mock_entity_client.delete.assert_not_awaited()

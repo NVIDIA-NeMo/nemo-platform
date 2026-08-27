@@ -13,6 +13,7 @@ import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
+import { ExperimentFlagSwitch } from '@studio/components/ExperimentFlagSwitch';
 import { AxiosError } from 'axios';
 import { type FC, type FormEvent, useEffect, useMemo, useState } from 'react';
 
@@ -30,12 +31,18 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   const toast = useToast();
   const [description, setDescription] = useState(group.description ?? '');
   const [defaultSort, setDefaultSort] = useState<string>(group.default_sort);
+  const [isFavorite, setIsFavorite] = useState(group.is_favorite ?? false);
+  const [showEvaluationsOverTime, setShowEvaluationsOverTime] = useState(
+    group.show_evaluations_over_time ?? false
+  );
 
   // Reset local form state whenever the modal (re)opens or points at a different group.
   useEffect(() => {
     if (open) {
       setDescription(group.description ?? '');
       setDefaultSort(group.default_sort);
+      setIsFavorite(group.is_favorite ?? false);
+      setShowEvaluationsOverTime(group.show_evaluations_over_time ?? false);
     }
   }, [open, group]);
 
@@ -82,6 +89,8 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
           insight_id: group.insight_id,
           summary: group.summary,
           metadata: group.metadata,
+          is_favorite: isFavorite,
+          show_evaluations_over_time: showEvaluationsOverTime,
         },
       });
       onClose();
@@ -100,7 +109,7 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   return (
     <FormModal
       title="Edit experiment"
-      instruction="Update the experiment's description and default sort order."
+      instruction="Update the experiment's description, default sort order, and presentation settings."
       submitButtonText={isPending ? 'Saving…' : 'Save'}
       disabled={isPending}
       loading={isPending}
@@ -124,6 +133,18 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
           value={defaultSort}
           onChange={setDefaultSort}
           evaluatorOptions={evaluatorOptions}
+          disabled={isPending}
+        />
+        <ExperimentFlagSwitch
+          flag="show_evaluations_over_time"
+          checked={showEvaluationsOverTime}
+          onCheckedChange={setShowEvaluationsOverTime}
+          disabled={isPending}
+        />
+        <ExperimentFlagSwitch
+          flag="is_favorite"
+          checked={isFavorite}
+          onCheckedChange={setIsFavorite}
           disabled={isPending}
         />
       </Stack>

@@ -16,21 +16,28 @@ Two failure classes are caught at .so load time, before any GPU device is touche
                          the one installed (ABI mismatch)
 """
 
-from glob import glob
+from importlib.machinery import ModuleSpec
+from pathlib import Path
+from typing import Any
 
 import pytest
+from file_removals import assert_file_patterns_absent, read_file_patterns
 from python_package_versions import assert_python_package_min_versions
 
-SOUNDFILE_PATTERNS = (
+BASE_FILE_REMOVALS = (Path("/smoke_test/removals/files/base/pytorch-ngc-common.txt"),)
+FINAL_FILE_REMOVALS = Path("/smoke_test/removals/files/final/customizer-codecs.txt")
+SOUNDFILE_FILE_REMOVALS = {
     "/opt/venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so",
-    # The shim is removed with its payload; see the removals file for why keeping it is
-    # worse than not shipping soundfile at all.
     "/opt/venv/lib/python3.*/site-packages/soundfile.py",
-)
+}
+DALI_FILE_REMOVALS = {
+    "/usr/local/lib/python3.12/dist-packages/nvidia/dali",
+    "/usr/local/lib/python3.12/dist-packages/nvidia_dali_cuda130-*.dist-info",
+}
 MINIMUM_PYTHON_PACKAGE_VERSIONS = {
     "bitsandbytes": "0.49.2",
     "mamba-ssm": "2.3.0",
-    "nvidia-dali-cuda130": "2.2.0",
+    "peft": "0.20.0",
     "wandb": "0.28.2",
 }
 
@@ -73,8 +80,9 @@ def test_nmp_automodel_training_importable():
 
 @pytest.mark.smoke_nmp_automodel_training
 def test_soundfile_libsndfile_removed():
-    remaining = sorted(path for pattern in SOUNDFILE_PATTERNS for path in glob(pattern))
-    assert remaining == [], f"file cleanup left scanner-visible libsndfile files: {remaining}"
+    patterns = read_file_patterns(FINAL_FILE_REMOVALS)
+    assert SOUNDFILE_FILE_REMOVALS.issubset(patterns)
+    assert_file_patterns_absent(patterns)
 
 
 @pytest.mark.smoke_nmp_automodel_training
@@ -92,9 +100,40 @@ def test_transformers_audio_backend_probe_is_off():
 
 
 @pytest.mark.smoke_nmp_automodel_training
-def test_dali_still_importable_after_file_cleanup():
-    import importlib.metadata
+def test_peft_lora_dispatch_matches_installed_torchao(monkeypatch: pytest.MonkeyPatch):
+    """PEFT's torchao dispatcher must import against the torchao in this image.
 
-    import nvidia.dali  # noqa: F401
+    ``dispatch_torchao`` runs during adapter injection and is gated on ``find_spec("torchao")`` --
+    file presence, not API compatibility -- before importing torchao symbols. torchao comes from
+    the NGC base image rather than the venv, so a peft expecting a retired torchao API fails
+    ``merge=true`` jobs at injection, after training has already succeeded.
+    """
+    import importlib.util
 
-    assert importlib.metadata.version("nvidia-dali-cuda130")
+    original_find_spec = importlib.util.find_spec
+
+    def find_spec_without_transformer_engine(name: str, *args: Any, **kwargs: Any) -> ModuleSpec | None:
+        if name == "transformer_engine" or name.startswith("transformer_engine."):
+            return None
+        return original_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", find_spec_without_transformer_engine)
+
+    import torch
+    from peft import LoraConfig
+    from peft.tuners.lora.torchao import dispatch_torchao
+
+    # A plain Linear holds no torchao tensor subclass, so the dispatcher must decline by
+    # returning None rather than raise ImportError while probing for one.
+    assert dispatch_torchao(torch.nn.Linear(8, 8), "default", LoraConfig()) is None
+
+
+@pytest.mark.smoke_nmp_automodel_training
+def test_dali_files_removed():
+    patterns = [
+        pattern
+        for pattern in read_file_patterns(*BASE_FILE_REMOVALS)
+        if "/nvidia/dali" in pattern or "nvidia_dali_cuda130" in pattern
+    ]
+    assert DALI_FILE_REMOVALS.issubset(patterns)
+    assert_file_patterns_absent(patterns)

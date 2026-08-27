@@ -20,7 +20,7 @@ agent_source: ./agent
 
 # Behaviour contract threaded to the analyzer and goal-tree components. It states
 # the rules the agent must keep, chiefly that it stays offline and reproducible.
-agent_spec: ./AGENT-SPEC.md
+ethos: ./ETHOS.md
 
 # Required by the profile schema even under --no-insight, where it is never read.
 # It points at a single Harbor task directory used as the shape for Eval Author

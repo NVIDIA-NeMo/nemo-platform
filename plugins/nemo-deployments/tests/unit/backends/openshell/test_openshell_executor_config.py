@@ -97,3 +97,13 @@ def test_serve_path_defaults_to_venv_bin_prepended_to_system_path() -> None:
 def test_serve_path_is_overridable() -> None:
     config = OpenShellExecutorConfig.model_validate({"serve_path": "/opt/bin:/usr/bin"})
     assert config.serve_path == "/opt/bin:/usr/bin"
+
+
+def test_serve_virtual_env_defaults_to_the_packaged_venv() -> None:
+    config = OpenShellExecutorConfig.model_validate({})
+    assert config.serve_virtual_env == "/workspace/.venv"
+
+
+def test_serve_virtual_env_is_overridable_and_can_be_disabled() -> None:
+    assert OpenShellExecutorConfig.model_validate({"serve_virtual_env": "/opt/venv"}).serve_virtual_env == "/opt/venv"
+    assert OpenShellExecutorConfig.model_validate({"serve_virtual_env": ""}).serve_virtual_env == ""

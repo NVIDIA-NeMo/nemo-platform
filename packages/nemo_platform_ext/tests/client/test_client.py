@@ -299,8 +299,8 @@ class TestCreateClientWorkloadIdentity:
         assert mock_exchange.call_args.kwargs["scope"] == "openid email groups"
 
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
-    @patch("nemo_platform.auth.workload_exchange.token_exchange_grant")
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
+    @patch("nemo_platform_ext.auth.workload_exchange.token_exchange_grant")
     async def test_async_exchanges_workload_identity_token_file_at_request_time(
         self, mock_exchange, _mock_discover, tmp_path, monkeypatch
     ):
@@ -540,7 +540,7 @@ class TestCreateClientBootstrapFailures:
 
 
 class TestClientConstructorBootstrapBypass:
-    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
     def test_sync_constructor_with_base_url_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
@@ -553,8 +553,29 @@ class TestClientConstructorBootstrapBypass:
 
         mock_build_client_kwargs.assert_not_called()
 
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
+    def test_sync_constructor_env_base_url_still_bootstraps_when_base_url_omitted(
+        self, mock_build_client_kwargs, monkeypatch
+    ):
+        monkeypatch.setenv("NEMO_PLATFORM_BASE_URL", "http://env-host:8081")
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="http://env-host:8081",
+            workspace="test-workspace",
+            default_headers=None,
+            http_client=None,
+        )
+
+        client = NeMoPlatform()
+        try:
+            assert str(client.base_url).rstrip("/") == "http://env-host:8081"
+            assert client.workspace == "test-workspace"
+        finally:
+            client.close()
+
+        assert mock_build_client_kwargs.call_args.kwargs["base_url"] == "http://env-host:8081"
+
     @patch("nemo_platform._client.DefaultHttpxClient")
-    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
     def test_sync_constructor_direct_mode_uses_nemo_scoped_ca_bundle(
         self, mock_build_client_kwargs, mock_default_httpx_client, monkeypatch
     ):
@@ -571,7 +592,27 @@ class TestClientConstructorBootstrapBypass:
         mock_build_client_kwargs.assert_not_called()
         mock_default_httpx_client.assert_called_once_with(verify="/tmp/nemo-ca.pem")
 
-    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
+    def test_sync_copy_with_access_token_bootstraps_instead_of_reusing_http_client(self, mock_build_client_kwargs):
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="http://override-host:8081",
+            workspace="test-workspace",
+            default_headers={"Authorization": "Bearer replacement-token"},
+            http_client=None,
+        )
+
+        client = NeMoPlatform(base_url="http://original-host:8081", workspace="original-workspace")
+        original_http_client = client._client
+        copied = client.copy(access_token="replacement-token")
+        try:
+            assert copied._client is not original_http_client
+        finally:
+            copied.close()
+            client.close()
+
+        assert mock_build_client_kwargs.call_args.kwargs["access_token"] == "replacement-token"
+
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
     def test_sync_constructor_with_workload_file_and_base_url_bootstraps(self, mock_build_client_kwargs, monkeypatch):
         monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, "/var/run/secrets/nemo-platform/workload/token")
         mock_build_client_kwargs.return_value = MagicMock(
@@ -589,7 +630,7 @@ class TestClientConstructorBootstrapBypass:
 
         assert mock_build_client_kwargs.call_args.kwargs["base_url"] == "http://override-host:8081"
 
-    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
     def test_sync_constructor_passes_context_name_to_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.return_value = MagicMock(
             base_url="http://override-host:8081",
@@ -609,9 +650,9 @@ class TestClientConstructorBootstrapBypass:
 
     def test_sync_constructor_rejects_legacy_context_argument(self):
         with pytest.raises(TypeError, match="unexpected keyword argument 'context'"):
-            NeMoPlatform(context="ctx-b")
+            NeMoPlatform(context="ctx-b")  # ty: ignore[unknown-argument]
 
-    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
     def test_sync_constructor_with_http_client_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
@@ -630,7 +671,7 @@ class TestClientConstructorBootstrapBypass:
         mock_build_client_kwargs.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
     async def test_async_constructor_with_base_url_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
@@ -644,8 +685,30 @@ class TestClientConstructorBootstrapBypass:
         mock_build_client_kwargs.assert_not_called()
 
     @pytest.mark.asyncio
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
+    async def test_async_constructor_env_base_url_still_bootstraps_when_base_url_omitted(
+        self, mock_build_client_kwargs, monkeypatch
+    ):
+        monkeypatch.setenv("NEMO_PLATFORM_BASE_URL", "http://env-host:8081")
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="http://env-host:8081",
+            workspace="test-workspace",
+            default_headers=None,
+            http_client=None,
+        )
+
+        client = AsyncNeMoPlatform()
+        try:
+            assert str(client.base_url).rstrip("/") == "http://env-host:8081"
+            assert client.workspace == "test-workspace"
+        finally:
+            await client.close()
+
+        assert mock_build_client_kwargs.call_args.kwargs["base_url"] == "http://env-host:8081"
+
+    @pytest.mark.asyncio
     @patch("nemo_platform._client.DefaultAsyncHttpxClient")
-    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
     async def test_async_constructor_direct_mode_uses_nemo_scoped_ca_bundle(
         self, mock_build_client_kwargs, mock_default_httpx_client, monkeypatch
     ):
@@ -663,7 +726,30 @@ class TestClientConstructorBootstrapBypass:
         mock_default_httpx_client.assert_called_once_with(verify="/tmp/nemo-ca.pem")
 
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
+    async def test_async_copy_with_access_token_bootstraps_instead_of_reusing_http_client(
+        self, mock_build_client_kwargs
+    ):
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="http://override-host:8081",
+            workspace="test-workspace",
+            default_headers={"Authorization": "Bearer replacement-token"},
+            http_client=None,
+        )
+
+        client = AsyncNeMoPlatform(base_url="http://original-host:8081", workspace="original-workspace")
+        original_http_client = client._client
+        copied = client.copy(access_token="replacement-token")
+        try:
+            assert copied._client is not original_http_client
+        finally:
+            await copied.close()
+            await client.close()
+
+        assert mock_build_client_kwargs.call_args.kwargs["access_token"] == "replacement-token"
+
+    @pytest.mark.asyncio
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
     async def test_async_constructor_with_workload_file_and_base_url_bootstraps(
         self, mock_build_client_kwargs, monkeypatch
     ):
@@ -684,7 +770,7 @@ class TestClientConstructorBootstrapBypass:
         assert mock_build_client_kwargs.call_args.kwargs["base_url"] == "http://override-host:8081"
 
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
     async def test_async_constructor_with_http_client_skips_config_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
 
@@ -703,7 +789,7 @@ class TestClientConstructorBootstrapBypass:
         mock_build_client_kwargs.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
     async def test_async_constructor_passes_context_name_to_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.return_value = MagicMock(
             base_url="http://override-host:8081",

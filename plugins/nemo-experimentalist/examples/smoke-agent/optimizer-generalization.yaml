@@ -25,7 +25,7 @@ agent: smoke-agent
 # Same agent under test as the repair scenario. Only the tasks differ.
 agent_source: ./agent
 
-agent_spec: ./AGENT-SPEC.md
+ethos: ./ETHOS.md
 
 # Required by the profile schema even under --no-insight, where it is never read.
 task_template: ./dataset/task-template

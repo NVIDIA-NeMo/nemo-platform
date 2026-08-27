@@ -17,9 +17,11 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { DataDesignerJobActionsMenu } from '@studio/components/DataDesignerJobActionsMenu';
+import { DataDesignerTransformModal } from '@studio/components/DataDesignerTransformModal';
 import { CreateFileSplitsModal } from '@studio/components/FilesTable/CreateFileSplitsModal';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { BUILDER_CONFIG_FILENAME } from '@studio/routes/DataDesignerJobDetailsRoute/builderConfig';
 import { DataDesignerConfigPanel } from '@studio/routes/DataDesignerJobDetailsRoute/DataDesignerConfigPanel';
 import { DatasetProfilerSection } from '@studio/routes/DataDesignerJobDetailsRoute/DatasetProfilerSection';
 import { JobDatasetEditorSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobDatasetEditorSection';
@@ -29,7 +31,7 @@ import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobD
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
 import { formatDateTime } from '@studio/util/date';
-import { ArrowLeft, Split } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useRef, useState, type FC } from 'react';
 import { Link, useNavigate } from 'react-router';
 
@@ -48,6 +50,7 @@ export const DataDesignerJobDetailsRoute: FC = () => {
   const navigate = useNavigate();
   const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
   const [selectedTab, setSelectedTab] = useState<JobDetailsTab | undefined>(undefined);
 
@@ -64,6 +67,11 @@ export const DataDesignerJobDetailsRoute: FC = () => {
     .map((file) => file.path)
     .filter((path) => /\.(json|jsonl|parquet)$/i.test(path));
   const canSplit = Boolean(splitDatasetId) && splitFileOptions.length > 0;
+
+  const transformFileOptions = splitFileOptions.filter(
+    (path) => !path.endsWith(BUILDER_CONFIG_FILENAME)
+  );
+  const canTransform = Boolean(filesetWorkspace && filesetName) && transformFileOptions.length > 0;
 
   useBreadcrumbs({
     items: [
@@ -114,17 +122,22 @@ export const DataDesignerJobDetailsRoute: FC = () => {
               {job.status ? <StatusBadge status={job.status} /> : null}
             </Flex>
             <Flex gap="density-md" align="center">
-              <Button
-                type="button"
-                kind="primary"
-                color="brand"
-                disabled={!canSplit}
-                onClick={() => setIsSplitModalOpen(true)}
-              >
-                <Split /> Split
-              </Button>
               <DataDesignerJobActionsMenu
                 job={job}
+                variant="labeled"
+                additionalActions={[
+                  {
+                    label: 'Transform',
+                    disabled: !canTransform,
+                    onSelect: () => setIsTransformModalOpen(true),
+                  },
+                  {
+                    label: 'Split',
+                    disabled: !canSplit,
+                    onSelect: () => setIsSplitModalOpen(true),
+                    divider: {},
+                  },
+                ]}
                 onViewConfig={() => setIsConfigPanelOpen(true)}
                 onDeleted={() => navigate(getDataDesignerJobListRoute(workspace))}
                 onCancelError={setCancelError}
@@ -189,6 +202,19 @@ export const DataDesignerJobDetailsRoute: FC = () => {
         open={isConfigPanelOpen}
         onClose={() => setIsConfigPanelOpen(false)}
       />
+
+      {isTransformModalOpen && (
+        <DataDesignerTransformModal
+          open
+          onClose={() => setIsTransformModalOpen(false)}
+          workspace={workspace}
+          sourceJobName={job.name}
+          filesetWorkspace={filesetWorkspace}
+          filesetName={filesetName}
+          fileOptions={transformFileOptions}
+          defaultNumRecords={job.spec?.job_config?.num_records ?? 0}
+        />
+      )}
 
       {isSplitModalOpen && (
         <CreateFileSplitsModal

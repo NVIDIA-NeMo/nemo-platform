@@ -533,7 +533,7 @@ def test_resolve_nat_bin_falls_back_to_container_path(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_create_deployment_stages_agent_spec_fileset_into_base_dir(tmp_path: Path) -> None:
+async def test_create_deployment_stages_ethos_fileset_into_base_dir(tmp_path: Path) -> None:
     backend = _backend(tmp_path)
     config = {
         "config_format": "nemo-agents-spec-v1",
@@ -544,7 +544,7 @@ async def test_create_deployment_stages_agent_spec_fileset_into_base_dir(tmp_pat
     }
     staged: list[dict[str, Any]] = []
 
-    async def _stage_fabric_spec_dir(
+    async def _stage_fabric_ethos_dir(
         *,
         workspace: str,
         agent_name: str,
@@ -573,7 +573,7 @@ async def test_create_deployment_stages_agent_spec_fileset_into_base_dir(tmp_pat
 
     with (
         patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config),
-        patch("nemo_agents_plugin.runner.in_memory.stage_fabric_spec_dir", _stage_fabric_spec_dir),
+        patch("nemo_agents_plugin.runner.in_memory.stage_fabric_ethos_dir", _stage_fabric_ethos_dir),
         patch("nemo_agents_plugin.runner.in_memory.get_async_platform_sdk", MagicMock()),
         patch.object(InMemoryRunnerBackend, "_spawn_fabric", _spawn_fabric),
     ):
@@ -597,12 +597,12 @@ async def test_create_deployment_cleans_base_dir_when_staging_fails(tmp_path: Pa
     }
     base_dir = tmp_path / "system" / "ws" / "fabric-dep-fabric"
 
-    async def _stage_fabric_spec_dir(**kwargs: Any) -> None:
+    async def _stage_fabric_ethos_dir(**kwargs: Any) -> None:
         del kwargs
         raise FabricArtifactStagingError("skills/review missing")
 
     with (
-        patch("nemo_agents_plugin.runner.in_memory.stage_fabric_spec_dir", _stage_fabric_spec_dir),
+        patch("nemo_agents_plugin.runner.in_memory.stage_fabric_ethos_dir", _stage_fabric_ethos_dir),
         patch("nemo_agents_plugin.runner.in_memory.get_async_platform_sdk", MagicMock()),
     ):
         with pytest.raises(FabricArtifactStagingError, match="skills/review"):

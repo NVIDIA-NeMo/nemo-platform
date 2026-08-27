@@ -89,14 +89,14 @@ def pr_cli_for_repo_url(url: str) -> tuple[str, str] | None:
     return cli, hostname or ""
 
 
-def split_agent_spec(spec: str) -> tuple[str, str]:
-    """Split an agent spec ``<url@ref>#<agent_path>`` into ``(core_spec, agent_path)``.
+def split_agent_source_uri(source_uri: str) -> tuple[str, str]:
+    """Split ``<url@ref>#<agent_path>`` into the source URI and agent path.
 
     The ``#<agent_path>`` fragment carries the agent's location within the repo (monorepo
     support), so repo, rev, and sub-path all travel together on the one ``--agent`` value.
-    A spec with no fragment has agent_path ``"."`` (whole-repo agent).
+    A URI with no fragment has agent_path ``"."`` (whole-repo agent).
     """
-    core, separator, fragment = spec.partition("#")
+    core, separator, fragment = source_uri.partition("#")
     agent_path = fragment if separator else "."
     return core, _validated_agent_path(agent_path)
 
@@ -168,7 +168,7 @@ def clone_agent_repo(spec: str, dest: Path, *, clone_depth: int | None = None) -
     (it must be deep enough to branch from ``ref``). Raises on git failure (callers decide how to
     handle).
     """
-    core, agent_path = split_agent_spec(spec)
+    core, agent_path = split_agent_source_uri(spec)
     url, ref = split_git_ref(core)
     dest = Path(dest)
     if dest.exists():

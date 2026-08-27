@@ -105,11 +105,11 @@ def test_agent_declares_no_strategy_methods() -> None:
     assert "CodeActStrategy" not in source
 
 
-def test_spec_forbids_llm_backed_changes() -> None:
-    """Check that the spec forbids LLM-backed changes."""
-    spec = (_EXAMPLE_DIR / "AGENT-SPEC.md").read_text(encoding="utf-8").lower()
+def test_ethos_forbids_llm_backed_changes() -> None:
+    """Check that the Ethos forbids LLM-backed changes."""
+    ethos = (_EXAMPLE_DIR / "ETHOS.md").read_text(encoding="utf-8").lower()
     for phrase in ("@strategy", "deterministic", "no llm", "offline"):
-        assert phrase in spec, f"AGENT-SPEC.md must mention {phrase!r}"
+        assert phrase in ethos, f"ETHOS.md must mention {phrase!r}"
 
 
 # The candidate must receive only these implementation files. Keeping this exact

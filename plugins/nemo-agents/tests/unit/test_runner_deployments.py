@@ -1095,7 +1095,7 @@ async def test_create_deployment_fabric_docker_stages_fileset_artifacts() -> Non
             return_value=sdk,
         ),
         patch(
-            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_spec_config_files",
+            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_ethos_config_files",
             new_callable=AsyncMock,
             return_value=staged_files,
         ) as mock_stage,
@@ -1145,7 +1145,7 @@ async def test_create_deployment_fabric_k8s_stages_fileset_artifacts() -> None:
             return_value=sdk,
         ),
         patch(
-            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_spec_config_files",
+            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_ethos_config_files",
             new_callable=AsyncMock,
             return_value=staged_files,
         ),
@@ -1186,7 +1186,7 @@ async def test_create_deployment_fabric_staging_error_fails_before_entity_create
             return_value=sdk,
         ),
         patch(
-            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_spec_config_files",
+            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_ethos_config_files",
             new_callable=AsyncMock,
             side_effect=FabricArtifactStagingError("missing skills/review"),
         ),

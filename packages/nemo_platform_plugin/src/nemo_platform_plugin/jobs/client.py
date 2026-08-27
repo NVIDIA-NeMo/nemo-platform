@@ -23,9 +23,63 @@ Usage::
             ...
 """
 
+from collections.abc import AsyncIterator, Awaitable, Iterator
+from typing import Protocol
+
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.method import method
+from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, NemoPaginatedResponse, NemoResponse
+from nemo_platform_plugin.client.types import CursorPagination
 from nemo_platform_plugin.jobs import endpoints
+from nemo_platform_plugin.jobs.schemas import PlatformJobLog, PlatformJobStatusResponse
+from nemo_platform_plugin.jobs.types import JobLogsQueryParams
+from nemo_platform_plugin.jobs.watch_types import JobWatchEvent
+
+
+class JobStatusClient(Protocol):
+    def get_job_status(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+    ) -> NemoResponse[PlatformJobStatusResponse]: ...
+
+
+class AsyncJobStatusClient(Protocol):
+    def get_job_status(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+    ) -> Awaitable[NemoResponse[PlatformJobStatusResponse]]: ...
+
+
+class JobLogsClient(Protocol):
+    def list_job_logs(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+        query_params: JobLogsQueryParams | None = None,
+    ) -> NemoPaginatedResponse[PlatformJobLog, CursorPagination]: ...
+
+
+class AsyncJobLogsClient(Protocol):
+    def list_job_logs(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+        query_params: JobLogsQueryParams | None = None,
+    ) -> Awaitable[AsyncNemoPaginatedResponse[PlatformJobLog, CursorPagination]]: ...
+
+
+class JobsWatchClient(JobStatusClient, JobLogsClient, Protocol):
+    """Structural sync Jobs client accepted by the watcher implementation."""
+
+
+class AsyncJobsWatchClient(AsyncJobStatusClient, AsyncJobLogsClient, Protocol):
+    """Structural async Jobs client accepted by the watcher implementation."""
 
 
 class _JobsMethods:
@@ -68,6 +122,80 @@ class _JobsMethods:
 class JobsClient(_JobsMethods, NemoClient):
     """Sync client for the Jobs service API."""
 
+    def watch_job(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        poll_interval: float = 3,
+        timeout: float | None = None,
+        include_history: bool = True,
+        include_logs: bool = True,
+        attempt_id: int | None = None,
+        step_id: str | None = None,
+        task_id: str | None = None,
+        limit: int | None = None,
+        page_cursor: str | None = None,
+    ) -> Iterator[JobWatchEvent]:
+        """Watch a platform job and yield status, log, and warning events.
+
+        Poll-based log pagination can miss delayed log entries that sort before
+        the current cursor.
+        """
+        from nemo_platform_plugin.jobs.watch import watch_job
+
+        return watch_job(
+            self,
+            name,
+            workspace=workspace,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            include_history=include_history,
+            include_logs=include_logs,
+            attempt_id=attempt_id,
+            step_id=step_id,
+            task_id=task_id,
+            limit=limit,
+            page_cursor=page_cursor,
+        )
+
 
 class AsyncJobsClient(_JobsMethods, AsyncNemoClient):
     """Async client for the Jobs service API."""
+
+    def watch_job(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        poll_interval: float = 3,
+        timeout: float | None = None,
+        include_history: bool = True,
+        include_logs: bool = True,
+        attempt_id: int | None = None,
+        step_id: str | None = None,
+        task_id: str | None = None,
+        limit: int | None = None,
+        page_cursor: str | None = None,
+    ) -> AsyncIterator[JobWatchEvent]:
+        """Watch a platform job asynchronously and yield status, log, and warning events.
+
+        Poll-based log pagination can miss delayed log entries that sort before
+        the current cursor.
+        """
+        from nemo_platform_plugin.jobs.watch import async_watch_job
+
+        return async_watch_job(
+            self,
+            name,
+            workspace=workspace,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            include_history=include_history,
+            include_logs=include_logs,
+            attempt_id=attempt_id,
+            step_id=step_id,
+            task_id=task_id,
+            limit=limit,
+            page_cursor=page_cursor,
+        )

@@ -58,7 +58,7 @@ RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages
 # openssl is the only dpkg package here with an out-of-SLA CVE. Upgraded explicitly rather than via
 # a blanket `apt-get upgrade`, which would also pull newer CUDA packages from the NVIDIA repos.
 RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target=/tmp/remove-listed-apt-packages.sh,readonly \
-    --mount=type=bind,source=docker/customizer/removals/apt/nmp-rl-base.txt,target=/tmp/apt-package-removals.txt,readonly \
+    --mount=type=bind,source=docker/removals/apt/nmp-rl-base.txt,target=/tmp/apt-package-removals.txt,readonly \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim ccache gnupg \
@@ -260,7 +260,7 @@ uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenac
 
 # W&B ships a scanner-visible Go binary. Keep it above the fixed go-git/grpc
 # and Go stdlib floors even when NeMo-RL's lock has an older wheel.
-uv pip install --python /opt/nemo_rl_venv/bin/python "wandb==0.28.2"
+uv pip install --python /opt/nemo_rl_venv/bin/python "wandb>=0.28.2"
 
 # NeMo-Gym in the BASE venv, for the DRIVER - not a duplicate of the nemo_gym extra above.
 # Sandboxed (mode B) GRPO imports nemo_rl.environments.sandbox in the driver process:
@@ -440,7 +440,7 @@ fi
 for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
     [ -x "${py}" ] || continue
     if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("wandb") else 1)'; then
-        uv pip install --python "${py}" "wandb==0.28.2"
+        uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.28.2"
     fi
 done
 for d in "${UV_CACHE_DIR}"/archive-v0/*/; do

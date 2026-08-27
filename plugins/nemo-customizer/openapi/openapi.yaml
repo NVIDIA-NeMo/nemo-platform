@@ -2435,11 +2435,39 @@ components:
             own max_tokens.'
           type: integer
           exclusiveMinimum: 0.0
+        top_k:
+          title: Top K
+          description: 'Restrict rollout sampling to the k most likely tokens at each
+            step. Omit to sample from the full distribution, which is what standard
+            GRPO does. Narrowing this has the same risk as lowering temperature: the
+            rollouts in a prompt group become more alike, and GRPO learns from how
+            much they differ.'
+          type: integer
+          exclusiveMinimum: 0.0
         normalize_rewards:
           type: boolean
           title: Normalize Rewards
-          description: Normalize rewards within each prompt group.
+          description: Divide each group's advantages by their standard deviation.
           default: true
+        use_leave_one_out_baseline:
+          type: boolean
+          title: Use Leave One Out Baseline
+          description: Compare each rollout against the mean of the *other* rollouts
+            in its group rather than against the group mean including itself. Excluding
+            a rollout from its own baseline removes the bias that comparing it to
+            itself introduces.
+          default: true
+        advantage_clip_low:
+          title: Advantage Clip Low
+          description: Lower bound applied to advantages after normalization. Omit
+            for no bound. Bounding both ends limits how much one unusual rollout can
+            move the policy.
+          type: number
+        advantage_clip_high:
+          title: Advantage Clip High
+          description: Upper bound applied to advantages after normalization. Omit
+            for no bound.
+          type: number
         overlong_filtering:
           type: boolean
           title: Overlong Filtering
@@ -2472,12 +2500,100 @@ components:
           title: Ratio Clip Max
           description: Upper PPO-style importance ratio clip bound.
           default: 0.28
+        ratio_clip_c:
+          title: Ratio Clip C
+          description: Dual-clip bound. Puts a floor under the loss for tokens whose
+            advantage is negative, so a single badly-scored rollout cannot dominate
+            the update. Must be greater than 1; 3 is the usual choice. Omit to leave
+            dual clipping off.
+          type: number
+          exclusiveMinimum: 1.0
+        use_on_policy_kl_approximation:
+          type: boolean
+          title: Use On Policy Kl Approximation
+          description: Estimate the KL term against the policy that generated the
+            rollouts rather than the one currently training. The two differ once a
+            rollout batch is reused across several optimizer steps.
+          default: true
+        use_importance_sampling_correction:
+          type: boolean
+          title: Use Importance Sampling Correction
+          description: Reweight each token by how much more or less likely the training
+            policy is to produce it than the rollout policy was. Corrects for the
+            drift that builds up when a rollout batch is reused, at the cost of higher
+            variance.
+          default: true
         max_grad_norm:
           type: number
           minimum: 0.0
           title: Max Grad Norm
           description: Maximum gradient norm for clipping.
           default: 1.0
+        truncated_importance_sampling_type:
+          title: Truncated Importance Sampling Type
+          description: 'Bound the rollout-vs-training importance weights, so a policy
+            that has drifted from the one that generated the batch cannot dominate
+            the update. Watch `token_mult_prob_error`: a value climbing past ~1.05
+            is the drift this corrects. `tis` clamps weights into the range; `icepop`
+            zeroes out-of-range tokens (reference bounds 0.5-5); `seq-mask-tis` zeroes
+            whole sequences by their geometric-mean ratio (reference bounds 0.999-1.002).
+            None leaves it off, which is NeMo-RL''s default.'
+          type: string
+          enum:
+          - tis
+          - icepop
+          - seq-mask-tis
+        truncated_importance_sampling_ratio:
+          title: Truncated Importance Sampling Ratio
+          description: Upper bound on the importance weight. Required whenever `truncated_importance_sampling_type`
+            is set.
+          type: number
+          exclusiveMinimum: 0.0
+        truncated_importance_sampling_ratio_min:
+          title: Truncated Importance Sampling Ratio Min
+          description: Lower bound on the importance weight. Required for `icepop`
+            and `seq-mask-tis`; optional for `tis`, which floors at 0 when unset.
+          type: number
+          minimum: 0.0
+        use_dynamic_sampling:
+          type: boolean
+          title: Use Dynamic Sampling
+          description: Discard prompt groups whose rewards have zero standard deviation,
+            and keep generating until the step has a full batch of groups that do
+            not. Those groups contribute exactly no gradient, so on a dataset the
+            model finds too hard (or too easy) most of a step is otherwise wasted
+            -- watch `baseline_reward/pct_mixed` for how much. Costs roughly `1 /
+            pct_mixed` times the generation per step.
+          default: false
+        dynamic_sampling_max_gen_batches:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Dynamic Sampling Max Gen Batches
+          description: How many generation batches one step may consume trying to
+            fill itself before the run fails. Only read when `use_dynamic_sampling`
+            is true.
+          default: 10
+        batch_multiplier:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Batch Multiplier
+          description: Over-generate each step by this factor so dynamic sampling
+            has candidates to filter. Set it near `1 / pct_mixed`. Rejected above
+            1.0 unless `use_dynamic_sampling` is true, which is what NeMo-RL asserts
+            at startup.
+          default: 1.0
+        reward_shaping:
+          allOf:
+          - $ref: '#/components/schemas/RlRewardShapingParams'
+          description: Penalise over-long and improperly-terminated responses before
+            the loss sees the reward. None leaves shaping off.
+        reward_scaling:
+          allOf:
+          - $ref: '#/components/schemas/RlRewardScalingParams'
+          description: Linearly rescale each reward before advantages are computed.
+            None leaves scaling off. The DAPO recipes set target_min to -1.0, which
+            turns a binary verifier's 0 into a negative reward instead of a merely
+            smaller positive one.
         automodel_kwargs:
           title: Automodel Kwargs
           description: 'Passed to policy.dtensor_cfg.automodel_kwargs; selects the
@@ -2870,6 +2986,83 @@ components:
       type: object
       title: RlParallelismParams
       description: Distributed training parallelism configuration.
+    RlRewardScalingParams:
+      properties:
+        source_min:
+          type: number
+          title: Source Min
+          description: Low end of the incoming reward range.
+          default: 0.0
+        source_max:
+          type: number
+          title: Source Max
+          description: High end of the incoming reward range.
+          default: 1.0
+        target_min:
+          type: number
+          title: Target Min
+          description: Low end of the rescaled range.
+          default: 0.0
+        target_max:
+          type: number
+          title: Target Max
+          description: High end of the rescaled range.
+          default: 1.0
+      additionalProperties: false
+      type: object
+      title: RlRewardScalingParams
+      description: 'Linear reward rescaling (NeMo-RL ``grpo.reward_scaling``).
+
+
+        Each reward is clamped to ``[source_min, source_max]`` and mapped onto
+
+        ``[target_min, target_max]``. The DAPO recipes use it to move a binary verifier''s
+
+        ``[0, 1]`` onto ``[-1, 1]``, so a wrong answer carries negative reward rather
+        than
+
+        merely less positive reward.'
+    RlRewardShapingParams:
+      properties:
+        overlong_buffer_length:
+          title: Overlong Buffer Length
+          description: Tokens before max_response_length over which the penalty ramps
+            to full.
+          type: integer
+          exclusiveMinimum: 0.0
+        overlong_buffer_penalty:
+          title: Overlong Buffer Penalty
+          description: Penalty applied at the end of the buffer.
+          type: number
+          minimum: 0.0
+        max_response_length:
+          title: Max Response Length
+          description: Length beyond which a response is penalised. Usually the generation
+            cap.
+          type: integer
+          exclusiveMinimum: 0.0
+        stop_properly_penalty_coef:
+          title: Stop Properly Penalty Coef
+          description: Scale factor on the reward of a truncated response. 0 zeroes
+            it, 1 is no penalty.
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+      additionalProperties: false
+      type: object
+      title: RlRewardShapingParams
+      description: 'DAPO-style reward shaping (NeMo-RL ``grpo.reward_shaping``).
+
+
+        Both penalties act on responses the generation cap cut off, which score zero
+        on a
+
+        verifier that needs a complete answer. ``overlong_*`` ramps a penalty in over
+        the last
+
+        ``overlong_buffer_length`` tokens before ``max_response_length``; ``stop_properly_penalty_coef``
+
+        scales the reward of anything truncated outright.'
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$

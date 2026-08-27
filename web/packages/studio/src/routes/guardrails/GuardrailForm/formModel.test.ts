@@ -2,43 +2,49 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import { applyFormToConfig } from '@studio/routes/guardrails/GuardrailForm/formModel';
+import {
+  applyFormToConfig,
+  mapConfigToForm,
+} from '@studio/routes/guardrails/GuardrailForm/formModel';
+
+describe('mapConfigToForm', () => {
+  it('deep-clones so edits never mutate the cached server config', () => {
+    const data = {
+      rails: { input: { flows: ['self check input'] } },
+    } as RailsConfig;
+
+    const values = mapConfigToForm(data);
+    values.config.rails?.input?.flows?.push('jailbreak detection model');
+
+    expect(data.rails?.input?.flows).toEqual(['self check input']);
+  });
+
+  it('represents a config with no data as an empty document', () => {
+    expect(mapConfigToForm(undefined).config).toEqual({});
+  });
+});
 
 describe('applyFormToConfig', () => {
-  it('persists removal of the sole general instruction as an empty list', () => {
-    const data: RailsConfig = {
-      instructions: [{ type: 'general', content: 'Be helpful.' }],
-    };
-    const result = applyFormToConfig(data, { generalInstruction: '', sampleConversation: '' });
-    expect(result.instructions).toEqual([]);
-  });
+  it('returns the working copy as the payload', () => {
+    const values = mapConfigToForm({
+      passthrough: true,
+      rails: { output: { flows: ['self check output'] } },
+    } as RailsConfig);
 
-  it('keeps other instructions when the general one is cleared', () => {
-    const data: RailsConfig = {
-      instructions: [
-        { type: 'general', content: 'Be helpful.' },
-        { type: 'sample_conversation', content: 'user: hi' },
-      ],
-    };
-    const result = applyFormToConfig(data, { generalInstruction: '', sampleConversation: '' });
-    expect(result.instructions).toEqual([{ type: 'sample_conversation', content: 'user: hi' }]);
-  });
-
-  it('updates the general instruction while preserving unexposed config fields', () => {
-    const data = {
-      instructions: [{ type: 'general', content: 'Old.' }],
-      models: [{ type: 'main', engine: 'openai', model: 'gpt-4' }],
-    } as RailsConfig;
-    const result = applyFormToConfig(data, { generalInstruction: 'New.', sampleConversation: '' });
-    expect(result.instructions).toEqual([{ type: 'general', content: 'New.' }]);
-    expect(result.models).toEqual(data.models);
-  });
-
-  it('omits an empty sample conversation', () => {
-    const result = applyFormToConfig(undefined, {
-      generalInstruction: 'Hi.',
-      sampleConversation: '',
+    expect(applyFormToConfig(values)).toEqual({
+      passthrough: true,
+      rails: { output: { flows: ['self check output'] } },
     });
-    expect(result.sample_conversation).toBeUndefined();
+  });
+
+  it('round-trips fields no part of the editor models', () => {
+    // The backend ignores unknown top-level keys, but a config authored from files or the
+    // CLI can carry Colang-era fields that must survive an unrelated edit here.
+    const data = {
+      user_messages: { greeting: ['hello'] },
+      import_paths: ['./shared'],
+    } as unknown as RailsConfig;
+
+    expect(applyFormToConfig(mapConfigToForm(data))).toEqual(data);
   });
 });

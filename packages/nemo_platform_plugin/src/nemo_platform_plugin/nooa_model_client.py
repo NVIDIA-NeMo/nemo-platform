@@ -15,9 +15,9 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.config import get_context
 from nemo_platform.types.inference import ModelProvider
 from nemo_platform.types.models import ModelEntity
+from nemo_platform_ext.config import get_context
 from nooa.unifiedllm import CompletionClient, UnifiedLLM
 
 _PLACEHOLDER_API_KEY = "not-needed"

@@ -42,7 +42,10 @@ from nemo_agents_plugin.entities import (
     SessionStatus,
 )
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
+from nemo_platform_plugin.dependencies import get_effective_principal_id
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+
+OWNER_PRINCIPAL_ID = "session-owner"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,6 +77,7 @@ def _make_session(
     workspace: str = "default",
     deployment_id: str = "deployment-id",
     status: SessionStatus = SessionStatus.ACTIVE,
+    created_by: str | None = OWNER_PRINCIPAL_ID,
 ) -> AgentSession:
     session = AgentSession(
         name=name,
@@ -82,6 +86,7 @@ def _make_session(
         status=status,
     )
     session._id = session_id
+    session._created_by = created_by
     return session
 
 
@@ -174,6 +179,7 @@ def test_app(mock_entity_client: AsyncMock) -> FastAPI:
         prefix="/apis/agents/v2/workspaces/{workspace}",
     )
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
+    app.dependency_overrides[get_effective_principal_id] = lambda: OWNER_PRINCIPAL_ID
     return app
 
 
@@ -463,7 +469,11 @@ class TestSessionAwareRouting:
 
         assert resp.status_code == 200
         assert mock_entity_client.find_one.await_args_list == [
-            call(AgentSession, workspace="default", filter_obj={"id": "session-2"}),
+            call(
+                AgentSession,
+                workspace="default",
+                filter_obj={"id": "session-2", "created_by": OWNER_PRINCIPAL_ID},
+            ),
             call(AgentDeployment, workspace="default", filter_obj={"id": "deployment-2"}),
         ]
         mock_entity_client.get.assert_not_awaited()
@@ -492,7 +502,7 @@ class TestSessionAwareRouting:
         mock_entity_client.find_one.assert_awaited_once_with(
             AgentSession,
             workspace="default",
-            filter_obj={"id": "session-1"},
+            filter_obj={"id": "session-1", "created_by": OWNER_PRINCIPAL_ID},
         )
         stream_call = httpx_mock.__aenter__.return_value.stream.call_args
         assert stream_call.kwargs["headers"][SESSION_ID_HEADER] == "session-1"
@@ -521,6 +531,42 @@ class TestSessionAwareRouting:
         )
 
         assert resp.status_code == 404
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("GET", "/apis/agents/v2/workspaces/default/agents/calc/-/health"),
+            ("POST", "/apis/agents/v2/workspaces/default/agents/calc/-/invoke"),
+            ("GET", "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/health"),
+            ("POST", "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/invoke"),
+        ],
+    )
+    def test_foreign_owned_session_returns_404_on_every_gateway_route(
+        self,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+        method: str,
+        path: str,
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_deployment(deployment_id="deployment-id"))
+        mock_entity_client.find_one = AsyncMock(
+            return_value=_make_session(session_id="session-1", created_by="other-principal")
+        )
+
+        resp = client.request(
+            method,
+            path,
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={} if method == "POST" else None,
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Session ID 'session-1' not found in workspace 'default'."
+        mock_entity_client.find_one.assert_awaited_once_with(
+            AgentSession,
+            workspace="default",
+            filter_obj={"id": "session-1", "created_by": OWNER_PRINCIPAL_ID},
+        )
 
     def test_closed_session_returns_409(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.find_one = AsyncMock(
