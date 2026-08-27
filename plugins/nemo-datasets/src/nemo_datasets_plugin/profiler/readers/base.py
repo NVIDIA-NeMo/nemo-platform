@@ -93,8 +93,14 @@ def _load_builtin_readers() -> None:
     global _builtins_loaded
     if _builtins_loaded:
         return
-    _builtins_loaded = True
     from nemo_datasets_plugin.profiler.readers import jsonl, parquet  # noqa: F401  self-registering
+
+    # Set only once the import has actually run. Setting it first latched a failure permanently: a
+    # broken pyarrow raised once, inside `_peek_files`' guard where the reason was swallowed, and
+    # every call after that skipped the import and raised "no reader registered for 'parquet'"
+    # instead -- so the profile blamed a missing reader for a broken environment and the real cause
+    # reached nobody. The reader modules only *register* on import, so there is no re-entry to guard.
+    _builtins_loaded = True
 
 
 def register_reader(reader: FormatReader) -> None:
