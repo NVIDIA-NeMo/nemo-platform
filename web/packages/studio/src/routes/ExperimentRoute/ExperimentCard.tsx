@@ -36,6 +36,11 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
 
   const series = useMemo(() => toTrendSeries(evaluationsPage?.data ?? []), [evaluationsPage]);
 
+  // A flagged experiment with nothing to plot yet falls back to the plain card rather than
+  // rendering an empty chart. Kept while the query is in flight so the card settles once,
+  // into the skeleton, instead of flashing the count and then swapping to a chart.
+  const renderTrend = showTrend && (isPending || series.length > 0);
+
   return (
     <Card
       interactive
@@ -73,7 +78,7 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
       </div>
 
       {/* Stats, or the trendline for experiments flagged to graph over time. */}
-      {showTrend ? (
+      {renderTrend ? (
         // The evaluator pills are buttons inside an interactive card; without this, selecting a
         // series would bubble up and navigate to the experiment instead of switching the chart.
         <div
