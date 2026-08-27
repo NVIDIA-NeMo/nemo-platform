@@ -65,6 +65,10 @@ export const ExperimentTrendChart: FC<ExperimentTrendChartProps> = ({
   // The fetch takes one page, so a group larger than that plots a partial history. A trend that
   // quietly starts partway through reads as the whole story, so say when it does not. The preloaded
   // path is whole by construction — the caller only passes rows when the group fits one page.
+  //
+  // Counted against the rows fetched, not the points plotted: `buildTrendPoints` also drops rows
+  // that carry no value for the selected metric, and folding that into this sentence would report
+  // a smaller "most recent" figure than was actually loaded, varying by which metric is selected.
   const omittedCount = hasPreloaded ? 0 : Math.max(0, fetchedTotal - fetchedRows.length);
   const metrics = useMemo(() => deriveTrendMetrics(points), [points]);
 
@@ -149,7 +153,7 @@ export const ExperimentTrendChart: FC<ExperimentTrendChartProps> = ({
           <Text kind="title/xs">{`${metric?.label ?? 'Metric'} over time`}</Text>
           {omittedCount > 0 && (
             <Text kind="body/regular/xs" color="subtle">
-              {`Showing the ${plotPoints.length.toLocaleString()} most recent of ${fetchedTotal.toLocaleString()} evaluations.`}
+              {`Showing the ${fetchedRows.length.toLocaleString()} most recent of ${fetchedTotal.toLocaleString()} evaluations.`}
             </Text>
           )}
         </div>
