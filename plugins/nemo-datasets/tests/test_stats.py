@@ -320,6 +320,33 @@ def test_refuses_to_quote_a_vocabulary_larger_than_the_cap():
     assert _quoted("source", "string", [f"src-{i}" for i in range(40)], "provenance") is None
 
 
+def test_the_fold_reports_the_cap_it_hit_at_either_level():
+    from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS
+
+    # Reported by the fold that stopped, not read off the length of what came back: a partition with
+    # exactly MAX_COLUMNS columns is complete and the same length as one that was cut short.
+    wide = RowFold(None)
+    wide.update([{f"c{i}": i for i in range(MAX_COLUMNS + 500)}])
+    features, _ = wide.finalize()
+    assert len(features) == MAX_COLUMNS
+    assert wide.columns_were_capped() is True
+
+    # And one level down, which used to defeat the cap entirely: the top level stayed at one column
+    # while a fold was minted per row inside `meta`.
+    nested = RowFold(None)
+    for i in range(MAX_COLUMNS + 500):
+        nested.update([{"meta": {f"k{i}": 1}}])
+    features, _ = nested.finalize()
+    assert len(features) == 1
+    assert len(features[0].fields) == MAX_COLUMNS
+    assert nested.columns_were_capped() is True
+
+    ordinary = RowFold(None)
+    ordinary.update([{"a": 1, "b": {"x": 1}}])
+    ordinary.finalize()
+    assert ordinary.columns_were_capped() is False
+
+
 # --- routing -------------------------------------------------------------------------------------
 
 # A column's values are routed to their measurements by exact class, which cannot place a subclass

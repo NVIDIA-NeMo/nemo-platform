@@ -33,7 +33,7 @@ from nemo_datasets_plugin.profiler.readers.base import (
     get_reader,
     is_unsupported_data,
 )
-from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
+from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, arrow_schema_was_capped, derive_features
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_datasets_plugin.profiler.stats import RowFold, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
@@ -215,20 +215,21 @@ class _PartitionOutcome:
     file_errors: list[FileError]  # files this partition grouped but could not fully read
 
 
-def _capped_columns_evidence(features: list[FeatureSchema]) -> list[Evidence]:
+def _capped_columns_evidence(capped: bool) -> list[Evidence]:
     """Say so when the schema stopped at the cap rather than at the end of the data.
 
     A profile describing 4,096 of a file's columns as though they were all of them is worse than one
     that failed, since the reader cannot tell a wide table from a broken one.
     """
-    if not columns_were_capped(features):
+    if not capped:
         return []
     return [
         Evidence(
             kind="error",
             detail=(
                 f"stopped at {MAX_COLUMNS} columns; the rest of this partition's schema was not "
-                f"described. A file whose rows carry unique keys will do this."
+                f"described. A file whose rows carry unique keys will do this, at the top level or "
+                f"inside a struct."
             ),
         )
     ]
@@ -261,11 +262,13 @@ class _PartitionFolds:
     neither. Keeping them side by side is what lets the file loop hand over a batch and forget it.
     """
 
-    def __init__(self, features: list[FeatureSchema] | None) -> None:
+    def __init__(self, features: list[FeatureSchema] | None, *, declared_capped: bool = False) -> None:
         # None means the partition declared no schema, which the fold reads as "discover the columns
         # as they appear". Either way the fold that measured them reports them, so there is one copy
         # of the schema rather than two that can drift.
         self._columns = RowFold(features)
+        # A declared schema was already truncated before the fold saw it, so the fold cannot know.
+        self._declared_capped = declared_capped
         self._prefix = PrefixPairFold()
         self._prefix_error: Evidence | None = None
 
@@ -309,7 +312,8 @@ class _PartitionFolds:
             # column's controlled vocabulary.
             if not truncated:
                 quote_enumerations(features, measured.stats, measured.vocabularies)
-            classification.evidence.extend(_capped_columns_evidence(features))
+            capped = self._declared_capped or self._columns.columns_were_capped()
+            classification.evidence.extend(_capped_columns_evidence(capped))
             classification.evidence.extend(measured.errors)
             if self._prefix_error is not None:
                 classification.evidence.append(self._prefix_error)
@@ -363,7 +367,10 @@ def _profile_partition(
     # Declared or not, the partition folds the same way. A schema names and types the columns before
     # the first batch; without one they are discovered as they appear and typed at the end.
     row_cap = _per_file_cap(row_budget, len(entries))
-    folds = _PartitionFolds(derive_features([], declared) if declared is not None else None)
+    folds = _PartitionFolds(
+        derive_features([], declared) if declared is not None else None,
+        declared_capped=declared is not None and arrow_schema_was_capped(declared),
+    )
     rows_scanned = 0
     files_read = 0
     rows_present: int | None = 0
