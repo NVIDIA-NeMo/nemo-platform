@@ -18,6 +18,7 @@ _ACTIONABLE_REASON = "not_covered_by_any_input_report"
 _DRAFT_PARTS = (".eval-author", "task-drafts")
 _PROPOSAL_PARTS = (".eval-author", "proposals")
 _SLUG_PREFIX = "cover-"
+_MIN_VERIFY_REPORTS = 2
 
 
 class PipelineError(ValueError):
@@ -25,6 +26,7 @@ class PipelineError(ValueError):
 
 
 def _read_json(path: Path) -> dict[str, Any]:
+    """Load one JSON object from ``path`` or raise ``PipelineError``."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -47,6 +49,7 @@ def task_slug_for_tool(tool_name: str) -> str:
 
 
 def _artifact_paths(task_slug: str) -> dict[str, str]:
+    """Return the canonical ``.eval-author/`` paths for one task slug."""
     return {
         "proposal": f".eval-author/proposals/{task_slug}-instruction.md",
         "draft": f".eval-author/task-drafts/{task_slug}",
@@ -56,6 +59,7 @@ def _artifact_paths(task_slug: str) -> dict[str, str]:
 
 
 def _enrich_gap(gap: dict[str, Any]) -> dict[str, Any]:
+    """Attach ``task_slug`` and ``paths`` to one actionable tool gap record."""
     tool_name = gap.get("name")
     if not isinstance(tool_name, str) or not tool_name.strip():
         raise PipelineError("actionable tool gap is missing a tool name")
@@ -64,6 +68,7 @@ def _enrich_gap(gap: dict[str, Any]) -> dict[str, Any]:
 
 
 def _actionable_tools(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return uncovered tool items that are eligible for task generation."""
     gaps = []
     for item in report.get("uncovered_items") or []:
         if not isinstance(item, dict):
@@ -88,6 +93,7 @@ def _actionable_tools(report: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _select(report_path: Path, target: str | None) -> dict[str, Any]:
+    """List actionable uncovered tools from one aggregate coverage report."""
     gaps = _actionable_tools(_read_json(report_path))
     if target is not None:
         gaps = [gap for gap in gaps if gap["name"] == target]
@@ -103,6 +109,7 @@ def _select(report_path: Path, target: str | None) -> dict[str, Any]:
 
 
 def _require_draft_destination(path: Path) -> None:
+    """Require ``path`` to live under ``.eval-author/task-drafts/``."""
     parts = path.resolve().parts
     for index in range(len(parts) - 1):
         if parts[index : index + 2] == _DRAFT_PARTS:
@@ -111,6 +118,7 @@ def _require_draft_destination(path: Path) -> None:
 
 
 def _require_proposal_destination(path: Path) -> None:
+    """Require ``path`` to live under ``.eval-author/proposals/``."""
     parts = path.resolve().parts
     for index in range(len(parts) - 1):
         if parts[index : index + 2] == _PROPOSAL_PARTS:
@@ -119,6 +127,7 @@ def _require_proposal_destination(path: Path) -> None:
 
 
 def _require_task_slug_paths(*, task_slug: str, output: Path, task_name: str, instruction_file: Path) -> None:
+    """Require draft, Harbor task name, and proposal filenames to match ``task_slug``."""
     if output.name != task_slug:
         raise PipelineError(f"draft directory must be named {task_slug!r} for the selected tool, got {output.name!r}")
     if Path(task_name).name != task_slug:
@@ -139,6 +148,7 @@ def _scaffold(
     author: str,
     instruction_file: Path,
 ) -> dict[str, Any]:
+    """Initialize a Harbor-native draft and install the supplied instruction."""
     _select(report_path, target)
     task_slug = task_slug_for_tool(target)
     _require_draft_destination(output)
@@ -197,12 +207,16 @@ def _scaffold(
 
 
 def _verify(before_path: Path, after_paths: list[Path], target: str) -> tuple[int, dict[str, Any]]:
+    """Accept only when ``target`` was uncovered before and covered in every repeat report."""
     before = _read_json(before_path)
     before_uncovered = set(before.get("uncovered") or [])
     if target not in before_uncovered:
         raise PipelineError(f"{target!r} was not uncovered in the before report")
-    if not after_paths:
-        raise PipelineError("at least one --after report is required")
+    if len(after_paths) < _MIN_VERIFY_REPORTS:
+        raise PipelineError(f"at least {_MIN_VERIFY_REPORTS} --after reports are required")
+    resolved_paths = [path.resolve() for path in after_paths]
+    if len(set(resolved_paths)) != len(resolved_paths):
+        raise PipelineError("--after reports must be distinct")
 
     runs = []
     all_covered = True
@@ -227,6 +241,7 @@ def _verify(before_path: Path, after_paths: list[Path], target: str) -> tuple[in
 
 
 def _parser() -> argparse.ArgumentParser:
+    """Build the ``select``, ``scaffold``, and ``verify`` subcommand parser."""
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -243,7 +258,7 @@ def _parser() -> argparse.ArgumentParser:
     scaffold.add_argument("--author", required=True)
     scaffold.add_argument("--instruction-file", type=Path, required=True)
 
-    verify = subparsers.add_parser("verify", help="require every repeat to close one gap")
+    verify = subparsers.add_parser("verify", help="require two distinct repeats to close one gap")
     verify.add_argument("--before", type=Path, required=True)
     verify.add_argument("--after", type=Path, action="append", required=True)
     verify.add_argument("--target", required=True)
@@ -251,6 +266,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run one pipeline subcommand and print a JSON verdict on stdout."""
     args = _parser().parse_args(argv)
     try:
         if args.command == "select":

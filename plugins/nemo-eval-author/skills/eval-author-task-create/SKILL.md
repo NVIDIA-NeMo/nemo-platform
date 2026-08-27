@@ -55,7 +55,7 @@ Work on one tool gap at a time. Keep every generated artifact under
 |---|---|
 | `select` | Lists only tool items with `reason: not_covered_by_any_input_report` and emits a deterministic `task_slug` plus artifact paths |
 | `scaffold` | Calls Harbor's own `harbor task init`, requires matching draft/proposal names for that slug, and installs the supplied instruction |
-| `verify` | Exits 0 only when the selected tool was uncovered before and covered in every repeated after-report |
+| `verify` | Exits 0 only when the selected tool was uncovered before and covered in two distinct repeated after-reports |
 
 The script prints one JSON object. Exit code 0 is success; do not replace its
 verdict with model judgment.

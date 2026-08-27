@@ -17,6 +17,7 @@ _needs_harbor = pytest.mark.skipif(shutil.which("harbor") is None, reason="Harbo
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
+    """Invoke ``task_pipeline.py`` with ``args`` and return the completed process."""
     return subprocess.run(
         [sys.executable, str(_SCRIPT), *args],
         capture_output=True,
@@ -26,6 +27,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _write_report(path: Path, *, covered: list[str], uncovered: list[str]) -> None:
+    """Write a minimal aggregate coverage report JSON file for tests."""
     items = [
         {
             "name": name,
@@ -152,6 +154,50 @@ def test_scaffold_rejects_mismatched_proposal_filename(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert payload["valid"] is False
     assert "cover-read-instruction.md" in payload["error"]
+
+
+def test_verify_rejects_single_after_report(tmp_path: Path) -> None:
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    _write_report(before, covered=["write"], uncovered=["read"])
+    _write_report(first, covered=["read"], uncovered=[])
+
+    result = _run(
+        "verify",
+        "--before",
+        str(before),
+        "--after",
+        str(first),
+        "--target",
+        "read",
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == 1
+    assert payload["valid"] is False
+    assert "at least 2 --after reports are required" in payload["error"]
+
+
+def test_verify_rejects_duplicate_after_reports(tmp_path: Path) -> None:
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    _write_report(before, covered=["write"], uncovered=["read"])
+    _write_report(first, covered=["read"], uncovered=[])
+
+    result = _run(
+        "verify",
+        "--before",
+        str(before),
+        "--after",
+        str(first),
+        "--after",
+        str(first),
+        "--target",
+        "read",
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == 1
+    assert payload["valid"] is False
+    assert "distinct" in payload["error"]
 
 
 def test_verify_requires_every_repeat_to_cover_target(tmp_path: Path) -> None:
