@@ -14,7 +14,7 @@ An `AuditTarget` identifies the model under test. It pairs a garak generator cla
 | Field | Description |
 |-------|-------------|
 | `type` | A fully-qualified [garak generator class](https://reference.garak.ai/en/latest/generators.html), such as `nim.NVOpenAIChat`, `openai.OpenAIGenerator`, `rest.RestGenerator`, or `test.Blank`. |
-| `model` | The provider's model identifier passed through to garak (for example, `meta/llama-3.1-8b-instruct`). |
+| `model` | The provider's model identifier passed through to garak (for example, `nvidia/nemotron-3-nano-30b-a3b`). |
 | `options` | A nested dict whose top-level key is the generator namespace (`nim`, `openai`, `rest`, ...). Contents are passed through to garak unchanged, with one exception: the [`nmp_uri_spec`](/documentation/vulnerability-scanning/targets/inference-gateway) sentinel is resolved to a concrete `uri` at run time. |
 | `description` | Optional free-form description shown in listings. |
 
@@ -40,7 +40,7 @@ target = client.auditor.targets.create(
     workspace="default",
     name="llama-31-8b",
     type="nim.NVOpenAIChat",
-    model="nvidia/meta/llama-3.1-8b-instruct",
+    model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
     options={
         "nim": {
             "max_tokens": 1024,

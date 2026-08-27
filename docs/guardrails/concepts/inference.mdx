@@ -117,7 +117,7 @@ Create a VirtualModel that applies the guardrail configuration:
 
 ```bash
 nemo inference virtual-models create guarded-llama \
-  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
   --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/content-safety-config"}]'
 ```
 
@@ -127,7 +127,7 @@ nemo inference virtual-models create guarded-llama \
 ```python
 client.inference.virtual_models.create(
     name="guarded-llama",
-    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",
@@ -213,7 +213,7 @@ Instead of referencing a stored config entity via `config_id`, you can embed the
 
 ```bash
 nemo inference virtual-models create guarded-llama-inline \
-  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
   --request-middleware '[{
     "name": "nemo-guardrails",
     "config_type": "guardrail_config",
@@ -232,7 +232,7 @@ nemo inference virtual-models create guarded-llama-inline \
 
 client.inference.virtual_models.create(
     name="guarded-llama-inline",
-    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",

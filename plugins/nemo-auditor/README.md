@@ -37,7 +37,7 @@ nemo auditor configs create quick-scan -w default -f ./quick-scan.json
 # Create a target inline
 nemo auditor targets create llama-31-8b -w default -d '{
   "type": "nim",
-  "model": "meta/llama-3.1-8b-instruct",
+  "model": "nvidia/nemotron-3-nano-30b-a3b",
   "options": {"uri": "http://localhost:9000/v1"}
 }'
 
@@ -80,7 +80,7 @@ tgt = client.auditor.targets.create(
     workspace="default",
     name="llama-31-8b",
     type="nim",
-    model="meta/llama-3.1-8b-instruct",
+    model="nvidia/nemotron-3-nano-30b-a3b",
     options={"uri": "http://localhost:9000/v1"},
 )
 

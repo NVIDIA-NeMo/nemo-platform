@@ -101,10 +101,10 @@ models:
     provider: DeepSeek
     range: fast_cheap
     notes: Fast reasoning at low cost.
-  - model_id: nvidia/meta/llama-3.1-8b-instruct
-    provider: Meta
+  - model_id: nvidia/nvidia/nemotron-3-nano-30b-a3b
+    provider: NVIDIA
     range: fast_cheap
-    notes: Tiny, very fast.
+    notes: Fast Nemotron Nano 30B-A3B chat model.
   - model_id: azure/openai/o3
     provider: OpenAI
     range: reasoning_specialized

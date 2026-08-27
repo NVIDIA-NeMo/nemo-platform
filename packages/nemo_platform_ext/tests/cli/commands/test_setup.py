@@ -59,6 +59,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _maybe_install_skills,
     _maybe_start_services,
     _parse_csv_flag,
+    _pick_default_chat_entity,
     _print_onboarding,
     _prompt_custom_provider,
     _register_provider_interactive,
@@ -2075,8 +2076,8 @@ class TestInteractiveModelPairSelection:
                 f"{self._MOD}._get_all_model_choices",
                 return_value=[
                     (
-                        "default/meta-llama-3-1-8b-instruct",
-                        "meta-llama-3-1-8b-instruct (nvidia-build)",
+                        "default/nvidia-nemotron-3-nano-30b-a3b",
+                        "nvidia-nemotron-3-nano-30b-a3b (nvidia-build)",
                     )
                 ],
             ),
@@ -2109,7 +2110,7 @@ class TestInteractiveModelPairSelection:
         provider_a = MagicMock()
         provider_a.name = "nvidia-build"
         provider_a.served_models = [
-            MagicMock(model_entity_id="default/meta-llama-3-1-8b-instruct"),
+            MagicMock(model_entity_id="default/nvidia-nemotron-3-nano-30b-a3b"),
         ]
         provider_b = MagicMock()
         provider_b.name = "my-ollama-custom"
@@ -2143,6 +2144,25 @@ class TestInteractiveModelPairSelection:
         assert fast_call.args[0] == "Choose your fast model (used for latency-sensitive agent work):"
         assert fast_call.kwargs["default"] == "default/qwen2.5:1.5b"
         assert fast_call.kwargs["hint"] == "Press Enter to reuse the default model."
+
+
+class TestPickDefaultChatEntity:
+    def test_skips_embedding_vision_guard_and_rerank(self):
+        assert (
+            _pick_default_chat_entity(
+                [
+                    "default/adept-fuyu-8b",
+                    "default/nvidia-nv-embedqa-e5-v5",
+                    "default/llama-nemoguard-8b",
+                    "default/nv-rerankqa-mistral-4b",
+                    "default/nvidia-nemotron-3-nano-30b-a3b",
+                ]
+            )
+            == "default/nvidia-nemotron-3-nano-30b-a3b"
+        )
+
+    def test_returns_none_when_nothing_qualifies(self):
+        assert _pick_default_chat_entity(["default/adept-fuyu-8b", "default/nv-embedqa"]) is None
 
 
 class TestAutoModelPairSelection:
@@ -2254,6 +2274,70 @@ class TestAutoModelPairSelection:
             ModelPair(default="default/a-model", fast="default/a-model"),
         )
 
+    def test_skips_unusable_first_discovered_model(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=[
+                    "default/adept-fuyu-8b",
+                    "default/nvidia-nv-embedqa-e5-v5",
+                    "default/nvidia-nemotron-3-nano-30b-a3b",
+                ],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_called_once_with(
+            cli_context,
+            ModelPair(
+                default="default/nvidia-nemotron-3-nano-30b-a3b",
+                fast="default/nvidia-nemotron-3-nano-30b-a3b",
+            ),
+        )
+
+    def test_does_not_save_default_when_only_unusable_models_qualify(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=[
+                    "default/adept-fuyu-8b",
+                    "default/nvidia-nv-embedqa-e5-v5",
+                    "default/llama-3.1-nemoguard-8b-content-safety",
+                ],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_not_called()
+
     def test_fast_override_without_default_warns_and_is_not_saved(self):
         cli_context = MagicMock()
         with (
@@ -2337,13 +2421,29 @@ class TestValidateApiKey:
             result = _validate_api_key(provider_name, host_url, "test-key")
         assert result.passed is expected_passed
 
-    @pytest.mark.parametrize("status_code", [404, 429, 500, 502])
+    def test_nvidia_build_uses_supported_nemotron_probe_model(self):
+        mock_resp = MagicMock(status_code=200)
+        with patch(f"{self._MOD}.httpx.request", return_value=mock_resp) as mock_req:
+            _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
+
+        assert mock_req.call_args.kwargs["json"]["model"] == "nvidia/nemotron-3-nano-30b-a3b"
+
+    @pytest.mark.parametrize("status_code", [429, 500, 502])
     def test_non_2xx_non_rejection_returns_warning(self, status_code):
         mock_resp = MagicMock(status_code=status_code)
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
             result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
         assert result.passed is True
         assert f"HTTP {status_code}" in result.message
+
+    @pytest.mark.parametrize("status_code", [404, 405, 410])
+    def test_terminal_probe_response_fails_validation(self, status_code):
+        mock_resp = MagicMock(status_code=status_code)
+        with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
+            result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
+        assert result.passed is False
+        assert f"HTTP {status_code}" in result.message
+        assert "unavailable" in result.message
 
     @pytest.mark.parametrize(
         "provider_name,api_key,side_effect,expected_passed",
