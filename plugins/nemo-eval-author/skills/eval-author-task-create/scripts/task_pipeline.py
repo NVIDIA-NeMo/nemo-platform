@@ -222,6 +222,27 @@ def _scaffold(
     }
 
 
+def _run_ids_from_report(report: dict[str, Any], *, report_path: Path) -> list[str]:
+    """Return ATIF ``subject.run_id`` values recorded in one aggregate coverage report."""
+    input_reports = report.get("input_reports")
+    if not isinstance(input_reports, list) or not input_reports:
+        raise PipelineError(f"after report must include input_reports with subject.run_id: {report_path}")
+    run_ids: list[str] = []
+    for index, entry in enumerate(input_reports):
+        if not isinstance(entry, dict):
+            raise PipelineError(f"after report input_reports[{index}] must be an object: {report_path}")
+        subject = entry.get("subject")
+        if not isinstance(subject, dict):
+            raise PipelineError(f"after report input_reports[{index}] must include subject: {report_path}")
+        run_id = subject.get("run_id")
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise PipelineError(
+                f"after report input_reports[{index}].subject.run_id must be a non-empty string: {report_path}"
+            )
+        run_ids.append(run_id)
+    return run_ids
+
+
 def _verify(before_path: Path, after_paths: list[Path], target: str) -> tuple[int, dict[str, Any]]:
     """Accept only when ``target`` was an actionable gap before and covered in every repeat report."""
     before = _read_json(before_path)
@@ -234,13 +255,26 @@ def _verify(before_path: Path, after_paths: list[Path], target: str) -> tuple[in
 
     runs = []
     all_covered = True
+    run_ids: list[str] = []
     for path in after_paths:
         report = _read_json(path)
+        report_run_ids = _run_ids_from_report(report, report_path=path)
+        run_ids.extend(report_run_ids)
         covered = target in set(report.get("covered") or [])
         still_uncovered = target in set(report.get("uncovered") or [])
         passed = covered and not still_uncovered
         all_covered = all_covered and passed
-        runs.append({"report": str(path), "covered": covered, "passed": passed})
+        runs.append(
+            {
+                "report": str(path),
+                "run_ids": report_run_ids,
+                "covered": covered,
+                "passed": passed,
+            }
+        )
+
+    if len(set(run_ids)) != len(run_ids):
+        raise PipelineError("--after reports must come from distinct ATIF subject.run_id values")
 
     payload = {
         "schema": "nemo.eval_author.task_gap_verification.v1",

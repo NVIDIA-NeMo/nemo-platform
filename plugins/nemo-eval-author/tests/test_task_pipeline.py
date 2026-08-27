@@ -27,7 +27,31 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _write_report(path: Path, *, covered: list[str], uncovered: list[str]) -> None:
+def _coverage_input_report(*, run_id: str, covered: list[str]) -> dict[str, Any]:
+    """Build one aggregate ``input_reports`` entry for verify tests."""
+    return {
+        "path": f".eval-author/task-measurements/run={run_id}/tool_calls/coverage.json",
+        "method": "tool_calls",
+        "item_kind": "tool",
+        "item_kind_count": max(len(covered), 1),
+        "subject": {
+            "trace": f".harbor/runs/trial/{run_id}/agent/trajectory.json",
+            "trace_format": "atif",
+            "task_id": "cover-read",
+            "run_id": run_id,
+        },
+        "covered": covered,
+        "covered_count": len(covered),
+    }
+
+
+def _write_report(
+    path: Path,
+    *,
+    covered: list[str],
+    uncovered: list[str],
+    run_id: str | None = None,
+) -> None:
     """Write a minimal aggregate coverage report JSON file for tests."""
     items = [
         {
@@ -43,16 +67,22 @@ def _write_report(path: Path, *, covered: list[str], uncovered: list[str]) -> No
         }
         for name in uncovered
     ]
-    _write_report_with_items(path, covered=covered, uncovered_items=items)
+    _write_report_with_items(path, covered=covered, uncovered_items=items, run_id=run_id)
 
 
-def _write_report_with_items(path: Path, *, covered: list[str], uncovered_items: list[dict[str, Any]]) -> None:
+def _write_report_with_items(
+    path: Path,
+    *,
+    covered: list[str],
+    uncovered_items: list[dict[str, Any]],
+    run_id: str | None = None,
+) -> None:
     """Write an aggregate coverage report with explicit ``uncovered_items`` entries."""
     uncovered = [str(item["name"]) for item in uncovered_items]
-    path.write_text(
-        json.dumps({"covered": covered, "uncovered": uncovered, "uncovered_items": uncovered_items}),
-        encoding="utf-8",
-    )
+    payload: dict[str, Any] = {"covered": covered, "uncovered": uncovered, "uncovered_items": uncovered_items}
+    if run_id is not None:
+        payload["input_reports"] = [_coverage_input_report(run_id=run_id, covered=covered)]
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_task_slug_for_tool_is_deterministic() -> None:
@@ -235,6 +265,32 @@ def test_verify_rejects_duplicate_after_reports(tmp_path: Path) -> None:
     assert "distinct" in payload["error"]
 
 
+def test_verify_rejects_copied_after_reports_with_same_run_id(tmp_path: Path) -> None:
+    """Verify rejects two paths that record the same ATIF subject.run_id."""
+    before = tmp_path / "before.json"
+    first = tmp_path / "repeat-1-report.json"
+    second = tmp_path / "repeat-1-copy-report.json"
+    _write_report(before, covered=["write"], uncovered=["read"])
+    _write_report(first, covered=["read"], uncovered=[], run_id="repeat-1")
+    second.write_text(first.read_text(encoding="utf-8"), encoding="utf-8")
+
+    result = _run(
+        "verify",
+        "--before",
+        str(before),
+        "--after",
+        str(first),
+        "--after",
+        str(second),
+        "--target",
+        "read",
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == 1
+    assert payload["valid"] is False
+    assert "distinct ATIF subject.run_id" in payload["error"]
+
+
 def test_verify_rejects_non_actionable_uncovered_item(tmp_path: Path) -> None:
     """Verify rejects targets that are uncovered but not actionable tool gaps."""
     before = tmp_path / "before.json"
@@ -268,8 +324,8 @@ def test_verify_rejects_non_actionable_uncovered_item(tmp_path: Path) -> None:
             },
         ],
     )
-    _write_report(first, covered=["read"], uncovered=[])
-    _write_report(second, covered=["read"], uncovered=[])
+    _write_report(first, covered=["read"], uncovered=[], run_id="repeat-1")
+    _write_report(second, covered=["read"], uncovered=[], run_id="repeat-1")
 
     result = _run(
         "verify",
@@ -294,8 +350,8 @@ def test_verify_requires_every_repeat_to_cover_target(tmp_path: Path) -> None:
     first = tmp_path / "first.json"
     second = tmp_path / "second.json"
     _write_report(before, covered=["write"], uncovered=["read"])
-    _write_report(first, covered=["read"], uncovered=[])
-    _write_report(second, covered=["read"], uncovered=[])
+    _write_report(first, covered=["read"], uncovered=[], run_id="repeat-1")
+    _write_report(second, covered=["read"], uncovered=[], run_id="repeat-2")
 
     result = _run(
         "verify",
@@ -313,7 +369,7 @@ def test_verify_requires_every_repeat_to_cover_target(tmp_path: Path) -> None:
     assert payload["accepted"] is True
     assert payload["repeat_count"] == 2
 
-    _write_report(second, covered=[], uncovered=["read"])
+    _write_report(second, covered=[], uncovered=["read"], run_id="repeat-2")
     failed = _run(
         "verify",
         "--before",
