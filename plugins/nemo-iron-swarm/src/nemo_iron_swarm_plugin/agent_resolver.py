@@ -1,30 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Resolve a deployed NeMo Platform agent into an Iron Swarm manifest.
+"""Turn a registered NeMo Platform agent into a runnable Iron Swarm victim.
 
-This is the centerpiece that makes ``nemo iron-swarm init`` trivial: instead of pointing
-iron-swarm at a NAT project and answering discovery prompts, the user names an agent already
-deployed in NeMo Platform and we derive the manifest from the agent registry.
+This is the only intake path. The user names an agent already registered in the platform and the
+plugin hands Iron Swarm a directory containing a runnable agent — a config plus the Dockerfile that
+serves it — rather than a query Iron Swarm has to re-evaluate.
 
-Design constraints (both deliberate):
+Two constraints shape it:
 
+- **All ``nemo-agents-spec-v1`` knowledge lives here.** Iron Swarm's contract is "a directory with
+  an agent in it", so it never learns the platform's config format. It also cannot: reading the spec
+  means importing ``nemo-agents-plugin``, which pins six ``nvidia-nat-*`` distributions that
+  iron-swarm exists to be free of.
 - **No ``iron_swarm`` import.** iron-swarm runs from its own venv, driven by subprocess: its
   garak-based attacker pulls a dependency closure (``litellm``/``torch``) that conflicts with the
-  platform's, so it stays out of our lockfile. We therefore build the manifest *dict* matching
-  iron-swarm's ``AgentManifest``/``AgentSpec`` schema and let ``iron-swarm run`` validate it. The
-  schema authority is ``iron_swarm/manifest.py`` (``AgentSpec`` fields: name, project_dir,
-  workflow, port, secrets, secrets_file, egress).
-- **Read the agent over HTTP.** We fetch it via the platform SDK (``client.agents.get`` /
-  ``client.agents.deployments.list``), which returns plain dicts, so resolution needs no
-  ``nemo_agents_plugin`` entity classes. The ~10-line IGW injection below is a local copy of
-  ``nemo_agents_plugin.utils.inject_gateway_url``. That copy originally existed to avoid a
-  cross-plugin dependency; that rationale is obsolete (``nemo-agents-plugin`` is now a declared
-  dependency and ``api/v2/runs.py`` imports ``Agent`` from it), so the copy is free to drift from
-  upstream.
+  platform's. We build the manifest *dict* matching iron-swarm's ``AgentSpec`` schema and let
+  ``iron-swarm run`` validate it. The schema authority is ``iron_swarm/manifest.py``.
 
-Models resolve through the Inference Gateway (the platform standard): the victim workflow's
-OpenAI/NIM LLMs get the IGW ``base_url`` injected, so no raw model keys are needed.
+The image is not hand-rolled. ``render_fabric_dockerfile(..., sandbox_runtime="openshell")`` is the
+platform's own Fabric packaging pipeline, and the ``openshell`` sandbox profile already bakes in
+exactly what Iron Swarm's sandbox requires — a non-root ``sandbox`` user, ``iproute2`` and
+``nftables`` — so the agent under test is packaged the same way a deployed one is.
 """
 
 from __future__ import annotations
@@ -40,11 +37,24 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# Scaffold dir (relative to the manifest location) holding the materialized workflow + project.
+# Scaffold dir (relative to the manifest location) holding the materialized agent package.
 SCAFFOLD_ROOT = ".iron-swarm-agents"
-WORKFLOW_FILENAME = "workflow.yaml"
-# NAT LLM _types whose base_url should point at the Inference Gateway.
-_IGW_LLM_TYPES = frozenset({"openai", "nim"})
+AGENT_CONFIG_FILENAME = "agent.yaml"
+DOCKERFILE_FILENAME = "Dockerfile"
+
+#: The sandbox Iron Swarm runs victims in. Selects the image profile that bakes in the non-root
+#: ``sandbox`` user, ``iproute2`` and ``nftables`` the OpenShell supervisor needs.
+SANDBOX_RUNTIME = "openshell"
+
+#: Where the Fabric image puts its venv and the agent config (``container/template.py``). Iron Swarm
+#: needs both literally: ``openshell sandbox exec`` does not propagate the image's ENV, so the start
+#: command cannot rely on ``PATH`` or ``AGENT_CONFIG_PATH``.
+IMAGE_VENV = "/workspace/.venv"
+IMAGE_AGENT_CONFIG = f"/workspace/{AGENT_CONFIG_FILENAME}"
+
+#: Processes allowed to egress. Scoped to the image's venv rather than left open, because the
+#: sandbox policy uses these globs to decide which binaries may reach the network at all.
+VICTIM_BINARIES = (f"{IMAGE_VENV}/bin/**",)
 
 
 class AgentResolutionError(Exception):
@@ -56,7 +66,7 @@ class ResolvedManifest:
     """Result of resolving an agent reference into an Iron Swarm manifest."""
 
     manifest: dict[str, Any]
-    workflow_path: Path
+    agent_config_path: Path
     project_dir: Path
     workspace: str
     agent_name: str
@@ -86,123 +96,79 @@ def parse_agent_ref(ref: str, default_workspace: str) -> tuple[str, str]:
 
 
 def inject_gateway_url(config: dict[str, Any], workspace: str, base_url: str) -> dict[str, Any]:
-    """Deep-copy *config* and point OpenAI/NIM LLMs at the Inference Gateway.
+    """Bind the agent's models to the Inference Gateway, so the victim needs no raw model keys.
 
-    A local copy of ``nemo_agents_plugin.utils.inject_gateway_url`` (see the module docstring — the
-    copy predates the plugin taking a dependency on ``nemo-agents-plugin``). Uses ``setdefault`` so
-    explicit values in the config are preserved: the victim's own model is the target under test and
-    is never rewritten here — changing it belongs in the project's workflow, not in the war-game.
+    Delegates to the platform's own implementation rather than keeping a copy. The copy this
+    replaces existed to avoid a cross-plugin dependency, a rationale that is long obsolete —
+    ``nemo-agents-plugin`` is a declared dependency — and it had started to drift: it still rewrote
+    NAT ``llms`` entries, which a ``nemo-agents-spec-v1`` agent does not have.
     """
-    base = base_url.rstrip("/")
-    gateway_url = f"{base}/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1"
-    config = copy.deepcopy(config)
-    for llm_cfg in config.get("llms", {}).values():
-        if isinstance(llm_cfg, dict) and llm_cfg.get("_type") in _IGW_LLM_TYPES:
-            llm_cfg.setdefault("base_url", gateway_url)
-            llm_cfg.setdefault("api_key", "not-used")
-    return config
+    from nemo_agents_plugin.utils import inject_fabric_gateway_url  # noqa: PLC0415
 
-
-def strip_platform_telemetry(config: dict[str, Any]) -> dict[str, Any]:
-    """Deep-copy *config* without ``general.telemetry`` — the victim sandbox cannot honour it.
-
-    Deployed agents carry a ``nemo_files`` tracing exporter that the platform injects at deploy time
-    (``nemo_agents_plugin.utils.inject_nemo_files_telemetry``); it is registered by
-    ``nemo-agents-plugin`` itself, via a ``nat.plugins`` entry point. The victim runs from the minimal
-    project :func:`scaffold_project` writes — ``nvidia-nat[langchain]`` only — so NAT cannot resolve the
-    ``nemo_files`` tag and exits on config validation before serving, surfacing as a health-check
-    timeout minutes into the run.
-
-    Installing ``nemo-agents-plugin`` into the sandbox to fix that would drag the platform into a
-    container the war-game deliberately isolates, so the telemetry is dropped instead: it targets the
-    platform's file service, which the victim can neither reach nor should write to. The war-game has
-    its own event stream for observability.
-
-    Only applies to the agent-source path, where this module authors the project. A project-source
-    manifest installs the user's own ``pyproject.toml``, so declaring the exporter there keeps working.
-    """
-    config = copy.deepcopy(config)
-    general = config.get("general")
-    if isinstance(general, dict) and "telemetry" in general:
-        general.pop("telemetry", None)
-        if not general:
-            config.pop("general", None)
-    return config
+    return inject_fabric_gateway_url(config, workspace, base_url)
 
 
 def strip_gateway_url(config: dict[str, Any]) -> dict[str, Any]:
-    """Reverse :func:`inject_gateway_url`: drop the Inference-Gateway ``base_url``/``api_key`` we injected.
+    """Reverse :func:`inject_gateway_url` before writing a config back to the agent registry.
 
-    The hardened workflow iron-swarm hands back is gateway-bound (that is how the sandboxed victim reached
-    the IGW). Before writing it onto the stored agent config we undo that binding, so the agent stays
-    deployment-neutral — its next deploy re-injects the gateway. Only the values we add are removed:
-    an IGW ``base_url`` and the ``"not-used"`` placeholder ``api_key``; anything the author set stays.
+    The config Iron Swarm hardened is gateway-bound — that is how the sandboxed victim reached the
+    IGW. Undoing the binding keeps the stored agent deployment-neutral, so its next deploy re-injects
+    whatever gateway that environment has. Only the values we add are removed; anything the author
+    set stays.
     """
     config = copy.deepcopy(config)
-    for llm_cfg in config.get("llms", {}).values():
-        if not isinstance(llm_cfg, dict) or llm_cfg.get("_type") not in _IGW_LLM_TYPES:
+    models = config.get("models")
+    for model_cfg in models.values() if isinstance(models, dict) else ():
+        if not isinstance(model_cfg, dict):
             continue
-        base_url = llm_cfg.get("base_url")
+        base_url = model_cfg.get("base_url")
         if isinstance(base_url, str) and "/apis/inference-gateway/" in base_url:
-            llm_cfg.pop("base_url", None)
-        if llm_cfg.get("api_key") == "not-used":
-            llm_cfg.pop("api_key", None)
+            model_cfg.pop("base_url", None)
+        if model_cfg.get("api_key") == "not-used":
+            model_cfg.pop("api_key", None)
     return config
 
 
 def detect_custom_components(agent_config: dict[str, Any]) -> list[str]:
-    """Return ``_type`` values that look like custom (non-packaged) NAT components.
+    """Local paths the agent's config references, which the packaged image must carry.
 
-    Heuristic: a ``_type`` containing a dot or colon (e.g. ``my_pkg.tools:search``) signals a
-    user-defined component whose source is not in the agent's stored config — so the OpenShell
-    generic victim build needs the real project. Returns an empty list for config-only agents.
+    A ``nemo-agents-spec-v1`` agent is config-only, but it may point at files beside it — skills
+    directories most commonly. Those are relative to the config, so a scaffold that copies only the
+    config produces an image whose agent starts and then cannot find its own skills.
+
+    (Under NAT this looked for a dotted ``_type``, meaning "a component whose code is not in the
+    config". The Fabric equivalent is not a type name but a path.)
     """
-    custom: list[str] = []
-    entries: list[Any] = []
-    # functions/tools are mappings of named component dicts; workflow is a single component dict.
-    for section in ("functions", "tools"):
-        block = agent_config.get(section)
-        if isinstance(block, dict):
-            entries.extend(block.values())
-    workflow = agent_config.get("workflow")
-    if isinstance(workflow, dict):
-        entries.append(workflow)
-    for entry in entries:
-        if isinstance(entry, dict):
-            type_name = entry.get("_type", "")
-            if isinstance(type_name, str) and ("." in type_name or ":" in type_name):
-                custom.append(type_name)
-    return sorted(set(custom))
+    skills = agent_config.get("skills")
+    paths = skills.get("paths") if isinstance(skills, dict) else None
+    return sorted({str(path) for path in paths if isinstance(path, str)}) if isinstance(paths, list) else []
 
 
 def derive_secret_names(agent_config: dict[str, Any], extra: list[str] | None = None) -> list[str]:
-    """Collect env-var secret names the victim build needs (non-model creds).
+    """Collect the env-var names the victim needs at run time.
 
-    Scans the config for ``${ENV_VAR}`` references and obvious ``*_token`` / ``*_api_key`` keys.
-    Model credentials are intentionally excluded — those resolve through the IGW. When the scan finds
-    nothing at all, falls back to ``["INFERENCE_API_KEY"]``; note this is a fallback, not an addition —
-    a config that declares its own secrets returns only those.
+    A ``nemo-agents-spec-v1`` agent names its credentials rather than embedding them —
+    ``models.*.api_key_env``, and env passed to MCP servers — so this reads the declarations instead
+    of pattern-matching values, and no secret is ever copied into the manifest.
+
+    Falls back to ``INFERENCE_API_KEY`` when the config declares nothing; note fallback, not
+    addition — a config that declares its own returns only those.
     """
     found: set[str] = set(extra or [])
 
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                    found.add(value[2:-1])
-                if isinstance(key, str) and key.lower().endswith(("_token", "_api_key")) and isinstance(value, str):
-                    # value like "GITHUB_TOKEN" or "${GITHUB_TOKEN}"
-                    candidate = value.strip("${}")
-                    if candidate.isupper():
-                        found.add(candidate)
-                walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
+    models = agent_config.get("models")
+    for model_cfg in models.values() if isinstance(models, dict) else ():
+        if isinstance(model_cfg, dict) and isinstance(model_cfg.get("api_key_env"), str):
+            found.add(model_cfg["api_key_env"])
 
-    walk(agent_config)
-    names = sorted(found) or ["INFERENCE_API_KEY"]
-    return names
+    servers = agent_config.get("mcp", {}).get("servers") if isinstance(agent_config.get("mcp"), dict) else None
+    for server in servers.values() if isinstance(servers, dict) else ():
+        env = server.get("env") if isinstance(server, dict) else None
+        for value in env.values() if isinstance(env, dict) else ():
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                found.add(value[2:-1])
+
+    return sorted(found) or ["INFERENCE_API_KEY"]
 
 
 def gateway_backend(base_url: str) -> dict[str, Any] | None:
@@ -222,22 +188,34 @@ def build_manifest_dict(
     *,
     agent_name: str,
     project_dir: str,
-    workflow: str,
     port: int,
     secrets: list[str],
     secrets_file: str = ".env",
     egress: list[str] | None = None,
     backends: list[dict[str, Any]] | None = None,
+    relay_artifacts: str | None = None,
 ) -> dict[str, Any]:
-    """Build the ``iron-swarm.yaml`` mapping (mirrors ``iron_swarm.cli.build_manifest``)."""
+    """Build the ``iron-swarm.yaml`` mapping (mirrors ``iron_swarm.manifest.build_manifest``).
+
+    ``start_command`` spells out the interpreter and config path in full because
+    ``openshell sandbox exec`` does not propagate the image's ENV: neither ``PATH`` nor
+    ``AGENT_CONFIG_PATH`` is visible to it, so relying on either would start nothing.
+    """
     agent: dict[str, Any] = {
         "name": agent_name,
         "project_dir": project_dir,
-        "workflow": workflow,
+        "dockerfile": DOCKERFILE_FILENAME,
+        "start_command": (
+            f"{IMAGE_VENV}/bin/python -m nemo_agents_plugin.fabric.server "
+            f"--agent-config {IMAGE_AGENT_CONFIG} --host 0.0.0.0 --port {port}"
+        ),
+        "binaries": list(VICTIM_BINARIES),
         "port": port,
         "secrets": secrets,
         "secrets_file": secrets_file,
     }
+    if relay_artifacts:
+        agent["relay_artifacts"] = relay_artifacts
     if egress:
         agent["egress"] = egress
     return {"agent": agent, "backends": backends or []}
@@ -246,45 +224,33 @@ def build_manifest_dict(
 # --------------------------------------------------------------------------- #
 # Filesystem materialization
 # --------------------------------------------------------------------------- #
-def materialize_workflow(workflow_config: dict[str, Any], project_path: Path) -> Path:
-    """Write the (IGW-injected) NAT workflow config to ``project_path/workflow.yaml``."""
-    project_path.mkdir(parents=True, exist_ok=True)
-    workflow_path = project_path / WORKFLOW_FILENAME
-    workflow_path.write_text(yaml.safe_dump(workflow_config, sort_keys=False), encoding="utf-8")
-    return workflow_path
+def materialize_agent_package(agent_config: dict[str, Any], project_path: Path) -> Path:
+    """Write the agent package Iron Swarm runs: the resolved config plus its Dockerfile.
 
-
-def scaffold_project(project_path: Path, agent_name: str) -> None:
-    """Write a minimal installable NAT project for a config-only agent.
-
-    OpenShell's generic victim build needs an installable project (``uv pip install`` then
-    ``nat serve``). For agents that reference only packaged NAT components, a tiny pyproject
-    depending on ``nvidia-nat`` is enough to serve the materialized workflow.
+    The Dockerfile is rendered by the platform's own Fabric packaging pipeline with the
+    ``openshell`` sandbox profile applied, so the agent under test is built the same way a deployed
+    one is — rather than by a second, Iron-Swarm-specific recipe that could drift from it.
     """
+    from nemo_agents_plugin.container.template import render_fabric_dockerfile  # noqa: PLC0415
+
     project_path.mkdir(parents=True, exist_ok=True)
-    pyproject = project_path / "pyproject.toml"
-    if not pyproject.exists():
-        # A config-only victim has no Python package, so hatchling's default file selection fails
-        # ("no directory matches the project name"). Ship just the workflow via an explicit
-        # only-include so `uv pip install .` builds inside the sandbox.
-        pyproject.write_text(
-            "[project]\n"
-            f'name = "iron-swarm-victim-{agent_name}"\n'
-            'version = "0.0.0"\n'
-            'requires-python = ">=3.11,<3.13"\n'
-            # Pin to nvidia-nat 1.7.x: the guardrails defender writes `_type: pre_tool_verifier`
-            # middlewares, which live in ``nat.middleware.defense`` — present in 1.7.x but removed
-            # in 1.8.0. On 1.8.0 the hardened victim fails config validation ("middleware type
-            # pre_tool_verifier not found") and never serves, so the replay/benign validators all
-            # get "Server disconnected". Revisit when iron-swarm targets the 1.8+ defense API.
-            'dependencies = ["nvidia-nat[langchain]>=1.7.0,<1.8"]\n'
-            "\n[build-system]\n"
-            'requires = ["hatchling"]\n'
-            'build-backend = "hatchling.build"\n'
-            "\n[tool.hatch.build.targets.wheel]\n"
-            f'only-include = ["{WORKFLOW_FILENAME}"]\n',
-            encoding="utf-8",
-        )
+    config_path = project_path / AGENT_CONFIG_FILENAME
+    config_path.write_text(yaml.safe_dump(agent_config, sort_keys=False), encoding="utf-8")
+
+    dockerfile = render_fabric_dockerfile(config_path, sandbox_runtime=SANDBOX_RUNTIME)
+    (project_path / DOCKERFILE_FILENAME).write_text(dockerfile, encoding="utf-8")
+    return config_path
+
+
+def relay_artifacts_dir(agent_config: dict[str, Any]) -> str | None:
+    """Where the agent writes its Relay telemetry, if it says.
+
+    Iron Swarm reads ``events.atof.jsonl`` from here to recover which tools an attack reached, and
+    the relay preflight uses it to prove the victim is instrumented at all.
+    """
+    telemetry = agent_config.get("telemetry")
+    output_dir = telemetry.get("output_dir") if isinstance(telemetry, dict) else None
+    return str(output_dir) if output_dir else None
 
 
 # --------------------------------------------------------------------------- #
@@ -370,46 +336,41 @@ def resolve_agent_to_manifest(
     resolved_port, warnings = _resolve_victim_port(sdk, workspace, name)
     port = port or resolved_port
 
-    # Custom-code detection gates whether we can scaffold a project automatically.
-    custom = detect_custom_components(agent_config)
-    if custom and project_dir is None:
+    # Skills and other local artifacts live beside the config, so a scaffold that copies only the
+    # config yields an agent that starts and then cannot find them.
+    referenced = detect_custom_components(agent_config)
+    if referenced and project_dir is None:
         raise AgentResolutionError(
-            f"agent {workspace}/{name!r} references custom components {custom} whose source is not "
-            "in the stored config. Re-run with --project-dir pointing at the agent's NAT project."
+            f"agent {workspace}/{name!r} references local paths {referenced} that are not in the "
+            "stored config. Re-run with --project-dir pointing at the directory holding them."
         )
 
     injected = inject_gateway_url(agent_config, workspace, base_url)
 
     if project_dir is not None:
-        # The user's project supplies its own dependencies, so any telemetry it declares is theirs
-        # to satisfy — leave the config alone.
         project_path = Path(project_dir)
         rel_project = project_dir
     else:
-        # We author the project here, and deliberately keep it to `nvidia-nat[langchain]`, so drop
-        # the platform-only telemetry the config would otherwise ask that install to resolve.
-        injected = strip_platform_telemetry(injected)
         rel_project = str(Path(SCAFFOLD_ROOT) / name)
         project_path = manifest_dir / rel_project
-        scaffold_project(project_path, name)
 
-    workflow_path = materialize_workflow(injected, project_path)
+    config_path = materialize_agent_package(injected, project_path)
     secrets = secrets or derive_secret_names(agent_config)
 
     gw_backend = gateway_backend(base_url)
     manifest = build_manifest_dict(
         agent_name=name,
         project_dir=rel_project,
-        workflow=WORKFLOW_FILENAME,
         port=port,
         secrets=secrets,
         egress=egress,
         backends=[gw_backend] if gw_backend else [],
+        relay_artifacts=relay_artifacts_dir(injected),
     )
 
     return ResolvedManifest(
         manifest=manifest,
-        workflow_path=workflow_path,
+        agent_config_path=config_path,
         project_dir=project_path,
         workspace=workspace,
         agent_name=name,

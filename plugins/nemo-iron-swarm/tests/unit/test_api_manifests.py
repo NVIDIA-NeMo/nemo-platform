@@ -29,7 +29,7 @@ PREFIX = "/apis/iron-swarm/v2/workspaces/{workspace}"
 def _resolved() -> ResolvedManifest:
     return ResolvedManifest(
         manifest={"agent": {"name": "clockbot", "port": 8000}, "backends": []},
-        workflow_path=Path("/tmp/workflow.yaml"),
+        agent_config_path=Path("/tmp/agent.yaml"),
         project_dir=Path("/tmp/proj"),
         workspace="default",
         agent_name="clockbot",
