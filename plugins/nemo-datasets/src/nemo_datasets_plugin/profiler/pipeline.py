@@ -441,9 +441,12 @@ def _profile_partition(
             # Counted outside the guard, for what was consumed: a fold cannot give rows back, so a
             # file that failed on its fifth batch still contributed four.
             rows_scanned += scanned
-            # A file with fewer rows than the cap never reaches it, so this is the cap actually
-            # biting rather than a budget merely having been asked for.
-            if row_cap is not None and scanned >= row_cap:
+            # `scanned_all` is the honest test, and `scanned >= row_cap` was not: a file holding
+            # exactly `row_cap` rows reaches the cap having been read from end to end, and was
+            # reported as cut short -- suppressing `categorical.values` for a partition whose
+            # `rows_complete` said, correctly, that nothing was missed. A failed read is excluded
+            # because that is the other cause, the one that still quotes.
+            if row_cap is not None and error is None and not scanned_all:
                 partition_truncated = True
             if scanned or error is None:
                 files_read += 1

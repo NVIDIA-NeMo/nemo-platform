@@ -975,6 +975,34 @@ def test_a_file_that_failed_peek_but_read_fine_keeps_its_columns(tmp_path, monke
     assert part.stats["extra"].null_rate == 0.5  # absent from b.parquet, back-filled as null
 
 
+def test_a_zero_row_budget_reads_no_rows_from_either_format(tmp_path):
+    # The jsonl reader tested the cap *after* appending, so `len(rows) >= row_cap` could not fire
+    # until a row was already in hand -- one row per file, folded and measured, for the one argument
+    # `_per_file_cap` exists to define. Parquet already returned nothing for it.
+    (tmp_path / "a.jsonl").write_text('{"a": 1, "src": "x"}\n{"a": 2, "src": "y"}\n')
+    (tmp_path / "b.jsonl").write_text('{"a": 3, "src": "z"}\n')
+    _write_parquet(tmp_path / "c.parquet", [{"a": 4, "src": "w"}])
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=0)
+
+    assert result.coverage.rows_scanned == 0
+    assert all(not p.stats for p in result.partitions)
+
+
+def test_a_file_holding_exactly_the_cap_was_not_cut_short(tmp_path):
+    # `scanned >= row_cap` called this truncation, so a partition read from end to end lost its
+    # `categorical.values` -- while `rows_complete` said, correctly, that nothing had been missed.
+    # The honest test is whether every row of the file was parsed.
+    _write_parquet(tmp_path / "train.parquet", [{"source": v} for v in ["a", "b"] * 10])
+
+    for budget, quoted in ((19, False), (20, True), (21, True), (None, True)):
+        part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=budget).partitions[0]
+        values = part.stats["source"].categorical.values
+        assert (values is not None) is quoted, f"row_budget={budget}"
+        if budget != 19:
+            assert part.rows_complete is True, f"row_budget={budget}"
+
+
 def test_a_zero_row_cap_means_zero_however_many_files_a_partition_has():
     # `max(MIN_ROWS_PER_FILE, 0 // n)` floored a zero budget up to ten rows per file as soon as a
     # partition had more than one, so the same argument meant "no rows" for a single-file partition
