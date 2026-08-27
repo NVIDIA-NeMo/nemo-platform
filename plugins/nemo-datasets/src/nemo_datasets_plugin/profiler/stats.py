@@ -531,10 +531,69 @@ class RoutedAccumulator(ColumnAccumulator):
             if key is not None:
                 self._measurement(key)._observe(present)
             return
+        # Routed by python type, tagged once. Where a dtype resolves to something measurable every
+        # present value is of that type by construction, so a measurement sees what a single chosen
+        # accumulator would.
+        #
+        # Tagging by exact class is an identity test rather than a walk up the MRO, and the
+        # partition it leaves behind is the one the schema fold would otherwise rebuild a value at a
+        # time. Between them those two were most of the type checks this fold performed.
+        strings: list[Any] = []
+        ints: list[Any] = []
+        floats: list[Any] = []
+        bools: list[Any] = []
+        lists: list[Any] = []
+        dicts: list[Any] = []
+        for value in present:
+            cls = value.__class__
+            if cls is str:
+                strings.append(value)
+            # `bool` before `int` only to read like the isinstance route below, where the order
+            # is load-bearing. Here it cannot be: `True.__class__` is `bool` and never `int`,
+            # so an exact class is one place the bool-is-an-int trap does not exist.
+            elif cls is bool:
+                bools.append(value)
+            elif cls is int:
+                ints.append(value)
+            elif cls is float:
+                floats.append(value)
+            elif cls is list:
+                lists.append(value)
+            elif cls is dict:
+                dicts.append(value)
+            else:
+                # A subclass of a builtin, or something stranger, which an exact class cannot place.
+                # Give up the partition for the whole batch rather than fold the stragglers in
+                # afterwards: `roles_seen` records the order roles were first seen, so a value
+                # measured out of turn is a different answer and not merely a slower one. Nothing
+                # has been mutated yet, which is what makes abandoning it here clean.
+                self._observe_by_isinstance(present)
+                return
+        if self._schema is not None:
+            self._schema.update_partitioned(strings, ints, floats, bools, lists, dicts)
+        if strings:
+            self._measurement("string")._observe(strings)
+        # Two folds rather than one list concatenated back together. An accumulator handed a column
+        # in pieces answers as one handed all of it -- the property every batch here already relies
+        # on -- so keeping ints and floats apart saves the join and costs nothing.
+        if ints:
+            self._measurement("numeric")._observe(ints)
+        if floats:
+            self._measurement("numeric")._observe(floats)
+        if bools:
+            self._measurement("bool")._observe(bools)
+        if lists:
+            self._measurement("messages")._observe(lists)
+
+    def _observe_by_isinstance(self, present: list[Any]) -> None:
+        """Route by ``isinstance``, for a batch holding a value no exact class could place.
+
+        The same routing as :meth:`_observe`, kept whole rather than merged into it so that the two
+        are visibly one decision taken two ways. A ``str`` subclass reaches the string measurement
+        here exactly as it did before there was a fast path.
+        """
         if self._schema is not None:
             self._schema.update(present)
-        # Routed by python type. Where a dtype resolves to something measurable every present value
-        # is of that type by construction, so this sees what a single chosen accumulator would.
         strings = [value for value in present if isinstance(value, str)]
         if strings:
             self._measurement("string")._observe(strings)
