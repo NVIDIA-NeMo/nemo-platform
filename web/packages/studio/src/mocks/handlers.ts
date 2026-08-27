@@ -68,6 +68,47 @@ export interface HypermodelParams {
   hypermodelId: string;
 }
 
+/** Shared by the agents list and get-by-name handlers so both agree on the same fixtures. */
+const mockAgents = (workspace: unknown) => {
+  const config = {
+    functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
+    llms: {
+      llm: {
+        _type: 'openai',
+        api_key: 'not-used',
+        model_name: 'meta-llama-3-1-70b-instruct',
+        temperature: 0,
+      },
+    },
+    workflow: {
+      _type: 'react_agent',
+      tool_names: ['wiki', 'clock'],
+      llm_name: 'llm',
+      verbose: false,
+      parse_agent_response_max_retries: 3,
+    },
+  };
+
+  return [
+    {
+      name: 'react-agent',
+      workspace,
+      description: '',
+      created_at: '2026-04-20T10:00:00Z',
+      config,
+      config_format: 'nat-workflow-v1',
+    },
+    {
+      name: 'react-agent2',
+      workspace,
+      description: 'Second react agent',
+      created_at: '2026-04-22T10:00:00Z',
+      config,
+      config_format: 'nat-workflow-v1',
+    },
+  ];
+};
+
 /**
  * Happy path handlers for all UI tests. They usually return mock fixtures, like example Hypermodel response objects.
  * Having a single source of happy path MSW handlers is listed in the [MSW docs as a best practice](https://mswjs.io/docs/best-practices/structuring-handlers#handlers-structure),
@@ -491,9 +532,15 @@ export const handlers = [
   http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', ({ params }) =>
     HttpResponse.json(mockExperiment(String(params['name'])))
   ),
-  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
-    HttpResponse.json(mockEvaluationsPage())
-  ),
+  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', ({ request }) => {
+    const agentName = new URL(request.url).searchParams.get('filter[agent_name]');
+    const page = mockEvaluationsPage();
+    return HttpResponse.json(
+      agentName
+        ? { ...page, data: page.data.filter((e) => e.agent_names?.includes(agentName)) }
+        : page
+    );
+  }),
   http.get(
     '*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions',
     ({ request, params }) => {
@@ -593,58 +640,7 @@ export const handlers = [
   http.get(
     `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`,
     ({ params, request }) => {
-      const data = [
-        {
-          name: 'react-agent',
-          workspace: params['workspace'],
-          description: '',
-          created_at: '2026-04-20T10:00:00Z',
-          config: {
-            functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
-            llms: {
-              llm: {
-                _type: 'openai',
-                api_key: 'not-used',
-                model_name: 'meta-llama-3-1-70b-instruct',
-                temperature: 0,
-              },
-            },
-            workflow: {
-              _type: 'react_agent',
-              tool_names: ['wiki', 'clock'],
-              llm_name: 'llm',
-              verbose: false,
-              parse_agent_response_max_retries: 3,
-            },
-          },
-          config_format: 'nat-workflow-v1',
-        },
-        {
-          name: 'react-agent2',
-          workspace: params['workspace'],
-          description: 'Second react agent',
-          created_at: '2026-04-22T10:00:00Z',
-          config: {
-            functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
-            llms: {
-              llm: {
-                _type: 'openai',
-                api_key: 'not-used',
-                model_name: 'meta-llama-3-1-70b-instruct',
-                temperature: 0,
-              },
-            },
-            workflow: {
-              _type: 'react_agent',
-              tool_names: ['wiki', 'clock'],
-              llm_name: 'llm',
-              verbose: false,
-              parse_agent_response_max_retries: 3,
-            },
-          },
-          config_format: 'nat-workflow-v1',
-        },
-      ];
+      const data = mockAgents(params['workspace']);
 
       const url = new URL(request.url);
       const sort = url.searchParams.get('sort') ?? '-created_at';
@@ -675,6 +671,13 @@ export const handlers = [
         sort,
         filter: null,
       });
+    }
+  ),
+  http.get(
+    `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+    ({ params }) => {
+      const agent = mockAgents(params['workspace']).find((a) => a.name === params['name']);
+      return agent ? HttpResponse.json(agent) : new HttpResponse(null, { status: 404 });
     }
   ),
   http.delete(

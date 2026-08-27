@@ -23,6 +23,9 @@ from nemo_iron_swarm_plugin.jobs.errors import (
     IronSwarmRunError,
 )
 from nemo_iron_swarm_plugin.jobs.synth_client import SynthClient
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import JobStatusDetailsUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +88,9 @@ class StatusDetailsChannel:
         # the interview until the poll deadline with no explanation).
         for attempt in range(1, _PUBLISH_MAX_ATTEMPTS + 1):
             try:
-                self._sdk.jobs.update_status_details(self._name, workspace=self._workspace, body=body)
+                client_from_platform(self._sdk, JobsClient).update_job_status_details(
+                    name=self._name, workspace=self._workspace, body=JobStatusDetailsUpdate(root=body)
+                )
                 return
             except Exception:
                 if attempt == _PUBLISH_MAX_ATTEMPTS:
@@ -101,7 +106,11 @@ class StatusDetailsChannel:
         deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
             try:
-                job = self._sdk.jobs.retrieve(self._name, workspace=self._workspace)
+                job = (
+                    client_from_platform(self._sdk, JobsClient)
+                    .get_job(name=self._name, workspace=self._workspace)
+                    .data()
+                )
             except Exception:  # a transient poll failure must not abort a minutes-long human wait
                 logger.warning("status_details poll failed for job %s; retrying", self._name, exc_info=True)
                 time.sleep(self._poll_interval)

@@ -8,7 +8,9 @@ from unittest.mock import patch
 import httpx
 import pytest
 from nemo_platform_ext.auth.helpers import NMPOIDCConfig
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.sdk_factory import (
@@ -111,7 +113,7 @@ def test_get_platform_sdk_preserves_api_base_url_for_controller_only_pods(monkey
         sdk = get_platform_sdk(http_client=http_client)
 
         assert str(sdk.base_url).rstrip("/") == "http://nemo-platform-api:8080"
-        sdk.jobs.list(workspace="default")
+        client_from_platform(sdk, JobsClient).list_jobs(workspace="default")
 
     assert len(captured_requests) == 1
     assert str(captured_requests[0].url) == "http://nemo-platform-api:8080/apis/jobs/v2/workspaces/default/jobs"
