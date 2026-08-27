@@ -117,9 +117,7 @@ describe('useCustomAssistantChatRuntime', () => {
     const onRun = vi.fn(async () => {
       throw new Error('Connection to NeMo Assistant was interrupted.');
     });
-    const { result } = renderHook(() =>
-      useCustomAssistantChatRuntime({ onError, onRun })
-    );
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onError, onRun }));
 
     await act(async () => {
       await result.current.submitPrompt('Create a guardrail');
