@@ -24,10 +24,17 @@ from uuid import uuid4
 import pytest
 import requests
 from fastapi.testclient import TestClient
-from nemo_platform import NeMoPlatform, PermissionDeniedError
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import PermissionDeniedError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import (
+    CreateModelAdapterRequest,
+    CreateModelEntityRequest,
+    FinetuningType,
+)
 from nmp.core.files.service import FilesService
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.service import SecretsService
@@ -152,15 +159,25 @@ class TestWorkspaceIamIsolationSDK:
         uac: NeMoPlatform = as_user(sdk, user_a, groups=[shared_group])
         ubc: NeMoPlatform = as_user(sdk, user_b, groups=[shared_group])
 
-        ua.models.create(name=model_a, workspace=ws_a)
-        ub.models.create(name=model_b, workspace=ws_b)
-        uac.models.create(name=short_unique_name("mdl-c-a"), workspace=ws_c)
+        client_from_platform(ua, ModelsClient).create_model(
+            workspace=ws_a, body=CreateModelEntityRequest(name=model_a)
+        ).data()
+        client_from_platform(ub, ModelsClient).create_model(
+            workspace=ws_b, body=CreateModelEntityRequest(name=model_b)
+        ).data()
+        client_from_platform(uac, ModelsClient).create_model(
+            workspace=ws_c, body=CreateModelEntityRequest(name=short_unique_name("mdl-c-a"))
+        ).data()
         model_c_b = short_unique_name("mdl-c-b")
-        ubc.models.create(name=model_c_b, workspace=ws_c)
+        client_from_platform(ubc, ModelsClient).create_model(
+            workspace=ws_c, body=CreateModelEntityRequest(name=model_c_b)
+        ).data()
 
         od: NeMoPlatform = as_user(sdk, owner_d)
         model_d = short_unique_name("mdl-d")
-        od.models.create(name=model_d, workspace=ws_d)
+        client_from_platform(od, ModelsClient).create_model(
+            workspace=ws_d, body=CreateModelEntityRequest(name=model_d)
+        ).data()
 
         # Filesets: fileset in C (for allow with group); fileset in D (for deny in C)
         fs_c = short_unique_name("fs-c")
@@ -168,44 +185,58 @@ class TestWorkspaceIamIsolationSDK:
         admin_files = client_from_platform(admin, FilesClient)
         admin_files.create_fileset(workspace=ws_c, body=CreateFilesetRequest(name=fs_c))
         admin_files.create_fileset(workspace=ws_d, body=CreateFilesetRequest(name=fs_d))
-        admin.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_c, workspace=ws_c)
-        admin.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_d, workspace=ws_d)
+        admin_files.upload_file(workspace=ws_c, name=fs_c, path="a.txt", content=b"x")
+        admin_files.upload_file(workspace=ws_d, name=fs_d, path="a.txt", content=b"x")
 
         # 13: adapter in C with a fileset in D is denied (no access to D fileset)
         with pytest.raises(PermissionDeniedError):
-            uac.models.adapters.create(
-                model_c_b,
+            client_from_platform(uac, ModelsClient).create_model_adapter(
+                model_name=model_c_b,
                 workspace=ws_c,
-                name=short_unique_name("adp-c-fileset-d"),
-                fileset=f"{ws_d}/{fs_d}",
-                finetuning_type="lora",
+                body=CreateModelAdapterRequest(
+                    name=short_unique_name("adp-c-fileset-d"),
+                    fileset=f"{ws_d}/{fs_d}",
+                    finetuning_type=FinetuningType.LORA,
+                ),
             )
 
         # Adapter in ws_a on local model, LoRA data in ws_c: allowed (user A can read C).
-        uac.models.adapters.create(
-            model_a,
+        client_from_platform(uac, ModelsClient).create_model_adapter(
+            model_name=model_a,
             workspace=ws_a,
-            name=short_unique_name("adp-allow-c"),
-            fileset=f"{ws_c}/{fs_c}",
-            finetuning_type="lora",
+            body=CreateModelAdapterRequest(
+                name=short_unique_name("adp-allow-c"),
+                fileset=f"{ws_c}/{fs_c}",
+                finetuning_type=FinetuningType.LORA,
+            ),
         )
         # Same local model, LoRA / base storage in ws_d: denied (no D access; targets D "base").
         with pytest.raises(PermissionDeniedError):
-            uac.models.adapters.create(
-                model_a,
+            client_from_platform(uac, ModelsClient).create_model_adapter(
+                model_name=model_a,
                 workspace=ws_a,
-                name=short_unique_name("adp-deny-d"),
-                fileset=f"{ws_d}/{fs_d}",
-                finetuning_type="lora",
+                body=CreateModelAdapterRequest(
+                    name=short_unique_name("adp-deny-d"),
+                    fileset=f"{ws_d}/{fs_d}",
+                    finetuning_type=FinetuningType.LORA,
+                ),
             )
 
-        uac.models.create(name=short_unique_name("mdl-into-c-a"), workspace=ws_c)
-        ubc.models.create(name=short_unique_name("mdl-into-c-b"), workspace=ws_c)
+        client_from_platform(uac, ModelsClient).create_model(
+            workspace=ws_c, body=CreateModelEntityRequest(name=short_unique_name("mdl-into-c-a"))
+        ).data()
+        client_from_platform(ubc, ModelsClient).create_model(
+            workspace=ws_c, body=CreateModelEntityRequest(name=short_unique_name("mdl-into-c-b"))
+        ).data()
 
         with pytest.raises(PermissionDeniedError):
-            uac.models.create(name=short_unique_name("deny-a-into-d"), workspace=ws_d)
+            client_from_platform(uac, ModelsClient).create_model(
+                workspace=ws_d, body=CreateModelEntityRequest(name=short_unique_name("deny-a-into-d"))
+            ).data()
         with pytest.raises(PermissionDeniedError):
-            ubc.models.create(name=short_unique_name("deny-b-into-d"), workspace=ws_d)
+            client_from_platform(ubc, ModelsClient).create_model(
+                workspace=ws_d, body=CreateModelEntityRequest(name=short_unique_name("deny-b-into-d"))
+            ).data()
 
 
 @pytest.mark.integration
@@ -342,14 +373,11 @@ class TestWorkspaceIamIsolationHttpRequests:
         fs_c = short_unique_name("fs-c")
         fs_d = short_unique_name("fs-d")
         admin_sdk = as_user(models_auth_context.sdk, TEST_ADMIN_EMAIL)
-        client_from_platform(admin_sdk, FilesClient).create_fileset(
-            workspace=ws_c, body=CreateFilesetRequest(name=fs_c)
-        )
-        client_from_platform(admin_sdk, FilesClient).create_fileset(
-            workspace=ws_d, body=CreateFilesetRequest(name=fs_d)
-        )
-        admin_sdk.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_c, workspace=ws_c)
-        admin_sdk.files.upload_content(content=b"x", remote_path="a.txt", fileset=fs_d, workspace=ws_d)
+        files = client_from_platform(admin_sdk, FilesClient)
+        files.create_fileset(workspace=ws_c, body=CreateFilesetRequest(name=fs_c))
+        files.create_fileset(workspace=ws_d, body=CreateFilesetRequest(name=fs_d))
+        files.upload_file(workspace=ws_c, name=fs_c, path="a.txt", content=b"x")
+        files.upload_file(workspace=ws_d, name=fs_d, path="a.txt", content=b"x")
 
         # 13
         r13 = post(

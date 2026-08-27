@@ -8,7 +8,7 @@ from urllib.parse import SplitResult, urljoin, urlsplit
 
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.config import Runtime, get_platform_config
 from nmp.common.config.base import LOOPBACK_ADDRESSES, determine_loopback_override
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, parse_model_name_revision
