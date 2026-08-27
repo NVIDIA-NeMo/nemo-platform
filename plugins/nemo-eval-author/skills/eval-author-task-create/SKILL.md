@@ -53,8 +53,8 @@ Work on one tool gap at a time. Keep every generated artifact under
 
 | Command | Verdict |
 |---|---|
-| `select` | Lists only tool items with `reason: not_covered_by_any_input_report` |
-| `scaffold` | Calls Harbor's own `harbor task init`, requires a draft path under `.eval-author/task-drafts/`, and installs the supplied instruction |
+| `select` | Lists only tool items with `reason: not_covered_by_any_input_report` and emits a deterministic `task_slug` plus artifact paths |
+| `scaffold` | Calls Harbor's own `harbor task init`, requires matching draft/proposal names for that slug, and installs the supplied instruction |
 | `verify` | Exits 0 only when the selected tool was uncovered before and covered in every repeated after-report |
 
 The script prints one JSON object. Exit code 0 is success; do not replace its
@@ -71,6 +71,11 @@ Choose one item from `actionable_tools`. Stop when the list is empty. Capability
 or failure-case items with `reason: not_measured_by_any_method` are not task
 generation inputs in v1.
 
+Each actionable tool includes a deterministic `task_slug` of the form
+`cover-<tool-name>` and a `paths` object for the proposal, draft, and
+measurement directories. Use those paths verbatim for the rest of this flow.
+Do not invent alternate slugs or filenames.
+
 ## Step 2: design the smallest objective task
 
 Read the selected item's `description`, `focus`, `needed_tools`, and
@@ -78,9 +83,10 @@ Read the selected item's `description`, `focus`, `needed_tools`, and
 copy its directory: a sibling can carry an obsolete Harbor schema, placeholder
 verifier, or unrelated solution.
 
-Draft an instruction under `.eval-author/proposals/`. State the observable goal,
-paths, and constraints without naming the target tool or leaking verifier logic.
-The task should naturally require the selected tool and no unrelated capability.
+Write the instruction only to `paths.proposal` from Step 1. State the observable
+goal, paths, and constraints without naming the target tool or leaking verifier
+logic. The task should naturally require the selected tool and no unrelated
+capability.
 
 Decide the verifier before scaffolding. Prefer deterministic shell or pytest.
 The verifier must grade the task outcome, not the tool call; ATIF measurement
@@ -98,6 +104,9 @@ uv run <skill_dir>/scripts/task_pipeline.py scaffold \
   --author "<author>" \
   --instruction-file .eval-author/proposals/<task-slug>-instruction.md
 ```
+
+Use the Step 1 `task_slug` for `<task-slug>` in every path above. `scaffold`
+rejects mismatched draft, task-name, or proposal filenames.
 
 Then complete Harbor's generated files:
 

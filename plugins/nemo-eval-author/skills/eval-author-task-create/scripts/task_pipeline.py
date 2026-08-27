@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import Any
 
 _ACTIONABLE_REASON = "not_covered_by_any_input_report"
 _DRAFT_PARTS = (".eval-author", "task-drafts")
+_PROPOSAL_PARTS = (".eval-author", "proposals")
+_SLUG_PREFIX = "cover-"
 
 
 class PipelineError(ValueError):
@@ -31,6 +34,35 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def task_slug_for_tool(tool_name: str) -> str:
+    """Return the stable Harbor artifact slug for one uncovered audit tool."""
+    normalized = tool_name.strip()
+    if not normalized:
+        raise PipelineError("tool name is empty")
+    slug_body = re.sub(r"[^A-Za-z0-9]+", "-", normalized.replace(".", "-").replace(":", "-"))
+    slug_body = slug_body.strip("-").lower()
+    if not slug_body or not slug_body[0].isalpha():
+        slug_body = f"tool-{slug_body}" if slug_body else "tool"
+    return f"{_SLUG_PREFIX}{slug_body}"
+
+
+def _artifact_paths(task_slug: str) -> dict[str, str]:
+    return {
+        "proposal": f".eval-author/proposals/{task_slug}-instruction.md",
+        "draft": f".eval-author/task-drafts/{task_slug}",
+        "measurements": f".eval-author/task-measurements/{task_slug}",
+        "task_id": task_slug,
+    }
+
+
+def _enrich_gap(gap: dict[str, Any]) -> dict[str, Any]:
+    tool_name = gap.get("name")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        raise PipelineError("actionable tool gap is missing a tool name")
+    task_slug = task_slug_for_tool(tool_name)
+    return {**gap, "task_slug": task_slug, "paths": _artifact_paths(task_slug)}
+
+
 def _actionable_tools(report: dict[str, Any]) -> list[dict[str, Any]]:
     gaps = []
     for item in report.get("uncovered_items") or []:
@@ -40,15 +72,17 @@ def _actionable_tools(report: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         generation = item.get("generation") or {}
         gaps.append(
-            {
-                "name": item.get("name"),
-                "kind": "tool",
-                "reason": item.get("reason"),
-                "description": item.get("description"),
-                "focus": generation.get("focus"),
-                "needed_tools": generation.get("needed_tools") or [],
-                "evidence_required": generation.get("evidence_required") or [],
-            }
+            _enrich_gap(
+                {
+                    "name": item.get("name"),
+                    "kind": "tool",
+                    "reason": item.get("reason"),
+                    "description": item.get("description"),
+                    "focus": generation.get("focus"),
+                    "needed_tools": generation.get("needed_tools") or [],
+                    "evidence_required": generation.get("evidence_required") or [],
+                }
+            )
         )
     return sorted(gaps, key=lambda gap: str(gap["name"]))
 
@@ -76,6 +110,25 @@ def _require_draft_destination(path: Path) -> None:
     raise PipelineError("draft output must be under .eval-author/task-drafts/")
 
 
+def _require_proposal_destination(path: Path) -> None:
+    parts = path.resolve().parts
+    for index in range(len(parts) - 1):
+        if parts[index : index + 2] == _PROPOSAL_PARTS:
+            return
+    raise PipelineError("instruction file must be under .eval-author/proposals/")
+
+
+def _require_task_slug_paths(*, task_slug: str, output: Path, task_name: str, instruction_file: Path) -> None:
+    if output.name != task_slug:
+        raise PipelineError(f"draft directory must be named {task_slug!r} for the selected tool, got {output.name!r}")
+    if Path(task_name).name != task_slug:
+        raise PipelineError("draft directory name must match the final component of --task-name")
+    expected_instruction = f"{task_slug}-instruction.md"
+    if instruction_file.name != expected_instruction:
+        raise PipelineError(f"instruction file must be named {expected_instruction!r}, got {instruction_file.name!r}")
+    _require_proposal_destination(instruction_file)
+
+
 def _scaffold(
     *,
     report_path: Path,
@@ -87,11 +140,16 @@ def _scaffold(
     instruction_file: Path,
 ) -> dict[str, Any]:
     _select(report_path, target)
+    task_slug = task_slug_for_tool(target)
     _require_draft_destination(output)
+    _require_task_slug_paths(
+        task_slug=task_slug,
+        output=output,
+        task_name=task_name,
+        instruction_file=instruction_file,
+    )
     if output.exists():
         raise PipelineError(f"draft output already exists: {output}")
-    if Path(task_name).name != output.name:
-        raise PipelineError("draft directory name must match the final component of --task-name")
     try:
         instruction = instruction_file.read_text(encoding="utf-8")
     except OSError as exc:
@@ -128,6 +186,8 @@ def _scaffold(
     return {
         "schema": "nemo.eval_author.harbor_task_draft.v1",
         "target_tool": target,
+        "task_slug": task_slug,
+        "paths": _artifact_paths(task_slug),
         "draft": str(output),
         "task_name": task_name,
         "scaffolder": "harbor task init",
