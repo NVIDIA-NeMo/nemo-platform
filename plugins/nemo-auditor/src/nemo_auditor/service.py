@@ -64,7 +64,7 @@ class AuditorPluginService(NemoService):
                 prefix=crud_prefix,
             ),
             RouterSpec(
-                add_job_routes(AuditJob, authz=scope.child("audit")),
+                add_job_routes(AuditJob, authz=scope.child("audit"), default_profile="auditor"),
                 tag="Auditor Jobs",
                 description="Audit job submission and retrieval.",
                 prefix=crud_prefix,

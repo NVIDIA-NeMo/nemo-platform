@@ -426,7 +426,7 @@ class AuditJob(NemoJob):
                 PlatformJobStep(
                     name="audit-job",
                     executor=CPUExecutionProviderSpec(
-                        profile=profile or "default",
+                        profile=profile or "auditor",
                         provider="cpu",
                         container=ContainerSpec(
                             image=get_qualified_image("auditor-tasks"),

@@ -37,6 +37,7 @@ from nemo_auditor.jobs.audit import (
     _garak_config_dict,
     _rewrite_options_uris,
 )
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -692,6 +693,34 @@ class TestAuditJobRun:
 
 
 # ---------------------------------------------------------------------------
+# AuditJob.compile — profile defaulting
+# ---------------------------------------------------------------------------
+
+
+class TestCompileProfileDefault:
+    def _compile(self, profile: str | None) -> dict:
+        result = asyncio.run(
+            AuditJob.compile(
+                workspace="default",
+                spec=_make_config(),
+                entity_client=None,
+                job_name=None,
+                async_sdk=cast(AsyncNeMoPlatform, None),
+                profile=profile,
+            )
+        )
+        return cast(dict, result)
+
+    def test_defaults_to_auditor_profile_when_unset(self) -> None:
+        result = self._compile(None)
+        assert result["steps"][0]["executor"]["profile"] == "auditor"
+
+    def test_explicit_profile_overrides_default(self) -> None:
+        result = self._compile("gpu-pool")
+        assert result["steps"][0]["executor"]["profile"] == "gpu-pool"
+
+
+# ---------------------------------------------------------------------------
 # Schema-level tests
 # ---------------------------------------------------------------------------
 
@@ -1284,19 +1313,22 @@ class TestToSpec:
 
     def test_task_options_pass_through_to_spec(self) -> None:
         """max_probe_retries and fail_job_on_retries_exhausted are forwarded to AuditSpec."""
-        out = asyncio.run(
-            AuditJob.to_spec(
-                AuditInputSpec(
-                    config=_make_config(),
-                    target=_make_target(),
-                    max_probe_retries=3,
-                    fail_job_on_retries_exhausted=False,
-                ),
-                workspace="default",
-                entity_client=None,
-                async_sdk=None,
-                is_local=True,
-            )
+        out = cast(
+            AuditSpec,
+            asyncio.run(
+                AuditJob.to_spec(
+                    AuditInputSpec(
+                        config=_make_config(),
+                        target=_make_target(),
+                        max_probe_retries=3,
+                        fail_job_on_retries_exhausted=False,
+                    ),
+                    workspace="default",
+                    entity_client=None,
+                    async_sdk=None,
+                    is_local=True,
+                )
+            ),
         )
         assert out.max_probe_retries == 3
         assert out.fail_job_on_retries_exhausted is False
