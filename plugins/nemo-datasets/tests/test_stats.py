@@ -135,6 +135,24 @@ def test_nan_is_not_a_distinct_value():
     assert stats["score"].numeric is None
 
 
+def test_a_nan_counts_as_missing_the_way_a_null_does():
+    # NaN is how parquet and pandas spell a missing float, and counting only `None` left it in
+    # neither camp: not a null, so `null_rate` read 0.0 over a column that was almost entirely
+    # absent, and not a value either, since the vocabulary already skips it. A column holding one
+    # real number then presented as fully populated and single-valued -- which `_is_binary` reads
+    # as a label, so a 97%-empty float column took the `label` role.
+    values = [0.0] + [float("nan")] * 29
+    stats = _stats([_feature("label", "float64")], _rows("label", values))["label"]
+    assert stats.null_rate == 29 / 30
+    assert stats.categorical.distinct_count == 1
+
+    # The real invariant is that the two spellings of "missing" are one measurement.
+    nulls = _stats([_feature("label", "float64")], _rows("label", [0.0] + [None] * 29))["label"]
+    assert stats.null_rate == nulls.null_rate
+    assert stats.categorical.distinct_count == nulls.categorical.distinct_count
+    assert (stats.numeric.min, stats.numeric.max) == (nulls.numeric.min, nulls.numeric.max)
+
+
 def test_the_infinities_are_distinct_values_even_though_the_extrema_skip_them():
     # Excluding every non-finite value was too wide. `inf` equals itself and costs the vocabulary one
     # entry, and dropping it made `{0.0, 1.0, inf}` count as two -- enough for `_is_binary` to call a
