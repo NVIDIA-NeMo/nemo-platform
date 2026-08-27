@@ -54,6 +54,58 @@ def test_local_file_source_skips_symlinks_out_of_the_root(tmp_path):
     assert [e.path for e in LocalFileSource(root).list_files()] == ["train.jsonl"]
 
 
+def test_local_file_source_open_refuses_to_leave_the_root(tmp_path):
+    # `list_files` declines to *list* a symlink, and enforcing it only there held for exactly as
+    # long as every caller came through `list_files`. `open` is the method that reads, so it is
+    # where the rule has to hold.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.jsonl").write_text('{"leaked": 1}\n')
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "train.jsonl").write_text('{"a": 1}\n')
+    (root / "escape.jsonl").symlink_to(outside / "secret.jsonl")
+    source = LocalFileSource(root)
+
+    with source.open("train.jsonl") as stream:
+        assert stream.read() == b'{"a": 1}\n'  # the ordinary case is untouched
+
+    with pytest.raises(ValueError, match="outside the source root"):
+        source.open("escape.jsonl")
+    with pytest.raises(ValueError, match="outside the source root"):
+        source.open("../outside/secret.jsonl")
+    # `root / "/etc/hostname"` is `/etc/hostname`: an absolute path discards the root outright, with
+    # no traversal sequence needed, so a `..` check alone would not have caught this one.
+    with pytest.raises(ValueError, match="outside the source root"):
+        source.open("/etc/hostname")
+
+
+def test_local_file_source_open_does_not_follow_an_entry_swapped_after_listing(tmp_path):
+    # The one case no check made before the open can catch: the entry was a regular file when it was
+    # listed and is a symlink by the time it is read.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.jsonl").write_text('{"leaked": 1}\n')
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "train.jsonl").write_text('{"a": 1}\n')
+    (root / "sibling.jsonl").write_text('{"b": 2}\n')
+    source = LocalFileSource(root)
+    assert "train.jsonl" in [e.path for e in source.list_files()]
+
+    # Pointing out of the root: refused on containment.
+    (root / "train.jsonl").unlink()
+    (root / "train.jsonl").symlink_to(outside / "secret.jsonl")
+    with pytest.raises(ValueError, match="outside the source root"):
+        source.open("train.jsonl")
+
+    # Pointing back *inside* the root, which containment cannot see. O_NOFOLLOW is what refuses it.
+    (root / "train.jsonl").unlink()
+    (root / "train.jsonl").symlink_to(root / "sibling.jsonl")
+    with pytest.raises(OSError):
+        source.open("train.jsonl")
+
+
 def test_local_file_source_open_reads_bytes(tmp_path):
     (tmp_path / "f.jsonl").write_text('{"x": 1}\n')
     with LocalFileSource(tmp_path).open("f.jsonl") as stream:

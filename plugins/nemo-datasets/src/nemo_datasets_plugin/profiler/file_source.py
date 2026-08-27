@@ -10,6 +10,7 @@ the Files storage API is a later drop-in behind the same two methods.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Protocol
@@ -56,4 +57,27 @@ class LocalFileSource:
         return entries
 
     def open(self, path: str) -> BinaryIO:
-        return open(self._root / path, "rb")
+        """One file under the root, opened without following a link out of it.
+
+        `list_files` already declines to *list* a symlink, and enforcing it only there left the rule
+        holding for exactly as long as every caller kept coming through `list_files`. It is enforced
+        here too because this is the method that reads:
+
+        * ``self._root / path`` discards the root entirely when ``path`` is absolute, so
+          ``open("/etc/hostname")`` read that file with no traversal sequence needed;
+        * ``..`` walked out of the root the ordinary way;
+        * and an entry listed as a regular file and replaced with a symlink before it was read was
+          followed, which no check made before the open can catch.
+
+        Nothing in the profiler reaches any of these today -- every caller passes a `FileEntry.path`
+        built by `relative_to(self._root)`, which can hold neither. The Files-backed source this
+        seam exists for changes that: the root becomes trusted and its *contents* become whatever an
+        uploader put there, which is where a symlink planted in a tarball is the ordinary attack.
+        """
+        target = self._root / path
+        if not target.resolve().is_relative_to(self._root.resolve()):
+            raise ValueError(f"{path!r} resolves outside the source root")
+        # `O_NOFOLLOW` rather than a check before the open: containment is verified against the path
+        # as it was a moment ago, and the entry can be swapped underneath that. This is the one race
+        # a caller cannot close for itself.
+        return os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW), "rb")
