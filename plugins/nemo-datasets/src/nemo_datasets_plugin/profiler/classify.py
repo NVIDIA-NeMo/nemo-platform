@@ -382,8 +382,12 @@ class PrefixPair:
 
 # The column names the alias table maps to the two sides of a preference pair. Looked up directly
 # rather than resolved through roles, because this fold runs before classification has assigned any.
-_CHOSEN_NAMES = tuple(name for name, role in _ALIAS_ROLES.items() if role == "chosen")
-_REJECTED_NAMES = tuple(name for name, role in _ALIAS_ROLES.items() if role == "rejected")
+# Matched against lowercased column names, as `_role_for` does. Looking them up with the row's own
+# casing meant a `Chosen`/`Rejected` pair took both roles and reached `_implicit_prompt_evidence`
+# with no pairs counted, so the "prompt is embedded" finding was dropped for any dataset that
+# capitalizes its columns -- silently, since the roles themselves still landed.
+_CHOSEN_NAMES = frozenset(name for name, role in _ALIAS_ROLES.items() if role == "chosen")
+_REJECTED_NAMES = frozenset(name for name, role in _ALIAS_ROLES.items() if role == "rejected")
 
 
 class PrefixPairFold:
@@ -403,8 +407,18 @@ class PrefixPairFold:
 
     def update(self, rows: list[dict]) -> None:
         for row in rows:
-            left = next((row.get(name) for name in _CHOSEN_NAMES if isinstance(row.get(name), str)), None)
-            right = next((row.get(name) for name in _REJECTED_NAMES if isinstance(row.get(name), str)), None)
+            left: str | None = None
+            right: str | None = None
+            # One pass over the row rather than a lookup per alias, so the lowercasing costs a walk
+            # the row was going to get anyway.
+            for name, value in row.items():
+                if not isinstance(value, str):
+                    continue
+                lowered = name.lower()
+                if left is None and lowered in _CHOSEN_NAMES:
+                    left = value
+                elif right is None and lowered in _REJECTED_NAMES:
+                    right = value
             if left is None or right is None:
                 continue
             self._pairs += 1
