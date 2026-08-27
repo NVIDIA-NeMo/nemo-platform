@@ -9,7 +9,7 @@ import {
   PlatformJobLogPage,
   PlatformJobResponsesPage,
   Project,
-  type TraceMetricBucketParam,
+  TraceMetricBucketParam,
 } from '@nemo/sdk/generated/platform/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { customizerHandlers } from '@studio/mocks/handlers/customizer';
@@ -552,7 +552,12 @@ export const handlers = [
   ),
   http.get('*/apis/intake/v2/workspaces/:workspace/traces/metrics', ({ request }) => {
     const url = new URL(request.url);
-    const bucket = (url.searchParams.get('bucket') ?? 'total') as TraceMetricBucketParam;
+    const bucketParam = url.searchParams.get('bucket');
+    const bucket: TraceMetricBucketParam = (
+      Object.values(TraceMetricBucketParam) as string[]
+    ).includes(bucketParam ?? '')
+      ? (bucketParam as TraceMetricBucketParam)
+      : 'total';
     const timezone = url.searchParams.get('timezone') ?? 'UTC';
     return HttpResponse.json(mockTraceMetrics(bucket, timezone));
   }),

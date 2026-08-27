@@ -59,6 +59,7 @@ describe('Agent overview before the agent reports anything', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Get coding agent prompt for importing traces' })
     );
+    await user.click(await screen.findByRole('button', { name: 'Copy to clipboard' }));
 
     const prompt = await navigator.clipboard.readText();
     expect(prompt).toContain('nemo-intake');

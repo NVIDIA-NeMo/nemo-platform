@@ -13,6 +13,7 @@ interface CodingAgentPromptParams {
 const SUPPORTED_CODING_AGENTS = 'claude, cursor, codex, opencode';
 
 const AGENT_PLACEHOLDER = '<agent-name>';
+const CODING_AGENT_PLACEHOLDER = '<coding-agent>';
 
 const agentName = ({ agent }: CodingAgentPromptParams): string => agent ?? AGENT_PLACEHOLDER;
 
@@ -21,13 +22,34 @@ const agentName = ({ agent }: CodingAgentPromptParams): string => agent ?? AGENT
  * own the work. Naming the skill instead of restating its steps keeps these prompts correct as the
  * skills change.
  */
-const preamble = (params: CodingAgentPromptParams, skills: string[]): string[] => {
+const preamble = (
+  params: CodingAgentPromptParams,
+  skills: string[],
+  opts: { checkExistingSkill?: boolean } = {}
+): string[] => {
   const skillList = skills.map((skill) => `\`${skill}\``).join(' and ');
   const many = skills.length > 1;
   const noun = many ? 'skills' : 'skill';
   const them = many ? 'them' : 'it';
   const own = many ? 'own' : 'owns';
   const theyPoint = many ? 'they point' : 'it points';
+  const are = many ? 'are' : 'is';
+
+  const installStep = opts.checkExistingSkill
+    ? [
+        `1. Check whether the ${skillList} ${noun} ${are} already installed for this coding agent (look for its existing skill file, e.g. under \`.claude/skills\`, \`.cursor/rules\`, or the equivalent for this coding agent). If ${them} ${are} already installed, skip straight to step 2 — do not reinstall. Otherwise install ${them} (replace \`${CODING_AGENT_PLACEHOLDER}\` with one of: ${SUPPORTED_CODING_AGENTS}):`,
+        `   \`\`\`bash`,
+        `   nemo skills install --agent ${CODING_AGENT_PLACEHOLDER}`,
+        `   \`\`\``,
+        `   If the \`nemo\` CLI is not on PATH here, install it (\`uv tool install nemo-platform\` or \`pip install nemo-platform\`) and re-run.`,
+      ]
+    : [
+        `1. Install the NeMo skills into this coding agent (replace \`${CODING_AGENT_PLACEHOLDER}\` with one of: ${SUPPORTED_CODING_AGENTS}):`,
+        `   \`\`\`bash`,
+        `   nemo skills install --agent ${CODING_AGENT_PLACEHOLDER}`,
+        `   \`\`\``,
+        `   If the \`nemo\` CLI is not on PATH here, install it (\`uv tool install nemo-platform\` or \`pip install nemo-platform\`) and re-run.`,
+      ];
 
   return [
     `## Environment`,
@@ -48,11 +70,7 @@ const preamble = (params: CodingAgentPromptParams, skills: string[]): string[] =
     ``,
     `NeMo Platform ships ${many ? 'skills' : 'a skill'} that ${own} this work end to end. Do not improvise a solution — install the ${noun} and follow ${them} step by step.`,
     ``,
-    `1. Install the NeMo skills into this coding agent (\`--agent\` is one of: ${SUPPORTED_CODING_AGENTS}):`,
-    `   \`\`\`bash`,
-    `   nemo skills install --agent claude`,
-    `   \`\`\``,
-    `   If the \`nemo\` CLI is not on PATH here, install it (\`uv tool install nemo-platform\` or \`pip install nemo-platform\`) and re-run.`,
+    ...installStep,
     `2. Read the ${skillList} ${noun} and follow the documented steps in order. Run the exact commands documented there and read any \`references/\` file ${theyPoint} at.`,
     `3. Do not invent CLI flags. If a flag you want is not in the skill, check \`nemo <subcommand> --help\`.`,
   ];
@@ -76,14 +94,14 @@ export const traceImportPrompt = (params: CodingAgentPromptParams): string =>
     ``,
     `I want to see traces, insights, and generate datasets from real runs of my agent in NeMo Studio.`,
     ``,
-    ...preamble(params, ['nemo-intake']),
+    ...preamble(params, ['nemo-intake'], { checkExistingSkill: true }),
     ``,
     `## What I want`,
     ``,
     `- Do not rewrite the agent. Instrument it where it already emits telemetry, or import telemetry it has already produced.`,
-    `- If my traces already live in MLflow, LangSmith, Arize Phoenix, or Braintrust, use the skill's importer for that provider instead of adding instrumentation.`,
+    `- If my traces already live in MLflow, LangSmith, Arize Phoenix, or Braintrust, use the skill's importer for that provider instead of adding instrumentation — but still make sure the imported spans end up tagged with the agent name \`${agentName(params)}\` (remap it during import if the source system recorded a different name).`,
     `- Otherwise pick the ingest format that matches what the agent actually emits — OTLP (OpenInference or OTel GenAI semantic conventions), chat completions, or ATIF. Read the skill's comparison table before choosing; do not default to generic OpenTelemetry spans.`,
-    `- Every span must carry a stable agent name of \`${agentName(params)}\` (\`gen_ai.agent.name\`, or \`llm.agent.name\` / \`agent.name\` depending on the convention your instrumentation emits). Studio's agent overview is keyed on this value — if it is missing or inconsistent, the traces land but the agent page stays empty.`,
+    `- Every span must carry the agent name \`${agentName(params)}\` exactly as it is named in NeMo Platform (\`gen_ai.agent.name\`, or \`llm.agent.name\` / \`agent.name\` depending on the convention your instrumentation emits). This is the name I created the agent under in Studio, not whatever name the agent's own code, framework, or class defaults to — override it if they differ. Studio's agent overview is keyed on this exact value — if it is missing, inconsistent, or does not match \`${agentName(params)}\` verbatim, the traces land but the agent page stays empty.`,
     `- Set a stable session ID so multi-turn runs group into one session.`,
     ``,
     `## Done when`,
