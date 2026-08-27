@@ -132,6 +132,8 @@ class JsonlReader:
         and every column it alone witnessed. The caller still has to be told, or a partially parsed
         file folds silently and looks complete.
         """
+        if row_cap == 0:
+            return
         rows: list[dict] = []
         scanned = 0
         unusable = 0
@@ -173,6 +175,11 @@ class JsonlReader:
         not_rows = 0
         first_failure: str | None = None
         hit_cap = False
+        # Tested before the read rather than after each row: `len(rows) >= row_cap` only fires once
+        # a row has been appended, so a zero cap still read and folded one row per file -- the one
+        # value `_per_file_cap` exists to define, and the parquet reader already returns nothing for.
+        if row_cap == 0:
+            return ReadResult(rows=[], rows_scanned=0, num_rows=None, arrow_schema=None)
         with source.open(entry.path) as stream:
             _check_magic(stream)
             for record, failure in _records(stream):
