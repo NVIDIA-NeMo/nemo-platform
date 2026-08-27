@@ -36,10 +36,13 @@ variable "NMP_COLLECT_SOURCES" {
 }
 
 variable "NMP_PYTHON_IMAGE" {
-  default = "python:3.13.14-slim-trixie"
+  default = "python:3.13.15-slim-trixie"
 }
 
 variable "DISTROLESS_BASE_3_13" {
+  # NGC 3.13-v4.0.9 (2026-08-06) is still CPython 3.13.14 and ships
+  # libexpat1 2.8.2-1~deb13u1 (sheet CVE-2026-66046). No newer 3.13 tag
+  # was published as of 2026-08-27; do not invent one.
   default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
 }
 
@@ -87,7 +90,9 @@ variable "BAKE_TAG" {
   default = "local"
 }
 
-# Pin for nmp-python-base (built by nmp-python-base-builder; run that target to update)
+# Tag for a published nmp-python-base image. Bake builds that target from
+# NMP_PYTHON_IMAGE (currently python:3.13.15-slim-trixie); this SHA is not
+# wired as a FROM pin. Rebuild the target in CI after changing NMP_PYTHON_IMAGE.
 variable "BASE_TAG_PYTHON" {
   default = "d9e1851f309d3cf5389c0fc0e1049bd3c87593f8"
 }

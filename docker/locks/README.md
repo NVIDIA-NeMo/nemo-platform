@@ -60,17 +60,17 @@ image-specific dependencies that are intentionally excluded from the shared CPU
 task environment.
 
 After changing `docker/locks/nmp-gym-tasks/pyproject.toml`, regenerate
-its lock with Python 3.13.14 or newer:
+its lock with Python 3.13.15 or newer:
 
 ```bash
-uv lock --project docker/locks/nmp-gym-tasks --python 3.13.14
+uv lock --project docker/locks/nmp-gym-tasks --python 3.13.15
 ```
 
 Verify both image architectures:
 
 ```bash
-uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.14 --python-platform x86_64-unknown-linux-gnu
-uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.14 --python-platform aarch64-unknown-linux-gnu
+uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.15 --python-platform x86_64-unknown-linux-gnu
+uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.15 --python-platform aarch64-unknown-linux-gnu
 ```
 
 ### Upgrading Gym task dependencies
