@@ -132,6 +132,9 @@ reused across datasets.
 | `wheels-v1` | Any `config_paths` layout, plus a `wheels/` directory of pre-built `.whl` files. | Your environment needs Python dependencies. The wheels are installed offline, so the job needs no cluster egress. |
 | `adapter-wheels-v1` | `configs/` YAMLs plus `wheels/`, and an `adapter.agent` naming an agent harness the training image already ships. | Your environment is driven by a shipped agent harness (e.g. `verifiers_agent`) rather than its own server code. |
 
+Folder trees, Gym YAML for resources / Responses API servers, and worked examples:
+[GRPO Environment Packages](../../docs/customizer/tutorials/grpo-environment-packages.mdx).
+
 `wheels-v1` and `adapter-wheels-v1` are installed from the vendored `wheels/` directory
 only, which is what lets a sandboxed rollout run with no internet access. Package one
 resolved closure per environment; vendoring several versions of the same distribution
@@ -156,6 +159,8 @@ selects code that already exists in the image rather than shipping it.
 - **Skill:** the `nemo-customizer` skill documents the end-to-end DPO workflow
   (`plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/`).
 - **Design:** [`docs/customizer/nemo-rl-dpo-plugin-design.md`](../../docs/customizer/nemo-rl-dpo-plugin-design.md).
+- **GRPO environment packages:** [`docs/customizer/tutorials/grpo-environment-packages.mdx`](../../docs/customizer/tutorials/grpo-environment-packages.mdx) (`native-v1` / `wheels-v1` / `adapter-wheels-v1`).
+- **GRPO job + cluster:** [`docs/customizer/grpo-training.mdx`](../../docs/customizer/grpo-training.mdx).
 - **GPU e2e smoke test:** [`scripts/gpu-dpo-smoke/`](../../scripts/gpu-dpo-smoke).
 - **Images:** [`docker/rl/Dockerfile.nmp-rl-base`](../../docker/rl/Dockerfile.nmp-rl-base),
   [`docker/rl/Dockerfile.nmp-rl-training`](../../docker/rl/Dockerfile.nmp-rl-training),

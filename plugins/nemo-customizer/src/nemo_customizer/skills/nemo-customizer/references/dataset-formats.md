@@ -101,7 +101,7 @@ Source of truth: `GymDatasetRow` / `GymVerifiersDatasetRow` in `services/rl/src/
 | Key | Required | Meaning |
 |---|---|---|
 | `responses_create_params` | **yes** | The prompt, in OpenAI **Responses API** shape. The messages go under `input`, not at the row's top level. NeMo-RL also reads this to apply per-row sampling settings. |
-| `agent_ref` | **yes** | `{"type": "responses_api_agents", "name": "<agent>"}`. Routes the row to an agent. `type` is the only allowed value; `name` must match the agent the environment declares (`verifiers_agent` for a converted package). |
+| `agent_ref` | **yes** | `{"type": "responses_api_agents", "name": "<agent>"}`. Routes the row to an agent. `type` is the only allowed value; `name` is the Gym **instance** name in the environment YAML (the converter writes `verifiers_agent`; a hand-built agent instance might be `weather_simple_agent`, not the implementation folder `simple_agent`). |
 | `vf_env_id` | verifiers envs | Passed to `verifiers.load_environment()`. Must equal the environment manifest's `metadata.vf_env_id`. |
 | `task_idx` | verifiers envs | Row index. Required on the verifiers row type. |
 | `answer` | no | Reference answer the environment scores against. Default `""`. Whether it is used at all is the environment's business. |
