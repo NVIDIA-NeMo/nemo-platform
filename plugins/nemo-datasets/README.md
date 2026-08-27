@@ -508,7 +508,7 @@ flowchart LR
         direction TB
         CNT["counters<br/>rows, nulls, non_empty"]
         HIST["_LengthHistogram<br/><i>magnitude buckets, no RNG seed</i>"]
-        VOC["_Vocabulary<br/><i>1024 distinct / 256 chars / 64KB</i><br/>past the bound: discards, counts on"]
+        VOC["_Vocabulary<br/><i>1024 distinct / 256 chars / 64KB</i><br/>past the bound: saturates, reports nothing"]
         PROBE["ColumnProbes<br/><i>run on every column, no role gate</i>"]
     end
 ```
@@ -558,9 +558,14 @@ nothing kept grows with the file, so an exhaustive read costs what a short one c
 the budget bounded was never really rows — it was risk.
 
 `row_budget` survives as a way to ask for a shorter run, and it is a *target* rather than a ceiling:
-`MIN_ROWS_PER_FILE = 10` is the floor every file is read to, however thin its share gets. A file
-sampled below that cannot contribute the columns it alone witnesses, and file-level sampling would
-reintroduce the same coverage hole from the other direction.
+`MIN_ROWS_PER_FILE = 10` is a floor under each file's share when a budget is divided across several
+files, so 20 files under a budget of 5 read 200 rows and not 5. A file sampled below that floor
+cannot contribute the columns it alone witnesses, and file-level sampling would reintroduce the same
+coverage hole from the other direction.
+
+Two cases sit outside the floor rather than under it: a partition of one file is capped at the
+budget itself, and a budget of `0` is passed through as `0`. Neither is the floor failing — a floor
+exists to stop a *share* being whittled to nothing, and neither of those is a share.
 
 ### Why every file is opened
 

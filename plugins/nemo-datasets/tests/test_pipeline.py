@@ -1372,6 +1372,19 @@ def test_rows_read_do_not_grow_when_a_dataset_is_resharded(tmp_path_factory):
     assert rows_read(4, 200) == rows_read(40, 20) == 400
 
 
+def test_a_single_file_partition_is_capped_at_the_budget_itself(tmp_path):
+    # The floor exists to stop a *share* being whittled to nothing when a budget is divided. A
+    # partition of one file divides nothing, so there is no share to protect and the budget is the
+    # cap -- below the floor and correctly so. Pinned because the README names this as deliberate,
+    # and it reads like the floor failing.
+    _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(100)])
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=3)
+
+    assert result.coverage.rows_scanned == 3  # not the 10-row floor
+    assert result.partitions[0].rows_complete is False
+
+
 def test_row_budget_keeps_a_floor_under_very_thin_shards(tmp_path):
     # Below the floor a file cannot witness the columns only it holds, which is the reason every file
     # is opened rather than a subset sampled. Overshooting the budget there is the right trade, and
