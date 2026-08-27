@@ -94,6 +94,13 @@ GRPO_TIME_SERIES_METRICS = (
     # under this spelling. It does not match the `*total_reward/*` family, whose
     # names all end in a statistic.
     "*_reward",
+    # The raw verifier reward, which `*_reward` deliberately does not match. Identical to
+    # `train_reward` while reward shaping and dynamic sampling are off; the pair is the point
+    # once either is enabled, because then `train_reward` is what the loss saw and this is
+    # what the environment returned, and a gap between them is the transform working rather
+    # than the policy moving. Train-only, not `*total_reward/mean`: the validation spelling
+    # is the last batch's mean, a worse-behaved version of the whole-pass `val_accuracy`.
+    "train_total_reward/mean",
     # The validation reward, under the name NeMo-RL gives it. `validate()` returns
     # the pass's mean reward as `accuracy`, and that is the name consumers read it
     # under -- there is no `val_reward`. DPO uses this spelling too, where it means
