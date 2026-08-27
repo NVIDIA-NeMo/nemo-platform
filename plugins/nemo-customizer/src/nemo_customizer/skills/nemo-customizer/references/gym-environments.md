@@ -5,7 +5,7 @@
 
 # NeMo Gym environments for GRPO
 
-GRPO scores sampled responses against an **environment** — code that runs a rollout and returns a reward. The platform takes that environment as a **FileSet**, and the prompts as a **separate** FileSet. This file covers what a valid environment package looks like in all three formats, and how to get from whatever the user has today to one of them.
+GRPO scores sampled responses against an **environment** — code that runs a rollout and returns a reward. The platform takes that environment as a **FileSet**, and the prompts as a **separate** FileSet. This file covers what a valid environment package looks like in all three formats, and how to get from the user's source to one of them.
 
 **Two FileSets, never one.** The environment package holds code and config; the dataset holds prompt rows. Validation **rejects any `.jsonl` inside the environment package** (`validate_manifest_against_listing`), so a Gym config that points at an in-tree `jsonl_fpath` — which is how environments are shipped in the Gym source tree — will not work here unchanged. Prompts come from the dataset FileSet.
 
@@ -34,9 +34,9 @@ Source of truth: `services/rl/src/nmp/rl/schemas/environment.py`.
 
 Decision shortcut: **is there a `verifiers` environment?** → `adapter-wheels-v1` (and use the converter, below). **Otherwise** → `wheels-v1`, unless the cluster can resolve the server's requirements from an index at spin-up, in which case `native-v1` saves you vendoring.
 
-**All three formats run on the same runtime.** The training image carries the entire NeMo Gym source tree — ~29 `responses_api_agents/`, ~100 `resources_servers/`, 7 `responses_api_models/` — and starts a package's servers exactly as it starts Gym's own. Do not tell a user one format is better supported at runtime; it is not. What actually differs is **where dependencies come from** (§ **Dependency installation**), and that is the first question to settle, ahead of layout.
+**All three formats run on the same runtime.** The training image carries the NeMo Gym source tree and starts a package's servers the same way it starts Gym's own. What differs is **where dependencies come from** (§ **Dependency installation**). Settle that before layout.
 
-`adapter-wheels-v1` is the only format with a bundled converter, and `verifiers_agent` is the only entry on `IMAGE_ADAPTER_ALLOWLIST`. That makes it the shortest path for a `verifiers` env — a tooling advantage, not a runtime one.
+`adapter-wheels-v1` is the only format with a bundled converter, and `verifiers_agent` is the only entry on `IMAGE_ADAPTER_ALLOWLIST`. That is the shortest path for a `verifiers` env.
 
 ## Dependency installation — settle this first
 
@@ -44,7 +44,7 @@ Source of truth: `nemo_rl.environments.gym_env_package` (in the RL image), `dock
 
 Gym builds **one venv per server** at spin-up, from that server's own `pyproject.toml` / `requirements.txt`, under `NEMO_GYM_VENV_DIR` (`/opt/gym_venvs`). That directory ships **empty** — `NEMO_GYM_PREFETCH_CONFIGS` is off by default — so every environment pays this on first use, built-in ones included.
 
-The platform itself installs nothing. `grpo_driver` calls `bootstrap_environment_package(..., install_wheels=False)`: it validates and stops there, because the venvs a server runs from do not exist until `RunHelper.start`. NeMo-RL does the rest — it prepends the package to `NEMO_GYM_EXTRA_ROOTS` (so a package server shadows a built-in of the same name) and adds `wheels/` to `UV_FIND_LINKS`, then after the venvs exist installs the closure into each one as **unpinned distribution names**. Requirements the wheelhouse does not carry still resolve from an index.
+The platform itself installs nothing. `grpo_driver` calls `bootstrap_environment_package(..., install_wheels=False)`: it validates and stops there, because the venvs a server runs from do not exist until `RunHelper.start`. NeMo-RL prepends the package to `NEMO_GYM_EXTRA_ROOTS` (so a package server shadows a built-in of the same name) and adds `wheels/` to `UV_FIND_LINKS`, then after the venvs exist installs the closure into each one as **unpinned distribution names**. Requirements the wheelhouse does not carry resolve from an index.
 
 | Format | Server deps come from | Needs egress at spin-up |
 |---|---|---|
@@ -52,7 +52,7 @@ The platform itself installs nothing. `grpo_driver` calls `bootstrap_environment
 | `wheels-v1` | The package's `wheels/`, for whatever it vendors | **No**, if the closure is complete |
 | `adapter-wheels-v1` | The package's `wheels/`, plus the agent harness's own requirements | **Yes** — see below |
 
-**`adapter-wheels-v1` is not offline today.** The wheelhouse covers the *environment*; the `verifiers_agent` harness comes from the image and builds its venv from its own `requirements.txt`, which carries `verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git`. So a converted hub env still needs egress even with a complete FileSet. Say so rather than promising a fully offline run.
+**`adapter-wheels-v1` requires network at job start.** The wheelhouse covers the hub environment; the `verifiers_agent` harness builds its venv from its own `requirements.txt`, which carries `verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git`. A converted hub env needs egress even with a complete FileSet. Do not promise an offline run.
 
 Egress is operator config, never a job field: `NMP_RL_SANDBOX_ALLOW_INTERNET`, plus `NMP_RL_SANDBOX_PUBLIC_DNS_ALLOW` for hosts outside NeMo-RL's built-in `*.com` / `*.org` allowance (e.g. `hub.primeintellect.ai`). Check with the operator before committing a user to `native-v1` on a deny-default cluster.
 
@@ -114,6 +114,8 @@ metadata:
 ```
 
 Gym resolves servers **by name** against a component search path, and the package is prepended to it (`NEMO_GYM_EXTRA_ROOTS`), so a package entry shadows a built-in with the same name. That applies to every format, not just this one.
+
+The YAML **implementation** key is the directory Gym `cd`s into (`resources_servers/<impl>/` with `requirements.txt` or `pyproject.toml`). The **instance** name (top-level key) is what `agent_ref.name` and `{type, name}` refs use. Image implementations (`simple_agent`, `vllm_model`, `verifiers_agent`) can be referenced without uploading their `app.py`.
 
 **`native-v1` ships no `wheels/`, so its per-server venv resolves from a package index at spin-up and the job needs egress.** It does *not* mean the server's imports must already be in the image — Gym installs them at first use either way. Choose `native-v1` when the cluster can reach an index (or the server is one of the built-ins baked in via `NEMO_GYM_PREFETCH_CONFIGS`); otherwise ship the same tree as `wheels-v1` with a vendored closure. That is Path C, and it is the more common answer on a deny-default cluster.
 
@@ -179,7 +181,7 @@ from nmp.rl.tasks.environment.package import build_policy_model_yaml
 )
 ```
 
-List it **first** in `config_paths`, ahead of the config that references it. Placement differs by format: `configs/policy_model.yaml` for the two wheels formats, but `native-v1` restricts `config_paths` to the three Gym server directories, so it goes at something like `responses_api_models/policy_model/configs/policy_model.yaml`.
+List it **first** in `config_paths`, ahead of the config that references it. Placement differs by format: `configs/policy_model.yaml` for the two wheels formats; `native-v1` must live under a Gym server prefix. Use `responses_api_models/vllm_model/configs/policy_model.yaml` so the on-disk path matches the YAML implementation (`vllm_model`). A folder named `policy_model` also passes the prefix check; Gym runs `responses_api_models/vllm_model/` from the YAML body, not from the config file's directory.
 
 **`max_tokens` lives in the package, not the job.** `configs/verifiers_agent.yaml` carries `max_tokens` (default 8192), and `verifiers_agent` reads it in preference to the job's `max_new_tokens`. To bound response length for an adapter env, edit this file before uploading — see `hyperparameters-rl.md` § **Known limitation**.
 
@@ -189,11 +191,16 @@ The catch-all, and the right answer more often than its "bring your own code" fr
 
 `wheels-v1` is the least constrained format — `config_paths` may sit anywhere — and correspondingly the one with the least done for you. There is no converter; build it by hand.
 
+Gym runs `{server_type}/{implementation}/` and requires `requirements.txt` or `pyproject.toml` there. A `configs/` + `wheels/` package with **no** server directories only works when every YAML implementation is already in the image (`simple_agent`, `vllm_model`, `verifiers_agent`). A custom `resources_servers/my_env` **must** ship that directory, even if the YAML itself lives under `configs/`.
+
 ```
 my-env/
   nemo-environment.yaml
   configs/policy_model.yaml     ← required; see Path B
   configs/my_env.yaml
+  resources_servers/my_env/     ← required for a custom implementation
+    app.py
+    requirements.txt
   wheels/*.whl                  ← the closure
 ```
 
@@ -211,7 +218,7 @@ metadata:
 
 ### Vendoring the closure
 
-The wheelhouse reaches Gym through `UV_FIND_LINKS`, so it is a *candidate pool*, not a lock file: what it covers installs from local files, what it misses still goes to an index.
+The wheelhouse reaches Gym through `UV_FIND_LINKS`, so it is a candidate pool, not a lock file: what it covers installs from local files; what it misses goes to an index.
 
 **Wheels must target the training image, not the build host.** The image is **Python 3.13 on `x86_64` manylinux**. A closure downloaded on macOS or arm64 passes `--validate-only` — which checks layout, never wheel tags — and then fails on the cluster with `has no wheels with a matching platform tag`. Match what the converter does (`TARGET_PYTHON_VERSION`, `TARGET_WHEEL_PLATFORMS` in `convert.py`):
 
@@ -238,10 +245,10 @@ Keep the Gym directory structure (`resources_servers/<name>/` with its `app.py`,
 **Vendor `nemo-gym` itself.** Gym builds each server's venv from its `requirements.txt`, which in the source tree starts `-e nemo-gym[dev] @ ../../`. Outside a Gym checkout that relative path does not exist, so `setup_env_command` rewrites the line to `nemo-gym==<parent version>` and resolves it from an index. Vendoring the matching `nemo-gym` wheel keeps that offline — and it must be the *exact* version the image runs, or Gym silently falls back to PyPI:
 
 ```bash
-docker run --rm <training-image> -c 'import importlib.metadata as m; print(m.version("nemo-gym"))'
+docker run --rm <training-image> python -c 'import importlib.metadata as m; print(m.version("nemo-gym"))'
 ```
 
-A worked build of exactly this shape lives in `dev-tests/package_math_with_judge.py`.
+Validate the tree with `--validate-only`.
 
 ## Validate before uploading
 
@@ -269,7 +276,7 @@ uv run --package nmp-rl pi-to-gym-conversion \
 
 Without `--environment-name` / `--dataset-name` it derives them from the hub slug as **`<slug>-env`** and **`<slug>-env-dataset`** — here `ascii-tree-env` and `ascii-tree-env-dataset`. Read the names back from the `uploaded` block in its JSON output rather than assuming.
 
-Or by hand, which is the only option for Paths A and C. Use **`--purpose environment`** on the environment FileSet; `dataset`, `environment`, `generic`, and `model` are the four valid values. Nothing keys behaviour off `purpose` today — the package is identified by its `nemo-environment.yaml`, which the platform downloads and parses at submit — but set it correctly anyway, since it is how the fileset reads in listings.
+Or by hand, which is the only option for Paths A and C. Use **`--purpose environment`** on the environment FileSet; `dataset`, `environment`, `generic`, and `model` are the four valid values. The package is identified by `nemo-environment.yaml` at submit; set `purpose` so listings are accurate.
 
 `nemo files upload` takes a directory and uploads recursively, preserving relative paths, so one command per fileset is enough:
 
@@ -322,6 +329,6 @@ Environment-incompatible-with-reasoning-parser and vLLM `async_engine` errors ar
 | Kubernetes runtime, sandboxed Gym, PVC, egress | `rl-kubernetes-runtime.md` § **Sandboxed Gym (GRPO)** |
 | Manifest schemas (source of truth) | `services/rl/src/nmp/rl/schemas/environment.py` |
 | Validation rules (source of truth) | `services/rl/src/nmp/rl/tasks/environment/validate.py` |
-| Converter, wheel targeting, `build_policy_model_yaml` | `services/rl/src/nmp/rl/tasks/environment/convert.py`, `package.py`, `__main__.py` |
+| Converter, wheel targeting, `build_policy_model_yaml` | `services/rl/src/nmp/rl/tasks/environment/convert.py`, `package.py`, `__main__.py` (`pi-to-gym-conversion`) |
+| GPU smoke (convert → upload → one GRPO step) | `scripts/gpu-grpo-smoke/` |
 | How wheels and search roots actually reach Gym | `nemo_rl.environments.gym_env_package` (RL image), `docker/rl/README.md` § **NeMo-Gym environments** |
-| A worked hand-built `wheels-v1` package | `dev-tests/package_math_with_judge.py` |

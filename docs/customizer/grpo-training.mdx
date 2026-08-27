@@ -37,9 +37,7 @@ The environment package declares its format in a `nemo-environment.yaml` manifes
 | A Prime Intellect hub environment, or any `verifiers` environment installable as a wheel | `adapter-wheels-v1` | Yes | `configs/` |
 | Any other environment code, including a Gym server tree whose dependencies you want vendored | `wheels-v1` | Yes | Anywhere in the package |
 
-All three run on the same machinery. The training image carries the whole NeMo Gym source tree — every built-in agent, resources server, and model server — and Gym starts your package's servers the same way it starts its own. What differs between the formats is only where dependencies come from, and that is the question to answer first: see [How dependencies are installed](#how-dependencies-are-installed).
-
-`adapter-wheels-v1` is the only format with a bundled converter, and `verifiers_agent` is currently the only agent harness a package may select (`IMAGE_ADAPTER_ALLOWLIST`). That makes it the shortest path for a `verifiers` environment — not a better-supported runtime.
+`adapter-wheels-v1` includes a converter (`pi-to-gym-conversion`). Set `adapter.agent` to `verifiers_agent`.
 
 ### Manifest
 
@@ -71,14 +69,18 @@ The platform ships a converter that downloads the hub package, vendors its full 
 
 Run it on a machine with internet access. Training clusters have no hub egress and consume uploaded FileSets only.
 
+The converter is `pi-to-gym-conversion`. From a platform install, run it on `PATH`. From this repository:
+
 ```bash
-pi-to-gym-conversion \
+uv run --package nmp-rl pi-to-gym-conversion \
   --hub-id primeintellect/ascii-tree \
   --hub-version 0.1.5 \
   --out-dir ./ascii-tree-pkg \
   --dataset-dir ./ascii-tree-data \
   --validation-fraction 0.1
 ```
+
+An end-to-end helper is [`scripts/gpu-grpo-smoke/`](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/scripts/gpu-grpo-smoke).
 
 <Note>
 Pin `--hub-version`. Left unset, the converter takes whatever the index offers at that moment; a later release can narrow `Requires-Python` and fail the download, or install but not run on the training image's Python.
@@ -102,7 +104,7 @@ Add `--upload` (with `NMP_BASE_URL` set) to create both FileSets and upload them
 ### Validate before uploading
 
 ```bash
-pi-to-gym-conversion --validate-only ./ascii-tree-pkg
+uv run --package nmp-rl pi-to-gym-conversion --validate-only ./ascii-tree-pkg
 ```
 
 Prints `{"valid": true, "format": "...", "name": "..."}` or exits non-zero with the specific violation. The same checks run at submit time, so validating locally catches the failure earlier and for free.
@@ -151,17 +153,22 @@ policy_model:
       uses_reasoning_parser: true
 ```
 
-The three interpolations resolve against the config NeMo-RL injects at spin-up, which is what points Gym at the vLLM engine the job is already running instead of starting its own. List it **first** in `config_paths`, ahead of the config that references it.
+The three interpolations resolve to the job’s vLLM endpoint. List this file first in `config_paths`.
 
-Path placement differs by format: `configs/policy_model.yaml` for `adapter-wheels-v1` and `wheels-v1`, but `native-v1` restricts `config_paths` to the three Gym server directories, so it belongs at something like `responses_api_models/policy_model/configs/policy_model.yaml`.
+| Format | Path |
+| --- | --- |
+| `adapter-wheels-v1`, `wheels-v1` | `configs/policy_model.yaml` |
+| `native-v1` | `responses_api_models/vllm_model/configs/policy_model.yaml` |
+
+Custom implementations need `{server_type}/{implementation}/` (with `app.py` and `requirements.txt`) in the FileSet for `native-v1` and `wheels-v1`. YAML under `configs/` does not replace that directory. Details: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages).
 
 ## How dependencies are installed
 
 The format you choose does not change *what runs*. It changes where dependencies come from, and that is what usually decides whether a job starts at all.
 
-Gym builds **one venv per server**, at spin-up, from that server's own `pyproject.toml` or `requirements.txt` — so an environment's dependencies stay isolated from the pinned training stack. The training image ships with that venv directory empty: prefetching built-in environments is off by default, so every environment pays this cost on first use, yours and Gym's alike.
+Gym builds **one venv per server** when the job starts, from that server's `pyproject.toml` or `requirements.txt`.
 
-The wheelhouse is what makes that install offline. A `wheels-v1` or `adapter-wheels-v1` package's `wheels/` directory is added to uv's resolution sources before Gym starts, so requirements it covers resolve from local files. Requirements it does not cover still go to an index.
+Wheels in a `wheels-v1` or `adapter-wheels-v1` package are used as local install sources. Distributions not present in `wheels/` are fetched from a package index.
 
 | Format | Server dependencies come from | Needs egress at spin-up |
 | --- | --- | --- |
@@ -170,7 +177,7 @@ The wheelhouse is what makes that install offline. A `wheels-v1` or `adapter-whe
 | `adapter-wheels-v1` | The package's `wheels/`, plus the agent harness's own requirements | Yes — see below |
 
 <Warning>
-`adapter-wheels-v1` is **not** fully offline today. Its wheelhouse covers the environment, but the `verifiers_agent` harness that runs it comes from the image and builds its own venv from its own `requirements.txt`, which installs `verifiers` from GitHub. A converted hub environment therefore still needs egress at spin-up even when its FileSet is complete.
+`adapter-wheels-v1` requires network access when the job starts. The package `wheels/` directory covers the hub environment; `verifiers_agent` also installs `verifiers` from GitHub.
 </Warning>
 
 Egress is an operator setting, not a job field: `NMP_RL_SANDBOX_ALLOW_INTERNET`, plus `NMP_RL_SANDBOX_PUBLIC_DNS_ALLOW` for hosts outside the built-in `*.com` / `*.org` allowance. Ask your platform operator which is configured before choosing a format.
@@ -189,7 +196,7 @@ pip download <requirements> --dest my-env/wheels \
   --platform manylinux2014_x86_64
 ```
 
-`--platform` is repeated because pip matches these tags literally rather than expanding a compatibility range, so a project that only publishes against an older glibc floor is missed unless its tag is named. These are the same four the bundled converter uses (`TARGET_WHEEL_PLATFORMS`).
+`--platform` is repeated because pip matches these tags literally rather than expanding a compatibility range. Name each tag you need, including older glibc floors.
 
 Clear `wheels/` before rebuilding into it. Copies overwrite by filename, so a wheel from an earlier run survives whenever the new closure resolved that project to a different version, and the package then vendors both.
 
@@ -214,7 +221,7 @@ GRPO rows are **rollout rows**, not prompt/completion pairs and not preference t
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `responses_create_params` | Yes | The prompt. Messages go under `input`. |
-| `agent_ref` | Yes | Object routing the row to an agent. `name` must match the agent the environment declares. |
+| `agent_ref` | Yes | Object routing the row to an agent. `name` is the Gym **instance** in the environment YAML (converter: `verifiers_agent`). |
 | `vf_env_id` | verifiers environments | Passed to `verifiers.load_environment()`. Set it to the manifest's `metadata.vf_env_id`. |
 | `task_idx` | verifiers environments | Row index. |
 | `answer`, `task`, `example_id`, `info`, `question` | No | Passed through to the environment. |
