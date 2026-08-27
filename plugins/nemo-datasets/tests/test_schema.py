@@ -49,6 +49,46 @@ def test_from_arrow_fixed_and_variable_lists_agree_on_shape():
     assert (variable.dtype, variable.items.dtype) == ("list", "string")
 
 
+def test_from_arrow_dictionary_encoding_unwraps_to_its_value_type():
+    # `DataFrame.to_parquet` writes a dictionary column for every `category` dtype. It is a storage
+    # choice, not a logical type -- pyarrow decodes it on the way out -- so it must type as what it
+    # holds. Typing it as `json` cost the column its stats, its role, and the classification.
+    schema = pa.schema(
+        [
+            ("label", pa.dictionary(pa.int32(), pa.string())),
+            ("code", pa.dictionary(pa.int8(), pa.int64())),
+        ]
+    )
+    assert {f.name: f.dtype for f in derive_features([], schema)} == {"label": "string", "code": "int64"}
+
+
+def test_from_arrow_dictionary_inside_a_list_still_unwraps():
+    schema = pa.schema([("tags", pa.list_(pa.dictionary(pa.int32(), pa.string())))])
+    feature = derive_features([], schema)[0]
+    assert (feature.dtype, feature.items.dtype) == ("list", "string")
+
+
+def test_from_arrow_temporal_and_binary_types_are_named_not_json():
+    # None of these carry statistics, but `json` reads as "not understood" and these are understood.
+    # Naming them also lets the role gates refuse them deliberately rather than by omission.
+    schema = pa.schema(
+        [
+            ("d", pa.date32()),
+            ("ts", pa.timestamp("s")),
+            ("t", pa.time64("us")),
+            ("b", pa.binary()),
+            ("dec", pa.decimal128(10, 2)),
+        ]
+    )
+    assert {f.name: f.dtype for f in derive_features([], schema)} == {
+        "d": "date",
+        "ts": "timestamp",
+        "t": "time",
+        "b": "binary",
+        "dec": "decimal",
+    }
+
+
 # --- inferred from sampled rows (jsonl) ----------------------------------------------------------
 
 

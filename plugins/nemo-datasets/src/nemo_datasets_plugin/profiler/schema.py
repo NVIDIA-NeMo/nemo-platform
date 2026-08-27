@@ -74,6 +74,19 @@ _ARROW_SCALAR_DTYPES = [
     (pa.types.is_float64, "float64"),
     (pa.types.is_string, "string"),
     (pa.types.is_large_string, "string"),
+    # Named rather than left to fall through to `json`. None of them carry statistics -- pyarrow
+    # hands back `date` / `datetime` / `bytes` / `Decimal`, which no measurement reads -- but `json`
+    # reads as "the profiler could not understand this column", and these are understood exactly.
+    # Naming them also lets the role gates refuse them on purpose: a timestamp column called
+    # `answer` was a permitted `ground_truth` only because `json` is in that gate's allowed set.
+    (pa.types.is_date, "date"),
+    (pa.types.is_time, "time"),
+    (pa.types.is_timestamp, "timestamp"),
+    (pa.types.is_duration, "duration"),
+    (pa.types.is_binary, "binary"),
+    (pa.types.is_large_binary, "binary"),
+    (pa.types.is_fixed_size_binary, "binary"),
+    (pa.types.is_decimal, "decimal"),
 ]
 
 
@@ -85,6 +98,15 @@ def _arrow_scalar_dtype(arrow_type: pa.DataType) -> str:
 
 
 def _feature_from_arrow(name: str, arrow_type: pa.DataType) -> FeatureSchema:
+    # Dictionary encoding is how a column is *stored*, not what it holds: pyarrow decodes it on the
+    # way out, so the values arrive as the value type and measure exactly like it. Unwrapped first,
+    # ahead of every other test, because it can wrap any of them.
+    #
+    # This is the common case, not an exotic one. `DataFrame.to_parquet` emits a dictionary column
+    # for every `category` dtype, and typing those as `json` cost them their stats, their
+    # `semantic_role`, and -- with the role gone -- the whole partition's classification.
+    if pa.types.is_dictionary(arrow_type):
+        return _feature_from_arrow(name, arrow_type.value_type)
     if pa.types.is_struct(arrow_type):
         fields = [
             _feature_from_arrow(arrow_type.field(i).name, arrow_type.field(i).type)
