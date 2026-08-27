@@ -488,6 +488,8 @@ async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[d
 async def fetch_proxy_response(
     http_client: ClientSession,
     next_request_info: NextRequestInfo,
+    served_model_name: str | None = None,
+    restored_model_id: str | None = None,
 ) -> tuple[ResponseResult, CIMultiDict[str], int]:
     """Execute a proxied HTTP request and return the response as a ``ResponseResult``.
 
@@ -500,6 +502,13 @@ async def fetch_proxy_response(
     path. ``Content-Type: text/event-stream`` responses remain backed by the live
     response, so the iterator **must** be fully consumed or the connection will
     leak. Other responses are buffered and parsed as JSON.
+
+    When *served_model_name* and *restored_model_id* are both supplied, upstream
+    error bodies (4xx/5xx, including a non-2xx status returned mid-stream) have
+    the served model name rewritten to the entity ref before the body is placed
+    on the ``HTTPException`` — matching the happy-path rewrite so
+    ``served_model_name`` never leaks in error cases. See
+    :func:`_rewrite_model_field_in_error_body`.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -529,6 +538,12 @@ async def fetch_proxy_response(
                 next_request_info.url,
                 error_body,
             )
+            # Rewrite the served model name out of the error body so the caller
+            # never sees the upstream's served_model_name in error cases, matching
+            # the happy-path rewrite. A non-2xx returned mid-stream lands here too,
+            # because the status check precedes the SSE branch below.
+            if served_model_name is not None and restored_model_id is not None:
+                error_body = _rewrite_model_field_in_error_body(error_body, served_model_name, restored_model_id)
             if response.status in (401, 403, 404):
                 detail = (
                     f"Backend returned {response.status}: {error_body}"
@@ -642,6 +657,58 @@ def _rewrite_model_field(payload: Any, served_model_name: str, restored_model_id
     nested_response = payload.get("response")
     if isinstance(nested_response, dict) and nested_response.get("model") == served_model_name:
         nested_response["model"] = restored_model_id
+
+
+def _rewrite_model_field_in_error_body(
+    error_body: str,
+    served_model_name: str,
+    restored_model_id: str,
+) -> str:
+    """Rewrite ``served_model_name`` -> ``restored_model_id`` inside an upstream error body.
+
+    Error responses never reach :func:`_rewrite_model_field` on the happy path
+    because :func:`fetch_proxy_response` raises before the response body is handed
+    to the middleware pipeline. Without this, the upstream ``served_model_name``
+    leaks in error cases (rate-limit messages, content-policy blocks, "model not
+    found", etc.). This restores parity with the happy-path rewrite.
+
+    Two body shapes are handled:
+
+    * **JSON object** — parsed, run through :func:`_rewrite_model_field` (so the
+      same top-level / ``message`` / ``response`` locations are covered), and
+      re-serialized. This catches the structured ``model`` field OpenAI- and
+      Anthropic-shaped error bodies echo back.
+    * **Anything else** (plain text, a JSON scalar/array, or unparseable text) —
+      a plain substring replacement of *served_model_name* with
+      *restored_model_id*, which covers free-form messages like
+      ``"The model `served-name` does not exist"``.
+
+    The JSON path additionally does a substring pass over the re-serialized text
+    so a served name embedded in a *message string* (e.g. OpenAI's
+    ``"error": {"message": "The model `served-name` does not exist ..."}``) is
+    scrubbed too, not just a structured ``model`` field. Both passes are strict
+    substring/equality swaps, so an empty *error_body* or one that never mentions
+    the served name is returned unchanged.
+    """
+    if not error_body:
+        return error_body
+
+    try:
+        parsed = json.loads(error_body)
+    except (json.JSONDecodeError, ValueError):
+        return error_body.replace(served_model_name, restored_model_id)
+
+    if isinstance(parsed, dict):
+        _rewrite_model_field(parsed, served_model_name, restored_model_id)
+        reserialized = json.dumps(parsed)
+        # Also scrub the served name out of any free-form message strings that
+        # _rewrite_model_field (which only touches structured `model` fields)
+        # would miss.
+        return reserialized.replace(served_model_name, restored_model_id)
+
+    # A JSON scalar or array — no structured `model` field to target, so fall
+    # back to a substring replace over the original text.
+    return error_body.replace(served_model_name, restored_model_id)
 
 
 async def _rewrite_model_field_in_stream(
@@ -992,7 +1059,10 @@ async def virtual_model_proxy(
                 request_headers=modified_request.headers,
             )
             proxy_response_result, response_headers, response_status = await fetch_proxy_response(
-                http_client, next_request_info
+                http_client,
+                next_request_info,
+                served_model_name=resolved_served_model_name,
+                restored_model_id=f"{modified_model_ref.workspace}/{modified_model_ref.name}",
             )
             json_body["model"] = f"{modified_model_ref.workspace}/{modified_model_ref.name}"
 

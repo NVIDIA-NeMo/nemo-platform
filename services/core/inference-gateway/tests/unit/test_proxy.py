@@ -41,6 +41,7 @@ from nmp.core.inference_gateway.api.proxy import (
     _build_inference_response_with_annotations,
     _parse_sse_stream,
     _rewrite_model_field,
+    _rewrite_model_field_in_error_body,
     _rewrite_model_field_in_stream,
     build_next_request,
     fetch_proxy_response,
@@ -1856,6 +1857,278 @@ def test_rewrite_model_field_partial_match_only():
     payload = {"model": "served-name-suffixed"}
     _rewrite_model_field(payload, "served-name", "ws/entity")
     assert payload["model"] == "served-name-suffixed"
+
+
+# ---------------------------------------------------------------------------
+# Error-body rewrite: served_model_name must not leak in 4xx/5xx error cases,
+# matching the happy-path rewrite. Covers structured JSON error bodies and
+# free-form plain-text bodies.
+# ---------------------------------------------------------------------------
+
+
+def test_rewrite_error_body_json_structured_model_field():
+    """A structured ``model`` field in a JSON error body is rewritten."""
+    body = json.dumps({"error": {"message": "boom"}, "model": "served-name"})
+    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
+    assert json.loads(out)["model"] == "ws/entity"
+    assert "served-name" not in out
+
+
+def test_rewrite_error_body_json_model_in_message_string():
+    """OpenAI-shaped 'model not found' errors carry the served name inside the
+    error *message* string, not a structured field; it must still be scrubbed."""
+    body = json.dumps(
+        {
+            "error": {
+                "message": "The model `served-name` does not exist or you do not have access to it.",
+                "type": "invalid_request_error",
+                "code": "model_not_found",
+            }
+        }
+    )
+    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
+    assert "served-name" not in out
+    assert "ws/entity" in json.loads(out)["error"]["message"]
+
+
+def test_rewrite_error_body_plain_text_substring_replace():
+    """A non-JSON plain-text error body is handled by substring replacement."""
+    body = "Upstream error: model served-name is overloaded, retry later."
+    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
+    assert out == "Upstream error: model ws/entity is overloaded, retry later."
+
+
+def test_rewrite_error_body_empty_is_noop():
+    """An empty error body is returned unchanged."""
+    assert _rewrite_model_field_in_error_body("", "served-name", "ws/entity") == ""
+
+
+def test_rewrite_error_body_no_match_passthrough():
+    """A body that never mentions the served name is returned unchanged."""
+    body = json.dumps({"error": {"message": "rate limit exceeded"}})
+    assert _rewrite_model_field_in_error_body(body, "served-name", "ws/entity") == body
+
+
+def test_rewrite_error_body_json_scalar_falls_back_to_substring():
+    """A JSON scalar/array (no dict to target) falls back to substring replace."""
+    body = json.dumps("served-name is unavailable")
+    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
+    assert "served-name" not in out
+    assert "ws/entity" in out
+
+
+def _error_response(status: int, body: bytes, *, content_type: str = "application/json") -> Mock:
+    """Build a mock aiohttp error response returning *body* with *status*."""
+    resp = Mock(spec=aiohttp.ClientResponse)
+    resp.status = status
+    resp.closed = False
+    resp.headers = CIMultiDict({"content-type": content_type})
+    resp.read = AsyncMock(return_value=body)
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rewrites_openai_model_not_found_400(mock_proxy_client, next_request_info):
+    """OpenAI 400 model-not-found: the served name is scrubbed from the error detail."""
+    body = json.dumps(
+        {
+            "error": {
+                "message": "The model `served-name` does not exist or you do not have access to it.",
+                "type": "invalid_request_error",
+                "code": "model_not_found",
+            }
+        }
+    ).encode()
+    mock_proxy_client.request = AsyncMock(return_value=_error_response(400, body))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(
+            mock_proxy_client,
+            next_request_info,
+            served_model_name="served-name",
+            restored_model_id="ws/entity",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "served-name" not in exc_info.value.detail
+    assert "ws/entity" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rewrites_anthropic_error_400(mock_proxy_client, next_request_info):
+    """Anthropic 400: the served name is scrubbed from the Anthropic-shaped error body."""
+    body = json.dumps(
+        {
+            "type": "error",
+            "error": {
+                "type": "not_found_error",
+                "message": "model: served-name",
+            },
+        }
+    ).encode()
+    mock_proxy_client.request = AsyncMock(return_value=_error_response(400, body))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(
+            mock_proxy_client,
+            next_request_info,
+            served_model_name="served-name",
+            restored_model_id="ws/entity",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "served-name" not in exc_info.value.detail
+    assert "ws/entity" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rewrites_rate_limit_429(mock_proxy_client, next_request_info):
+    """429 rate-limit: served name scrubbed from the message, status passed through."""
+    body = json.dumps(
+        {"error": {"message": "Rate limit reached for model served-name", "type": "rate_limit_error"}}
+    ).encode()
+    mock_proxy_client.request = AsyncMock(return_value=_error_response(429, body))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(
+            mock_proxy_client,
+            next_request_info,
+            served_model_name="served-name",
+            restored_model_id="ws/entity",
+        )
+
+    assert exc_info.value.status_code == 429
+    assert "served-name" not in exc_info.value.detail
+    assert "ws/entity" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rewrites_plain_text_5xx(mock_proxy_client, next_request_info):
+    """OpenAI plain-text 5xx: substring replacement scrubs the served name."""
+    body = b"Internal server error while serving model served-name; please retry."
+    mock_proxy_client.request = AsyncMock(return_value=_error_response(500, body, content_type="text/plain"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(
+            mock_proxy_client,
+            next_request_info,
+            served_model_name="served-name",
+            restored_model_id="ws/entity",
+        )
+
+    assert exc_info.value.status_code == 500
+    assert "served-name" not in exc_info.value.detail
+    assert "ws/entity" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rewrites_401_wrapped_in_502(mock_proxy_client, next_request_info):
+    """A 401 is wrapped as 502; the served name is still scrubbed from the wrapped detail."""
+    body = json.dumps({"error": {"message": "invalid key for served-name"}}).encode()
+    mock_proxy_client.request = AsyncMock(return_value=_error_response(401, body))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(
+            mock_proxy_client,
+            next_request_info,
+            served_model_name="served-name",
+            restored_model_id="ws/entity",
+        )
+
+    assert exc_info.value.status_code == 502
+    assert "served-name" not in exc_info.value.detail
+    assert "ws/entity" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_error_rewrite_noop_without_names(mock_proxy_client, next_request_info):
+    """With no served/restored names supplied, the error body is passed through verbatim."""
+    body = json.dumps({"error": {"message": "served-name is down"}}).encode()
+    mock_proxy_client.request = AsyncMock(return_value=_error_response(500, body))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 500
+    assert "served-name" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_virtual_model_proxy_scrubs_served_name_on_upstream_error(mock_proxy_client, mock_proxy_response):
+    """End-to-end error path: an upstream 400 flows through virtual_model_proxy and the
+    HTTPException detail carries the entity ref, never the served_model_name. This covers
+    the streaming-request case too: a non-2xx status is detected before the SSE branch,
+    so a request that asked for ``stream: True`` but got an error is scrubbed the same way.
+    """
+    workspace = "e2e-test"
+    vm_name = "error-rewrite-router"
+    model_entity_id = f"{workspace}/meta_llama-3.2-1b-instruct"
+    served_model_name = "meta/llama-3.2-1b-instruct"
+
+    error_body = json.dumps(
+        {
+            "error": {
+                "message": f"The model `{served_model_name}` does not exist or you do not have access to it.",
+                "type": "invalid_request_error",
+                "code": "model_not_found",
+            }
+        }
+    ).encode()
+    mock_proxy_response.status = 400
+    mock_proxy_response.read = AsyncMock(return_value=error_body)
+
+    model_cache = ModelCache()
+    model_cache.update_model_info(
+        ModelProviderInfo(
+            model_provider=ModelProvider(
+                workspace="default",
+                name="nim",
+                host_url="http://nim.local",
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                served_models=[
+                    ServedModelMapping(
+                        model_entity_id=model_entity_id,
+                        served_model_name=served_model_name,
+                    )
+                ],
+                status="READY",
+            )
+        )
+    )
+    model_cache.rebuild_model_entity_map()
+
+    request = Mock(spec=Request)
+    request.method = "POST"
+    request.headers = {"content-type": "application/json"}
+    request.query_params = {}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await virtual_model_proxy(
+            request=request,
+            workspace=workspace,
+            vm_name=vm_name,
+            virtual_model=SDKVirtualModel(
+                id=f"{workspace}/{vm_name}",
+                entity_id=f"{workspace}/{vm_name}",
+                name=vm_name,
+                workspace=workspace,
+                parent=workspace,
+                db_version=1,
+                created_at="2026-01-01T00:00:00Z",
+                updated_at="2026-01-01T00:00:00Z",
+                default_model_entity=model_entity_id,
+            ),
+            trailing_uri="v1/chat/completions",
+            json_body={"model": vm_name, "stream": True, "messages": [{"role": "user", "content": "hi"}]},
+            http_client=mock_proxy_client,
+            model_cache=model_cache,
+            registry=MiddlewareRegistry(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert served_model_name not in exc_info.value.detail
+    assert model_entity_id in exc_info.value.detail
 
 
 @pytest.mark.asyncio
