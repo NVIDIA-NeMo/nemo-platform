@@ -39,6 +39,7 @@ Types:
 from nemo_platform.types.files import (
     CategoricalStats,
     ColumnStats,
+    Coverage,
     DatasetProfile,
     Evidence,
     FeatureSchema,
@@ -51,7 +52,6 @@ from nemo_platform.types.files import (
     PartitionProfile,
     ProfileFilesetRequest,
     Quantiles,
-    SamplingInfo,
     SplitProfile,
     SubmitProfileJobResponse,
     TextStats,

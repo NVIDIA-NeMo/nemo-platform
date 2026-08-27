@@ -26,22 +26,22 @@ __all__ = ["FeatureSchema"]
 
 class FeatureSchema(BaseModel):
     """
-    One node of the row schema, derived de novo from the data (there is no external JSON-Schema
-    store to reference). Carries the measured layout (name, dtype, children) plus at most one
-    detected ``semantic_role`` marker stacked on the same node.
+    One node of the row schema, derived from the data rather than referenced from a schema store.
+    Carries the measured layout (name, dtype, children) plus at most one detected ``semantic_role``.
 
-    Recursive and fully expanded: a ``struct`` node has child ``fields``; a ``list`` / ``messages``
-    node has an element ``items`` — for ``messages`` the per-message ``{role, content}`` struct is
-    spelled out, so a vision message whose content is a list of typed parts shows up structurally.
-    The column-level chat summary lives in ``MessageStats`` on the stats side. This tree is the
-    clean, bridgeable schema artifact (e.g. to a JSON Schema or a UI columns view).
+    Recursive and fully expanded: a ``struct`` node has child ``fields``, and a ``list`` /
+    ``messages`` node has an element ``items``. For ``messages`` the per-message ``{role, content}``
+    struct is spelled out, so a vision message whose content is a list of typed parts shows up
+    structurally. The column-level chat summary lives in ``MessageStats``. This tree is the
+    bridgeable schema artifact -- to a JSON Schema, or a UI columns view.
     """
 
     dtype: str
     """
-    string | bool | int8..int64 / uint8..uint64 | float16/32/64 | struct | list |
-    messages | image | audio | video | json | ... — fixed-width numeric widths as
-    the source file reports them.
+    string | bool | int8..int64 / uint8..uint64 | float16/32/64 | date | time |
+    timestamp | duration | binary | decimal | struct | list | messages | image |
+    audio | video | json | ... — fixed-width numeric widths as the source file
+    reports them.
     """
 
     fields: Optional[List["FeatureSchema"]] = None
@@ -49,17 +49,16 @@ class FeatureSchema(BaseModel):
 
     items: Optional["FeatureSchema"] = None
     """
-    One node of the row schema, derived de novo from the data (there is no external
-    JSON-Schema store to reference). Carries the measured layout (name, dtype,
-    children) plus at most one detected `semantic_role` marker stacked on the same
-    node.
+    One node of the row schema, derived from the data rather than referenced from a
+    schema store. Carries the measured layout (name, dtype, children) plus at most
+    one detected `semantic_role`.
 
-    Recursive and fully expanded: a `struct` node has child `fields`; a `list` /
-    `messages` node has an element `items` — for `messages` the per-message
+    Recursive and fully expanded: a `struct` node has child `fields`, and a `list` /
+    `messages` node has an element `items`. For `messages` the per-message
     `{role, content}` struct is spelled out, so a vision message whose content is a
     list of typed parts shows up structurally. The column-level chat summary lives
-    in `MessageStats` on the stats side. This tree is the clean, bridgeable schema
-    artifact (e.g. to a JSON Schema or a UI columns view).
+    in `MessageStats`. This tree is the bridgeable schema artifact -- to a JSON
+    Schema, or a UI columns view.
     """
 
     name: Optional[str] = None
@@ -77,9 +76,7 @@ class FeatureSchema(BaseModel):
     semantic_role_source: Optional[str] = None
     """Where `semantic_role` came from: detected | declared.
 
-    A declared role was supplied by the caller and only accepted because the dtype
-    could carry it; a detected one was inferred from the column name. Kept as a
-    field rather than left to evidence prose because the distinction is per-column
-    and actionable — a UI renders a declared role as confirmed and a detected one as
-    a suggestion to correct.
+    A declared role was asserted by the caller and still had to pass the dtype gate;
+    a detected one came from the column name. Stored so a consumer can weigh the two
+    differently.
     """

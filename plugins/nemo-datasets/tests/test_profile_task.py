@@ -99,7 +99,7 @@ def test_task_stores_the_profile_against_the_fileset(tmp_path, monkeypatch):
 
     workspace, name, body = published["stored"]
     assert (workspace, name) == ("ws1", "fs1")
-    assert body.profile.partitions[0].classification.dataset_type == "prompt_completion"
+    assert body.profile.partitions[0].classification.primary == "prompt_completion"
 
 
 def test_task_reads_the_fileset_in_place(tmp_path, monkeypatch):

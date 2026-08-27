@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from .fileset import Fileset as Fileset
+from .coverage import Coverage as Coverage
 from .evidence import Evidence as Evidence
 from .quantiles import Quantiles as Quantiles
 from .file_error import FileError as FileError
@@ -28,7 +29,6 @@ from .column_stats import ColumnStats as ColumnStats
 from .fileset_file import FilesetFile as FilesetFile
 from .message_stats import MessageStats as MessageStats
 from .numeric_stats import NumericStats as NumericStats
-from .sampling_info import SamplingInfo as SamplingInfo
 from .split_profile import SplitProfile as SplitProfile
 from .verifiability import Verifiability as Verifiability
 from .feature_schema import FeatureSchema as FeatureSchema

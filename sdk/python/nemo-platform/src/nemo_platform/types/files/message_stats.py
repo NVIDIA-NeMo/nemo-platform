@@ -33,16 +33,11 @@ class MessageStats(BaseModel):
 
     The shape is the point, not the precision. Mean and max cannot tell "uniformly
     medium-length" apart from "mostly short with a long tail", and those call for
-    opposite sequence budgets — set one from `max` and most of the memory is wasted,
-    set it from the mean and the tail is silently truncated. Reading p50 against p99
-    is what answers it.
+    opposite sequence budgets.
 
-    **p50 / p95 / p99 are estimates, within a couple of percent.** They are read off
-    counters bucketed by magnitude rather than from the lengths themselves, which is
-    what keeps the profiler's memory flat in rows. Every row is counted, so the
-    _rank_ is exact; only the value is rounded, and it is rounded to a bound that
-    does not grow with the dataset. That is the cheap error to accept here, because
-    whoever reads these rounds to a power of two anyway.
+    **p50 / p95 / p99 are estimates, within a couple of percent**, read off counters
+    bucketed by magnitude rather than off the lengths themselves. Every row is
+    counted, so the _rank_ is exact; only the value is rounded.
 
     **`max` is exact**, always, and is the only number here safe to treat as a hard
     bound.
@@ -61,16 +56,11 @@ class MessageStats(BaseModel):
 
     The shape is the point, not the precision. Mean and max cannot tell "uniformly
     medium-length" apart from "mostly short with a long tail", and those call for
-    opposite sequence budgets — set one from `max` and most of the memory is wasted,
-    set it from the mean and the tail is silently truncated. Reading p50 against p99
-    is what answers it.
+    opposite sequence budgets.
 
-    **p50 / p95 / p99 are estimates, within a couple of percent.** They are read off
-    counters bucketed by magnitude rather than from the lengths themselves, which is
-    what keeps the profiler's memory flat in rows. Every row is counted, so the
-    _rank_ is exact; only the value is rounded, and it is rounded to a bound that
-    does not grow with the dataset. That is the cheap error to accept here, because
-    whoever reads these rounds to a power of two anyway.
+    **p50 / p95 / p99 are estimates, within a couple of percent**, read off counters
+    bucketed by magnitude rather than off the lengths themselves. Every row is
+    counted, so the _rank_ is exact; only the value is rounded.
 
     **`max` is exact**, always, and is the only number here safe to treat as a hard
     bound.
@@ -81,13 +71,15 @@ class MessageStats(BaseModel):
     has_tool_calls: Optional[bool] = None
 
     roles_seen: Optional[List[str]] = None
-    """The distinct role strings actually present in the sampled rows, verbatim — e.g.
+    """The distinct role strings present in the sampled rows -- e.g.
 
-    ["system", "user", "assistant", "tool"], but equally ShareGPT's ["human", "gpt"]
-    or a house convention. A measurement of row content, not a vocabulary the
-    profiler picks from, so it is deliberately not an enum: an unexpected role is
-    the finding worth reporting, and normalizing or dropping it would hide exactly
-    what a consumer needs to see before choosing a chat template. Bounded: this is
-    fed straight from row content, and a column with more distinct roles than fit
-    here is not a chat column, which the first few dozen already say.
+    ["system", "user", "assistant", "tool"], but equally ["human", "gpt"]. A
+    measurement of row content, not a closed vocabulary: an unexpected role is the
+    finding worth reporting, and normalizing it away would hide what a consumer
+    needs before choosing a chat template. This is row content in the stored
+    profile, under no role gate, so it is bounded twice: a column showing more
+    distinct roles than fit here is not a chat column, and each string is truncated
+    to a fixed length -- a role is a short token by nature, so anything long enough
+    to be truncated is itself the finding. Do not match on these exactly; a value
+    may be a prefix.
     """

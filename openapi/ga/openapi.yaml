@@ -9590,16 +9590,26 @@ components:
         distinct_count:
           type: integer
           title: Distinct Count
-          description: How many distinct values the vocabulary holds. Exact, and present
-            only for a column that stayed a bounded vocabulary throughout -- absence
-            means the column is not one, not that counting was skipped.
+          description: How many distinct values the vocabulary holds. Present only
+            for a column that stayed a bounded vocabulary throughout -- absence means
+            the column is not one, not that counting was skipped. Exact over the rows
+            that were read; where the partition's `rows_complete` is false, a shard
+            was missed or a read was cut short, and this is a LOWER BOUND for the
+            partition.
         values:
           title: Values
           description: 'The observed values, present only when this column''s `semantic_role`
             makes it a controlled vocabulary and the count is small enough to quote.
-            This is the one place row content reaches the stored profile, so it is
-            gated on role rather than on size: cardinality inverts on small data,
-            where every column looks like an enumeration.'
+            Absent whenever any file in the partition was read only part-way -- by
+            a row budget or by a failure mid-read -- since a prefix cannot prove an
+            enumeration and quoting one would store a sample of row content as though
+            it were the whole vocabulary. A partition that lost a shard before it
+            yielded a row still quotes: that file contributed nothing to measure,
+            so the values gathered from the rest are entire, and `rows_complete` reports
+            the loss. This is the one place *column* content reaches the stored profile
+            under a role gate rather than a size gate, since cardinality inverts on
+            small data, where every column looks like an enumeration. It is not the
+            only place row content reaches the profile: see `MessageStats.roles_seen`.'
           items:
             type: string
           type: array
@@ -9993,7 +10003,11 @@ components:
         ``MessageStats.content_chars``) so stats stay flat -- no path addressing to
         drift against the
 
-        schema tree. Never row values, with one role-gated exception: ``categorical.values``.'
+        schema tree. Almost never row values: the two exceptions are ``categorical.values``,
+        gated on
+
+        role, and ``messages.roles_seen``, gated on nothing but bounded in count and
+        in length.'
     ComputeResourceSpec:
       properties:
         cpu:
@@ -10241,8 +10255,10 @@ components:
         files_read:
           type: integer
           title: Files Read
-          description: 'Files actually opened and read from. A count, not a list:
-            the paths worth naming are the ones that failed, and those are on `file_errors`.'
+          description: 'Files the profiler opened and did not fail on. This counts
+            a file it opened and took no rows from, which a zero `row_budget` makes
+            every file. A count, not a list: the paths worth naming are the ones that
+            failed, and those are on `file_errors`.'
         files_present:
           type: integer
           title: Files Present
@@ -10954,10 +10970,14 @@ components:
             $ref: '#/components/schemas/FileError'
           type: array
           title: File Errors
-          description: Every file the profiler could not fully use, from anywhere
+          description: 'Every file the profiler could not fully use, from anywhere
             in the fileset, sorted by path. Files that read cleanly are counted rather
             than listed, so this is a findings list and not a manifest. A non-empty
-            list is what makes `rows_present` unknown.
+            list does NOT by itself make `rows_present` unknown: a file that failed
+            part-way through the data keeps the exact count its footer already declared.
+            What unknows the total is a file whose count could not be established
+            at all -- one with no registered reader, or a line-delimited file whose
+            read fell short of its end.'
       type: object
       required:
       - created_at
@@ -12657,8 +12677,9 @@ components:
           type: string
           title: Dtype
           description: "string | bool | int8..int64 / uint8..uint64 | float16/32/64\
-            \ | struct | list | messages | image | audio | video | json | ... \u2014\
-            \ fixed-width numeric widths as the source file reports them."
+            \ | date | time | timestamp | duration | binary | decimal | struct | list\
+            \ | messages | image | audio | video | json | ... \u2014 fixed-width numeric\
+            \ widths as the source file reports them."
         semantic_role:
           title: Semantic Role
           description: "Detected role (from the role vocabulary), valid at any depth\
@@ -15091,12 +15112,16 @@ components:
             type: string
           type: array
           title: Roles Seen
-          description: 'The distinct role strings present in the sampled rows, verbatim
-            -- e.g. ["system", "user", "assistant", "tool"], but equally ["human",
-            "gpt"]. A measurement of row content, not a closed vocabulary: an unexpected
-            role is the finding worth reporting, and normalizing it away would hide
-            what a consumer needs before choosing a chat template. Bounded, since
-            a column with more distinct roles than fit here is not a chat column.'
+          description: 'The distinct role strings present in the sampled rows -- e.g.
+            ["system", "user", "assistant", "tool"], but equally ["human", "gpt"].
+            A measurement of row content, not a closed vocabulary: an unexpected role
+            is the finding worth reporting, and normalizing it away would hide what
+            a consumer needs before choosing a chat template. This is row content
+            in the stored profile, under no role gate, so it is bounded twice: a column
+            showing more distinct roles than fit here is not a chat column, and each
+            string is truncated to a fixed length -- a role is a short token by nature,
+            so anything long enough to be truncated is itself the finding. Do not
+            match on these exactly; a value may be a prefix.'
         ends_with_assistant_rate:
           type: number
           maximum: 1.0
@@ -16877,24 +16902,23 @@ components:
           title: Modality
           description: text | image_text | audio_text | ...
           default: text
-        dataset_type:
-          type: string
-          title: Dataset Type
-          description: "Dataset-type vocabulary (prompt_completion, preference_pair,\
-            \ ...). A SUMMARY, not the basis for a decision \u2014 it is the most\
-            \ specific single structure the roles satisfy, and a dataset routinely\
-            \ satisfies several. The `semantic_role` markers are what a consumer should\
-            \ match on; `candidates` lists everything this one is a projection of."
         candidates:
           items:
             type: string
           type: array
           title: Candidates
-          description: 'Every dataset type the assigned roles satisfy, most specific
-            first, so `candidates[0]` is `dataset_type`. The tail is structures the
-            same columns also satisfy: prompt + completion + score + label is genuinely
-            both `scored_response` and `unpaired_preference`, and a consumer that
-            cares picks by its own rule rather than by ours.'
+          description: 'Every dataset type the assigned roles satisfy (prompt_completion,
+            preference_pair, ...), most specific first. `candidates[0]` is the best
+            single answer and the tail is structures the same columns also satisfy:
+            prompt + completion + score + label is genuinely both `scored_response`
+            and `unpaired_preference`, and a consumer that cares picks by its own
+            rule rather than by ours. EMPTY means the roles matched no known structure,
+            which is also what a partition that could not be classified at all reports;
+            the two are not distinguishable from this model alone, because an `error`
+            evidence entry is also how a partition that classified fine reports a
+            degradation along the way -- a column cap, a column whose measurement
+            failed, a probe that could not run. A SUMMARY either way: the `semantic_role`
+            markers are what a consumer should match on.'
         format:
           title: Format
           description: standard | conversational | mixed
@@ -16917,8 +16941,6 @@ components:
             detail strings self-describe what they support. A profile-time snapshot;
             unrecoverable once the data or profiler version move.'
       type: object
-      required:
-      - dataset_type
       title: PartitionClassification
       description: "What the data *is*, described objectively \u2014 the stored basis\
         \ a downstream reader uses to decide\nwhich tasks the dataset can train.\n\
@@ -16952,7 +16974,7 @@ components:
             $ref: '#/components/schemas/SplitProfile'
           type: array
           title: Splits
-          description: card-declared > path-detected > single 'default' split.
+          description: Path-detected, else a single 'default' split.
         features:
           items:
             $ref: '#/components/schemas/FeatureSchema'
@@ -19613,15 +19635,33 @@ components:
       required:
       - name
       title: SplitProfile
-      description: "A split within a partition.\n\nResolution precedence, declared\
-        \ structure beating detection:\n\n1. HF card front-matter when the fileset\
-        \ ships a README -- ``configs[].data_files`` maps splits\n   to file globs\
-        \ explicitly;\n2. detection from file paths (train/test/validation markers,\
-        \ sharded layouts). Markers are\n   matched against canonical names and common\
-        \ aliases (val/valid/dev -> validation); the\n   normalized concept lands\
-        \ in ``canonical`` and the split keeps its on-disk ``name``;\n3. otherwise\
-        \ a single \"default\" split holding all files.\n\nA split encoded as a *data\
-        \ column* rather than a file grouping is not resolved here."
+      description: 'A split within a partition.
+
+
+        Resolved from file paths (train/test/validation markers, sharded layouts).
+        Markers are matched
+
+        against canonical names and common aliases (val/valid/dev -> validation);
+        the normalized concept
+
+        lands in ``canonical`` and the split keeps its on-disk ``name``. Failing any
+        marker, a single
+
+        "default" split holds all files.
+
+
+        A dataset card''s ``configs[].data_files`` would take precedence over that,
+        mapping splits to
+
+        globs explicitly rather than by inference -- but card parsing is not implemented,
+        so path
+
+        detection is the only source today, and ``card_metadata`` is a kind no evidence
+        yet carries.
+
+
+        A split encoded as a *data column* rather than a file grouping is not resolved
+        here.'
     StatusEnum:
       type: string
       enum:

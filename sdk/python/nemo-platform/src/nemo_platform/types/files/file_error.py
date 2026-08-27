@@ -24,9 +24,8 @@ class FileError(BaseModel):
     """A file the profiler could not fully use, and why.
 
     Only failures are enumerated. Healthy files are counted (``SplitProfile.num_files``), because a
-    per-file record for each of them scaled the profile with shard count while telling a reader
-    nothing: at 512 shards those records were 95% of the payload and every one of them said "this
-    file was fine". Problems are the part worth naming, and there are few.
+    per-file record for each scaled the profile with shard count while telling a reader nothing: at
+    512 shards those records were 95% of the payload.
     """
 
     error: str

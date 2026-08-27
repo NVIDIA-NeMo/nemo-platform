@@ -225,5 +225,5 @@ def test_profile_runs_end_to_end_over_the_source(tmp_path):
     partition = result.partitions[0]
     assert partition.file_formats == ["parquet"]
     assert [f.name for f in partition.features] == ["prompt", "completion"]
-    assert partition.classification.dataset_type == "prompt_completion"
+    assert partition.classification.primary == "prompt_completion"
     assert result.partitions[0].splits[0].num_examples == 50
