@@ -68,7 +68,6 @@ def _write_upstream_configs(ng_root: Path) -> Path:
 
 
 @pytest.fixture
-
 def stub_workspaces(monkeypatch) -> MagicMock:
     """Point seed_benchmark's client_from_platform at a recording WorkspacesClient stub.
 
@@ -224,9 +223,7 @@ class TestSeedBenchmark:
         assert request_payload["exist_ok"] is True
         assert request_payload["data"]["models"][0]["type"] == "content_safety"
 
-    def test_returns_seeded_resources(
-        self, fake_client: MagicMock, stub_workspaces: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_returns_seeded_resources(self, fake_client: MagicMock, stub_workspaces: MagicMock, tmp_path: Path) -> None:
         ng_root = tmp_path / "NeMo-Guardrails"
         _write_upstream_configs(ng_root)
 
