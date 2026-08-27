@@ -29,14 +29,6 @@ DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
 )
 CVE_PACKAGE_FLOORS = (
     (
-        "mlflow",
-        "3.15.0",
-        (
-            Path("docker/automodel/Dockerfile.nmp-automodel-base"),
-            Path("docker/rl/Dockerfile.nmp-rl-base"),
-        ),
-    ),
-    (
         "mlflow-skinny",
         "3.15.0",
         (
@@ -45,6 +37,7 @@ CVE_PACKAGE_FLOORS = (
             Path("services/unsloth/pyproject.toml"),
             Path("docker/automodel/Dockerfile.nmp-automodel-base"),
             Path("docker/Dockerfile.nmp-unsloth-training"),
+            Path("docker/rl/Dockerfile.nmp-rl-base"),
             Path("docker/locks/nmp-gym-tasks/pyproject.toml"),
         ),
     ),
@@ -60,24 +53,29 @@ CVE_PACKAGE_FLOORS = (
         ),
     ),
 )
+FULL_MLFLOW_SPEC_RE = re.compile(r"(?<![\w./-])mlflow(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)")
 
 
 def _load_pyproject(path: Path) -> dict:
+    """Parse a pyproject.toml into a dict."""
     with open(path, "rb") as pyproject:
         return tomllib.load(pyproject)
 
 
 def _normalize_package_name(name: str) -> str:
+    """Normalize a PEP 503 package name for comparison."""
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def _package_name_from_spec(spec: str) -> str:
+    """Return the normalized package name from a PEP 508 requirement string."""
     match = re.match(r"[A-Za-z0-9_.-]+", spec)
     assert match is not None
     return _normalize_package_name(match.group())
 
 
 def _notice_wandb_version() -> str:
+    """Read the wandb version documented in NOTICE."""
     for line in (ROOT / "NOTICE").read_text(encoding="utf-8").splitlines():
         if line.strip().startswith("wandb package version:"):
             return line.split(":", maxsplit=1)[1].strip()
@@ -85,6 +83,7 @@ def _notice_wandb_version() -> str:
 
 
 def _wandb_package_specs(path: Path) -> list[str]:
+    """Collect wandb version specs from a Dockerfile or requirements file."""
     specs: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line_without_comment = line.split("#", maxsplit=1)[0]
@@ -93,6 +92,7 @@ def _wandb_package_specs(path: Path) -> list[str]:
 
 
 def _package_specs(path: Path, package: str) -> list[str]:
+    """Collect version specs for one package from a Dockerfile or manifest."""
     pattern = re.compile(rf"(?<![\w./-]){re.escape(package)}(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
     specs: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -102,6 +102,7 @@ def _package_specs(path: Path, package: str) -> list[str]:
 
 
 def _workspace_sources(pyproject: dict) -> set[str]:
+    """Return workspace-source package names from a uv pyproject table."""
     sources = pyproject.get("tool", {}).get("uv", {}).get("sources", {})
     return {
         _normalize_package_name(name)
@@ -143,6 +144,14 @@ def test_distributed_image_cve_package_specs_use_reviewed_floor(
 
     assert specs
     assert all(spec.startswith(f"{package}>={floor}") for spec in specs)
+
+
+def test_automodel_cve_layer_does_not_pin_full_mlflow_with_cryptography() -> None:
+    """Full MLflow 3.15 requires cryptography<50 and cannot coinstall with the image floor."""
+    text = (ROOT / "docker/automodel/Dockerfile.nmp-automodel-base").read_text(encoding="utf-8")
+    assert "cryptography>=50.0.0,<51" in text
+    assert "mlflow-skinny>=3.15.0" in text
+    assert not FULL_MLFLOW_SPEC_RE.search(text)
 
 
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)

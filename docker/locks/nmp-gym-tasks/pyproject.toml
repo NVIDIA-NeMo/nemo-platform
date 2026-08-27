@@ -12,7 +12,6 @@ dependencies = [
 
 [tool.uv]
 constraint-dependencies = [
-    "mlflow>=3.15.0,<3.16.0",
     "mlflow-skinny>=3.15.0,<3.16.0",
     "sqlparse>=0.6.0,<0.7",
     "wandb>=0.29.0",

@@ -12,7 +12,6 @@ supported-markers = [
 
 [manifest]
 constraints = [
-    { name = "mlflow", specifier = ">=3.15.0,<3.16.0" },
     { name = "mlflow-skinny", specifier = ">=3.15.0,<3.16.0" },
     { name = "sqlparse", specifier = ">=0.6.0,<0.7" },
     { name = "wandb", specifier = ">=0.29.0" },

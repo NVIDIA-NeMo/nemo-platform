@@ -261,7 +261,7 @@ uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenac
 # Logging integrations ship scanner-visible Python and Go artifacts. Keep them
 # above fixed floors even when NeMo-RL's lock has older wheels.
 uv pip install --python /opt/nemo_rl_venv/bin/python \
-    "mlflow>=3.15.0,<3.16.0" \
+    "mlflow-skinny>=3.15.0,<3.16.0" \
     "sqlparse>=0.6.0,<0.7" \
     "wandb>=0.29.0"
 
@@ -443,8 +443,8 @@ fi
 for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
     [ -x "${py}" ] || continue
     if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("mlflow") else 1)'; then
-        uv pip install --python "${py}" --upgrade-package mlflow --upgrade-package sqlparse \
-            "mlflow>=3.15.0,<3.16.0" "sqlparse>=0.6.0,<0.7"
+        uv pip install --python "${py}" --upgrade-package mlflow-skinny --upgrade-package sqlparse \
+            "mlflow-skinny>=3.15.0,<3.16.0" "sqlparse>=0.6.0,<0.7"
     fi
     if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("wandb") else 1)'; then
         uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.29.0"
