@@ -540,6 +540,12 @@ class RoutedAccumulator(ColumnAccumulator):
         # every value for an answer already in hand.
         self._schema = SchemaFold(name) if declared is None else None
         self._measurements: dict[str, ColumnAccumulator] = {}
+        # The folded schema, kept once it has been asked for. `finalize` asks three times -- once
+        # for the feature itself, then again inside `_stat_blocks` and `vocabulary`, each of which
+        # needs the dtype to pick its measurement -- and every ask is a full recursion over the
+        # column's nested struct and list schema. Dropped whenever a batch arrives, so the value can
+        # never be older than the data behind it.
+        self._folded: FeatureSchema | None = None
 
     def _measurement(self, key: str) -> ColumnAccumulator:
         """The named measurement, built if this is the first value to call for it."""
@@ -549,6 +555,7 @@ class RoutedAccumulator(ColumnAccumulator):
         return accumulator
 
     def _observe(self, present: list[Any]) -> None:
+        self._folded = None
         declared = self._declared
         if declared is not None:
             key = _measurement_for(declared.dtype)
@@ -639,7 +646,9 @@ class RoutedAccumulator(ColumnAccumulator):
         """The column's schema -- declared before the fold, or folded out of the values."""
         if self._declared is not None:
             return self._declared
-        return (self._schema or SchemaFold(self._name)).finalize()
+        if self._folded is None:
+            self._folded = (self._schema or SchemaFold(self._name)).finalize()
+        return self._folded
 
     def _stat_blocks(self) -> dict[str, Any]:
         key = _measurement_for(self.feature().dtype)
