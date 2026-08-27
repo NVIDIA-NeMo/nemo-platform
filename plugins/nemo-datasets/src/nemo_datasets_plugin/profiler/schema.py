@@ -212,6 +212,53 @@ class SchemaFold:
                     self._item = SchemaFold()
                 self._item.update(value)
 
+    def update_partitioned(
+        self,
+        strings: list[Any],
+        ints: list[Any],
+        floats: list[Any],
+        bools: list[Any],
+        lists: list[Any],
+        dicts: list[Any],
+    ) -> None:
+        """:meth:`update`, over values a caller has already partitioned by exact python type.
+
+        The caller makes that partition anyway, to send each value to the measurement that reports
+        it, so folding from the partition costs nothing and spares this class deriving every value's
+        type a second time.
+
+        What makes the scalar buckets O(1) rather than O(values) is that the dtype union is a *set*:
+        adding ``string`` once for a bucket of five hundred strings is the same fact as adding it
+        five hundred times. Dicts and lists still cost a step each, because they recurse.
+
+        A value whose class is a *subclass* of a builtin cannot be placed by an exact class and so
+        never arrives here; :meth:`update` is still the one that types it.
+        """
+        for bucket, dtype in ((strings, "string"), (ints, "int64"), (floats, "float64"), (bools, "bool")):
+            if bucket:
+                self._present += len(bucket)
+                self._dtypes.add(dtype)
+        if dicts:
+            self._present += len(dicts)
+            self._dicts += len(dicts)
+            self._dtypes.add("json")
+            for value in dicts:
+                for key, child in value.items():
+                    fold = self._fields.get(key)
+                    if fold is None:
+                        fold = SchemaFold(key)
+                        self._fields[key] = fold
+                        self._field_order.append(key)
+                    fold.update([child])
+        if lists:
+            self._present += len(lists)
+            self._lists += len(lists)
+            self._dtypes.add("json")
+            if self._item is None:
+                self._item = SchemaFold()
+            for value in lists:
+                self._item.update(value)
+
     def finalize(self) -> FeatureSchema:
         if not self._present:
             return FeatureSchema(name=self._name, dtype="json")

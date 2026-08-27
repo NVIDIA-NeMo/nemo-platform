@@ -3,11 +3,14 @@
 
 """Tests for per-column statistics."""
 
+import pytest
 from nemo_datasets_plugin.profiler.stats import (
     _MAX_ROLE_CHARS,
     _MAX_VOCABULARY_BYTES,
     _MAX_VOCABULARY_VALUE_CHARS,
     _MAX_VOCABULARY_VALUES,
+    RoutedAccumulator,
+    RowFold,
     measure_columns,
     quote_enumerations,
 )
@@ -298,3 +301,129 @@ def test_refuses_to_quote_a_vocabulary_larger_than_the_cap():
     # Role grants permission; cardinality still bounds the size, so a provenance column holding a
     # URL list is not mistaken for an enumeration.
     assert _quoted("source", "string", [f"src-{i}" for i in range(40)], "provenance") is None
+
+
+# --- routing -------------------------------------------------------------------------------------
+
+# A column's values are routed to their measurements by exact class, which cannot place a subclass
+# of a builtin. Those batches fall back to `isinstance`. The two are one routing decision taken two
+# ways, so these tests pin the fallback's reason to exist and then hold the two to the same answer.
+
+
+class _StrSubclass(str):
+    """A string no exact class can place. JSON never produces one; a caller handing rows to the SDK
+    from python can, and a pandas or pyarrow extension type is the same shape of problem."""
+
+
+class _ListSubclass(list):
+    pass
+
+
+def _fold_rows(rows, batch, observe):
+    """Fold `rows`, `batch` at a time, with `observe` as the router."""
+    original = RoutedAccumulator._observe
+    RoutedAccumulator._observe = observe
+    try:
+        fold = RowFold(None)
+        for start in range(0, len(rows), batch):
+            fold.update(rows[start : start + batch])
+        return fold.finalize()
+    finally:
+        RoutedAccumulator._observe = original
+
+
+_ROUTES = [RoutedAccumulator._observe, RoutedAccumulator._observe_by_isinstance]
+_ROUTE_IDS = ["exact-class", "isinstance"]
+
+_MIXED = [
+    {"text": "hello world", "n": 1, "flag": True, "meta": {"k": 1}, "turns": [{"role": "user", "content": "hi"}]},
+    {
+        "text": "",
+        "n": 2.5,
+        "flag": False,
+        "meta": {"k": 2, "j": "x"},
+        "turns": [{"role": "assistant", "content": "yo"}],
+    },
+    {"text": _StrSubclass("subclassed"), "n": None, "late": "a column no earlier row mentioned"},
+    {"text": None, "n": 4, "flag": None, "meta": {"k": None}, "turns": []},
+    {"disagrees": 1},
+    {"disagrees": "one"},
+    {"plain": [1, 2, 3]},
+    {"plain": ["a"]},
+]
+
+
+@pytest.mark.parametrize("observe", _ROUTES, ids=_ROUTE_IDS)
+def test_a_string_subclass_still_reaches_the_string_measurement(observe):
+    # The fallback's whole reason to exist. A draft that folded unplaceable values in *after* the
+    # partition dropped them from the string measurement outright, and did it silently: the column
+    # kept its dtype and its null rate, so only the missing length quantiles showed it.
+    features, measured = _fold_rows(_rows("a", [_StrSubclass("hello"), "world"]), 8, observe)
+    assert features[0].dtype == "string"
+    assert measured.stats["a"].text.chars.max == 5
+    assert measured.vocabularies["a"] == {"hello", "world"}
+
+
+@pytest.mark.parametrize("observe", _ROUTES, ids=_ROUTE_IDS)
+def test_a_list_subclass_still_reaches_the_messages_measurement(observe):
+    turns = _ListSubclass([{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"}])
+    features, measured = _fold_rows(_rows("m", [turns]), 8, observe)
+    assert features[0].dtype == "messages"
+    assert measured.stats["m"].messages.roles_seen == ["user", "assistant"]
+
+
+@pytest.mark.parametrize("observe", _ROUTES, ids=_ROUTE_IDS)
+def test_ints_and_floats_widen_and_every_value_is_measured(observe):
+    # The partition folds ints and floats as two batches rather than one interleaved list, which is
+    # only sound because an accumulator handed a column in pieces answers as one handed all of it.
+    features, measured = _fold_rows(_rows("n", [1, 2.5, 3, 4.5]), 8, observe)
+    assert features[0].dtype == "float64"
+    numeric = measured.stats["n"].numeric
+    assert (numeric.min, numeric.max, numeric.mean) == (1.0, 4.5, 2.75)
+
+
+@pytest.mark.parametrize("observe", _ROUTES, ids=_ROUTE_IDS)
+def test_bools_are_never_folded_in_with_ints(observe):
+    features, measured = _fold_rows(_rows("flag", [True, False, True]), 8, observe)
+    assert features[0].dtype == "bool"
+    assert measured.stats["flag"].numeric is None
+    assert measured.stats["flag"].categorical.distinct_count == 2
+    # And a column holding both is two shapes, not a numeric column with two odd values in it.
+    features, _ = _fold_rows(_rows("flag", [True, 3]), 8, observe)
+    assert features[0].dtype == "json"
+
+
+@pytest.mark.parametrize("observe", _ROUTES, ids=_ROUTE_IDS)
+def test_disagreeing_types_widen_to_json_and_report_no_stats(observe):
+    features, measured = _fold_rows(_rows("a", [1, "x"]), 8, observe)
+    assert features[0].dtype == "json"
+    assert "a" not in measured.stats
+
+
+def test_ordinary_rows_never_reach_the_fallback():
+    # Guards every test above. The partition and the fallback agreeing proves nothing if the
+    # partition is never the one that ran.
+    reached = []
+    original = RoutedAccumulator._observe_by_isinstance
+
+    def spy(self, present):
+        reached.append(present)
+        return original(self, present)
+
+    RoutedAccumulator._observe_by_isinstance = spy
+    try:
+        _fold_rows(_MIXED[:2] + _MIXED[3:], 3, RoutedAccumulator._observe)
+    finally:
+        RoutedAccumulator._observe_by_isinstance = original
+    assert reached == []
+
+
+@pytest.mark.parametrize("batch", [1, 3, 1000], ids=["per-row", "split", "whole"])
+def test_both_routes_agree_whatever_the_batch_size(batch):
+    # Compared over everything `finalize` returns, not just the stats: the partition is rebuilt per
+    # batch, and a draft that agreed on dtypes disagreed on vocabularies.
+    assert _fold_rows(_MIXED, batch, _ROUTES[0]) == _fold_rows(_MIXED, batch, _ROUTES[1])
+
+
+def test_batching_does_not_change_the_answer():
+    assert _fold_rows(_MIXED, 1, _ROUTES[0]) == _fold_rows(_MIXED, 1000, _ROUTES[0])
