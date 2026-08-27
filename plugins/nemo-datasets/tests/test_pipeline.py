@@ -949,6 +949,32 @@ def test_a_duplicate_column_name_is_described_once(tmp_path):
     assert set(part.stats) == {f.name for f in part.features}
 
 
+def test_a_file_that_failed_peek_but_read_fine_keeps_its_columns(tmp_path, monkeypatch):
+    # `peek` and `batches` are separate opens, so the comment's bet -- "a file that could not be
+    # peeked will not read either" -- is an assumption and not a guarantee. When it does not hold,
+    # the declared schema is built from the other files and `RowFold` folds `row.get(name)` over
+    # declared names only, so every column the unpeekable file alone witnessed vanished: no feature,
+    # no stat, and no FileError to point at, because the read itself succeeded.
+    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+
+    _write_parquet(tmp_path / "a.parquet", [{"prompt": "p", "extra": "only here"}])
+    _write_parquet(tmp_path / "b.parquet", [{"prompt": "q"}])
+
+    real_peek = parquet_module.ParquetReader.peek
+
+    def flaky_peek(self, source, entry):
+        if entry.path == "a.parquet":
+            raise OSError("transient storage hiccup")
+        return real_peek(self, source, entry)
+
+    monkeypatch.setattr(parquet_module.ParquetReader, "peek", flaky_peek)
+
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert {f.name for f in part.features} == {"prompt", "extra"}
+    assert part.stats["extra"].null_rate == 0.5  # absent from b.parquet, back-filled as null
+
+
 def test_a_zero_row_cap_means_zero_however_many_files_a_partition_has():
     # `max(MIN_ROWS_PER_FILE, 0 // n)` floored a zero budget up to ten rows per file as soon as a
     # partition had more than one, so the same argument meant "no rows" for a single-file partition

@@ -267,11 +267,13 @@ class _PartitionFolds:
     neither. Keeping them side by side is what lets the file loop hand over a batch and forget it.
     """
 
-    def __init__(self, features: list[FeatureSchema] | None, *, declared_capped: bool = False) -> None:
+    def __init__(
+        self, features: list[FeatureSchema] | None, *, declared_capped: bool = False, discover: bool = False
+    ) -> None:
         # None means the partition declared no schema, which the fold reads as "discover the columns
         # as they appear". Either way the fold that measured them reports them, so there is one copy
         # of the schema rather than two that can drift.
-        self._columns = RowFold(features)
+        self._columns = RowFold(features, discover=discover)
         # A declared schema was already truncated before the fold saw it, so the fold cannot know.
         self._declared_capped = declared_capped
         self._prefix = PrefixPairFold()
@@ -375,6 +377,12 @@ def _profile_partition(
     folds = _PartitionFolds(
         derive_features([], declared) if declared is not None else None,
         declared_capped=declared is not None and arrow_schema_was_capped(declared),
+        # A declared schema built from `askable` describes only the files that could be peeked, and
+        # `peek` and `batches` are separate opens -- so a file that failed the first and survives the
+        # second is read against a schema that never named its columns. `row.get(name)` over declared
+        # names alone dropped every column it was the only witness for, with no FileError to point
+        # at, since the read itself succeeded. Discovery back-fills exactly those.
+        discover=bool(unpeekable),
     )
     rows_scanned = 0
     files_read = 0
