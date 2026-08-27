@@ -258,7 +258,14 @@ class ColumnAccumulator:
         present: list[Any] = []
         for value in values:
             self.rows += 1
-            if value is None:
+            # NaN counts as missing, because that is what it means. Parquet and pandas both spell a
+            # missing float that way, and testing only for `None` left it in neither camp: not a
+            # null, so `null_rate` read 0.0 over a column that was 97% absent, and not a value the
+            # vocabulary would keep either, since that already skips NaN. A column holding one real
+            # number and nothing else then presented as a fully-populated single-valued one, which
+            # `_is_binary` reads as a label -- so a mostly-empty float column took the `label` role
+            # and put `unpaired_preference` at the head of the candidates.
+            if value is None or (isinstance(value, float) and math.isnan(value)):
                 self._nulls += 1
             else:
                 present.append(value)
