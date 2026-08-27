@@ -8,7 +8,6 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
-import { validateFileFormat } from '@nemo/common/src/utils/fileValidation';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
 import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type {
@@ -173,16 +172,42 @@ interface ConfigPick extends FilePick {
 const configFormatForFile = (name: string): EvalConfigFormat =>
   /\.ya?ml$/i.test(name) ? 'yaml' : 'json';
 
+const isRecord = (value: unknown): boolean =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 /** Validate the dataset and settle the name it is stored under. The evaluator's loader takes
  *  ``.json`` and ``.jsonl`` interchangeably, sniffing a leading ``[`` to tell an array from
  *  line-delimited records — so the name follows the detected content, not the uploaded
- *  extension, and the dataset ref written into the config matches. */
+ *  extension, and the dataset ref written into the config matches.
+ *
+ *  Every record must be an object: the evaluator turns each one into a row keyed by its own
+ *  fields, and a file of scalars only fails once the job is running. Parsed here rather than
+ *  through ``validateFileFormat``, which does not check record shape and would mean reading a
+ *  large dataset into memory twice. */
 const inspectDatasetFile = async (file: File): Promise<Omit<DatasetPick, 'file'>> => {
-  const result = await validateFileFormat(file);
-  if (!result.isValid || (result.format !== 'json' && result.format !== 'jsonl')) {
-    return { error: result.error ?? 'File is not valid JSON or JSONL' };
+  const text = (await file.text()).trim();
+  if (!text) return { error: 'File is empty' };
+
+  let records: unknown[];
+  let format: 'json' | 'jsonl';
+  try {
+    const parsed: unknown = JSON.parse(text);
+    records = Array.isArray(parsed) ? parsed : [parsed];
+    format = 'json';
+  } catch {
+    try {
+      records = text.split('\n').flatMap((line) => (line.trim() ? [JSON.parse(line)] : []));
+      format = 'jsonl';
+    } catch {
+      return { error: 'File is not valid JSON or JSONL' };
+    }
   }
-  return { storedName: `${DATASET_BASENAME}.${result.format}` };
+
+  if (records.length === 0) return { error: 'File contains no data' };
+  if (!records.every(isRecord)) {
+    return { error: 'Every dataset record must be a JSON object.' };
+  }
+  return { storedName: `${DATASET_BASENAME}.${format}` };
 };
 
 interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -321,6 +346,11 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const [datasetPick, setDatasetPick] = useState<DatasetPick | null>(null);
   const [configPick, setConfigPick] = useState<ConfigPick | null>(null);
 
+  // Bumped whenever a pick is replaced, removed, or reset, so an async validation that is
+  // still running when that happens knows to drop its result instead of committing it.
+  const datasetToken = useRef(0);
+  const configToken = useRef(0);
+
   const { data: agentsResponse, isLoading: isAgentsLoading } = useAgentsListAgents(
     workspace,
     undefined,
@@ -446,30 +476,54 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     }
   }, [open, isLlmJudge, defaultModelRef, judgeModels, getValues, setValue]);
 
-  // Both handlers clear first: validation is async, and leaving the previous pick in place
-  // would keep the submit gate open against a file the user has already replaced.
-  const handleDatasetPicked = async (item: { file: File }) => {
+  const clearDatasetPick = () => {
+    datasetToken.current += 1;
     setDatasetPick(null);
-    setDatasetPick({ file: item.file, ...(await inspectDatasetFile(item.file)) });
+  };
+
+  const clearConfigPick = () => {
+    configToken.current += 1;
+    setConfigPick(null);
+  };
+
+  // Both handlers clear first: validation is async, and leaving the previous pick in place
+  // would keep the submit gate open against a file the user has already replaced. Each also
+  // drops its own result if the pick it belongs to is no longer current — a slow read of a
+  // replaced file would otherwise land after a faster one and submit a file the card no
+  // longer shows. The tokens are per input: one shared counter would let a config pick
+  // cancel an in-flight dataset read, stranding the form with no pick and no error.
+  // Removing a file calls onValueChange with no item, so the argument is optional.
+  const handleDatasetPicked = async (item?: { file: File }) => {
+    clearDatasetPick();
+    if (!item?.file) return;
+    const token = datasetToken.current;
+    const inspected = await inspectDatasetFile(item.file);
+    if (token !== datasetToken.current) return;
+    setDatasetPick({ file: item.file, ...inspected });
   };
 
   // A fresh config also means a fresh judge: the preselect effect above bails once judgeModel
   // is set, so leaving it would keep the previous file's judge.
-  const handleConfigPicked = async (item: { file: File }) => {
+  const handleConfigPicked = async (item?: { file: File }) => {
     setValue('judgeModel', '');
-    setConfigPick(null);
+    clearConfigPick();
+    if (!item?.file) return;
+    const token = configToken.current;
+    let pick: ConfigPick;
     try {
-      setConfigPick({
+      pick = {
         file: item.file,
         spec: parseUploadedDatasetConfig(await item.file.text()),
         format: configFormatForFile(item.file.name),
-      });
+      };
     } catch (err) {
-      setConfigPick({
+      pick = {
         file: item.file,
         error: err instanceof Error ? err.message : 'Could not read the file',
-      });
+      };
     }
+    if (token !== configToken.current) return;
+    setConfigPick(pick);
   };
 
   const {
@@ -562,6 +616,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   useEffect(() => {
     if (open) return;
     resetForm(makeDefaultValues(agentProp));
+    datasetToken.current += 1;
+    configToken.current += 1;
     setDatasetPick(null);
     setConfigPick(null);
   }, [open, agentProp, resetForm]);
@@ -575,8 +631,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const resetAndClose = () => {
     resetMutation();
     resetForm(makeDefaultValues(agentProp));
-    setDatasetPick(null);
-    setConfigPick(null);
+    clearDatasetPick();
+    clearConfigPick();
     onClose();
   };
 
@@ -701,7 +757,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                   <Upload
                     accept=".jsonl,.json"
                     onValueChange={handleDatasetPicked}
-                    onFileRemove={() => setDatasetPick(null)}
+                    onFileRemove={clearDatasetPick}
                     status={datasetPick?.error ? 'error' : undefined}
                     renderInput={(slotInput) => (
                       <FormField
@@ -720,7 +776,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                   <Upload
                     accept=".json,.yaml,.yml"
                     onValueChange={handleConfigPicked}
-                    onFileRemove={() => setConfigPick(null)}
+                    onFileRemove={clearConfigPick}
                     status={configPick?.error ? 'error' : undefined}
                     renderInput={(slotInput) => (
                       <FormField

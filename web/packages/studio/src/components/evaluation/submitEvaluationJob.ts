@@ -241,6 +241,17 @@ export type EvalConfigFormat = 'json' | 'yaml';
 export const serializeEvalConfig = (spec: EvalSpec, format: EvalConfigFormat): string =>
   format === 'yaml' ? stringifyYaml(spec) : JSON.stringify(spec, null, 2);
 
+/** Reject metric entries that cannot be read as a metric bundle. Studio does not validate the
+ *  metric body, but it does reach into ``payload.metric`` to decide whether a judge applies —
+ *  so an entry without one would throw at render, past every error boundary this form has. */
+const assertMetricBundles = (metrics: InlineMetricBundle[], where: string): void => {
+  for (const metric of metrics) {
+    if (!metric?.payload?.metric || typeof metric.payload.metric !== 'object') {
+      throw new Error(`${where} has a metric without a "payload.metric" object`);
+    }
+  }
+};
+
 /** Validate a parsed eval config. Every task must carry its own ``metrics[]`` —
  *  the config is submitted as authored, with only the judge model and the
  *  per-run agent target applied on top. */
@@ -252,6 +263,7 @@ const validateEvalConfig = (raw: Partial<PersistedEvalSpec & DatasetEvalSpec>): 
     if (!raw.prompt_template) {
       throw new Error('a dataset-driven eval-config.json must contain a "prompt_template"');
     }
+    assertMetricBundles(raw.metrics, 'a dataset-driven eval-config.json');
     return {
       dataset: raw.dataset,
       metrics: raw.metrics,
@@ -270,13 +282,7 @@ const validateEvalConfig = (raw: Partial<PersistedEvalSpec & DatasetEvalSpec>): 
         `eval-config.json task "${task.id}" must contain a non-empty "metrics" array`
       );
     }
-    for (const metric of task.metrics) {
-      if (!metric?.payload?.metric || typeof metric.payload.metric !== 'object') {
-        throw new Error(
-          `eval-config.json task "${task.id}" has a metric without a "payload.metric" object`
-        );
-      }
-    }
+    assertMetricBundles(task.metrics, `eval-config.json task "${task.id}"`);
   }
   return { tasks: parsed.tasks, max_concurrent_tasks: parsed.max_concurrent_tasks };
 };
