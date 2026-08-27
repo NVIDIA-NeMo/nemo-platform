@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getGuardrailChecksQueryKey } from '@studio/api/guardrail-checks/guardrailChecks';
 import { GUARDRAIL_CHECKS_ENTITY_TYPE } from '@studio/api/guardrail-checks/types';
+import { queryClient } from '@studio/api/queryClient';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import {
@@ -242,6 +244,65 @@ describe('GuardrailChecksTab', () => {
           }
         )
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('deleting a test', () => {
+    const openEditor = async () => {
+      const user = userEvent.setup();
+      renderChecks('pii-filter');
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+      return user;
+    };
+
+    it('asks for confirmation instead of deleting on the first click', async () => {
+      const user = await openEditor();
+
+      await user.click(screen.getByRole('button', { name: 'Delete test 1' }));
+
+      expect(await screen.findByText('Delete Test 1')).toBeInTheDocument();
+      expect(getMockGuardrailCheck('leaks-ssn')).toBeDefined();
+    });
+
+    it('deletes the confirmed check and leaves its siblings alone', async () => {
+      const user = await openEditor();
+
+      await user.click(screen.getByRole('button', { name: 'Delete test 1' }));
+      await user.click(await screen.findByRole('button', { name: 'Delete' }));
+
+      expect(
+        await screen.findByText('Test deleted successfully.', undefined, {
+          timeout: XL_SELECTOR_TIMEOUT,
+        })
+      ).toBeInTheDocument();
+      expect(getMockGuardrailCheck('leaks-ssn')).toBeUndefined();
+      expect(getMockGuardrailCheck('benign-greeting')).toBeDefined();
+    });
+
+    it('keeps the check when the user backs out of the modal', async () => {
+      const user = await openEditor();
+
+      await user.click(screen.getByRole('button', { name: 'Delete test 1' }));
+      await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+      expect(getMockGuardrailCheck('leaks-ssn')).toBeDefined();
+    });
+
+    // The card disappearing without a manual refresh rides on this invalidation; the app's
+    // singleton queryClient is not the one TestProviders renders, so assert the call itself.
+    it('invalidates the checks list so the card disappears on its own', async () => {
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+      const user = await openEditor();
+
+      await user.click(screen.getByRole('button', { name: 'Delete test 1' }));
+      await user.click(await screen.findByRole('button', { name: 'Delete' }));
+
+      await screen.findByText('Test deleted successfully.', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: getGuardrailChecksQueryKey(WORKSPACE),
+      });
     });
   });
 

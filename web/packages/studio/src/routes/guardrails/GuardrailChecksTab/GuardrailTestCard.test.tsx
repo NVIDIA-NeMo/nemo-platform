@@ -14,6 +14,7 @@ const renderCard = (autoFocus: boolean, check: GuardrailCheckEntity = seedCheck!
       check={check}
       index={0}
       workspace="default"
+      configId="cfg-1"
       registerFlush={() => {}}
       autoFocus={autoFocus}
     />

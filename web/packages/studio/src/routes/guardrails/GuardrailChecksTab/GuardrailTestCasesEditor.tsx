@@ -213,6 +213,7 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
               check={check}
               index={i}
               workspace={workspace}
+              configId={configId}
               registerFlush={registerFlush}
               autoFocus={check.id === newCheckId}
             />

@@ -2,9 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Button, Flex, Panel, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
-import { useUpdateGuardrailCheck } from '@studio/api/guardrail-checks/hooks';
+import {
+  Button,
+  Flex,
+  Panel,
+  SegmentedControl,
+  Stack,
+  Text,
+  Tooltip,
+} from '@nvidia/foundations-react-core';
+import {
+  useDeleteGuardrailCheck,
+  useUpdateGuardrailCheck,
+} from '@studio/api/guardrail-checks/hooks';
 import type {
   GuardrailCheckEntity,
   GuardrailCheckMessage,
@@ -14,7 +26,7 @@ import {
   type GuardrailMessageFormRow,
   GuardrailMessageRow,
 } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailMessageRow';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { type FC, type FocusEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 
@@ -22,6 +34,8 @@ interface GuardrailTestCardProps {
   check: GuardrailCheckEntity;
   index: number;
   workspace: string;
+  /** Owning config entity id — required to address this check as a hard child on delete. */
+  configId: string;
   /** Registers this card's flusher with the editor; called with `null` on unmount. */
   registerFlush: (name: string, flush: (() => Promise<GuardrailCheckEntity>) | null) => void;
   /** Set on a just-created card: scrolls it into view and focuses its first message body. */
@@ -57,11 +71,13 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
   check,
   index,
   workspace,
+  configId,
   registerFlush,
   autoFocus = false,
 }) => {
   const toast = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   const form = useForm<GuardrailCheckFormValues>({
     defaultValues: { messages: toFormRows(check.data.messages) },
@@ -171,6 +187,19 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
     persist(form.getValues('messages'));
   };
 
+  // The modal reports the outcome itself, so the hook stays quiet — an onError toast here
+  // would double up on the modal's own error text.
+  const deleteMutation = useDeleteGuardrailCheck();
+
+  const handleDelete = useCallback(async (): Promise<boolean> => {
+    try {
+      await deleteMutation.mutateAsync({ workspace, name: check.name, parent: configId });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [check.name, configId, deleteMutation, workspace]);
+
   const watchedMessages = useWatch({ control: form.control, name: 'messages' });
 
   // A newly added test lands at the end of a list that is usually taller than the viewport,
@@ -190,15 +219,28 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
         {/* Card header */}
         <Flex align="center" justify="between">
           <Text kind="label/bold/md">Test {index + 1}</Text>
-          <SegmentedControl
-            size="small"
-            value={viewMode}
-            onValueChange={(value) => setViewMode(value as ViewMode)}
-            items={[
-              { value: 'chat', children: 'Chat' },
-              { value: 'json', children: 'JSON' },
-            ]}
-          />
+          <Flex align="center" gap="density-sm">
+            <SegmentedControl
+              size="small"
+              value={viewMode}
+              onValueChange={(value) => setViewMode(value as ViewMode)}
+              items={[
+                { value: 'chat', children: 'Chat' },
+                { value: 'json', children: 'JSON' },
+              ]}
+            />
+            <Tooltip slotContent="Delete test" side="top">
+              <Button
+                type="button"
+                size="tiny"
+                kind="tertiary"
+                aria-label={`Delete test ${index + 1}`}
+                onClick={() => setIsConfirmingDelete(true)}
+              >
+                <Trash2 className="size-3.5" aria-hidden />
+              </Button>
+            </Tooltip>
+          </Flex>
         </Flex>
 
         {/* Chat view */}
@@ -237,6 +279,19 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
           </pre>
         )}
       </Stack>
+
+      {isConfirmingDelete ? (
+        <DeleteConfirmationModal
+          open
+          simpleConfirm
+          title={`Delete Test ${index + 1}`}
+          description={`Test ${index + 1} and its run history will be permanently deleted.`}
+          successText="Test deleted successfully."
+          errorText="Failed to delete the test. Please try again."
+          onDelete={handleDelete}
+          onClose={() => setIsConfirmingDelete(false)}
+        />
+      ) : null}
     </Panel>
   );
 };
