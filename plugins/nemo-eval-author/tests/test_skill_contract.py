@@ -1383,6 +1383,97 @@ def test_audit_generate_replace_mode_overwrites_existing_audit(tmp_path: Path) -
 
 
 @_needs_harbor
+def test_audit_flow_generates_validates_measures_and_reports_tool_coverage(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text(
+        "---\nname: support-agent\n---\n"
+        "# Ethos\n\n"
+        "Use customer.lookup before account recovery and ticket.create for human escalation.\n",
+        encoding="utf-8",
+    )
+    audit_dir = tmp_path / ".eval-author"
+    items = audit_dir / "audit-items.yaml"
+    audit = audit_dir / "audit.md"
+    measurements = audit_dir / "audit-measurements"
+    coverage_report = audit_dir / "audit-coverage-report.json"
+    audit_items = [*_template_payload()["items"], _ticket_tool_item()]
+    audit_dir.mkdir()
+    _write_audit_items(items, audit_items)
+
+    generate = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(ethos),
+        "--items",
+        str(items),
+        "--out",
+        str(audit),
+    )
+    assert generate.returncode == 0, generate.stderr
+    generate_summary = json.loads(generate.stdout)
+    assert generate_summary["written"] is True
+    assert generate_summary["action"] == "create"
+
+    validate_code, validate_summary, validate_stderr = _run_json_script(_AUDIT_VALIDATE, "--audit", str(audit))
+    assert validate_code == 0, validate_stderr or validate_summary
+    assert validate_summary["valid"] is True
+
+    trial_specs = [
+        ("support-account-recovery__lookup", "support/account-recovery", "lookup-run", ["customer.lookup"]),
+        ("support-account-recovery__ticket", "support/account-recovery", "ticket-run", ["ticket.create"]),
+    ]
+    coverage_paths: list[Path] = []
+    for trial_dir_name, task_name, run_name, tool_names in trial_specs:
+        trial_dir = tmp_path / "harbor-job" / trial_dir_name
+        _write_atif_trace(trial_dir / "agent" / "trajectory.json", tool_calls=tool_names)
+        (trial_dir / "result.json").write_text(
+            json.dumps({"task_name": task_name, "trial_name": run_name}),
+            encoding="utf-8",
+        )
+
+        measure_code, measure_summary, measure_stderr = _run_json_script(
+            _AUDIT_MEASURE,
+            "--audit",
+            str(audit),
+            "--trial-dir",
+            str(trial_dir),
+            "--out-dir",
+            str(measurements),
+        )
+
+        assert measure_code == 0, measure_stderr or measure_summary
+        assert measure_summary["task_id"] == task_name
+        assert measure_summary["run_id"] == run_name
+        coverage_paths.append(Path(measure_summary["measurements"][0]["coverage"]))
+
+    report_code, report_summary, report_stderr = _run_json_script(
+        _AUDIT_REPORT,
+        "--audit",
+        str(audit),
+        "--coverage-dir",
+        str(measurements),
+        "--out",
+        str(coverage_report),
+    )
+
+    report = json.loads(coverage_report.read_text(encoding="utf-8"))
+    gaps_by_name = {item["name"]: item for item in report["uncovered_items"]}
+
+    assert report_code == 0, report_stderr or report_summary
+    assert report_summary["coverage_input_count"] == 2
+    assert report_summary["measured_kinds"] == ["tool"]
+    assert report_summary["covered_count"] == 2
+    assert report_summary["uncovered"] == ["account_recovery", "account_recovery_unverified_identity"]
+    assert report["covered"] == ["customer.lookup", "ticket.create"]
+    assert report["coverage"]["by_kind"]["tool"] == {"item_count": 2, "covered_count": 2, "uncovered_count": 0}
+    assert report["coverage"]["by_kind"]["capability"]["uncovered_count"] == 1
+    assert report["coverage"]["by_kind"]["failure_case"]["uncovered_count"] == 1
+    assert {Path(input_report["path"]) for input_report in report["input_reports"]} == set(coverage_paths)
+    assert gaps_by_name["account_recovery"]["reason"] == "not_measured_by_any_method"
+    assert gaps_by_name["account_recovery_unverified_identity"]["reason"] == "not_measured_by_any_method"
+
+
+@_needs_harbor
 def test_audit_measure_reports_tool_call_coverage_from_atif_trace(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
