@@ -44,8 +44,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 from huggingface_hub import HfApi
-from nemo_platform import ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesetsQueryParams
@@ -362,10 +363,10 @@ def _ensure_workspace(sdk: NeMoPlatform, workspace: str, dry_run: bool) -> Liter
     try:
         workspaces.get_workspace(name=workspace).data()
         return "exists"
-    except NotFoundError:
+    except ClientNotFoundError:
         try:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace)).data()
-        except ConflictError:
+        except ClientConflictError:
             # Another actor may have created the workspace concurrently.
             return "exists"
         return "created"

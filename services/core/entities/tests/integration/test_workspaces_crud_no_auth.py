@@ -82,7 +82,7 @@ class TestWorkspaceCRUD:
         workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
 
         # Try to create duplicate
-        from nemo_platform import ConflictError
+        from nemo_platform_plugin.client.errors import ConflictError
 
         with pytest.raises(ConflictError) as exc_info:
             workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
@@ -105,7 +105,7 @@ class TestWorkspaceCRUD:
 
     def test_retrieve_nonexistent_workspace_fails(self, sdk: NeMoPlatform):
         """Test that retrieving a non-existent workspace returns 404."""
-        from nemo_platform import NotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
             client_from_platform(sdk, WorkspacesClient).get_workspace(name="nonexistent-workspace").data()
@@ -157,7 +157,7 @@ class TestWorkspaceCRUD:
 
     def test_update_nonexistent_workspace_fails(self, sdk: NeMoPlatform):
         """Test that updating a non-existent workspace returns 404."""
-        from nemo_platform import NotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
             client_from_platform(sdk, WorkspacesClient).update_workspace(
@@ -174,14 +174,14 @@ class TestWorkspaceCRUD:
         workspaces.delete_workspace(name=workspace_name).data()
 
         # Verify it's deleted
-        from nemo_platform import NotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
             workspaces.get_workspace(name=workspace_name).data()
 
     def test_delete_nonexistent_workspace_fails(self, sdk: NeMoPlatform):
         """Test that deleting a non-existent workspace returns 404."""
-        from nemo_platform import NotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
             client_from_platform(sdk, WorkspacesClient).delete_workspace(name="nonexistent-workspace").data()
@@ -212,7 +212,7 @@ class TestWorkspaceCRUD:
         workspaces.delete_workspace(name=workspace_name).data()
 
         # Verify deleted
-        from nemo_platform import NotFoundError
+        from nemo_platform_plugin.client.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
             workspaces.get_workspace(name=workspace_name).data()

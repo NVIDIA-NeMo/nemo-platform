@@ -76,7 +76,6 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
-<<<<<<< HEAD
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nemo_platform_plugin.workspaces.client import WorkspacesClient

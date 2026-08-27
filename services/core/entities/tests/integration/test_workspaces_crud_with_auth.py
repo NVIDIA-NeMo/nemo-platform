@@ -18,8 +18,9 @@ from time import monotonic, sleep
 from typing import Generator
 
 import pytest
-from nemo_platform import ConflictError, NeMoPlatform, PermissionDeniedError
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError, PermissionDeniedError
 from nemo_platform_plugin.entities.client import EntitiesClient
 from nemo_platform_plugin.entities.types import EntityCreateInput
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
@@ -582,7 +583,7 @@ class TestWorkspaceCRUDWithAuth:
         (workspace marked for deletion). Both indicate the workspace is inaccessible.
         """
         workspaces = client_from_platform(sdk, WorkspacesClient)
-        from nemo_platform import NotFoundError, PermissionDeniedError
+        from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 
         admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("has-ent")
