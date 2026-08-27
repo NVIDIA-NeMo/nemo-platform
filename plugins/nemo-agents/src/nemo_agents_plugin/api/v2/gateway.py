@@ -344,14 +344,16 @@ async def _proxy_deployment(
         if activity_session is not None:
             await _best_effort_session_activity_update(entity_client, activity_session)
 
+    tracks_session_activity = session is not None and request.method.upper() in _PROXY_WRITE_METHODS
+
     return await _proxy(
         request,
         endpoint,
         trailing_uri,
         model_name=model_name,
         session_id=session.id if session is not None else None,
-        on_start=persist_start_activity if session is not None else None,
-        on_complete=persist_finish_activity if session is not None else None,
+        on_start=persist_start_activity if tracks_session_activity else None,
+        on_complete=persist_finish_activity if tracks_session_activity else None,
     )
 
 
@@ -465,10 +467,7 @@ async def _resolve_request_session(
     if session.status is not SessionStatus.ACTIVE:
         raise _session_inactive(session)
     if session.expires_at is not None and session_expiration_is_due(session, at=_utc_now()):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Session ID '{session.id}' has status 'expired' and cannot be invoked.",
-        )
+        raise _session_expired(session)
     return session
 
 
@@ -521,6 +520,13 @@ def _session_inactive(session: AgentSession) -> HTTPException:
     )
 
 
+def _session_expired(session: AgentSession) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=f"Session ID '{session.id}' has status 'expired' and cannot be invoked.",
+    )
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -538,6 +544,8 @@ async def _persist_session_activity(
     for attempt in range(2):
         if session_to_update.status is not SessionStatus.ACTIVE:
             raise _session_inactive(session_to_update)
+        if session_expiration_is_due(session_to_update, at=timestamp):
+            raise _session_expired(session_to_update)
 
         last_active_at = session_to_update.last_active_at
         if last_active_at is not None:

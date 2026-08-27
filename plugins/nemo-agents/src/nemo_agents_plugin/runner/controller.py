@@ -23,6 +23,7 @@ State machine::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import UTC, datetime
@@ -81,8 +82,11 @@ class AgentDeploymentController(NemoController):
         self._starting_since: dict[tuple[str, str], float] = {}
         self._runtime_instance_ids: dict[tuple[str, str], str] = {}
         self._pending_restart_deployment_ids: set[str] = set()
+        self._pending_restart_reconciliation_times: dict[str, datetime] = {}
+        self._runtime_cleanup_tasks: set[asyncio.Task[None]] = set()
         self._runtime_health_client: httpx.AsyncClient | None = None
         self._startup_sessions_reconciled = False
+        self._startup_session_reconciliation_at: datetime | None = None
         self._interval_seconds: float = 5.0  # default; overwritten in on_startup
 
     # ------------------------------------------------------------------
@@ -125,6 +129,7 @@ class AgentDeploymentController(NemoController):
 
     async def on_startup(self) -> None:
         """Initialise the entity client and runner backends from config."""
+        self._startup_session_reconciliation_at = datetime.now(UTC)
         # Imports deferred intentionally: these modules pull in the SDK,
         # entity-store client, and HTTP machinery.  Importing at module level
         # would add ~1s to every `nemo` CLI invocation during plugin discovery,
@@ -161,6 +166,11 @@ class AgentDeploymentController(NemoController):
 
     async def on_shutdown(self) -> None:
         """Shut down the runner backends."""
+        cleanup_tasks = list(self._runtime_cleanup_tasks)
+        for task in cleanup_tasks:
+            task.cancel()
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
         if self._runtime_health_client is not None:
             await self._runtime_health_client.aclose()
             self._runtime_health_client = None
@@ -280,7 +290,11 @@ class AgentDeploymentController(NemoController):
 
     async def _reconcile_sessions_after_controller_start(self) -> None:
         """Conservatively invalidate invoked sessions after controller startup."""
-        self._startup_sessions_reconciled = await self._reconcile_sessions_after_restart()
+        if self._startup_session_reconciliation_at is None:
+            self._startup_session_reconciliation_at = datetime.now(UTC)
+        self._startup_sessions_reconciled = await self._reconcile_sessions_after_restart(
+            at=self._startup_session_reconciliation_at
+        )
         if self._startup_sessions_reconciled:
             logger.info("Reconciled active sessions after agents controller startup.")
 
@@ -337,7 +351,7 @@ class AgentDeploymentController(NemoController):
         at: datetime,
     ) -> AgentSession | None:
         """Move an invoked active session to expired or lost with one conflict retry."""
-        from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
+        from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
 
         session_to_update = session
         for attempt in range(2):
@@ -345,6 +359,12 @@ class AgentDeploymentController(NemoController):
                 return session_to_update
             if session_to_update.last_active_at is None and session_to_update.expires_at is None:
                 return None
+            if session_to_update.last_active_at is not None:
+                last_active_at = session_to_update.last_active_at
+                if last_active_at.tzinfo is None or last_active_at.utcoffset() is None:
+                    last_active_at = last_active_at.replace(tzinfo=UTC)
+                if last_active_at >= at:
+                    return None
 
             new_status = (
                 SessionStatus.EXPIRED if session_expiration_is_due(session_to_update, at=at) else SessionStatus.LOST
@@ -358,23 +378,36 @@ class AgentDeploymentController(NemoController):
                 session_to_update = await self.entities.get_by_id(AgentSession, session.id)
                 continue
 
-            await cleanup_fabric_runtime(self.entities, reconciled_session)
+            self._schedule_runtime_cleanup(reconciled_session)
             return reconciled_session
 
         raise RuntimeError("Session restart retry loop exited unexpectedly.")  # pragma: no cover
 
-    async def _reconcile_deployment_sessions_after_restart(self, dep: AgentDeployment) -> bool:
+    async def _reconcile_deployment_sessions_after_restart(
+        self,
+        dep: AgentDeployment,
+        *,
+        at: datetime | None = None,
+    ) -> bool:
         """Reconcile active sessions bound to one restarted Fabric deployment."""
         if not _is_fabric_deployment(dep):
             return True
         if dep.id is None:
             logger.warning("Cannot reconcile sessions for deployment '%s' without an entity ID.", dep.name)
             return False
-        reconciled = await self._reconcile_sessions_after_restart(deployment_id=dep.id)
+        reconciliation_time = self._pending_restart_reconciliation_times.get(dep.id)
+        if reconciliation_time is None:
+            reconciliation_time = (at or datetime.now(UTC)).astimezone(UTC)
+        reconciled = await self._reconcile_sessions_after_restart(
+            deployment_id=dep.id,
+            at=reconciliation_time,
+        )
         if reconciled:
             self._pending_restart_deployment_ids.discard(dep.id)
+            self._pending_restart_reconciliation_times.pop(dep.id, None)
         else:
             self._pending_restart_deployment_ids.add(dep.id)
+            self._pending_restart_reconciliation_times.setdefault(dep.id, reconciliation_time)
         return reconciled
 
     async def _retry_pending_restart_reconciliations(self) -> None:
@@ -382,8 +415,13 @@ class AgentDeploymentController(NemoController):
         for deployment_id in list(self._pending_restart_deployment_ids):
             if self.stop_requested():
                 return
-            if await self._reconcile_sessions_after_restart(deployment_id=deployment_id):
+            reconciliation_time = self._pending_restart_reconciliation_times[deployment_id]
+            if await self._reconcile_sessions_after_restart(
+                deployment_id=deployment_id,
+                at=reconciliation_time,
+            ):
                 self._pending_restart_deployment_ids.discard(deployment_id)
+                self._pending_restart_reconciliation_times.pop(deployment_id, None)
 
     async def _observe_runtime_instance(self, dep: AgentDeployment) -> None:
         """Detect a Fabric server process replacement from its health identity."""
@@ -401,8 +439,8 @@ class AgentDeploymentController(NemoController):
         if previous_instance_id == current_instance_id:
             return
 
+        self._runtime_instance_ids[key] = current_instance_id
         if await self._reconcile_deployment_sessions_after_restart(dep):
-            self._runtime_instance_ids[key] = current_instance_id
             logger.warning(
                 "Fabric runtime instance changed for deployment '%s/%s'; active sessions were reconciled.",
                 dep.workspace,
@@ -449,13 +487,13 @@ class AgentDeploymentController(NemoController):
         running. That invocation may finish, but its completion cannot reactivate
         the terminal session.
         """
-        from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime, session_expiration_is_due
+        from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
 
         session_to_update = session
         for attempt in range(2):
             if session_to_update.status is not SessionStatus.ACTIVE:
                 if session_to_update.status is SessionStatus.EXPIRED:
-                    await cleanup_fabric_runtime(self.entities, session_to_update)
+                    self._schedule_runtime_cleanup(session_to_update)
                     return session_to_update
                 return None
             if not session_expiration_is_due(session_to_update, at=at):
@@ -470,10 +508,38 @@ class AgentDeploymentController(NemoController):
                 session_to_update = await self.entities.get_by_id(AgentSession, session.id)
                 continue
 
-            await cleanup_fabric_runtime(self.entities, expired_session)
+            self._schedule_runtime_cleanup(expired_session)
             return expired_session
 
         raise RuntimeError("Session expiration retry loop exited unexpectedly.")  # pragma: no cover
+
+    def _schedule_runtime_cleanup(
+        self,
+        session: AgentSession,
+    ) -> None:
+        """Run best-effort runtime cleanup outside the reconciliation critical path."""
+        from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime
+
+        task = asyncio.create_task(
+            cleanup_fabric_runtime(self.entities, session),
+            name=f"cleanup-agent-session-{session.id}",
+        )
+        self._runtime_cleanup_tasks.add(task)
+        task.add_done_callback(self._runtime_cleanup_finished)
+
+    def _runtime_cleanup_finished(self, task: asyncio.Task[None]) -> None:
+        """Release a completed cleanup task and consume any unexpected exception."""
+        self._runtime_cleanup_tasks.discard(task)
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception as exc:  # pragma: no cover - cleanup helper contains its own failures
+            logger.error(
+                "Unexpected failure in runtime cleanup task '%s'.",
+                task.get_name(),
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _start_deployment(self, dep: AgentDeployment) -> None:
         """pending -> starting: allocate port (subprocess) and spawn via the mode backend."""

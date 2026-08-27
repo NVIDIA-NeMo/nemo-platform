@@ -16,7 +16,7 @@ import secrets
 from collections.abc import Awaitable
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import SessionPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.api.v2.session_access import get_owned_session, session_not_found
@@ -159,6 +159,7 @@ async def get_session(
 async def close_session(
     workspace: str,
     name: str,
+    background_tasks: BackgroundTasks,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
     effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> AgentSession:
@@ -170,46 +171,47 @@ async def close_session(
         effective_principal_id=effective_principal_id,
     )
 
-    if session.status is SessionStatus.CLOSED:
-        await _cleanup_fabric_runtime(entity_client, session)
-        return session
+    session_to_update = session
+    for attempt in range(2):
+        if session_to_update.status is SessionStatus.CLOSED:
+            background_tasks.add_task(_cleanup_fabric_runtime, entity_client, session_to_update)
+            return session_to_update
 
-    if not session.status.can_transition_to(SessionStatus.CLOSED):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Session '{name}' cannot transition from '{session.status}' to 'closed'.",
-        )
+        if not session_to_update.status.can_transition_to(SessionStatus.CLOSED):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session '{name}' cannot transition from '{session_to_update.status}' to 'closed'.",
+            )
 
-    session.status = SessionStatus.CLOSED
-    try:
-        updated_session = await entity_client.update(session)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{name}' not found in workspace '{workspace}'.",
-        ) from exc
-    except NemoEntityConflictError as exc:
-        latest_session = await get_owned_session(
-            entity_client,
-            workspace=workspace,
-            name=name,
-            effective_principal_id=effective_principal_id,
-        )
+        session_to_update.status = SessionStatus.CLOSED
+        try:
+            updated_session = await entity_client.update(session_to_update)
+        except NemoEntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session '{name}' not found in workspace '{workspace}'.",
+            ) from exc
+        except NemoEntityConflictError as exc:
+            if attempt == 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Session '{name}' is being modified concurrently.",
+                ) from exc
+            session_to_update = await get_owned_session(
+                entity_client,
+                workspace=workspace,
+                name=name,
+                effective_principal_id=effective_principal_id,
+            )
+            continue
+        except Exception as exc:
+            logger.exception("Failed to close session '%s'", name)
+            raise HTTPException(status_code=500, detail="Failed to close session.") from exc
 
-        if latest_session.status is SessionStatus.CLOSED:
-            await _cleanup_fabric_runtime(entity_client, latest_session)
-            return latest_session
+        background_tasks.add_task(_cleanup_fabric_runtime, entity_client, updated_session)
+        return updated_session
 
-        raise HTTPException(
-            status_code=409,
-            detail=f"Session '{name}' is being modified concurrently.",
-        ) from exc
-    except Exception as exc:
-        logger.exception("Failed to close session '%s'", name)
-        raise HTTPException(status_code=500, detail="Failed to close session.") from exc
-
-    await _cleanup_fabric_runtime(entity_client, updated_session)
-    return updated_session
+    raise RuntimeError("Session close retry loop exited unexpectedly.")  # pragma: no cover
 
 
 @router.delete("/sessions/{name}", status_code=204, tags=["Agent Sessions"])
@@ -221,6 +223,7 @@ async def close_session(
 async def delete_session(
     workspace: str,
     name: str,
+    background_tasks: BackgroundTasks,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
     effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> None:
@@ -250,7 +253,7 @@ async def delete_session(
         logger.exception("Failed to delete session '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete session.") from exc
 
-    await _cleanup_fabric_runtime(entity_client, session)
+    background_tasks.add_task(_cleanup_fabric_runtime, entity_client, session)
 
 
 async def _get_deployment_for_session(

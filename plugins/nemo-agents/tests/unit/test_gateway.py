@@ -564,6 +564,41 @@ class TestSessionAwareRouting:
         assert update_count == 3
         mock_entity_client.get_by_id.assert_awaited_once_with(AgentSession, "session-1")
 
+    def test_due_session_wins_start_activity_conflict(
+        self,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+    ) -> None:
+        activity_at = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+        session = _make_session(session_id="session-1", deployment_id="deployment-1")
+        session.expires_at = activity_at + timedelta(minutes=1)
+        deployment = _make_deployment(deployment_id="deployment-1")
+        refreshed = _make_session(session_id="session-1", deployment_id="deployment-1")
+        refreshed.expires_at = activity_at
+        mock_entity_client.find_one = AsyncMock(side_effect=[session, deployment])
+        mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
+        mock_entity_client.get_by_id = AsyncMock(return_value=refreshed)
+
+        with (
+            patch.object(
+                gateway_module,
+                "_utc_now",
+                side_effect=[activity_at - timedelta(seconds=1), activity_at],
+            ),
+            patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient") as httpx_client,
+        ):
+            response = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                headers={SESSION_ID_HEADER: "session-1"},
+                json={},
+            )
+
+        assert response.status_code == 409
+        assert "status 'expired'" in response.json()["error"]["message"]
+        mock_entity_client.update.assert_awaited_once()
+        mock_entity_client.get_by_id.assert_awaited_once_with(AgentSession, "session-1")
+        httpx_client.assert_not_called()
+
     def test_terminal_state_wins_start_activity_conflict(
         self,
         client: TestClient,
@@ -818,6 +853,25 @@ class TestSessionAwareRouting:
         assert "status 'expired'" in response.json()["error"]["message"]
         mock_entity_client.update.assert_not_awaited()
         httpx_client.assert_not_called()
+
+    def test_read_only_proxy_does_not_refresh_session_activity(
+        self,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+    ) -> None:
+        session = _make_session(session_id="session-1", deployment_id="deployment-1")
+        deployment = _make_deployment(deployment_id="deployment-1")
+        mock_entity_client.find_one = AsyncMock(side_effect=[session, deployment])
+        httpx_mock = _make_httpx_mock(200, b'{"status": "ok"}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            response = client.get(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/health",
+                headers={SESSION_ID_HEADER: "session-1"},
+            )
+
+        assert response.status_code == 200
+        mock_entity_client.update.assert_not_awaited()
 
     def test_empty_session_header_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         resp = client.post(

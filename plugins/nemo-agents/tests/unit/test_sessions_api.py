@@ -299,6 +299,35 @@ class TestCloseSession:
         assert mock_entity_client.get.await_count == 2
         cleanup.assert_awaited_once_with(mock_entity_client, closed_session)
 
+    @pytest.mark.parametrize("concurrent_status", [SessionStatus.EXPIRED, SessionStatus.LOST])
+    def test_close_retries_after_concurrent_terminal_transition(
+        self,
+        concurrent_status: SessionStatus,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+    ) -> None:
+        active_session = _make_session()
+        concurrently_updated_session = _make_session(status=concurrent_status)
+        mock_entity_client.get.side_effect = [active_session, concurrently_updated_session]
+        update_count = 0
+
+        async def update(session: AgentSession) -> AgentSession:
+            nonlocal update_count
+            update_count += 1
+            if update_count == 1:
+                raise NemoEntityConflictError("conflict")
+            return session
+
+        mock_entity_client.update.side_effect = update
+
+        with patch.object(sessions_router_module, "_cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
+            response = client.post(f"{BASE}/session-one/close")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "closed"
+        assert mock_entity_client.update.await_count == 2
+        cleanup.assert_awaited_once_with(mock_entity_client, concurrently_updated_session)
+
     def test_close_returns_409_for_other_concurrent_update(
         self, client: TestClient, mock_entity_client: AsyncMock
     ) -> None:
@@ -311,6 +340,7 @@ class TestCloseSession:
 
         assert response.status_code == 409
         assert mock_entity_client.get.await_count == 2
+        assert mock_entity_client.update.await_count == 2
 
 
 class TestDeleteSession:

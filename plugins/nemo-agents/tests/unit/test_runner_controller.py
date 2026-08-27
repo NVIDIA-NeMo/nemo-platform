@@ -16,13 +16,13 @@ Pin the contracts callers depend on:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from nemo_agents_plugin import session_lifecycle as session_lifecycle_module
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
@@ -77,9 +77,32 @@ async def test_startup_session_reconciliation_retries_after_entity_list_failure(
 
     await ctrl._reconcile_sessions_after_controller_start()
     assert ctrl._startup_sessions_reconciled is False
+    reconciliation_time = ctrl._startup_session_reconciliation_at
 
     await ctrl._reconcile_sessions_after_controller_start()
     assert ctrl._startup_sessions_reconciled is True
+    assert ctrl._startup_session_reconciliation_at == reconciliation_time
+
+
+@pytest.mark.asyncio
+async def test_startup_retry_preserves_activity_from_current_runtime() -> None:
+    ctrl, _ = _make_controller()
+    current_generation = _make_session(
+        last_active_at=EXPIRATION_NOW,
+        expires_at=EXPIRATION_NOW + timedelta(minutes=30),
+    )
+    active_page = MagicMock(data=[current_generation], pagination=None)
+    ctrl.entities.list = AsyncMock(side_effect=[RuntimeError("unavailable"), active_page])
+    ctrl.entities.update = AsyncMock()
+    ctrl._startup_sessions_reconciled = False
+    ctrl._startup_session_reconciliation_at = EXPIRATION_NOW
+
+    await ctrl._reconcile_sessions_after_controller_start()
+    await ctrl._reconcile_sessions_after_controller_start()
+
+    assert ctrl._startup_sessions_reconciled is True
+    assert current_generation.status is SessionStatus.ACTIVE
+    ctrl.entities.update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -211,16 +234,16 @@ async def test_restart_reconciliation_expires_loses_and_preserves_never_invoked_
         return_value=[lost, expired, never_invoked]
     )
     ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
 
-    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
-        reconciled = await ctrl._reconcile_sessions_after_restart(at=EXPIRATION_NOW)
+    reconciled = await ctrl._reconcile_sessions_after_restart(at=EXPIRATION_NOW)
 
     assert reconciled is True
     assert lost.status is SessionStatus.LOST
     assert expired.status is SessionStatus.EXPIRED
     assert never_invoked.status is SessionStatus.ACTIVE
     assert ctrl.entities.update.await_args_list == [call(lost), call(expired)]
-    assert cleanup.await_args_list == [call(ctrl.entities, lost), call(ctrl.entities, expired)]
+    assert ctrl._schedule_runtime_cleanup.call_args_list == [call(lost), call(expired)]
 
 
 @pytest.mark.asyncio
@@ -231,19 +254,63 @@ async def test_restart_wins_activity_conflict_for_refetched_invoked_session() ->
         expires_at=EXPIRATION_NOW + timedelta(minutes=28),
     )
     refreshed = _make_session(
-        last_active_at=EXPIRATION_NOW,
-        expires_at=EXPIRATION_NOW + timedelta(minutes=30),
+        last_active_at=EXPIRATION_NOW - timedelta(seconds=1),
+        expires_at=EXPIRATION_NOW + timedelta(minutes=30) - timedelta(seconds=1),
     )
     ctrl.entities.update = AsyncMock(side_effect=[NemoEntityConflictError("conflict"), refreshed])
     ctrl.entities.get_by_id = AsyncMock(return_value=refreshed)
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
 
-    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
-        result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
+    result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
 
     assert result is refreshed
     assert refreshed.status is SessionStatus.LOST
     assert ctrl.entities.update.await_count == 2
-    cleanup.assert_awaited_once_with(ctrl.entities, refreshed)
+    ctrl._schedule_runtime_cleanup.assert_called_once_with(refreshed)
+
+
+@pytest.mark.asyncio
+async def test_activity_from_current_runtime_wins_restart_reconciliation() -> None:
+    ctrl, _ = _make_controller()
+    current_generation = _make_session(
+        last_active_at=EXPIRATION_NOW,
+        expires_at=EXPIRATION_NOW + timedelta(minutes=30),
+    )
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
+
+    result = await ctrl._transition_session_after_restart(current_generation, at=EXPIRATION_NOW)
+
+    assert result is None
+    assert current_generation.status is SessionStatus.ACTIVE
+    ctrl.entities.update.assert_not_called()
+    ctrl._schedule_runtime_cleanup.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_restart_reconciliation_does_not_wait_for_runtime_cleanup() -> None:
+    ctrl, _ = _make_controller()
+    session = _make_session(
+        last_active_at=EXPIRATION_NOW - timedelta(minutes=1),
+        expires_at=EXPIRATION_NOW + timedelta(minutes=29),
+    )
+    ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+
+    async def blocking_cleanup(*_args: object) -> None:
+        cleanup_started.set()
+        await release_cleanup.wait()
+
+    with patch("nemo_agents_plugin.session_lifecycle.cleanup_fabric_runtime", side_effect=blocking_cleanup):
+        result = await ctrl._transition_session_after_restart(session, at=EXPIRATION_NOW)
+        assert result is session
+        assert session.status is SessionStatus.LOST
+
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        cleanup_tasks = list(ctrl._runtime_cleanup_tasks)
+        assert len(cleanup_tasks) == 1
+        release_cleanup.set()
+        await asyncio.gather(*cleanup_tasks)
 
 
 @pytest.mark.asyncio
@@ -257,14 +324,14 @@ async def test_terminal_state_wins_restart_conflict(terminal_status: SessionStat
     terminal = _make_session(status=terminal_status)
     ctrl.entities.update = AsyncMock(side_effect=NemoEntityConflictError("conflict"))
     ctrl.entities.get_by_id = AsyncMock(return_value=terminal)
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
 
-    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
-        result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
+    result = await ctrl._transition_session_after_restart(stale, at=EXPIRATION_NOW)
 
     assert result is terminal
     assert terminal.status is terminal_status
     ctrl.entities.update.assert_awaited_once_with(stale)
-    cleanup.assert_not_awaited()
+    ctrl._schedule_runtime_cleanup.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -287,21 +354,22 @@ async def test_runtime_instance_change_reconciles_bound_sessions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_instance_change_is_retained_until_reconciliation_succeeds() -> None:
+async def test_runtime_instance_change_queues_failed_reconciliation() -> None:
     ctrl, _ = _make_controller()
     deployment = _make_fabric_deployment()
     key = (deployment.workspace, deployment.name)
     ctrl._runtime_instance_ids[key] = "runtime-1"
     ctrl._read_runtime_instance_id = AsyncMock(return_value="runtime-2")  # type: ignore[method-assign]
     ctrl._reconcile_deployment_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
-        side_effect=[False, True]
+        return_value=False
     )
 
     await ctrl._observe_runtime_instance(deployment)
-    assert ctrl._runtime_instance_ids[key] == "runtime-1"
+    assert ctrl._runtime_instance_ids[key] == "runtime-2"
 
     await ctrl._observe_runtime_instance(deployment)
     assert ctrl._runtime_instance_ids[key] == "runtime-2"
+    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(deployment)
 
 
 @pytest.mark.asyncio
@@ -339,12 +407,18 @@ async def test_failed_restart_reconciliation_is_queued_and_retried() -> None:
         side_effect=[False, True]
     )
 
-    reconciled = await ctrl._reconcile_deployment_sessions_after_restart(deployment)
+    reconciled = await ctrl._reconcile_deployment_sessions_after_restart(deployment, at=EXPIRATION_NOW)
     assert reconciled is False
     assert deployment.id in ctrl._pending_restart_deployment_ids
+    assert ctrl._pending_restart_reconciliation_times[deployment.id] == EXPIRATION_NOW
 
     await ctrl._retry_pending_restart_reconciliations()
     assert deployment.id not in ctrl._pending_restart_deployment_ids
+    assert deployment.id not in ctrl._pending_restart_reconciliation_times
+    assert ctrl._reconcile_sessions_after_restart.await_args_list == [
+        call(deployment_id=deployment.id, at=EXPIRATION_NOW),
+        call(deployment_id=deployment.id, at=EXPIRATION_NOW),
+    ]
 
 
 @pytest.mark.asyncio
@@ -477,14 +551,14 @@ async def test_expire_session_transitions_due_session_and_cleans_runtime() -> No
     ctrl, _ = _make_controller()
     session = _make_session(expires_at=EXPIRATION_NOW)
     ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
 
-    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
-        result = await ctrl._expire_session_if_due(session, at=EXPIRATION_NOW)
+    result = await ctrl._expire_session_if_due(session, at=EXPIRATION_NOW)
 
     assert result is session
     assert session.status is SessionStatus.EXPIRED
     ctrl.entities.update.assert_awaited_once_with(session)
-    cleanup.assert_awaited_once_with(ctrl.entities, session)
+    ctrl._schedule_runtime_cleanup.assert_called_once_with(session)
 
 
 @pytest.mark.asyncio
@@ -492,17 +566,17 @@ async def test_expire_session_transitions_due_session_and_cleans_runtime() -> No
 async def test_expire_session_leaves_session_before_deadline_active(expires_at: datetime | None) -> None:
     ctrl, _ = _make_controller()
     session = _make_session(expires_at=expires_at)
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
 
-    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
-        result = await ctrl._expire_session_if_due(
-            session,
-            at=EXPIRATION_NOW,
-        )
+    result = await ctrl._expire_session_if_due(
+        session,
+        at=EXPIRATION_NOW,
+    )
 
     assert result is None
     assert session.status is SessionStatus.ACTIVE
     ctrl.entities.update.assert_not_called()
-    cleanup.assert_not_awaited()
+    ctrl._schedule_runtime_cleanup.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -529,9 +603,9 @@ async def test_expiration_conflict_resolves_from_refetched_session(
     )
     ctrl.entities.update = AsyncMock(side_effect=[NemoEntityConflictError("conflict"), refreshed])
     ctrl.entities.get_by_id = AsyncMock(return_value=refreshed)
+    ctrl._schedule_runtime_cleanup = MagicMock()  # type: ignore[method-assign]
 
-    with patch.object(session_lifecycle_module, "cleanup_fabric_runtime", new_callable=AsyncMock) as cleanup:
-        result = await ctrl._expire_session_if_due(stale, at=EXPIRATION_NOW)
+    result = await ctrl._expire_session_if_due(stale, at=EXPIRATION_NOW)
 
     assert (result is refreshed) is expected_cleanup
     expected_status = (
@@ -543,9 +617,9 @@ async def test_expiration_conflict_resolves_from_refetched_session(
     assert ctrl.entities.update.await_count == expected_updates
     ctrl.entities.get_by_id.assert_awaited_once_with(AgentSession, stale.id)
     if expected_cleanup:
-        cleanup.assert_awaited_once_with(ctrl.entities, refreshed)
+        ctrl._schedule_runtime_cleanup.assert_called_once_with(refreshed)
     else:
-        cleanup.assert_not_awaited()
+        ctrl._schedule_runtime_cleanup.assert_not_called()
 
 
 @pytest.mark.asyncio
