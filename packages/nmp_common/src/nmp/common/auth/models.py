@@ -132,6 +132,10 @@ class Principal(BaseModel):
         """Whether the principal is privileged."""
         return self.id.startswith("service:")
 
+    def is_service_identity(self) -> bool:
+        """Whether the principal is an internal service or service account."""
+        return self.is_privileged or self.id.startswith("service-account:")
+
     @classmethod
     def from_headers(cls, headers: Dict[str, str]) -> Optional[Principal]:
         """Create a Principal from request headers.
