@@ -17,7 +17,7 @@ from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 
 if TYPE_CHECKING:
     from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
-    from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig
+    from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig
 
 logger = logging.getLogger("safe_synthesizer")
 

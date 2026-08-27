@@ -124,6 +124,8 @@ class TestAgentConfig:
         assert config.skills is None
         assert config.mcp is None
         assert config.tools is None
+        assert config.runtime.timeout_seconds is None
+        assert config.runtime.max_turns is None
         assert config.environment.provider == "local"
         assert config.environment.workspace == "./workspace"
         assert config.environment.artifacts == "./artifacts"
@@ -137,7 +139,14 @@ class TestAgentConfig:
                 "repo": {
                     "transport": "stdio",
                     "url": "repo-mcp --root .",
-                }
+                    "allowed_tools": ["read_file", "search_files"],
+                    "blocked_tools": ["write_file"],
+                },
+                "private-api": {
+                    "transport": "streamable-http",
+                    "url": "https://mcp.example.com",
+                    "custom_headers": {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"},
+                },
             }
         }
         payload["tools"] = {"blocked": ["shell", "browser"]}
@@ -149,8 +158,63 @@ class TestAgentConfig:
         assert config.mcp is not None
         assert config.mcp.servers["repo"].transport == "stdio"
         assert config.mcp.servers["repo"].exposure == "harness_native"
+        assert config.mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
+        assert config.mcp.servers["repo"].blocked_tools == ["write_file"]
+        assert config.mcp.servers["private-api"].custom_headers == {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"}
         assert config.tools is not None
         assert config.tools.blocked == ["shell", "browser"]
+
+    def test_mcp_server_preserves_explicit_empty_tool_allowlist(self) -> None:
+        payload = _example_yaml_config()
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "stdio",
+                    "url": "repo-mcp --root .",
+                    "allowed_tools": [],
+                }
+            }
+        }
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.mcp is not None
+        assert config.mcp.servers["repo"].allowed_tools == []
+        assert config.mcp.servers["repo"].blocked_tools == []
+
+    def test_opentelemetry_export_config_validates(self) -> None:
+        payload = _example_yaml_config()
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "full",
+                    "endpoint": "http://otel-collector:4317",
+                    "transport": "grpc",
+                }
+            ],
+        }
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.telemetry.opentelemetry == payload["telemetry"]["opentelemetry"]
+
+    def test_runtime_constraints_validate(self) -> None:
+        payload = _example_yaml_config()
+        payload["runtime"] = {"max_turns": 20, "timeout_seconds": 120.5}
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.runtime.max_turns == 20
+        assert config.runtime.timeout_seconds == 120.5
+
+    @pytest.mark.parametrize(("field", "value"), [("max_turns", 0), ("timeout_seconds", 0)])
+    def test_runtime_constraints_must_be_positive(self, field: str, value: int) -> None:
+        payload = _example_yaml_config()
+        payload["runtime"] = {field: value}
+
+        with pytest.raises(ValidationError, match="Input should be greater than 0"):
+            AgentConfig.model_validate(payload)
 
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):

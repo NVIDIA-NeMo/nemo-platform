@@ -3,8 +3,8 @@
 
 import { triggerDownload } from '@nemo/common/src/utils/file';
 import {
-  useSafeSynthesizerDownloadJobResultEvaluationReport as useDownloadJobResultEvaluationReportV1beta1SafeSynthesizerJobsJobIdResultsEvaluationReportDownloadGet,
-  useSafeSynthesizerGetJobSuspense as useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense,
+  useSafeSynthesizerDownloadJobResultEvaluationReport as useDownloadJobResultEvaluationReportV1beta1GenerateJobsJobIdResultsEvaluationReportDownloadGet,
+  useSafeSynthesizerGetJobSuspense as useGetJobV1beta1GenerateJobsJobIdGetSuspense,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Button, Panel } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerFilesetPreview } from '@studio/components/SafeSynthesizerFilesetPreview';
@@ -21,12 +21,12 @@ interface OverviewPanelProps {
 
 export const OverviewPanel: FC<OverviewPanelProps> = ({ jobId, title, icon }) => {
   const workspace = useWorkspaceFromPath();
-  const { data: job } = useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense(workspace, jobId);
+  const { data: job } = useGetJobV1beta1GenerateJobsJobIdGetSuspense(workspace, jobId);
 
   const isSuccessful = isJobSuccessful(job.status);
 
   const { data: report } =
-    useDownloadJobResultEvaluationReportV1beta1SafeSynthesizerJobsJobIdResultsEvaluationReportDownloadGet(
+    useDownloadJobResultEvaluationReportV1beta1GenerateJobsJobIdResultsEvaluationReportDownloadGet(
       workspace,
       jobId,
       {

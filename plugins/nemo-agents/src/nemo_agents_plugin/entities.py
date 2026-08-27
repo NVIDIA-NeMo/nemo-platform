@@ -242,6 +242,9 @@ class AgentEnvironmentInline(BaseModel):
 ETHOS_FILENAME = "ETHOS.md"
 """Canonical filename inside the agent's Ethos fileset."""
 
+AGENT_SPEC_FILENAME = "AGENT-SPEC.md"
+"""Prior contract filename. Staging drops it from the runtime tree."""
+
 AGENT_CONFIG_FILENAME = "agent.yaml"
 """Canonical machine-readable agent config filename in the agent Ethos fileset.
 

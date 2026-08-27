@@ -20,6 +20,8 @@ from contextlib import suppress
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.testing import add_mock_provider, short_unique_name
 
 from e2e.auditor.utils import minimal_audit_config, unique_name
@@ -47,7 +49,7 @@ def _chat_completion(content: str = "I'm happy to help!") -> dict:
 def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str:
     deadline = time.monotonic() + AUDIT_JOB_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        status_resp = sdk.jobs.get_status(name=job_name, workspace=workspace)
+        status_resp = client_from_platform(sdk, JobsClient).get_job_status(name=job_name, workspace=workspace)
         status = str(status_resp.status)
         if status in TERMINAL_STATUSES:
             return status
@@ -57,9 +59,10 @@ def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str
 
 def _cleanup_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> None:
     with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=workspace)
+        jobs = client_from_platform(sdk, JobsClient)
+        jobs.cancel_job(name=job_name, workspace=workspace)
     with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=workspace)
+        jobs.delete_job(name=job_name, workspace=workspace)
 
 
 def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> str:

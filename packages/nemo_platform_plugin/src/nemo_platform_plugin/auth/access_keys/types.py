@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"]
 AccessKeyReversibleStatus = Literal["ACTIVE", "EXPIRED", "SUSPENDED"]
+AccessKeyEntityType = Literal["USER", "SERVICE_ACCOUNT"]
 
 
 class AccessKeyListQueryParams(TypedDict, total=False):
@@ -46,6 +47,17 @@ class AccessKeyCreateRequest(BaseModel):
             "to be disabled."
         ),
     )
+    service_account_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=240,
+        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._+/-]*$",
+        json_schema_extra={"nullable": True},
+        description=(
+            "Optional non-human service account to bind the key to. Service-bound keys can only be "
+            "created by a PlatformAdmin and authenticate as service-account:<id>."
+        ),
+    )
 
 
 class AccessKeyMetadataResponse(BaseModel):
@@ -63,6 +75,10 @@ class AccessKeyMetadataResponse(BaseModel):
         description="Human-readable description of the Scoped Access Key.",
     )
     principal: str = Field(description="Principal ID stamped into the token.")
+    entity_type: AccessKeyEntityType = Field(
+        default="USER",
+        description="Whether the key is bound to a user or a non-human service account.",
+    )
     status: AccessKeyStatus
     issuer: str = Field(description="Issuer stamped into the Scoped Access Key JWT.")
     audiences: list[str] = Field(

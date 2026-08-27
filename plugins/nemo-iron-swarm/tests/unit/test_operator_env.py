@@ -67,8 +67,11 @@ def test_read_env_file_parses_comments_blank_export_quotes(tmp_path: Path) -> No
 def test_resolve_inference_key_prefers_secrets_over_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(INFERENCE_API_KEY_ENVVAR, "env-value")  # store must still win
     secret = types.SimpleNamespace(value="secret-value")
-    fake_sdk = types.SimpleNamespace(secrets=types.SimpleNamespace(access=lambda name, workspace: secret))
-    monkeypatch.setattr(credentials, "make_sdk", lambda base: fake_sdk)
+    fake_secrets = types.SimpleNamespace(
+        access_secret=lambda name, workspace: types.SimpleNamespace(data=lambda: secret)
+    )
+    monkeypatch.setattr(credentials, "make_sdk", lambda base: types.SimpleNamespace())
+    monkeypatch.setattr(credentials, "client_from_platform", lambda sdk, cls: fake_secrets)
 
     value, source = credentials.resolve_inference_key(_config(tmp_path))
     assert value == "secret-value"

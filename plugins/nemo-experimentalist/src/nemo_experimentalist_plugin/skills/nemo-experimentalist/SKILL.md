@@ -67,7 +67,7 @@ or scaffold one. Before running it, make sure you have:
 
 Record the agent revision, dataset versions, configuration, and result path
 with each run so another operator can reproduce it. If the agent or its Ethos
-does not exist yet, use `nemo-explore` to design it and `nemo-spec` to create
+does not exist yet, use `nemo-explore` to design it and `nemo-ethos` to create
 the Ethos before returning here.
 
 ## Configure the environment

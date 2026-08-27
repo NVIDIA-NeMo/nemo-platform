@@ -95,7 +95,7 @@ def _cleanup_scoped_imports(package_name: str) -> None:
     parts = package_name.split(".")
     for idx in range(len(parts) - 1, 0, -1):
         module_name = ".".join(parts[:idx])
-        if any(name.startswith(f"{module_name}.") for name in sys.modules):
+        if any(name.startswith(f"{module_name}.") for name in tuple(sys.modules)):
             break
         package = sys.modules.pop(module_name, None)
         parent_name, _, child_name = module_name.rpartition(".")

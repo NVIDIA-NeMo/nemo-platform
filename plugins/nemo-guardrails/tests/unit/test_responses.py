@@ -17,6 +17,7 @@ from nemo_guardrails_plugin.responses import (
     build_inference_response,
     build_output_response_body,
     extract_upstream_error,
+    is_blocked_generation_response,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
 from nemoguardrails.exceptions import LLMCallException
@@ -56,6 +57,35 @@ def _make_response_result(content: str = "Hello!") -> dict[str, Any]:
         ],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
     }
+
+
+# ---------------------------------------------------------------------------
+# is_blocked_generation_response
+# ---------------------------------------------------------------------------
+
+
+class TestIsBlockedGenerationResponse:
+    def test_returns_true_when_a_rail_stopped(self) -> None:
+        log = GenerationLog(
+            activated_rails=[ActivatedRail(type="input", name="self check input", stop=True)],
+        )
+        assert is_blocked_generation_response(log) is True
+
+    def test_returns_false_when_no_rail_stopped(self) -> None:
+        log = GenerationLog(
+            activated_rails=[ActivatedRail(type="input", name="self check input", stop=False)],
+        )
+        assert is_blocked_generation_response(log) is False
+
+    def test_returns_false_when_activated_rails_empty(self) -> None:
+        assert is_blocked_generation_response(GenerationLog(activated_rails=[])) is False
+
+    def test_returns_false_when_activated_rails_none_set_via_stop_false(self) -> None:
+        """Rail present but stop=False is not a block."""
+        log = GenerationLog(
+            activated_rails=[ActivatedRail(type="output", name="self check output", stop=False)],
+        )
+        assert is_blocked_generation_response(log) is False
 
 
 # ---------------------------------------------------------------------------

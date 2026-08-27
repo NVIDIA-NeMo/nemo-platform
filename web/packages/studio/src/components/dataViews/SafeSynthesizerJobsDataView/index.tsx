@@ -24,9 +24,9 @@ import {
   useSafeSynthesizerListJobs,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
 import {
-  SafeSynthesizerJob,
-  SafeSynthesizerJobsListFilter,
-  SafeSynthesizerJobsSortField,
+  GenerateJob,
+  GenerateJobsListFilter,
+  GenerateJobsSortField,
 } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Banner, Button, Stack } from '@nvidia/foundations-react-core';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
@@ -36,17 +36,17 @@ import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
   getNewSafeSynthesizerRoute,
-  getSafeSynthesizerJobReportRoute,
-  getSafeSynthesizerJobRoute,
+  getGenerateJobReportRoute,
+  getGenerateJobRoute,
 } from '@studio/routes/utils';
 import { keepPreviousData, useQueries, useQueryClient } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
-type SafeSynthesizerJobWithId = SafeSynthesizerJob & { id: string };
+type GenerateJobWithId = GenerateJob & { id: string };
 
-export const SafeSynthesizerJobsDataView: FC = () => {
+export const GenerateJobsDataView: FC = () => {
   const navigate = useNavigate();
   const workspace = useWorkspaceFromPath();
   const queryClient = useQueryClient();
@@ -55,7 +55,7 @@ export const SafeSynthesizerJobsDataView: FC = () => {
     defaultSort: [{ id: 'created_at', desc: true }],
   });
 
-  const [deleteJobs, setDeleteJobs] = useState<SafeSynthesizerJob[]>([]);
+  const [deleteJobs, setDeleteJobs] = useState<GenerateJob[]>([]);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
 
   const deleteJobMutation = useJobsDeleteJob({
@@ -67,7 +67,7 @@ export const SafeSynthesizerJobsDataView: FC = () => {
     },
   });
 
-  const handleDeleteJobs = async (jobsToDelete: SafeSynthesizerJob[]) => {
+  const handleDeleteJobs = async (jobsToDelete: GenerateJob[]) => {
     const invalid = jobsToDelete.filter((job) => !job.workspace || !job.name);
     if (invalid.length > 0) {
       throw new Error(
@@ -103,7 +103,7 @@ export const SafeSynthesizerJobsDataView: FC = () => {
   });
 
   const handleCancelJob = useCallback(
-    async (job: SafeSynthesizerJob) => {
+    async (job: GenerateJob) => {
       if (job.workspace && job.name) {
         try {
           setCancelError(undefined);
@@ -120,13 +120,13 @@ export const SafeSynthesizerJobsDataView: FC = () => {
   const { data: safeSynthesizerResponse, isLoading } = useSafeSynthesizerListJobs(
     workspace,
     {
-      sort: getSortParam(dataViewState.sorting.state) as SafeSynthesizerJobsSortField,
+      sort: getSortParam(dataViewState.sorting.state) as GenerateJobsSortField,
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
       filter: {
-        ...((dataViewState.apiFilter.filter ?? {}) as SafeSynthesizerJobsListFilter),
+        ...((dataViewState.apiFilter.filter ?? {}) as GenerateJobsListFilter),
         ...(dataViewState.apiFilter.searchText
-          ? withOperators<SafeSynthesizerJobsListFilter>({
+          ? withOperators<GenerateJobsListFilter>({
               name: { $like: dataViewState.apiFilter.searchText },
             })
           : {}),
@@ -145,7 +145,7 @@ export const SafeSynthesizerJobsDataView: FC = () => {
   const jobsWithIds = useMemo(
     () =>
       (safeSynthesizerResponse?.data || []).filter(
-        (row): row is SafeSynthesizerJobWithId => row.id !== undefined
+        (row): row is GenerateJobWithId => row.id !== undefined
       ),
     [safeSynthesizerResponse?.data]
   );
@@ -167,7 +167,7 @@ export const SafeSynthesizerJobsDataView: FC = () => {
   });
 
   // Ensure each job has a unique id for DataView row selection
-  const jobs = useMemo<SafeSynthesizerJobWithId[]>(
+  const jobs = useMemo<GenerateJobWithId[]>(
     () =>
       (safeSynthesizerResponse?.data || []).map((job) => ({
         ...job,
@@ -189,142 +189,141 @@ export const SafeSynthesizerJobsDataView: FC = () => {
     !!dataViewState.debouncedSearchBar || dataViewState.debouncedColumnFilters.length > 0;
 
   // Column definitions
-  const makeColumns: ComponentProps<
-    typeof StudioDataView<SafeSynthesizerJobWithId>
-  >['makeColumns'] = useCallback(
-    ({ accessor }, { rowSelectionColumn, rowActionsColumn }) => [
-      rowSelectionColumn({
-        size: ROW_SELECTION_COLUMN_SIZE,
-      }),
-      accessor('name', {
-        header: 'Name',
-      }),
-      {
-        id: 'fileset',
-        header: 'Dataset',
-        cell: ({ row }: { row: DataView.TanstackTable.Row<SafeSynthesizerJobWithId> }) => (
-          <FilesetFilePreviewLink url={row.original.spec?.data_source as string}>
-            <span className="truncate font-semibold text-sm">
-              {row.original.spec?.data_source as string}
-            </span>
-          </FilesetFilePreviewLink>
-        ),
-      },
-      {
-        id: 'sqs',
-        header: () => (
-          <abbr title="Synthetic Quality Score" className="no-underline">
-            SQS
-          </abbr>
-        ),
-        size: 70,
-        cell: ({ row }: { row: DataView.TanstackTable.Row<SafeSynthesizerJobWithId> }) => {
-          const summaryIndex = summaryDataMap.get(row.original.id);
-          const summaryData =
-            summaryIndex !== undefined ? summaryQueries[summaryIndex]?.data : undefined;
-          return (
-            <Link
-              to={getSafeSynthesizerJobReportRoute(workspace, row.original.name!)}
-              className="flex items-center"
-              aria-label={`View SQS for job ${row.original.name}`}
-            >
-              <ScoreGauge score={summaryData?.synthetic_data_quality_score} size="sm" />
-            </Link>
-          );
+  const makeColumns: ComponentProps<typeof StudioDataView<GenerateJobWithId>>['makeColumns'] =
+    useCallback(
+      ({ accessor }, { rowSelectionColumn, rowActionsColumn }) => [
+        rowSelectionColumn({
+          size: ROW_SELECTION_COLUMN_SIZE,
+        }),
+        accessor('name', {
+          header: 'Name',
+        }),
+        {
+          id: 'fileset',
+          header: 'Dataset',
+          cell: ({ row }: { row: DataView.TanstackTable.Row<GenerateJobWithId> }) => (
+            <FilesetFilePreviewLink url={row.original.spec?.data_source as string}>
+              <span className="truncate font-semibold text-sm">
+                {row.original.spec?.data_source as string}
+              </span>
+            </FilesetFilePreviewLink>
+          ),
         },
-      },
-      {
-        id: 'dps',
-        header: () => (
-          <abbr title="Data Privacy Score" className="no-underline">
-            DPS
-          </abbr>
-        ),
-        size: 70,
-        cell: ({ row }: { row: DataView.TanstackTable.Row<SafeSynthesizerJobWithId> }) => {
-          const summaryIndex = summaryDataMap.get(row.original.id);
-          const summaryData =
-            summaryIndex !== undefined ? summaryQueries[summaryIndex]?.data : undefined;
-          return (
-            <Link
-              to={getSafeSynthesizerJobReportRoute(workspace, row.original.name!)}
-              className="flex items-center"
-              aria-label={`View DPS for job ${row.original.name}`}
-            >
-              <ScoreGauge score={summaryData?.data_privacy_score} size="sm" />
-            </Link>
-          );
-        },
-      },
-      accessor('created_at', {
-        id: 'created_at',
-        header: 'Created',
-        enableSorting: true,
-        size: 150,
-        meta: {
-          filter: dateTimeFilter('Created At'),
-        },
-        cell: ({ row }) =>
-          row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : null,
-      }),
-      accessor('status', {
-        header: 'Status',
-        size: 125,
-        meta: {
-          filter: {
-            type: 'single-select' as const,
-            label: 'Status',
-            options: STATUS_FILTER_OPTIONS,
+        {
+          id: 'sqs',
+          header: () => (
+            <abbr title="Synthetic Quality Score" className="no-underline">
+              SQS
+            </abbr>
+          ),
+          size: 70,
+          cell: ({ row }: { row: DataView.TanstackTable.Row<GenerateJobWithId> }) => {
+            const summaryIndex = summaryDataMap.get(row.original.id);
+            const summaryData =
+              summaryIndex !== undefined ? summaryQueries[summaryIndex]?.data : undefined;
+            return (
+              <Link
+                to={getGenerateJobReportRoute(workspace, row.original.name!)}
+                className="flex items-center"
+                aria-label={`View SQS for job ${row.original.name}`}
+              >
+                <ScoreGauge score={summaryData?.synthetic_data_quality_score} size="sm" />
+              </Link>
+            );
           },
         },
-        cell: ({ row }) =>
-          row.original.status ? <StatusBadge status={row.original.status} /> : null,
-      }),
-      rowActionsColumn({
-        size: ROW_ACTIONS_COLUMN_SIZE,
-        enableResizing: false,
-        cell: ({ row }) => (
-          <QuickActionsMenuRoot
-            actions={[
-              {
-                label: 'View Summary',
-                onSelect: () => {
-                  if (row.original.name) {
-                    navigate(getSafeSynthesizerJobRoute(workspace, row.original.name));
-                  }
+        {
+          id: 'dps',
+          header: () => (
+            <abbr title="Data Privacy Score" className="no-underline">
+              DPS
+            </abbr>
+          ),
+          size: 70,
+          cell: ({ row }: { row: DataView.TanstackTable.Row<GenerateJobWithId> }) => {
+            const summaryIndex = summaryDataMap.get(row.original.id);
+            const summaryData =
+              summaryIndex !== undefined ? summaryQueries[summaryIndex]?.data : undefined;
+            return (
+              <Link
+                to={getGenerateJobReportRoute(workspace, row.original.name!)}
+                className="flex items-center"
+                aria-label={`View DPS for job ${row.original.name}`}
+              >
+                <ScoreGauge score={summaryData?.data_privacy_score} size="sm" />
+              </Link>
+            );
+          },
+        },
+        accessor('created_at', {
+          id: 'created_at',
+          header: 'Created',
+          enableSorting: true,
+          size: 150,
+          meta: {
+            filter: dateTimeFilter('Created At'),
+          },
+          cell: ({ row }) =>
+            row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : null,
+        }),
+        accessor('status', {
+          header: 'Status',
+          size: 125,
+          meta: {
+            filter: {
+              type: 'single-select' as const,
+              label: 'Status',
+              options: STATUS_FILTER_OPTIONS,
+            },
+          },
+          cell: ({ row }) =>
+            row.original.status ? <StatusBadge status={row.original.status} /> : null,
+        }),
+        rowActionsColumn({
+          size: ROW_ACTIONS_COLUMN_SIZE,
+          enableResizing: false,
+          cell: ({ row }) => (
+            <QuickActionsMenuRoot
+              actions={[
+                {
+                  label: 'View Summary',
+                  onSelect: () => {
+                    if (row.original.name) {
+                      navigate(getGenerateJobRoute(workspace, row.original.name));
+                    }
+                  },
                 },
-              },
-              ...(row.original.status === 'completed'
-                ? [
-                    {
-                      label: 'View Report',
-                      onSelect: () => {
-                        if (row.original.name) {
-                          navigate(getSafeSynthesizerJobReportRoute(workspace, row.original.name));
-                        }
+                ...(row.original.status === 'completed'
+                  ? [
+                      {
+                        label: 'View Report',
+                        onSelect: () => {
+                          if (row.original.name) {
+                            navigate(getGenerateJobReportRoute(workspace, row.original.name));
+                          }
+                        },
                       },
-                    },
-                  ]
-                : []),
-              {
-                label: 'Delete',
-                onSelect: () => setDeleteJobs([row.original]),
-              },
-              ...(isCancellableJob(row.original.status)
-                ? [
-                    {
-                      label: 'Cancel',
-                      onSelect: () => handleCancelJob(row.original),
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        ),
-      }),
-    ],
-    [handleCancelJob, navigate, summaryDataMap, summaryQueries, workspace]
-  );
+                    ]
+                  : []),
+                {
+                  label: 'Delete',
+                  onSelect: () => setDeleteJobs([row.original]),
+                },
+                ...(isCancellableJob(row.original.status)
+                  ? [
+                      {
+                        label: 'Cancel',
+                        onSelect: () => handleCancelJob(row.original),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          ),
+        }),
+      ],
+      [handleCancelJob, navigate, summaryDataMap, summaryQueries, workspace]
+    );
 
   const totalResults = safeSynthesizerResponse?.pagination?.total_results ?? 0;
 
@@ -336,13 +335,13 @@ export const SafeSynthesizerJobsDataView: FC = () => {
         </Banner>
       )}
 
-      <StudioDataView<SafeSynthesizerJobWithId>
+      <StudioDataView<GenerateJobWithId>
         dataViewState={dataViewState}
         searchField="name"
         makeColumns={makeColumns}
-        onRowClick={(row: SafeSynthesizerJobWithId) => {
+        onRowClick={(row: GenerateJobWithId) => {
           if (row.name) {
-            navigate(getSafeSynthesizerJobRoute(workspace, row.name));
+            navigate(getGenerateJobRoute(workspace, row.name));
           }
         }}
         renderBulkActions={({ selectedRows }) => (

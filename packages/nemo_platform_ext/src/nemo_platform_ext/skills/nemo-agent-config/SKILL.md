@@ -19,15 +19,15 @@ triggers:
   - convert agent.yml to agent.yaml
   - NeMo agent.yaml config
 not-for:
-  - nemo-build-agent (use for full spec-to-deployed-agent build flows)
+  - nemo-build-agent (use for full Ethos-to-deployed-agent build flows)
   - nemo-explore (use to design what the agent should do before writing config)
-  - nemo-spec (use to write AGENT-SPEC.md before implementation)
+  - nemo-ethos (use to write ETHOS.md before implementation)
   - nemo-model-selection (use when the user only wants model recommendation)
   - generic YAML editing unrelated to NeMo Platform agents
 preconditions:
   - nemo_setup_complete
   - agents_plugin_available
-compatibility: nemo-platform >= 0.1.0; writes or edits agents/<name>-spec/agent.yaml; validates through nemo agents create; supports nemo-agents-spec-v1 configs; safe under sandbox.
+compatibility: nemo-platform >= 0.1.0; writes or edits agents/<name>-ethos/agent.yaml; validates through nemo agents create; supports nemo-agents-spec-v1 configs; safe under sandbox.
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -46,11 +46,11 @@ agent config.
 
 ## Storage model
 
-The local config lives next to the human-readable agent spec:
+The local config lives next to the human-readable Ethos:
 
 ```txt
-agents/<agent-name>-spec/
-  AGENT-SPEC.md
+agents/<agent-name>-ethos/
+  ETHOS.md
   agent.yaml
 ```
 
@@ -62,12 +62,12 @@ config_format: nemo-agents-spec-v1
 ```
 
 The canonical remote config location is derivable from workspace and agent name:
-`<workspace>/<agent-name>-spec#agent.yaml`. Do not invent a separate ref field.
+`<workspace>/<agent-name>-ethos#agent.yaml`. Do not invent a separate ref field.
 
 ## What you do
 
 1. Confirm the agent name and config path. Default to
-   `agents/<agent-name>-spec/agent.yaml`.
+   `agents/<agent-name>-ethos/agent.yaml`.
 2. Select one supported harness:
    - `codex`
    - `hermes`
@@ -102,7 +102,7 @@ Require the explicit image-packaging path before deployment:
 ```bash
 IMAGE_TAG="${AGENT_NAME}:local"
 .venv/bin/nemo agents package \
-  --agent "agents/$AGENT_NAME-spec/agent.yaml" \
+  --agent "agents/$AGENT_NAME-ethos/agent.yaml" \
   --tag "$IMAGE_TAG"
 ```
 
@@ -246,7 +246,7 @@ ask for explicit confirmation, and wait for approval.
 ```bash
 .venv/bin/nemo agents create \
   --name "$AGENT_NAME" \
-  --agent-config "agents/$AGENT_NAME-spec/agent.yaml"
+  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml"
 ```
 
 If validation fails, fix the named field in `agent.yaml` and retry. Do not
@@ -279,7 +279,7 @@ deployment path, not this local path:
 
 ```bash
 .venv/bin/nemo agents invoke \
-  --agent-config "agents/$AGENT_NAME-spec/agent.yaml" \
+  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml" \
   --input "<test prompt>"
 ```
 
@@ -288,7 +288,7 @@ accessible host only when the user explicitly asks to expose the server:
 
 ```bash
 .venv/bin/nemo agents run \
-  --agent-config "agents/$AGENT_NAME-spec/agent.yaml" \
+  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml" \
   --host 127.0.0.1 \
   --port 8080
 ```
@@ -320,8 +320,8 @@ accessible host only when the user explicitly asks to expose the server:
   `models.default`.
 - **Registration validates and normalizes.** `nemo agents create` is the
   user-facing validation command.
-- **`agent.yaml` is the implementation config, not the design spec.**
-  `AGENT-SPEC.md` explains what the agent should do; `agent.yaml` tells the
+- **`agent.yaml` is the implementation config, not the Ethos.**
+  `ETHOS.md` explains what the agent should do; `agent.yaml` tells the
   Platform how to run it.
 - **NAT workflow YAML is a compatibility path.** If the user explicitly asks
   for legacy NAT, route to `nemo-build-agent` and use its NAT template.

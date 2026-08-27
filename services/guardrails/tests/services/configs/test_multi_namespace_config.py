@@ -33,7 +33,7 @@ def rails_service(config_registry, rails_registry):
 @pytest.fixture
 def mock_db():
     """Create a mock database with methods for testing."""
-    # TODO: check wether nmp_persistence has such fixture
+    # TODO: check whether nmp_persistence has such fixture
 
     db = MagicMock()
 

@@ -82,6 +82,16 @@ class GRPOConfig(BaseModel):
     use_on_policy_kl_approximation: bool = True
     use_importance_sampling_correction: bool = True
     max_grad_norm: float = Field(default=1.0, ge=0.0)
+    # DAPO components; see GRPOTraining in nmp.rl.schemas.job for what each does. All three
+    # sit off by default so an unstated job compiles to the same NeMo-RL config as before.
+    truncated_importance_sampling_type: str | None = None
+    truncated_importance_sampling_ratio: float | None = Field(default=None, gt=0.0)
+    truncated_importance_sampling_ratio_min: float | None = Field(default=None, ge=0.0)
+    use_dynamic_sampling: bool = False
+    dynamic_sampling_max_gen_batches: int = Field(default=10, gt=0)
+    batch_multiplier: float = Field(default=1.0, gt=0.0)
+    reward_shaping: dict[str, Any] | None = None
+    reward_scaling: dict[str, Any] | None = None
     # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
     automodel_kwargs: dict[str, Any] | None = None
     router_aux_loss_coef: float | None = Field(default=None, ge=0.0)
@@ -154,8 +164,10 @@ class TrainingStepConfig(BaseModel):
         # Operator-scoped, from platformConfig.rl.sandbox_resources / sandbox_ttl_s.
         sandbox_resources: dict[str, str] | None = None
         sandbox_ttl_s: int | None = None
-        # Rollouts per POST to the sandbox. None takes NeMo-RL's default.
+        # Rollouts per POST to the sandbox, and how many of those POSTs may run at once.
+        # None takes NeMo-RL's default. In-flight rollouts are the product of the two.
         sandbox_rollout_chunk_size: int | None = Field(default=None, gt=0)
+        sandbox_rollout_max_in_flight: int | None = Field(default=None, gt=0)
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1

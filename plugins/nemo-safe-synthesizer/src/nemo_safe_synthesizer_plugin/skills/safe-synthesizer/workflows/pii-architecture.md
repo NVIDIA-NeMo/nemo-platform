@@ -13,10 +13,6 @@
 
 The plugin resolves `config.replace_pii.globals.classify.classify_model_provider` through Inference Gateway during job compilation. It stores only the provider route path in the task environment and lets the task combine that path with the platform Models service URL at runtime.
 
-## Local Runs
-
-Local runs read the same job spec but can bypass platform input filesets by passing `--data-source <local-file-or-dir>`. Provider-backed PII classification still needs a reachable endpoint or an equivalent local environment.
-
 ## Next Steps
 
 - Configure provider fields with `workflows/config.md`.

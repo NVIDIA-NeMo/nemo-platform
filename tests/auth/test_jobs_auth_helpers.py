@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from collections.abc import Iterator
+
 import pytest
 
 from tests.auth.integration.jobs_auth_helpers import job_exists_in_pages, managed_admin_workspace
@@ -28,14 +30,13 @@ class _StubJob:
         self.name = name
 
 
-class _StubPage:
-    def __init__(self, pages: list["_StubPage"], job_names: list[str]) -> None:
-        self._pages = pages
-        self.data = [_StubJob(name) for name in job_names]
-        self.pagination = object()
+class _StubJobsResponse:
+    def __init__(self, job_names: list[str]) -> None:
+        self._job_names = job_names
 
-    def iter_pages(self):
-        yield from self._pages
+    def items(self) -> Iterator[_StubJob]:
+        for name in self._job_names:
+            yield _StubJob(name)
 
 
 def test_managed_admin_workspace_deletes_workspace_after_success() -> None:
@@ -60,8 +61,6 @@ def test_managed_admin_workspace_deletes_workspace_after_failure() -> None:
 
 
 def test_job_exists_in_pages_checks_later_pages() -> None:
-    page_two = _StubPage([], ["target-job"])
-    page_one = _StubPage([], ["other-job"])
-    page_one._pages = [page_one, page_two]
+    jobs_response = _StubJobsResponse(["other-job", "target-job"])
 
-    assert job_exists_in_pages(page_one, "target-job") is True
+    assert job_exists_in_pages(jobs_response.items(), "target-job") is True

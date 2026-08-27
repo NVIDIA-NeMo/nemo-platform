@@ -194,6 +194,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '403':
+          description: Service-bound Scoped Access Keys require PlatformAdmin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
         '404':
           description: Scoped Access Keys are not enabled
           content:
@@ -8216,6 +8222,15 @@ components:
           nullable: true
           type: integer
           minimum: 1.0
+        service_account_id:
+          title: Service Account Id
+          description: Optional non-human service account to bind the key to. Service-bound
+            keys can only be created by a PlatformAdmin and authenticate as service-account:<id>.
+          nullable: true
+          type: string
+          maxLength: 240
+          minLength: 1
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._+/-]*$
       type: object
       title: AccessKeyCreateRequest
       description: Request body for creating a Scoped Access Key.
@@ -8239,6 +8254,14 @@ components:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        entity_type:
+          type: string
+          enum:
+          - USER
+          - SERVICE_ACCOUNT
+          title: Entity Type
+          description: Whether the key is bound to a user or a non-human service account.
+          default: USER
         status:
           type: string
           enum:
@@ -8340,6 +8363,14 @@ components:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        entity_type:
+          type: string
+          enum:
+          - USER
+          - SERVICE_ACCOUNT
+          title: Entity Type
+          description: Whether the key is bound to a user or a non-human service account.
+          default: USER
         status:
           type: string
           enum:

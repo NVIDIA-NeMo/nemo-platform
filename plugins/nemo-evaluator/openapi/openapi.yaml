@@ -3540,6 +3540,10 @@ components:
           - $ref: '#/components/schemas/JsonValue'
           description: Small inline evidence payload; at least one of ref or data
             must be set.
+        description:
+          title: Description
+          description: Human-readable description of this evidence artifact.
+          type: string
         metadata:
           additionalProperties: true
           type: object
