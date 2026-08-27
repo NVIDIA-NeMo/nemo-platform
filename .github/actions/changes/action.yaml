@@ -34,6 +34,9 @@ outputs:
   web-studio:
     description: "'true' if any web files changed"
     value: ${{ steps.filter.outputs.web-studio }}
+  github-scripts:
+    description: "'true' if GitHub JavaScript scripts or their validation changes"
+    value: ${{ steps.filter.outputs.github-scripts }}
   docker:
     description: "'true' if any Docker build files changed"
     value: ${{ steps.filter.outputs.docker }}
@@ -123,6 +126,12 @@ runs:
             - 'web/**'
             - '.nvmrc'
             - 'tools/nodejs/**'
+          github-scripts:
+            - '.github/scripts/**/*.cjs'
+            - '.github/eslint.config.mjs'
+            - '.github/workflows/release.yaml'
+            - '.github/workflows/ci.yaml'
+            - '.github/actions/changes/action.yaml'
           docker:
             - 'docker-bake.hcl'
             - 'docker/**'
