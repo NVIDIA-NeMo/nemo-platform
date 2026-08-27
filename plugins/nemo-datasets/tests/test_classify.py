@@ -128,6 +128,27 @@ def test_unpaired_preference_accepts_a_binary_string_label():
     assert features[2].semantic_role == "label"
 
 
+def test_an_all_null_label_column_is_not_a_preference_label():
+    # An empty column decided the dataset type: `distinct_count <= 2` is true of zero, so a `label`
+    # column holding nothing took the role and carried the partition to `unpaired_preference`.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
+    stats = {"label": ColumnStats(null_rate=1.0, categorical=CategoricalStats(distinct_count=0))}
+    result = classify(features, stats)
+    assert features[2].semantic_role is None
+    assert result.candidates == ["prompt_completion"]
+
+
+def test_a_single_class_label_column_is_still_a_preference_label():
+    # Not the same judgment as zero. A shard whose labels are all one class -- or a read that
+    # stopped before the second class appeared -- is still a label column, and classifying it
+    # differently from its sibling over class balance would make the type depend on the split.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
+    stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=1))}
+    result = classify(features, stats)
+    assert features[2].semantic_role == "label"
+    assert result.candidates == ["unpaired_preference", "prompt_completion"]
+
+
 def test_wide_string_label_is_not_a_preference_label():
     # Symmetric with the integer rule: three classes is a class label, not a binary preference.
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "string")]
