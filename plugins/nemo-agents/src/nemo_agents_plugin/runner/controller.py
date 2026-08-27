@@ -81,8 +81,7 @@ class AgentDeploymentController(NemoController):
         self._controller_config: ControllerConfig | None = None
         self._starting_since: dict[tuple[str, str], float] = {}
         self._runtime_instance_ids: dict[tuple[str, str], str] = {}
-        self._pending_restart_deployment_ids: set[str] = set()
-        self._pending_restart_reconciliation_times: dict[str, datetime] = {}
+        self._pending_restart_reconciliations: dict[str, datetime] = {}
         self._runtime_cleanup_tasks: set[asyncio.Task[None]] = set()
         self._runtime_health_client: httpx.AsyncClient | None = None
         self._startup_sessions_reconciled = False
@@ -395,7 +394,7 @@ class AgentDeploymentController(NemoController):
         if dep.id is None:
             logger.warning("Cannot reconcile sessions for deployment '%s' without an entity ID.", dep.name)
             return False
-        reconciliation_time = self._pending_restart_reconciliation_times.get(dep.id)
+        reconciliation_time = self._pending_restart_reconciliations.get(dep.id)
         if reconciliation_time is None:
             reconciliation_time = (at or datetime.now(UTC)).astimezone(UTC)
         reconciled = await self._reconcile_sessions_after_restart(
@@ -403,25 +402,21 @@ class AgentDeploymentController(NemoController):
             at=reconciliation_time,
         )
         if reconciled:
-            self._pending_restart_deployment_ids.discard(dep.id)
-            self._pending_restart_reconciliation_times.pop(dep.id, None)
+            self._pending_restart_reconciliations.pop(dep.id, None)
         else:
-            self._pending_restart_deployment_ids.add(dep.id)
-            self._pending_restart_reconciliation_times.setdefault(dep.id, reconciliation_time)
+            self._pending_restart_reconciliations.setdefault(dep.id, reconciliation_time)
         return reconciled
 
     async def _retry_pending_restart_reconciliations(self) -> None:
         """Retry deployment-scoped restart passes whose prior attempt was incomplete."""
-        for deployment_id in list(self._pending_restart_deployment_ids):
+        for deployment_id, reconciliation_time in list(self._pending_restart_reconciliations.items()):
             if self.stop_requested():
                 return
-            reconciliation_time = self._pending_restart_reconciliation_times[deployment_id]
             if await self._reconcile_sessions_after_restart(
                 deployment_id=deployment_id,
                 at=reconciliation_time,
             ):
-                self._pending_restart_deployment_ids.discard(deployment_id)
-                self._pending_restart_reconciliation_times.pop(deployment_id, None)
+                self._pending_restart_reconciliations.pop(deployment_id, None)
 
     async def _observe_runtime_instance(self, dep: AgentDeployment) -> None:
         """Detect a Fabric server process replacement from its health identity."""
@@ -525,21 +520,7 @@ class AgentDeploymentController(NemoController):
             name=f"cleanup-agent-session-{session.id}",
         )
         self._runtime_cleanup_tasks.add(task)
-        task.add_done_callback(self._runtime_cleanup_finished)
-
-    def _runtime_cleanup_finished(self, task: asyncio.Task[None]) -> None:
-        """Release a completed cleanup task and consume any unexpected exception."""
-        self._runtime_cleanup_tasks.discard(task)
-        if task.cancelled():
-            return
-        try:
-            task.result()
-        except Exception as exc:  # pragma: no cover - cleanup helper contains its own failures
-            logger.error(
-                "Unexpected failure in runtime cleanup task '%s'.",
-                task.get_name(),
-                exc_info=(type(exc), exc, exc.__traceback__),
-            )
+        task.add_done_callback(self._runtime_cleanup_tasks.discard)
 
     async def _start_deployment(self, dep: AgentDeployment) -> None:
         """pending -> starting: allocate port (subprocess) and spawn via the mode backend."""
@@ -747,7 +728,7 @@ class AgentDeploymentController(NemoController):
         self._starting_since.pop((dep.workspace, dep.name), None)
         self._runtime_instance_ids.pop((dep.workspace, dep.name), None)
         if dep.id is not None:
-            self._pending_restart_deployment_ids.discard(dep.id)
+            self._pending_restart_reconciliations.pop(dep.id, None)
         try:
             await self.entities.delete(
                 AgentDeployment,
