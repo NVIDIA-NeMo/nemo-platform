@@ -640,16 +640,21 @@ def create_test_client(
             else:
                 # No auth - use SDK directly
                 from nemo_platform import ConflictError
+                from nemo_platform_plugin.client.errors import ConflictError as ProjectConflictError
 
                 for ws_id in workspaces_to_create:
                     try:
                         sdk.workspaces.create(name=ws_id)
                     except ConflictError:
                         logger.warning(f"Workspace '{ws_id}' already exists (created by service startup)")
+                from nemo_platform_plugin.projects.client import ProjectsClient
+                from nemo_platform_plugin.projects.types import CreateProjectRequest
+
+                projects_client = client_from_platform(sdk, ProjectsClient)
                 for ws_id, proj_name in parsed_projects:
                     try:
-                        sdk.projects.create(workspace=ws_id, name=proj_name)
-                    except ConflictError:
+                        projects_client.create_project(workspace=ws_id, body=CreateProjectRequest(name=proj_name))
+                    except ProjectConflictError:
                         logger.warning(f"Project '{proj_name}' in workspace '{ws_id}' already exists")
 
             if selected_client_type is TestClient:
