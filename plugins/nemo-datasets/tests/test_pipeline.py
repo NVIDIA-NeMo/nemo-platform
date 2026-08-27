@@ -829,11 +829,11 @@ def test_a_file_that_fails_partway_still_counts_what_it_contributed(tmp_path, mo
     real_update = pipeline_module._PartitionFolds.update
     calls = {"n": 0}
 
-    def fail_on_the_third_batch(self, rows):
+    def fail_on_the_third_batch(self, rows, **kwargs):
         calls["n"] += 1
         if calls["n"] == 3:
             raise RuntimeError("boom mid-file")
-        return real_update(self, rows)
+        return real_update(self, rows, **kwargs)
 
     monkeypatch.setattr(pipeline_module._PartitionFolds, "update", fail_on_the_third_batch)
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
@@ -1098,6 +1098,63 @@ def test_a_file_that_failed_peek_but_read_fine_keeps_its_columns(tmp_path, monke
     assert part.stats["extra"].null_rate == 0.5  # absent from b.parquet, back-filled as null
 
 
+def test_a_zero_row_budget_still_checks_the_format(tmp_path):
+    # The zero-cap guard sat above the format check in the jsonl reader and below it in parquet, so
+    # a gzip archive saved as `.jsonl` was reported at every budget except zero -- where it passed
+    # silently as a readable file that happened to hold no rows. A cap says how much to read, not
+    # whether to look.
+    import gzip
+
+    with gzip.open(tmp_path / "shard.jsonl", "wt") as handle:
+        handle.write('{"a": 1}\n')
+
+    for budget in (None, 5, 0):
+        result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=budget)
+        assert [e.path for e in result.file_errors] == ["shard.jsonl"], budget
+
+
+def test_discovery_is_scoped_to_the_file_that_needs_it(tmp_path, monkeypatch):
+    # A file that fails `peek` but reads fine is not described by the declared schema, so its rows
+    # are walked to find the columns it alone witnesses. That flag was set for the whole partition,
+    # which put the same per-row key walk on every healthy shard -- one bad file in five hundred
+    # paying for all of them. The condition is per file, so the flag is too.
+    from nemo_datasets_plugin.profiler import stats as stats_module
+    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+
+    shards, rows_each = 8, 50
+    for i in range(shards):
+        rows = [{"prompt": "p"} for _ in range(rows_each)]
+        if i == 0:
+            for row in rows:
+                row["only_here"] = "x"
+        _write_parquet(tmp_path / f"train-{i:05d}-of-{shards:05d}.parquet", rows)
+
+    real_peek = parquet_module.ParquetReader.peek
+
+    def flaky_peek(self, source, entry):
+        if entry.path.startswith("train-00000"):
+            raise OSError("transient storage hiccup")
+        return real_peek(self, source, entry)
+
+    monkeypatch.setattr(parquet_module.ParquetReader, "peek", flaky_peek)
+
+    walked = {"rows": 0}
+    real_discover = stats_module.RowFold._discover
+
+    def counting_discover(self, batch):
+        walked["rows"] += len(batch)
+        return real_discover(self, batch)
+
+    monkeypatch.setattr(stats_module.RowFold, "_discover", counting_discover)
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    # Only the unpeekable shard's rows, not the whole partition's.
+    assert walked["rows"] == rows_each, f"{walked['rows']} of {shards * rows_each}"
+    # ...and the column it alone carries is still found and back-filled.
+    assert "only_here" in {f.name for f in part.features}
+    assert part.stats["only_here"].null_rate == (shards - 1) / shards
+
+
 def test_a_zero_row_budget_reads_no_rows_from_either_format(tmp_path):
     # The jsonl reader tested the cap *after* appending, so `len(rows) >= row_cap` could not fire
     # until a row was already in hand -- one row per file, folded and measured, for the one argument
@@ -1152,11 +1209,11 @@ def test_a_file_abandoned_mid_read_does_not_quote_the_prefix_it_managed(tmp_path
     real_update = pipeline_module._PartitionFolds.update
     calls = {"n": 0}
 
-    def fail_on_the_third_batch(self, batch):
+    def fail_on_the_third_batch(self, batch, **kwargs):
         calls["n"] += 1
         if calls["n"] == 3:
             raise RuntimeError("row group failed to decode")
-        return real_update(self, batch)
+        return real_update(self, batch, **kwargs)
 
     monkeypatch.setattr(pipeline_module._PartitionFolds, "update", fail_on_the_third_batch)
     # No row budget: the gate was `row_cap is not None and ...`, so with nothing capping the read
@@ -1180,10 +1237,10 @@ def test_a_shard_lost_before_it_yielded_a_row_still_quotes(tmp_path, monkeypatch
     _write_parquet(tmp_path / "extra.parquet", [{"label": "de"}])
     real_update = pipeline_module._PartitionFolds.update
 
-    def fail_before_the_first_batch(self, batch):
+    def fail_before_the_first_batch(self, batch, **kwargs):
         if any(row.get("label") == "de" for row in batch):
             raise RuntimeError("storage went away")
-        return real_update(self, batch)
+        return real_update(self, batch, **kwargs)
 
     monkeypatch.setattr(pipeline_module._PartitionFolds, "update", fail_before_the_first_batch)
     partition = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]

@@ -79,5 +79,15 @@ class LocalFileSource:
             raise ValueError(f"{path!r} resolves outside the source root")
         # `O_NOFOLLOW` rather than a check before the open: containment is verified against the path
         # as it was a moment ago, and the entry can be swapped underneath that. This is the one race
-        # a caller cannot close for itself.
-        return os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW), "rb")
+        # a caller cannot close for itself. It guards the final component only -- a symlinked
+        # *directory* on the way to the file is still followed, which the containment check above
+        # catches for the path as it stood but cannot catch for a swap after it.
+        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            return os.fdopen(fd, "rb")
+        except BaseException:
+            # `os.open` succeeded and `os.fdopen` did not, so nothing owns this descriptor yet and
+            # the caller has no handle to close. The profiler opens a file per shard, so leaking one
+            # per failure exhausts the process rather than the request.
+            os.close(fd)
+            raise

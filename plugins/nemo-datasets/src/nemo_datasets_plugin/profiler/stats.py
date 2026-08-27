@@ -102,14 +102,10 @@ class RowFold:
     measure stage and catches anything structural that no single column owns.
     """
 
-    def __init__(self, features: list[FeatureSchema] | None = None, *, discover: bool = False) -> None:
+    def __init__(self, features: list[FeatureSchema] | None = None) -> None:
         # None means the partition declared no schema. It is not the same as an empty list, which is
         # a declared schema that happens to have no columns and must not then discover any.
-        #
-        # `discover` turns discovery back on *alongside* a declared schema, for a partition whose
-        # declaration is known to be partial. A well-formed declared partition never uses it: no row
-        # carries a key the schema did not name, so nothing is ever discovered.
-        self._infer = features is None or discover
+        self._infer = features is None
         self._accumulators: dict[str, RoutedAccumulator] = {}
         self._declared: dict[str, FeatureSchema] = {}
         self._order: list[str] = []
@@ -125,9 +121,16 @@ class RowFold:
             self._accumulators[feature.name] = RoutedAccumulator(feature.name, feature)
             self._order.append(feature.name)
 
-    def update(self, rows: list[dict[str, Any]]) -> None:
-        """Fold one batch of rows into every column's accumulator."""
-        if self._infer:
+    def update(self, rows: list[dict[str, Any]], *, discover: bool = False) -> None:
+        """Fold one batch of rows into every column's accumulator.
+
+        ``discover`` turns discovery on for *this batch* alongside a declared schema, for rows the
+        declaration is known not to describe. It is per batch because the condition is per file: one
+        unpeekable shard in a partition is not a reason to walk the keys of every healthy shard's
+        rows. A well-formed declared partition never sets it, and nothing is ever discovered anyway,
+        since no row carries a key the schema did not name.
+        """
+        if self._infer or discover:
             self._discover(rows)
         for name in self._order:
             if name in self._failed:
@@ -405,7 +408,7 @@ class NumericAccumulator(ColumnAccumulator):
         super().__init__()
         self._min = math.inf
         self._max = -math.inf
-        self._sum = 0.0
+        self._mean = 0.0
         self._count = 0
         self._vocabulary = _Vocabulary()
 
@@ -428,14 +431,29 @@ class NumericAccumulator(ColumnAccumulator):
                 number = float(value)
                 self._min = min(self._min, number)
                 self._max = max(self._max, number)
-                self._sum += number
                 self._count += 1
+                # Kept incrementally rather than as a running total divided at the end. A sum
+                # overflows to `inf` on inputs that are each perfectly finite -- two values of
+                # 1e308 are enough -- and `inf` serializes to JSON null, so the published profile
+                # then failed to re-validate against its own NumericStats. The extrema already
+                # skip non-finite values for that exact reason; the mean was reaching it by
+                # arithmetic instead of by input.
+                #
+                # Weighted rather than the textbook `mean += (x - mean) / n`, which overflows on
+                # its difference when two values sit at opposite extremes. Both terms here are
+                # bounded by the larger of the two operands, so a mean of finite values stays in
+                # range. Measured against `math.fsum`, that costs about 1.5e-14 relative error
+                # where the textbook form gives 3e-15 -- both far below anything a profile reports.
+                self._mean = self._mean * ((self._count - 1) / self._count) + number / self._count
         self._vocabulary.update(countable)
 
     def _stat_blocks(self) -> dict[str, Any]:
         numeric = None
-        if self._count:
-            numeric = NumericStats(min=self._min, max=self._max, mean=self._sum / self._count)
+        # `isfinite` on the mean as well as on the inputs: the incremental form above cannot
+        # overflow from finite values, but a difference of two opposite extremes can, and a profile
+        # that will not re-validate is worse than one missing a block it could not state.
+        if self._count and math.isfinite(self._mean):
+            numeric = NumericStats(min=self._min, max=self._max, mean=self._mean)
         return {"numeric": numeric, "categorical": self._vocabulary.finalize()}
 
     def vocabulary(self) -> set[Any] | None:
