@@ -373,6 +373,10 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             logger.warning("Request body is missing 'messages' key. Skipping input rails.")
             return request
 
+        if not messages or not isinstance(messages[-1], dict) or messages[-1].get("role") != "user":
+            logger.debug("Current request turn is not a user message. Skipping input rails.")
+            return request
+
         user_log_options = extract_log_options_from_request(guardrails)
         # Input rails evaluate the current request turn. Do not replay conversation
         # history through LLMRails: historical tool-call events can be interpreted as
