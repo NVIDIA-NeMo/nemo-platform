@@ -47,10 +47,10 @@ class KeywordMatchMetric:
 ## 2. A trajectory metric
 
 A metric can read more than the final output. `input.candidate.evidence` exposes the trial's
-**evidence** — for the trajectory, an [Agent Trajectory Interchange Format (ATIF)](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trace of the
-agent's steps. `evidence.trace(...)` gives a handle whose `tool_calls()` returns the tool calls in
-order; each `ToolCall` has a `function_name` and `arguments`. This metric scores `1.0` when the agent
-used the tool you expected and `0.0` otherwise:
+**evidence**. This guide produces an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md)
+trace, whose handle returns modeled tool calls in order. Each `ToolCall` has a
+`function_name` and `arguments`. This metric scores `1.0` when the agent used the tool you expected
+and `0.0` otherwise:
 
 ```python
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
@@ -73,13 +73,17 @@ class UsedExpectedToolMetric:
         used = False
         evidence = input.candidate.evidence
         if evidence is not None and evidence.get(EVIDENCE_TRACE) is not None:
-            calls = await (await evidence.trace(EVIDENCE_TRACE)).tool_calls()
+            handle = await evidence.trace(EVIDENCE_TRACE)
+            if handle.format != "atif":
+                raise ValueError("UsedExpectedToolMetric requires ATIF trace evidence")
+            calls = await handle.tool_calls()
             used = any(call.function_name == self._expected for call in calls)
         return MetricResult(outputs=[MetricOutput(name="tool_use", value=1.0 if used else 0.0)])
 ```
 
-The metric checks for evidence first — a trial without a trace simply scores `0.0` rather than
-erroring.
+The metric scores a missing trace as `0.0`, but rejects OTLP rather than treating unsupported evidence
+as proof that the tool was not used. An OTLP metric must narrow on `handle.format` and inspect
+`resource_spans()` with exporter-specific logic.
 
 ## 3. Produce a trajectory
 
@@ -167,14 +171,15 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.runtimes.callable_runtime import CallableAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 
-result = await AgentEvaluator().run(
-    tasks=make_tasks(),
-    target=CallableAgentTaskRunner(my_agent),
-    config=AgentEvalRunConfig(parallelism=2),
-)
+async def run_evaluation() -> None:
+    result = await AgentEvaluator().run(
+        tasks=make_tasks(),
+        target=CallableAgentTaskRunner(my_agent),
+        config=AgentEvalRunConfig(parallelism=2),
+    )
 
-for aggregate in result.summary.scores.scores:
-    print(f"{aggregate.name}: {aggregate.mean}")
+    for aggregate in result.summary.scores.scores:
+        print(f"{aggregate.name}: {aggregate.mean}")
 ```
 
 Output:
@@ -245,7 +250,10 @@ class UsedExpectedToolMetric:
         used = False
         evidence = input.candidate.evidence
         if evidence is not None and evidence.get(EVIDENCE_TRACE) is not None:
-            calls = await (await evidence.trace(EVIDENCE_TRACE)).tool_calls()
+            handle = await evidence.trace(EVIDENCE_TRACE)
+            if handle.format != "atif":
+                raise ValueError("UsedExpectedToolMetric requires ATIF trace evidence")
+            calls = await handle.tool_calls()
             used = any(call.function_name == self._expected for call in calls)
         return MetricResult(outputs=[MetricOutput(name="tool_use", value=1.0 if used else 0.0)])
 

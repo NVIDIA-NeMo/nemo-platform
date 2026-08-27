@@ -100,7 +100,15 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
         (
             HarborAgentTaskRunner(config=HarborRuntimeConfig(jobs_dir=Path("/jobs"))),
             "harbor",
-            {"agent_name", "agent_import_path", "effective_agent", "n_attempts", "jobs_dir", "reward_key"},
+            {
+                "agent_name",
+                "agent_import_path",
+                "effective_agent",
+                "n_attempts",
+                "jobs_dir",
+                "reward_key",
+                "trace_format",
+            },
         ),
     ]
 
@@ -181,6 +189,17 @@ def test_harbor_records_the_effective_agent_when_a_custom_import_path_overrides_
     # Built-in agents still resolve through agent_name, defaulting to Harbor's oracle.
     assert _info(agent_name="oracle")["effective_agent"] == "oracle"
     assert _info()["effective_agent"] == "oracle"
+
+
+def test_harbor_records_the_result_shaping_trace_format() -> None:
+    from pathlib import Path
+
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
+
+    config = HarborRuntimeConfig(jobs_dir=Path("/jobs"))
+
+    assert HarborAgentTaskRunner(config=config).runner_info().config["trace_format"] == "atif"
+    assert HarborAgentTaskRunner(config=config, trace_format="otlp").runner_info().config["trace_format"] == "otlp"
 
 
 def test_gym_redacts_credential_looking_hydra_params() -> None:
