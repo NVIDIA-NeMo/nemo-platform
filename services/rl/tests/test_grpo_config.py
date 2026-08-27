@@ -12,6 +12,7 @@ import pytest
 import yaml
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.jobs.training.schemas import (
+    BatchingStrategy,
     GRPOConfig,
     LoRAConfig,
     ModelConfig,
@@ -1169,4 +1170,142 @@ def test_reward_scaling_reaches_grpo(tmp_path: Path, job_ctx: NMPJobContext, mon
         "source_max": 1.0,
         "target_min": -1.0,
         "target_max": 1.0,
+    }
+
+
+def test_batching_defaults_to_dynamic_with_derived_budget(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default is dynamic, with a budget derived as max_seq_length * micro_batch_size."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4))
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+
+    # max_seq_length=512, micro_batch_size=1 from the fixture.
+    assert policy["dynamic_batching"] == {
+        "enabled": True,
+        "train_mb_tokens": 512,
+        "logprob_mb_tokens": 512,
+        "sequence_length_round": 64,
+    }
+    assert policy["sequence_packing"] == {"enabled": False}
+
+
+def test_batching_static_disables_both(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, batching_strategy=BatchingStrategy.STATIC),
+    )
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert policy["dynamic_batching"] == {"enabled": False}
+    assert policy["sequence_packing"] == {"enabled": False}
+
+
+def test_batching_sequence_packing_carries_algorithm(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            batching_strategy=BatchingStrategy.SEQUENCE_PACKING,
+            train_mb_tokens=2048,
+        ),
+    )
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert policy["dynamic_batching"] == {"enabled": False}
+    assert policy["sequence_packing"] == {
+        "enabled": True,
+        "train_mb_tokens": 2048,
+        "logprob_mb_tokens": 2048,
+        "algorithm": "modified_first_fit_decreasing",
+        "sequence_length_round": 64,
+    }
+
+
+@pytest.mark.parametrize("strategy", list(BatchingStrategy))
+def test_batching_modes_are_never_both_enabled(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch, strategy: BatchingStrategy
+) -> None:
+    """NeMo-RL asserts the pair is mutually exclusive; violating it fails only after the
+    model download and vLLM startup, so pin the invariant here."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, batching_strategy=strategy))
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert not (policy["dynamic_batching"]["enabled"] and policy["sequence_packing"]["enabled"])
+
+
+def test_batching_rejects_budget_below_max_seq_length(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A budget under max_seq_length leaves the longest rollout unable to fit anywhere."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, train_mb_tokens=256),  # fixture max_seq_length=512
+    )
+    with pytest.raises(ValueError, match="below max_seq_length"):
+        compile_grpo_config(step, job_ctx)
+
+
+def test_sequence_packing_rejected_under_context_parallel(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DTensorPolicyWorker rejects packing under CP; catch it at compile time instead."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, batching_strategy=BatchingStrategy.SEQUENCE_PACKING),
+    )
+    step.parallelism.context_parallel_size = 2
+    with pytest.raises(ValueError, match="not supported with context_parallel_size"):
+        compile_grpo_config(step, job_ctx)
+
+    # dynamic has no such restriction on the GRPO + DTensor path.
+    step.training.grpo.batching_strategy = BatchingStrategy.DYNAMIC
+    assert compile_grpo_config(step, job_ctx)["policy"]["dynamic_batching"]["enabled"] is True
+
+
+def test_hf_config_overrides_passthrough_preserves_nesting(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nested keys must survive: Qwen3.5 reads router_aux_loss_coef under text_config."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    overrides = {"text_config": {"router_aux_loss_coef": 0.0}}
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, hf_config_overrides=overrides),
+    )
+    cfg = compile_grpo_config(step, job_ctx)
+    assert cfg["policy"]["hf_config_overrides"] == {"text_config": {"router_aux_loss_coef": 0.0}}
+    # Copied, not aliased: the caller's dict must not be mutated by compilation.
+    assert overrides == {"text_config": {"router_aux_loss_coef": 0.0}}
+
+
+def test_hf_config_overrides_absent_leaves_key_off(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4))
+    assert "hf_config_overrides" not in compile_grpo_config(step, job_ctx)["policy"]
+
+
+def test_router_aux_loss_coef_layers_onto_passthrough(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scalar shortcut still writes top-level, alongside unrelated nested overrides."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            router_aux_loss_coef=0.0,
+            hf_config_overrides={"text_config": {"rope_theta": 1000.0}},
+        ),
+    )
+    assert compile_grpo_config(step, job_ctx)["policy"]["hf_config_overrides"] == {
+        "text_config": {"rope_theta": 1000.0},
+        "router_aux_loss_coef": 0.0,
     }

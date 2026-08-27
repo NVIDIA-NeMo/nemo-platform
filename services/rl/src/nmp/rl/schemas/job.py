@@ -11,7 +11,7 @@ from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
 from nmp.customization_common.schemas.values import OutputNameType
 from nmp.customization_common.training.reporting import ProgressReportingConfig
-from nmp.rl.app.jobs.training.schemas import OptimizerType
+from nmp.rl.app.jobs.training.schemas import BatchingStrategy, OptimizerType
 from nmp.rl.entities.values import TrainingType
 from pydantic import ConfigDict, Discriminator, Field, model_validator
 
@@ -415,6 +415,27 @@ class GRPOTraining(_TrainingBase):
         "0 into a negative reward instead of a merely smaller positive one.",
     )
 
+    # --- Micro-batch construction ---
+    batching_strategy: BatchingStrategy = Field(
+        default=BatchingStrategy.DYNAMIC,
+        description="How rollouts are grouped into training micro-batches. `dynamic` fills each "
+        "micro-batch to a token budget so short rollouts share a batch instead of each paying for a "
+        "full-length pad. `sequence_packing` concatenates rollouts into packed sequences; it is "
+        "rejected for context_parallel_size > 1. `static` is one rollout per slot.",
+    )
+    train_mb_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        description="Token budget per training micro-batch, read by `dynamic` and `sequence_packing`. "
+        "Defaults to max_seq_length * micro_batch_size, the peak `static` already provisions for. "
+        "Lower it if you OOM.",
+    )
+    sequence_length_round: int = Field(
+        default=64,
+        gt=0,
+        description="Round bucketed micro-batch sequence lengths up to a multiple of this. Only read by `dynamic`.",
+    )
+
     # --- Per-architecture backend settings ---
     automodel_kwargs: dict[str, Any] | None = Field(
         default=None,
@@ -425,8 +446,17 @@ class GRPOTraining(_TrainingBase):
     router_aux_loss_coef: float | None = Field(
         default=None,
         ge=0.0,
-        description="MoE router auxiliary-loss coefficient, applied as a HuggingFace config override. "
-        "Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own value.",
+        description="MoE router auxiliary-loss coefficient, applied as a top-level HuggingFace config "
+        "override. Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own "
+        "value. Models that nest their config (Qwen3.5 reads it under `text_config`) need "
+        "`hf_config_overrides` instead — a top-level key they do not read is absorbed silently.",
+    )
+    hf_config_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description="Passed to NeMo-RL's `policy.hf_config_overrides` verbatim, which forwards it to "
+        "the training model as HuggingFace config kwargs and to vLLM as `hf_overrides`. Nested keys "
+        "are preserved, so this reaches models that namespace their config, e.g. "
+        '`{"text_config": {"router_aux_loss_coef": 0.0}}` for Qwen3.5.',
     )
     vllm_tensor_parallel_size: int | None = Field(
         default=None,
@@ -448,6 +478,19 @@ class GRPOTraining(_TrainingBase):
             self.lora = LoRAParams()
         if self.finetuning_type == "all_weights" and self.lora is not None:
             raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
+
+    @model_validator(mode="after")
+    def _hf_config_overrides_do_not_collide(self) -> Self:
+        # router_aux_loss_coef writes the same top-level key, and HuggingFace absorbs an
+        # unknown kwarg without complaining -- so a silent loser here means the MoE aux
+        # loss stays on and only shows up as degraded accuracy many steps in.
+        if self.router_aux_loss_coef is not None and "router_aux_loss_coef" in (self.hf_config_overrides or {}):
+            raise ValueError(
+                "router_aux_loss_coef is set both directly and inside hf_config_overrides. "
+                "Keep one: use hf_config_overrides when the model nests it (e.g. Qwen3.5 reads "
+                "it under text_config)."
+            )
         return self
 
     @model_validator(mode="after")
