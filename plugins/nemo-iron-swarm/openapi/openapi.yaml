@@ -872,15 +872,24 @@ paths:
       tags:
       - Iron Swarm Runs
       summary: Apply Mitigation
-      description: 'Adopt a run''s hardened workflow: write it onto the run''s target
-        agent config (no redeploy).
+      description: 'Adopt a run''s hardened guardrails onto the run''s target agent
+        config (no redeploy).
 
 
-        Reverses the Inference-Gateway injection so the stored config stays deployment-neutral,
-        then updates
+        This is the *only* place ``relay.components[]`` is produced. The guardrail
+        runs from a plugins.toml
 
-        the ``Agent`` entity in place. The user must redeploy the agent for the guardrails
-        to take effect.'
+        inside the victim; the agent registry stores agent config, so adoption re-homes
+        the same component
+
+        onto the entity. Near-identity, not a translation: the ``config`` object is
+        the one Relay loaded.
+
+
+        Reverses the Inference-Gateway injection so the stored config stays deployment-neutral.
+        The user
+
+        must redeploy the agent for the guardrails to take effect.'
       operationId: apply_mitigation_apis_iron_swarm_v2_workspaces__workspace__runs__name__apply_mitigation_post
       parameters:
       - name: workspace
@@ -1419,13 +1428,13 @@ components:
   schemas:
     ApplyMitigationRequest:
       properties:
-        workflow_yaml:
+        guardrails_toml:
           type: string
-          title: Workflow Yaml
-          description: Hardened NAT workflow YAML (the mitigations 'after' document).
+          title: Guardrails Toml
+          description: Hardened Relay guardrail set (the mitigations 'after' document).
       type: object
       required:
-      - workflow_yaml
+      - guardrails_toml
       title: ApplyMitigationRequest
       description: "Body for ``POST /v2/workspaces/{workspace}/runs/{name}/apply-mitigation``\
         \ \u2014 adopt the hardened workflow.\n\nThe client passes the hardened workflow\
@@ -1477,9 +1486,9 @@ components:
         \ live preview and to feed a sanity-check run."
     ComposeDefenseResponse:
       properties:
-        workflow_yaml:
-          title: Workflow Yaml
-          description: Workflow with only the selected guardrails, or null.
+        guardrails_toml:
+          title: Guardrails Toml
+          description: Plugin config with only the selected guardrails, or null.
           type: string
         policy_yaml:
           title: Policy Yaml
@@ -2877,8 +2886,8 @@ components:
           type: boolean
           title: Validate Only
           default: false
-        defense_workflow:
-          title: Defense Workflow
+        defense_guardrails:
+          title: Defense Guardrails
           type: string
         defense_policy:
           title: Defense Policy

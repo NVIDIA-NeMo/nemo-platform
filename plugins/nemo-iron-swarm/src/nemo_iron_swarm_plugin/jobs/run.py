@@ -24,7 +24,7 @@ from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.jobs import _common, benign_suite
 from nemo_iron_swarm_plugin.jobs.artifacts import (
     _replay_args,
-    _save_composed_workflow,
+    _save_composed_guardrails,
     _save_events_fileset,
     _save_hitlog_fileset,
     _save_mitigations,
@@ -331,7 +331,7 @@ class IronSwarmRunJob(NemoJob):
         # defenders, so the replay measures the fixed defense without generating new mitigations. Always a
         # single round (validation, not iterative hardening).
         if validate_only:
-            _seed_validation_manifest(manifest, config.get("defense_workflow"), config.get("defense_policy"), ctx)
+            _seed_validation_manifest(manifest, config.get("defense_guardrails"), config.get("defense_policy"), ctx)
             rounds = 1
         # Studio submits no env_file; iron-swarm reads victim creds from a project dotenv, so synthesize
         # one from the operator env (which carries the provisioned INFERENCE_API_KEY) for the manifest's secrets.
@@ -396,7 +396,7 @@ class IronSwarmRunJob(NemoJob):
             _save_validation(ctx)
             # Also persist the exact composed workflow that was validated, so the Harden tab can recover it
             # after a reload and keep "Apply to Agent" enabled without re-running the check.
-            _save_composed_workflow(ctx, config.get("defense_workflow"))
+            _save_composed_guardrails(ctx, config.get("defense_guardrails"))
         elif not config.get("stop_after_synth"):
             _save_mitigations(ctx)
 

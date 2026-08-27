@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useAgentsForSelect } from '@iron-swarm/api/agents';
 import { useInspectAgent } from '@iron-swarm/api/filesets';
 import { ModelGroupFields } from '@iron-swarm/components/ModelGroupFields';
-import { ProjectManifestWizard } from '@iron-swarm/components/ProjectManifestWizard';
 import { parseEnvPairs, splitList } from '@iron-swarm/formValues';
 import {
   getIronSwarmListManifestsQueryKey,
@@ -17,7 +16,6 @@ import { useBreadcrumbs, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
 import {
   manifestFormSchema,
-  NAME_PATTERN,
   type ManifestFormData,
 } from '@iron-swarm/routes/NewIronSwarmManifestRoute/schema';
 import { AccessibleTitle, AccordionSection, ControlledSelect, ControlledTextInput } from '@nemo/common';
@@ -27,7 +25,6 @@ import {
   Flex,
   Panel,
   PageHeader,
-  SegmentedControl,
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
@@ -36,14 +33,11 @@ import { FC, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
 
-type Source = 'agent' | 'project';
-
 export const NewIronSwarmManifestRoute: FC = () => {
   const workspace = useWorkspace();
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [source, setSource] = useState<Source>('agent');
   const [models, setModels] = useState<WarGameModels>({});
   const { data: modelDefaults } = useIronSwarmGetModelConfigDefaults(workspace, { query: {} });
 
@@ -59,8 +53,6 @@ export const NewIronSwarmManifestRoute: FC = () => {
     defaultValues: { name: '', agent: '', egress: '', env: '', port: '', secrets: '' },
     resolver: zodResolver(manifestFormSchema),
   });
-  const nameValue = watch('name').trim();
-  const nameValid = NAME_PATTERN.test(nameValue);
 
   // Pre-fill the port + secret fields from the agent's auto-derived defaults when one is selected;
   // both stay editable so the operator can override.
@@ -68,7 +60,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
   const inspectAgent = useInspectAgent();
   const { mutate: runInspectAgent } = inspectAgent;
   useEffect(() => {
-    if (source !== 'agent' || !selectedAgent) return;
+    if (!selectedAgent) return;
     runInspectAgent(
       { workspace, agent: selectedAgent },
       {
@@ -78,7 +70,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
         },
       }
     );
-  }, [source, selectedAgent, workspace, runInspectAgent, setValue]);
+  }, [selectedAgent, workspace, runInspectAgent, setValue]);
 
   const { data: agents = [], isLoading: agentsLoading } = useAgentsForSelect(workspace);
   const agentItems = useMemo(
@@ -115,7 +107,6 @@ export const NewIronSwarmManifestRoute: FC = () => {
       workspace,
       data: {
         name: data.name,
-        source_type: 'agent',
         agent: data.agent,
         ...(egress.length ? { egress } : {}),
         ...(secrets.length ? { secrets } : {}),
@@ -144,21 +135,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
               }}
             />
 
-            <Stack gap="density-sm">
-              <Text kind="body/semibold/sm">Agent Source</Text>
-              <SegmentedControl
-                className="w-full"
-                value={source}
-                onValueChange={(v) => setSource(v as Source)}
-                items={[
-                  { value: 'agent', children: 'Deployed Agent' },
-                  { value: 'project', children: 'Upload Project' },
-                ]}
-              />
-            </Stack>
-
-            {source === 'agent' ? (
-              <form onSubmit={onSubmitAgent}>
+            <form onSubmit={onSubmitAgent}>
                 <Stack gap="density-xl">
                   <ControlledSelect
                     useControllerProps={{ control, name: 'agent' }}
@@ -173,7 +150,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
                       slotHelp:
                         'Comma-separated host[:port] for external services the agent calls (e.g. ' +
                         'en.wikipedia.org, raw.githubusercontent.com). Needed when the tool hosts are not ' +
-                        'discoverable from the workflow config.',
+                        'discoverable from the agent config.',
                     }}
                   />
                   <ControlledTextInput
@@ -227,22 +204,8 @@ export const NewIronSwarmManifestRoute: FC = () => {
                       <Link to={getIronSwarmManifestListRoute(workspace)}>Cancel</Link>
                     </Button>
                   </Flex>
-                </Stack>
-              </form>
-            ) : (
-              <ProjectManifestWizard
-                workspace={workspace}
-                manifestName={nameValue}
-                nameValid={nameValid}
-                isCreating={createManifest.isPending}
-                onCreate={(values) =>
-                  createManifest.mutate({
-                    workspace,
-                    data: { name: nameValue, source_type: 'project', ...values },
-                  })
-                }
-              />
-            )}
+              </Stack>
+            </form>
           </Stack>
         </Panel>
       </Stack>

@@ -162,7 +162,7 @@ class ApplyMitigationRequest(BaseModel):
     the Inference-Gateway injection and writes it onto the run's target agent config (no redeploy).
     """
 
-    workflow_yaml: str = Field(description="Hardened NAT workflow YAML (the mitigations 'after' document).")
+    guardrails_toml: str = Field(description="Hardened Relay guardrail set (the mitigations 'after' document).")
 
 
 class ApplyMitigationResponse(BaseModel):
@@ -190,7 +190,9 @@ class ComposeDefenseRequest(BaseModel):
 class ComposeDefenseResponse(BaseModel):
     """The composed workflow + policy for the selected defenses."""
 
-    workflow_yaml: str | None = Field(default=None, description="Workflow with only the selected guardrails, or null.")
+    guardrails_toml: str | None = Field(
+        default=None, description="Plugin config with only the selected guardrails, or null."
+    )
     policy_yaml: str | None = Field(
         default=None, description="Hardened policy if selected, else the baseline, or null."
     )

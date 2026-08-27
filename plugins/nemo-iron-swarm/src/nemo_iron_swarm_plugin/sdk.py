@@ -286,14 +286,14 @@ class IronSwarmPluginResource:
         against it — measuring which attacks are now blocked and which benign requests are wrongly blocked. The
         produced ``validation`` job result holds the per-item verdicts.
         """
-        workflow_yaml, policy_yaml = compose_defense(mitigations, selected_defense_ids)
+        guardrails_toml, policy_yaml = compose_defense(mitigations, selected_defense_ids)
         spec = {
             "manifest_id": manifest_id,
             "driver": "service",
             "validate_only": True,
             "replay_hitlog_fileset": replay_hitlog_fileset,
             "env_file": env_file,
-            "defense_workflow": workflow_yaml,
+            "defense_guardrails": guardrails_toml,
             "defense_policy": policy_yaml,
         }
         return NemoJobScheduler().submit_remote(

@@ -3,8 +3,8 @@
 
 """Build the on-host ``iron-swarm.yaml`` the war-game runs against.
 
-Materializes a saved manifest (agent- or project-sourced) onto disk, applies the run's overrides
-(attacker intensity, defender selection, port), and seeds the frozen validate-only baseline.
+Materializes a saved manifest onto disk, applies the run's overrides (attacker intensity, defender
+selection, port), and seeds the frozen validate-only baseline.
 """
 
 from __future__ import annotations
@@ -22,6 +22,11 @@ from nemo_iron_swarm_plugin.jobs.errors import CATEGORY_FILESET, CATEGORY_MANIFE
 from nemo_platform_plugin.job_context import JobContext
 
 logger = logging.getLogger(__name__)
+
+#: Where Relay reads system-policy plugin config inside the victim. Duplicated from
+#: ``iron_swarm.openshell.relay_victim`` rather than imported: iron-swarm is deliberately not a
+#: dependency of this plugin (its garak closure conflicts with the platform's).
+_RELAY_PLUGINS_UPLOAD_DEST = "/etc/nemo-relay/plugins.toml"
 
 
 # Attacker effort presets → garak knobs written into the manifest's top-level `garak:` block.
@@ -263,25 +268,29 @@ def _persist_upgraded_bundle(sdk: Any, manifest_id: str, ctx: JobContext, record
 
 
 def _seed_validation_manifest(
-    manifest_path: str, defense_workflow: str | None, defense_policy: str | None, ctx: JobContext
+    manifest_path: str, defense_guardrails: str | None, defense_policy: str | None, ctx: JobContext
 ) -> None:
     """Rewrite a materialized manifest for a frozen validate-only run: zero defenders + composed baseline.
 
-    Seeds the user-chosen composed workflow as the victim's baseline workflow (overwriting the materialized
-    scaffold) and, when a policy was chosen, points the victim at the composed OpenShell policy. Forces
-    ``overrides.defenders: []`` so iron-swarm runs no defender agents — it deploys this fixed baseline and only
-    replays + scores (see the frozen-validation design). Attacks/benign come from ``--replay`` + the suite.
+    Seeds the user-chosen composed guardrail set as the victim's baseline plugins.toml and, when a policy
+    was chosen, points the victim at the composed OpenShell policy. Forces ``overrides.defenders: []`` so
+    iron-swarm runs no defender agents — it deploys this fixed baseline and only replays + scores (see the
+    frozen-validation design). Attacks/benign come from ``--replay`` + the suite.
     """
     manifest_dir = ctx.storage.persistent
     data = yaml.safe_load(Path(manifest_path).read_text(encoding="utf-8")) or {}
-    agent = data.get("agent", {})
-    if defense_workflow and agent.get("project_dir") and agent.get("workflow"):
-        # project_dir may be relative (agent source) or absolute (project source); `/` handles both.
-        workflow_file = manifest_dir / agent["project_dir"] / agent["workflow"]
-        workflow_file.parent.mkdir(parents=True, exist_ok=True)
-        workflow_file.write_text(defense_workflow, encoding="utf-8")
     overrides = data.setdefault("overrides", {})
     overrides["defenders"] = []  # zero defenders: deploy the frozen baseline, generate nothing
+    if defense_guardrails:
+        guardrails_file = manifest_dir / "composed-plugins.toml"
+        guardrails_file.write_text(defense_guardrails, encoding="utf-8")
+        # Three keys, because iron-swarm derives three things from the plugins path: what the defenders
+        # base on (`target`), what seeds the run's init/ baseline (`storage`), and what is uploaded into
+        # the victim (`uploads`). Overriding only one would validate a guardrail set the victim never ran.
+        overrides.setdefault("target", {})["agent_relay_plugins"] = str(guardrails_file)
+        overrides.setdefault("storage", {})["victim_relay_plugins_path"] = str(guardrails_file)
+        config = overrides.setdefault("victim_control", {}).setdefault("config", {})
+        config["uploads"] = [f"{guardrails_file}:{_RELAY_PLUGINS_UPLOAD_DEST}"]
     if defense_policy:
         policy_file = manifest_dir / "composed-policy.yaml"
         policy_file.write_text(defense_policy, encoding="utf-8")

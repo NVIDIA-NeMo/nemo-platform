@@ -39,8 +39,6 @@ import type {
   HealthzApisIronSwarmV1HealthzGet200,
   InspectAgentRequest,
   InspectAgentResponse,
-  InspectProjectRequest,
-  InspectProjectResponse,
   IronSwarmGetEventsParams,
   IronSwarmGetJobLogsParams,
   IronSwarmGetSynthBenignJobLogsParams,
@@ -1588,7 +1586,7 @@ export function useIronSwarmGetJobStatusSuspense<TData = Awaited<ReturnType<type
 
 
 /**
- * List saved manifests in the workspace, with pagination and an ``agent``/``source_type`` filter.
+ * List saved manifests in the workspace, with pagination and an ``agent`` filter.
  * @summary List Manifests
  */
 export const ironSwarmListManifests = (
@@ -1750,7 +1748,7 @@ export function useIronSwarmListManifestsSuspense<TData = Awaited<ReturnType<typ
 
 
 /**
- * `init`: build a manifest (from a deployed agent or an uploaded project) and persist it by ``name``.
+ * `init`: resolve a registered agent into a manifest and persist it by ``name``.
  * @summary Create Manifest
  */
 export const ironSwarmCreateManifest = (
@@ -1814,76 +1812,6 @@ export const useIronSwarmCreateManifest = <TError = ErrorType<HTTPValidationErro
         TContext
       > => {
       return useMutation(getIronSwarmCreateManifestMutationOptions(options), queryClient);
-    }
-
-/**
- * Detect an uploaded NAT project's layout (`iron-swarm inspect`) to pre-fill the create wizard.
- *
- * Downloads the project bundle, expands it, and runs the read-only, offline detector — no code is
- * executed. Returns the discovered workflows, launch mode, name, secrets, and egress as defaults.
- * @summary Inspect Project
- */
-export const ironSwarmInspectProject = (
-    workspace: string,
-    inspectProjectRequest: InspectProjectRequest,
- signal?: AbortSignal
-) => {
-
-
-      return customFetch<InspectProjectResponse>(
-      {url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/manifests/inspect`, method: 'POST',
-      headers: {'Content-Type': 'application/json', },
-      data: inspectProjectRequest, signal
-    },
-      );
-    }
-
-
-
-
-export const getIronSwarmInspectProjectMutationOptions = <TError = ErrorType<HTTPValidationError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectProject>>, TError,{workspace: string;data: InspectProjectRequest}, TContext>, }
-): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectProject>>, TError,{workspace: string;data: InspectProjectRequest}, TContext> => {
-
-const mutationKey = ['ironSwarmInspectProject'];
-const {mutation: mutationOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ironSwarmInspectProject>>, {workspace: string;data: InspectProjectRequest}> = (props) => {
-          const {workspace,data} = props ?? {};
-
-          return  ironSwarmInspectProject(workspace,data,)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type IronSwarmInspectProjectMutationResult = NonNullable<Awaited<ReturnType<typeof ironSwarmInspectProject>>>
-    export type IronSwarmInspectProjectMutationBody = InspectProjectRequest
-    export type IronSwarmInspectProjectMutationError = ErrorType<HTTPValidationError>
-
-    /**
- * @summary Inspect Project
- */
-export const useIronSwarmInspectProject = <TError = ErrorType<HTTPValidationError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectProject>>, TError,{workspace: string;data: InspectProjectRequest}, TContext>, }
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof ironSwarmInspectProject>>,
-        TError,
-        {workspace: string;data: InspectProjectRequest},
-        TContext
-      > => {
-      return useMutation(getIronSwarmInspectProjectMutationOptions(options), queryClient);
     }
 
 /**
@@ -2932,10 +2860,14 @@ export const useIronSwarmDeleteRun = <TError = ErrorType<HTTPValidationError>,
     }
 
 /**
- * Adopt a run's hardened workflow: write it onto the run's target agent config (no redeploy).
+ * Adopt a run's hardened guardrails onto the run's target agent config (no redeploy).
  *
- * Reverses the Inference-Gateway injection so the stored config stays deployment-neutral, then updates
- * the ``Agent`` entity in place. The user must redeploy the agent for the guardrails to take effect.
+ * This is the *only* place ``relay.components[]`` is produced. The guardrail runs from a plugins.toml
+ * inside the victim; the agent registry stores agent config, so adoption re-homes the same component
+ * onto the entity. Near-identity, not a translation: the ``config`` object is the one Relay loaded.
+ *
+ * Reverses the Inference-Gateway injection so the stored config stays deployment-neutral. The user
+ * must redeploy the agent for the guardrails to take effect.
  * @summary Apply Mitigation
  */
 export const ironSwarmApplyMitigation = (
