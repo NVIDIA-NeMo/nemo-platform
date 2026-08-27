@@ -3,6 +3,8 @@
 
 """Tests for the file-source seam and the per-format readers."""
 
+import io
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -301,3 +303,20 @@ def test_parquet_read_honours_the_same_batch_ceiling_as_batches(tmp_path):
 
     assert seen == [parquet_module._BATCH_ROWS]
     assert len(result.rows) == 50
+
+
+def test_an_over_long_line_costs_that_line_and_not_the_file(monkeypatch):
+    # The malformed input this module already anticipates -- a pretty-printed JSON array saved as
+    # `.jsonl` -- is one line as long as the file. Iterating the stream allocated the whole thing as
+    # one bytes object, then again for `.strip()`, then the parsed tree, all before discovering it
+    # was not a row. `row_cap` cannot help: the cap is checked after the line has been read.
+    from nemo_datasets_plugin.profiler.readers import jsonl as jsonl_module
+
+    monkeypatch.setattr(jsonl_module, "_MAX_LINE_BYTES", 64)
+    stream = io.BytesIO(b'{"a": 1}\n{"pretty": [' + b"1," * 200 + b'1]}\n{"b": 2}\n')
+
+    out = list(jsonl_module._records(stream))
+
+    # The line is named and skipped; numbering survives it and the rows around it still parse.
+    assert [record for record, _ in out] == [{"a": 1}, None, {"b": 2}]
+    assert out[1][1] == "line 2: longer than 64 bytes; not read"
