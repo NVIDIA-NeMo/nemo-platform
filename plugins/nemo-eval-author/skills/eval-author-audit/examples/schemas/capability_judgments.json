@@ -1,0 +1,19 @@
+{
+  "schema": "nemo.eval_author.audit_capability_judgments.v1",
+  "judged_by": "eval-author-audit skill",
+  "instructions": "Judge only non-tool capability evidence from the inspected ATIF trace. Do not judge tool_call evidence.",
+  "judgments": [
+    {
+      "capability": "account_recovery",
+      "evidence_index": 0,
+      "kind": "user_intent",
+      "description": "User is trying to recover account access.",
+      "status": "satisfied",
+      "confidence": "high",
+      "rationale": "The user asks for help recovering account access.",
+      "supporting_trace_refs": [
+        "$.steps[0].message"
+      ]
+    }
+  ]
+}

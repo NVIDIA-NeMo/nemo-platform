@@ -28,16 +28,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _markdown import AuditMarkdownError  # noqa: E402
 from _schema import AuditEnvironmentError, AuditSpecError, item_counts, load_audit_spec  # noqa: E402
-from measurements import tool_calls  # noqa: E402
+from measurements import capabilities, tool_calls  # noqa: E402
 
 JsonObject: TypeAlias = dict[str, Any]
 
 COVERAGE_SCHEMA = "nemo.eval_author.audit_coverage.v1"
 SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas"
 COVERAGE_SCHEMA_PATH = SCHEMAS_DIR / "audit_coverage.schema.json"
+CAPABILITY_JUDGMENTS_SCHEMA_PATH = SCHEMAS_DIR / "audit_capability_judgments.schema.json"
 DETAIL_SCHEMA_PATHS = {
+    capabilities.DETAILS_SCHEMA: SCHEMAS_DIR / "audit_capabilities_details.schema.json",
     tool_calls.DETAILS_SCHEMA: SCHEMAS_DIR / "audit_tool_calls_details.schema.json",
 }
+
+
+@dataclass(frozen=True)
+class MeasurementInputs:
+    """Optional sidecar inputs shared by selected measurement methods."""
+
+    capability_judgments: JsonObject | None
 
 
 @dataclass(frozen=True)
@@ -46,15 +55,30 @@ class MeasurementMethod:
 
     name: str
     details_schema: str
-    measure: Callable[[JsonObject, Trajectory], JsonObject]
+    measure: Callable[[JsonObject, Trajectory, MeasurementInputs], JsonObject]
+
+
+def _measure_capabilities(audit: JsonObject, trajectory: Trajectory, inputs: MeasurementInputs) -> JsonObject:
+    """Run capability coverage with optional skill-authored judgments."""
+    return capabilities.measure(audit, trajectory, judgments=inputs.capability_judgments)
+
+
+def _measure_tool_calls(audit: JsonObject, trajectory: Trajectory, _inputs: MeasurementInputs) -> JsonObject:
+    """Run tool-call coverage without sidecar inputs."""
+    return tool_calls.measure(audit, trajectory)
 
 
 METHODS: dict[str, MeasurementMethod] = {
+    capabilities.METHOD_NAME: MeasurementMethod(
+        name=capabilities.METHOD_NAME,
+        details_schema=capabilities.DETAILS_SCHEMA,
+        measure=_measure_capabilities,
+    ),
     tool_calls.METHOD_NAME: MeasurementMethod(
         name=tool_calls.METHOD_NAME,
         details_schema=tool_calls.DETAILS_SCHEMA,
-        measure=tool_calls.measure,
-    )
+        measure=_measure_tool_calls,
+    ),
 }
 
 
@@ -149,11 +173,17 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         help=f"comma-separated measurement methods to run (default: {tool_calls.METHOD_NAME})",
     )
+    parser.add_argument(
+        "--capability-judgments",
+        type=Path,
+        help="JSON file of skill-authored judgments for non-tool capability evidence",
+    )
     parser.add_argument("--compact", action="store_true", help="emit compact JSON")
     args = parser.parse_args(argv)
 
     try:
         method_names = _measurement_methods(args.measure)
+        inputs = _measurement_inputs(args, method_names)
         audit = load_audit_spec(args.audit)
         pending_subject = _subject(args)
         loaded_trace = _load_harbor_trajectory(pending_subject.trace_path)
@@ -164,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
             trajectory=loaded_trace.trajectory,
             subject=subject_info,
             method_names=method_names,
+            inputs=inputs,
         )
         _validate_reports(reports)
         written_reports = _write_reports(reports, out_dir=args.out_dir, subject=subject_info, compact=args.compact)
@@ -311,6 +342,32 @@ def _measurement_methods(measure_values: list[str] | None) -> list[str]:
     return list(dict.fromkeys(method_names))
 
 
+def _measurement_inputs(args: argparse.Namespace, method_names: list[str]) -> MeasurementInputs:
+    """Load optional sidecar inputs and ensure they apply to the selected methods."""
+    if args.capability_judgments is not None and capabilities.METHOD_NAME not in method_names:
+        raise AuditMeasurementError("--capability-judgments requires --measure capabilities")
+    return MeasurementInputs(capability_judgments=_load_capability_judgments(args.capability_judgments))
+
+
+def _load_capability_judgments(path: Path | None) -> JsonObject | None:
+    """Read and validate optional skill-authored capability judgments."""
+    if path is None:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise AuditMeasurementError(f"could not read capability judgments at {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise AuditMeasurementError(f"capability judgments at {path} must be a JSON object")
+    _validate_report(
+        payload,
+        schema_path=CAPABILITY_JUDGMENTS_SCHEMA_PATH,
+        label="capability judgments",
+        generated=False,
+    )
+    return payload
+
+
 def _measure_all(
     *,
     audit: JsonObject,
@@ -318,10 +375,18 @@ def _measure_all(
     trajectory: Trajectory,
     subject: Subject,
     method_names: list[str],
+    inputs: MeasurementInputs,
 ) -> list[MeasurementReport]:
     """Fan the shared trajectory into each selected measurement method."""
     return [
-        _measure(audit=audit, audit_path=audit_path, trajectory=trajectory, subject=subject, method_name=method_name)
+        _measure(
+            audit=audit,
+            audit_path=audit_path,
+            trajectory=trajectory,
+            subject=subject,
+            method_name=method_name,
+            inputs=inputs,
+        )
         for method_name in method_names
     ]
 
@@ -333,10 +398,14 @@ def _measure(
     trajectory: Trajectory,
     subject: Subject,
     method_name: str,
+    inputs: MeasurementInputs,
 ) -> MeasurementReport:
     """Wrap one method's raw result in the shared coverage/details envelope."""
     method = METHODS[method_name]
-    measurement = method.measure(audit, trajectory)
+    try:
+        measurement = method.measure(audit, trajectory, inputs)
+    except ValueError as exc:
+        raise AuditMeasurementError(str(exc)) from exc
     audit_info = _audit_info(audit, audit_path)
     subject_info = subject.to_json()
     method_info = {"name": method.name}
@@ -435,8 +504,8 @@ def _details_schema_path(details: JsonObject) -> Path:
     return DETAIL_SCHEMA_PATHS[schema]
 
 
-def _validate_report(report: JsonObject, *, schema_path: Path, label: str) -> None:
-    """Validate generated JSON against the schema committed with the skill."""
+def _validate_report(report: JsonObject, *, schema_path: Path, label: str, generated: bool = True) -> None:
+    """Validate JSON against a schema committed with the skill."""
     try:
         from jsonschema import Draft202012Validator  # ty: ignore[unresolved-import]
         from jsonschema.exceptions import SchemaError  # ty: ignore[unresolved-import]
@@ -457,14 +526,19 @@ def _validate_report(report: JsonObject, *, schema_path: Path, label: str) -> No
         key=lambda error: (list(error.absolute_path), error.message),
     )
     if errors:
+        prefix = f"generated {label} report" if generated else label
         raise AuditMeasurementError(
-            f"generated {label} report failed its JSON Schema: "
+            f"{prefix} failed its JSON Schema: "
             + "\n".join(f"{list(error.absolute_path)}: {error.message}" for error in errors)
         )
 
 
 def _string(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
+    """Return stripped non-empty strings and drop every other value."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _json(payload: JsonObject, *, compact: bool) -> str:
