@@ -389,7 +389,11 @@ class PrefixPair:
 # How many rows the pair probe will spend looking for its two columns before concluding a partition
 # has none. Well above any batch, and far below a file: a ragged jsonl can introduce a column late,
 # and a partition without the pair must not pay a walk per row forever to keep discovering that.
-_RESOLVE_ROW_BUDGET = 1024
+# Rows spent looking for a chosen/rejected pair before concluding a partition has none. Must be
+# larger than one batch of rows or the bound means nothing: it was equal to `_BATCH_ROWS`, so the
+# first batch consumed all of it and "a column can first appear well into a file" was never true.
+# Line-delimited rows are ragged, and an optional column can genuinely arrive thousands of rows in.
+_RESOLVE_ROW_BUDGET = 8192
 
 _CHOSEN_NAMES = frozenset(name for name, role in _ALIAS_ROLES.items() if role == "chosen")
 _REJECTED_NAMES = frozenset(name for name, role in _ALIAS_ROLES.items() if role == "rejected")
@@ -409,44 +413,53 @@ class PrefixPairFold:
     def __init__(self) -> None:
         self._pairs = 0
         self._shared = 0
+        # How the last row that held the pair spelled it. A hint, not the answer -- see `update`.
         self._left_key: str | None = None
         self._right_key: str | None = None
-        self._searched = 0  # rows spent looking for the pair's columns
+        self._searched = 0  # rows spent looking for a pair that has never been seen
+        self._gave_up = False
 
-    def _resolve(self, rows: list[dict]) -> None:
-        """Which two columns hold the pair, matched case-insensitively as `_role_for` matches names.
-
-        Searched for until found, then never again: a column name is a fact about the partition, not
-        about the row, and re-deriving it by walking every row cost 68x two dict lookups on a wide
-        one -- paid by every partition, the great majority of which have no such pair at all.
-
-        Bounded by :data:`_RESOLVE_ROW_BUDGET` rather than stopping after the first batch, because
-        line-delimited rows are ragged and a column can first appear well into a file. A partition
-        that has not shown the pair within that many rows is taken not to have one.
-        """
-        for row in rows:
-            if self._searched >= _RESOLVE_ROW_BUDGET:
-                return
-            self._searched += 1
-            for name in row:
-                lowered = name.lower()
-                if self._left_key is None and lowered in _CHOSEN_NAMES:
-                    self._left_key = name
-                elif self._right_key is None and lowered in _REJECTED_NAMES:
-                    self._right_key = name
-            if self._left_key is not None and self._right_key is not None:
-                return
+    def _spellings(self, row: dict) -> tuple[str | None, str | None]:
+        """The pair's two keys as *this* row spells them, matched as `_role_for` matches names."""
+        left = right = None
+        for name in row:
+            lowered = name.lower()
+            if left is None and lowered in _CHOSEN_NAMES:
+                left = name
+            elif right is None and lowered in _REJECTED_NAMES:
+                right = name
+        return left, right
 
     def update(self, rows: list[dict]) -> None:
-        left_key, right_key = self._left_key, self._right_key
-        if left_key is None or right_key is None:
-            self._resolve(rows)
-            left_key, right_key = self._left_key, self._right_key
-        if left_key is None or right_key is None:
-            return
+        """Fold a batch, taking the last row's spelling as a guess and checking it row by row.
+
+        Remembering the spelling is what keeps this cheap: on a wide partition, re-deriving the two
+        keys from every row cost 68x two dict lookups, paid by every partition, the great majority
+        of which hold no such pair at all. But remembering it as *the* answer was wrong -- a column
+        name is a fact about the partition only when the partition came from one export. Two shards
+        written by different tools put `chosen` and `Chosen` in one directory, and pinning the first
+        spelling silently dropped every row using the other. That did not merely lose evidence: 3
+        matching pairs out of 303 became 3 out of 3, and the profile asserted an embedded prompt in
+        "100% of pairs".
+
+        So the remembered keys are tried first and a miss falls back to scanning that row. A
+        homogeneous partition pays two lookups a row, a mixed one pays a scan only on the rows that
+        differ, and a partition with no pair at all pays :data:`_RESOLVE_ROW_BUDGET` rows of
+        scanning and then nothing.
+        """
         for row in rows:
-            left = row.get(left_key)
-            right = row.get(right_key)
+            left = row.get(self._left_key) if self._left_key is not None else None
+            right = row.get(self._right_key) if self._right_key is not None else None
+            if (left is None or right is None) and not self._gave_up:
+                left_key, right_key = self._spellings(row)
+                if left_key is not None and right_key is not None:
+                    self._left_key, self._right_key = left_key, right_key
+                    left, right = row[left_key], row[right_key]
+                elif self._left_key is None or self._right_key is None:
+                    # Still looking for a first pair. Spend a row of the budget; a partition that
+                    # has not shown one by the end of it is taken not to have one.
+                    self._searched += 1
+                    self._gave_up = self._searched >= _RESOLVE_ROW_BUDGET
             if not isinstance(left, str) or not isinstance(right, str):
                 continue
             self._pairs += 1
