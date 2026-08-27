@@ -18,6 +18,10 @@ RUN uv venv --python /usr/local/bin/python3.13 /opt/gym-venv \
         --locked \
         --no-dev \
         --no-install-project \
+    && find /opt/gym-venv/lib/python*/site-packages/ray/jars -type f -name ray_dist.jar -delete \
+    && if [ -d /home/nvs/.cache/uv/archive-v0 ]; then \
+        find /home/nvs/.cache/uv/archive-v0 -type d -path '*/ray/jars' -exec rm -rf {} +; \
+    fi \
     && ln -s /opt/gym-venv/bin/gym /usr/local/bin/gym
 
 FROM runtime AS smoke-test

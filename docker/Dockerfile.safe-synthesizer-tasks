@@ -11,7 +11,7 @@
 # =============================================================================
 # Global ARGs (must be declared before first FROM to be usable in FROM statements)
 # =============================================================================
-ARG PYTHON_VERSION=3.13
+ARG PYTHON_VERSION=3.13.15
 ARG PYTHON_IMAGE=python:${PYTHON_VERSION}-slim-trixie
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.30
 ARG SAFE_SYNTHESIZER_RUNTIME_PACKAGE="nemo-safe-synthesizer[engine,cu129]==0.1.7"
@@ -58,6 +58,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ca-certificates \
         libgomp1 \
         tini && \
+    apt-get install -y --only-upgrade --no-install-recommends \
+        libssl3t64 \
+        openssl \
+        openssl-provider-legacy && \
     groupadd --gid ${USER_GID} ${USERNAME} && \
     useradd --uid ${USER_UID} --gid ${USER_GID} --create-home --shell /bin/bash ${USERNAME} && \
     mkdir -p /workspace && \
@@ -122,7 +126,7 @@ RUN printf '%s\n' \
         "${SAFE_SYNTHESIZER_RUNTIME_PACKAGE}" \
         > /tmp/safe-synthesizer-runtime.txt && \
     printf '%s\n' \
-        'wandb>=0.28.2' \
+        'wandb>=0.29.0' \
         'aiohttp>=3.14.3,<4' \
         'cryptography>=50.0.0,<51' \
         'pyarrow>=23.0.1,<24' \
