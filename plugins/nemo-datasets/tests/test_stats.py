@@ -8,7 +8,9 @@ import random
 
 import pytest
 from nemo_datasets_plugin.profiler.stats import (
+    _MAX_ENUM_VALUES,
     _MAX_ROLE_CHARS,
+    _MAX_ROLES_SEEN,
     _MAX_VOCABULARY_BYTES,
     _MAX_VOCABULARY_VALUE_CHARS,
     _MAX_VOCABULARY_VALUES,
@@ -88,6 +90,33 @@ def test_cardinality_stops_on_total_bytes_before_the_count():
     values = [f"{i:04d}" + "x" * 200 for i in range(_MAX_VOCABULARY_BYTES // 200)]
     assert len(values) < _MAX_VOCABULARY_VALUES  # the count bound is not what stops this
     assert _stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
+
+
+def test_a_vocabulary_exactly_at_the_byte_bound_survives_it():
+    # The count bound is tested at the cap; the byte bound was only ever tested over it, so `>`
+    # could have been `>=` and a vocabulary landing exactly on the budget would have been thrown
+    # away. Both sides here, one byte apart.
+    chunk = 200
+    fits = [f"{i:06d}" + "x" * (chunk - 6) for i in range(_MAX_VOCABULARY_BYTES // chunk)]
+    remainder = _MAX_VOCABULARY_BYTES - sum(len(value) for value in fits)
+    fits.append("z" * remainder)  # lands the total exactly on the bound rather than near it
+    assert sum(len(value) for value in fits) == _MAX_VOCABULARY_BYTES
+    assert len(fits) < _MAX_VOCABULARY_VALUES  # and the count bound is not what decides
+    assert _stats([_feature("t", "string")], _rows("t", fits))["t"].categorical is not None
+
+    assert _stats([_feature("t", "string")], _rows("t", [*fits, "y"]))["t"].categorical is None
+
+
+def test_an_enumeration_is_quoted_up_to_the_cap_and_not_past_it():
+    # `_MAX_ENUM_VALUES` was bounded from above by a test on a large column, and from below by
+    # nothing -- so it could drop to 8 and a 20-value provenance column would keep its
+    # `distinct_count` while silently losing the values themselves.
+    # Written as 32, not as `_MAX_ENUM_VALUES`: a test that sizes its input from the constant it is
+    # checking moves with the constant and can never notice it changing.
+    assert _MAX_ENUM_VALUES == 32
+    at = [f"src{i:03d}" for i in range(32)]
+    assert _quoted("source", "string", at, "provenance") == sorted(at)
+    assert _quoted("source", "string", [*at, "one_more"], "provenance") is None
 
 
 def test_derive_stats_never_quotes_values():
@@ -384,6 +413,20 @@ def test_message_content_parts_tolerate_non_string_text():
     rows = [{"m": [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": None}]}]}]
     stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.content_chars.max == 0  # no measurable text, and no crash
+
+
+def test_the_roles_list_stops_growing_at_its_bound():
+    # `_MAX_ROLES_SEEN` is fed from row content, so without it one malformed column holds a string
+    # per message -- quadratic, since membership is checked against the list. It was unconstrained
+    # in both directions: the sibling `_MAX_ROLE_CHARS` had a test and the count bound did not.
+    def roles_for(count):
+        rows = _rows("messages", [[{"role": f"r{i}", "content": "hi"} for i in range(count)]])
+        return _stats([_feature("messages", "messages")], rows)["messages"].messages.roles_seen
+
+    # Written as 64 rather than as the constant, for the same reason as the enum cap above.
+    assert _MAX_ROLES_SEEN == 64
+    assert len(roles_for(64)) == 64
+    assert len(roles_for(74)) == 64  # holds, rather than growing
 
 
 # --- sparsity and null rate ----------------------------------------------------------------------
