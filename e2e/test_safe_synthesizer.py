@@ -24,6 +24,7 @@ import io
 import json
 import os
 import time
+import traceback
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import suppress
@@ -115,6 +116,83 @@ def _string_headers(sdk: NeMoPlatform) -> dict[str, str]:
 
 def _nss_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
     return f"{str(sdk.base_url).rstrip('/')}/apis/safe-synthesizer/v2/workspaces/{workspace}/{path.lstrip('/')}"
+
+
+def _jobs_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
+    return f"{str(sdk.base_url).rstrip('/')}/apis/jobs/v2/workspaces/{workspace}/{path.lstrip('/')}"
+
+
+def _safe_artifact_name(value: str) -> str:
+    return "".join(char if char.isalnum() or char in "._-" else "_" for char in value)
+
+
+def _nss_debug_dir(job_name: str) -> Path | None:
+    root = os.environ.get("NSS_E2E_DEBUG_DIR") or os.environ.get("JOB_LOGS_DIR")
+    if not root:
+        return None
+    debug_dir = Path(root) / "safe-synthesizer" / _safe_artifact_name(job_name)
+    try:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    return debug_dir
+
+
+def _write_nss_debug_text(job_name: str, filename: str, content: str) -> None:
+    debug_dir = _nss_debug_dir(job_name)
+    if debug_dir is None:
+        return
+    with suppress(Exception):
+        (debug_dir / filename).write_text(content, encoding="utf-8")
+
+
+def _write_nss_debug_json(job_name: str, filename: str, payload: object) -> None:
+    _write_nss_debug_text(job_name, filename, json.dumps(payload, indent=2, default=str))
+
+
+def _capture_raw_response(sdk: NeMoPlatform, job_name: str, filename: str, url: str) -> None:
+    with suppress(Exception):
+        response = sdk._client.get(
+            url,
+            headers=_string_headers(sdk),
+            timeout=60.0,
+        )
+        _write_nss_debug_json(
+            job_name,
+            filename,
+            {
+                "url": str(response.url),
+                "status_code": response.status_code,
+                "body": response.text,
+            },
+        )
+
+
+def _capture_nss_debug_artifacts(
+    sdk: NeMoPlatform,
+    workspace: str,
+    job_name: str,
+    reason: str,
+    *,
+    history: list[str],
+    error: BaseException | None = None,
+) -> None:
+    diagnostic: dict[str, object] = {
+        "reason": reason,
+        "history": history,
+    }
+    if error is not None:
+        diagnostic["error"] = repr(error)
+        diagnostic["traceback"] = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    _write_nss_debug_json(job_name, "diagnostic.json", diagnostic)
+    _capture_raw_response(
+        sdk, job_name, "jobs-status-response.json", _jobs_url(sdk, workspace, f"jobs/{job_name}/status")
+    )
+    _capture_raw_response(sdk, job_name, "jobs-logs-response.json", _jobs_url(sdk, workspace, f"jobs/{job_name}/logs"))
+    _capture_raw_response(sdk, job_name, "nss-job-response.json", _nss_url(sdk, workspace, f"jobs/{job_name}"))
+    _capture_raw_response(
+        sdk, job_name, "nss-results-response.json", _nss_url(sdk, workspace, f"jobs/{job_name}/results")
+    )
 
 
 def _files_client(sdk: NeMoPlatform) -> FilesClient:
@@ -342,22 +420,49 @@ def _wait_for_status(
     deadline = time.monotonic() + timeout_seconds
     history: list[str] = []
     last_error: BaseException | None = None
+    jobs = client_from_platform(sdk, JobsClient)
 
     while time.monotonic() < deadline:
         try:
-            status_info = sdk.jobs.get_status(job_name, workspace=workspace)
+            status_info = jobs.get_job_status(name=job_name, workspace=workspace).data()
             status = str(status_info.status)
             if not history or history[-1] != status:
                 history.append(status)
+                _write_nss_debug_json(job_name, "status-history.json", {"history": history})
+            if status == "error":
+                _capture_nss_debug_artifacts(
+                    sdk,
+                    workspace,
+                    job_name,
+                    "job reached error status",
+                    history=history,
+                )
             if status in target_statuses:
                 return status, history
         except Exception as exc:
             last_error = exc
+            _capture_nss_debug_artifacts(
+                sdk,
+                workspace,
+                job_name,
+                "polling raised an exception",
+                history=history,
+                error=exc,
+            )
         time.sleep(poll_interval_seconds)
 
+    _capture_nss_debug_artifacts(
+        sdk,
+        workspace,
+        job_name,
+        "timed out waiting for target status",
+        history=history,
+        error=last_error,
+    )
     detail = _status_details(sdk, workspace, job_name)
     if last_error is not None:
-        detail = f"{detail}\nLast polling error: {last_error!r}"
+        last_traceback = "".join(traceback.format_exception(type(last_error), last_error, last_error.__traceback__))
+        detail = f"{detail}\nLast polling error: {last_error!r}\nLast polling traceback:\n{last_traceback}"
     raise TimeoutError(
         f"Timed out waiting for {job_name} to reach {sorted(target_statuses)}; history={history}\n{detail}"
     )
@@ -370,6 +475,14 @@ def _assert_job_completed(sdk: NeMoPlatform, workspace: str, job_name: str) -> l
         job_name,
         timeout_seconds=K8S_JOB_TIMEOUT_SECONDS,
     )
+    if status != "completed":
+        _capture_nss_debug_artifacts(
+            sdk,
+            workspace,
+            job_name,
+            f"expected completed status, got {status}",
+            history=history,
+        )
     assert status == "completed", _status_details(sdk, workspace, job_name)
     assert any(seen in STARTED_STATUSES for seen in history), f"Unexpected job status history: {history}"
     return history
