@@ -247,17 +247,22 @@ class CategoricalStats(BaseModel):
 
     distinct_count: int = Field(
         description=(
-            "How many distinct values the vocabulary holds. Exact, and present only for a column that stayed a "
-            "bounded vocabulary throughout -- absence means the column is not one, not that counting was skipped."
+            "How many distinct values the vocabulary holds. Present only for a column that stayed a bounded "
+            "vocabulary throughout -- absence means the column is not one, not that counting was skipped. Exact "
+            "over the rows that were read; where the partition's `rows_complete` is false, a shard was missed or "
+            "a read was cut short, and this is a LOWER BOUND for the partition."
         ),
     )
     values: list[str] | None = Field(
         default=None,
         description=(
             "The observed values, present only when this column's `semantic_role` makes it a controlled "
-            "vocabulary and the count is small enough to quote. This is the one place row content reaches the "
-            "stored profile, so it is gated on role rather than on size: cardinality inverts on small data, where "
-            "every column looks like an enumeration."
+            "vocabulary and the count is small enough to quote. Absent when a row budget cut the read short, "
+            "since a prefix cannot prove an enumeration and quoting one would store a sample of row content as "
+            "though it were the whole vocabulary; a partition that merely lost a shard still quotes, because every "
+            "file it could open was read to the end. This is the one place row content reaches the stored profile, "
+            "so it is gated on role rather than on size: cardinality inverts on small data, where every column "
+            "looks like an enumeration."
         ),
     )
 

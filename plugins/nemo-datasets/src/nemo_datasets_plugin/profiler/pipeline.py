@@ -283,7 +283,7 @@ class _PartitionFolds:
                 )
 
     def measure(
-        self, column_roles: dict[str, str]
+        self, column_roles: dict[str, str], *, truncated: bool = False
     ) -> tuple[list[FeatureSchema], dict[str, ColumnStats], PartitionClassification]:
         """Schema, stats and classification from what was folded.
 
@@ -300,7 +300,15 @@ class _PartitionFolds:
                 prefix_pair=self._prefix.result(),
                 column_roles=column_roles,
             )
-            quote_enumerations(features, measured.stats, measured.vocabularies)
+            # Gated on truncation, not on `rows_complete`. A shard that failed to open still let
+            # every other file be read end to end, so the values collected are the whole vocabulary
+            # of what was read and quoting them is honest -- `rows_complete` is what tells a
+            # consumer a shard is missing. A row budget is the different case: it stops *inside*
+            # files, so what it collected is whichever values happened to appear early, and
+            # quoting that would store a sample of row content under a field documented as the
+            # column's controlled vocabulary.
+            if not truncated:
+                quote_enumerations(features, measured.stats, measured.vocabularies)
             classification.evidence.extend(_capped_columns_evidence(features))
             classification.evidence.extend(measured.errors)
             if self._prefix_error is not None:
@@ -360,6 +368,9 @@ def _profile_partition(
     files_read = 0
     rows_present: int | None = 0
     partition_scanned = True
+    # Whether any file stopped because it hit the row cap, as opposed to because it failed. Only the
+    # first makes a column's collected values a prefix rather than the whole of what was read.
+    partition_truncated = False
     file_errors: list[FileError] = []
     file_formats: set[str] = set()
     split_profiles: list[SplitProfile] = []
@@ -410,6 +421,10 @@ def _profile_partition(
             # Counted outside the guard, for what was consumed: a fold cannot give rows back, so a
             # file that failed on its fifth batch still contributed four.
             rows_scanned += scanned
+            # A file with fewer rows than the cap never reaches it, so this is the cap actually
+            # biting rather than a budget merely having been asked for.
+            if row_cap is not None and scanned >= row_cap:
+                partition_truncated = True
             if scanned or error is None:
                 files_read += 1
             if error is not None:
@@ -436,7 +451,7 @@ def _profile_partition(
                 num_examples=split_examples if split_counts_known else None,
             )
         )
-    features, stats, classification = folds.measure(column_roles)
+    features, stats, classification = folds.measure(column_roles, truncated=partition_truncated)
     partition = PartitionProfile(
         name=name,
         # Observed, not chosen: the partition reports the formats its files turned out to be in
@@ -445,8 +460,9 @@ def _profile_partition(
         splits=split_profiles,
         features=features,
         stats=stats,
-        # Scoped to this partition, where it was decided all along: `partition_scanned` already
-        # gated whether `categorical.values` could quote a proven enumeration.
+        # Scoped to this partition, where it was decided all along. Distinct from the truncation
+        # flag that gates quoting: a partition can be incomplete because a shard failed and still
+        # have read every row of every file it could open.
         rows_complete=partition_scanned,
         classification=classification,
     )
