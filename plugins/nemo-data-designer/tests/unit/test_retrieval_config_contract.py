@@ -30,13 +30,17 @@ from pydantic import ValidationError
 def _build(job: RetrievalGenerateJobConfig, tmp_path: Path):
     corpus = tmp_path / "corpus"
     corpus.mkdir(exist_ok=True)
+    chat_provider = job.chat_provider or job.provider
+    embed_provider = job.embed_provider or job.provider
+    provider_names = dict.fromkeys((chat_provider, embed_provider))
     return build_generation_run_config(
         corpus_dir=corpus,
         output_dir=tmp_path / "out",
         artifact_path=tmp_path / "art",
         dataset_name=job.dataset_name or job.corpus_id,
-        provider_name=job.provider,
-        model_providers=[dd.ModelProvider(name=job.provider, endpoint="http://igw/v1")],
+        chat_provider_name=chat_provider,
+        embed_provider_name=embed_provider,
+        model_providers=[dd.ModelProvider(name=name, endpoint=f"http://igw/{name}") for name in provider_names],
         profile=job.profile,
         file_extensions=job.file_extensions,
         min_text_length=job.min_text_length,
@@ -81,6 +85,22 @@ def test_spec_defaults_build_a_real_generation_run_config(profile: RetrievalProf
     assert config.pipeline.qa_generation_model == defaults.chat_model
     assert config.pipeline.embed_model == defaults.embed_model
     assert type(config.seed_source).__name__ == "DocumentChunkerSeedSource"
+
+
+def test_chat_and_embedding_providers_can_be_split(tmp_path: Path) -> None:
+    job = RetrievalGenerateJobConfig(
+        corpus=str(tmp_path),
+        provider="default/local-chat",
+        embed_provider="default/local-embed",
+        profile="rerank",
+    )
+    config = _build(job, tmp_path)
+
+    assert [p.name for p in config.model_providers] == ["default/local-chat", "default/local-embed"]
+    assert config.pipeline.artifact_extraction_provider == "default/local-chat"
+    assert config.pipeline.qa_generation_provider == "default/local-chat"
+    assert config.pipeline.quality_judge_provider == "default/local-chat"
+    assert config.pipeline.embed_provider == "default/local-embed"
 
 
 def test_count_distribution_mismatch_is_rejected_at_spec_time() -> None:

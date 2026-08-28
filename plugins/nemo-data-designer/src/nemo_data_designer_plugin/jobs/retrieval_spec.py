@@ -16,7 +16,15 @@ class RetrievalGenerateJobConfig(BaseModel):
     model_config = {"json_schema_mode_override": "validation"}
 
     corpus: str = Field(description="Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.")
-    provider: str = Field(description="Inference Gateway provider (name or workspace/name).")
+    provider: str = Field(description="Default Inference Gateway provider (name or workspace/name).")
+    chat_provider: str | None = Field(
+        default=None,
+        description="Optional provider override for artifact extraction, Q&A generation, and quality judging.",
+    )
+    embed_provider: str | None = Field(
+        default=None,
+        description="Optional provider override for embedding calls.",
+    )
     profile: Literal["embed", "rerank"] = "embed"
     corpus_id: str = "retrieval_sdg"
     dataset_name: str | None = None
@@ -68,7 +76,8 @@ def _validate_counts(name: str, counts: dict[str, int], expected: dict[str, int]
 class RetrievalGenerateStepConfig(BaseModel):
     job_config: RetrievalGenerateJobConfig
     model_providers: list[dd.ModelProvider]
-    provider_name: str
+    chat_provider_name: str
+    embed_provider_name: str
 
 
 class RetrievalPrepareJobConfig(BaseModel):

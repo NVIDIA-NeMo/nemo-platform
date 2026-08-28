@@ -4036,7 +4036,16 @@ components:
         provider:
           type: string
           title: Provider
-          description: Inference Gateway provider (name or workspace/name).
+          description: Default Inference Gateway provider (name or workspace/name).
+        chat_provider:
+          title: Chat Provider
+          description: Optional provider override for artifact extraction, Q&A generation,
+            and quality judging.
+          type: string
+        embed_provider:
+          title: Embed Provider
+          description: Optional provider override for embedding calls.
+          type: string
         profile:
           type: string
           enum:
@@ -4255,14 +4264,18 @@ components:
             $ref: '#/components/schemas/ModelProvider'
           type: array
           title: Model Providers
-        provider_name:
+        chat_provider_name:
           type: string
-          title: Provider Name
+          title: Chat Provider Name
+        embed_provider_name:
+          type: string
+          title: Embed Provider Name
       type: object
       required:
       - job_config
       - model_providers
-      - provider_name
+      - chat_provider_name
+      - embed_provider_name
       title: RetrievalGenerateStepConfig
     RetrievalPrepareJob:
       properties:

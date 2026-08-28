@@ -46,6 +46,8 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
         model_configs = build_retrieval_model_configs(
             profile=job.profile,
             provider=job.provider,
+            chat_provider=job.chat_provider,
+            embed_provider=job.embed_provider,
             artifact_extraction_model=job.artifact_extraction_model,
             qa_generation_model=job.qa_generation_model,
             quality_judge_model=job.quality_judge_model,
@@ -71,7 +73,8 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
                 output_dir=tmp_path / "out",
                 artifact_path=tmp_path / "artifacts",
                 dataset_name=job.dataset_name or job.corpus_id,
-                provider_name=job.provider,
+                chat_provider_name=job.chat_provider or job.provider,
+                embed_provider_name=job.embed_provider or job.provider,
                 model_providers=model_providers,
                 profile=job.profile,
                 file_extensions=job.file_extensions,

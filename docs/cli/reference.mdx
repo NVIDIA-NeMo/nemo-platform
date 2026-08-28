@@ -8065,7 +8065,9 @@ nemo data-designer retrieval-preview [OPTIONS]
 **Function Spec:**
 
 * `--generate.corpus`: Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.
-* `--generate.provider`: Inference Gateway provider (name or workspace/name).
+* `--generate.provider`: Default Inference Gateway provider (name or workspace/name).
+* `--generate.chat-provider`: Optional provider override for artifact extraction, Q&A generation, and quality judging.
+* `--generate.embed-provider`: Optional provider override for embedding calls.
 * `--generate.corpus-id`: Override `generate.corpus_id` in the spec.
 * `--generate.dataset-name`: Override `generate.dataset_name` in the spec.
 * `--generate.min-text-length <INTEGER>`: Override `generate.min_text_length` in the spec.
@@ -8123,7 +8125,9 @@ nemo data-designer retrieval-generate [OPTIONS]
 **Job Spec:**
 
 * `--corpus`: Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.
-* `--provider`: Inference Gateway provider (name or workspace/name).
+* `--provider`: Default Inference Gateway provider (name or workspace/name).
+* `--chat-provider`: Optional provider override for artifact extraction, Q&A generation, and quality judging.
+* `--embed-provider`: Optional provider override for embedding calls.
 * `--corpus-id`: Override `corpus_id` in the spec.
 * `--dataset-name`: Override `dataset_name` in the spec.
 * `--min-text-length <INTEGER>`: Override `min_text_length` in the spec.
@@ -8226,7 +8230,9 @@ nemo data-designer retrieval-run [OPTIONS]
 **Job Spec:**
 
 * `--generate.corpus`: Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.
-* `--generate.provider`: Inference Gateway provider (name or workspace/name).
+* `--generate.provider`: Default Inference Gateway provider (name or workspace/name).
+* `--generate.chat-provider`: Optional provider override for artifact extraction, Q&A generation, and quality judging.
+* `--generate.embed-provider`: Optional provider override for embedding calls.
 * `--generate.corpus-id`: Override `generate.corpus_id` in the spec.
 * `--generate.dataset-name`: Override `generate.dataset_name` in the spec.
 * `--generate.min-text-length <INTEGER>`: Override `generate.min_text_length` in the spec.

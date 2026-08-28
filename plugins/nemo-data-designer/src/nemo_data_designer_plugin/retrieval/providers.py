@@ -13,6 +13,8 @@ def build_retrieval_model_configs(
     *,
     profile: RetrievalProfile,
     provider: str,
+    chat_provider: str | None = None,
+    embed_provider: str | None = None,
     artifact_extraction_model: str | None = None,
     qa_generation_model: str | None = None,
     quality_judge_model: str | None = None,
@@ -22,31 +24,33 @@ def build_retrieval_model_configs(
     defaults = profile_models(profile)
     chat = defaults.chat_model
     embed = defaults.embed_model
+    chat_provider = chat_provider or provider
+    embed_provider = embed_provider or provider
     chat_params = dd.ChatCompletionInferenceParams()
     embed_params = dd.EmbeddingInferenceParams()
     return [
         dd.ModelConfig(
             alias="retrieval-artifact-extraction",
             model=artifact_extraction_model or chat,
-            provider=provider,
+            provider=chat_provider,
             inference_parameters=chat_params,
         ),
         dd.ModelConfig(
             alias="retrieval-qa-generation",
             model=qa_generation_model or chat,
-            provider=provider,
+            provider=chat_provider,
             inference_parameters=chat_params,
         ),
         dd.ModelConfig(
             alias="retrieval-quality-judge",
             model=quality_judge_model or chat,
-            provider=provider,
+            provider=chat_provider,
             inference_parameters=chat_params,
         ),
         dd.ModelConfig(
             alias="retrieval-embed",
             model=embed_model or embed,
-            provider=provider,
+            provider=embed_provider,
             inference_parameters=embed_params,
         ),
     ]

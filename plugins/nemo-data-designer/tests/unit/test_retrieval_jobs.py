@@ -63,7 +63,8 @@ async def test_retrieval_generate_compile_is_cpu() -> None:
     spec = RetrievalGenerateStepConfig(
         job_config=_generate_config(),
         model_providers=[dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")],
-        provider_name="default/nvidia-build",
+        chat_provider_name="default/nvidia-build",
+        embed_provider_name="default/nvidia-build",
     )
     compiled = await RetrievalGenerateJob.compile(
         workspace="default",
@@ -84,7 +85,8 @@ async def test_retrieval_generate_compile_uses_subprocess_when_profile_exists() 
     spec = RetrievalGenerateStepConfig(
         job_config=_generate_config(),
         model_providers=[dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")],
-        provider_name="default/nvidia-build",
+        chat_provider_name="default/nvidia-build",
+        embed_provider_name="default/nvidia-build",
     )
     listed = SimpleNamespace(data=lambda: [SimpleNamespace(provider="subprocess", profile="default")])
     sdk = AsyncMock()
@@ -140,7 +142,8 @@ async def test_retrieval_prepare_compile_uses_subprocess_for_convert_and_mine() 
         )
     assert isinstance(step, RetrievalGenerateStepConfig)
     assert step.model_providers == providers
-    assert step.provider_name == "default/nvidia-build"
+    assert step.chat_provider_name == "default/nvidia-build"
+    assert step.embed_provider_name == "default/nvidia-build"
 
 
 def test_retrieval_generate_run_writes_artifacts(tmp_path: Path) -> None:
@@ -148,7 +151,8 @@ def test_retrieval_generate_run_writes_artifacts(tmp_path: Path) -> None:
     spec = RetrievalGenerateStepConfig(
         job_config=_generate_config(),
         model_providers=[dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")],
-        provider_name="default/nvidia-build",
+        chat_provider_name="default/nvidia-build",
+        embed_provider_name="default/nvidia-build",
     )
     corpus = tmp_path / "corpus"
     corpus.mkdir()

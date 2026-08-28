@@ -43,6 +43,8 @@ class RetrievalGenerateJob(NemoJob):
         model_configs = build_retrieval_model_configs(
             profile=job_config.profile,
             provider=job_config.provider,
+            chat_provider=job_config.chat_provider,
+            embed_provider=job_config.embed_provider,
             artifact_extraction_model=job_config.artifact_extraction_model,
             qa_generation_model=job_config.qa_generation_model,
             quality_judge_model=job_config.quality_judge_model,
@@ -52,7 +54,8 @@ class RetrievalGenerateJob(NemoJob):
         return RetrievalGenerateStepConfig(
             job_config=job_config,
             model_providers=model_providers,
-            provider_name=job_config.provider,
+            chat_provider_name=job_config.chat_provider or job_config.provider,
+            embed_provider_name=job_config.embed_provider or job_config.provider,
         )
 
     @classmethod
@@ -95,7 +98,8 @@ class RetrievalGenerateJob(NemoJob):
             output_dir=output_dir,
             artifact_path=artifact_path,
             dataset_name=job.dataset_name or job.corpus_id,
-            provider_name=step.provider_name,
+            chat_provider_name=step.chat_provider_name,
+            embed_provider_name=step.embed_provider_name,
             model_providers=step.model_providers,
             profile=job.profile,
             file_extensions=job.file_extensions,
