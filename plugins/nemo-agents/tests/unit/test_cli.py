@@ -937,6 +937,62 @@ def test_deploy_forwards_environment_ref() -> None:
     assert body["environment"] == "default/env1"
 
 
+def test_deploy_forwards_image_entrypoint_mode() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "deploy",
+                "--agent",
+                "a1",
+                "--mode",
+                "docker",
+                "--image",
+                "hand-built-agent:latest",
+                "--use-image-entrypoint",
+                "--no-wait",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body["agent"] == "a1"
+    assert body["deployment_mode"] == "docker"
+    assert body["image"] == "hand-built-agent:latest"
+    assert body["use_image_entrypoint"] is True
+
+
+def test_deploy_rejects_image_entrypoint_for_subprocess() -> None:
+    called = False
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["deploy", "--agent", "a1", "--use-image-entrypoint", "--no-wait", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 2
+    assert "--use-image-entrypoint requires --mode docker or k8s." in result.stderr
+    assert not called
+
+
 def test_deploy_rejects_empty_environment() -> None:
     called = False
 
