@@ -30,7 +30,14 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.constants import (
+    DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE as _DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE,
+)
+from nemo_platform_plugin.client.constants import (
+    JWT_WORKLOAD_SUBJECT_TOKEN_TYPE,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    subject_token_type_for_exchange,
+)
 from nemo_platform_plugin.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
@@ -124,7 +131,8 @@ def generate_unsigned_jwt(
 
 DEFAULT_OAUTH_SCOPES = "openid profile email offline_access"
 TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
-JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
+JWT_TOKEN_TYPE = JWT_WORKLOAD_SUBJECT_TOKEN_TYPE
+DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE = _DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE
 ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 
 
@@ -309,7 +317,7 @@ def token_exchange_grant(
         "grant_type": TOKEN_EXCHANGE_GRANT_TYPE,
         "client_id": client_id,
         "subject_token": subject_token,
-        "subject_token_type": JWT_TOKEN_TYPE,
+        "subject_token_type": subject_token_type_for_exchange(subject_token),
         "requested_token_type": ACCESS_TOKEN_TYPE,
     }
     if audience:

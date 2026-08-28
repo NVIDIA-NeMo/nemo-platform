@@ -3,7 +3,6 @@
 
 import datetime
 import json
-import time
 import uuid
 from types import SimpleNamespace
 from typing import Iterator
@@ -12,7 +11,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from docker.errors import APIError, NotFound
 from nemo_platform.types.shared import AuthContext as SdkAuthContext
-from nmp.common.auth import NMP_PRINCIPAL_ENVVAR, AuthContext, Principal
+from nmp.common.auth import (
+    NMP_PRINCIPAL_ENVVAR,
+    AuthContext,
+    Principal,
+    docker_delegation_name,
+    parse_opaque_docker_proof_token,
+    verify_opaque_docker_proof_token_hash,
+)
 from nmp.common.config import PlatformConfig
 from nmp.common.docker.gpu_pool import DockerGPUPool
 from nmp.common.jobs.constants import (
@@ -25,6 +31,7 @@ from nmp.common.jobs.constants import (
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
+    JOB_ATTEMPT_ID_LABEL,
     JOB_CONTROLLER_INSTANCE_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
@@ -67,7 +74,6 @@ from nmp.core.jobs.controllers.backends.docker import (
     DockerJobExecutionProfileConfig,
     DockerJobStorageConfig,
     DockerVolumeMount,
-    DockerWorkloadIdentityConfig,
     GPUDockerJobBackend,
 )
 from nmp.core.jobs.controllers.backends.exceptions import (
@@ -76,7 +82,7 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     ResourceAllocationError,
     SchedulingDeferred,
 )
-from nmp.core.jobs.controllers.backends.workload_tokens import SubjectToken
+from nmp.core.jobs.controllers.backends.workload_tokens import WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
 from pydantic import ValidationError
 
 from services.core.jobs.tests.controllers.client_mocks import data_response
@@ -107,6 +113,23 @@ def assert_created_task_volumes_cleaned_up(docker_client_mock) -> None:
     cleaned_volume_names = [volume_call.args[0] for volume_call in docker_client_mock.volumes.get.call_args_list]
     assert sorted(cleaned_volume_names) == sorted(created_volume_names)
     assert docker_client_mock.volumes.get.return_value.remove.call_count == 3
+
+
+def workload_token_exchange_auth_config(enabled: bool = True) -> SimpleNamespace:
+    return SimpleNamespace(
+        oidc=SimpleNamespace(
+            workload_token_exchange_enabled=enabled,
+            workload_audience="nemo-platform",
+            audience=None,
+        )
+    )
+
+
+def workload_delegation_store_mock() -> MagicMock:
+    store = MagicMock()
+    store.register = MagicMock()
+    store.revoke = MagicMock()
+    return store
 
 
 @pytest.fixture
@@ -861,93 +884,265 @@ def test_docker_job_rejects_reserved_step_auth_env_vars(docker_job, test_job_ste
 
 
 def test_docker_job_injects_workload_identity_volume_when_token_exchange_enabled(
-    docker_job, docker_client_mock, test_job_step
+    docker_job, docker_client_mock, test_job_step_with_auth_context
 ):
-    auth_config = SimpleNamespace(oidc=SimpleNamespace(workload_token_exchange_enabled=True))
-
-    class FakeIssuer:
-        def issue(self):
-            return SubjectToken(value="subject-token", expires_at=time.time() + 3600)
+    auth_config = workload_token_exchange_auth_config()
+    expected_delegation_name = docker_delegation_name(
+        workload_workspace=test_job_step_with_auth_context.workspace,
+        job_id=test_job_step_with_auth_context.job,
+        attempt_id=test_job_step_with_auth_context.attempt_id,
+        step_id=test_job_step_with_auth_context.id,
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
 
     with (
         patch("nmp.common.config.get_auth_config", return_value=auth_config),
-        patch.object(docker_job, "_create_docker_subject_token_issuer", return_value=FakeIssuer()),
+        patch.object(
+            docker_job,
+            "_write_workload_identity_subject_token",
+            wraps=docker_job._write_workload_identity_subject_token,
+        ) as write_workload_token,
     ):
-        docker_job.schedule(test_job_step.step_spec.executor, test_job_step)
+        docker_job.schedule(test_job_step_with_auth_context.step_spec.executor, test_job_step_with_auth_context)
 
     docker_job._container_run_threadpool.shutdown(wait=True)
     docker_job._container_run_threadpool = MagicMock()
 
-    try:
-        job_create_call = next(
-            call
-            for call in docker_client_mock.containers.create.call_args_list
-            if call.kwargs.get("name") == "job-test-job-id-test-step"
-        )
-        kwargs = job_create_call.kwargs
-        env = kwargs["environment"]
-        assert env[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    workload_delegation_store.register.assert_called_once()
+    delegation = workload_delegation_store.register.call_args.args[0]
+    assert delegation.name == expected_delegation_name
+    assert delegation.workload_subject == expected_delegation_name
+    assert delegation.workload_audience == "nemo-platform"
+    assert delegation.workload_workspace == test_job_step_with_auth_context.workspace
+    assert delegation.job_id == test_job_step_with_auth_context.job
+    assert delegation.attempt_id == test_job_step_with_auth_context.attempt_id
+    assert delegation.step_id == test_job_step_with_auth_context.id
+    assert delegation.auth_context.principal_id == "creator@example.com"
+    assert delegation.opaque_subject_token_hash is not None
+    write_workload_token.assert_called_once()
+    written_subject_token = write_workload_token.call_args.args[1]
+    parsed_subject_token = parse_opaque_docker_proof_token(written_subject_token)
+    assert parsed_subject_token.delegation_name == expected_delegation_name
+    assert verify_opaque_docker_proof_token_hash(
+        parsed_subject_token.secret,
+        delegation.opaque_subject_token_hash,
+    )
 
-        mounts = kwargs["mounts"]
-        workload_identity_mount = next(m for m in mounts if m["Target"] == WORKLOAD_IDENTITY_VOLUME_PATH)
-        assert workload_identity_mount["Type"] == "volume"
-        assert workload_identity_mount["Source"].startswith(
-            f"task-workload-identity-{test_job_step.workspace}-{test_job_step.job}-"
-        )
-        assert workload_identity_mount["ReadOnly"] is True
-        assert kwargs["labels"][DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
-        assert kwargs["labels"][DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL] == workload_identity_mount["Source"]
-        workload_token_write_call = next(
-            call
-            for call in docker_client_mock.containers.create.call_args_list
-            if call.kwargs.get("name", "").startswith("workload-token-write-")
-        )
-        assert workload_token_write_call.kwargs["command"] == [
-            "sh",
-            "-c",
-            "mv /workload-identity-vol/token.tmp /workload-identity-vol/token && chmod 0444 /workload-identity-vol/token",
-        ]
-    finally:
-        for refresher in list(docker_job._workload_identity_refreshers.values()):
-            refresher.stop()
+    job_create_call = next(
+        call
+        for call in docker_client_mock.containers.create.call_args_list
+        if call.kwargs.get("name") == "job-test-job-id-test-step"
+    )
+    kwargs = job_create_call.kwargs
+    env = kwargs["environment"]
+    assert env[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    assert NMP_PRINCIPAL_ENVVAR not in env
+
+    mounts = kwargs["mounts"]
+    workload_identity_mount = next(m for m in mounts if m["Target"] == WORKLOAD_IDENTITY_VOLUME_PATH)
+    assert workload_identity_mount["Type"] == "volume"
+    assert workload_identity_mount["Source"].startswith(
+        f"task-workload-identity-{test_job_step_with_auth_context.workspace}-{test_job_step_with_auth_context.job}-"
+    )
+    assert workload_identity_mount["ReadOnly"] is True
+    assert kwargs["labels"][DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    assert kwargs["labels"][DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL] == workload_identity_mount["Source"]
+    workload_token_write_call = next(
+        call
+        for call in docker_client_mock.containers.create.call_args_list
+        if call.kwargs.get("name", "").startswith("workload-token-write-")
+    )
+    assert workload_token_write_call.kwargs["command"] == [
+        "sh",
+        "-c",
+        "mv /workload-identity-vol/token.tmp /workload-identity-vol/token && chmod 0444 /workload-identity-vol/token",
+    ]
 
 
-def test_docker_schedule_cleans_task_volumes_when_workload_identity_issuer_fails(
-    docker_job, docker_client_mock, test_job_step
-):
-    docker_job._execution_profile_config.workload_identity.enabled = True
+def test_docker_workload_delegation_expiry_covers_active_ttl(docker_job, test_job_step_with_auth_context):
+    docker_job._execution_profile_config.ttl_seconds_active = 900
+    before = datetime.datetime.now(datetime.timezone.utc)
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
 
     with (
+        patch.object(docker_job, "_write_workload_identity_subject_token"),
+    ):
+        docker_job._prepare_workload_identity_for_step(
+            step=test_job_step_with_auth_context,
+            workload_identity_volume_name="workload-token-volume",
+        )
+
+    after = datetime.datetime.now(datetime.timezone.utc)
+    delegation = workload_delegation_store.register.call_args.args[0]
+    expected_min = before + datetime.timedelta(seconds=900 + WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS)
+    expected_max = after + datetime.timedelta(seconds=900 + WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS)
+    assert expected_min <= delegation.expires_at <= expected_max
+    assert delegation.revoked_at is None
+
+
+def test_docker_schedule_cleans_task_volumes_when_workload_identity_proof_token_fails(
+    docker_job, docker_client_mock, test_job_step_with_auth_context
+):
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
         patch.object(
             docker_job,
-            "_create_docker_subject_token_issuer",
-            side_effect=JobStorageError("issuer failed"),
+            "_provision_docker_workload_proof_token",
+            side_effect=JobStorageError("proof failed"),
         ),
-        pytest.raises(JobStorageError, match="issuer failed"),
+        pytest.raises(JobStorageError, match="proof failed"),
     ):
-        docker_job.schedule_single_container(test_job_step.step_spec.executor, test_job_step)
+        docker_job.schedule_single_container(
+            test_job_step_with_auth_context.step_spec.executor, test_job_step_with_auth_context
+        )
 
     assert_created_task_volumes_cleaned_up(docker_client_mock)
 
 
-def test_docker_schedule_cleans_task_volumes_when_initial_workload_identity_refresh_fails(
-    docker_job, docker_client_mock, test_job_step
+def test_docker_schedule_cleans_task_volumes_when_workload_identity_registration_fails(
+    docker_job, docker_client_mock, test_job_step_with_auth_context
 ):
-    docker_job._execution_profile_config.workload_identity.enabled = True
-    refresher = MagicMock()
-    refresher.refresh_once.side_effect = RuntimeError("refresh failed")
+    workload_delegation_store = workload_delegation_store_mock()
+    workload_delegation_store.register.side_effect = JobStorageError("register failed")
+    docker_job._workload_delegation_store = workload_delegation_store
 
     with (
-        patch.object(docker_job, "_build_workload_identity_refresher", return_value=refresher),
-        pytest.raises(RuntimeError, match="refresh failed"),
+        patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
+        patch.object(docker_job, "_write_workload_identity_subject_token") as write_token,
+        pytest.raises(JobStorageError, match="register failed"),
     ):
-        docker_job.schedule_single_container(test_job_step.step_spec.executor, test_job_step)
+        docker_job.schedule_single_container(
+            test_job_step_with_auth_context.step_spec.executor, test_job_step_with_auth_context
+        )
 
-    refresher.refresh_once.assert_called_once()
+    write_token.assert_not_called()
+    workload_delegation_store.revoke.assert_not_called()
     assert_created_task_volumes_cleaned_up(docker_client_mock)
 
 
-def test_docker_sync_restores_workload_identity_refresher_from_container_labels(
+def test_docker_schedule_cleans_task_volumes_and_revokes_delegation_when_workload_identity_write_fails(
+    docker_job, docker_client_mock, test_job_step_with_auth_context
+):
+    expected_delegation_name = docker_delegation_name(
+        workload_workspace=test_job_step_with_auth_context.workspace,
+        job_id=test_job_step_with_auth_context.job,
+        attempt_id=test_job_step_with_auth_context.attempt_id,
+        step_id=test_job_step_with_auth_context.id,
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
+        patch.object(
+            docker_job,
+            "_write_workload_identity_subject_token",
+            side_effect=RuntimeError("write failed"),
+        ),
+        pytest.raises(RuntimeError, match="write failed"),
+    ):
+        docker_job.schedule_single_container(
+            test_job_step_with_auth_context.step_spec.executor, test_job_step_with_auth_context
+        )
+
+    workload_delegation_store.register.assert_called_once()
+    workload_delegation_store.revoke.assert_called_once_with(expected_delegation_name)
+    assert_created_task_volumes_cleaned_up(docker_client_mock)
+
+
+def test_docker_workload_delegation_revoke_failure_is_attached_to_primary_exception(docker_job):
+    primary_error = RuntimeError("schedule failed")
+    workload_delegation_store = workload_delegation_store_mock()
+    workload_delegation_store.revoke.side_effect = JobStorageError("revoke failed")
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    docker_job._try_revoke_workload_delegation(
+        "job:prepared-delegation",
+        reason="container scheduling failure",
+        cause=primary_error,
+    )
+
+    workload_delegation_store.revoke.assert_called_once_with("job:prepared-delegation")
+    assert primary_error.__notes__ == [
+        "Failed to revoke Docker workload delegation job:prepared-delegation "
+        "after container scheduling failure: JobStorageError('revoke failed')"
+    ]
+
+
+def test_docker_workload_delegation_revoke_unexpected_error_propagates(docker_job):
+    workload_delegation_store = workload_delegation_store_mock()
+    workload_delegation_store.revoke.side_effect = TypeError("bug")
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    with pytest.raises(TypeError, match="bug"):
+        docker_job._try_revoke_workload_delegation(
+            "job:prepared-delegation",
+            reason="container scheduling failure",
+        )
+
+
+def test_docker_schedule_cleans_task_volumes_and_revokes_delegation_when_configure_fails(
+    docker_job, docker_client_mock, test_job_step_with_auth_context
+):
+    expected_delegation_name = docker_delegation_name(
+        workload_workspace=test_job_step_with_auth_context.workspace,
+        job_id=test_job_step_with_auth_context.job,
+        attempt_id=test_job_step_with_auth_context.attempt_id,
+        step_id=test_job_step_with_auth_context.id,
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
+        patch.object(docker_job, "_write_workload_identity_subject_token") as write_token,
+        patch.object(docker_job, "configure_container", side_effect=RuntimeError("configure failed")),
+        pytest.raises(RuntimeError, match="configure failed"),
+    ):
+        docker_job.schedule_single_container(
+            test_job_step_with_auth_context.step_spec.executor, test_job_step_with_auth_context
+        )
+
+    workload_delegation_store.register.assert_called_once()
+    write_token.assert_called_once()
+    workload_delegation_store.revoke.assert_called_once_with(expected_delegation_name)
+    assert_created_task_volumes_cleaned_up(docker_client_mock)
+
+
+def test_docker_schedule_cleans_task_volumes_and_revokes_delegation_when_submit_fails(
+    docker_job, docker_client_mock, test_job_step_with_auth_context
+):
+    docker_job._container_run_threadpool = MagicMock()
+    docker_job._container_run_threadpool.submit.side_effect = RuntimeError("submit failed")
+    expected_delegation_name = docker_delegation_name(
+        workload_workspace=test_job_step_with_auth_context.workspace,
+        job_id=test_job_step_with_auth_context.job,
+        attempt_id=test_job_step_with_auth_context.attempt_id,
+        step_id=test_job_step_with_auth_context.id,
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
+        patch.object(docker_job, "_write_workload_identity_subject_token") as write_token,
+        pytest.raises(RuntimeError, match="submit failed"),
+    ):
+        docker_job.schedule_single_container(
+            test_job_step_with_auth_context.step_spec.executor, test_job_step_with_auth_context
+        )
+
+    workload_delegation_store.register.assert_called_once()
+    write_token.assert_called_once()
+    workload_delegation_store.revoke.assert_called_once_with(expected_delegation_name)
+    assert_created_task_volumes_cleaned_up(docker_client_mock)
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._container_start_admission.release()
+
+
+def test_docker_sync_does_not_restore_opaque_workload_token_refresher_from_container_labels(
     docker_job, docker_client_mock, test_job_step
 ):
     volume_name = "task-workload-identity-default-job-test-job-id-task-restored"
@@ -970,19 +1165,14 @@ def test_docker_sync_restores_workload_identity_refresher_from_container_labels(
 
     docker_client_mock.containers.get.side_effect = None
     docker_client_mock.containers.get.return_value = container
-    refresher = MagicMock()
 
     test_job_step.status = PlatformJobStatus.ACTIVE
-    with patch.object(docker_job, "_build_workload_identity_refresher", return_value=refresher) as build_refresher:
-        update = docker_job.sync(test_job_step)
+    update = docker_job.sync(test_job_step)
 
     assert update.status == PlatformJobStatus.ACTIVE
-    build_refresher.assert_called_once_with(volume_name)
-    refresher.start.assert_called_once()
-    assert docker_job._workload_identity_refreshers[container.name] is refresher
 
 
-def test_docker_sync_restores_workload_identity_refresher_from_mounted_volume(
+def test_docker_sync_does_not_restore_opaque_workload_token_refresher_from_mounted_volume(
     docker_job, docker_client_mock, test_job_step
 ):
     volume_name = "task-workload-identity-default-job-test-job-id-task-mounted"
@@ -1007,181 +1197,25 @@ def test_docker_sync_restores_workload_identity_refresher_from_mounted_volume(
 
     docker_client_mock.containers.get.side_effect = None
     docker_client_mock.containers.get.return_value = container
-    refresher = MagicMock()
 
     test_job_step.status = PlatformJobStatus.ACTIVE
-    with patch.object(docker_job, "_build_workload_identity_refresher", return_value=refresher) as build_refresher:
-        update = docker_job.sync(test_job_step)
+    update = docker_job.sync(test_job_step)
 
     assert update.status == PlatformJobStatus.ACTIVE
-    build_refresher.assert_called_once_with(volume_name)
-    refresher.start.assert_called_once()
-    assert docker_job._workload_identity_refreshers[container.name] is refresher
 
 
-def test_docker_stop_workload_identity_refresher_keeps_refresher_when_stop_fails(docker_job):
-    refresher = MagicMock()
-    refresher.stop.side_effect = RuntimeError("Timed out stopping workload identity subject token refresher")
-    docker_job._workload_identity_refreshers["job-container"] = refresher
-
-    with pytest.raises(RuntimeError, match="Timed out stopping workload identity subject token refresher"):
-        docker_job._stop_workload_identity_refresher("job-container")
-
-    assert docker_job._workload_identity_refreshers["job-container"] is refresher
-
-
-def test_docker_shutdown_stops_workload_identity_refreshers(docker_job, docker_client_mock):
-    first_refresher = MagicMock()
-    second_refresher = MagicMock()
-    docker_job._workload_identity_refreshers = {
-        "job-container-one": first_refresher,
-        "job-container-two": second_refresher,
-    }
+def test_docker_shutdown_closes_client(docker_job, docker_client_mock):
     close_calls_before_shutdown = docker_client_mock.close.call_count
 
     docker_job.shutdown()
 
-    first_refresher.stop.assert_called_once()
-    second_refresher.stop.assert_called_once()
-    assert docker_job._workload_identity_refreshers == {}
     assert docker_client_mock.close.call_count == close_calls_before_shutdown + 1
 
 
-def test_docker_shutdown_continues_stopping_refreshers_when_one_stop_fails(docker_job, docker_client_mock):
-    failing_refresher = MagicMock()
-    failing_refresher.stop.side_effect = RuntimeError("Timed out stopping workload identity subject token refresher")
-    second_refresher = MagicMock()
-    docker_job._workload_identity_refreshers = {
-        "job-container-one": failing_refresher,
-        "job-container-two": second_refresher,
-    }
-    close_calls_before_shutdown = docker_client_mock.close.call_count
+def test_docker_job_execution_profile_config_has_no_workload_identity_surface():
+    properties = DockerJobExecutionProfileConfig.model_json_schema()["properties"]
 
-    docker_job.shutdown()
-
-    failing_refresher.stop.assert_called_once()
-    second_refresher.stop.assert_called_once()
-    assert docker_job._workload_identity_refreshers == {}
-    assert docker_client_mock.close.call_count == close_calls_before_shutdown + 1
-
-
-def test_docker_subject_token_issuer_reads_password_from_configured_env_var(docker_job, monkeypatch):
-    monkeypatch.setenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", "shared-secret")
-    auth_config = SimpleNamespace(
-        oidc=SimpleNamespace(
-            token_endpoint="http://127.0.0.1:18080/application/o/token/",
-            workload_client_id="nemo-platform-workload",
-            client_id="nemo-platform-cli",
-            workload_scope="openid email groups",
-        )
-    )
-    docker_job._execution_profile_config.workload_identity = DockerWorkloadIdentityConfig(
-        username="svc-nemo",
-        password_env_var="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
-    )
-
-    with patch("nmp.common.config.get_auth_config", return_value=auth_config):
-        issuer = docker_job._create_docker_subject_token_issuer()
-
-    assert issuer.token_endpoint == "http://127.0.0.1:18080/application/o/token/"
-    assert issuer.client_id == "nemo-platform-workload"
-    assert issuer.username == "svc-nemo"
-    assert issuer.password == "shared-secret"
-    assert issuer.scope == "openid email groups"
-
-
-def test_docker_subject_token_issuer_uses_internal_token_endpoint_override(docker_job, monkeypatch):
-    monkeypatch.setenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", "shared-secret")
-    auth_config = SimpleNamespace(
-        oidc=SimpleNamespace(
-            token_endpoint="http://127.0.0.1:18080/application/o/token/",
-            workload_client_id="nemo-platform-workload",
-            client_id="nemo-platform-cli",
-            workload_scope="openid email groups",
-        )
-    )
-    docker_job._execution_profile_config.workload_identity = DockerWorkloadIdentityConfig(
-        token_endpoint="https://nemo-gateway:8080/application/o/token/",
-        username="svc-nemo",
-        password_env_var="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
-    )
-
-    with patch("nmp.common.config.get_auth_config", return_value=auth_config):
-        issuer = docker_job._create_docker_subject_token_issuer()
-
-    assert issuer.token_endpoint == "https://nemo-gateway:8080/application/o/token/"
-
-
-@pytest.mark.parametrize("env_value", [None, ""])
-def test_docker_subject_token_issuer_requires_non_empty_password_env_var(docker_job, monkeypatch, env_value):
-    if env_value is None:
-        monkeypatch.delenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", raising=False)
-    else:
-        monkeypatch.setenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", env_value)
-    auth_config = SimpleNamespace(
-        oidc=SimpleNamespace(
-            token_endpoint="http://127.0.0.1:18080/application/o/token/",
-            workload_client_id="nemo-platform-workload",
-            client_id="nemo-platform-cli",
-            workload_scope="openid email groups",
-        )
-    )
-    docker_job._execution_profile_config.workload_identity = DockerWorkloadIdentityConfig(
-        username="svc-nemo",
-        password_env_var="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
-    )
-
-    with (
-        patch("nmp.common.config.get_auth_config", return_value=auth_config),
-        pytest.raises(JobStorageError, match="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"),
-    ):
-        docker_job._create_docker_subject_token_issuer()
-
-
-def test_docker_workload_identity_config_rejects_legacy_password_field():
-    with pytest.raises(ValidationError) as exc_info:
-        DockerWorkloadIdentityConfig.model_validate(
-            {
-                "username": "svc-nemo",
-                "password": "inline-secret",
-            }
-        )
-
-    assert "password" in str(exc_info.value)
-    assert "extra" in str(exc_info.value).lower()
-
-
-def test_docker_workload_identity_client_secret_schema_is_write_only():
-    client_secret_schema = DockerWorkloadIdentityConfig.model_json_schema()["properties"]["client_secret"]
-
-    assert client_secret_schema["format"] == "password"
-    assert client_secret_schema["writeOnly"] is True
-
-
-def test_docker_workload_identity_token_timing_constraints(monkeypatch):
-    properties = DockerWorkloadIdentityConfig.model_json_schema()["properties"]
-
-    assert properties["subject_token_ttl_seconds"]["minimum"] == 1
-    assert properties["refresh_margin_seconds"]["minimum"] == 0
-    assert (
-        DockerWorkloadIdentityConfig(subject_token_ttl_seconds=1, refresh_margin_seconds=0).subject_token_ttl_seconds
-        == 1
-    )
-    assert DockerWorkloadIdentityConfig(refresh_margin_seconds=0).refresh_margin_seconds == 0
-    with pytest.raises(ValidationError):
-        DockerWorkloadIdentityConfig.model_validate({"subject_token_ttl_seconds": 0})
-    with pytest.raises(ValidationError):
-        DockerWorkloadIdentityConfig.model_validate({"refresh_margin_seconds": -1})
-    for values in (
-        {"subject_token_ttl_seconds": 1},
-        {"subject_token_ttl_seconds": 30, "refresh_margin_seconds": 30},
-        {"subject_token_ttl_seconds": 30, "refresh_margin_seconds": 31},
-    ):
-        with pytest.raises(ValidationError, match="refresh_margin_seconds"):
-            DockerWorkloadIdentityConfig.model_validate(values)
-    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_TTL_SECONDS", "0")
-    with pytest.raises(ValidationError):
-        DockerWorkloadIdentityConfig()
+    assert "workload_identity" not in properties
 
 
 def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
@@ -2176,6 +2210,49 @@ def test_failed_schedule_logs_status_update_failure_and_releases_admission(docke
     docker_job._container_start_admission.release()
 
 
+def test_failed_schedule_revokes_prepared_workload_delegation(docker_job, test_job_step):
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._run_container_in_thread = MagicMock(
+        side_effect=FailedToScheduleError("container failed", error_details={"message": "container failed"})
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    docker_job.run_container(
+        test_job_step,
+        {"_nmp_workload_delegation_name": "job:prepared-delegation"},
+    )
+
+    workload_delegation_store.revoke.assert_called_once_with("job:prepared-delegation")
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._container_start_admission.release()
+
+
+def test_terminal_step_update_revokes_workload_delegation(docker_job, test_job_step_with_auth_context):
+    container = MagicMock()
+    container.name = "job-test-job-id-test-step"
+    container.labels = {JOB_TASK_ID_LABEL: "task-success"}
+    docker_job.map_docker_container_status_to_platform_status = MagicMock(
+        return_value=(PlatformJobStatus.COMPLETED, {}, "")
+    )
+    docker_job.docker_state_debug_fields = MagicMock(return_value={})
+    expected_delegation_name = docker_delegation_name(
+        workload_workspace=test_job_step_with_auth_context.workspace,
+        job_id=test_job_step_with_auth_context.job,
+        attempt_id=test_job_step_with_auth_context.attempt_id,
+        step_id=test_job_step_with_auth_context.id,
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    with patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()):
+        update = docker_job.create_step_update(test_job_step_with_auth_context, container)
+
+    assert update.status == PlatformJobStatus.COMPLETED
+    workload_delegation_store.revoke.assert_called_once_with(expected_delegation_name)
+    docker_job._jobs.update_job_step_task.assert_called_once()
+
+
 def test_resuming_step_skips_before_active_ttl_enforcement(docker_job, test_job_step):
     """RESUMING must not apply ttl_seconds_before_active (pause/resume rebasing)."""
     ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
@@ -2780,6 +2857,42 @@ def test_cleanup_single_container_without_persistent_storage_label(docker_job, d
 
     # Verify persistent storage cleanup was NOT called
     docker_job.cleanup_job_persistent_storage.assert_not_called()
+
+
+def test_cleanup_single_container_revokes_workload_delegation_from_labels(docker_job, docker_client_mock):
+    mock_container = MagicMock()
+    mock_container.name = "test-container-workload-identity"
+    mock_container.id = "workload-identity-container-id"
+    mock_container.attrs = {
+        "State": {"ExitCode": 0},
+    }
+    mock_container.labels = {
+        JOB_WORKSPACE_ID_LABEL: "default",
+        JOB_ID_LABEL: "test-job-id",
+        JOB_ATTEMPT_ID_LABEL: "test-attempt-id",
+        JOB_STEP_ID_LABEL: "test-step-id",
+        JOB_STEP_NAME_LABEL: "test-step",
+        JOB_TASK_ID_LABEL: "task-success",
+        DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL: WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+    }
+    mock_volume = MagicMock()
+    docker_client_mock.volumes.get.return_value = mock_volume
+    expected_delegation_name = docker_delegation_name(
+        workload_workspace="default",
+        job_id="test-job-id",
+        attempt_id="test-attempt-id",
+        step_id="test-step-id",
+    )
+    workload_delegation_store = workload_delegation_store_mock()
+    docker_job._workload_delegation_store = workload_delegation_store
+
+    docker_job.cleanup_single_container(mock_container)
+
+    workload_delegation_store.revoke.assert_called_once_with(expected_delegation_name)
+    assert mock_container.remove.call_count == 1
+    assert docker_client_mock.volumes.get.call_count == 3
 
 
 def test_cleanup_single_container_step_terminal_but_job_has_more_steps(docker_job, docker_client_mock):

@@ -28,6 +28,16 @@ ENVOY_SERVICE_URL_TEMPLATE = (
 ENVOY_CONTROLLER_ENV_URL = "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
 AUTHENTIK_SERVICE_URL_TEMPLATE = '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "authentik-server" "scheme" "http") }}'
 PUBLIC_GATEWAY_URL_TEMPLATE = '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}'
+AUTH_CALLOUT_RESPONSE_PRINCIPAL_HEADERS = {
+    "x-nmp-principal-id",
+    "x-nmp-principal-email",
+    "x-nmp-principal-groups",
+    "x-nmp-principal-on-behalf-of",
+    "x-nmp-principal-on-behalf-of-email",
+    "x-nmp-principal-on-behalf-of-groups",
+    "x-nmp-scopes",
+}
+SEALED_EXTERNAL_PRINCIPAL_HEADERS = AUTH_CALLOUT_RESPONSE_PRINCIPAL_HEADERS
 
 
 def _strip_leading_helm_spdx_comments(template: str) -> str:
@@ -55,6 +65,10 @@ def _strip_leading_helm_spdx_comments(template: str) -> str:
 
 def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _exact_header_patterns(patterns: list[dict]) -> set[str]:
+    return {pattern["exact"] for pattern in patterns if "exact" in pattern}
 
 
 def _literal_run_commands(path: Path) -> set[tuple[str, ...]]:
@@ -824,6 +838,8 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
     ) in lua_code
     assert 'headers:remove("x-nmp-authorized")' in lua_code
     assert 'headers:remove("x-nmp-scopes")' in lua_code
+    for header in SEALED_EXTERNAL_PRINCIPAL_HEADERS:
+        assert f'headers:remove("{header}")' in lua_code
 
     assert "claim_to_headers" not in yaml.safe_dump(http_manager)
     assert all(
@@ -838,17 +854,14 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
     ext_authz = ext_authz_filter["typed_config"]
     assert ext_authz["transport_api_version"] == "V3"
     assert ext_authz["failure_mode_allow"] is False
-    assert ext_authz["http_service"]["path_prefix"] == "/apis/auth/authenticate"
+    assert ext_authz["http_service"]["path_prefix"] == "/apis/auth/ext-authz"
     assert ext_authz["http_service"]["server_uri"] == {
         "uri": "http://nemo-platform-api:8080",
         "cluster": "nemo",
         "timeout": "5s",
     }
     allowed_headers = ext_authz["http_service"]["authorization_response"]["allowed_upstream_headers"]["patterns"]
-    assert {"exact": "x-nmp-principal-id"} in allowed_headers
-    assert {"exact": "x-nmp-principal-email"} in allowed_headers
-    assert {"exact": "x-nmp-principal-groups"} in allowed_headers
-    assert {"exact": "x-nmp-scopes"} in allowed_headers
+    assert AUTH_CALLOUT_RESPONSE_PRINCIPAL_HEADERS.issubset(_exact_header_patterns(allowed_headers))
 
     protected_api_route = next(route for route in routes if route["match"] == {"prefix": "/apis/"})
     assert "typed_per_filter_config" not in protected_api_route
@@ -858,6 +871,12 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
         "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute",
         "disabled": True,
     }
+    public_ext_authz_route = next(route for route in routes if route["match"] == {"prefix": "/apis/auth/ext-authz"})
+    assert public_ext_authz_route["typed_per_filter_config"]["envoy.filters.http.ext_authz"] == {
+        "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute",
+        "disabled": True,
+    }
+    assert routes.index(public_ext_authz_route) < routes.index(protected_api_route)
 
     platform_config = nemo_values["platformConfig"].get("platform", {})
     assert "base_url" not in platform_config
@@ -987,6 +1006,22 @@ def test_authentik_umbrella_chart_applies_blueprint_with_waitable_helm_hook() ->
     assert "authentik-nemo-blueprint" in template
     assert "automountServiceAccountToken: false" in template
     assert "nmp.nvidia.com/blueprint-checksum" not in template
+
+
+@pytest.mark.auth_idp_k8s
+def test_authentik_tokenreview_rbac_does_not_grant_pod_or_job_reads() -> None:
+    template = (HELM_DIR / "templates" / "tokenreview-rbac.yaml").read_text(encoding="utf-8")
+    cluster_role = yaml.safe_load(_strip_leading_helm_spdx_comments(template).split("---", maxsplit=1)[0])
+    rules = cluster_role["rules"]
+    permissions = {
+        (tuple(rule.get("apiGroups", [])), tuple(rule.get("resources", [])), tuple(rule.get("verbs", [])))
+        for rule in rules
+    }
+
+    assert (("authentication.k8s.io",), ("tokenreviews",), ("create",)) in permissions
+    granted_resources = {resource for rule in rules for resource in rule.get("resources", [])}
+    assert not {"pods", "pods/log", "jobs", "jobs/status"} & granted_resources
+    assert ".Values.integration.nemoPlatform.apiServiceAccountName" in template
 
 
 def test_authentik_kubernetes_runner_uses_helm_not_kustomize() -> None:
@@ -1183,6 +1218,19 @@ def test_authentik_compose_runner_uses_nemo_scoped_ca_bundle() -> None:
     stripped_lines = [line.strip() for line in run_sh.splitlines()]
     assert not any(line.startswith('SSL_CERT_FILE="$(gateway_tls_cert_file)"') for line in stripped_lines)
     assert not any(line.startswith('REQUESTS_CA_BUNDLE="$(gateway_tls_cert_file)"') for line in stripped_lines)
+
+
+def test_authentik_compose_e2e_config_uses_global_docker_workload_identity_switch_only() -> None:
+    from tests.auth_idp.authentik_live import AUTHENTIK_DOCKER_E2E_CONFIG
+
+    config_overlay = AUTHENTIK_DOCKER_E2E_CONFIG.mark.args[2]
+    workload_executor = next(
+        executor
+        for executor in config_overlay["jobs"]["executors"]
+        if executor["backend"] == "docker" and executor["provider"] == "cpu" and executor["profile"] == "workload"
+    )
+
+    assert "workload_identity" not in workload_executor["config"]
 
 
 def test_authentik_umbrella_values_configure_workload_token_tls() -> None:
