@@ -450,7 +450,7 @@ for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
         uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.29.0"
     fi
 done
-for dist_info_glob in mlflow-*.dist-info sqlparse-*.dist-info wandb-*.dist-info; do
+for dist_info_glob in mlflow-*.dist-info mlflow_skinny-*.dist-info sqlparse-*.dist-info wandb-*.dist-info; do
     for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
         ls "${d}"${dist_info_glob} >/dev/null 2>&1 || continue
         find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
