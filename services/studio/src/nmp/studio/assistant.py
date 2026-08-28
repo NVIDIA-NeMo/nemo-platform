@@ -81,6 +81,7 @@ SERVER_CWD = Path(os.getcwd()).resolve()
 STUDIO_CONTEXT_START = "<nemo_studio_context>"
 STUDIO_CONTEXT_END = "</nemo_studio_context>"
 STUDIO_CONTEXT_USER_REQUEST_PREFIX = "User request:"
+STUDIO_CONTEXT_PROMPT_HEADER = "You are NeMo Assistant, running inside NeMo Studio."
 STUDIO_MESSAGE_SUMMARY_START = "<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 STUDIO_MESSAGE_SUMMARY_END = "<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 WORKSPACE_NAME_RE = re.compile(NAME_PATTERN)
@@ -368,11 +369,13 @@ def _build_studio_url(studio_base_url: str | None, path: str) -> str | None:
 
 
 def _strip_studio_context_from_prompt(content: str) -> str:
-    if not content.startswith(STUDIO_CONTEXT_START):
+    wrapper_prefix = f"{STUDIO_CONTEXT_START}\n{STUDIO_CONTEXT_PROMPT_HEADER}\n"
+    request_separator = f"\n{STUDIO_CONTEXT_END}\n\n{STUDIO_CONTEXT_USER_REQUEST_PREFIX}\n"
+    if not content.startswith(wrapper_prefix):
         return content
 
-    _, prefix, request = content.partition(f"{STUDIO_CONTEXT_USER_REQUEST_PREFIX}\n")
-    if not prefix:
+    _, separator, request = content.partition(request_separator)
+    if not separator:
         return content
     return request.strip() or content
 
@@ -406,7 +409,7 @@ def _build_studio_system_prompt(
     current_studio_route = _trimmed_string(studio_pathname) or "unknown"
     destinations = studio_links.STUDIO_LINK_DESTINATIONS if enabled_destinations is None else enabled_destinations
     lines = [
-        "You are NeMo Assistant, running inside NeMo Studio.",
+        STUDIO_CONTEXT_PROMPT_HEADER,
         f"Current Studio workspace: {workspace or 'unknown'}",
         f"Studio UI base URL: {normalized_base_url or 'unknown'}",
         f"Current Studio route path: {current_studio_route}",

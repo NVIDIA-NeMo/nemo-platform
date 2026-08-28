@@ -246,7 +246,7 @@ export const useCustomAssistantChatRuntime = ({
         createAssistantMessage();
       };
 
-      const getCurrentResponseContent = (): ThreadMessageLike['content'] =>
+      const getCurrentResponseContent = (): readonly ThreadAssistantMessagePart[] =>
         responseContent ?? [{ type: 'text', text: responseText }];
 
       const completeActiveAssistantMessage = (
@@ -369,13 +369,21 @@ export const useCustomAssistantChatRuntime = ({
 
         const errorMessage = error instanceof Error ? error.message : 'Unknown Error';
         ensureAssistantMessage();
+        const currentResponseContent = getCurrentResponseContent();
+        const failureMessage = `NeMo Assistant stopped before completing: ${errorMessage}`;
+        const incompleteContent = mergeAssistantParts(currentResponseContent, [
+          {
+            type: 'text',
+            text: `${hasVisibleAssistantContent(currentResponseContent) ? '\n\n' : ''}${failureMessage}`,
+          },
+        ]);
         completeActiveAssistantMessage(
           {
             type: 'incomplete',
             reason: 'error',
             error: errorMessage,
           },
-          [{ type: 'text', text: `NeMo Assistant stopped before completing: ${errorMessage}` }],
+          incompleteContent,
           { collapseAssistantContent: false }
         );
         onError?.(error instanceof Error ? error : new Error(errorMessage));

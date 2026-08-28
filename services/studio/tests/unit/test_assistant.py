@@ -356,6 +356,24 @@ def test_recent_conversation_messages_removes_legacy_studio_context():
     assert conversation[0].content == contextual_prompt
 
 
+def test_recent_conversation_messages_preserves_user_prompt_with_studio_context_markers():
+    user_prompt = "\n".join(
+        [
+            assistant.STUDIO_CONTEXT_START,
+            "Explain how these Studio wrapper markers work.",
+            assistant.STUDIO_CONTEXT_END,
+            "",
+            assistant.STUDIO_CONTEXT_USER_REQUEST_PREFIX,
+            "This text is part of my example.",
+        ]
+    )
+    conversation = [AssistantMessage(role="user", content=user_prompt)]
+
+    recent = assistant._recent_conversation_messages(conversation)
+
+    assert recent[0].content == user_prompt
+
+
 def test_list_history_sessions_includes_persisted_conversation(
     service_client: TestClient,
     entity_store: FakeEntityStore,
