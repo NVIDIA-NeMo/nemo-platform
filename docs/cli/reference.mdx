@@ -5790,6 +5790,2099 @@ nemo workspaces members update [OPTIONS] PRINCIPAL_ID
 
 ## Functional plugins
 
+### nemo agents
+
+Plugin commands for agents.
+
+**Usage:**
+
+```shell
+nemo agents [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+*Agent Resources (requires running cluster):*
+
+* `create`: Register an agent on the platform.
+* `list`: List agents on the platform.
+* `get`: Get an agent by name.
+* `delete`: Delete an agent from the platform.
+* `deploy`: Deploy an agent on the platform.
+* `logs`: Show logs for an agent deployment.
+* `undeploy`: Stop and remove a deployment (or all deployments for an...
+* `deployments`: Manage agent deployments.
+* `environment-specs`: Manage agent environment specs.
+* `environments`: Manage agent environments.
+* `compute-specs`: Manage agent compute specs.
+
+*Jobs:*
+
+* `analyze`: Analyze a batch of eval-suite results (clusters,...
+* `evaluate`: Evaluate an agent workflow against a dataset as a...
+* `evaluate-suite`: Run a directory of containerized eval tasks (Harbor or...
+* `execute`: Execute an agent to completion as a scheduled platform job.
+* `optimize`: Optimize a Fabric agent workflow (numeric HPO).
+* `optimize-skills`: Optimize an agent's skills against eval failures via a...
+* `package-agent`: Build a container image for an agent stored on the platform.
+
+*Local commands:*
+
+* `invoke`: Invoke an agent — locally (with --agent-config) or via...
+* `run`: Run an agent locally as a persistent FastAPI server.
+* `leaderboard`: Commands for usage leaderboard workflows.
+* `usage`: Token-usage reports from nat_runner.py outputs.
+
+*Packaging (no platform required):*
+
+* `package`: Package a NAT agent -- render -> validate -> build ->...
+
+*Platform agents:*
+
+* `analyst`: Analyze agent telemetry and record what the agent gets...
+* `experimentalist`: NeMo Experimentalist commands.
+
+#### nemo agents create
+
+Register an agent on the platform.
+
+**Usage:**
+
+```shell
+nemo agents create [OPTIONS]
+```
+
+**Options:**
+
+* `--name, -n`: Agent name.
+* `--agent-config, -c <FILE>`: Path to an agent YAML config file.
+* `--description`: [default: ]
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents list
+
+List agents on the platform.
+
+**Usage:**
+
+```shell
+nemo agents list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format for the list of agents. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+
+#### nemo agents get
+
+Get an agent by name.
+
+**Usage:**
+
+```shell
+nemo agents get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Agent name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents delete
+
+Delete an agent from the platform.
+
+**Usage:**
+
+```shell
+nemo agents delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Agent name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents deploy
+
+Deploy an agent on the platform.
+
+Blocks until the deployment is ``running`` (exit 0) or ``failed`` /
+timed out (exit 1) by default, so the exit code reflects the actual
+outcome of runtime startup instead of merely the API call.  Use
+``--no-wait`` to keep the previous fire-and-forget behaviour for
+scripted pipelines that prefer to poll separately via ``nemo agents
+deployments wait``.
+
+Container modes (``--mode docker|k8s``) compile to the nemo-deployments
+plugin. Requires a configured deployments executor (``deployments.executors``
+/ ``agents.deployments.docker_executor`` or ``k8s_executor``). Container
+endpoint gateway routing and the full k8s runtime contract (in-cluster
+inference gateway, wheel staging) are still evolving — docker mode is the
+supported local path today.
+
+**Usage:**
+
+```shell
+nemo agents deploy [OPTIONS]
+```
+
+**Options:**
+
+* `--agent, -a`: Name of the agent to deploy.
+* `--name, -n`: Deployment name (auto-generated if omitted).
+* `--mode`: Runtime backend: subprocess (default), docker, or k8s. [default: subprocess]
+* `--image, -i`: Container image for docker/k8s modes (falls back to deployments.default_image).
+* `--environment, -e`: AgentEnvironment to deploy under, as a 'workspace/name' ref (e.g. 'default/repo-research-ben'). Its EnvironmentSpec is merged into the agent config and its ComputeSpec/secret refs are snapshotted onto the deployment at create time.
+* `--wait, --no-wait`: Wait for the deployment to reach a terminal status (running or failed) before returning.  Exits 0 only on running; exits 1 with the failure reason if runtime startup fails or readiness times out. Pass --no-wait for fire-and-forget behaviour (the original default — returns the pending deployment immediately as JSON).
+* `--timeout, -t <INTEGER>`: Maximum seconds to wait for a terminal status (only with --wait). [default: 300]
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents logs
+
+Show logs for an agent deployment.
+
+Reads the log file written by the local in-memory runner backend.
+NAT subprocess deployments write process output there; Fabric-backed
+deployments write validation/preparation entries there. The log file
+location is the same convention the backend uses internally:
+``nmp_user_data_dir() / 'agents' / 'system' / \<deployment-name>.log``
+by default. This command is therefore only meaningful when the CLI runs
+on the same host as the platform — once a remote backend lands, log
+retrieval should move to a server-side endpoint.
+
+With ``--follow`` (``-f``), this command behaves like ``tail -f`` and
+streams new output until interrupted with Ctrl-C.
+
+**Usage:**
+
+```shell
+nemo agents logs [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Deployment name to print logs for. If omitted, pass --agent to look up the most recent deployment for that agent.
+
+**Options:**
+
+* `--agent, -a`: Resolve the most recent deployment for this agent (by ``created_at``), including failed ones — handy for post-mortem on a deploy that just died.
+* `--follow, -f`: Tail the log file and stream new output as it is written.
+* `--tail, -n <INTEGER>`: Print only the last N lines before exiting (or before following). Default: print full log.
+* `--path`: Print only the absolute log file path and exit (useful for scripting).
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents undeploy
+
+Stop and remove a deployment (or all deployments for an agent).
+
+**Usage:**
+
+```shell
+nemo agents undeploy [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Deployment name to remove.
+
+**Options:**
+
+* `--agent, --all, -a`: Remove all deployments for this agent.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents deployments
+
+Manage agent deployments.
+
+**Usage:**
+
+```shell
+nemo agents deployments [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List deployments.
+* `get`: Get a deployment by name.
+* `delete`: Delete a deployment by name.
+* `wait`: Wait for a deployment to reach 'running' or 'failed' status.
+
+##### nemo agents deployments list
+
+List deployments.
+
+**Usage:**
+
+```shell
+nemo agents deployments list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format for the list of deployments. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+
+##### nemo agents deployments get
+
+Get a deployment by name.
+
+**Usage:**
+
+```shell
+nemo agents deployments get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Deployment name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents deployments delete
+
+Delete a deployment by name.
+
+**Usage:**
+
+```shell
+nemo agents deployments delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Deployment name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents deployments wait
+
+Wait for a deployment to reach 'running' or 'failed' status.
+
+Polls the deployment until it is running (exit 0) or failed / timed out (exit 1).
+Prints a status line each time the status changes.
+
+Provide either a deployment name directly or --agent to resolve the
+latest active deployment for that agent automatically.
+
+**Usage:**
+
+```shell
+nemo agents deployments wait [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Deployment name to wait for.
+
+**Options:**
+
+* `--agent, -a`: Wait for the latest active deployment of this agent (alternative to passing a name directly).
+* `--timeout, -t <INTEGER>`: Maximum seconds to wait. [default: 300]
+* `--interval <FLOAT>`: Poll interval in seconds. [default: 2.0]
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents environment-specs
+
+Manage agent environment specs.
+
+**Usage:**
+
+```shell
+nemo agents environment-specs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create an environment spec from a file or inline JSON.
+* `list`: List environment specs.
+* `get`: Get an environment spec by name.
+* `delete`: Delete an environment spec by name.
+
+##### nemo agents environment-specs create
+
+Create an environment spec from a file or inline JSON.
+
+**Usage:**
+
+```shell
+nemo agents environment-specs create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Unique environment-spec name.
+
+**Options:**
+
+* `--spec-file, -f <PATH>`: Path to a JSON/YAML EnvironmentSpec body (without 'name').
+* `--spec`: Inline EnvironmentSpec body as a JSON object string.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents environment-specs list
+
+List environment specs.
+
+**Usage:**
+
+```shell
+nemo agents environment-specs list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values.
+
+##### nemo agents environment-specs get
+
+Get an environment spec by name.
+
+**Usage:**
+
+```shell
+nemo agents environment-specs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Environment-spec name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents environment-specs delete
+
+Delete an environment spec by name.
+
+**Usage:**
+
+```shell
+nemo agents environment-specs delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Environment-spec name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents environments
+
+Manage agent environments.
+
+**Usage:**
+
+```shell
+nemo agents environments [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create an AgentEnvironment.
+* `list`: List environments.
+* `get`: Get an environment by name.
+* `delete`: Delete an environment by name.
+
+##### nemo agents environments create
+
+Create an AgentEnvironment.
+
+Use --environment-spec / --compute-spec for the common ref case, or
+--spec-file / --spec for a fully inline body. The ref flags override the
+matching keys from a file/inline body.
+
+**Usage:**
+
+```shell
+nemo agents environments create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Unique environment name.
+
+**Options:**
+
+* `--environment-spec`: 'workspace/name' ref to a stored AgentEnvironmentSpec.
+* `--compute-spec`: 'workspace/name' ref to a stored AgentComputeSpec.
+* `--spec-file, -f <PATH>`: Path to a JSON/YAML AgentEnvironment body (without 'name').
+* `--spec`: Inline AgentEnvironment body as a JSON object string.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents environments list
+
+List environments.
+
+**Usage:**
+
+```shell
+nemo agents environments list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values.
+
+##### nemo agents environments get
+
+Get an environment by name.
+
+**Usage:**
+
+```shell
+nemo agents environments get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Environment name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents environments delete
+
+Delete an environment by name.
+
+**Usage:**
+
+```shell
+nemo agents environments delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Environment name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents compute-specs
+
+Manage agent compute specs.
+
+**Usage:**
+
+```shell
+nemo agents compute-specs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a compute spec from a file or inline JSON.
+* `list`: List compute specs.
+* `get`: Get a compute spec by name.
+* `delete`: Delete a compute spec by name.
+
+##### nemo agents compute-specs create
+
+Create a compute spec from a file or inline JSON.
+
+**Usage:**
+
+```shell
+nemo agents compute-specs create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Unique compute-spec name.
+
+**Options:**
+
+* `--spec-file, -f <PATH>`: Path to a JSON/YAML ComputeSpec body (without 'name').
+* `--spec`: Inline ComputeSpec body as a JSON object string.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents compute-specs list
+
+List compute specs.
+
+**Usage:**
+
+```shell
+nemo agents compute-specs list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values.
+
+##### nemo agents compute-specs get
+
+Get a compute spec by name.
+
+**Usage:**
+
+```shell
+nemo agents compute-specs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Compute-spec name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents compute-specs delete
+
+Delete a compute spec by name.
+
+**Usage:**
+
+```shell
+nemo agents compute-specs delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Compute-spec name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents analyze
+
+Analyze a batch of eval-suite results (clusters, regressions, hypotheses).
+
+**Usage:**
+
+```shell
+nemo agents analyze [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo agents analyze run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents analyze run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--batch`: Path to a batch directory produced by evaluate-suite.
+* `--mechanical-only`: Skip the LLM analysis pass.
+* `--anthropic-api-key-secret`: Name of a platform Secret holding the Anthropic API key.  When set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so the LLM gap-analysis pass can call Anthropic.  Ignored when ``mechanical_only=True``.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents analyze submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents analyze submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--batch`: Path to a batch directory produced by evaluate-suite.
+* `--mechanical-only`: Skip the LLM analysis pass.
+* `--anthropic-api-key-secret`: Name of a platform Secret holding the Anthropic API key.  When set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so the LLM gap-analysis pass can call Anthropic.  Ignored when ``mechanical_only=True``.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents analyze explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents analyze explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents evaluate
+
+Evaluate an agent workflow against a dataset as a scheduled platform job.
+
+**Usage:**
+
+```shell
+nemo agents evaluate [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo agents evaluate run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents evaluate run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent AGENT_REF | URL`: Agent to evaluate against — either a platform-managed agent reference (e.g. 'calculator', 'workspace/calculator') or an HTTP(S) endpoint URL (e.g. 'http://localhost:8080').  Bare names resolve to the platform gateway URL '\{base_url}/apis/agents/v2/workspaces/\{workspace}/agents/\{name}/-'; URLs are passed through to 'nat eval --endpoint' verbatim.  When omitted, the eval config must include an inline agent workflow.
+* `--eval-config`: Path to the NAT evaluation YAML config file.
+* `--eval-config-fileset FILESET_REF`: Optional fileset reference (``name`` or ``workspace/name``).  When set, the runner downloads the fileset's contents into a tempdir and resolves ``eval_config`` relative to that dir.  Local CLI runs leave this ``None``.
+* `--output PATH | FILESET_REF`: Where to write eval outputs — either a local directory (path-shaped: starts with '/', './', '../', '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').  Filesets are created on demand if missing.  Defaults to \<ctx.storage.persistent>/results (the platform-injected persistent volume) when not provided.
+* `--workspace`: Workspace name used to construct the Inference Gateway URL when injecting base_url into judge LLMs that have none set, and to resolve --agent / --output to gateway endpoints / fileset names when given a bare name.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents evaluate submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents evaluate submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent AGENT_REF | URL`: Agent to evaluate against — either a platform-managed agent reference (e.g. 'calculator', 'workspace/calculator') or an HTTP(S) endpoint URL (e.g. 'http://localhost:8080').  Bare names resolve to the platform gateway URL '\{base_url}/apis/agents/v2/workspaces/\{workspace}/agents/\{name}/-'; URLs are passed through to 'nat eval --endpoint' verbatim.  When omitted, the eval config must include an inline agent workflow.
+* `--eval-config`: Path to the NAT evaluation YAML config file.
+* `--eval-config-fileset FILESET_REF`: Optional fileset reference (``name`` or ``workspace/name``).  When set, the runner downloads the fileset's contents into a tempdir and resolves ``eval_config`` relative to that dir.  Local CLI runs leave this ``None``.
+* `--output PATH | FILESET_REF`: Where to write eval outputs — either a local directory (path-shaped: starts with '/', './', '../', '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').  Filesets are created on demand if missing.  Defaults to \<ctx.storage.persistent>/results (the platform-injected persistent volume) when not provided.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents evaluate explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents evaluate explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents evaluate-suite
+
+Run a directory of containerized eval tasks (Harbor or NAT) against an agent.
+
+**Usage:**
+
+```shell
+nemo agents evaluate-suite [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo agents evaluate-suite run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents evaluate-suite run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--evals`: Path to the directory of eval tasks.
+* `--agent`: Agent root.
+* `--concurrency <INTEGER>`: Parallel eval concurrency.
+* `--skip-build`: Skip docker build (Harbor only).
+* `--output`: Output dir for batch artifacts.
+* `--filter-glob`: Glob filter on eval names.
+* `--repeats <INTEGER>`: Trials per eval (median aggregation when >1).
+* `--anthropic-api-key-secret`: Name of a platform Secret holding the Anthropic API key.  When set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so the Harbor eval tasks' LLM-judge calls reach Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents evaluate-suite submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents evaluate-suite submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--evals`: Path to the directory of eval tasks.
+* `--agent`: Agent root.
+* `--concurrency <INTEGER>`: Parallel eval concurrency.
+* `--skip-build`: Skip docker build (Harbor only).
+* `--output`: Output dir for batch artifacts.
+* `--filter-glob`: Glob filter on eval names.
+* `--repeats <INTEGER>`: Trials per eval (median aggregation when >1).
+* `--anthropic-api-key-secret`: Name of a platform Secret holding the Anthropic API key.  When set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so the Harbor eval tasks' LLM-judge calls reach Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents evaluate-suite explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents evaluate-suite explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents execute
+
+Execute an agent to completion as a scheduled platform job.
+
+**Usage:**
+
+```shell
+nemo agents execute [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo agents execute run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents execute run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent`: Agent entity name or workspace/name ref.
+* `--input`: Prompt to pass to the agent.
+* `--workdir.base-workdir`: Optional Files reference for the initial working directory.
+* `--timeout-seconds <FLOAT>`: Maximum time to wait for Fabric to return an execution result.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents execute submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents execute submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent`: Agent entity name or workspace/name ref.
+* `--input`: Prompt to pass to the agent.
+* `--workdir.base-workdir`: Optional Files reference for the initial working directory.
+* `--timeout-seconds <FLOAT>`: Maximum time to wait for Fabric to return an execution result.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents execute explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents execute explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents optimize
+
+Optimize a Fabric agent workflow (numeric HPO).
+
+**Usage:**
+
+```shell
+nemo agents optimize [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+* `prepare-fileset`: Validate an optimize bundle and upload it to a fileset...
+
+##### nemo agents optimize run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents optimize run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--optimize-config`: Location of the Fabric-native optimization YAML.  With optimize_config_fileset set — required for `submit` — this is a path relative to the fileset root.  Without it (local `nemo agents optimize run` only) it is an absolute path on the host running the CLI.
+* `--optimize-config-fileset FILESET_REF`: Fileset holding the optimization bundle: the config named by optimize_config plus every asset it references (Agent under Test package, dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one with `nemo agents optimize prepare-fileset`.  Required for `submit`, where the job has no access to the client's filesystem.
+* `--workspace`: Workspace used to fetch a platform agent and for VirtualModel preflight.
+* `--agent`: Optional platform agent reference ('name' or 'workspace/name'). When omitted, the optimization config must include an inline Fabric agent package.
+* `--output PATH | FILESET_REF`: Where to publish the study artifacts (optimized config, trials dataframe, pareto plots, ATIF evidence) once the study succeeds — either a local directory (path-shaped: starts with '/', './', '../', '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').  Filesets are created on demand if missing.  This is in addition to the per-job artifacts that ``ctx.results.save`` always registers; it gives remote clients a stable, addressable location to read from.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents optimize submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents optimize submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--optimize-config`: Location of the Fabric-native optimization YAML.  With optimize_config_fileset set — required for `submit` — this is a path relative to the fileset root.  Without it (local `nemo agents optimize run` only) it is an absolute path on the host running the CLI.
+* `--optimize-config-fileset FILESET_REF`: Fileset holding the optimization bundle: the config named by optimize_config plus every asset it references (Agent under Test package, dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one with `nemo agents optimize prepare-fileset`.  Required for `submit`, where the job has no access to the client's filesystem.
+* `--agent`: Optional platform agent reference ('name' or 'workspace/name'). When omitted, the optimization config must include an inline Fabric agent package.
+* `--output PATH | FILESET_REF`: Where to publish the study artifacts (optimized config, trials dataframe, pareto plots, ATIF evidence) once the study succeeds — either a local directory (path-shaped: starts with '/', './', '../', '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').  Filesets are created on demand if missing.  This is in addition to the per-job artifacts that ``ctx.results.save`` always registers; it gives remote clients a stable, addressable location to read from.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents optimize explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents optimize explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents optimize prepare-fileset
+
+Validate an optimize bundle and upload it to a fileset for `optimize submit`.
+
+**Usage:**
+
+```shell
+nemo agents optimize prepare-fileset [OPTIONS]
+```
+
+**Options:**
+
+* `--source <DIRECTORY>`: Directory holding the optimize config and every asset it references.
+* `--optimize-config`: Optimize YAML, as a path relative to --source. This is the value to pass to `optimize submit --optimize-config`.
+* `--fileset`: Fileset to upload into ('name' or 'workspace/name'). Created if missing.
+* `--workspace`: Workspace for the fileset and for agent / model preflight. [default: default]
+* `--agent`: Platform agent supplying the Agent under Test, for configs that carry only the optimizer and eval overlay.
+* `--check-models, --no-check-models`: Also resolve the config's models against the platform before uploading.
+* `--dry-run`: Run preflight and print the result without uploading.
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents optimize-skills
+
+Optimize an agent's skills against eval failures via a coding agent (Claude).
+
+**Usage:**
+
+```shell
+nemo agents optimize-skills [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo agents optimize-skills run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents optimize-skills run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--evals`: Path to the directory of eval tasks.
+* `--agent`: Agent root (where the loop runs from; skills live under it).
+* `--skills-path`: Relative path inside agent where skills live.
+* `--filter-glob`: Glob filter on eval names (e.g. 'files-*').
+* `--iterations <INTEGER>`: Override `iterations` in the spec.
+* `--concurrency <INTEGER>`: Override `concurrency` in the spec.
+* `--state`: Path to loop_state.json; default: \<agent>/loop_state.json.
+* `--initial-batch`: Existing batch dir to seed from.
+* `--full-verification`: Override `full_verification` in the spec.
+* `--open-pr`: Override `open_pr` in the spec.
+* `--repeats <INTEGER>`: Override `repeats` in the spec.
+* `--analyze-only`: Analyze-only mode: consume an existing --initial-batch, generate suggestions, exit. Skips worktree, apply, verify, MR. Works with any AUT (Harbor or NAT).
+* `--anthropic-api-key-secret`: Name of a platform Secret holding the Anthropic API key.  When set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so the loop's ``check_anthropic_api`` / Claude analyzer preflights pass.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents optimize-skills submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents optimize-skills submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--evals`: Path to the directory of eval tasks.
+* `--agent`: Agent root (where the loop runs from; skills live under it).
+* `--skills-path`: Relative path inside agent where skills live.
+* `--filter-glob`: Glob filter on eval names (e.g. 'files-*').
+* `--iterations <INTEGER>`: Override `iterations` in the spec.
+* `--concurrency <INTEGER>`: Override `concurrency` in the spec.
+* `--state`: Path to loop_state.json; default: \<agent>/loop_state.json.
+* `--initial-batch`: Existing batch dir to seed from.
+* `--full-verification`: Override `full_verification` in the spec.
+* `--open-pr`: Override `open_pr` in the spec.
+* `--repeats <INTEGER>`: Override `repeats` in the spec.
+* `--analyze-only`: Analyze-only mode: consume an existing --initial-batch, generate suggestions, exit. Skips worktree, apply, verify, MR. Works with any AUT (Harbor or NAT).
+* `--anthropic-api-key-secret`: Name of a platform Secret holding the Anthropic API key.  When set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so the loop's ``check_anthropic_api`` / Claude analyzer preflights pass.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents optimize-skills explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents optimize-skills explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents package-agent
+
+Build a container image for an agent stored on the platform.
+
+**Usage:**
+
+```shell
+nemo agents package-agent [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo agents package-agent run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo agents package-agent run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent`: Name of the Agent entity to package.
+* `--tag`: Image name and optional tag, always nested under 'nemo-agents/\{workspace}/'. Defaults to '\{agent_name}-\{agent_id}:\{agent_version}'.
+* `--base-image-url`: Base image repository override (e.g. 'nvcr.io/nvidia/base/ubuntu').
+* `--base-image-tag`: Base image tag override (e.g. 'noble-20260217').
+* `--python-version`: Python version baked into the image (e.g. '3.13').
+* `--uv-version`: uv version baked into the image (e.g. '0.9.14').
+* `--allow-root`: Run the agent as root instead of the 'agent' user.
+* `--sandbox-runtime`: Render an image compatible with a sandbox runtime (e.g. 'openshell').
+* `--agent-version`: OCI image version label override.
+* `--agent-author`: OCI image authors label override.
+* `--skip-validation`: Bypass Fabric package validation before building.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo agents package-agent submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo agents package-agent submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent`: Name of the Agent entity to package.
+* `--tag`: Image name and optional tag, always nested under 'nemo-agents/\{workspace}/'. Defaults to '\{agent_name}-\{agent_id}:\{agent_version}'.
+* `--base-image-url`: Base image repository override (e.g. 'nvcr.io/nvidia/base/ubuntu').
+* `--base-image-tag`: Base image tag override (e.g. 'noble-20260217').
+* `--python-version`: Python version baked into the image (e.g. '3.13').
+* `--uv-version`: uv version baked into the image (e.g. '0.9.14').
+* `--allow-root`: Run the agent as root instead of the 'agent' user.
+* `--sandbox-runtime`: Render an image compatible with a sandbox runtime (e.g. 'openshell').
+* `--agent-version`: OCI image version label override.
+* `--agent-author`: OCI image authors label override.
+* `--skip-validation`: Bypass Fabric package validation before building.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo agents package-agent explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo agents package-agent explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents invoke
+
+Invoke an agent — locally (with --agent-config) or via the platform (with --agent or --agent-deployment).
+
+**Usage:**
+
+```shell
+nemo agents invoke [OPTIONS]
+```
+
+**Options:**
+
+* `--agent-config, -c <FILE>`: Path to an agent YAML config file.
+* `--input, -i`: Input query string for local invocation.
+* `--input-file <PATH>`: JSON file containing a list of input queries for batch invocation.
+* `--agent, -a`: Name of a platform-deployed agent to invoke (platform required).
+* `--agent-deployment, -d`: Name of a specific deployment to invoke (platform required).
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--timeout, -t <FLOAT>`: Request timeout in seconds for platform invocation. [default: 300] [env: NEMO_AGENTS_INVOKE_TIMEOUT=]
+* `--no-progress`: Suppress the stderr spinner while waiting for the response.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents run
+
+Run an agent locally as a persistent FastAPI server.
+
+**Usage:**
+
+```shell
+nemo agents run [OPTIONS]
+```
+
+**Options:**
+
+* `--agent-config, -c <FILE>`: Path to an agent YAML config file.
+* `--host`: [default: 0.0.0.0]
+* `--port, -p <INTEGER>`: [default: 8080]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents leaderboard
+
+Commands for usage leaderboard workflows.
+
+**Examples:**
+
+```shell
+# Show leaderboard help.
+nemo agents leaderboard --help
+```
+
+**Usage:**
+
+```shell
+nemo agents leaderboard [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `show`: Show a ranked leaderboard from local usage report files.
+
+##### nemo agents leaderboard show
+
+Show a ranked leaderboard from local usage report files.
+
+**Examples:**
+
+```shell
+nemo agents leaderboard show ./result.json
+nemo agents leaderboard show ./reports/
+nemo agents leaderboard show ./reports/ ./baseline.json --compact
+```
+
+**Usage:**
+
+```shell
+nemo agents leaderboard show [OPTIONS] PATHS...
+```
+
+**Arguments:**
+
+* `<PATHS...>`: One or more usage report files or directories containing report files.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--compact`: Render the compact leaderboard table.
+
+#### nemo agents usage
+
+Token-usage reports from nat_runner.py outputs.
+
+**Usage:**
+
+```shell
+nemo agents usage [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `show`: Show a usage report for *ref*.
+
+##### nemo agents usage show
+
+Show a usage report for *ref*.
+
+**Usage:**
+
+```shell
+nemo agents usage show [OPTIONS] <PATH | FILESET_REF>
+```
+
+**Arguments:**
+
+* `<<PATH | FILESET_REF>>`: Local path to a result.json / run dir / nat-jobs dir, or a NeMo Platform fileset reference.
+
+**Options:**
+
+* `--total-params <FLOAT>`: Model's total parameter count, in billions (e.g. 8.0 for Llama-3.1-8B, 70.0 for Llama-3.1-70B).  When set with non-null tokens, compute_units = total_tokens × total_params.  Closed-source models have no public number — leave unset and compute_units stays null.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents package
+
+Package a NAT agent -- render -> validate -> build -> publish.
+
+
+Progressive pipeline controlled by flags:
+  --no-build                    emit Dockerfile + .dockerignore (no image)
+  (default)                     render + validate + build
+  --publish --registry ...      render + validate + build + push
+
+
+Platform behavior:
+  - no --platform     image built for the local daemon's native platform
+  - one --platform    image built for that platform (cross-arch via buildx)
+  - multi --platform  rejected -- multi-arch builds via buildx are not
+yet wired up; build per-arch and combine with
+``docker buildx imagetools create`` until then.
+
+**Usage:**
+
+```shell
+nemo agents package [OPTIONS]
+```
+
+**Options:**
+
+* `--agent, -c <FILE>`: Path to a NAT workflow YAML config file.
+* `--pyproject <FILE>`: Path to pyproject.toml (enables project mode).
+* `--no-build`: Stop after render — emit Dockerfile + .dockerignore only (no image built).
+* `--publish`: After building, tag and push to --registry.
+* `--format`: Packaging format: 'docker' (Jinja2 Dockerfile). 'whl' is reserved for future wheel-based builds and is currently rejected. [default: docker]
+* `--dockerfile <FILE>`: Use an existing Dockerfile instead of rendering (skips render stage).
+* `--tag, -t`: Image tag.  Defaults to '\<agent-name>-\<agent-id>:\<agent-version>'.
+* `--platform`: Target platform (e.g. 'linux/amd64' or 'linux/arm64'). When omitted, defaults to the local daemon's native platform. Multi-arch builds via buildx are not yet implemented; pass at most one value.
+* `--registry, -r`: Remote registry URL (required when --publish is set).
+* `--push-tag`: Fully-qualified remote tag.  Defaults to '\<registry>/\<tag>'.
+* `--output, -o <PATH>`: Output path for rendered Dockerfile (only used with --no-build). Defaults to 'Dockerfile' next to --pyproject when given (project root, so COPY statements resolve), otherwise next to the agent config.
+* `--base-image-url`: [env: NEMO_AGENTS_BASE_IMAGE_URL=]
+* `--base-image-tag`: [env: NEMO_AGENTS_BASE_IMAGE_TAG=]
+* `--python-version`: [env: NEMO_AGENTS_PYTHON_VERSION=]
+* `--nat-version`: NAT release to install (e.g. '1.7.0').  Strongly recommended: pin explicitly so image tags/labels/deps are reproducible.  When omitted, a baked-in default is used and a warning is printed.
+* `--uv-version`: [env: NEMO_AGENTS_UV_VERSION=]
+* `--allow-root`: Disable non-root USER hardening in the rendered Dockerfile.
+* `--sandbox-runtime`: Render an image compatible with a sandbox runtime (e.g. 'openshell'). Discovers the runtime's image profile and bakes in its required apt packages + users so the image can run inside that sandbox supervisor.
+* `--ignore, --no-ignore`: Generate a .dockerignore file alongside the Dockerfile.
+* `--skip-validation`: Bypass agent config validation before build.
+* `--agent-version`: Override agent version OCI label.
+* `--agent-author`: Override agent author OCI label.
+* `--template`: Path to an external Jinja2 Dockerfile template.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents analyst
+
+Analyze agent telemetry and record what the agent gets wrong.
+
+**Usage:**
+
+```shell
+nemo agents analyst [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run the analyst agent against a running NMP instance.
+* `doctor`: Check whether the current profile is ready for analysis.
+
+##### nemo agents analyst run
+
+Run the analyst agent against a running NMP instance.
+
+Builds the analyst agent with ``--agent`` (and optional ``--ethos``)
+formatted into its instructions and tools scoped
+to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
+prints whatever the agent returns. Insights are written to the
+platform, and mirrored to ``--insights-file-output`` when given.
+
+**Usage:**
+
+```shell
+nemo agents analyst run [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Name of the agent (agent under test) the analyst should focus on.
+* `--ethos <PATH>`: Path to a markdown file describing the agent under test (its Ethos).
+* `--workspace`: Workspace the analyst should operate in.
+* `--base-url`: Base URL of the running NMP instance the analyst's tools should call.
+* `--profile <FILE>`: Path to optimizer.yaml. Default: discovered by walking up from cwd.
+* `--insights-file-output <PATH>`: Also write insights to this local YAML file. Insights always go to the platform first; the file mirrors what was stored, platform ids included, and each run merges into it.
+* `--verbose, -v`: Stream the analyst's tool calls and reasoning to stderr while it runs. Off by default so that stdout stays clean for piping the final answer.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents analyst doctor
+
+Check whether the current profile is ready for analysis.
+
+**Usage:**
+
+```shell
+nemo agents analyst doctor [OPTIONS]
+```
+
+**Options:**
+
+* `--profile <FILE>`: Path to optimizer.yaml. Default: discovered by walking up from cwd.
+* `--base-url`: Base URL of the running NMP instance to check.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents experimentalist
+
+NeMo Experimentalist commands.
+
+**Usage:**
+
+```shell
+nemo agents experimentalist [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run offline optimization for a baseline agent (local dir...
+* `components`: List the components this install can resolve by name.
+* `doctor`: Diagnose Experimentalist setup: profile, artifacts,...
+
+##### nemo agents experimentalist run
+
+Run offline optimization for a baseline agent (local dir or git source).
+
+**Usage:**
+
+```shell
+nemo agents experimentalist run [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Baseline agent: a local directory or a git URL with an optional ref (e.g. ssh://git@host/group/repo.git@main). Optional in Mode 1 (the insight supplies the agent) and overrides the insight's agent when given. A git source records provenance and enables --config storage.publish_winner to open a draft PR/MR for the winner against that ref.
+* `--ethos`: URI of a markdown file describing the agent under test (its Ethos).
+* `--insight`: Insight for Mode 1: a local insight file OR a platform insight id (surfaced in Studio). A path that exists on disk is read locally; otherwise it is fetched from the platform. Default: \<profile-dir>/.nemo-optimizer/insights.yaml when it exists (where `nemo agents analyst run` writes by default).
+* `--insight-id`: Selector for a local multi-insight file: exact id/title first; if none matches, a decimal value is a zero-based index.
+* `--no-insight`: Disable insight use (Mode 2), including the shared profile insight file.
+* `--profile <FILE>`: Path to optimizer.yaml. Default: discovered by walking up from the cwd.
+* `--train-dataset`: Train dataset: local path or harbor registry ref. Falls back to the profile.
+* `--validation-dataset`: Validation dataset: local path or harbor registry ref. Falls back to the profile.
+* `--task-template`: Evaluator-specific task-template URI. Required with --insight.
+* `--experiment-dir, --output, --experiments-output, -o <DIRECTORY>`: Local experiment directory; writes eval-and-optimize/ here. Default: \<profile-dir>/.nemo-optimizer/experiments/\<timestamp> when a profile governs the run, else ./tmp.
+* `--workspace`: Intake/NMP workspace for traces and run/candidate metadata. Falls back to the profile.
+* `--base-url`: Base URL of the running NMP instance. Default: NMP_BASE_URL (shell or profile-dir .env), else http://localhost:8080. [env: NMP_BASE_URL=]
+* `--config <FILE>`: YAML or JSON configuration for the optimizer run.
+* `--framework-skills <DIRECTORY>`: Path to a directory of framework skills to load into the optimizer agents. May be specified multiple times. [default: ]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents experimentalist components
+
+List the components this install can resolve by name.
+
+Includes anything a `pip install`ed package registered, which is how a
+developer checks their own component was picked up.
+
+**Usage:**
+
+```shell
+nemo agents experimentalist components [OPTIONS]
+```
+
+**Options:**
+
+* `--role`: Show only this role.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents experimentalist doctor
+
+Diagnose Experimentalist setup: profile, artifacts, models, platform, runtime.
+
+**Usage:**
+
+```shell
+nemo agents experimentalist doctor [OPTIONS]
+```
+
+**Options:**
+
+* `--insight`: Optional insight ref to verify.
+* `--insight-id`: Select an exact id/title or zero-based index from a local multi-insight file.
+* `--profile <PATH>`: Path to optimizer.yaml.
+* `--base-url`: Base URL of the running NMP instance. Default: NMP_BASE_URL (shell or profile-dir .env), else http://localhost:8080. [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo data-designer
+
+Plugin commands for data-designer.
+
+**Usage:**
+
+```shell
+nemo data-designer [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `validate`: Validate a Data Designer configuration.
+* `create`
+* `preview`
+* `personas`: Manage Nemotron Personas datasets
+* `agent`: Agent-only interface for dynamic Data Designer introspection
+
+#### nemo data-designer validate
+
+Validate a Data Designer configuration.
+
+**Usage:**
+
+```shell
+nemo data-designer validate [OPTIONS] CONFIG_SOURCE
+```
+
+**Arguments:**
+
+* `<CONFIG_SOURCE>`: Path or URL to a config file (.yaml/.yml/.json), or a local Python module (.py) that defines a load_config_builder() function.
+
+**Options:**
+
+* `--workspace`: Workspace used to resolve provider references and seed sources (remote pass). Defaults to the SDK's configured workspace, or 'default'.
+* `--output <CHOICE>`: Output format. 'json' suppresses the human-formatted blocks. [possible values: text, json; default: text]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo data-designer create
+
+**Usage:**
+
+```shell
+nemo data-designer create [OPTIONS] [CONFIG_SOURCE]
+```
+
+**Arguments:**
+
+* `<CONFIG_SOURCE>`: Path or URL to a config file (.yaml/.yml/.json), or a local Python module (.py) that defines a load_config_builder() function.
+
+**Options:**
+
+* `--num-records, -n <INTEGER RANGE>`: [default: 10]
+* `--workspace, -w`: [default: default]
+* `--profile`
+* `--cluster`
+* `--base-url`
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo data-designer preview
+
+**Usage:**
+
+```shell
+nemo data-designer preview [OPTIONS] [CONFIG_SOURCE]
+```
+
+**Arguments:**
+
+* `<CONFIG_SOURCE>`: Path or URL to a config file (.yaml/.yml/.json), or a local Python module (.py) that defines a load_config_builder() function.
+
+**Options:**
+
+* `--num-records, -n <INTEGER RANGE>`: [default: 10]
+* `--workspace, -w`: [default: default]
+* `--cluster`
+* `--base-url`
+* `--request-id`
+* `--non-interactive`: Display all records at once instead of browsing interactively. Ignored when --save-results is used.
+* `--save-results`: Save preview artifacts to disk (dataset.parquet, per-record HTML, analysis report) instead of displaying records in the terminal.
+* `--artifact-path, -o`: Directory for saved results (used with --save-results). Defaults to ./artifacts.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo data-designer personas
+
+Manage Nemotron Personas datasets
+
+**Usage:**
+
+```shell
+nemo data-designer personas [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `make-fileset`: Create the system fileset for one Nemotron Personas locale.
+
+##### nemo data-designer personas make-fileset
+
+Create the system fileset for one Nemotron Personas locale.
+
+**Usage:**
+
+```shell
+nemo data-designer personas make-fileset [OPTIONS]
+```
+
+**Options:**
+
+* `--locale <CHOICE>`: Locale fileset to create. [possible values: en_IN, en_SG, en_US, fr_FR, hi_Deva_IN, hi_Latn_IN, ja_JP, ko_KR, pt_BR]
+* `--api-key-secret`: Fully qualified NGC API key secret reference (WORKSPACE/NAME).
+* `--api-key-env-var`: Environment variable containing an NGC API key to create at --api-key-secret.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo data-designer agent
+
+Agent-only interface for dynamic Data Designer introspection
+
+**Usage:**
+
+```shell
+nemo data-designer agent [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `state`: Return current local state relevant to agents
+* `context`: Prints output from all agent subcommands to bootstrap...
+* `types`: Type names, descriptions, and source files for one or all...
+
+##### nemo data-designer agent state
+
+Return current local state relevant to agents
+
+**Usage:**
+
+```shell
+nemo data-designer agent state [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `model-aliases`: Model aliases and usability status.
+* `persona-datasets`: Persona locales and install status.
+
+###### nemo data-designer agent state model-aliases
+
+Model aliases and usability status.
+
+**Usage:**
+
+```shell
+nemo data-designer agent state model-aliases [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+###### nemo data-designer agent state persona-datasets
+
+Persona locales and install status.
+
+**Usage:**
+
+```shell
+nemo data-designer agent state persona-datasets [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo data-designer agent context
+
+Prints output from all agent subcommands to bootstrap context.
+
+**Usage:**
+
+```shell
+nemo data-designer agent context [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo data-designer agent types
+
+Type names, descriptions, and source files for one or all families.
+
+**Usage:**
+
+```shell
+nemo data-designer agent types [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
 ### nemo guardrail
 
 Manage guardrails.
@@ -5978,7 +8071,7 @@ nemo guardrail configs list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -6074,6 +8167,2059 @@ nemo guardrail configs update [OPTIONS] NAME
 **Output Options:**
 
 * `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo auditor
+
+Plugin commands for auditor.
+
+**Usage:**
+
+```shell
+nemo auditor [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `info`: Print the current plugin status.
+* `configs`: Manage audit configurations.
+* `targets`: Manage audit targets.
+
+*Jobs:*
+
+* `audit`: Run an auditor scan against a configured target.
+
+#### nemo auditor info
+
+Print the current plugin status.
+
+**Usage:**
+
+```shell
+nemo auditor info [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auditor configs
+
+Manage audit configurations.
+
+**Usage:**
+
+```shell
+nemo auditor configs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`
+* `list`
+* `get`
+* `update`
+* `delete`
+
+##### nemo auditor configs create
+
+**Usage:**
+
+```shell
+nemo auditor configs create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Config name.
+
+**Options:**
+
+* `--data-file, -f <FILE>`: JSON file with the config body (without name/workspace).
+* `--data, -d`: Inline JSON body for the config.
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor configs list
+
+**Usage:**
+
+```shell
+nemo auditor configs list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor configs get
+
+**Usage:**
+
+```shell
+nemo auditor configs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Config name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor configs update
+
+**Usage:**
+
+```shell
+nemo auditor configs update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Config name.
+
+**Options:**
+
+* `--data-file, -f <FILE>`: JSON file with the new config body.
+* `--data, -d`: Inline JSON body.
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor configs delete
+
+**Usage:**
+
+```shell
+nemo auditor configs delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Config name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auditor targets
+
+Manage audit targets.
+
+**Usage:**
+
+```shell
+nemo auditor targets [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`
+* `list`
+* `get`
+* `update`
+* `delete`
+
+##### nemo auditor targets create
+
+**Usage:**
+
+```shell
+nemo auditor targets create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Target name.
+
+**Options:**
+
+* `--data-file, -f <FILE>`: JSON file with the target body (without name/workspace).
+* `--data, -d`: Inline JSON body for the target.
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor targets list
+
+**Usage:**
+
+```shell
+nemo auditor targets list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor targets get
+
+**Usage:**
+
+```shell
+nemo auditor targets get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Target name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor targets update
+
+**Usage:**
+
+```shell
+nemo auditor targets update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Target name.
+
+**Options:**
+
+* `--data-file, -f <FILE>`: JSON file with the new target body.
+* `--data, -d`: Inline JSON body.
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auditor targets delete
+
+**Usage:**
+
+```shell
+nemo auditor targets delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Target name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auditor audit
+
+Run an auditor scan against a configured target.
+
+**Usage:**
+
+```shell
+nemo auditor audit [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo auditor audit run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo auditor audit run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--max-probe-retries <INTEGER>`: Override `max_probe_retries` in the spec.
+* `--fail-job-on-retries-exhausted`: Override `fail_job_on_retries_exhausted` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo auditor audit submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo auditor audit submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--max-probe-retries <INTEGER>`: Override `max_probe_retries` in the spec.
+* `--fail-job-on-retries-exhausted`: Override `fail_job_on_retries_exhausted` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo auditor audit explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo auditor audit explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo anonymizer
+
+Plugin commands for anonymizer.
+
+**Usage:**
+
+```shell
+nemo anonymizer [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `validate`: Validate an AnonymizerConfig against the model selection.
+
+*Functions:*
+
+* `preview`: Streaming preview of an Anonymizer config.
+
+*Jobs:*
+
+* `run`: Anonymize a dataset of records
+
+#### nemo anonymizer validate
+
+Validate an AnonymizerConfig against the model selection.
+
+**Usage:**
+
+```shell
+nemo anonymizer validate [OPTIONS]
+```
+
+**Options:**
+
+* `--config <PATH>`: Path to AnonymizerConfig YAML.
+* `--model-configs <PATH>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo anonymizer preview
+
+Streaming preview of an Anonymizer config.
+
+**Usage:**
+
+```shell
+nemo anonymizer preview [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run preview locally, in-process.
+* `submit`: Submit preview over HTTP.
+
+##### nemo anonymizer preview run
+
+Run preview locally, in-process.
+
+**Usage:**
+
+```shell
+nemo anonymizer preview run [OPTIONS]
+```
+
+**Function Spec:**
+
+* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
+* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
+* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
+* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
+* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
+* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
+* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
+* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
+* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
+* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
+* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.text-column`: Column containing text to anonymize.
+* `--data.id-column`: Optional column to use as record identifier.
+* `--data.data-summary`: Short description of the data.
+* `--num-records <INTEGER>`: Override `num_records` in the spec.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+* `--workspace`: Workspace identity passed to the function as ctx.workspace. [default: default]
+
+Function Spec flags are generated from the PreviewRequest Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
+
+##### nemo anonymizer preview submit
+
+Submit preview over HTTP.
+
+**Usage:**
+
+```shell
+nemo anonymizer preview submit [OPTIONS]
+```
+
+**Function Spec:**
+
+* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
+* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
+* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
+* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
+* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
+* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
+* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
+* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
+* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
+* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
+* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.text-column`: Column containing text to anonymize.
+* `--data.id-column`: Optional column to use as record identifier.
+* `--data.data-summary`: Short description of the data.
+* `--num-records <INTEGER>`: Override `num_records` in the spec.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace path segment used in the submit URL. [default: default]
+* `--request-id`: Set the X-Request-ID header (echoed back in ctx.request_id).
+
+Function Spec flags are generated from the PreviewRequest Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
+
+#### nemo anonymizer run
+
+Anonymize a dataset of records
+
+**Usage:**
+
+```shell
+nemo anonymizer run [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
+* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
+* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
+* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
+* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
+* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
+* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
+* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
+* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
+* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
+* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.text-column`: Column containing text to anonymize.
+* `--data.id-column`: Optional column to use as record identifier.
+* `--data.data-summary`: Short description of the data.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo anonymizer run run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo anonymizer run run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
+* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
+* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
+* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
+* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
+* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
+* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
+* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
+* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
+* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
+* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.text-column`: Column containing text to anonymize.
+* `--data.id-column`: Optional column to use as record identifier.
+* `--data.data-summary`: Short description of the data.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo anonymizer run submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo anonymizer run submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
+* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
+* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
+* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
+* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
+* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
+* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
+* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
+* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
+* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
+* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.text-column`: Column containing text to anonymize.
+* `--data.id-column`: Optional column to use as record identifier.
+* `--data.data-summary`: Short description of the data.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo anonymizer run explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo anonymizer run explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo evaluator
+
+Plugin commands for evaluator.
+
+**Usage:**
+
+```shell
+nemo evaluator [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `info`: Print the current plugin status.
+* `metric-types`: Print available evaluator metric names or a metric JSON...
+
+*Jobs:*
+
+* `agent-evaluate`: Run agent evaluation over tasks against a model, agent,...
+* `evaluate`: Run evaluator SDK metrics against inline rows or...
+
+#### nemo evaluator info
+
+Print the current plugin status.
+
+**Usage:**
+
+```shell
+nemo evaluator info [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo evaluator metric-types
+
+Print available evaluator metric names or a metric JSON schema.
+
+**Usage:**
+
+```shell
+nemo evaluator metric-types [OPTIONS] [<metric-name>]
+```
+
+**Arguments:**
+
+* `<<metric-name>>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo evaluator agent-evaluate
+
+Run agent evaluation over tasks against a model, agent, or runner.
+
+**Usage:**
+
+```shell
+nemo evaluator agent-evaluate [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo evaluator agent-evaluate run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo evaluator agent-evaluate run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--max-concurrent-tasks <INTEGER>`: Maximum number of tasks evaluated concurrently. Distinct from a target's `params.parallelism`, which bounds concurrent inference requests *within* trial generation.
+* `--fail-fast`: Stop the run on the first scoring failure when True.
+* `--publication.intake.evaluation-id`: Name of the existing Evaluation to publish under. Must already exist; the job does not create it.
+* `--publication.intake.agent-name`: Agent name recorded on each published trajectory. Derived from the target when it names one; required otherwise.
+* `--publication.intake.agent-version`: Agent version recorded on each published trajectory. Neither a Model nor an Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.
+* `--publication.intake.required`: Fail the job when publication fails. Defaults to True so a run that asked to publish does not report success with nothing in Experiments. The result bundle is saved before publication runs, so a failed job still leaves the results intact to re-publish. Set False to keep the job successful and report the failure in its output instead.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo evaluator agent-evaluate submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo evaluator agent-evaluate submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--max-concurrent-tasks <INTEGER>`: Maximum number of tasks evaluated concurrently. Distinct from a target's `params.parallelism`, which bounds concurrent inference requests *within* trial generation.
+* `--fail-fast`: Stop the run on the first scoring failure when True.
+* `--publication.intake.evaluation-id`: Name of the existing Evaluation to publish under. Must already exist; the job does not create it.
+* `--publication.intake.agent-name`: Agent name recorded on each published trajectory. Derived from the target when it names one; required otherwise.
+* `--publication.intake.agent-version`: Agent version recorded on each published trajectory. Neither a Model nor an Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.
+* `--publication.intake.required`: Fail the job when publication fails. Defaults to True so a run that asked to publish does not report success with nothing in Experiments. The result bundle is saved before publication runs, so a failed job still leaves the results intact to re-publish. Set False to keep the job successful and report the failure in its output instead.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo evaluator agent-evaluate explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo evaluator agent-evaluate explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo evaluator evaluate
+
+Run evaluator SDK metrics against inline rows or FilesetRef datasets.
+
+**Usage:**
+
+```shell
+nemo evaluator evaluate [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo evaluator evaluate run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo evaluator evaluate run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--publication.intake.evaluation-id`: Name of the existing Evaluation to publish under. Must already exist; the job does not create it.
+* `--publication.intake.agent-name`: Agent name recorded on each published trajectory. Derived from the target when it names one; required otherwise.
+* `--publication.intake.agent-version`: Agent version recorded on each published trajectory. Neither a Model nor an Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.
+* `--publication.intake.required`: Fail the job when publication fails. Defaults to True so a run that asked to publish does not report success with nothing in Experiments. The result bundle is saved before publication runs, so a failed job still leaves the results intact to re-publish. Set False to keep the job successful and report the failure in its output instead.
+* `--publication.intake.test-case-id-field`: Dataset column identifying each row, recorded as the published test case id. Defaults to a hash of the row's content, which keeps a row's id stable across dataset reorderings and revisions so the same test case can be compared run over run; editing a row makes it a new test case. Name a column here when the dataset has a real identifier — it reads better and survives content edits. Values must be unique per row; the run is rejected if they are not.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo evaluator evaluate submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo evaluator evaluate submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--publication.intake.evaluation-id`: Name of the existing Evaluation to publish under. Must already exist; the job does not create it.
+* `--publication.intake.agent-name`: Agent name recorded on each published trajectory. Derived from the target when it names one; required otherwise.
+* `--publication.intake.agent-version`: Agent version recorded on each published trajectory. Neither a Model nor an Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.
+* `--publication.intake.required`: Fail the job when publication fails. Defaults to True so a run that asked to publish does not report success with nothing in Experiments. The result bundle is saved before publication runs, so a failed job still leaves the results intact to re-publish. Set False to keep the job successful and report the failure in its output instead.
+* `--publication.intake.test-case-id-field`: Dataset column identifying each row, recorded as the published test case id. Defaults to a hash of the row's content, which keeps a row's id stable across dataset reorderings and revisions so the same test case can be compared run over run; editing a row makes it a new test case. Name a column here when the dataset has a real identifier — it reads better and survives content edits. Values must be unique per row; the run is rejected if they are not.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo evaluator evaluate explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo evaluator evaluate explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo customization
+
+Plugin commands for customization.
+
+**Usage:**
+
+```shell
+nemo customization [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `automodel`: Automodel training jobs (SFT, distillation).
+* `rl`: NeMo-RL training on a Ray cluster: DPO (preference pairs)...
+* `unsloth`: Unsloth GPU fine-tuning (container submit).
+
+*Jobs:*
+
+* `automodel.jobs`: Automodel SFT and knowledge-distillation training jobs.
+* `rl.jobs`: NeMo-RL DPO and GRPO training jobs on the platform...
+* `unsloth.jobs`: Unsloth SFT (LoRA / full / merged) training jobs on the...
+
+#### nemo customization automodel
+
+Automodel training jobs (SFT, distillation).
+
+**Usage:**
+
+```shell
+nemo customization automodel [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `explain`: Show input/output schemas.
+* `run`
+* `submit`
+
+##### nemo customization automodel explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo customization automodel explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo customization automodel run
+
+**Usage:**
+
+```shell
+nemo customization automodel run [OPTIONS] [JOB_JSON]
+```
+
+**Arguments:**
+
+* `<JOB_JSON>`: Path to Automodel job JSON (AutomodelJobInput schema).
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo customization automodel submit
+
+**Usage:**
+
+```shell
+nemo customization automodel submit [OPTIONS] JOB_JSON
+```
+
+**Arguments:**
+
+* `<JOB_JSON>`: Path to Automodel job JSON (AutomodelJobInput schema).
+
+**Options:**
+
+* `--workspace, -w`: Target workspace. [default: default]
+* `--profile`
+* `--cluster`
+* `--base-url`: Override platform API host. If omitted: --cluster, then CLI context, then `$NMP_BASE_URL`, then http://localhost:8080.
+* `-o`: Backend option override, 'backend.key=value'. [default: ]
+* `--options-file <PATH>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo customization rl
+
+NeMo-RL training on a Ray cluster: DPO (preference pairs) or GRPO (NeMo Gym environment). Set training.type in the job JSON. Remote Kubernetes only.
+
+**Usage:**
+
+```shell
+nemo customization rl [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `explain`: Show input/output schemas.
+* `run`
+* `submit`
+
+##### nemo customization rl explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo customization rl explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo customization rl run
+
+**Usage:**
+
+```shell
+nemo customization rl run [OPTIONS] [JOB_JSON]
+```
+
+**Arguments:**
+
+* `<JOB_JSON>`: Path to NeMo-RL job JSON (RlJobInput schema).
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo customization rl submit
+
+**Usage:**
+
+```shell
+nemo customization rl submit [OPTIONS] JOB_JSON
+```
+
+**Arguments:**
+
+* `<JOB_JSON>`: Path to NeMo-RL job JSON (RlJobInput schema).
+
+**Options:**
+
+* `--workspace, -w`: Target workspace. [default: default]
+* `--profile`
+* `--cluster`
+* `--base-url`: Override platform API host. If omitted: --cluster, then CLI context, then `$NMP_BASE_URL`, then http://localhost:8080.
+* `-o`: Backend option override, 'backend.key=value'. [default: ]
+* `--options-file <PATH>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo customization unsloth
+
+Unsloth GPU fine-tuning (container submit). SFT only.
+
+**Usage:**
+
+```shell
+nemo customization unsloth [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `explain`: Show input/output schemas.
+* `run`
+* `submit`
+
+##### nemo customization unsloth explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo customization unsloth explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo customization unsloth run
+
+**Usage:**
+
+```shell
+nemo customization unsloth run [OPTIONS] [JOB_JSON]
+```
+
+**Arguments:**
+
+* `<JOB_JSON>`: Path to Unsloth job JSON (UnslothJobInput schema).
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo customization unsloth submit
+
+**Usage:**
+
+```shell
+nemo customization unsloth submit [OPTIONS] JOB_JSON
+```
+
+**Arguments:**
+
+* `<JOB_JSON>`: Path to Unsloth job JSON (UnslothJobInput schema).
+
+**Options:**
+
+* `--workspace, -w`: Target workspace. [default: default]
+* `--profile`
+* `--cluster`
+* `--base-url`: Override platform API host. If omitted: --cluster, then CLI context, then `$NMP_BASE_URL`, then http://localhost:8080.
+* `-o`: Backend option override, 'backend.key=value'. [default: ]
+* `--options-file <PATH>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo customization automodel.jobs
+
+Automodel SFT and knowledge-distillation training jobs.
+
+**Usage:**
+
+```shell
+nemo customization automodel.jobs [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo customization automodel.jobs run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo customization automodel.jobs run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--name`: Override `name` in the spec.
+* `--model`: Override `model` in the spec.
+* `--dataset.training`: Training fileset as 'name' or 'workspace/name'.
+* `--dataset.validation`: Override `dataset.validation` in the spec.
+* `--dataset.prompt-template`: Override `dataset.prompt_template` in the spec.
+* `--training.lora.rank <INTEGER>`: Override `training.lora.rank` in the spec.
+* `--training.lora.alpha <INTEGER>`: Override `training.lora.alpha` in the spec.
+* `--training.lora.dropout <FLOAT>`: LoRA dropout probability for regularization.
+* `--training.lora.merge`: Override `training.lora.merge` in the spec.
+* `--training.lora.use-triton`: Use the optimized Triton LoRA kernel.
+* `--training.max-seq-length <INTEGER>`: Override `training.max_seq_length` in the spec.
+* `--training.execution-profile`: Override `training.execution_profile` in the spec.
+* `--training.teacher-model`: Override `training.teacher_model` in the spec.
+* `--training.distillation-ratio <FLOAT>`: Override `training.distillation_ratio` in the spec.
+* `--training.distillation-temperature <FLOAT>`: Override `training.distillation_temperature` in the spec.
+* `--training.offload-teacher`: Override `training.offload_teacher` in the spec.
+* `--schedule.epochs <INTEGER>`: Override `schedule.epochs` in the spec.
+* `--schedule.max-steps <INTEGER>`: Override `schedule.max_steps` in the spec.
+* `--schedule.val-check-interval <FLOAT>`: Override `schedule.val_check_interval` in the spec.
+* `--schedule.seed <INTEGER>`: Override `schedule.seed` in the spec.
+* `--schedule.progress-reporting.min-report-interval-seconds <FLOAT>`: Least number of seconds between progress reports reaching the Jobs service. Every metric the training library logs is still recorded at full resolution -- this only buffers them in memory and decides how often the accumulated set is sent, which is what the reporting actually costs. 0 sends a report for every step the library logs. Raising it reduces the time training spends blocked on reporting, at the cost of a progress bar and charts that update less often.
+* `--batch.global-batch-size <INTEGER>`: Override `batch.global_batch_size` in the spec.
+* `--batch.micro-batch-size <INTEGER>`: Override `batch.micro_batch_size` in the spec.
+* `--batch.sequence-packing`: Override `batch.sequence_packing` in the spec.
+* `--batch.sequence-packing-max-samples <INTEGER>`: Samples analyzed to estimate the optimal pack size when packing is enabled.
+* `--optimizer.learning-rate <FLOAT>`: Override `optimizer.learning_rate` in the spec.
+* `--optimizer.min-learning-rate <FLOAT>`: Minimum learning rate for the cosine decay schedule.
+* `--optimizer.weight-decay <FLOAT>`: Override `optimizer.weight_decay` in the spec.
+* `--optimizer.adam-beta1 <FLOAT>`: Adam optimizer beta1.
+* `--optimizer.adam-beta2 <FLOAT>`: Adam optimizer beta2.
+* `--optimizer.warmup-steps <INTEGER>`: Override `optimizer.warmup_steps` in the spec.
+* `--optimizer.adam-eps <FLOAT>`: Adam/AdamW epsilon for numerical stability.
+* `--parallelism.num-nodes <INTEGER>`: Override `parallelism.num_nodes` in the spec.
+* `--parallelism.num-gpus-per-node <INTEGER>`: Override `parallelism.num_gpus_per_node` in the spec.
+* `--parallelism.tensor-parallel-size <INTEGER>`: Override `parallelism.tensor_parallel_size` in the spec.
+* `--parallelism.pipeline-parallel-size <INTEGER>`: Override `parallelism.pipeline_parallel_size` in the spec.
+* `--parallelism.context-parallel-size <INTEGER>`: Override `parallelism.context_parallel_size` in the spec.
+* `--parallelism.expert-parallel-size <INTEGER>`: Override `parallelism.expert_parallel_size` in the spec.
+* `--parallelism.sequence-parallel`: Enable sequence parallelism.
+* `--output.name`: Override `output.name` in the spec.
+* `--output.description`: Override `output.description` in the spec.
+* `--integrations.wandb.project`: W&B project name (groups related runs). Defaults to output.name if not set.
+* `--integrations.wandb.name`: W&B run name. Defaults to job_id if not provided.
+* `--integrations.wandb.entity`: W&B entity (team or username).
+* `--integrations.wandb.notes`: W&B notes/description for the run.
+* `--integrations.wandb.base-url`: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). If not provided, uses the default W&B cloud service.
+* `--integrations.wandb.api-key-secret.root`: Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).
+* `--integrations.mlflow.experiment-name`: MLflow experiment name (groups related runs). Defaults to output.name if not set.
+* `--integrations.mlflow.name`: MLflow run name. Defaults to job_id if not provided.
+* `--integrations.mlflow.description`: MLflow run description.
+* `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo customization automodel.jobs submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo customization automodel.jobs submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--name`: Override `name` in the spec.
+* `--model`: Override `model` in the spec.
+* `--dataset.training`: Training fileset as 'name' or 'workspace/name'.
+* `--dataset.validation`: Override `dataset.validation` in the spec.
+* `--dataset.prompt-template`: Override `dataset.prompt_template` in the spec.
+* `--training.lora.rank <INTEGER>`: Override `training.lora.rank` in the spec.
+* `--training.lora.alpha <INTEGER>`: Override `training.lora.alpha` in the spec.
+* `--training.lora.dropout <FLOAT>`: LoRA dropout probability for regularization.
+* `--training.lora.merge`: Override `training.lora.merge` in the spec.
+* `--training.lora.use-triton`: Use the optimized Triton LoRA kernel.
+* `--training.max-seq-length <INTEGER>`: Override `training.max_seq_length` in the spec.
+* `--training.execution-profile`: Override `training.execution_profile` in the spec.
+* `--training.teacher-model`: Override `training.teacher_model` in the spec.
+* `--training.distillation-ratio <FLOAT>`: Override `training.distillation_ratio` in the spec.
+* `--training.distillation-temperature <FLOAT>`: Override `training.distillation_temperature` in the spec.
+* `--training.offload-teacher`: Override `training.offload_teacher` in the spec.
+* `--schedule.epochs <INTEGER>`: Override `schedule.epochs` in the spec.
+* `--schedule.max-steps <INTEGER>`: Override `schedule.max_steps` in the spec.
+* `--schedule.val-check-interval <FLOAT>`: Override `schedule.val_check_interval` in the spec.
+* `--schedule.seed <INTEGER>`: Override `schedule.seed` in the spec.
+* `--schedule.progress-reporting.min-report-interval-seconds <FLOAT>`: Least number of seconds between progress reports reaching the Jobs service. Every metric the training library logs is still recorded at full resolution -- this only buffers them in memory and decides how often the accumulated set is sent, which is what the reporting actually costs. 0 sends a report for every step the library logs. Raising it reduces the time training spends blocked on reporting, at the cost of a progress bar and charts that update less often.
+* `--batch.global-batch-size <INTEGER>`: Override `batch.global_batch_size` in the spec.
+* `--batch.micro-batch-size <INTEGER>`: Override `batch.micro_batch_size` in the spec.
+* `--batch.sequence-packing`: Override `batch.sequence_packing` in the spec.
+* `--batch.sequence-packing-max-samples <INTEGER>`: Samples analyzed to estimate the optimal pack size when packing is enabled.
+* `--optimizer.learning-rate <FLOAT>`: Override `optimizer.learning_rate` in the spec.
+* `--optimizer.min-learning-rate <FLOAT>`: Minimum learning rate for the cosine decay schedule.
+* `--optimizer.weight-decay <FLOAT>`: Override `optimizer.weight_decay` in the spec.
+* `--optimizer.adam-beta1 <FLOAT>`: Adam optimizer beta1.
+* `--optimizer.adam-beta2 <FLOAT>`: Adam optimizer beta2.
+* `--optimizer.warmup-steps <INTEGER>`: Override `optimizer.warmup_steps` in the spec.
+* `--optimizer.adam-eps <FLOAT>`: Adam/AdamW epsilon for numerical stability.
+* `--parallelism.num-nodes <INTEGER>`: Override `parallelism.num_nodes` in the spec.
+* `--parallelism.num-gpus-per-node <INTEGER>`: Override `parallelism.num_gpus_per_node` in the spec.
+* `--parallelism.tensor-parallel-size <INTEGER>`: Override `parallelism.tensor_parallel_size` in the spec.
+* `--parallelism.pipeline-parallel-size <INTEGER>`: Override `parallelism.pipeline_parallel_size` in the spec.
+* `--parallelism.context-parallel-size <INTEGER>`: Override `parallelism.context_parallel_size` in the spec.
+* `--parallelism.expert-parallel-size <INTEGER>`: Override `parallelism.expert_parallel_size` in the spec.
+* `--parallelism.sequence-parallel`: Enable sequence parallelism.
+* `--output.name`: Override `output.name` in the spec.
+* `--output.description`: Override `output.description` in the spec.
+* `--integrations.wandb.project`: W&B project name (groups related runs). Defaults to output.name if not set.
+* `--integrations.wandb.name`: W&B run name. Defaults to job_id if not provided.
+* `--integrations.wandb.entity`: W&B entity (team or username).
+* `--integrations.wandb.notes`: W&B notes/description for the run.
+* `--integrations.wandb.base-url`: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). If not provided, uses the default W&B cloud service.
+* `--integrations.wandb.api-key-secret.root`: Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).
+* `--integrations.mlflow.experiment-name`: MLflow experiment name (groups related runs). Defaults to output.name if not set.
+* `--integrations.mlflow.name`: MLflow run name. Defaults to job_id if not provided.
+* `--integrations.mlflow.description`: MLflow run description.
+* `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo customization automodel.jobs explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo customization automodel.jobs explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo customization rl.jobs
+
+NeMo-RL DPO and GRPO training jobs on the platform Kubernetes GPU cluster (Ray).
+
+**Usage:**
+
+```shell
+nemo customization rl.jobs [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo customization rl.jobs run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo customization rl.jobs run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--name`: Override `name` in the spec.
+* `--model`: Model entity reference ('name' or 'workspace/name').
+* `--dataset`: Dataset fileset reference. DPO: preference JSONL (training.jsonl + validation.jsonl). GRPO: Gym JSONL (training.jsonl required).
+* `--environment`: Environment fileset reference (required when training.type is grpo).
+* `--integrations.wandb.project`: W&B project name (groups related runs). Defaults to output.name if not set.
+* `--integrations.wandb.name`: W&B run name. Defaults to job_id if not provided.
+* `--integrations.wandb.entity`: W&B entity (team or username).
+* `--integrations.wandb.notes`: W&B notes/description for the run.
+* `--integrations.wandb.base-url`: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). If not provided, uses the default W&B cloud service.
+* `--integrations.wandb.api-key-secret.root`: Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).
+* `--integrations.mlflow.experiment-name`: MLflow experiment name (groups related runs). Defaults to output.name if not set.
+* `--integrations.mlflow.name`: MLflow run name. Defaults to job_id if not provided.
+* `--integrations.mlflow.description`: MLflow run description.
+* `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
+* `--output.name`: Override `output.name` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo customization rl.jobs submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo customization rl.jobs submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--name`: Override `name` in the spec.
+* `--model`: Model entity reference ('name' or 'workspace/name').
+* `--dataset`: Dataset fileset reference. DPO: preference JSONL (training.jsonl + validation.jsonl). GRPO: Gym JSONL (training.jsonl required).
+* `--environment`: Environment fileset reference (required when training.type is grpo).
+* `--integrations.wandb.project`: W&B project name (groups related runs). Defaults to output.name if not set.
+* `--integrations.wandb.name`: W&B run name. Defaults to job_id if not provided.
+* `--integrations.wandb.entity`: W&B entity (team or username).
+* `--integrations.wandb.notes`: W&B notes/description for the run.
+* `--integrations.wandb.base-url`: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). If not provided, uses the default W&B cloud service.
+* `--integrations.wandb.api-key-secret.root`: Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).
+* `--integrations.mlflow.experiment-name`: MLflow experiment name (groups related runs). Defaults to output.name if not set.
+* `--integrations.mlflow.name`: MLflow run name. Defaults to job_id if not provided.
+* `--integrations.mlflow.description`: MLflow run description.
+* `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
+* `--output.name`: Override `output.name` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo customization rl.jobs explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo customization rl.jobs explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo customization unsloth.jobs
+
+Unsloth SFT (LoRA / full / merged) training jobs on the platform GPU cluster.
+
+**Usage:**
+
+```shell
+nemo customization unsloth.jobs [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo customization unsloth.jobs run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo customization unsloth.jobs run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--name`: Override `name` in the spec.
+* `--model.name`: Model entity reference. Accepts 'name' (uses the job's workspace) or 'workspace/name'. The plugin's run resolves this to a local path before training.
+* `--model.max-seq-length <INTEGER>`: Override `model.max_seq_length` in the spec.
+* `--model.load-in-4bit`: bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's headline path.
+* `--model.load-in-8bit`: Override `model.load_in_8bit` in the spec.
+* `--model.trust-remote-code`: Override `model.trust_remote_code` in the spec.
+* `--dataset.path`: Training fileset reference: 'name' (uses the job's workspace) or 'workspace/name'. Resolved to a local path by the plugin run.
+* `--dataset.text-field`: Row field consumed by SFTTrainer.
+* `--dataset.apply-chat-template`: If True, expects rows with a 'messages' field and applies tokenizer.apply_chat_template at training time.
+* `--dataset.validation-path`: Optional validation fileset reference (same format as 'path'). Downloaded under the same scheme.
+* `--dataset.packing`: trl. SFTTrainer packing flag.
+* `--training.lora.rank <INTEGER>`: LoRA rank.
+* `--training.lora.alpha <INTEGER>`: LoRA scaling factor (alpha).
+* `--training.lora.dropout <FLOAT>`: Override `training.lora.dropout` in the spec.
+* `--training.lora.use-rslora`: Override `training.lora.use_rslora` in the spec.
+* `--training.lora.random-state <INTEGER>`: Override `training.lora.random_state` in the spec.
+* `--training.lora.use-dora`: DoRA (weight-decomposed LoRA). Improves quality at low ranks; adds training overhead.
+* `--schedule.epochs <INTEGER>`: Override `schedule.epochs` in the spec.
+* `--schedule.max-steps <INTEGER>`: Override `schedule.max_steps` in the spec.
+* `--schedule.warmup-steps <INTEGER>`: Override `schedule.warmup_steps` in the spec.
+* `--schedule.warmup-ratio <FLOAT>`: Override `schedule.warmup_ratio` in the spec.
+* `--schedule.logging-steps <INTEGER>`: Override `schedule.logging_steps` in the spec.
+* `--schedule.save-steps <INTEGER>`: Override `schedule.save_steps` in the spec.
+* `--schedule.eval-steps <INTEGER>`: Override `schedule.eval_steps` in the spec.
+* `--schedule.progress-reporting.min-report-interval-seconds <FLOAT>`: Least number of seconds between progress reports reaching the Jobs service. Every metric the training library logs is still recorded at full resolution -- this only buffers them in memory and decides how often the accumulated set is sent, which is what the reporting actually costs. 0 sends a report for every step the library logs. Raising it reduces the time training spends blocked on reporting, at the cost of a progress bar and charts that update less often.
+* `--schedule.seed <INTEGER>`: Override `schedule.seed` in the spec.
+* `--batch.per-device-train-batch-size <INTEGER>`: Override `batch.per_device_train_batch_size` in the spec.
+* `--batch.gradient-accumulation-steps <INTEGER>`: Override `batch.gradient_accumulation_steps` in the spec.
+* `--optimizer.learning-rate <FLOAT>`: Override `optimizer.learning_rate` in the spec.
+* `--optimizer.weight-decay <FLOAT>`: Override `optimizer.weight_decay` in the spec.
+* `--optimizer.adam-beta1 <FLOAT>`: Adam/AdamW beta1.
+* `--optimizer.adam-beta2 <FLOAT>`: Adam/AdamW beta2.
+* `--optimizer.adam-epsilon <FLOAT>`: Adam/AdamW epsilon for numerical stability.
+* `--optimizer.max-grad-norm <FLOAT>`: Gradient-clipping max norm (TRL default 1.0).
+* `--optimizer.label-smoothing-factor <FLOAT>`: Label smoothing for the cross-entropy loss. 0.0 disables.
+* `--optimizer.neftune-noise-alpha <FLOAT>`: NEFTune embedding-noise alpha (quality boost). None disables.
+* `--hardware.gpus`: Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES. Selection, not reservation.
+* `--integrations.wandb.project`: W&B project name (groups related runs). Defaults to output.name if not set.
+* `--integrations.wandb.name`: W&B run name. Defaults to job_id if not provided.
+* `--integrations.wandb.entity`: W&B entity (team or username).
+* `--integrations.wandb.notes`: W&B notes/description for the run.
+* `--integrations.wandb.base-url`: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). If not provided, uses the default W&B cloud service.
+* `--integrations.wandb.api-key-secret.root`: Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).
+* `--integrations.mlflow.experiment-name`: MLflow experiment name (groups related runs). Defaults to output.name if not set.
+* `--integrations.mlflow.name`: MLflow run name. Defaults to job_id if not provided.
+* `--integrations.mlflow.description`: MLflow run description.
+* `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
+* `--output.name`: Override `output.name` in the spec.
+* `--output.description`: Override `output.description` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo customization unsloth.jobs submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo customization unsloth.jobs submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--name`: Override `name` in the spec.
+* `--model.name`: Model entity reference. Accepts 'name' (uses the job's workspace) or 'workspace/name'. The plugin's run resolves this to a local path before training.
+* `--model.max-seq-length <INTEGER>`: Override `model.max_seq_length` in the spec.
+* `--model.load-in-4bit`: bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's headline path.
+* `--model.load-in-8bit`: Override `model.load_in_8bit` in the spec.
+* `--model.trust-remote-code`: Override `model.trust_remote_code` in the spec.
+* `--dataset.path`: Training fileset reference: 'name' (uses the job's workspace) or 'workspace/name'. Resolved to a local path by the plugin run.
+* `--dataset.text-field`: Row field consumed by SFTTrainer.
+* `--dataset.apply-chat-template`: If True, expects rows with a 'messages' field and applies tokenizer.apply_chat_template at training time.
+* `--dataset.validation-path`: Optional validation fileset reference (same format as 'path'). Downloaded under the same scheme.
+* `--dataset.packing`: trl. SFTTrainer packing flag.
+* `--training.lora.rank <INTEGER>`: LoRA rank.
+* `--training.lora.alpha <INTEGER>`: LoRA scaling factor (alpha).
+* `--training.lora.dropout <FLOAT>`: Override `training.lora.dropout` in the spec.
+* `--training.lora.use-rslora`: Override `training.lora.use_rslora` in the spec.
+* `--training.lora.random-state <INTEGER>`: Override `training.lora.random_state` in the spec.
+* `--training.lora.use-dora`: DoRA (weight-decomposed LoRA). Improves quality at low ranks; adds training overhead.
+* `--schedule.epochs <INTEGER>`: Override `schedule.epochs` in the spec.
+* `--schedule.max-steps <INTEGER>`: Override `schedule.max_steps` in the spec.
+* `--schedule.warmup-steps <INTEGER>`: Override `schedule.warmup_steps` in the spec.
+* `--schedule.warmup-ratio <FLOAT>`: Override `schedule.warmup_ratio` in the spec.
+* `--schedule.logging-steps <INTEGER>`: Override `schedule.logging_steps` in the spec.
+* `--schedule.save-steps <INTEGER>`: Override `schedule.save_steps` in the spec.
+* `--schedule.eval-steps <INTEGER>`: Override `schedule.eval_steps` in the spec.
+* `--schedule.progress-reporting.min-report-interval-seconds <FLOAT>`: Least number of seconds between progress reports reaching the Jobs service. Every metric the training library logs is still recorded at full resolution -- this only buffers them in memory and decides how often the accumulated set is sent, which is what the reporting actually costs. 0 sends a report for every step the library logs. Raising it reduces the time training spends blocked on reporting, at the cost of a progress bar and charts that update less often.
+* `--schedule.seed <INTEGER>`: Override `schedule.seed` in the spec.
+* `--batch.per-device-train-batch-size <INTEGER>`: Override `batch.per_device_train_batch_size` in the spec.
+* `--batch.gradient-accumulation-steps <INTEGER>`: Override `batch.gradient_accumulation_steps` in the spec.
+* `--optimizer.learning-rate <FLOAT>`: Override `optimizer.learning_rate` in the spec.
+* `--optimizer.weight-decay <FLOAT>`: Override `optimizer.weight_decay` in the spec.
+* `--optimizer.adam-beta1 <FLOAT>`: Adam/AdamW beta1.
+* `--optimizer.adam-beta2 <FLOAT>`: Adam/AdamW beta2.
+* `--optimizer.adam-epsilon <FLOAT>`: Adam/AdamW epsilon for numerical stability.
+* `--optimizer.max-grad-norm <FLOAT>`: Gradient-clipping max norm (TRL default 1.0).
+* `--optimizer.label-smoothing-factor <FLOAT>`: Label smoothing for the cross-entropy loss. 0.0 disables.
+* `--optimizer.neftune-noise-alpha <FLOAT>`: NEFTune embedding-noise alpha (quality boost). None disables.
+* `--hardware.gpus`: Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES. Selection, not reservation.
+* `--integrations.wandb.project`: W&B project name (groups related runs). Defaults to output.name if not set.
+* `--integrations.wandb.name`: W&B run name. Defaults to job_id if not provided.
+* `--integrations.wandb.entity`: W&B entity (team or username).
+* `--integrations.wandb.notes`: W&B notes/description for the run.
+* `--integrations.wandb.base-url`: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). If not provided, uses the default W&B cloud service.
+* `--integrations.wandb.api-key-secret.root`: Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).
+* `--integrations.mlflow.experiment-name`: MLflow experiment name (groups related runs). Defaults to output.name if not set.
+* `--integrations.mlflow.name`: MLflow run name. Defaults to job_id if not provided.
+* `--integrations.mlflow.description`: MLflow run description.
+* `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
+* `--output.name`: Override `output.name` in the spec.
+* `--output.description`: Override `output.description` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo customization unsloth.jobs explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo customization unsloth.jobs explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo insights
+
+Plugin commands for insights.
+
+**Usage:**
+
+```shell
+nemo insights [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `analysis`: Manage periodic agent analysis opt-in state.
+
+*Jobs:*
+
+* `analyze-job`: Run the insights analyst once for a single agent.
+
+#### nemo insights analysis
+
+Manage periodic agent analysis opt-in state.
+
+**Usage:**
+
+```shell
+nemo insights analysis [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `enable`: Enable periodic analysis for an agent.
+* `disable`: Disable periodic analysis for an agent.
+* `status`: Show periodic analysis opt-in state.
+
+##### nemo insights analysis enable
+
+Enable periodic analysis for an agent.
+
+**Usage:**
+
+```shell
+nemo insights analysis enable [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Name of the agent to opt in to periodic analysis.
+* `--workspace`: Workspace the agent belongs to. [default: default]
+* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo insights analysis disable
+
+Disable periodic analysis for an agent.
+
+**Usage:**
+
+```shell
+nemo insights analysis disable [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Name of the agent to opt out of periodic analysis.
+* `--workspace`: Workspace the agent belongs to. [default: default]
+* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo insights analysis status
+
+Show periodic analysis opt-in state.
+
+**Usage:**
+
+```shell
+nemo insights analysis status [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Optional agent name. Omit to list all analysis configs.
+* `--workspace`: Workspace to inspect. [default: default]
+* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo insights analyze-job
+
+Run the insights analyst once for a single agent.
+
+**Usage:**
+
+```shell
+nemo insights analyze-job [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo insights analyze-job run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo insights analyze-job run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent`: Agent under test.
+* `--ethos`: Optional Ethos Markdown for the agent under test.
+* `--base-url`: Optional platform base URL. Unset uses the active platform context.
+* `--insights-output`: Optional local YAML path mirroring the Insights the platform stored. Container-local unless it points at mounted storage.
+* `--update-analysis-config`: Update the matching AnalysisRunStatus with run metadata.
+* `--default-model`: Workspace-qualified default Model Entity ID selected during setup.
+* `--fast-model`: Workspace-qualified fast Model Entity ID selected during setup.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+##### nemo insights analyze-job submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo insights analyze-job submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--agent`: Agent under test.
+* `--ethos`: Optional Ethos Markdown for the agent under test.
+* `--insights-output`: Optional local YAML path mirroring the Insights the platform stored. Container-local unless it points at mounted storage.
+* `--update-analysis-config`: Update the matching AnalysisRunStatus with run metadata.
+* `--default-model`: Workspace-qualified default Model Entity ID selected during setup.
+* `--fast-model`: Workspace-qualified fast Model Entity ID selected during setup.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+##### nemo insights analyze-job explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo insights analyze-job explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo safe-synthesizer
+
+Plugin commands for safe-synthesizer.
+
+**Usage:**
+
+```shell
+nemo safe-synthesizer [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+*Jobs:*
+
+* `generate`: Submit to a cluster.
+
+#### nemo safe-synthesizer generate
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo safe-synthesizer generate [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--data-source`: The data source for the job.
+* `--config.data.group-training-examples-by`: Column to group training examples by. This is useful when you want the model to learn inter-record correlations for a given grouping of records.
+* `--config.data.order-training-examples-by`: Column to order training examples by. This is useful when you want the model to learn sequential relationships for a given ordering of records. If you provide this parameter, you must also provide ``group_training_examples_by``.
+* `--config.data.holdout <FLOAT>`: Amount of records to hold out for evaluation. If this is a float between 0 and 1, that ratio of records is held out. If an integer greater than 1, that number of records is held out. If the value is equal to zero, no holdout will be performed. Must be >= 0.
+* `--config.data.max-holdout <INTEGER>`: Maximum number of records to hold out. Overrides any behavior set by ``holdout``. Must be >= 0.
+* `--config.data.random-state <INTEGER>`: Random state for holdout split to ensure reproducibility.
+* `--config.evaluation.mia-enabled`: Enable membership inference attack evaluation for privacy assessment.
+* `--config.evaluation.aia-enabled`: Enable attribute inference attack evaluation for privacy assessment.
+* `--config.evaluation.sqs-report-columns <INTEGER>`: Number of columns to include in statistical quality reports.
+* `--config.evaluation.sqs-report-rows <INTEGER>`: Number of rows to include in statistical quality reports.
+* `--config.evaluation.mandatory-columns <INTEGER>`: Number of mandatory columns that must be used in evaluation.
+* `--config.evaluation.enabled`: Enable or disable evaluation.
+* `--config.evaluation.quasi-identifier-count <INTEGER>`: Number of quasi-identifiers to sample for privacy attacks.
+* `--config.evaluation.pii-replay-enabled`: Enable PII Replay detection.
+* `--config.training.batch-size <INTEGER>`: The batch size per device for training. Must be >= 1.
+* `--config.training.gradient-accumulation-steps <INTEGER>`: Number of update steps to accumulate the gradients for, before performing a backward/update pass. This technique increases the effective batch size that will fit into GPU memory. Must be >= 1.
+* `--config.training.weight-decay <FLOAT>`: The weight decay to apply to all layers except all bias and LayerNorm weights in the AdamW optimizer. Must be in (0, 1).
+* `--config.training.warmup-ratio <FLOAT>`: Ratio of total training steps used for a linear warmup from 0 to the learning rate. Must be > 0.
+* `--config.training.lr-scheduler`: The scheduler type to use. See the HuggingFace documentation of ``SchedulerType`` for all possible values.
+* `--config.training.lora-r <INTEGER>`: The rank of the LoRA update matrices. Lower rank results in smaller update matrices with fewer trainable parameters. Must be > 0.
+* `--config.training.lora-alpha-over-r <FLOAT>`: The ratio of the LoRA scaling factor (alpha) to the LoRA rank. Empirically, this parameter works well when set to 0.5, 1, or 2. Must be in [0.5, 3].
+* `--config.training.validation-ratio <FLOAT>`: The fraction of the training data used for validation. Must be in [0, 1]. If set to 0, no validation will be performed. If set larger than 0, validation loss will be computed and reported throughout training.
+* `--config.training.validation-steps <INTEGER>`: The number of steps between validation checks for the HF Trainer arguments. Must be > 0.
+* `--config.training.pretrained-model`: Pretrained model to use for fine-tuning. Defaults to SmolLM3. May be a Hugging Face model ID (loaded from the Hugging Face Hub or cache) or a local path. See security note in docs before using untrusted sources.
+* `--config.training.quantize-model`: Whether to quantize the model during training. This can reduce memory usage and potentially speed up training, but may also impact model accuracy.
+* `--config.training.quantization-scheme`: Quantization scheme to use when ``quantize_model=True``. Accepts ``bnb-4bit``, ``bnb-8bit``, ``fp8``, ``nvfp4``, or ``mxfp4``. If unset, falls back to ``quantization_bits`` for backward compatibility. Non-bitsandbytes schemes are incompatible with ``peft_implementation='loftq'``.
+* `--config.training.peft-implementation`: The PEFT (Parameter-Efficient Fine-Tuning) implementation to use. Options: 'lora' for Low-Rank Adaptation, 'QLORA' for Quantized LoRA.
+* `--config.training.max-vram-fraction <FLOAT>`: The fraction of the total VRAM to use for training. Modify this to allow longer sequences. Must be in [0, 1].
+* `--config.training.attn-implementation`: The attention implementation to use for model loading. Default uses 'sdpa' (PyTorch scaled dot product attention) for broad compatibility. Other common values: 'flash_attention_2' (requires flash-attn pip package), 'flash_attention_3' (requires flash-attn-3 support), 'eager' (standard PyTorch). Custom HuggingFace Kernels Hub paths (e.g. 'kernels-community/flash-attn2') are also supported.
+* `--config.generation.num-records <INTEGER>`: Number of records to generate.
+* `--config.generation.temperature <FLOAT>`: Sampling temperature for controlling randomness (higher = more random).
+* `--config.generation.repetition-penalty <FLOAT>`: The value used to control the likelihood of the model repeating the same token. Must be > 0.
+* `--config.generation.top-p <FLOAT>`: Nucleus sampling probability for token selection. Must be in (0, 1].
+* `--config.generation.patience <INTEGER>`: Number of consecutive generations where the ``invalid_fraction_threshold`` is reached before stopping generation. Must be >= 1.
+* `--config.generation.invalid-fraction-threshold <FLOAT>`: The fraction of invalid records that will stop generation after the ``patience`` limit is reached. Must be in [0, 1].
+* `--config.generation.structured-generation.enabled`: Whether to use structured generation for better format control.
+* `--config.generation.structured-generation.use-single-sequence`: Whether to use a regex that matches exactly one sequence or record if ``max_sequences_per_example`` is 1.
+* `--config.generation.enforce-timeseries-fidelity`: Enforce time-series fidelity by enforcing order, intervals, start and end times of the records.
+* `--config.generation.validation.group-by-accept-no-delineator`: Whether to accept completions without both beginning and end of sequence delineators as a single sequence.
+* `--config.generation.validation.group-by-ignore-invalid-records`: Whether to ignore invalid records in a sequence and proceed with the valid records.
+* `--config.generation.validation.group-by-fix-non-unique-value`: Whether to automatically fix non-unique group-by values in a sequence by using the first unique value for all records.
+* `--config.generation.validation.group-by-fix-unordered-records`: Whether to automatically fix unordered records in a sequence by sorting the records.
+* `--config.generation.attention-backend`: The attention backend for the vLLM engine. Common values: 'FLASHINFER', 'FLASH_ATTN', 'TRITON_ATTN', 'FLEX_ATTENTION'. If ``None`` or 'auto', vLLM will auto-select the best available backend.
+* `--config.privacy.dp-enabled`: Enable differentially-private training with DP-SGD.
+* `--config.privacy.epsilon <FLOAT>`: Target privacy budget -- lower values provide stronger privacy. Must be > 0.
+* `--config.privacy.per-sample-max-grad-norm <FLOAT>`: Maximum L2 norm for per-sample gradient clipping. Must be > 0.
+* `--config.time-series.is-timeseries`: Whether to treat the dataset as time series. When enabled, either ``timestamp_column`` or ``timestamp_interval_seconds`` is required. For grouped time series, ``group_training_examples_by`` needs to be set.
+* `--config.time-series.timestamp-column`: Name of the column containing timestamps used to order records when ``is_timeseries`` is ``True``. Required only when ``is_timeseries`` is ``True`` and ``timestamp_interval_seconds`` is not provided.
+* `--config.time-series.timestamp-interval-seconds <INTEGER>`: Positive whole-number interval in seconds between timestamps. If not provided, the timestamp column will be used to infer the interval.
+* `--config.time-series.timestamp-format`: Format of the timestamp column. Accepts either: (1) Python strftime format codes for string timestamps (e.g., '%Y-%m-%d %H:%M:%S', '%m/%d/%Y'), or (2) 'elapsed_seconds' for numeric (int/float) timestamps representing seconds as an increasing counter (e.g., 0, 60, 120 for 1-minute intervals). If not provided, the format will be inferred from the data.
+* `--config.replace-pii.globals.seed <INTEGER>`: Optional random seed.
+* `--config.replace-pii.globals.classify.enable-classify`: Enable column classification.
+* `--config.replace-pii.globals.classify.num-samples <INTEGER>`: Number of column values to sample for classification.
+* `--config.replace-pii.globals.classify.classify-model-provider`: Name of the model provider in the Inference Gateway for column classification. The job compiler will resolve this to the appropriate endpoint URL.
+* `--config.replace-pii.globals.ner.ner-threshold <FLOAT>`: NER model threshold.
+* `--config.replace-pii.globals.ner.enable-regexps`: Enable NER regular expressions (experimental).
+* `--config.replace-pii.globals.ner.gliner.enable-gliner`: Enable GLiNER NER module.
+* `--config.replace-pii.globals.ner.gliner.enable-batch-mode`: Enable GLiNER batch mode.
+* `--config.replace-pii.globals.ner.gliner.batch-size <INTEGER>`: GLiNER batch size.
+* `--config.replace-pii.globals.ner.gliner.chunk-length <INTEGER>`: GLiNER batch chunk length in characters.
+* `--config.replace-pii.globals.ner.gliner.gliner-model`: GLiNER model name.
+* `--config.emit-telemetry`: Whether to emit anonymous Safe Synthesizer telemetry events. Defaults from NEMO_TELEMETRY_ENABLED when unset.
+* `--config.enable-synthesis`: Whether to run LLM training and generation phases. When false the task only performs PII replacement and returns the processed data.
+* `--config.enable-replace-pii`: Whether to run the default PII replacement pipeline before synthesis.
+* `--hf-token-secret`: Name of platform secret containing the HuggingFace token. Must exist in the same workspace as the job.
+* `--pretrained-model-job`: Optional previous NSS job whose stored adapter artifact is reused for generation-only synthesis. Accepts either '\<job>' in the current workspace or '\<workspace>/\<job>'. The plugin resolves the prior job's 'adapter' result from Files.
+* `--enable-synthesis`: Whether to run LLM training and generation phases. When False the task only performs PII replacement and returns the processed data.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
 
 ### nemo experiments
 
@@ -7313,123 +11459,3 @@ nemo intake traces get [OPTIONS] ID
 **Output Options:**
 
 * `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
-
-### nemo safe-synthesizer
-
-Plugin commands for safe-synthesizer.
-
-**Usage:**
-
-```shell
-nemo safe-synthesizer [OPTIONS] COMMAND [ARGS]...
-```
-
-**Help:**
-
-* `--install-completion`: Install completion for the current shell.
-* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
-* `--help, -h`: Show this message and exit.
-
-**Commands:**
-
-*Jobs:*
-
-* `generate`: Submit to a cluster.
-
-#### nemo safe-synthesizer generate
-
-Submit to a cluster.
-
-**Usage:**
-
-```shell
-nemo safe-synthesizer generate [OPTIONS]
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Job Spec:**
-
-* `--data-source`: The data source for the job.
-* `--config.data.group-training-examples-by`: Column to group training examples by. This is useful when you want the model to learn inter-record correlations for a given grouping of records.
-* `--config.data.order-training-examples-by`: Column to order training examples by. This is useful when you want the model to learn sequential relationships for a given ordering of records. If you provide this parameter, you must also provide ``group_training_examples_by``.
-* `--config.data.holdout <FLOAT>`: Amount of records to hold out for evaluation. If this is a float between 0 and 1, that ratio of records is held out. If an integer greater than 1, that number of records is held out. If the value is equal to zero, no holdout will be performed. Must be >= 0.
-* `--config.data.max-holdout <INTEGER>`: Maximum number of records to hold out. Overrides any behavior set by ``holdout``. Must be >= 0.
-* `--config.data.random-state <INTEGER>`: Random state for holdout split to ensure reproducibility.
-* `--config.evaluation.mia-enabled`: Enable membership inference attack evaluation for privacy assessment.
-* `--config.evaluation.aia-enabled`: Enable attribute inference attack evaluation for privacy assessment.
-* `--config.evaluation.sqs-report-columns <INTEGER>`: Number of columns to include in statistical quality reports.
-* `--config.evaluation.sqs-report-rows <INTEGER>`: Number of rows to include in statistical quality reports.
-* `--config.evaluation.mandatory-columns <INTEGER>`: Number of mandatory columns that must be used in evaluation.
-* `--config.evaluation.enabled`: Enable or disable evaluation.
-* `--config.evaluation.quasi-identifier-count <INTEGER>`: Number of quasi-identifiers to sample for privacy attacks.
-* `--config.evaluation.pii-replay-enabled`: Enable PII Replay detection.
-* `--config.training.batch-size <INTEGER>`: The batch size per device for training. Must be >= 1.
-* `--config.training.gradient-accumulation-steps <INTEGER>`: Number of update steps to accumulate the gradients for, before performing a backward/update pass. This technique increases the effective batch size that will fit into GPU memory. Must be >= 1.
-* `--config.training.weight-decay <FLOAT>`: The weight decay to apply to all layers except all bias and LayerNorm weights in the AdamW optimizer. Must be in (0, 1).
-* `--config.training.warmup-ratio <FLOAT>`: Ratio of total training steps used for a linear warmup from 0 to the learning rate. Must be > 0.
-* `--config.training.lr-scheduler`: The scheduler type to use. See the HuggingFace documentation of ``SchedulerType`` for all possible values.
-* `--config.training.lora-r <INTEGER>`: The rank of the LoRA update matrices. Lower rank results in smaller update matrices with fewer trainable parameters. Must be > 0.
-* `--config.training.lora-alpha-over-r <FLOAT>`: The ratio of the LoRA scaling factor (alpha) to the LoRA rank. Empirically, this parameter works well when set to 0.5, 1, or 2. Must be in [0.5, 3].
-* `--config.training.validation-ratio <FLOAT>`: The fraction of the training data used for validation. Must be in [0, 1]. If set to 0, no validation will be performed. If set larger than 0, validation loss will be computed and reported throughout training.
-* `--config.training.validation-steps <INTEGER>`: The number of steps between validation checks for the HF Trainer arguments. Must be > 0.
-* `--config.training.pretrained-model`: Pretrained model to use for fine-tuning. Defaults to SmolLM3. May be a Hugging Face model ID (loaded from the Hugging Face Hub or cache) or a local path. See security note in docs before using untrusted sources.
-* `--config.training.quantize-model`: Whether to quantize the model during training. This can reduce memory usage and potentially speed up training, but may also impact model accuracy.
-* `--config.training.quantization-scheme`: Quantization scheme to use when ``quantize_model=True``. Accepts ``bnb-4bit``, ``bnb-8bit``, ``fp8``, ``nvfp4``, or ``mxfp4``. If unset, falls back to ``quantization_bits`` for backward compatibility. Non-bitsandbytes schemes are incompatible with ``peft_implementation='loftq'``.
-* `--config.training.peft-implementation`: The PEFT (Parameter-Efficient Fine-Tuning) implementation to use. Options: 'lora' for Low-Rank Adaptation, 'QLORA' for Quantized LoRA.
-* `--config.training.max-vram-fraction <FLOAT>`: The fraction of the total VRAM to use for training. Modify this to allow longer sequences. Must be in [0, 1].
-* `--config.training.attn-implementation`: The attention implementation to use for model loading. Default uses 'sdpa' (PyTorch scaled dot product attention) for broad compatibility. Other common values: 'flash_attention_2' (requires flash-attn pip package), 'flash_attention_3' (requires flash-attn-3 support), 'eager' (standard PyTorch). Custom HuggingFace Kernels Hub paths (e.g. 'kernels-community/flash-attn2') are also supported.
-* `--config.generation.num-records <INTEGER>`: Number of records to generate.
-* `--config.generation.temperature <FLOAT>`: Sampling temperature for controlling randomness (higher = more random).
-* `--config.generation.repetition-penalty <FLOAT>`: The value used to control the likelihood of the model repeating the same token. Must be > 0.
-* `--config.generation.top-p <FLOAT>`: Nucleus sampling probability for token selection. Must be in (0, 1].
-* `--config.generation.patience <INTEGER>`: Number of consecutive generations where the ``invalid_fraction_threshold`` is reached before stopping generation. Must be >= 1.
-* `--config.generation.invalid-fraction-threshold <FLOAT>`: The fraction of invalid records that will stop generation after the ``patience`` limit is reached. Must be in [0, 1].
-* `--config.generation.structured-generation.enabled`: Whether to use structured generation for better format control.
-* `--config.generation.structured-generation.use-single-sequence`: Whether to use a regex that matches exactly one sequence or record if ``max_sequences_per_example`` is 1.
-* `--config.generation.enforce-timeseries-fidelity`: Enforce time-series fidelity by enforcing order, intervals, start and end times of the records.
-* `--config.generation.validation.group-by-accept-no-delineator`: Whether to accept completions without both beginning and end of sequence delineators as a single sequence.
-* `--config.generation.validation.group-by-ignore-invalid-records`: Whether to ignore invalid records in a sequence and proceed with the valid records.
-* `--config.generation.validation.group-by-fix-non-unique-value`: Whether to automatically fix non-unique group-by values in a sequence by using the first unique value for all records.
-* `--config.generation.validation.group-by-fix-unordered-records`: Whether to automatically fix unordered records in a sequence by sorting the records.
-* `--config.generation.attention-backend`: The attention backend for the vLLM engine. Common values: 'FLASHINFER', 'FLASH_ATTN', 'TRITON_ATTN', 'FLEX_ATTENTION'. If ``None`` or 'auto', vLLM will auto-select the best available backend.
-* `--config.privacy.dp-enabled`: Enable differentially-private training with DP-SGD.
-* `--config.privacy.epsilon <FLOAT>`: Target privacy budget -- lower values provide stronger privacy. Must be > 0.
-* `--config.privacy.per-sample-max-grad-norm <FLOAT>`: Maximum L2 norm for per-sample gradient clipping. Must be > 0.
-* `--config.time-series.is-timeseries`: Whether to treat the dataset as time series. When enabled, either ``timestamp_column`` or ``timestamp_interval_seconds`` is required. For grouped time series, ``group_training_examples_by`` needs to be set.
-* `--config.time-series.timestamp-column`: Name of the column containing timestamps used to order records when ``is_timeseries`` is ``True``. Required only when ``is_timeseries`` is ``True`` and ``timestamp_interval_seconds`` is not provided.
-* `--config.time-series.timestamp-interval-seconds <INTEGER>`: Positive whole-number interval in seconds between timestamps. If not provided, the timestamp column will be used to infer the interval.
-* `--config.time-series.timestamp-format`: Format of the timestamp column. Accepts either: (1) Python strftime format codes for string timestamps (e.g., '%Y-%m-%d %H:%M:%S', '%m/%d/%Y'), or (2) 'elapsed_seconds' for numeric (int/float) timestamps representing seconds as an increasing counter (e.g., 0, 60, 120 for 1-minute intervals). If not provided, the format will be inferred from the data.
-* `--config.replace-pii.globals.seed <INTEGER>`: Optional random seed.
-* `--config.replace-pii.globals.classify.enable-classify`: Enable column classification.
-* `--config.replace-pii.globals.classify.num-samples <INTEGER>`: Number of column values to sample for classification.
-* `--config.replace-pii.globals.classify.classify-model-provider`: Name of the model provider in the Inference Gateway for column classification. The job compiler will resolve this to the appropriate endpoint URL.
-* `--config.replace-pii.globals.ner.ner-threshold <FLOAT>`: NER model threshold.
-* `--config.replace-pii.globals.ner.enable-regexps`: Enable NER regular expressions (experimental).
-* `--config.replace-pii.globals.ner.gliner.enable-gliner`: Enable GLiNER NER module.
-* `--config.replace-pii.globals.ner.gliner.enable-batch-mode`: Enable GLiNER batch mode.
-* `--config.replace-pii.globals.ner.gliner.batch-size <INTEGER>`: GLiNER batch size.
-* `--config.replace-pii.globals.ner.gliner.chunk-length <INTEGER>`: GLiNER batch chunk length in characters.
-* `--config.replace-pii.globals.ner.gliner.gliner-model`: GLiNER model name.
-* `--config.emit-telemetry`: Whether to emit anonymous Safe Synthesizer telemetry events. Defaults from NEMO_TELEMETRY_ENABLED when unset.
-* `--config.enable-synthesis`: Whether to run LLM training and generation phases. When false the task only performs PII replacement and returns the processed data.
-* `--config.enable-replace-pii`: Whether to run the default PII replacement pipeline before synthesis.
-* `--hf-token-secret`: Name of platform secret containing the HuggingFace token. Must exist in the same workspace as the job.
-* `--pretrained-model-job`: Optional previous NSS job whose stored adapter artifact is reused for generation-only synthesis. Accepts either '\<job>' in the current workspace or '\<workspace>/\<job>'. The plugin resolves the prior job's 'adapter' result from Files.
-* `--enable-synthesis`: Whether to run LLM training and generation phases. When False the task only performs PII replacement and returns the processed data.
-
-**Spec Source:**
-
-* `--spec`: Spec as a JSON string. [default: \{}]
-* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
-
-**Submission:**
-
-* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
-* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
-* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
-* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
-* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
-* `--workspace`: Workspace scope for the submission. [default: default]
