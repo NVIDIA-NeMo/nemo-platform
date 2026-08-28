@@ -232,6 +232,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         created_by: str | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
+        use_image_entrypoint: bool = False,
     ) -> DeploymentInfo:
         """Start a local deployment for NAT workflows or Platform-owned agents."""
         # created_by drives on-behalf-of delegation only for container modes (via
@@ -240,7 +241,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         # resources (compute spec) and secrets (secret-env refs) only apply to
         # container modes; subprocess runs in-process on the platform host with no
         # resource isolation and injects no managed secrets.
-        del image, deployment_mode, created_by, resources, secrets
+        del image, deployment_mode, created_by, resources, secrets, use_image_entrypoint
         if config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             return await self._create_fabric_deployment(workspace, name, config, port, agent=agent)
 

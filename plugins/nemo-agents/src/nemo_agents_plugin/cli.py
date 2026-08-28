@@ -944,6 +944,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "-i",
             help="Container image for docker/k8s modes (falls back to deployments.default_image).",
         ),
+        use_image_entrypoint: bool = typer.Option(
+            False,
+            "--use-image-entrypoint",
+            help=(
+                "For docker/k8s modes, preserve the image ENTRYPOINT/CMD instead of "
+                "injecting the platform-owned agent server command."
+            ),
+        ),
         environment: Optional[str] = typer.Option(
             None,
             "--environment",
@@ -998,6 +1006,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
         if image and mode == "subprocess":
             typer.echo("--image requires --mode docker or k8s.", err=True)
             raise typer.Exit(code=2)
+        if use_image_entrypoint and mode == "subprocess":
+            typer.echo("--use-image-entrypoint requires --mode docker or k8s.", err=True)
+            raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
         if environment is not None and not environment.strip():
@@ -1008,6 +1019,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if use_image_entrypoint:
+            payload["use_image_entrypoint"] = True
         if environment is not None:
             payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)

@@ -116,6 +116,49 @@ class TestCreateDeployment:
         assert "functions" not in created_deployment.config
         assert "workflow" not in created_deployment.config
 
+    def test_create_snapshots_image_entrypoint_mode(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "deployment_mode": "docker",
+                "image": "hand-built-agent:latest",
+                "use_image_entrypoint": True,
+            },
+        )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.deployment_mode == "docker"
+        assert created_deployment.image == "hand-built-agent:latest"
+        assert created_deployment.use_image_entrypoint is True
+
+    def test_create_rejects_image_entrypoint_for_subprocess(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "use_image_entrypoint": True},
+        )
+
+        assert resp.status_code == 400
+        assert "use_image_entrypoint requires deployment_mode" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
+
     def test_create_with_environment_ref_snapshots_config_and_compute(self) -> None:
         agent = _make_agent()
         environment = AgentEnvironment(
