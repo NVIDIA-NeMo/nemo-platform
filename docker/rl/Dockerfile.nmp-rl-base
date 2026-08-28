@@ -37,7 +37,7 @@ ARG NEMO_RL_REF=nmp/customizer
 # UV_PYTHON must still point at the copied binary so RL's `.python-version` cannot pin 3.13.14.
 ARG UV_VERSION=0.11.33
 ARG PYTHON_VERSION=3.13.15
-ARG CPYTHON_IMAGE=python:3.13.15-slim-trixie
+ARG CPYTHON_IMAGE=python:${PYTHON_VERSION}-slim-trixie
 ARG CMAKE_VERSION=4.0.3
 
 FROM ${CPYTHON_IMAGE} AS cpython
