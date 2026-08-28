@@ -68,10 +68,21 @@ uv lock --project docker/locks/nmp-gym-tasks --python 3.13.15
 
 Verify both image architectures:
 
+:::::{tab-set}
+
+::::{tab-item} x86_64
 ```bash
 uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.15 --python-platform x86_64-unknown-linux-gnu
+```
+::::
+
+::::{tab-item} aarch64
+```bash
 uv sync --project docker/locks/nmp-gym-tasks --locked --no-install-project --dry-run --python 3.13.15 --python-platform aarch64-unknown-linux-gnu
 ```
+::::
+
+:::::
 
 ### Upgrading Gym task dependencies
 
