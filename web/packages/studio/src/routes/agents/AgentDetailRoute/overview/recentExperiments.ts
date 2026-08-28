@@ -7,9 +7,9 @@ import { evaluatorLabel } from '@studio/routes/agents/AgentDetailRoute/evaluatio
 import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 
 /** Enough to show what the agent is being measured against without turning the overview into the
- *  Evaluations tab. The rest stay one click away under Evaluations → Experiments. Applied to each
- *  group separately, so pinning favorites never pushes the recent ones off the page. */
-export const RECENT_EXPERIMENT_LIMIT = 3;
+ *  Evaluations tab. The rest stay one click away under Evaluations → Experiments. Applies to the
+ *  recent group only — favorites are shown in full, since the user pinned every one of them. */
+export const RECENT_EXPERIMENT_LIMIT = 5;
 
 /** Window the delta is measured over. Fixed rather than "previous run" so the number means the same
  *  thing on an experiment that runs hourly and one that runs monthly. */
@@ -29,6 +29,7 @@ export interface RecentExperiment {
   /** One per evaluator seen anywhere in the experiment, alphabetized by label. */
   series: MetricTrendSeries[];
   isFavorite: boolean;
+  showsOverTime: boolean;
 }
 
 /** The overview's two groups: the experiments the user pinned, and everything else by recency. */
@@ -85,10 +86,10 @@ const toSeries = (evaluator: string, scores: StampedScore[]): MetricTrendSeries 
  * many-to-many, so keying on `experiment_ids[0]` would drop a shared evaluation's scores and
  * timestamps from all but one of its experiments.
  *
- * Only experiments with `show_evaluations_over_time` set take part: a trend line over an
- * experiment's evaluations is only meaningful when those evaluations are successive runs of the
- * same measurement, which is exactly what that flag asserts. Experiments without it are left to the
- * Experiments tab, which compares their evaluations side by side instead.
+ * Every experiment the agent's evaluations belong to takes part. `show_evaluations_over_time`
+ * decides how a row is *presented*, not whether it appears: a trend line is only meaningful when
+ * the evaluations are successive runs of the same measurement, which is what that flag asserts, so
+ * rows without it carry their series but are rendered as a plain summary instead.
  *
  * Derived from the evaluations rather than queried, for the same reason as `groupByExperiment`: the
  * experiments endpoint has no `agent_name` filter, so "which experiments cover this agent" is only
@@ -109,8 +110,6 @@ export const toRecentExperiments = (
 
   for (const evaluation of evaluations) {
     for (const experiment of evaluation.experiments) {
-      if (!experiment.showsEvaluationsOverTime) continue;
-
       const entry = byExperiment.get(experiment.id) ?? {
         row: {
           id: experiment.id,
@@ -120,6 +119,7 @@ export const toRecentExperiments = (
           evaluationCount: 0,
           series: [],
           isFavorite: experiment.isFavorite,
+          showsOverTime: experiment.showsEvaluationsOverTime,
         },
         scores: new Map<string, StampedScore[]>(),
       };
@@ -164,7 +164,7 @@ export const toRecentExperiments = (
     .sort((a, b) => (b.latestCreatedAt ?? '').localeCompare(a.latestCreatedAt ?? ''));
 
   return {
-    favorites: rows.filter((row) => row.isFavorite).slice(0, limit),
+    favorites: rows.filter((row) => row.isFavorite),
     recent: rows.filter((row) => !row.isFavorite).slice(0, limit),
   };
 };
