@@ -51,6 +51,14 @@ variable "NMP_CORE_RUNTIME_BASE" {
   default = "root-distroless-base-3-13"
 }
 
+variable "NMP_CPU_TASKS_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
+}
+
+variable "AUDITOR_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
+}
+
 variable "AUTOMODEL_BASE_CONTEXT" {
   default = ""
 }
@@ -683,9 +691,12 @@ target "nmp-cpu-tasks-docker" {
   contexts = {
     nmp-python-base           = "target:nmp-python-base"
     nmp-workspace             = "target:nmp-workspace"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
   }
   args = {
-    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    NMP_COLLECT_SOURCES        = NMP_COLLECT_SOURCES
+    NMP_CPU_TASKS_RUNTIME_BASE = NMP_CPU_TASKS_RUNTIME_BASE
   }
   cache-to   = maybe_registry_cache_to("nmp-cpu-tasks")
   cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
@@ -700,7 +711,8 @@ target "nmp-gym-tasks-docker" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-gym-tasks"
   contexts = {
-    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+    nmp-python-base = "target:nmp-python-base"
+    nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
   }
   cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
@@ -715,7 +727,8 @@ target "nmp-gym-tasks-smoke-test" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-gym-tasks"
   contexts = {
-    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+    nmp-python-base = "target:nmp-python-base"
+    nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
   }
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
   output     = ["type=cacheonly"]
@@ -1067,10 +1080,12 @@ target "auditor-tasks-docker" {
   contexts = {
     root-lib-source-artifacts = "target:root-lib-source-artifacts"
     root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
   }
   dockerfile = "docker/Dockerfile.auditor-tasks"
   args = {
-    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
+    AUDITOR_RUNTIME_BASE = AUDITOR_RUNTIME_BASE
   }
   cache-to   = maybe_registry_cache_to("auditor-tasks")
   cache-from = maybe_registry_cache_from("auditor-tasks")
