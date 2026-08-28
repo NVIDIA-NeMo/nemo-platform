@@ -25,7 +25,7 @@ one request ──▶ router prompt (deepagents, one generation, no tools)
 | `agent.yaml`                     | The `nemo-agents-spec-v1` config: harness, router prompt, model, blocked tools, timeout, telemetry        | Rewrite `instructions.system` — the routing rules and one `##` section per capability; set `models.default` (+ `temperature`); rename `name` / `telemetry.project` |
 | `dataset.jsonl`                  | 28 rows carrying the agent's input (`user_message` + `emails[]`) plus `expected_tool` / `expected_answer` | Drop in your rows; keep the field names the `prompt_template` and the two metrics reference                                                                        |
 | `eval-config.dataset-driven.yml` | One metric set over every row (YAML; its task-driven sibling is JSON — both accepted)                     | Rewrite `prompt_template` and the judge prompt to read _your_ contract                                                                                             |
-| `eval-config.task-driven.json`   | 10 tasks in 5 families, each with its own metrics                                                         | Swap the tasks; keep one routing assertion per family                                                                                                              |
+| `eval-config.task-driven.json`   | 8 tasks in 4 families , each with its own metrics                                                         | Swap the tasks; keep one routing assertion per family                                                                                                              |
 
 ## Writing the capabilities
 
@@ -33,7 +33,7 @@ Each capability is a `##` section in the one system prompt. Three rules the
 existing ones follow:
 
 - **Give it a crisp output contract.** Line one is the bare answer — a single
-  lowercase token, a bare integer, a fixed header word — with reasoning after. That
+  lowercase token, a fixed header word, a bare number — with reasoning after. That
   is what lets a deterministic metric read the result without an LLM.
 - **Make the contracts mutually exclusive.** Routing is measured by output shape:
   if two capabilities can open with the same line, no check can tell them apart, and
@@ -54,9 +54,9 @@ things pushed it back to one turn, and both are worth knowing before you fan out
   the sub-agent's reply, so a first-line contract is enforced by prompt alone. When
   it slips, a misroute and a mangled relay look identical in a score table.
 - **Sub-agents are stateless.** They see only the task text. When the orchestrator
-  fails to paste the material in, the sub-agent goes looking for it — that is the
-  failure that cost ~300k tokens per row here, hunting a filesystem for an email
-  that was never on disk.
+  fails to paste the material in, the sub-agent goes looking for it — and with a
+  filesystem in reach it can burn an unbounded number of tokens hunting for an
+  email that was never on disk.
 
 Fan out anyway when your steps are genuinely independent work rather than
 alternative phrasings of one answer, and when you want a trace span per step. If
@@ -92,6 +92,21 @@ Two behaviours worth knowing:
 `nemo-agents-spec-v1`'s `ToolsConfig` exposes `blocked` and nothing else, and is
 `extra="forbid"` — an allow-list is not expressible. `runtime.timeout_seconds` is
 the only other brake: `runtime.max_turns` is ignored by the deepagents adapter.
+
+**Two more knobs that validate but do nothing.** `models.default.settings` is a
+free-form dict on `ModelConfig`, and it reaches the adapter — but `build_chat_model`
+forwards only `model`, `api_key`, `base_url` and `temperature`, so nothing in it is
+applied. Set `max_tokens` or `max_thinking_tokens` there and the model will happily
+exceed them. Because the surrounding config is `extra="forbid"`, a _misspelled_ key
+fails loudly while a correctly-spelled `settings` block fails silently — the worse
+of the two. `models.default.extensions` is unread on the same path.
+
+Budget for the harness, too: deepagents prepends its own base prompt plus the
+filesystem and sub-agent tool documentation to `instructions.system.content`, and
+that text is sent on **every** request — including for the tools you blocked, since
+`blocked` gates calls rather than trimming the schema. For a short router prompt the
+harness text can be several times the size of your own. Trimming your prompt does
+not reach it; only a smaller harness surface would.
 
 ## Adding a tool
 
