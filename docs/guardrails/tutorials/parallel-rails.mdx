@@ -43,7 +43,7 @@ Before you begin:
 
 This tutorial uses the following NIMs, available on `build.nvidia.com`:
 
-- `main` model: `meta/llama-3.1-8b-instruct`
+- `main` model: `nvidia/nemotron-3-nano-30b-a3b`
 - `content_safety` model: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
 - `topic_control` model: `nvidia/llama-3.1-nemoguard-8b-topic-control`
 
@@ -145,7 +145,7 @@ Create a VirtualModel that routes inference through the guardrails middleware. T
 
 ```bash
 nemo inference virtual-models create guarded-parallel-rails \
-  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
   --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/parallel-rails-config"}]' \
   --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/parallel-rails-config"}]'
 ```
@@ -156,7 +156,7 @@ nemo inference virtual-models create guarded-parallel-rails \
 ```python
 client.inference.virtual_models.create(
     name="guarded-parallel-rails",
-    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",

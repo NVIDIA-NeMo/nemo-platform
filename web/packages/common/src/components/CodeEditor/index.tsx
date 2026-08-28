@@ -8,7 +8,7 @@ import { useExtensionWithDependency } from '@nemo/common/src/components/CodeEdit
 import { useLanguageExtension } from '@nemo/common/src/components/CodeEditor/extensions/useLanguageExtension';
 import { useLinter } from '@nemo/common/src/components/CodeEditor/extensions/useLinter';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Flex, Button, useTheme } from '@nvidia/foundations-react-core';
+import { Flex, Button, useTheme, Stack } from '@nvidia/foundations-react-core';
 import { githubLight, githubDark } from '@uiw/codemirror-theme-github';
 import CodeMirror from '@uiw/react-codemirror';
 import { Copy } from 'lucide-react';
@@ -98,9 +98,9 @@ export const CodeEditor: FC<CodeEditorProps> = ({
   );
 
   return (
-    <Flex direction="col" gap="density-sm" className={className}>
+    <Stack gap="density-sm" className={className}>
       {(slotLabel || !hideCopyButton || slotControls) && (
-        <Flex justify="between" align="center" gap="density-sm">
+        <Flex justify="between" align="center" gap="density-sm" className="shrink-0">
           <Flex
             align="center"
             gap="density-sm"
@@ -135,6 +135,7 @@ export const CodeEditor: FC<CodeEditorProps> = ({
       <CodeMirror
         id={id}
         data-testid="nv-code-editor-root"
+        className="min-h-0"
         value={content}
         basicSetup={BASIC_SETUP}
         height="100%"
@@ -144,6 +145,6 @@ export const CodeEditor: FC<CodeEditorProps> = ({
         readOnly={readOnly}
         onChange={handleChange}
       />
-    </Flex>
+    </Stack>
   );
 };

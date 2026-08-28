@@ -3,8 +3,8 @@
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import {
-  useSafeSynthesizerDownloadJobResultSummary as useDownloadJobResultSummaryV1beta1SafeSynthesizerJobsJobIdResultsSummaryDownloadGet,
-  useSafeSynthesizerGetJobSuspense as useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense,
+  useSafeSynthesizerDownloadJobResultSummary as useDownloadJobResultSummaryV1beta1GenerateJobsJobIdResultsSummaryDownloadGet,
+  useSafeSynthesizerGetJobSuspense as useGetJobV1beta1GenerateJobsJobIdGetSuspense,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Stack } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerNavigation } from '@studio/components/SafeSynthesizerNavigation';
@@ -29,7 +29,7 @@ export interface MenuItem {
   icon: React.ReactNode;
 }
 
-export const SafeSynthesizerJobReportRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
+export const GenerateJobReportRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
   ? () => {
       const workspace = useWorkspaceFromPath();
       const { safeSynthesizerJobName } = useRequiredPathParams([
@@ -53,7 +53,7 @@ export const SafeSynthesizerJobReportRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
       const syntheticQualityRef = useRef<HTMLDivElement>(null);
       const dataPrivacyRef = useRef<HTMLDivElement>(null);
 
-      const { data: job } = useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense(
+      const { data: job } = useGetJobV1beta1GenerateJobsJobIdGetSuspense(
         workspace,
         safeSynthesizerJobName
       );
@@ -61,7 +61,7 @@ export const SafeSynthesizerJobReportRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
       const isSuccessful = isJobSuccessful(job.status);
 
       const { data: reportSummary } =
-        useDownloadJobResultSummaryV1beta1SafeSynthesizerJobsJobIdResultsSummaryDownloadGet(
+        useDownloadJobResultSummaryV1beta1GenerateJobsJobIdResultsSummaryDownloadGet(
           workspace,
           safeSynthesizerJobName,
           {

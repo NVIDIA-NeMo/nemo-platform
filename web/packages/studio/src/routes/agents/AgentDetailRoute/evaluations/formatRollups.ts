@@ -7,12 +7,6 @@ import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/
 export const formatScore = (value: number | null | undefined): string =>
   typeof value === 'number' ? value.toFixed(2) : '—';
 
-export const formatLatency = (ms: number | null | undefined): string =>
-  typeof ms !== 'number' ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
-
-export const formatCost = (usd: number | null | undefined): string =>
-  typeof usd !== 'number' ? '—' : `$${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
-
 /** Evaluator keys arrive as ``<metric-type>.<score-name>``, which reads as a stutter whenever the
  *  score is unnamed and repeats its type (``number-check.number-check``). Keep the part that
  *  carries meaning: the score name when it adds one, the type otherwise. */

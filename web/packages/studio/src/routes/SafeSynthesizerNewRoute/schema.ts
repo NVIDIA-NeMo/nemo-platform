@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
-import type { SafeSynthesizerJobRequest } from '@nemo/sdk/generated/safe-synthesizer/schema';
+import type { GenerateJobRequest } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import {
   DEFAULT_PRETRAINED_MODEL,
   MAX_NUM_RECORDS,
@@ -136,7 +136,7 @@ export const safeSynthesizerJobRequestSchema = z.object({
         .optional(),
     }),
   }),
-}) satisfies z.ZodType<SafeSynthesizerJobRequest>;
+}) satisfies z.ZodType<GenerateJobRequest>;
 
 export type SafeSynthesizerFormData = z.infer<typeof safeSynthesizerJobRequestSchema>;
 

@@ -15,6 +15,8 @@ from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.auth.app.bundle import (
     build_authorization_data as _real_build_authorization_data,
 )
@@ -103,7 +105,9 @@ class TestFilesetCreateWithSecretAuth:
         fileset_name = short_unique_name("fileset")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hf_dummy_token")),
             workspace=workspace,
@@ -145,7 +149,9 @@ class TestFilesetCreateWithSecretAuth:
             secret_name = short_unique_name("hf-token")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, SecretsClient).create_secret(
                 body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hf_dummy_token")),
                 workspace=workspace,
@@ -186,7 +192,9 @@ class TestFilesetCreateWithSecretAuth:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -224,7 +232,9 @@ class TestFilesetCreateWithSecretAuth:
         fileset_name = short_unique_name("fileset")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -268,7 +278,9 @@ class TestFilesetCreateWithSecretAuth:
         monkeypatch.setattr(HuggingfaceStorageImpl, "list_files", _list_files_noop)
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hf_dummy_token")),
             workspace=workspace,

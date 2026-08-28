@@ -258,9 +258,12 @@ uv sync ${UV_SYNC_MODE} --all-groups      --no-install-project   # build/test/et
 # in this cached compile layer (the editable ROOT install moves below, after the full-source COPY).
 uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenacity>=9.1.4"
 
-# W&B ships a scanner-visible Go binary. Keep it above the fixed go-git/grpc
-# and Go stdlib floors even when NeMo-RL's lock has an older wheel.
-uv pip install --python /opt/nemo_rl_venv/bin/python "wandb>=0.28.2"
+# Logging integrations ship scanner-visible Python and Go artifacts. Keep them
+# above fixed floors even when NeMo-RL's lock has older wheels.
+uv pip install --python /opt/nemo_rl_venv/bin/python \
+    "mlflow-skinny>=3.15.0,<3.16.0" \
+    "sqlparse>=0.6.0,<0.7" \
+    "wandb>=0.29.0"
 
 # NeMo-Gym in the BASE venv, for the DRIVER - not a duplicate of the nemo_gym extra above.
 # Sandboxed (mode B) GRPO imports nemo_rl.environments.sandbox in the driver process:
@@ -434,19 +437,25 @@ if [ -d "${GYM_CACHE}" ]; then
     echo "in-tree Gym cache is ${GYM_CACHE_MB} MB (metadata only) - ok"
 fi
 
-# Some actor/env venvs may contain W&B depending on the selected NeMo-RL extras.
-# Upgrade those in place, then drop any now-unreferenced older W&B cache archive
-# so scanners do not report stale wandb-core binaries under /opt/uv_cache.
+# Some actor/env venvs may contain logging integrations depending on the selected
+# NeMo-RL extras. Upgrade those in place, then drop now-unreferenced old cache
+# archives so scanners do not report stale artifacts under /opt/uv_cache.
 for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
     [ -x "${py}" ] || continue
+    if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("mlflow") else 1)'; then
+        uv pip install --python "${py}" --upgrade-package mlflow-skinny --upgrade-package sqlparse \
+            "mlflow-skinny>=3.15.0,<3.16.0" "sqlparse>=0.6.0,<0.7"
+    fi
     if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("wandb") else 1)'; then
-        uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.28.2"
+        uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.29.0"
     fi
 done
-for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
-    ls "${d}"wandb-*.dist-info >/dev/null 2>&1 || continue
-    find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
-    rm -rf "${d}"
+for dist_info_glob in mlflow-*.dist-info sqlparse-*.dist-info wandb-*.dist-info; do
+    for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
+        ls "${d}"${dist_info_glob} >/dev/null 2>&1 || continue
+        find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
+        rm -rf "${d}"
+    done
 done
 EOF
 

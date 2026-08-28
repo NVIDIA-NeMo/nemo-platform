@@ -375,7 +375,7 @@ def test_docker_job_with_persistence_schedule(docker_job, docker_client_mock, te
     created_containers[1].start.assert_called_once()  # job container
 
 
-def test_docker_job_sync(docker_job, docker_client_mock, test_job_step):
+def test_docker_job_sync(docker_job, docker_client_mock, mock_jobs_client, test_job_step):
     """Test that the sync method correctly interprets container status."""
     # Setup container mock with "running" status
     container_mock = MagicMock()
@@ -433,8 +433,76 @@ def test_docker_job_sync(docker_job, docker_client_mock, test_job_step):
 
     # Test sync with container not found and job not in pending state
     test_job_step.status = PlatformJobStatus.ACTIVE
+    mock_jobs_client.list_job_step_tasks.return_value = data_response(SimpleNamespace(data=[]))
     update = docker_job.sync(test_job_step)
     assert update.status == "error"
+
+
+def test_docker_job_sync_active_missing_container_uses_terminal_task_fallback(
+    docker_job, docker_client_mock, mock_jobs_client, test_job_step
+):
+    """A removed Docker container should not fail a step whose task already finished."""
+    test_job_step.status = PlatformJobStatus.ACTIVE
+    now = datetime.datetime.now(datetime.timezone.utc)
+    mock_jobs_client.list_job_step_tasks.return_value = data_response(
+        SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    status=PlatformJobStatus.ACTIVE,
+                    status_details={"message": "Job is running"},
+                    error_details={},
+                    created_at=now - datetime.timedelta(seconds=2),
+                    updated_at=now - datetime.timedelta(seconds=2),
+                ),
+                SimpleNamespace(
+                    status=PlatformJobStatus.COMPLETED,
+                    status_details={"message": "Download complete"},
+                    error_details={},
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+    )
+    docker_client_mock.containers.get.side_effect = NotFound("Container not found")
+
+    update = docker_job.sync(test_job_step)
+
+    assert update.status == PlatformJobStatus.COMPLETED
+    assert update.status_details == {"message": "Download complete"}
+    assert update.error_details == {}
+    mock_jobs_client.update_job_step_task.assert_not_called()
+
+
+def test_docker_job_sync_active_missing_container_prefers_terminal_task_over_ttl(
+    docker_job, docker_client_mock, mock_jobs_client, test_job_step
+):
+    """Terminal task state wins even when active-step TTL is exceeded."""
+    ttl_seconds = docker_job._execution_profile_config.ttl_seconds_active
+    old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 60)
+    test_job_step.status = PlatformJobStatus.ACTIVE
+    test_job_step.created_at = old_timestamp
+    test_job_step.updated_at = old_timestamp
+    mock_jobs_client.list_job_step_tasks.return_value = data_response(
+        SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    status=PlatformJobStatus.COMPLETED,
+                    status_details={"message": "Download complete"},
+                    error_details={},
+                    created_at=old_timestamp,
+                    updated_at=old_timestamp,
+                )
+            ]
+        )
+    )
+    docker_client_mock.containers.get.side_effect = NotFound("Container not found")
+
+    update = docker_job.sync(test_job_step)
+
+    assert update.status == PlatformJobStatus.COMPLETED
+    assert update.error_details == {}
+    mock_jobs_client.update_job_step_task.assert_not_called()
 
 
 def test_docker_job_sync_pausing_sigterm(docker_job, docker_client_mock, test_job_step):

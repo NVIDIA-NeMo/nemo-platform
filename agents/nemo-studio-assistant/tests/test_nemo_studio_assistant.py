@@ -21,7 +21,7 @@ from nemo_studio_assistant.fabric_compat import (
 from nemo_studio_assistant.mcp_server import create_server
 
 AGENT_ROOT = Path(__file__).parents[1]
-SPEC_ROOT = AGENT_ROOT.parent / "nemo-studio-assistant-spec"
+ETHOS_ROOT = AGENT_ROOT.parent / "nemo-studio-assistant-ethos"
 EVAL_DATA_PATH = AGENT_ROOT / "src/nemo_studio_assistant/nemo-studio-assistant-eval-data.json"
 DOCKERFILE_PATH = AGENT_ROOT / "Dockerfile.fabric-local"
 REAL_PREFLIGHT_GUARDRAIL_MODEL = register._preflight_guardrail_model
@@ -96,7 +96,7 @@ def test_agent_config_translates_to_fabric_deepagents() -> None:
 
 def test_canonical_registration_config_translates_to_same_runtime() -> None:
     source = translate_agent_config(load_agent_config(AGENT_ROOT / "agent.yaml"))
-    registered = translate_agent_config(load_agent_config(SPEC_ROOT / "agent.yaml"))
+    registered = translate_agent_config(load_agent_config(ETHOS_ROOT / "agent.yaml"))
 
     assert registered.harness == source.harness
     assert registered.models == source.models
@@ -105,7 +105,7 @@ def test_canonical_registration_config_translates_to_same_runtime() -> None:
 
 
 def test_agent_telemetry_exports_atif_traces_to_intake() -> None:
-    for config_path in (AGENT_ROOT / "agent.yaml", SPEC_ROOT / "agent.yaml"):
+    for config_path in (AGENT_ROOT / "agent.yaml", ETHOS_ROOT / "agent.yaml"):
         config = load_agent_config(config_path)
 
         assert config.telemetry.enabled is True
@@ -142,10 +142,10 @@ def test_every_configured_skill_is_packaged() -> None:
     assert all(skill_file.is_file() for skill_file in skill_files)
     assert all(skill_file.read_text(encoding="utf-8").startswith("---\n") for skill_file in skill_files)
 
-    registered = load_agent_config(SPEC_ROOT / "agent.yaml")
+    registered = load_agent_config(ETHOS_ROOT / "agent.yaml")
     assert registered.skills is not None
     assert registered.skills.paths == SKILL_PATHS
-    assert len(list((SPEC_ROOT / "skills").glob("*/SKILL.md"))) == 9
+    assert len(list((ETHOS_ROOT / "skills").glob("*/SKILL.md"))) == 9
     assert config.environment.workspace == "."
     assert registered.environment.workspace == "."
 
@@ -266,7 +266,7 @@ def test_platform_translation_virtualizes_packaged_skill_root() -> None:
 def test_guardrails_skill_is_generic_sdk_workflow_and_copies_match() -> None:
     source = AGENT_ROOT / "src/nemo_studio_assistant/skills/guardrails/SKILL.md"
     packaged = AGENT_ROOT / "skills/guardrails/SKILL.md"
-    registered = SPEC_ROOT / "skills/guardrails/SKILL.md"
+    registered = ETHOS_ROOT / "skills/guardrails/SKILL.md"
     skill_text = source.read_text(encoding="utf-8")
 
     assert packaged.read_text(encoding="utf-8") == skill_text

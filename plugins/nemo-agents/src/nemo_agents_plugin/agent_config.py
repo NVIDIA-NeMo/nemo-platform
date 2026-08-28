@@ -60,6 +60,13 @@ class EnvironmentConfig(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timeout_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    max_turns: int | None = Field(default=None, gt=0, le=(1 << 32) - 1)
+
+
 class TelemetryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -69,6 +76,7 @@ class TelemetryConfig(BaseModel):
     project: str | None = None
     atif: dict[str, Any] | None = None
     atof: dict[str, Any] | None = None
+    opentelemetry: dict[str, Any] | None = None
 
 
 class InstructionConfig(BaseModel):
@@ -97,7 +105,10 @@ class McpServerConfig(BaseModel):
     url: str
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
+    custom_headers: dict[str, str] = Field(default_factory=dict)
     exposure: Literal["harness_native", "fabric_managed"] = "harness_native"
+    allowed_tools: list[str] | None = None
+    blocked_tools: list[str] = Field(default_factory=list)
 
 
 class McpConfig(BaseModel):
@@ -128,6 +139,7 @@ class AgentConfig(BaseModel):
     skills: SkillsConfig | None = None
     mcp: McpConfig | None = None
     tools: ToolsConfig | None = None
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 

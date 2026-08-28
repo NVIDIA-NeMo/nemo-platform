@@ -25,6 +25,7 @@ import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { EVAL_DURATION_METADATA_KEY, evalDurationMs } from '@studio/api/evaluation/utils';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { ExperimentParetoChart } from '@studio/components/charts/ExperimentParetoChart';
+import { ExperimentTrendChart } from '@studio/components/charts/ExperimentTrendChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView/AddToGroupModal';
 import '@studio/components/dataViews/ExperimentDataView/ExperimentDataView.css';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentDataView/MeanValueTooltipCell';
@@ -147,10 +148,17 @@ interface ExperimentDataViewProps {
   /** Whether the Pareto (cost-vs-accuracy) chart is shown. The toggle lives in the parent
    * route header (next to the "Evaluations" title); this component only renders the chart. */
   paretoVisible: boolean;
+  /** Whether the over-time trend chart is shown. Same arrangement as `paretoVisible`: the parent
+   * owns the toggle, which starts on for experiments flagged `show_evaluations_over_time`. */
+  trendVisible: boolean;
 }
 
 /** Lists the experiments that belong to a single experiment group. */
-export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoVisible }) => {
+export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
+  group,
+  paretoVisible,
+  trendVisible,
+}) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();
@@ -579,6 +587,19 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
 
   return (
     <>
+      {trendVisible && (
+        <div className="mb-4">
+          {/* Key by group id for the same reason as the Pareto chart: re-seed the selected metric
+              when navigating between groups without a route remount. */}
+          <ExperimentTrendChart
+            key={group.id}
+            workspace={workspace}
+            group={group}
+            preloadedEvaluations={completeEvaluationSet}
+            preloadPending={preloadPending}
+          />
+        </div>
+      )}
       {paretoVisible && (
         <div className="mb-4">
           {/* Key by group id so the axis selection resets (re-seeds from the new group's saved

@@ -3,12 +3,13 @@
 
 # Dataset formats
 
-All three backends read JSONL from a platform fileset, but the **row shape and the job-JSON dataset block differ**. Pick the section that matches your plugin (automodel, unsloth, or rl/DPO).
+All three backends read JSONL from a platform fileset, but the **row shape and the job-JSON dataset block differ**. Pick the section that matches your plugin (automodel, unsloth, rl/DPO, or rl/GRPO).
 
-Upload the JSONL files at the **fileset root**, then reference the fileset from the job JSON `dataset` block. The filenames differ by backend, so keep the two contracts separate:
+Upload the JSONL files at the **fileset root**, then reference the fileset from the job JSON `dataset` block. The filenames differ by backend, so keep the contracts separate:
 
 - **SFT (automodel, unsloth):** upload `train.jsonl` and optional `validation.jsonl`. Automodel points `dataset.training` / `dataset.validation` at the fileset; unsloth uses `dataset.path` (and `dataset.validation_path`).
-- **rl (DPO):** upload both `training.jsonl` **and** `validation.jsonl` to a single fileset, referenced by one `dataset` string (no separate validation ref) — see § NeMo-RL.
+- **rl (DPO):** upload both `training.jsonl` **and** `validation.jsonl` to a single fileset, referenced by one `dataset` string (no separate validation ref) — see § NeMo-RL (DPO).
+- **rl (GRPO):** upload `training.jsonl` (required) and optional `validation.jsonl` to a single fileset. Rows are **NeMo Gym rollout rows**, not prompt/completion and not preference triples — see § NeMo-RL (GRPO).
 
 ## Automodel
 
@@ -72,6 +73,117 @@ Eval rows must use the **same CHAT `messages` shape** as training. Do not flatte
 LoRA inference and eval use the **provider** gateway on the **base** entity (`/provider/<name>/-/v1`, `model: default--<adapter>`). Base model uses the model-entity path. Full SFT / merged checkpoints use the **output** model entity's model-entity URL — deploy first. See `post-training-eval.md` and the **Using the adapter** / **Using the fine-tuned model** sections in `reporting.md`.
 
 Shared helpers and compare CLI: `references/eval_helpers.py`. Full workflow: `references/post-training-eval.md`.
+
+## NeMo-RL (GRPO) — NeMo Gym rollout rows
+
+GRPO has **no labelled completions**. A row is a prompt plus enough routing information for the environment to run a rollout against it and score the result. The reward comes from the environment, not the file.
+
+The dataset FileSet holds `training.jsonl` (required) and optionally `validation.jsonl`, referenced by the single `dataset` string. The environment is a **separate** FileSet — see `gym-environments.md`.
+
+### Row schema
+
+Source of truth: `GymDatasetRow` / `GymVerifiersDatasetRow` in `services/rl/src/nmp/rl/schemas/environment.py`.
+
+**Where rows are actually checked.** Submit verifies only that the dataset FileSet has `training.jsonl` at its root (`check_gym_dataset_layout`). Row *shape* is checked later by `DatasetValidator` inside the training container, against `GRPO_SCHEMA` — which is built from the **agent-agnostic** `GymDatasetRow`, so it requires exactly `responses_create_params` and `agent_ref` and passes everything else through. A wrong `vf_env_id` is therefore not a validation error; it surfaces as the environment failing to load, one job start later. Validate rows locally.
+
+```json
+{
+  "task_idx": 0,
+  "vf_env_id": "ascii-tree",
+  "responses_create_params": {"input": [{"role": "user", "content": "Draw a binary tree of depth 3."}]},
+  "agent_ref": {"type": "responses_api_agents", "name": "verifiers_agent"},
+  "question": "Draw a binary tree of depth 3.",
+  "answer": "",
+  "task": "ascii-tree",
+  "example_id": "ex-0",
+  "info": {}
+}
+```
+
+| Key | Required | Meaning |
+|---|---|---|
+| `responses_create_params` | **yes** | The prompt, in OpenAI **Responses API** shape. The messages go under `input`, not at the row's top level. NeMo-RL also reads this to apply per-row sampling settings. |
+| `agent_ref` | **yes** | `{"type": "responses_api_agents", "name": "<agent>"}`. Routes the row to an agent. `type` is the only allowed value; `name` is the Gym **instance** name in the environment YAML (the converter writes `verifiers_agent`; a hand-built agent instance might be `weather_simple_agent`, not the implementation folder `simple_agent`). |
+| `vf_env_id` | verifiers envs | Passed to `verifiers.load_environment()`. Must equal the environment manifest's `metadata.vf_env_id`. |
+| `task_idx` | verifiers envs | Row index. Required on the verifiers row type. |
+| `answer` | no | Reference answer the environment scores against. Default `""`. Whether it is used at all is the environment's business. |
+| `task` | no | Task label, conventionally the env id. Default `""`. |
+| `example_id` | no | Stable id for the source example. Int or string, default `0`. |
+| `info` | no | Free-form dict passed through to the environment. Default `{}`. |
+| `question` | no | The last user message, denormalized for readability. |
+
+**Extra keys are allowed and passed through** (`extra="allow"`), which is how environment-specific fields ride along. Note that any numeric key an environment returns in its result becomes a per-environment metric on the job — see `reporting.md`.
+
+### Common mistakes
+
+| Wrong | Right |
+|---|---|
+| `{"messages": [...]}` at the top level | Nest under `responses_create_params.input` |
+| `{"prompt": "...", "completion": "..."}` | GRPO has no completions; the environment produces and scores them |
+| `{"prompt": ..., "chosen": ..., "rejected": ...}` | That is DPO — see the next section |
+| `"agent_ref": "verifiers_agent"` | An **object**: `{"type": "responses_api_agents", "name": "verifiers_agent"}` |
+| `agent_ref.name` set to the implementation folder (`simple_agent`) | The **instance** name from the environment YAML (`weather_simple_agent`) — see `gym-environments.md` § **How a Gym config YAML is read** |
+| `vf_env_id` differing from the manifest's `metadata.vf_env_id` | Make them match. Nothing rejects the mismatch — the environment just fails to load at spin-up |
+| Prompt JSONL uploaded into the environment FileSet | Separate dataset FileSet; `.jsonl` in the env package is rejected |
+| Reusing Gym's own in-tree JSONL unchanged | Gym infers the agent from the owning config; the platform path requires `agent_ref` on every row. Add it |
+
+### Converting a dataset to Gym rows
+
+**Converted hub environments need no work** — `pi-to-gym-conversion` writes `training.jsonl` (and `validation.jsonl` with `--validation-fraction`) alongside the package. Use those.
+
+For your own prompts, one row per prompt. `dataset_row_from_verifiers` in `services/rl/src/nmp/rl/tasks/environment/package.py` is the canonical shape; this mirrors it:
+
+```python
+import json
+
+def gym_row(idx, prompt_text, *, vf_env_id, answer="", agent="verifiers_agent"):
+    return {
+        "task_idx": idx,
+        "vf_env_id": vf_env_id,
+        "responses_create_params": {"input": [{"role": "user", "content": prompt_text}]},
+        "agent_ref": {"type": "responses_api_agents", "name": agent},
+        "question": prompt_text,
+        "answer": answer,
+        "task": vf_env_id,
+        "example_id": f"ex-{idx}",
+        "info": {},
+    }
+
+with open("training.jsonl", "w", encoding="utf-8") as f:
+    for i, ex in enumerate(examples):                    # e.g. a HF dataset split
+        row = gym_row(i, ex["question"], vf_env_id="ascii-tree", answer=ex.get("answer", ""))
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+```
+
+Multi-turn context goes in `input` as additional messages, in order — the same `role`/`content` dicts, ending with the turn the model must respond to.
+
+### Rows for a non-verifiers environment
+
+`vf_env_id` and `task_idx` are `verifiers_agent`-specific. A `resources_servers` + `simple_agent` environment needs neither — but if its tools are function-calling tools, **each row must declare them**, because `simple_agent` reads the tool list from `responses_create_params`, not from the resources server:
+
+```json
+{
+  "responses_create_params": {
+    "input": [
+      {"role": "developer", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "what's it like in sf?"}
+    ],
+    "tools": [{"type": "function", "name": "get_weather", "description": "",
+               "parameters": {"type": "object", "properties": {"city": {"type": "string"}},
+                              "required": ["city"], "additionalProperties": false},
+               "strict": true}]
+  },
+  "agent_ref": {"type": "responses_api_agents", "name": "weather_simple_agent"},
+  "answer": "",
+  "info": {}
+}
+```
+
+One `tools` entry per route the server exposes, named after the route. Fields the environment's own `verify()` scores against (`answer`, or anything custom) ride along under `extra="allow"`. The full environment side of this example is in `gym-environments.md` § **Worked example**.
+
+### Validation sampling
+
+`validate()` runs **exactly one rollout per row** of `validation.jsonl` — there is no validation counterpart to `num_generations_per_prompt`. To score a prompt *k* times (mean@k), repeat its **row** *k* times. Validation cost is therefore just the row count, and `val_at_start` / `val_at_end` score the same rows, which makes the before/after comparison paired.
 
 ## NeMo-RL (DPO) — preference data
 

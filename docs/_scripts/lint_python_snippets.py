@@ -44,12 +44,17 @@ SKIP_DIRS = {
 FENCE_RE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
 TY_OUTPUT_RE = re.compile(r"^(?P<path>.+?):(?P<line>\d+):(?P<column>\d+): (?P<message>.+)$")
 
+# Both comment syntaxes are accepted. MDX v3 rejects HTML comments outright -- a page
+# carrying one fails `validate-mdx` -- so an .mdx page must use the ``{/* ... */}`` form.
 SKIP_NEXT_BLOCK_MARKERS = {
     "<!-- @nemo-docs: skip-python-snippet-check -->",
+    "{/* @nemo-docs: skip-python-snippet-check */}",
 }
 SKIP_NEXT_TYPE_CHECK_MARKERS = {
     "<!-- @nemo-docs: skip-python-type-check -->",
     "<!-- @nemo-nb: skip-type-check -->",
+    "{/* @nemo-docs: skip-python-type-check */}",
+    "{/* @nemo-nb: skip-type-check */}",
 }
 # ``possibly-unbound-attribute`` was renamed upstream; passing the old name makes ty emit
 # ``warning[unknown-rule]``, which fails this check for every doc regardless of its snippets.

@@ -1210,7 +1210,24 @@ class JobDispatcher:
                 extra={"task": task.id, "job": job_name, "step": step.name, "workspace": step.workspace},
             )
         else:
-            task.status = task_update.status
+            current_status = PlatformJobStatus(task.status)
+            new_status = PlatformJobStatus(task_update.status)
+            if not current_status.can_transition_to(new_status):
+                logger.info(
+                    "Ignoring invalid job task status transition",
+                    extra={
+                        "task": task.id,
+                        "job": job_name,
+                        "step": step.name,
+                        "workspace": step.workspace,
+                        "current_status": current_status,
+                        "new_status": new_status,
+                    },
+                )
+                operations_counter.add(1, attributes={"operation": "create_or_update_task"})
+                return task
+
+            task.status = new_status
 
             if task_update.error_details:
                 task.error_details = task_update.error_details

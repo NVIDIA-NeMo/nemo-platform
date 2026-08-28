@@ -25,7 +25,6 @@ Prefer the released task image from NGC:
 ```bash
 export NMP_IMAGE_REGISTRY=nvcr.io/nvidia/nemo-platform
 export NMP_IMAGE_TAG=<tag>  # match your installed NeMo Platform release
-export NEMO_SAFE_SYNTHESIZER_JOB_MODE=container
 export NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE=safe-synthesizer-tasks
 ```
 
@@ -35,35 +34,24 @@ For a local Docker-built image on a Docker executor, set a full image reference 
 
 ```bash
 docker buildx bake safe-synthesizer-tasks-docker
-export NEMO_SAFE_SYNTHESIZER_JOB_MODE=container
 export NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF=safe-synthesizer-tasks:local
 ```
 
 For Kubernetes, push the local build to a registry the cluster can pull, then set `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF` to that pushed image reference.
 
-## Resolve the CLI
-
-Run `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bin/nemo) || echo CLI_NOT_FOUND`.
-
-- If the output is a path, use that path as the command prefix.
-- If the output is `CLI_NOT_FOUND`, tell the user the NeMo CLI is not available in this environment and ask whether they want help installing or syncing dependencies.
-
 ## Choose the Execution Mode
 
-Use platform jobs for normal Safe Synthesizer usage. The platform compiles the spec into a GPU container step that runs the configured Safe Synthesizer task image.
+Use platform jobs for Safe Synthesizer usage. The platform compiles the spec into a GPU container step that runs the configured Safe Synthesizer task image.
 
-Use the Jobs API or SDK to create the job. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands. For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.mdx`.
-
-Use host-local execution only when the user is iterating on a local machine with CUDA/GPU access or debugging the task process outside the Jobs backend:
+Use the CLI, Jobs API, or SDK to create the job:
 
 ```bash
-uv run nemo safe-synthesizer runtime setup
-uv run nemo safe-synthesizer run-local \
+nemo safe-synthesizer generate \
   --workspace default \
-  --spec-file nss-job.json \
-  --data-source ./input.csv \
-  --output-dir ./nss-output
+  --spec-file nss-job.json
 ```
+
+For SDK users, point them to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.mdx`.
 
 ## Minimal Spec Shape
 
@@ -105,7 +93,7 @@ For platform submission, pass this object as the `spec` field in the Jobs API or
 ## Next Steps
 
 - Tune job parameters with `workflows/config.md` and `workflows/config-runs.md`.
-- Reuse a prior adapter or run plugin tests: `docs/safe-synthesizer/about/host-local-development.mdx`.
+- Reuse a prior adapter with `pretrained_model_job`.
 - Retrieve job result files with `workflows/results.md`.
 - Interpret output files with `workflows/artifacts.md`.
 - Debug failed runs with `workflows/diagnose.md`.

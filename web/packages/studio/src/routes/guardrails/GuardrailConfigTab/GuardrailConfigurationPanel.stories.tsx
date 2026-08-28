@@ -43,17 +43,10 @@ export const Empty: Story = {
   args: {},
 };
 
-/** Self check running on both stages, with the instructions a real config carries. */
+/** Self check running on both stages. */
 export const SelfCheckEnabled: Story = {
   args: {
     config: {
-      instructions: [
-        {
-          type: 'general',
-          content:
-            'Below is a conversation between a user and a bot called the ABC Bot. The bot is designed to answer employee questions about the ABC Company. The bot is knowledgeable about the employee handbook and company policies. If the bot does not know the answer to a question, it truthfully says it does not know.',
-        },
-      ],
       rails: {
         input: { flows: ['self check input'] },
         output: { flows: ['self check output'] },

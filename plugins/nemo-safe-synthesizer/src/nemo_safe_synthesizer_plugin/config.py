@@ -3,7 +3,7 @@
 
 """Configuration for the Safe Synthesizer plugin."""
 
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from nemo_platform_plugin.config import NemoConfig
 from pydantic import Field
@@ -20,7 +20,6 @@ class SafeSynthesizerConfig(NemoConfig):
     entrypoint: list[str] = Field(
         default_factory=lambda: ["python", "-m", "nemo_safe_synthesizer_plugin.tasks.safe_synthesizer"]
     )
-    job_mode: Literal["subprocess-local", "container"] = "subprocess-local"
     job_executor_profile: str = "default"
     container_image: str = "safe-synthesizer-tasks"
     container_image_ref: str | None = Field(
@@ -30,10 +29,6 @@ class SafeSynthesizerConfig(NemoConfig):
             "NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG qualification for Safe Synthesizer jobs."
         ),
     )
-    runtime_venv: str = ".nemo/safe-synthesizer-runtime"
-    runtime_package: str = "nemo-safe-synthesizer[engine,cu129]==0.1.7"
-    runtime_python_version: str = "3.11"
-    runtime_python: str | None = None
     default_job_resource_memory_request: str = "16G"
     default_job_resource_cpu_request: str = "4"
     default_job_resource_memory_limit: str = "16G"

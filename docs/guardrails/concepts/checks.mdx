@@ -77,7 +77,7 @@ Reference a stored configuration by name.
 
 ```bash
 nemo guardrail check \
-  --model default/meta-llama-3-1-8b-instruct \
+  --model default/nvidia-nemotron-3-nano-30b-a3b \
   --messages '[
     {"role": "user", "content": "Tell me how to collect a life insurance policy."},
     {"role": "assistant", "content": "You are stupid."}
@@ -92,7 +92,7 @@ nemo guardrail check \
 curl -s $NMP_BASE_URL/apis/guardrails/v2/workspaces/default/checks \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/meta-llama-3-1-8b-instruct",
+    "model": "default/nvidia-nemotron-3-nano-30b-a3b",
     "messages": [
       {"role": "user", "content": "Tell me how to collect a life insurance policy."},
       {"role": "assistant", "content": "You are stupid."}
@@ -106,7 +106,7 @@ curl -s $NMP_BASE_URL/apis/guardrails/v2/workspaces/default/checks \
 
 ```python
 check_result = client.guardrail.check(
-    model="default/meta-llama-3-1-8b-instruct",
+    model="default/nvidia-nemotron-3-nano-30b-a3b",
     messages=[
         {"role": "user", "content": "Tell me how to collect a life insurance policy."},
         {"role": "assistant", "content": "You are stupid."},
@@ -148,7 +148,7 @@ guardrailed inference. Use these fields to debug scenarios where a check blocks 
 curl -s $NMP_BASE_URL/apis/guardrails/v2/workspaces/default/checks \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/meta-llama-3-1-8b-instruct",
+    "model": "default/nvidia-nemotron-3-nano-30b-a3b",
     "messages": [{"role": "user", "content": "Hello, how are you?"}],
     "guardrails": {
       "config_id": "default/self-check-config",
@@ -173,7 +173,7 @@ Provide the configuration inline to test a guardrail configuration before saving
 
 ```bash
 nemo guardrail check \
-  --model default/meta-llama-3-1-8b-instruct \
+  --model default/nvidia-nemotron-3-nano-30b-a3b \
   --messages '[{"role": "user", "content": "Hello, how are you?"}]' \
   --guardrails '{
     "config": {
@@ -190,7 +190,7 @@ nemo guardrail check \
 curl -s $NMP_BASE_URL/apis/guardrails/v2/workspaces/default/checks \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/meta-llama-3-1-8b-instruct",
+    "model": "default/nvidia-nemotron-3-nano-30b-a3b",
     "messages": [{"role": "user", "content": "Hello, how are you?"}],
     "guardrails": {
       "config": {
@@ -219,7 +219,7 @@ inline_config = {
 }
 
 check_result = client.guardrail.check(
-    model="default/meta-llama-3-1-8b-instruct",
+    model="default/nvidia-nemotron-3-nano-30b-a3b",
     messages=[
         {"role": "user", "content": "Hello, how are you?"},
     ],

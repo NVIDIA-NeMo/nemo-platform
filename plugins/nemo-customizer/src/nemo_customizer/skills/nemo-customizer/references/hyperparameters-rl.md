@@ -35,13 +35,17 @@ Discriminated by `training.type`: `"dpo"` or `"grpo"`. **`training.type` is requ
 
 ## GRPO job JSON layout (NeMo Gym)
 
-Convert a Prime Intellect hub env on an **internet-capable host** (no cluster hub egress):
+GRPO needs **two** FileSets: an environment package (code + config that runs a rollout and returns a reward) and a dataset of prompt rows. Building or converting the environment is the bulk of the work and has its own reference — **`gym-environments.md`** covers all three formats (`native-v1`, `wheels-v1`, `adapter-wheels-v1`), how to convert a Prime Intellect / verifiers env, how to package one of Gym's own, validation, and upload.
+
+The short version, for a Prime Intellect hub env, on an **internet-capable host** (training clusters have no hub egress):
 
 ```bash
-pi-to-gym-conversion --hub-id primeintellect/ascii-tree --out-dir ./ascii-tree-pkg
+uv run --package nmp-rl pi-to-gym-conversion \
+  --hub-id primeintellect/ascii-tree --hub-version 0.1.5 \
+  --out-dir ./ascii-tree-pkg --validation-fraction 0.1 --upload
 ```
 
-Upload the env package as a FileSet with `purpose=environment` and the JSONL as `purpose=dataset`, then submit:
+That writes the package plus `training.jsonl` / `validation.jsonl` and, with `--upload`, creates both FileSets. Then submit:
 
 ```json
 {
@@ -60,9 +64,9 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 }
 ```
 
-- `environment` is **required** for GRPO (adapter-wheels-v1 FileSet).
-- `dataset` is Gym JSONL (`training.jsonl` required; not DPO preference triples).
-- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is capable (`NMP_RL_SANDBOX_CLUSTER_CAPABLE=true`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are compile-time checks.
+- `environment` is **required** for GRPO — a string ref to a FileSet with `purpose=environment` carrying a valid `nemo-environment.yaml`. Any of the three formats works. See `gym-environments.md`.
+- `dataset` is Gym JSONL (`training.jsonl` required, `validation.jsonl` optional) — rollout rows with the prompt under `responses_create_params.input`, **not** DPO preference triples and **not** `messages[]` at the top level. Schema and conversion: `dataset-formats.md` § **NeMo-RL (GRPO)**.
+- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is declared installed (`NMP_SANDBOX_CLUSTER_CAPABLE=true`, Helm `sandboxClusterCapable` — a **platform** setting, not `NMP_RL_*`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are checked **at submit** — the job compiler raises and the API returns 422, before any GPU is claimed. See `rl-kubernetes-runtime.md` § **Sandboxed Gym (GRPO)**.
 
 ## Field reference — shared training knobs
 
@@ -118,6 +122,86 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 | `ref_policy_kl_penalty` | `0.0` | KL coefficient in the GRPO loss. |
 | `ratio_clip_min` / `ratio_clip_max` | `0.2` / `0.28` | PPO-style ratio clip bounds. |
 | `max_grad_norm` | `1.0` | Gradient clipping norm. |
+| `top_k` | `null` | Restrict rollout sampling to the k most likely tokens. Unset samples the full distribution, which is standard GRPO. Narrowing it carries the same risk as lowering `temperature`: rollouts within a prompt group become more alike, and GRPO learns from how much they differ. |
+
+### GRPO advanced (`type: "grpo"`)
+
+Collapse these behind an "advanced" affordance — the defaults are correct for standard GRPO and most runs never touch them.
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `ratio_clip_c` | `null` | Dual-clip bound: puts a floor under the loss for tokens with a negative advantage, so one badly-scored rollout cannot dominate the update. Must be **greater than 1**; `3` is the usual choice. `null` leaves dual clipping off. Rejected at submit if `<= 1`, because the loss function asserts it at startup. |
+| `advantage_clip_low` / `advantage_clip_high` | `null` / `null` | Bounds applied to advantages **after** normalization. `null` on either side means unbounded there. Bounding both limits how much one unusual rollout can move the policy. Rejected at submit when `low >= high`: an inverted or empty range clips every advantage to a single value, which zeroes the gradient and looks like a run that simply does not learn. |
+| `normalize_rewards` | `true` | Divide each group's advantages by their standard deviation. |
+| `use_leave_one_out_baseline` | `true` | Compare each rollout against the mean of the **other** rollouts in its group rather than the group mean including itself, which removes the bias of comparing a rollout to itself. |
+| `use_on_policy_kl_approximation` | `true` | Estimate the KL term against the policy that generated the rollouts rather than the one currently training. The two differ once a rollout batch is reused across several optimizer steps. |
+| `use_importance_sampling_correction` | `true` | Reweight each token by how much more or less likely the training policy is to produce it than the rollout policy was. Corrects the drift that builds up when a rollout batch is reused, at the cost of higher variance. |
+
+The last two default to `true` on this platform, where the underlying library defaults them to `false`. They were fixed on before they were settings, and the defaults preserve that so an unchanged job computes the same loss it did before.
+
+### LoRA (GRPO only)
+
+**DPO is full-weight only.** GRPO trains either way, selected by `finetuning_type` on the `training` block:
+
+| `finetuning_type` | Trains | Output |
+|---|---|---|
+| `"all_weights"` (default) | Every weight | Full model entity |
+| `"lora"` | Adapter only | HF PEFT **adapter** entity, registered against the base model |
+| `"lora_merged"` | — | **Rejected.** The DTensor path does not merge at export. |
+
+```json
+{
+  "model": "default/<model-entity>",
+  "dataset": "default/<gym-dataset-fileset>",
+  "environment": "default/<environment-fileset>",
+  "training": {
+    "type": "grpo",
+    "finetuning_type": "lora",
+    "lora": { "rank": 16, "alpha": 32, "dropout": 0.0 },
+    "epochs": 1,
+    "batch_size": 32,
+    "num_generations_per_prompt": 8,
+    "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1 }
+  },
+  "output": { "name": "<output-name>" }
+}
+```
+
+**You do not set the output type.** It is inferred: `finetuning_type: "lora"` produces an adapter entity, anything else a model entity. `output` carries only `name`.
+
+| `lora` field | Default | Notes |
+|---|---|---|
+| `rank` | `16` | LoRA rank, mapped to NeMo-RL's `lora_cfg.dim`. |
+| `alpha` | `32` | Scaling factor. The effective learning-rate multiplier on the adapter is `alpha / rank`, so changing `rank` without `alpha` also changes the effective LR. |
+| `dropout` | `0.0` | Applied after the adapter. |
+| `target_modules` | `null` | Module names to adapt. |
+| `exclude_modules` | `null` | Module name patterns to skip. |
+| `use_triton` | `true` | Triton LoRA kernels. **Forced to `false` when `tensor_parallel_size > 1`** — the compiler overrides it rather than erroring, so a TP job does not need the field set by hand. |
+
+**Module selection is either/or.** Leaving both `target_modules` and `exclude_modules` unset turns on `match_all_linear`, which adapts every linear layer. Setting **either** list turns it off, because Automodel's `ModuleMatcher` rejects `match_all_linear` alongside a list. So `exclude_modules` alone does not mean "all linear except these" — it means "only what the exclusion logic leaves", which is a different and usually narrower set. Prefer `target_modules` when you want a specific set, and neither field when you want everything.
+
+**Rules the schema enforces:**
+
+- `lora` must be **omitted** when `finetuning_type` is `all_weights` — supplying both fails with `lora must be omitted when finetuning_type is all_weights`.
+- Omitting `lora` while asking for `finetuning_type: "lora"` is fine: defaults are filled in.
+- `lora_merged` is rejected at the schema level, so a merged checkpoint is not reachable from a GRPO job. To serve merged weights, train full-weight instead.
+
+**LoRA selects the DTensor v2 backend automatically** (`_v2: true`). Expert parallelism and `automodel_kwargs` do the same. Nothing to set — but it is why a LoRA GRPO run and a full-weight one are not running the same policy worker, which matters when comparing them.
+
+### Using a GRPO adapter
+
+The job registers an HF PEFT adapter entity whose base model is the entity you trained from, with `rank` and `alpha` recorded on it. It behaves like any other platform LoRA adapter: it hot-reloads onto a **READY** deployment of the base model that has `lora_enabled: true`, so there is no deployment to create before evaluating it. Route inference through the **provider** gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`) — the model-entity path always hits the base model. See `post-training-eval.md` § **Request routing (base vs LoRA)**.
+
+Full-weight GRPO instead registers a new **model** entity, which does need its own deployment before inference.
+
+### When to use LoRA for GRPO
+
+| Situation | Pick |
+|---|---|
+| Limited GPU memory, or the full-weight run OOMs after `activation_checkpointing` | **LoRA** — the optimizer state is the adapter, not the model |
+| Several reward environments over one base model | **LoRA** — adapters share the base deployment |
+| Reward barely moves and the task needs broad behaviour change | **Full weights** — the adapter may be the bottleneck; raise `rank` first, then reconsider |
+| You need merged weights to export or serve elsewhere | **Full weights** — GRPO does not merge adapters |
 
 ### `parallelism`
 

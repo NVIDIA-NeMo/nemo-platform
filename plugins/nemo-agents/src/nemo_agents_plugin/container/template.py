@@ -246,7 +246,7 @@ COPY ./ /workspace
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
+    uv pip install --prerelease=allow "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
       "nemo-relay=={{ pinned_nemo_relay_cli_version }}" . && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% else %}
@@ -254,7 +254,7 @@ RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
+    uv pip install --prerelease=allow "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
       "nemo-relay=={{ pinned_nemo_relay_cli_version }}" && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% endif %}

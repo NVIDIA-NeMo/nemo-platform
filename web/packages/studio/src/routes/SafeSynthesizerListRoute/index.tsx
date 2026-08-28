@@ -3,7 +3,7 @@
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { SafeSynthesizerJobsDataView } from '@studio/components/dataViews/SafeSynthesizerJobsDataView';
+import { GenerateJobsDataView } from '@studio/components/dataViews/SafeSynthesizerJobsDataView';
 import { SAFE_SYNTHESIZER_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -30,7 +30,7 @@ export const SafeSynthesizerListRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
                 </Button>
               }
             />
-            <SafeSynthesizerJobsDataView />
+            <GenerateJobsDataView />
           </Stack>
           <Outlet />
         </AccessibleTitle>

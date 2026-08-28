@@ -17,6 +17,10 @@ import httpx
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoTransportError
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.models.client import ModelsClient
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +158,7 @@ def log_status_details(status_details: dict | None, prefix: str = "status_detail
     logger.info(json.dumps(status_details, indent=2))
 
 
-def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> tuple[Path | None, list | None]:
+def save_job_logs_to_file(jobs: JobsClient, job_name: str, workspace: str) -> tuple[Path | None, list | None]:
     """Save complete job logs to a file for CI artifact collection.
 
     Returns:
@@ -164,13 +168,13 @@ def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> t
     LOGS_DIR.mkdir(exist_ok=True)
     log_file = LOGS_DIR / f"{job_name}.log"
     try:
-        logs = sdk.customization.jobs.get_logs(job_name, workspace=workspace)
-        if logs.data:
+        logs = list(jobs.list_job_logs(name=job_name, workspace=workspace).items())
+        if logs:
             with log_file.open("w") as f:
-                for log_entry in logs.data:
+                for log_entry in logs:
                     f.write(f"[{log_entry.job_step}] {log_entry.message}\n")
-            logger.info(f"Saved {len(logs.data)} log entries to {log_file}")
-            return log_file, logs.data
+            logger.info(f"Saved {len(logs)} log entries to {log_file}")
+            return log_file, logs
         else:
             logger.warning(f"No log data returned by SDK for job {job_name} — logs may not be available yet")
     except Exception as e:
@@ -178,7 +182,7 @@ def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> t
 
     status_file = LOGS_DIR / f"{job_name}-status.json"
     try:
-        job_status = sdk.customization.jobs.get_status(job_name, workspace=workspace)
+        job_status = jobs.get_job_status(name=job_name, workspace=workspace).data()
         status_file.write_text(job_status.model_dump_json(indent=2))
         logger.info(f"Saved job status to {status_file}")
     except Exception as e:
@@ -194,14 +198,15 @@ def get_job_failure_details(sdk: NeMoPlatform, job_name: str, workspace: str) ->
     Also saves complete logs to a file for CI artifact collection.
     """
     details = [f"Job {job_name} failed. Details:"]
+    jobs = client_from_platform(sdk, JobsClient)
 
     try:
-        job_status = sdk.customization.jobs.get_status(job_name, workspace=workspace)
+        job_status = jobs.get_job_status(name=job_name, workspace=workspace).data()
         details.append(f"\nJob Status: {job_status.model_dump_json(indent=2)}")
     except Exception as e:
         details.append(f"\nFailed to get job status: {e}")
 
-    log_file, log_entries = save_job_logs_to_file(sdk, job_name, workspace)
+    log_file, log_entries = save_job_logs_to_file(jobs, job_name, workspace)
     if log_file:
         details.append(f"\nFull logs saved to: {log_file}")
 
@@ -243,7 +248,7 @@ def wait_for_customization_job(
 ):
     """Wait for a customization job to reach a terminal state.
 
-    Uses ``sdk.customization.jobs.get_status()`` to poll, logs training
+    Uses ``client_from_platform(sdk, JobsClient).get_job_status()`` to poll, logs training
     progress from the steps structure, and returns the full job object
     via ``sdk.customization.jobs.retrieve()`` once terminal.
 
@@ -265,6 +270,7 @@ def wait_for_customization_job(
     start_time = time.time()
     last_status = None
     consecutive_errors = 0
+    jobs = client_from_platform(sdk, JobsClient)
 
     while True:
         elapsed = time.time() - start_time
@@ -275,9 +281,9 @@ def wait_for_customization_job(
             )
 
         try:
-            status = sdk.customization.jobs.get_status(name=job_name, workspace=workspace)
+            status = jobs.get_job_status(name=job_name, workspace=workspace).data()
             consecutive_errors = 0
-        except (httpx.TimeoutException, httpx.ConnectError, ConnectionError, OSError) as exc:
+        except NemoTransportError as exc:
             consecutive_errors += 1
             logger.warning(
                 f"Transient error polling customization job (attempt {consecutive_errors}/{max_consecutive_errors}, "
@@ -303,7 +309,7 @@ def wait_for_customization_job(
 
         time.sleep(poll_interval)
 
-    return sdk.customization.jobs.retrieve(job_name, workspace=workspace)
+    return jobs.get_job(name=job_name, workspace=workspace)
 
 
 def wait_for_model_spec(
@@ -322,7 +328,7 @@ def wait_for_model_spec(
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        me = sdk.models.retrieve(model_entity_name, workspace=workspace, verbose=True)
+        me = client_from_platform(sdk, ModelsClient).get_model(name=model_entity_name, workspace=workspace).data()
         if me.spec is not None:
             logger.info(
                 f"✓ Model spec populated for {model_entity_name}: checkpoint_model_name={me.spec.checkpoint_model_name}"

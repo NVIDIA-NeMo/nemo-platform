@@ -56,6 +56,13 @@ navigation:
                     path: ../../set-up/helm/ingress.mdx
                   - page: Multinode Networking
                     path: ../../set-up/helm/multinode-networking.mdx
+                  - page: Volcano
+                    path: ../../set-up/helm/volcano.mdx
+                  - page: OpenSandbox
+                    path: ../../set-up/helm/opensandbox.mdx
+                  - page: OpenSandbox with Kata
+                    slug: opensandbox-kata
+                    path: ../../set-up/helm/opensandbox-kata.mdx
                   - page: OpenShift
                     slug: openshift
                     path: ../../set-up/helm/openshift.mdx
@@ -143,6 +150,8 @@ navigation:
             path: ../../studio/agents.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
+          - page: Experiments
+            path: ../../studio/experiments.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
@@ -168,6 +177,9 @@ navigation:
           - page: Customization Concepts
             path: ../../customizer/about.mdx
             slug: customization-concepts
+          - page: GRPO and Reward Environments
+            path: ../../customizer/grpo-training.mdx
+            slug: grpo-and-reward-environments
           - section: Manage Customization Jobs
             slug: manage-customization-jobs
             path: ../../customizer/manage-customization-jobs/index.mdx
@@ -242,6 +254,9 @@ navigation:
               - page: Format Training Dataset
                 path: ../../customizer/tutorials/format-training-dataset.mdx
                 slug: format-training-dataset
+              - page: GRPO Environment Packages
+                path: ../../customizer/tutorials/grpo-environment-packages.mdx
+                slug: grpo-environment-packages
               - page: Import HuggingFace Models
                 path: ../../customizer/tutorials/import-hf-model.mdx
                 slug: import-hugging-face-models
@@ -310,8 +325,6 @@ navigation:
                 path: ../../safe-synthesizer/about/evaluation.mdx
               - page: Jobs
                 path: ../../safe-synthesizer/about/jobs.mdx
-              - page: Local and Subprocess Execution
-                path: ../../safe-synthesizer/about/host-local-development.mdx
               - page: Parameters Reference
                 path: ../../safe-synthesizer/about/reference.mdx
           - section: Tutorials

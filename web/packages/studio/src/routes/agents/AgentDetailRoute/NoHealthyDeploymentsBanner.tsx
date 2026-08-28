@@ -10,12 +10,14 @@ interface NoHealthyDeploymentsBannerProps {
   isDeploying: boolean;
   onDeploy: () => void;
   message?: string;
+  canDeploy: boolean;
 }
 
 export const NoHealthyDeploymentsBanner: FC<NoHealthyDeploymentsBannerProps> = ({
   agentName,
   isDeploying,
   onDeploy,
+  canDeploy,
   message = 'No healthy deployments available to chat with.',
 }) => (
   <Banner
@@ -28,12 +30,19 @@ export const NoHealthyDeploymentsBanner: FC<NoHealthyDeploymentsBannerProps> = (
           <Text kind="label/regular/sm">Deploying…</Text>
         </Flex>
       ) : (
-        <Button kind="secondary" size="small" disabled={!agentName} onClick={onDeploy}>
+        <Button
+          kind="secondary"
+          size="small"
+          disabled={!agentName || !canDeploy}
+          onClick={onDeploy}
+        >
           Deploy this Agent
         </Button>
       )
     }
   >
-    {message}
+    {canDeploy
+      ? message
+      : `${message} Integrate this agent with NeMo Platform to enable deployment.`}
   </Banner>
 );

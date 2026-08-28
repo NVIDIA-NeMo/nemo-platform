@@ -124,6 +124,7 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
           DataViewTableContent: {
             renderEmptyState: () => (
               <TableEmptyState
+                className="py-density-3xl"
                 icon={<FolderTree className="size-16" />}
                 header="No experiments yet"
                 emptyMessage="An experiment appears here once one of its evaluations publishes results for this agent."

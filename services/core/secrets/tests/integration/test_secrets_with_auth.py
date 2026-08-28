@@ -22,6 +22,8 @@ from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPe
 from nemo_platform_plugin.client.errors import UnprocessableEntityError as ClientUnprocessableEntityError
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.common.auth.models import Principal
 from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.secrets.config import SecretsServiceConfig
@@ -85,8 +87,11 @@ class TestViewerSecretsAccess:
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        platform_admin_secrets = secrets
         platform_admin_secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
@@ -113,8 +118,11 @@ class TestViewerSecretsAccess:
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        platform_admin_secrets = secrets
         platform_admin_secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
@@ -140,8 +148,11 @@ class TestViewerSecretsAccess:
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        platform_admin_secrets = secrets
         platform_admin_secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
@@ -164,7 +175,9 @@ class TestViewerSecretsAccess:
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -187,8 +200,11 @@ class TestViewerSecretsAccess:
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        platform_admin_secrets = secrets
         platform_admin_secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("original-value")),
             workspace=workspace_name,
@@ -216,8 +232,11 @@ class TestViewerSecretsAccess:
         viewer_email = unique_email("viewer")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        platform_admin_secrets = secrets
         platform_admin_secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
@@ -245,7 +264,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -270,7 +291,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -297,7 +320,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -322,7 +347,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -351,7 +378,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -380,7 +409,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -406,7 +437,9 @@ class TestEditorSecretsAccess:
         editor_email = unique_email("editor")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -432,7 +465,9 @@ class TestAdminSecretsAccess:
 
         # Platform admin creates workspace and adds our test admin
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -456,7 +491,9 @@ class TestAdminSecretsAccess:
         workspace_name = short_unique_name("adm-upd")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -484,7 +521,9 @@ class TestAdminSecretsAccess:
         workspace_name = short_unique_name("adm-del")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -508,7 +547,9 @@ class TestAdminSecretsAccess:
         workspace_name = short_unique_name("adm-acc")
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -556,7 +597,9 @@ class TestPlatformAdminSecretsAccess:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         workspace_name = short_unique_name("pa-ws")
 
-        admin_sdk.workspaces.create(name=workspace_name)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
 
         admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("pa-sec")
@@ -576,7 +619,8 @@ class TestPlatformAdminSecretsAccess:
         encryption provider. This is an admin-only operation for key rotation scenarios.
         """
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
+        secrets = client_from_platform(admin_sdk, SecretsClient)
+        admin_secrets = secrets
 
         # Create some secrets to ensure there's data to potentially rotate
         secret_name = short_unique_name("rot-sec")
@@ -603,7 +647,8 @@ class TestServiceCredentialsSecretsAccess:
     def test_service_credentials_can_access_secret_value(self, sdk: NeMoPlatform):
         """Test that service credentials can access the secret value via /access endpoint."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
+        secrets = client_from_platform(admin_sdk, SecretsClient)
+        admin_secrets = secrets
         secret_name = short_unique_name("svc-sec")
         secret_value = "service-accessible-secret"
 
@@ -733,14 +778,17 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace, add viewer, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
         )
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
         ).data()
@@ -766,14 +814,17 @@ class TestDelegatedSecretAccess:
         delegated_group = f"group-{short_unique_name('vw')}"
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
             principal=delegated_group,
             roles=["Viewer"],
         )
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
         ).data()
@@ -805,8 +856,11 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace and secret, but don't add the user as a member
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
         ).data()
@@ -826,14 +880,17 @@ class TestDelegatedSecretAccess:
         other_group = f"group-{short_unique_name('other')}"
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
             principal=bound_group,
             roles=["Viewer"],
         )
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("delegated-group-secret")),
             workspace=workspace_name,
         ).data()
@@ -859,14 +916,17 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace, add editor, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
         )
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
         ).data()
@@ -895,8 +955,11 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace and secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        platform_admin_secrets = secrets
         platform_admin_secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
@@ -925,8 +988,11 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace and secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
         ).data()
@@ -953,14 +1019,17 @@ class TestDelegatedSecretAccess:
 
         # Setup: create workspace, add editor, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        client_from_platform(platform_admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_name)
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
         )
-        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+        secrets.create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
         ).data()

@@ -13,8 +13,8 @@ When `preview-local` lands, swap the bottom of this file for:
     # nemo data-designer preview-local agents/<name>.dd.py --num-records 10
 
 Substitute:
-    AGENT_DESCRIPTION  one-sentence agent role from the spec
-    CATEGORIES         the spec's category list
+    AGENT_DESCRIPTION  one-sentence agent role from the Ethos
+    CATEGORIES         the Ethos category list
     MODEL              API-Catalog format with slashes (NOT entity-name format)
     PROVIDER           workspace/provider-name as registered in nemo
 """
@@ -22,7 +22,7 @@ Substitute:
 import data_designer.config as dd
 from nemo_platform import NeMoPlatform
 
-AGENT_DESCRIPTION = "<one-sentence role from spec>"
+AGENT_DESCRIPTION = "<one-sentence role from the Ethos>"
 CATEGORIES: list[str | int | float] = ["<category-1>", "<category-2>", "<category-3>"]
 MODEL = "meta/llama-3.3-70b-instruct"
 PROVIDER = "default/nim-llm"

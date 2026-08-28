@@ -23,6 +23,8 @@ import type { RailDefinition } from '@studio/routes/guardrails/rails/types';
 export const selfCheckRail: RailDefinition = {
   id: 'self-check',
   label: 'Self Checks',
+  description:
+    'Self checks ask your own model to judge whether user inputs and LLM outputs violate your policies, using prompts you define.',
   scopes: SELF_CHECK_SCOPE_ORDER,
 
   isScopeEnabled: isSelfCheckScopeEnabled,
