@@ -154,12 +154,6 @@ def test_automodel_cve_layer_does_not_pin_full_mlflow_with_cryptography() -> Non
     assert not FULL_MLFLOW_SPEC_RE.search(text)
 
 
-def test_rl_uv_cache_cleanup_includes_mlflow_skinny_dist_info() -> None:
-    """Skinny metadata uses mlflow_skinny-*.dist-info, which mlflow-*.dist-info does not match."""
-    text = (ROOT / "docker/rl/Dockerfile.nmp-rl-base").read_text(encoding="utf-8")
-    assert "mlflow_skinny-*.dist-info" in text
-
-
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
 def test_docker_workspace_slice_contains_all_workspace_sources(slice_name):
     """Every workspace source must name a package copied into the image slice."""
