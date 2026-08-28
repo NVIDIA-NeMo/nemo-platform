@@ -80,7 +80,50 @@ async def test_retrieval_generate_compile_is_cpu() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retrieval_generate_to_spec_injects_igw_providers() -> None:
+async def test_retrieval_generate_compile_uses_subprocess_when_profile_exists() -> None:
+    spec = RetrievalGenerateStepConfig(
+        job_config=_generate_config(),
+        model_providers=[dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")],
+        provider_name="default/nvidia-build",
+    )
+    listed = SimpleNamespace(data=lambda: [SimpleNamespace(provider="subprocess", profile="default")])
+    sdk = AsyncMock()
+    with patch(
+        "nemo_data_designer_plugin.jobs.retrieval_common.client_from_platform",
+        return_value=SimpleNamespace(get_execution_profiles=AsyncMock(return_value=listed)),
+    ):
+        compiled = await RetrievalGenerateJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=Mock(),
+            job_name=None,
+            async_sdk=sdk,
+        )
+    executor = _executor(_steps(compiled)[0])
+    assert executor["provider"] == "subprocess"
+    assert executor["command"] == ["python", "-m", "nemo_data_designer_plugin.jobs.retrieval_generate"]
+
+
+@pytest.mark.asyncio
+async def test_retrieval_prepare_compile_uses_subprocess_for_convert_and_mine() -> None:
+    spec = RetrievalPrepareStepConfig(
+        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
+        phase="convert",
+    )
+    listed = SimpleNamespace(data=lambda: [SimpleNamespace(provider="subprocess", profile="default")])
+    with patch(
+        "nemo_data_designer_plugin.jobs.retrieval_common.client_from_platform",
+        return_value=SimpleNamespace(get_execution_profiles=AsyncMock(return_value=listed)),
+    ):
+        compiled = await RetrievalPrepareJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=Mock(),
+            job_name=None,
+            async_sdk=AsyncMock(),
+        )
+    steps = _steps(compiled)
+    assert [_executor(step)["provider"] for step in steps] == ["subprocess", "subprocess"]
     providers = [dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")]
     dd_ctx = AsyncMock()
     dd_ctx.get_model_providers = AsyncMock(return_value=providers)

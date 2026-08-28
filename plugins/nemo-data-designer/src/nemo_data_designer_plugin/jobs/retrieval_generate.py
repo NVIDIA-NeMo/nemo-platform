@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from data_designer_nemo.context import create_data_designer_context
-from nemo_data_designer_plugin.jobs.retrieval_common import cpu_retrieval_step, work_dir
+from nemo_data_designer_plugin.jobs.retrieval_common import retrieval_step, work_dir
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig, RetrievalGenerateStepConfig
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
 from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config, execute_generation
@@ -69,11 +69,12 @@ class RetrievalGenerateJob(NemoJob):
     ) -> PlatformJobSpec:
         return PlatformJobSpec(
             steps=[
-                cpu_retrieval_step(
+                await retrieval_step(
                     "retrieval-generate",
                     "nemo_data_designer_plugin.jobs.retrieval_generate",
                     spec,
-                    profile,
+                    profile=profile,
+                    async_sdk=async_sdk,
                 )
             ]
         )

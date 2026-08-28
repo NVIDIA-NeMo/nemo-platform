@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import ClassVar, cast
 
-from nemo_data_designer_plugin.jobs.retrieval_common import cpu_retrieval_step, gpu_retrieval_step, work_dir
+from nemo_data_designer_plugin.jobs.retrieval_common import retrieval_step, work_dir
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalPrepareJobConfig, RetrievalPrepareStepConfig
 from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
@@ -61,21 +61,24 @@ class RetrievalPrepareJob(NemoJob):
     ) -> PlatformJobSpec:
         spec = cast(RetrievalPrepareStepConfig, spec)
         steps = [
-            cpu_retrieval_step(
+            await retrieval_step(
                 "retrieval-prepare-convert",
                 "nemo_data_designer_plugin.jobs.retrieval_prepare",
                 spec,
-                profile,
+                profile=profile,
+                async_sdk=async_sdk,
             )
         ]
         if not spec.job_config.skip_mining:
             mine_spec = spec.model_copy(update={"phase": "mine"})
             steps.append(
-                gpu_retrieval_step(
+                await retrieval_step(
                     "retrieval-prepare-mine",
                     "nemo_data_designer_plugin.jobs.retrieval_prepare",
                     mine_spec,
-                    profile,
+                    profile=profile,
+                    async_sdk=async_sdk,
+                    gpu=True,
                 )
             )
         return PlatformJobSpec(steps=steps)
