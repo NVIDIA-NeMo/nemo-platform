@@ -221,15 +221,18 @@ export const getWorkspaceVirtualModelsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.virtualModels, { workspace });
 };
 
-export const getVirtualModelDetailRoute = (workspace: string, virtualModelName: string) => {
+export const getVirtualModelDetailRoute = (workspace: string, virtualModelName: string): string => {
   return generatePath(ROUTES.workspace.virtualModelDetail, { workspace, virtualModelName });
 };
 
-export const getVirtualModelDetailsRoute = (workspace: string, virtualModelName: string) => {
+export const getVirtualModelDetailsRoute = (
+  workspace: string,
+  virtualModelName: string
+): string => {
   return generatePath(ROUTES.workspace.virtualModelDetails, { workspace, virtualModelName });
 };
 
-export const getVirtualModelChatRoute = (workspace: string, virtualModelName: string) => {
+export const getVirtualModelChatRoute = (workspace: string, virtualModelName: string): string => {
   return generatePath(ROUTES.workspace.virtualModelChat, { workspace, virtualModelName });
 };
 

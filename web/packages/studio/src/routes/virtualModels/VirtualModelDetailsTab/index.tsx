@@ -13,7 +13,11 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
 
-const MiddlewareCallView: FC<{ call: MiddlewareCall }> = ({ call }) => (
+interface MiddlewareCallViewProps {
+  readonly call: MiddlewareCall;
+}
+
+const MiddlewareCallView: FC<MiddlewareCallViewProps> = ({ call }) => (
   <Block className="rounded-lg border border-base bg-surface-raised p-density-md">
     <Stack className="gap-density-sm">
       <KVPair label="Plugin" orientation="horizontal" size="narrow" value={call.name} />
@@ -41,10 +45,12 @@ const MiddlewareCallView: FC<{ call: MiddlewareCall }> = ({ call }) => (
   </Block>
 );
 
-const MiddlewarePipeline: FC<{ label: string; calls: MiddlewareCall[] | undefined }> = ({
-  label,
-  calls,
-}) => (
+interface MiddlewarePipelineProps {
+  readonly label: string;
+  readonly calls: MiddlewareCall[] | undefined;
+}
+
+const MiddlewarePipeline: FC<MiddlewarePipelineProps> = ({ label, calls }) => (
   <Stack className="gap-density-sm">
     <Text kind="label/bold/sm">{label}</Text>
     {calls && calls.length > 0 ? (
@@ -76,7 +82,11 @@ const DetailsSkeleton: FC = () => (
   </Stack>
 );
 
-const VirtualModelDetails: FC<{ virtualModel: VirtualModel }> = ({ virtualModel }) => {
+interface VirtualModelDetailsProps {
+  readonly virtualModel: VirtualModel;
+}
+
+const VirtualModelDetails: FC<VirtualModelDetailsProps> = ({ virtualModel }) => {
   const models = virtualModel.models ?? [];
 
   return (
@@ -89,9 +99,7 @@ const VirtualModelDetails: FC<{ virtualModel: VirtualModel }> = ({ virtualModel 
           value={
             virtualModel.created_at ? (
               <RelativeTime datetime={virtualModel.created_at} focusableForTooltip={false} />
-            ) : (
-              '—'
-            )
+            ) : undefined
           }
         />
         <KVPair
@@ -99,7 +107,7 @@ const VirtualModelDetails: FC<{ virtualModel: VirtualModel }> = ({ virtualModel 
           orientation="horizontal"
           size="medium"
           truncate={false}
-          value={virtualModel.default_model_entity || '—'}
+          value={virtualModel.default_model_entity}
         />
         <KVPair
           label="Autoprovisioned"
@@ -122,13 +130,9 @@ const VirtualModelDetails: FC<{ virtualModel: VirtualModel }> = ({ virtualModel 
           orientation="horizontal"
           size="medium"
           truncate={false}
-          value={
-            models.length > 0
-              ? models
-                  .map((m) => (m.backend_format ? `${m.model} (${m.backend_format})` : m.model))
-                  .join('\n')
-              : '—'
-          }
+          value={models
+            .map((m) => (m.backend_format ? `${m.model} (${m.backend_format})` : m.model))
+            .join('\n')}
         />
       </Stack>
 
@@ -156,8 +160,6 @@ export const VirtualModelDetailsTab: FC = () => {
     return (
       <ErrorPanel
         title={`Failed to load virtual model '${virtualModelName}'`}
-        // getErrorMessage intentionally prefers the error's own message over a fallback, so the
-        // technical detail ("404 Not Found") goes in the body and the context goes in the title.
         errorMessage={getErrorMessage(error)}
       />
     );
