@@ -88,6 +88,12 @@ async def create_deployment(
     # 2. Build deployment name (auto-generate if not provided)
     deployment_name = body.name or f"{body.agent}-{secrets.token_hex(4)}"
 
+    if body.use_image_entrypoint and not is_container_deployment_mode(body.deployment_mode):
+        raise HTTPException(
+            status_code=400,
+            detail="use_image_entrypoint requires deployment_mode 'docker' or 'k8s'.",
+        )
+
     # 3. Resolve deployment-time config. NAT workflows need legacy injection;
     # Platform-owned agent configs stay strict and are translated by the runner.
     resolved_config = _resolve_deployment_config(agent, workspace=workspace)
@@ -114,6 +120,7 @@ async def create_deployment(
         status="pending",
         deployment_mode=body.deployment_mode,
         image=body.image,
+        use_image_entrypoint=body.use_image_entrypoint,
         plugin_deployment=deployment_name if is_container_deployment_mode(body.deployment_mode) else "",
     )
     try:

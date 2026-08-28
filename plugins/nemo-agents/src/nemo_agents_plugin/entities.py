@@ -430,6 +430,13 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
         default="",
         description="Container image for docker/k8s modes. Empty for subprocess; falls back to AgentsConfig.deployments.default_image.",
     )
+    use_image_entrypoint: bool = Field(
+        default=False,
+        description=(
+            "Container modes only: preserve the image ENTRYPOINT/CMD instead of injecting "
+            "the platform-owned NAT/Fabric server command."
+        ),
+    )
     plugin_deployment: str = Field(
         default="",
         description=(

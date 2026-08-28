@@ -812,13 +812,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
-        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
-            for line in _spec_package_warning(name, agent_config):
-                typer.echo(line, err=True)
-        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
-            # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
-            # user context at deploy time.
+        if config_format in {NEMO_AGENTS_SPEC_CONFIG_FORMAT, NAT_WORKFLOW_CONFIG_FORMAT}:
+            # Resolve ${NEMO_DEFAULT_MODEL} client-side — the agents service has
+            # no user context at deploy time.
             config_dict = inject_default_model(config_dict)
             if _contains_default_model_placeholder(config_dict):
                 typer.echo(
@@ -828,7 +824,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     err=True,
                 )
                 raise typer.Exit(code=1)
-        else:
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            for line in _spec_package_warning(name, agent_config):
+                typer.echo(line, err=True)
+        elif config_format != NAT_WORKFLOW_CONFIG_FORMAT:
             typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
             raise typer.Exit(code=1)
         payload = {
@@ -944,6 +944,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "-i",
             help="Container image for docker/k8s modes (falls back to deployments.default_image).",
         ),
+        use_image_entrypoint: bool = typer.Option(
+            False,
+            "--use-image-entrypoint",
+            help=(
+                "For docker/k8s modes, preserve the image ENTRYPOINT/CMD instead of "
+                "injecting the platform-owned agent server command."
+            ),
+        ),
         environment: Optional[str] = typer.Option(
             None,
             "--environment",
@@ -998,6 +1006,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
         if image and mode == "subprocess":
             typer.echo("--image requires --mode docker or k8s.", err=True)
             raise typer.Exit(code=2)
+        if use_image_entrypoint and mode == "subprocess":
+            typer.echo("--use-image-entrypoint requires --mode docker or k8s.", err=True)
+            raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
         if environment is not None and not environment.strip():
@@ -1008,6 +1019,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if use_image_entrypoint:
+            payload["use_image_entrypoint"] = True
         if environment is not None:
             payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)

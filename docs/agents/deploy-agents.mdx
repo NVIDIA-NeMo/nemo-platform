@@ -357,6 +357,12 @@ image pre-loaded onto the nodes) — the k8s backend does not use image pull
 secrets. Pass the image with `--image`, or set
 `agents.deployments.default_image` in the platform configuration.
 
+For hand-built images that already contain an agent server, pass
+`--use-image-entrypoint` so the deployment preserves the image ENTRYPOINT/CMD
+instead of injecting the platform-packaged agent server command.
+The image must bind `0.0.0.0:$PORT`, serve `/health`, and read config from
+`AGENT_CONFIG_PATH` for Fabric or `NAT_CONFIG_PATH` for NAT.
+
 </Note>
 
 **2. A configured deployments executor.** The platform operator defines named
