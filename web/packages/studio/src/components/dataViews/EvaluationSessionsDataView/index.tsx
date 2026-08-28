@@ -25,7 +25,6 @@ import type {
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { evaluatorLabel } from '@studio/routes/agents/AgentDetailRoute/evaluations/formatRollups';
 import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { formatInteger } from '@studio/util/intakeTelemetry';
@@ -253,7 +252,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     ...evaluatorNames.map((name, index) =>
       accessor((original) => original.evaluator_scores?.[name], {
         id: `score-${index}`,
-        header: snakeCaseToTitleCase(evaluatorLabel(name)),
+        header: snakeCaseToTitleCase(name),
         enableSorting: false,
         size: 130,
         meta: { alignment: 'right' },
