@@ -81,7 +81,7 @@ def test_agent_config_translates_to_fabric_deepagents() -> None:
     translated = translate_agent_config(config)
 
     assert config.default_harness == "deepagents"
-    assert config.models["default"].model == "meta-muse-glimmer-30b"
+    assert config.models["default"].model == "${NEMO_DEFAULT_MODEL}"
     assert translated.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
     assert translated.models["default"].provider == "nvidia"
     assert translated.mcp is not None
@@ -119,7 +119,7 @@ def test_agent_telemetry_exports_atif_traces_to_intake() -> None:
             "filename_template": "trajectory-{session_id}.atif.json",
             "output_directory": "./artifacts/relay",
             "agent_name": "nemo-studio-assistant",
-            "model_name": "meta-muse-glimmer-30b",
+            "model_name": "${NEMO_DEFAULT_MODEL}",
             "storage": [
                 {
                     "type": "http",

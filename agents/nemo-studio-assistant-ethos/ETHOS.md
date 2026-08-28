@@ -110,7 +110,7 @@ Unacceptable regressions, even alongside a headline win:
 ## Constraints
 
 - Approved surface: NeMo Platform Python SDK (`nemo_api`) over the packaged MCP server only. No direct third-party API calls, no CLI, no shell, no arbitrary subprocesses.
-- Model access: cloud models through the deployment's configured platform base URL and inference gateway only. Do not add a provider that bypasses it. The deployed model today is `meta-muse-glimmer-30b`, recorded in `agent.yaml`.
+- Model access: cloud models through the deployment's configured platform base URL and inference gateway only. Do not add a provider that bypasses it. `agent.yaml` uses `${NEMO_DEFAULT_MODEL}`, which is resolved from the user's active NeMo context before registration.
 - Secrets: managed by the platform. Never inline a credential into config, prompt, or log output.
 - Telemetry: NeMo Relay exports complete ATIF trajectories to the reviewed NeMo Intake endpoint configured in `agent.yaml`; container and platform logs remain the fallback for startup or export failures.
 - Blast radius: an ambiguous workspace or destructive target requires clarification. Missing context is never permission to pick a target.
