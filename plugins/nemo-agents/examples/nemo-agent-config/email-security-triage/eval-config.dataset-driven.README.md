@@ -14,21 +14,41 @@ carrying its own metrics.
 
 ## What is being evaluated
 
-One question, asked 40 times over 40 different emails: can the agent tell a phishing
-message from a legitimate one?
+Can the agent pick the right capability for what the analyst asked, and get the verdicts
+right once it has? Every row carries the agent's real input — an `emails` array plus a
+`user_message` — so the row itself decides which capability should answer.
 
-This measures a single capability in depth, where the task-driven suite measures breadth.
-Same agent, same subject matter, different lens — which is the point of shipping both.
+This measures two capabilities over a fixed body of mail, where the task-driven suite
+measures breadth across varied one-off tasks. Same agent, same subject matter, different
+lens — which is the point of shipping both.
 
 ## The dataset
 
-`dataset.jsonl` — 40 rows, balanced 20 phishing / 20 benign. Each row:
+`dataset.jsonl` — 28 rows built from 40 labelled emails. Each row mirrors what the agent
+actually receives:
 
 ```json
-{ "subject": "...", "sender": "...", "body": "...", "label": "phishing" }
+{
+  "user_message": "is this legit?",
+  "emails": [{ "from": "...", "subject": "...", "body": "..." }],
+  "expected_tool": "triage_message",
+  "expected_answer": "phishing"
+}
 ```
 
-`label` is the ground truth and is never shown to the agent.
+| Rows | `user_message`   | `emails` | Routes to         |
+| ---- | ---------------- | -------- | ----------------- |
+| 20   | `is this legit?` | 1        | `triage_message`  |
+| 8    | `""` (none)      | 2 or 3   | `review_messages` |
+
+`expected_tool` names the capability that should answer; `expected_answer` holds the expected
+verdicts in message order (`"phishing"`, or `"phishing, benign"` for a multi-message row).
+Both are ground truth and neither is ever shown to the agent — `prompt_template` renders only
+`user_message` and `emails`.
+
+Emails are objects rather than pre-assembled text so the row stays readable and the template
+owns the formatting. The 8 multi-message rows are each mixed-verdict on purpose: a row that
+was all-benign would let a lazy reviewer score well without discriminating.
 
 The rows are deliberately contestable, not textbook. Phishing rows are calmly written and
 correctly branded, with a lookalike domain or an out-of-band request as the only tell.
@@ -38,39 +58,58 @@ short, or duplicated a subject were filtered out.
 
 ## How a row reaches the agent
 
-`prompt_template` renders each row into a question plus the message:
+`prompt_template` assembles the row into the plain text the agent reads:
 
 ```text
-Is this legit?
+{{ item.user_message }}
+{% for e in item.emails %}
+--- Message {{ loop.index }} ---
+Subject: {{ e.subject }}
+From: {{ e.from }}
 
-Subject: {{ item.subject }}
-From: {{ item.sender }}
-
-{{ item.body }}
+{{ e.body }}
+{% endfor %}
 ```
 
-That question is what routes the agent to its triage capability, which answers with a bare
-`phishing` or `benign` on the first line and its reasoning after. Note the row arrives as plain
-text, not as the `{user_message, emails[]}` JSON the task-driven suite sends — routing it to
-triage rather than to the general review is part of what this suite exercises.
+The `user_message` is what routes: a question reaches `triage_message`, which answers with a
+bare `phishing` or `benign` on line one; an empty one reaches `review_messages`, which heads
+its report with `ANALYSIS` and then one block per message.
+
+**Do not use the `tojson` filter here.** The SDK JSON-parses the rendered output of any
+template containing that substring (`nemo_evaluator_sdk/templates.py`), so the request stops
+being a string and `{{ prompt }}` in the target body goes undefined. The same trap applies to
+judge prompts. Plain text avoids it and exercises the agent's open-ended input path, which is
+what a pasted mail thread looks like anyway.
 
 ## The metric
 
-| Metric         | Output         | Range | Checks                                      |
-| -------------- | -------------- | ----- | ------------------------------------------- |
-| `llm-judge`    | accuracy       | 0–1   | First line of the response matches `label`  |
-| `string-check` | `string-check` | 0/1   | First line is a bare `phishing` or `benign` |
+| Metric         | Output         | Range | Checks                                         |
+| -------------- | -------------- | ----- | ---------------------------------------------- |
+| `llm-judge`    | accuracy       | 0–1   | Verdicts read in order match `expected_answer` |
+| `string-check` | `string-check` | 0/1   | The first line's shape matches `expected_tool` |
 
-The `string-check` is a **routing** assertion, not an accuracy one: every row asks the same
-legitimacy question, so every row must reach the triage contract. It scores 1 whenever line 1 is
-one of the two verdict words, regardless of which. Read it alongside `accuracy` — accuracy near
-zero while routing holds is a judgement problem; both near zero is a routing problem. Routing is
-asserted from the output contract rather than from tool calls, which a Fabric agent's responses do
-not carry (see the task-driven README).
+The `string-check` is a **routing** assertion, not an accuracy one. It maps line one to a
+capability — a verdict word means `triage_message`, `ANALYSIS` means `review_messages`, anything
+else means `draft_warning` — and compares that to `expected_tool`. It scores 1 when the right
+capability answered, whether or not the verdict was right.
 
-The judge reads the **first line**, not the last. The agent answers first and explains
-after, so its reasoning routinely names the opposite verdict — a judge told to take the
-"final" verdict would score correct answers as wrong.
+`accuracy` is a **fraction**, not a pass/fail: a 3-message review row that gets two verdicts
+right scores 0.67. That is why the metric's `scores` bounds are floats — the SDK emits an
+integer-only schema when they are ints (`nemo_evaluator_sdk/metrics/llm_judge.py`), and a judge
+forced to return an integer cannot express partial credit.
+
+Read the two together — accuracy with headroom while routing holds is a judgement problem; both
+falling together is a routing problem. Routing is asserted from the output contract rather than
+from tool calls, which a Fabric agent's responses do not carry (see the task-driven README).
+
+The judge reads the **answer**, not the explanation: line one for a triage row, and the
+`VERDICT:` lines in order for a review row. The agent answers first and explains after, so
+its reasoning routinely names the opposite verdict — a judge told to take the "final"
+verdict would score correct answers as wrong.
+
+A review row's report is plain text, not YAML: `IOCS: a.com, b.com` and free-text
+`REASONING:` do not parse. That is why per-message verdicts are read by a judge rather than
+by a deterministic template.
 
 ## Reading the results
 
@@ -96,11 +135,13 @@ fileset exists in a fresh workspace. Studio's Run Evaluation flow rewrites it at
 so the config and its data travel together. A CLI run must set a real reference first —
 upload `dataset.jsonl` and point at it (README Step 5).
 
-If you point it elsewhere, keep the four field names — the `prompt_template` and the judge
-both reference them.
+If you point it elsewhere, keep the field names — `user_message` and `emails[].from`/
+`.subject`/`.body` are referenced by `prompt_template`, and `expected_tool`/`expected_answer`
+by the two metrics. Ground truth must stay out of `prompt_template`: rendering the whole row
+would hand the agent its own answer key.
 
-Metric templates get string operations only; there is no JSON parsing, which is why the
-answer is positional rather than structured.
+Metric templates get string operations only; there is no JSON parsing, which is why answers
+are read positionally rather than structurally.
 
 This config is authored in YAML and its task-driven sibling in JSON, to show that both
 are accepted: Studio's upload and the CLI's `--spec-file` sniff the content, not the

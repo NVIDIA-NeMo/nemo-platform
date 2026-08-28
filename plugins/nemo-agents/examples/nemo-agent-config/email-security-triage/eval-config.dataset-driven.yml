@@ -17,18 +17,21 @@
 # Step 5).
 dataset: <workspace>/<fileset>#dataset.jsonl
 prompt_template: |-
-  Is this legit?
+  {{ item.user_message }}
+  {% for e in item.emails %}
+  --- Message {{ loop.index }} ---
+  Subject: {{ e.subject }}
+  From: {{ e.from }}
 
-  Subject: {{ item.subject }}
-  From: {{ item.sender }}
-
-  {{ item.body }}
+  {{ e.body }}
+  {% endfor %}
 metrics:
 - bundle_kind: metric-bundle
   bundle_format_version: v1
   metric_type: llm-judge
   metadata:
-    description: Verdict accuracy vs the dataset's label column.
+    description: Verdict accuracy against the row's expected answer, for whichever capability the
+      row asks for.
     labels: {}
   outputs:
   - name: accuracy
@@ -47,16 +50,25 @@ metrics:
         messages:
         - role: user
           content: |-
-            You are scoring an email security analyst. Ground-truth verdict: "{{ item.label }}". The analyst's answer is on the FIRST LINE of the response; everything after it is supporting explanation and must be ignored, even if it mentions the other verdict.
+            You are scoring an email security analyst. The analyst was asked:
+            "{{ item.user_message }}"
+            over {{ item.emails | length }} message(s).
+
+            Expected verdicts, in message order: "{{ item.expected_answer }}".
 
             Agent response:
             {{ sample.output_text }}
 
-            Respond with a JSON object {"accuracy": <value>} where accuracy is 1 if the first line matches the expected verdict, else 0.
+            Scoring rules:
+            - When the analyst asked a question, the answer is the FIRST LINE and is a single word, phishing or benign. Ignore everything after it, even if it names the other verdict.
+            - When the analyst asked nothing, the response is a report opening with ANALYSIS and carrying one block per message in order, each with a VERDICT: line. Read those VERDICT lines in order and ignore every other field.
+            - Compare the verdicts you read against the expected verdicts, in order.
+
+            Respond with a JSON object {"accuracy": <value>} where accuracy is the fraction of expected verdicts the response got right: 1 if all match, 0 if none, and the proportion in between.
       scores:
       - name: accuracy
-        minimum: 0
-        maximum: 1
+        minimum: 0.0
+        maximum: 1.0
       inference:
         max_tokens: 1024
         extra_body:
@@ -68,8 +80,7 @@ metrics:
   bundle_format_version: v1
   metric_type: string-check
   metadata:
-    description: 'Routing: every row asks whether the message is legit, so the answer must come from
-      the triage contract -- a bare phishing or benign on line 1.'
+    description: 'Routing: the first line''s shape must match the capability named in expected_tool.'
     labels: {}
   outputs:
   - name: string-check
@@ -84,6 +95,7 @@ metrics:
     metric:
       type: string-check
       operation: equals
-      left_template: '{{ ''yes'' if ((sample.output_text or '''').split(''\n'')[0] | trim | lower)
-        in [''phishing'', ''benign''] else ''no'' }}'
-      right_template: 'yes'
+      left_template: '{{ ''triage_message'' if ((sample.output_text or '''').split(''\n'')[0] | trim
+        | lower) in [''phishing'', ''benign''] else ''review_messages'' if ((sample.output_text or
+        '''').split(''\n'')[0] | trim | lower) == ''analysis'' else ''draft_warning'' }}'
+      right_template: '{{ item.expected_tool }}'

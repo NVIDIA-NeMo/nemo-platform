@@ -20,12 +20,12 @@ one request ──▶ router prompt (deepagents, one generation, no tools)
 
 ## Parts & what to change
 
-| Path                             | What it is                                                                                         | Swap for your own                                                                                                                                                  |
-| -------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `agent.yaml`                     | The `nemo-agents-spec-v1` config: harness, router prompt, model, blocked tools, timeout, telemetry | Rewrite `instructions.system` — the routing rules and one `##` section per capability; set `models.default` (+ `temperature`); rename `name` / `telemetry.project` |
-| `dataset.jsonl`                  | 40 labeled rows (`subject`, `sender`, `body`, `label`)                                             | Drop in your rows; keep the field names the `prompt_template` and judge reference                                                                                  |
-| `eval-config.dataset-driven.yml` | One metric set over every row (YAML; its task-driven sibling is JSON — both accepted)              | Rewrite `prompt_template` and the judge prompt to read _your_ contract                                                                                             |
-| `eval-config.task-driven.json`   | 10 tasks in 5 families, each with its own metrics                                                  | Swap the tasks; keep one routing assertion per family                                                                                                              |
+| Path                             | What it is                                                                                                | Swap for your own                                                                                                                                                  |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent.yaml`                     | The `nemo-agents-spec-v1` config: harness, router prompt, model, blocked tools, timeout, telemetry        | Rewrite `instructions.system` — the routing rules and one `##` section per capability; set `models.default` (+ `temperature`); rename `name` / `telemetry.project` |
+| `dataset.jsonl`                  | 28 rows carrying the agent's input (`user_message` + `emails[]`) plus `expected_tool` / `expected_answer` | Drop in your rows; keep the field names the `prompt_template` and the two metrics reference                                                                        |
+| `eval-config.dataset-driven.yml` | One metric set over every row (YAML; its task-driven sibling is JSON — both accepted)                     | Rewrite `prompt_template` and the judge prompt to read _your_ contract                                                                                             |
+| `eval-config.task-driven.json`   | 10 tasks in 5 families, each with its own metrics                                                         | Swap the tasks; keep one routing assertion per family                                                                                                              |
 
 ## Writing the capabilities
 
@@ -143,6 +143,10 @@ Couplings that break silently if you change one side only:
 - **Workspace member:** if you add a tool, add your directory to the **root**
   `pyproject.toml` `members`, then `uv sync --all-packages`. Without a tool the
   directory is not a package and does not belong in `members`.
+- **No `tojson` in any template:** the SDK JSON-parses the rendered output of any template
+  containing that substring, so a `prompt_template` stops producing a string and `{{ prompt }}`
+  in the target body goes undefined. It bites judge prompts the same way. Assemble text with a
+  `{% for %}` loop instead.
 - **Contract and judge:** every capability's first-line contract is duplicated in
   the eval's judge prompt and in its routing `string-check`. Change one, change the
   others — the judge silently scores 0 against a contract the agent no longer emits.

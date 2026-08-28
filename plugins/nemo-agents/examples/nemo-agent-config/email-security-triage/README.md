@@ -5,9 +5,9 @@
 
 Deploy a Fabric (`nemo-agents-spec-v1`) agent end to end and watch it route an
 analyst's question to the right capability. The agent is a single-turn router: it
-picks one of four capabilities — general review, phishing/benign triage, thread
-injection-point tracing, and drafting a staff warning — and answers as that
-capability, in one generation, with no tools and no sub-agents.
+picks one of three capabilities — general review, phishing/benign triage, and
+drafting a staff warning — and answers as that capability, in one generation, with
+no tools and no sub-agents.
 
 **What you'll do:** deploy the example, ask it a question, watch the answer change
 shape when the question changes, find the run in the trace, and score it against
@@ -61,19 +61,15 @@ different contract on line one.
 nemo agents invoke --agent-deployment email-security-triage-deployment \
   --input '{"user_message": "", "emails": ["Subject: Verify your account\nFrom: it-support@paypa1-secure.example\n\nConfirm your password at http://paypa1-secure.example/login"]}'
 
-# "where did this go bad?" -> thread tracing: line 1 is a bare integer
-nemo agents invoke --agent-deployment email-security-triage-deployment \
-  --input '{"user_message": "where did this thread go bad?", "emails": ["Subject: Kickoff notes\nFrom: dana@acme.com\n\nNotes attached.", "Subject: RE: Kickoff notes\nFrom: sam@acme.com\n\nLooks right to me.", "Subject: RE: Kickoff notes\nFrom: dana@acme-corp-mail.net\n\nWire the deposit via http://acme-billing-update.example.com today."]}'
-
 # "write a warning" -> drafting: line 1 is prose, no verdict word
 nemo agents invoke --agent-deployment email-security-triage-deployment \
   --input '{"user_message": "write a warning for the team", "emails": ["Subject: DocuSign: contract awaiting signature\nFrom: no-reply@docusign-secure-files.com\n\nSign at http://docusign-secure-files.com/sign before it expires."]}'
 ```
 
-Four capabilities, four distinct first lines: `phishing`/`benign`, `ANALYSIS`, a
-bare integer, and prose. Because they cannot be confused for each other, a
-deterministic check on line one proves _which capability ran_ — that is how the
-Studio eval samples assert routing without inspecting tool calls.
+Three capabilities, three distinct first lines: `phishing`/`benign`, `ANALYSIS`,
+and prose. Because they cannot be confused for each other, a deterministic check on
+line one proves _which capability ran_ — that is how the eval configs assert routing
+without inspecting tool calls.
 
 The general review also reports an `IOCS:` field per message, listing the URLs and
 domains it found. The prompt produces those; this agent calls no tools. To wire a
@@ -99,10 +95,10 @@ it says.
 
 This example ships two eval configs, both in the evaluator SDK's format:
 
-| File                             | Shape                                                 | Scores                          |
-| -------------------------------- | ----------------------------------------------------- | ------------------------------- |
-| `eval-config.dataset-driven.yml` | one metric set over every row of `dataset.jsonl`      | verdict accuracy + routing      |
-| `eval-config.task-driven.json`   | 10 tasks in 5 families, each carrying its own metrics | all four capabilities + routing |
+| File                             | Shape                                                | Scores                           |
+| -------------------------------- | ---------------------------------------------------- | -------------------------------- |
+| `eval-config.dataset-driven.yml` | one metric set over every row of `dataset.jsonl`     | verdict accuracy + routing       |
+| `eval-config.task-driven.json`   | 8 tasks in 4 families, each carrying its own metrics | all three capabilities + routing |
 
 One is YAML and one is JSON on purpose: **both formats are accepted everywhere a
 config is read.** Studio's upload and the CLI's `--spec-file` sniff the content
@@ -136,7 +132,7 @@ spec["target"] = {
     "response_path": "$.choices[0].message.content",
     "stream": False,
 }
-spec["params"] = {"parallelism": 1, "request_timeout": 300, "max_retries": 3, "ignore_request_failure": True}
+spec["params"] = {"parallelism": 1, "request_timeout": 300, "max_retries": 5, "ignore_request_failure": False}
 print(json.dumps(spec, indent=2))
 EOF
 
@@ -149,14 +145,18 @@ The task-driven config runs the same way through
 `nemo evaluator agent-evaluate run`, whose spec wraps its tasks in an `agent`
 target instead.
 
-`prompt_template` renders each row into `Is this legit?` plus the message, so
-every row routes to the triage capability and answers with a bare `phishing` or
-`benign` on line one. Two metrics score that:
+Each row carries the agent's real input — an `emails` array plus a `user_message` —
+and `prompt_template` assembles it into the text the agent reads. The `user_message`
+is what routes: 20 rows ask _is this legit?_ over one message and should reach
+`triage_message`; 8 rows ask nothing over two or three messages and should reach
+`review_messages`. Two metrics score that:
 
-- `llm-judge.accuracy` — does line one match the row's `label`?
-- `string-check` — is line one a verdict word at all? This is the **routing**
-  assertion: it holds at 1.0 whenever the right capability answered, regardless of
-  whether the verdict was right.
+- `string-check` — does the first line's shape match the row's `expected_tool`? A
+  verdict word means triage, `ANALYSIS` means review, anything else means draft.
+  This is the **routing** assertion, and it holds whether or not the verdict is right.
+- `llm-judge.accuracy` — do the verdicts, read in message order, match the row's
+  `expected_answer`? Scored as a **fraction**, so a 3-message row that gets two right
+  scores 0.67.
 
 Read the two together. Accuracy with headroom while routing holds means the misses
 are judgement calls; both collapsing together means the agent answered as the wrong
@@ -164,6 +164,12 @@ capability. That is the distinction the routing check exists to make.
 
 `parallelism: 1` above matches what Studio submits, so the two paths produce
 comparable numbers; raise it to shorten the run.
+
+`ignore_request_failure: False` is deliberate. Set it to `True` and a failing agent
+endpoint stops aborting the run — every failed row becomes an empty response, scores
+0.0 for routing and `NaN` for the judge, and the job still reports **completed**. A
+run that tested nothing then looks like a run that found a broken agent. Keep it
+`False` while iterating, and read the traceback rather than the score table.
 
 ## Next Steps
 

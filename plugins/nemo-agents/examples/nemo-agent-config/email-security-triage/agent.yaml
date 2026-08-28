@@ -43,11 +43,11 @@
 config_format: nemo-agents-spec-v1
 name: email-security-triage
 description: >-
-  Email Security Triage: a single-turn Fabric router with four analyst
-  capabilities — general review, phishing/benign triage, thread injection-point
-  tracing, and drafting a staff warning. It picks one from the analyst's question
-  and answers as that capability, so each capability's first-line output contract
-  is what the evaluation reads.
+  Email Security Triage: a single-turn Fabric router with three analyst
+  capabilities — general review, phishing/benign triage, and drafting a staff
+  warning. It picks one from the analyst's question and answers as that
+  capability, so each capability's first-line output contract is what the
+  evaluation reads.
 
 instructions:
   system:
@@ -111,15 +111,6 @@ instructions:
       Your first line must be exactly one word, lowercase and alone: phishing or
       benign. No preamble, no punctuation, no quotes. Explain your reasoning on the
       lines after it, naming the specific signals that decided it.
-
-      ## trace_thread — the analyst asks where a conversation went wrong, where an attacker entered a thread, or which message in a sequence is the malicious one
-
-      The messages are given in order. Somewhere in the thread an attacker has
-      injected a message into an otherwise legitimate conversation.
-
-      Your first line must be a bare integer: the 1-based position of the message
-      where the attack first appears. Nothing else on that line. Explain what gave it
-      away on the lines after.
 
       ## draft_warning — the analyst asks for a message to send to other people: a warning to staff, a notice to the team, or an alert about an email doing the rounds
 
