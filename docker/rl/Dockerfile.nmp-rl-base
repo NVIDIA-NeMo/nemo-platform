@@ -33,8 +33,7 @@ ARG NEMO_RL_REF=nmp/customizer
 
 # uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on 0.11.x).
 # Keep Python at 3.13.14 until uv publishes managed 3.13.15 builds for Linux; unlike the other
-# images, this base installs Python with `uv python install`. uv 0.11.33 still has no
-# `cpython-3.13.15-linux-x86_64-gnu` download. See README.md for scanner paths.
+# images, this base installs Python with `uv python install`. See README.md for scanner paths.
 ARG UV_VERSION=0.11.33
 ARG PYTHON_VERSION=3.13.14
 ARG CMAKE_VERSION=4.0.3
