@@ -16,3 +16,10 @@ def test_rl_base_copies_official_cpython_315_and_pins_uv_python() -> None:
     assert "COPY --from=cpython /usr/local /opt/cpython" in text
     assert "UV_PYTHON=/opt/cpython/bin/python3.13" in text
     assert 'uv python install "${PYTHON_VERSION}"' not in text
+
+
+def test_rl_base_validates_copied_cpython_permissions() -> None:
+    """The publish stage must validate the copied interpreter, not uv's removed install tree."""
+    text = RL_BASE.read_text(encoding="utf-8")
+    assert "for path in /opt/cpython /opt/uv_cache" in text
+    assert "for path in /opt/uv /opt/uv_cache" not in text

@@ -472,7 +472,7 @@ USER root
 RUN /opt/nemo_rl_venv/bin/python tools/generate_fingerprint.py \
         > /opt/nemo_rl_container_fingerprint
 
-# ---- publish base (inherits builder FS; keeps the uv-managed python valid - see header NOTE) ----
+# ---- publish base (inherits builder FS; keeps copied CPython valid - see header NOTE) ----
 FROM builder AS nmp-rl-base
 ARG RUNTIME_UID=1000
 ARG RUNTIME_GID=1000
@@ -524,12 +524,12 @@ ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
     PATH="/opt/nemo_rl_venv/bin:/usr/local/bin:${PATH}" \
     NO_VCS_VERSION=1
 
-# The venv's python symlinks to the uv-managed interpreter under /opt/uv, nemo_rl is installed
+# The venv's python symlinks to CPython under /opt/cpython, nemo_rl is installed
 # editable from /opt/nemo-rl, and the worker/Gym venvs symlink their packages into /opt/uv_cache.
 # Build steps create these trees with umask 022 so the non-root runtime can load Python's stdlib,
 # import nemo_rl / nemo_gym, and resolve package symlinks without a late recursive chmod layer.
 RUN <<"EOF" bash -eu
-for path in /opt/uv /opt/uv_cache /opt/nemo_rl_venv /opt/nemo-rl /opt/gym_venvs /opt/ray_venvs; do
+for path in /opt/cpython /opt/uv_cache /opt/nemo_rl_venv /opt/nemo-rl /opt/gym_venvs /opt/ray_venvs; do
     blocked="$(find "${path}" \
         \( -type d ! -perm -005 -o -type f ! -perm -004 -o -type f -perm /111 ! -perm -001 \) \
         -print -quit)"

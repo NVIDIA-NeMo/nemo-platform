@@ -426,7 +426,7 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
   which the GRPO policy worker needs, so it is built from source here.
-  `.python-version` pinning an exact patch release. CPython 3.13.15 is copied from
+  RL uses `.python-version` to pin an exact patch release. CPython 3.13.15 is copied from
   `python:3.13.15-slim-trixie` into `/opt/cpython` (uv's catalog has no linux-gnu 3.13.15
   build). `UV_PYTHON=/opt/cpython/bin/python3.13` overrides `.python-version` so worker
   venvs cannot silently stay on 3.13.14.
