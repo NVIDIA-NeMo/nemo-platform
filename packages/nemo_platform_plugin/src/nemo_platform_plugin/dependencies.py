@@ -54,14 +54,14 @@ def get_sdk_client() -> "AsyncNeMoPlatform":
 
 
 def get_nemo_client() -> AsyncNemoClient:
-    """FastAPI dependency for getting the async NemoClient.
+    """Legacy FastAPI dependency placeholder for getting an async NemoClient.
 
-    This is a placeholder. The actual client is injected via
-    app.dependency_overrides in Service.create_app().
+    Platform services should depend on ``get_sdk_client`` and adapt to typed
+    service clients with ``client_from_platform(sdk, ServiceClient)`` instead.
     """
     raise RuntimeError(
-        "get_nemo_client() was called without being overridden. "
-        "Ensure your Service subclass calls super().create_app()."
+        "get_nemo_client() is not wired by platform services. "
+        "Depend on get_sdk_client() and adapt with client_from_platform(sdk, ServiceClient)."
     )
 
 

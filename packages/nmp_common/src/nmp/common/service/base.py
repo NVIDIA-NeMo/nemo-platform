@@ -17,7 +17,6 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.utils import register_query_param_schemas
 from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
 from nmp.common.config import get_platform_config as load_platform_config
@@ -82,7 +81,7 @@ def _get_config_class_from_generic(cls: type) -> Type[TConfig] | None:
 
 class DependencyProvider:
     """
-    Manages SDK, NemoClient, entity client, HTTP client, and config lifecycle for NeMo Platform services.
+    Manages SDK, entity client, HTTP client, and config lifecycle for NeMo Platform services.
 
     Provides explicit lifecycle initialization, FastAPI dependency wiring, and cleanup.
 
@@ -95,7 +94,6 @@ class DependencyProvider:
         self._configured_http_client: Optional[httpx.AsyncClient] = None
         self._platform_endpoint: Optional[PlatformEndpoint] = None
         self._service_http_client: Optional[httpx.AsyncClient] = None
-        self._owns_service_http_client = False
         self._sdk_client: Optional[AsyncNeMoPlatform] = None
         self._platform_config: Optional[PlatformConfig] = None
         self._service_name = service_name
@@ -109,19 +107,14 @@ class DependencyProvider:
         if self._service_http_client is not None and self._sdk_client is not None:
             return
 
-        from nmp.common.sdk_factory import get_async_platform_sdk
+        from nmp.common.sdk_factory import _get_async_platform_sdk_for_endpoint
 
         endpoint = self.get_platform_endpoint()
-        if self._configured_http_client is not None:
-            self._service_http_client = self._configured_http_client
-            self._owns_service_http_client = False
-        else:
-            self._service_http_client = endpoint.async_sdk_http_client()
-            self._owns_service_http_client = True
-        self._sdk_client = get_async_platform_sdk(
-            http_client=self._service_http_client,
-            base_url=endpoint.connect_base_url,
+        self._sdk_client = _get_async_platform_sdk_for_endpoint(
+            endpoint,
+            http_client=self._configured_http_client,
         )
+        self._service_http_client = self._sdk_client._client
 
     def _require_initialized(self) -> None:
         if self._service_http_client is None or self._sdk_client is None:
@@ -249,12 +242,6 @@ class DependencyProvider:
         base_sdk = self.get_sdk_client()  # Cached base SDK
         return get_request_scoped_sdk(base_sdk)
 
-    def get_request_scoped_nemo_client(self) -> AsyncNemoClient:
-        """Return a fresh async NemoClient with request-scoped headers."""
-        from nmp.common.client_factory import get_async_nemo_client
-
-        return get_async_nemo_client(http_client=self.get_http_client())
-
     def get_effective_principal_id(self, request: Request) -> str:
         """Return the effective principal ID from the current request auth context."""
         from nmp.common.auth import get_auth_client
@@ -266,14 +253,12 @@ class DependencyProvider:
         from nmp.common.service.dependencies import (
             get_effective_principal_id,
             get_entity_client,
-            get_nemo_client,
             get_platform_config,
             get_sdk_client,
             get_service_config,
         )
 
         app.dependency_overrides[get_sdk_client] = self.get_request_scoped_sdk
-        app.dependency_overrides[get_nemo_client] = self.get_request_scoped_nemo_client
         app.dependency_overrides[get_entity_client] = self.get_entity_client
         app.dependency_overrides[get_effective_principal_id] = self.get_effective_principal_id
         app.dependency_overrides[get_platform_config] = self.get_platform_config
@@ -281,21 +266,12 @@ class DependencyProvider:
             app.dependency_overrides[get_service_config] = lambda: service._service_config
 
     async def close(self) -> None:
-        """Close managed clients.
-
-        Provider-created HTTP clients are closed here. Externally configured
-        clients are caller-owned and only detached from this provider.
-        """
-        service_http_client = self._service_http_client
+        """Close the cached SDK and detach configured clients."""
         sdk_client = self._sdk_client
-        owns_service_http_client = self._owns_service_http_client
         self._service_http_client = None
         self._configured_http_client = None
-        self._owns_service_http_client = False
         self._sdk_client = None
-        if service_http_client is not None and owns_service_http_client:
-            await service_http_client.aclose()
-        elif service_http_client is None and sdk_client is not None:
+        if sdk_client is not None:
             await sdk_client.close()
 
 

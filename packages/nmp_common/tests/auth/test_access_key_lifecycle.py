@@ -69,16 +69,21 @@ async def test_aclose_closes_owned_sdk() -> None:
 
 @pytest.mark.asyncio
 async def test_aclose_does_not_close_sdk_with_injected_http_client() -> None:
-    sdk = MagicMock()
-    sdk.close = AsyncMock()
     async with httpx.AsyncClient() as http_client:
         authenticator = AccessKeyLifecycleAuthenticator(_config(), http_client=http_client)
-        authenticator._sdk = sdk
+        with patch.object(
+            Configuration,
+            "get_platform_config",
+            return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
+        ):
+            sdk = authenticator._get_sdk()
+
+        assert sdk._client is http_client
 
         await authenticator.aclose()
 
-    sdk.close.assert_not_awaited()
-    assert authenticator._sdk is None
+        assert not http_client.is_closed
+        assert authenticator._sdk is None
 
 
 @pytest.mark.asyncio

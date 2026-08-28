@@ -1,33 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""NemoClient factory for task containers and services — the plugin-side
-interface for building authenticated
-:class:`~nemo_platform_plugin.client.client.NemoClient` /
-:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` handles.
+"""Standalone NemoClient factory for plugin-only task containers.
 
-This is the :class:`~nemo_platform_plugin.client.client.NemoClient` sibling of
-:mod:`nemo_platform_plugin.sdk_provider`.  Plugin authors call
-:func:`get_nemo_client` / :func:`get_async_nemo_client` here instead of
-importing from ``nmp.common``.  This keeps ``nemo-platform-plugin`` free of any
-``nmp-common`` dependency while still allowing the platform to register a richer
-provider (URL routing, endpoint-aware HTTP clients, OTEL headers, workload identity,
-...) when ``nmp-common`` is installed.
+Most platform/service code should acquire a ``NeMoPlatform`` SDK through
+``sdk_provider`` and adapt it to a typed service client with
+``client_from_platform(sdk, ServiceClient)``. This module exists for
+plugin-only environments that cannot import ``nmp.common`` and need direct
+:class:`~nemo_platform_plugin.client.client.NemoClient` or
+:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` handles.
 
 Lookup order for the provider
 -----------------------------
 
 1. **Explicit override** — set via :func:`set_nemo_client_provider` (for tests).
-2. **Entry-point discovery** — scans the ``nemo.client_provider`` group.
-   When ``nmp-common`` is installed in the image (platform deployment), its
-   provider is picked up automatically.
+2. **Entry-point discovery** — scans the ``nemo.client_provider`` group for
+   optional third-party overrides.
 3. **Built-in default** — :class:`DefaultNemoClientProvider`, an env-var-based
    implementation that reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.  Works for
    local development and gateway-routed task containers.
 
-For user-facing / CLI usage, prefer ``NemoClient.from_config()`` which reads
-``~/.config/nmp/config.yaml`` and wires up OIDC token refresh / workload
-identity token exchange.
+For user-facing / CLI usage, prefer ``nemo_platform.NeMoPlatform`` or
+``nemo_platform.AsyncNeMoPlatform``.
 """
 
 from __future__ import annotations

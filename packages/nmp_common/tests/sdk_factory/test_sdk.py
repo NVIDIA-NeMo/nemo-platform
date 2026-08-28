@@ -163,6 +163,37 @@ def test_get_platform_sdk_internal_flag():
     assert sdk.default_headers["X-NMP-Internal"] == "true"
 
 
+def test_get_platform_sdk_closes_factory_owned_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_BASE_URL", "http://nmp.example.test")
+    sdk = get_platform_sdk()
+    http_client = sdk._client
+
+    sdk.close()
+
+    assert http_client.is_closed
+
+
+def test_get_platform_sdk_does_not_close_injected_http_client() -> None:
+    with httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200))) as http_client:
+        sdk = get_platform_sdk(base_url="http://nmp.example.test", http_client=http_client)
+
+        sdk.close()
+
+        assert not http_client.is_closed
+
+
+def test_service_scoped_sdk_close_does_not_close_base_http_client() -> None:
+    base_sdk = get_platform_sdk(base_url="http://nmp.example.test")
+    scoped_sdk = get_service_scoped_sdk(base_sdk, "jobs")
+
+    try:
+        scoped_sdk.close()
+
+        assert not base_sdk._client.is_closed
+    finally:
+        base_sdk.close()
+
+
 def test_get_platform_sdk_uses_workload_identity_when_token_file_configured(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """Workload-token task environments should let the generated SDK inject Bearer auth."""
     subject_token_file = tmp_path / "workload-token"
@@ -301,12 +332,14 @@ def test_get_service_scoped_sdk_preserves_workload_identity_auth(monkeypatch: py
     with httpx.Client() as http_client:
         base_sdk = get_platform_sdk(http_client=http_client)
         service_sdk = get_service_scoped_sdk(base_sdk, "jobs")
+        scoped_sdk = base_sdk.with_options(set_default_headers={"X-Test": "true"})
 
         assert service_sdk is not base_sdk
         assert service_sdk._client is base_sdk._client
         assert service_sdk.custom_auth is base_sdk.custom_auth
         assert service_sdk.default_headers["X-NMP-Internal"] == "true"
         assert "X-NMP-Principal-Id" not in service_sdk.default_headers
+        assert scoped_sdk.custom_auth is base_sdk.custom_auth
 
 
 def test_get_service_scoped_sdk_rejects_workload_identity_on_behalf_of(
@@ -395,6 +428,44 @@ def test_get_async_platform_sdk_internal_flag():
     assert sdk is not None
     assert "X-NMP-Internal" in sdk.default_headers
     assert sdk.default_headers["X-NMP-Internal"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_get_async_platform_sdk_closes_factory_owned_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_BASE_URL", "http://nmp.example.test")
+    sdk = get_async_platform_sdk()
+    http_client = sdk._client
+
+    await sdk.close()
+
+    assert http_client.is_closed
+
+
+@pytest.mark.asyncio
+async def test_get_async_platform_sdk_does_not_close_injected_http_client() -> None:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(200))) as http_client:
+        sdk = get_async_platform_sdk(base_url="http://nmp.example.test", http_client=http_client)
+
+        await sdk.close()
+
+        assert not http_client.is_closed
+
+
+@pytest.mark.asyncio
+async def test_request_scoped_sdk_close_does_not_close_base_http_client() -> None:
+    base_sdk = get_async_platform_sdk(base_url="http://nmp.example.test")
+    with patch(
+        "nmp.common.sdk_factory.get_principal_auth_headers",
+        return_value={"X-NMP-Principal-Id": "user@example.com"},
+    ):
+        scoped_sdk = get_request_scoped_sdk(base_sdk)
+
+    try:
+        await scoped_sdk.close()
+
+        assert not base_sdk._client.is_closed
+    finally:
+        await base_sdk.close()
 
 
 @pytest.mark.asyncio

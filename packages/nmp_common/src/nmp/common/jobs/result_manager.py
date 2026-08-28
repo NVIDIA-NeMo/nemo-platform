@@ -112,19 +112,13 @@ async def download_from_result_info(
     in tests also affects download_from_result_info, preserving the old monkeypatch
     behavior.
     """
-    owns_files_sdk = files_sdk is None
-    owned_files_sdk: AsyncNeMoPlatform | None = None
-    if files_sdk is None:
-        files_sdk = get_async_platform_sdk()
-        owned_files_sdk = files_sdk
+    mgr = result_manager_factory(
+        job_name=job_name,
+        workspace=workspace,
+        files_sdk=files_sdk,
+    )
 
     try:
-        mgr = result_manager_factory(
-            job_name=job_name,
-            workspace=workspace,
-            files_sdk=files_sdk,
-        )
-
         tmp_dir_path = await mgr.download_artifact(artifact_url=artifact_url)
         filename = result_name
 
@@ -138,5 +132,4 @@ async def download_from_result_info(
 
         return filename, tmp_dir_path
     finally:
-        if owns_files_sdk and owned_files_sdk is not None:
-            await owned_files_sdk.close()
+        await mgr.aclose()

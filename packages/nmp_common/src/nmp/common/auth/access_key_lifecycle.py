@@ -51,19 +51,18 @@ class AccessKeyLifecycleAuthenticator:
     async def aclose(self) -> None:
         sdk = self._sdk
         self._sdk = None
-        if sdk is not None and self._http_client is None:
+        if sdk is not None:
             await sdk.close()
 
     def _get_sdk(self) -> AsyncNeMoPlatform:
         if self._sdk is None:
             # Import lazily to avoid an auth -> SDK factory import cycle.
-            from nmp.common.sdk_factory import get_async_platform_sdk, with_options_reusing_http_client
+            from nmp.common.sdk_factory import get_async_platform_sdk
 
-            sdk = get_async_platform_sdk(http_client=self._http_client)
-            self._sdk = with_options_reusing_http_client(
-                sdk,
+            self._sdk = get_async_platform_sdk(
+                http_client=self._http_client,
                 max_retries=0,
-                _extra_kwargs={"_strict_response_validation": True},
+                _strict_response_validation=True,
             )
         return self._sdk
 

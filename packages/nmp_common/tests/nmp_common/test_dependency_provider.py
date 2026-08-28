@@ -26,7 +26,7 @@ def test_get_http_client_requires_initialization() -> None:
         provider.get_http_client()
 
 
-def test_initialize_creates_http_client_and_cached_sdk_from_endpoint() -> None:
+def test_initialize_creates_cached_sdk_from_endpoint() -> None:
     provider = DependencyProvider()
     platform_config = PlatformConfig(base_url="http://platform:8080")  # type: ignore[abstract]
     provider._platform_config = platform_config
@@ -35,10 +35,11 @@ def test_initialize_creates_http_client_and_cached_sdk_from_endpoint() -> None:
     http_client = MagicMock(name="http_client")
     platform_endpoint.async_sdk_http_client.return_value = http_client
     sdk = MagicMock(name="sdk")
+    sdk._client = http_client
 
     with (
         patch("nmp.common.service.base.resolve_platform_endpoint", return_value=platform_endpoint) as resolve_endpoint,
-        patch("nmp.common.sdk_factory.get_async_platform_sdk", return_value=sdk) as sdk_factory,
+        patch("nmp.common.sdk_factory._get_async_platform_sdk_for_endpoint", return_value=sdk) as sdk_factory,
     ):
         provider.initialize()
         provider.initialize()
@@ -46,8 +47,8 @@ def test_initialize_creates_http_client_and_cached_sdk_from_endpoint() -> None:
     assert provider.get_http_client() is http_client
     assert provider.get_sdk_client() is sdk
     resolve_endpoint.assert_called_once_with(platform_config)
-    platform_endpoint.async_sdk_http_client.assert_called_once_with()
-    sdk_factory.assert_called_once_with(http_client=http_client, base_url="http://platform:8080")
+    platform_endpoint.async_sdk_http_client.assert_not_called()
+    sdk_factory.assert_called_once_with(platform_endpoint, http_client=None)
 
 
 def test_configure_http_client_is_used_for_cached_sdk_client() -> None:
@@ -58,19 +59,20 @@ def test_configure_http_client_is_used_for_cached_sdk_client() -> None:
     provider._platform_config = platform_config
     platform_endpoint = MagicMock(name="platform_endpoint")
     platform_endpoint.connect_base_url = "http://platform:8080"
+    sdk._client = http_client
 
     provider.configure_http_client(http_client)
 
     with (
         patch("nmp.common.service.base.resolve_platform_endpoint", return_value=platform_endpoint),
-        patch("nmp.common.sdk_factory.get_async_platform_sdk", return_value=sdk) as sdk_factory,
+        patch("nmp.common.sdk_factory._get_async_platform_sdk_for_endpoint", return_value=sdk) as sdk_factory,
     ):
         provider.initialize()
         assert provider.get_sdk_client() is sdk
         assert provider.get_sdk_client() is sdk
 
     platform_endpoint.async_sdk_http_client.assert_not_called()
-    sdk_factory.assert_called_once_with(http_client=http_client, base_url="http://platform:8080")
+    sdk_factory.assert_called_once_with(platform_endpoint, http_client=http_client)
 
 
 def test_configure_platform_endpoint_is_used_during_initialization() -> None:
@@ -80,10 +82,11 @@ def test_configure_platform_endpoint_is_used_during_initialization() -> None:
     http_client = MagicMock(name="http_client")
     platform_endpoint.async_sdk_http_client.return_value = http_client
     sdk = MagicMock(name="sdk")
+    sdk._client = http_client
 
     provider.configure_platform_endpoint(platform_endpoint)
 
-    with patch("nmp.common.sdk_factory.get_async_platform_sdk", return_value=sdk):
+    with patch("nmp.common.sdk_factory._get_async_platform_sdk_for_endpoint", return_value=sdk):
         provider.initialize()
 
     assert provider.get_http_client() is http_client
@@ -97,10 +100,11 @@ def test_configure_http_client_rejects_changes_after_sdk_created() -> None:
     platform_endpoint = MagicMock(name="platform_endpoint")
     platform_endpoint.connect_base_url = "http://platform:8080"
     platform_endpoint.async_sdk_http_client.return_value = http_client
+    sdk._client = http_client
 
     with (
         patch("nmp.common.service.base.resolve_platform_endpoint", return_value=platform_endpoint),
-        patch("nmp.common.sdk_factory.get_async_platform_sdk", return_value=sdk),
+        patch("nmp.common.sdk_factory._get_async_platform_sdk_for_endpoint", return_value=sdk),
     ):
         provider.initialize()
 
@@ -122,14 +126,14 @@ def test_get_sdk_client_caches_request_sdk_and_creates_fresh_service_sdk() -> No
 
     with (
         patch("nmp.common.service.base.resolve_platform_endpoint", return_value=platform_endpoint),
-        patch("nmp.common.sdk_factory.get_async_platform_sdk", side_effect=[request_sdk, service_sdk]) as sdk_factory,
+        patch("nmp.common.sdk_factory._get_async_platform_sdk_for_endpoint", return_value=request_sdk) as sdk_factory,
     ):
         provider.initialize()
         assert provider.get_sdk_client() is request_sdk
         assert provider.get_sdk_client() is request_sdk
         assert provider.get_sdk_client(as_service="jobs") is service_sdk
 
-    sdk_factory.assert_called_once_with(http_client=http_client, base_url="http://platform:8080")
+    sdk_factory.assert_called_once_with(platform_endpoint, http_client=None)
     request_sdk.with_options.assert_called_once_with(
         set_default_headers={
             "X-NMP-Internal": "true",
@@ -171,39 +175,56 @@ def test_get_effective_principal_id_uses_delegated_identity() -> None:
 @pytest.mark.asyncio
 async def test_close_closes_managed_clients_and_clears_references() -> None:
     provider = DependencyProvider()
-    http_client = AsyncMock(spec=httpx.AsyncClient)
     sdk = MagicMock()
     sdk.close = AsyncMock()
-    provider._service_http_client = http_client
-    provider._owns_service_http_client = True
+    provider._service_http_client = AsyncMock(spec=httpx.AsyncClient)
     provider._sdk_client = sdk
 
     await provider.close()
 
-    http_client.aclose.assert_awaited_once_with()
-    sdk.close.assert_not_awaited()
+    sdk.close.assert_awaited_once_with()
     assert provider._service_http_client is None
     assert provider._configured_http_client is None
     assert provider._sdk_client is None
 
 
 @pytest.mark.asyncio
-async def test_close_does_not_close_configured_http_client() -> None:
+async def test_close_closes_endpoint_owned_http_client() -> None:
     provider = DependencyProvider()
-    http_client = AsyncMock(spec=httpx.AsyncClient)
-    sdk = MagicMock()
-    sdk.close = AsyncMock()
-    provider._service_http_client = http_client
-    provider._configured_http_client = http_client
-    provider._sdk_client = sdk
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(200)))
+    platform_endpoint = MagicMock(name="platform_endpoint")
+    platform_endpoint.connect_base_url = "http://platform:8080"
+    platform_endpoint.async_sdk_http_client.return_value = http_client
+
+    provider.configure_platform_endpoint(platform_endpoint)
+    provider.initialize()
 
     await provider.close()
 
-    http_client.aclose.assert_not_awaited()
-    sdk.close.assert_not_awaited()
+    assert http_client.is_closed
     assert provider._service_http_client is None
     assert provider._configured_http_client is None
     assert provider._sdk_client is None
+
+
+@pytest.mark.asyncio
+async def test_close_leaves_configured_http_client_open() -> None:
+    provider = DependencyProvider()
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(200)))
+    platform_endpoint = MagicMock(name="platform_endpoint")
+    platform_endpoint.connect_base_url = "http://platform:8080"
+
+    provider.configure_platform_endpoint(platform_endpoint)
+    provider.configure_http_client(http_client)
+    provider.initialize()
+
+    await provider.close()
+
+    assert not http_client.is_closed
+    assert provider._service_http_client is None
+    assert provider._configured_http_client is None
+    assert provider._sdk_client is None
+    await http_client.aclose()
 
 
 @pytest.mark.asyncio

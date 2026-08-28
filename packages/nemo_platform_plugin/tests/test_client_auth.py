@@ -925,16 +925,16 @@ class TestGetNemoClient:
             subject_token_file=subject_token_file,
         )
 
-    def test_workload_exchange_provider_does_not_override_explicit_service(self, monkeypatch, tmp_path):
+    def test_workload_exchange_provider_rejects_explicit_service(self, monkeypatch, tmp_path):
         subject_token_file = tmp_path / "workload-token"
         subject_token_file.write_text("subject-token\n", encoding="utf-8")
         monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
         with patch("nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider") as resolve_provider:
-            client = get_nemo_client(as_service="jobs")
+            with pytest.raises(ValueError, match="trusted principal headers"):
+                get_nemo_client(as_service="jobs")
 
-        assert client._auth is None
         resolve_provider.assert_not_called()
 
 

@@ -3,9 +3,8 @@
 
 """Tests for :mod:`nemo_platform_plugin.client_provider`.
 
-Covers the env-var default provider and the provider/entry-point resolution
-seam.  The rich platform provider (``nmp.common.client_factory``) is tested in
-``packages/nmp_common/tests/client_factory``.
+Covers the env-var default provider and optional provider/entry-point resolution.
+Platform code should prefer ``sdk_provider`` plus ``client_from_platform``.
 """
 
 from __future__ import annotations

@@ -22,7 +22,7 @@ from nmp.common.auth import Principal, get_principal_auth_headers, principal_fro
 from nmp.common.immutable_http_client import ImmutableDefaultAsyncHttpxClient, ImmutableDefaultHttpxClient
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 from nmp.common.observability.otel import get_otel_headers
-from nmp.common.platform_endpoint import resolve_platform_endpoint
+from nmp.common.platform_endpoint import PlatformEndpoint, resolve_platform_endpoint
 
 logger = logging.getLogger(__name__)
 PlatformSDKT = TypeVar("PlatformSDKT", bound=NeMoPlatform | AsyncNeMoPlatform)
@@ -33,17 +33,27 @@ _HTTPClientT = TypeVar("_HTTPClientT", httpx.Client, httpx.AsyncClient)
 class _SDKConnection(Generic[_HTTPClientT]):
     base_url: str
     http_client: _HTTPClientT
+    owns_http_client: bool
 
 
-def _sync_sdk_connection(base_url: str | None, http_client: httpx.Client | None) -> _SDKConnection[httpx.Client]:
+def _sync_sdk_connection(
+    base_url: str | None,
+    http_client: httpx.Client | None,
+) -> _SDKConnection[httpx.Client]:
     if http_client is not None:
         return _SDKConnection(
-            base_url=base_url or resolve_platform_endpoint().connect_base_url, http_client=http_client
+            base_url=base_url or resolve_platform_endpoint().connect_base_url,
+            http_client=http_client,
+            owns_http_client=False,
         )
     if base_url is not None:
-        return _SDKConnection(base_url=base_url, http_client=ImmutableDefaultHttpxClient())
+        return _SDKConnection(base_url=base_url, http_client=ImmutableDefaultHttpxClient(), owns_http_client=True)
     endpoint = resolve_platform_endpoint()
-    return _SDKConnection(base_url=endpoint.connect_base_url, http_client=endpoint.sync_sdk_http_client())
+    return _SDKConnection(
+        base_url=endpoint.connect_base_url,
+        http_client=endpoint.sync_sdk_http_client(),
+        owns_http_client=True,
+    )
 
 
 def _async_sdk_connection(
@@ -52,44 +62,108 @@ def _async_sdk_connection(
 ) -> _SDKConnection[httpx.AsyncClient]:
     if http_client is not None:
         return _SDKConnection(
-            base_url=base_url or resolve_platform_endpoint().connect_base_url, http_client=http_client
+            base_url=base_url or resolve_platform_endpoint().connect_base_url,
+            http_client=http_client,
+            owns_http_client=False,
         )
     if base_url is not None:
-        return _SDKConnection(base_url=base_url, http_client=ImmutableDefaultAsyncHttpxClient())
+        return _SDKConnection(base_url=base_url, http_client=ImmutableDefaultAsyncHttpxClient(), owns_http_client=True)
     endpoint = resolve_platform_endpoint()
-    return _SDKConnection(base_url=endpoint.connect_base_url, http_client=endpoint.async_sdk_http_client())
+    return _SDKConnection(
+        base_url=endpoint.connect_base_url,
+        http_client=endpoint.async_sdk_http_client(),
+        owns_http_client=True,
+    )
+
+
+def _async_sdk_connection_for_endpoint(
+    endpoint: PlatformEndpoint,
+    http_client: httpx.AsyncClient | None,
+) -> _SDKConnection[httpx.AsyncClient]:
+    if http_client is not None:
+        return _SDKConnection(
+            base_url=endpoint.connect_base_url,
+            http_client=http_client,
+            owns_http_client=False,
+        )
+    return _SDKConnection(
+        base_url=endpoint.connect_base_url,
+        http_client=endpoint.async_sdk_http_client(),
+        owns_http_client=True,
+    )
 
 
 def with_options_reusing_http_client(base_sdk: PlatformSDKT, **kwargs: Any) -> PlatformSDKT:
     """Return ``base_sdk.with_options(...)`` while reusing its underlying HTTP client."""
     if kwargs.get("http_client") is None:
         kwargs["http_client"] = base_sdk._client
-    custom_auth = base_sdk.custom_auth
-    if custom_auth is not None:
-        extra_kwargs = dict(kwargs.pop("_extra_kwargs", {}))
-        extra_kwargs.setdefault("custom_auth", custom_auth)
-        kwargs["_extra_kwargs"] = extra_kwargs
+    kwargs = _with_custom_auth_extra_kwargs(base_sdk.custom_auth, kwargs)
     return base_sdk.with_options(**kwargs)
 
 
-class _CustomAuthNeMoPlatform(NeMoPlatform):
-    def __init__(self, *, custom_auth: httpx.Auth, **kwargs: Any) -> None:
+def _with_custom_auth_extra_kwargs(custom_auth: httpx.Auth | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+    if custom_auth is not None:
+        kwargs = dict(kwargs)
+        extra_kwargs = dict(kwargs.get("_extra_kwargs", {}))
+        extra_kwargs.setdefault("custom_auth", custom_auth)
+        kwargs["_extra_kwargs"] = extra_kwargs
+    return kwargs
+
+
+class _ManagedNeMoPlatform(NeMoPlatform):
+    def __init__(
+        self,
+        *,
+        custom_auth: httpx.Auth | None = None,
+        owns_http_client: bool = False,
+        **kwargs: Any,
+    ) -> None:
         self._custom_auth = custom_auth
+        self._owns_http_client = owns_http_client
         super().__init__(**kwargs)
 
     @property
     def custom_auth(self) -> httpx.Auth | None:
         return self._custom_auth
 
+    def close(self) -> None:
+        if not self._owns_http_client:
+            return
+        self._owns_http_client = False
+        super().close()
 
-class _CustomAuthAsyncNeMoPlatform(AsyncNeMoPlatform):
-    def __init__(self, *, custom_auth: httpx.Auth, **kwargs: Any) -> None:
+    def copy(self, **kwargs: Any) -> Any:
+        return super().copy(**_with_custom_auth_extra_kwargs(self._custom_auth, kwargs))
+
+    with_options = copy
+
+
+class _ManagedAsyncNeMoPlatform(AsyncNeMoPlatform):
+    def __init__(
+        self,
+        *,
+        custom_auth: httpx.Auth | None = None,
+        owns_http_client: bool = False,
+        **kwargs: Any,
+    ) -> None:
         self._custom_auth = custom_auth
+        self._owns_http_client = owns_http_client
         super().__init__(**kwargs)
 
     @property
     def custom_auth(self) -> httpx.Auth | None:
         return self._custom_auth
+
+    async def close(self) -> None:
+        if not self._owns_http_client:
+            return
+        self._owns_http_client = False
+        await super().close()
+
+    def copy(self, **kwargs: Any) -> Any:
+        return super().copy(**_with_custom_auth_extra_kwargs(self._custom_auth, kwargs))
+
+    with_options = copy
 
 
 @dataclass(frozen=True)
@@ -98,6 +172,7 @@ class _ResolvedSDKInitConfig(Generic[_HTTPClientT]):
     workspace: str | None
     default_headers: Mapping[str, str] | None
     http_client: _HTTPClientT
+    owns_http_client: bool
     custom_auth: httpx.Auth | None
 
 
@@ -159,6 +234,7 @@ def _resolve_sdk_init_config(
             workspace=None,
             default_headers=headers if headers else None,
             http_client=connection.http_client,
+            owns_http_client=connection.owns_http_client,
             custom_auth=None,
         )
 
@@ -170,41 +246,61 @@ def _resolve_sdk_init_config(
         workspace=None,
         default_headers=extra_headers or None,
         http_client=connection.http_client,
+        owns_http_client=connection.owns_http_client,
         custom_auth=_workload_identity_auth(connection.base_url),
     )
 
 
-def _sync_sdk_from_init_config(sdk_config: _ResolvedSDKInitConfig[httpx.Client]) -> NeMoPlatform:
-    if sdk_config.custom_auth is None:
-        return NeMoPlatform(
-            base_url=sdk_config.base_url,
-            workspace=sdk_config.workspace,
-            default_headers=sdk_config.default_headers,
-            http_client=sdk_config.http_client,
-        )
-    return _CustomAuthNeMoPlatform(
+def _sdk_constructor_kwargs(
+    *,
+    max_retries: int | None,
+    strict_response_validation: bool,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {}
+    if max_retries is not None:
+        kwargs["max_retries"] = max_retries
+    if strict_response_validation:
+        kwargs["_strict_response_validation"] = True
+    return kwargs
+
+
+def _sync_sdk_from_init_config(
+    sdk_config: _ResolvedSDKInitConfig[httpx.Client],
+    *,
+    max_retries: int | None = None,
+    strict_response_validation: bool = False,
+) -> NeMoPlatform:
+    return _ManagedNeMoPlatform(
         custom_auth=sdk_config.custom_auth,
+        owns_http_client=sdk_config.owns_http_client,
         base_url=sdk_config.base_url,
         workspace=sdk_config.workspace,
         default_headers=sdk_config.default_headers,
         http_client=sdk_config.http_client,
+        **_sdk_constructor_kwargs(
+            max_retries=max_retries,
+            strict_response_validation=strict_response_validation,
+        ),
     )
 
 
-def _async_sdk_from_init_config(sdk_config: _ResolvedSDKInitConfig[httpx.AsyncClient]) -> AsyncNeMoPlatform:
-    if sdk_config.custom_auth is None:
-        return AsyncNeMoPlatform(
-            base_url=sdk_config.base_url,
-            workspace=sdk_config.workspace,
-            default_headers=sdk_config.default_headers,
-            http_client=sdk_config.http_client,
-        )
-    return _CustomAuthAsyncNeMoPlatform(
+def _async_sdk_from_init_config(
+    sdk_config: _ResolvedSDKInitConfig[httpx.AsyncClient],
+    *,
+    max_retries: int | None = None,
+    strict_response_validation: bool = False,
+) -> AsyncNeMoPlatform:
+    return _ManagedAsyncNeMoPlatform(
         custom_auth=sdk_config.custom_auth,
+        owns_http_client=sdk_config.owns_http_client,
         base_url=sdk_config.base_url,
         workspace=sdk_config.workspace,
         default_headers=sdk_config.default_headers,
         http_client=sdk_config.http_client,
+        **_sdk_constructor_kwargs(
+            max_retries=max_retries,
+            strict_response_validation=strict_response_validation,
+        ),
     )
 
 
@@ -289,6 +385,8 @@ def get_platform_sdk(
     http_client: httpx.Client | None = None,
     on_behalf_of: str | Principal | None = None,
     base_url: str | None = None,
+    max_retries: int | None = None,
+    _strict_response_validation: bool = False,
 ) -> NeMoPlatform:
     """
     Returns a NeMoPlatform SDK configured from explicit arguments or the resolved platform endpoint.
@@ -315,7 +413,11 @@ def get_platform_sdk(
         internal=internal,
         on_behalf_of=on_behalf_of,
     )
-    return _sync_sdk_from_init_config(sdk_config)
+    return _sync_sdk_from_init_config(
+        sdk_config,
+        max_retries=max_retries,
+        strict_response_validation=_strict_response_validation,
+    )
 
 
 def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> NeMoPlatform:
@@ -388,6 +490,8 @@ def get_async_platform_sdk(
     http_client: Optional[httpx.AsyncClient] = None,
     on_behalf_of: Optional[str | Principal] = None,
     base_url: str | None = None,
+    max_retries: int | None = None,
+    _strict_response_validation: bool = False,
 ) -> AsyncNeMoPlatform:
     """
     Returns an AsyncNeMoPlatform SDK configured from explicit arguments or the resolved platform endpoint.
@@ -413,7 +517,41 @@ def get_async_platform_sdk(
         internal=internal,
         on_behalf_of=on_behalf_of,
     )
-    return _async_sdk_from_init_config(sdk_config)
+    return _async_sdk_from_init_config(
+        sdk_config,
+        max_retries=max_retries,
+        strict_response_validation=_strict_response_validation,
+    )
+
+
+def _get_async_platform_sdk_for_endpoint(
+    endpoint: PlatformEndpoint,
+    *,
+    as_service: str | None = None,
+    internal: bool = False,
+    http_client: httpx.AsyncClient | None = None,
+    on_behalf_of: str | Principal | None = None,
+    max_retries: int | None = None,
+    _strict_response_validation: bool = False,
+) -> AsyncNeMoPlatform:
+    """Create an async SDK bound to an already resolved platform endpoint.
+
+    When ``http_client`` is omitted, the endpoint supplies a routed HTTP client
+    owned by the returned SDK. When ``http_client`` is provided, the returned SDK
+    borrows it and ``close()`` leaves that client open.
+    """
+    connection = _async_sdk_connection_for_endpoint(endpoint, http_client)
+    sdk_config = _resolve_sdk_init_config(
+        connection=connection,
+        as_service=as_service,
+        internal=internal,
+        on_behalf_of=on_behalf_of,
+    )
+    return _async_sdk_from_init_config(
+        sdk_config,
+        max_retries=max_retries,
+        strict_response_validation=_strict_response_validation,
+    )
 
 
 def get_service_scoped_sdk(
