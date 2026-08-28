@@ -210,6 +210,21 @@ class TestDiscoverEntryPoints:
 
         assert result == {"alpha.job": alpha_job}
 
+    def test_orders_entry_points_by_name_regardless_of_discovery_order(self) -> None:
+        # importlib.metadata.entry_points() order reflects distribution discovery
+        # order on sys.path, which differs across environments (e.g. macOS vs
+        # Linux). Callers like typer.core.TyperGroup preserve registration order
+        # rather than sorting, so discover_entry_points() must sort itself to
+        # keep CLI/doc generation reproducible across environments.
+        unsloth = _make_ep("unsloth.jobs", object())
+        automodel = _make_ep("automodel.jobs", object())
+        rl = _make_ep("rl.jobs", object())
+
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[unsloth, automodel, rl]):
+            result = discover_entry_points("nemo.jobs")
+
+        assert list(result.keys()) == ["automodel.jobs", "rl.jobs", "unsloth.jobs"]
+
 
 # ---------------------------------------------------------------------------
 # discover — generic
