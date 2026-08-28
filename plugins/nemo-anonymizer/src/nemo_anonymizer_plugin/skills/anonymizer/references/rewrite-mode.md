@@ -5,10 +5,10 @@
 
 Use this reference only for plugin execution concerns. The [Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) and library skills own rewrite semantics, privacy-goal fields, risk tuning, and recommended prompt wording.
 
-For plugin-service / Jobs execution (`preview submit`, `run submit`):
+For plugin-service / Jobs execution (preview API, `run`):
 
 - Include `model_configs` so rewrite model calls route through NeMo Platform Inference Gateway providers.
-- Use HTTP(S) URLs or fileset references for `data.source`; local paths only work with `preview run` / `run run`.
+- Use HTTP(S) URLs or fileset references for SDK/API `data.source`. CLI preview/run can upload a local CSV/Parquet source when `--fileset <name>` is supplied.
 - Only include `selected_models.rewrite` when you need to override library defaults, and use Anonymizer library role names exactly.
 
 Example role override shape:

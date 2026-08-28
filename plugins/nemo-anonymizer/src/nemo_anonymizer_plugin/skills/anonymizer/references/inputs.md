@@ -17,11 +17,11 @@ data:
 
 | Kind     | Example                                          | Supported by                                                                              |
 |----------|--------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Local    | `/tmp/input.csv` or `./data/input.parquet` | **Local execution only** (`preview run`, `run run`). |
-| HTTP(S)  | `https://example.com/input.csv`            | Local (`preview run`, `run run`) and plugin-service / Jobs execution (`preview submit`, `run submit`). |
-| Fileset  | `<workspace>/<fileset>#<path>`                   | Local (`preview run`, `run run`) and plugin-service / Jobs execution (`preview submit`, `run submit`). |
+| Local    | `./data/input.csv` or `./data/input.parquet`     | CLI preview/run with `--fileset <name>`; the CLI uploads the file before remote execution. |
+| HTTP(S)  | `https://example.com/input.csv`                  | Platform preview and Jobs execution (`run`).                                              |
+| Fileset  | `<workspace>/<fileset>#<path>`                   | Platform preview and Jobs execution (`run`).                                              |
 
-Plugin-service / Jobs execution runs outside the caller's filesystem — use HTTP(S) URLs or fileset refs for those surfaces.
+Platform preview and Jobs execution run outside the caller's filesystem. Use the CLI with `--fileset` to stage a local file, or use HTTP(S) URLs / fileset refs directly for SDK/API calls.
 
 ## Fileset references
 
@@ -33,7 +33,7 @@ my-workspace/input-files#data/input.csv
 input-files#data/input.csv          # uses the request's workspace
 ```
 
-For upload commands, use the platform files CLI docs or `nemo-files` skill. Then put the resulting fileset reference in `data.source`, for example `fileset://<workspace>/anonymizer-inputs#anonymizer-input.csv`.
+For SDK/API upload commands, use the platform files CLI docs or `nemo-files` skill. Then put the resulting fileset reference in `data.source`, for example `fileset://<workspace>/anonymizer-inputs#anonymizer-input.csv`. For CLI preview/run, put the local CSV/Parquet path in `data.source` and pass `--fileset <name>`.
 
 ## Choosing the text column
 
@@ -45,15 +45,7 @@ For upload commands, use the platform files CLI docs or `nemo-files` skill. Then
 
 Run jobs save a working artifacts directory; the anonymized dataset is one file inside that directory.
 
-### Where artifacts land for `run run`
-
-`nemo anonymizer run run` prints `{"exit_code": 0}` on success. The local job results manager logs the artifact directory to **stderr** in the form:
-
-```text
-Saved result 'artifacts' to file:///.../persistent/results/artifacts
-```
-
-Layout under that `artifacts/` directory:
+Full `run` jobs store an `artifacts` result in NeMo Platform job storage. Layout under that `artifacts/` directory:
 
 | File                  | Description                                                                |
 |-----------------------|----------------------------------------------------------------------------|
@@ -62,7 +54,7 @@ Layout under that `artifacts/` directory:
 | `metadata.json`       | Run metadata (includes the original text column name).                     |
 | `failed_records.json` | Per-record failures with reasons. Only written when at least one record failed. |
 
-### Loading the local artifacts
+### Loading downloaded artifacts
 
 Read the parquet files directly from the artifacts directory:
 
@@ -71,7 +63,7 @@ import json
 from pathlib import Path
 import pandas as pd
 
-artifacts_dir = Path("/path/to/persistent/results/artifacts")
+artifacts_dir = Path("/path/to/downloaded/artifacts")
 metadata = json.loads((artifacts_dir / "metadata.json").read_text())
 dataset = pd.read_parquet(artifacts_dir / "dataset.parquet", dtype_backend="pyarrow")
 trace   = pd.read_parquet(artifacts_dir / "trace.parquet",   dtype_backend="pyarrow")
@@ -83,7 +75,7 @@ The trace dataset (and `dataset.parquet` for `annotate` / `substitute` strategie
 
 ### Remote CLI retrieval
 
-For `run submit`, use the standard Jobs CLI after `nemo anonymizer run submit` prints the job name:
+For `run`, pass `--watch --output-dir <dir>` to download artifacts locally after a successful job. To retrieve artifacts later, use the standard Jobs CLI after `nemo anonymizer run` prints the job name:
 
 ```bash
 nemo jobs get-status <job-name> --workspace <ws>

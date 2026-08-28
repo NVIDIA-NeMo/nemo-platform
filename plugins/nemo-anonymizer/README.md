@@ -9,8 +9,8 @@ to detect and replace/rewrite PII in tabular text data.
 
 The plugin exposes an `anonymizer` service, CLI commands under
 `nemo anonymizer`, an SDK accessor on `NeMoPlatform.anonymizer`, a streaming
-`anonymizer.preview` function, and an `anonymizer.run` job that executes
-on the `nmp-cpu-tasks` container image.
+preview API, and an `anonymizer.run` job that executes on the
+`nmp-cpu-tasks` container image.
 
 ## What it does
 
@@ -26,10 +26,9 @@ The plugin provides functional parity with the
 [NVIDIA NeMo Anonymizer library](https://github.com/NVIDIA-NeMo/Anonymizer):
 
 - All four replacement strategies + `Rewrite` mode.
-- Input sources: local file path, `http(s)://` URL, or NeMo Platform fileset reference.
-  Local paths are only supported by local execution (`run` verbs).
-- Remote execution requires `model_configs` so requests route through NeMo Platform
-  Inference Gateway instead of the library's NVIDIA Build defaults.
+- Input sources for platform execution: local CSV/Parquet files through the CLI with `--fileset`, `http(s)://` URLs, or NeMo Platform fileset references.
+- Preview and run requests require `model_configs` so model calls route through
+  NeMo Platform Inference Gateway instead of the library's NVIDIA Build defaults.
 
 ## Installation (developer)
 
@@ -42,16 +41,23 @@ uv sync
 ## CLI quickstart
 
 ```bash
-nemo anonymizer preview run --spec-file ./preview_spec.yaml
-nemo anonymizer preview submit --spec-file ./preview_spec.yaml --workspace my-workspace
-
-nemo anonymizer run run --spec-file ./run_spec.yaml
-nemo anonymizer run submit --spec-file ./run_spec.yaml --workspace my-workspace
+nemo anonymizer preview --spec-file plugins/nemo-anonymizer/examples/redact.yaml --num-records 2 --workspace my-workspace --fileset anonymizer-inputs
+nemo anonymizer preview --spec-file plugins/nemo-anonymizer/examples/redact.yaml --num-records 2 --workspace my-workspace --fileset anonymizer-inputs --output-file preview.ndjson --quiet
+nemo anonymizer preview --spec-file plugins/nemo-anonymizer/examples/redact.yaml --num-records 2 --workspace my-workspace --fileset anonymizer-inputs --output-remote-path previews/redact.ndjson
+nemo anonymizer run --spec-file plugins/nemo-anonymizer/examples/redact.yaml --workspace my-workspace --fileset anonymizer-inputs
+nemo anonymizer run --spec-file plugins/nemo-anonymizer/examples/redact.yaml --workspace my-workspace --fileset anonymizer-inputs --watch
+nemo anonymizer run --spec-file plugins/nemo-anonymizer/examples/redact.yaml --workspace my-workspace --fileset anonymizer-inputs --watch --output-dir ./anonymizer-artifacts
+nemo anonymizer run --spec-file plugins/nemo-anonymizer/examples/redact.yaml --workspace my-workspace --fileset anonymizer-inputs --dry-run  # print schema/request without submitting
 ```
 
-Local execution can use local files, `http(s)` URLs, filesets, and locally
-defined Data Designer model providers. Remote execution supports `http(s)` URLs
-and filesets, and requires explicit `model_configs`.
+Preview runs through the Anonymizer plugin service and streams non-log NDJSON
+frames to stdout or `--output-file`; log frames go to stderr unless `--quiet`
+is set. The example spec points at `plugins/nemo-anonymizer/examples/anonymizer-input.csv`;
+pass `--fileset anonymizer-inputs` and the CLI uploads it before preview or run.
+Full anonymizer runs execute as NeMo Platform Jobs. When `--fileset` is set,
+run artifacts are stored in that fileset, and `--watch --output-dir` downloads
+them locally after success. SDK/API callers should use `http(s)` URLs or
+filesets directly and require explicit `model_configs`.
 
 Fileset input references point at one CSV or Parquet file:
 

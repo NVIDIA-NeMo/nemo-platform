@@ -30,17 +30,28 @@ An `AsyncAnonymizerResource` with the same surface is available via `AsyncNeMoPl
 
 | Method                                                   | Description                                                                                                              |
 |----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| `preview(request, *, workspace=None)`                    | Runs a streaming preview against the plugin service and returns an `AnonymizerPreviewResult` after the stream completes. |
+| `preview(request, *, workspace=None)`                    | Default preview method. Consumes `preview_stream` under the hood and returns an `AnonymizerPreviewResult` after the stream completes. |
+| `preview_stream(request, *, workspace=None)`             | Lower-level streaming method. Yields typed preview frames from the plugin service for callers that want logs, progress, or other frames as they arrive. |
 | `run(request, *, workspace=None, wait_until_done=False)` | Submits an `anonymizer.run` job to the NeMo Platform Jobs worker. Returns an `AnonymizerJobResource`. When `wait_until_done=True`, blocks until the job reaches a terminal state. |
 | `get_job_resource(job_name, workspace=None)`             | Returns an `AnonymizerJobResource` for an existing job (by job name).                                                    |
 
 `request` is a `PreviewRequest` or `AnonymizerRequest` instance from `nemo_anonymizer_plugin.app.task_config`. Both accept the same `config`, `data`, `model_configs`, and `selected_models` fields; `PreviewRequest` adds `num_records`.
 
-Both `preview` and `run` call the plugin service, so they require `model_configs` and reject local file paths in `data.source` — use a fileset reference or `http(s)` URL.
+SDK `preview`, `preview_stream`, and `run` call the plugin service directly, so they require `model_configs` and service-readable input in `data.source`: use a fileset reference or `http(s)` URL. The `nemo anonymizer` CLI can upload local CSV/Parquet files before making the same service calls when `--fileset` is supplied.
 
 ## AnonymizerPreviewResult
 
-`AnonymizerResource.preview` collects the frame stream and returns an `AnonymizerPreviewResult` once the stream completes.
+`AnonymizerResource.preview` collects frames from `preview_stream` and returns an `AnonymizerPreviewResult` once the stream completes. Use it for the normal SDK path: notebooks, scripts, and other callers that want the preview dataset and trace as pandas DataFrames.
+
+Use `preview_stream` when you need to process frames as they arrive, such as forwarding log frames to a UI, reporting progress, or implementing custom frame/NDJSON handling:
+
+```python
+for frame in sdk.anonymizer.preview_stream(request):
+    if frame.kind == "log":
+        print(frame.message)
+    elif frame.kind == "preview_dataset":
+        preview_records = frame.records
+```
 
 | Attribute / Method            | Description                                                                                          |
 |-------------------------------|------------------------------------------------------------------------------------------------------|
@@ -54,6 +65,7 @@ Both `preview` and `run` call the plugin service, so they require `model_configs
 `AnonymizerPreviewResult` holds everything in memory; nothing is persisted to disk by default. The `dataset` and `trace_dataset` fields are regular pandas DataFrames and can be saved with `to_csv` / `to_parquet`.
 
 </Accordion>
+
 ## AnonymizerJobResource
 
 `AnonymizerResource.run` returns an `AnonymizerJobResource`. You can also use `AnonymizerResource.get_job_resource` to get one for an existing job.
@@ -78,7 +90,7 @@ The async variant (`AsyncAnonymizerJobResource`) exposes the same surface with `
 
 ## AnonymizerJobResults
 
-`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory. The same class also works for the local `run run` flow — point it at the artifact directory the local job results manager logs:
+`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory. You can also construct the same class directly when you already have an extracted artifacts directory:
 
 ```python
 from pathlib import Path
@@ -141,7 +153,7 @@ The plugin-owned API-boundary input spec:
 
 | Field          | Type           | Description                                                                              |
 |----------------|----------------|------------------------------------------------------------------------------------------|
-| `source`       | `str`          | Local path, `http(s)` URL, or fileset reference for a CSV / Parquet file.                |
+| `source`       | `str`          | `http(s)` URL or fileset reference for SDK/API calls. The CLI also accepts a local CSV/Parquet path when `--fileset` is supplied. |
 | `text_column`  | `str` (default `"text"`) | Column containing text to anonymize.                                          |
 | `id_column`    | `str \\| None`  | Optional record identifier column.                                                       |
 | `data_summary` | `str \\| None`  | Optional short description of the data passed to Anonymizer library prompts.             |

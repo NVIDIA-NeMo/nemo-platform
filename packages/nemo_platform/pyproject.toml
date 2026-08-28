@@ -700,8 +700,8 @@ auditor = "nemo_auditor.docs:get_docs_path"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.functions"]
-"anonymizer.preview" = "nemo_anonymizer_plugin.functions.preview:PreviewFunction"
 "data-designer.preview" = "nemo_data_designer_plugin.functions.preview:PreviewFunction"
+"anonymizer.preview" = "nemo_anonymizer_plugin.functions.preview:PreviewFunction"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.inference_middleware"]

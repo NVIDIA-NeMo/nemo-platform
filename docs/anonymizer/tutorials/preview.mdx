@@ -15,15 +15,15 @@ For detection and replacement strategy details, see the [open-source library doc
 
 Complete the [tutorials prerequisites](/documentation/anonymize-data/tutorials#prerequisites), which cover:
 
-- A running NeMo Platform cluster with the `nemo anonymizer` CLI available (see [Setup](/documentation/get-started)).
+- A running NeMo Platform cluster with the Anonymizer plugin service mounted (see [Setup](/documentation/get-started)).
 - An inference provider configured (default examples use `nvidia-build`).
-- A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded.
+- The checked-in sample CSV at `plugins/nemo-anonymizer/examples/anonymizer-input.csv`. The CLI uploads it when you pass `--fileset anonymizer-inputs`.
 
 ## What `preview` Does
 
-`preview` runs the Anonymizer pipeline on a small number of records and streams results back from the plugin service. Both surfaces (Python SDK and CLI) produce the same data; the SDK collects it into a `pandas` DataFrame while the CLI prints newline-delimited JSON frames.
+`preview` runs the Anonymizer pipeline on a small number of records and streams results back from the plugin service. The CLI writes non-log NDJSON frames to stdout and log frames to stderr. The Python SDK collects the same stream into a `pandas` DataFrame. The direct HTTP API returns raw newline-delimited JSON frames.
 
-The plugin emits four frame kinds:
+The plugin emits these frame kinds:
 
 | Frame              | Purpose                                                                              |
 |--------------------|--------------------------------------------------------------------------------------|
@@ -37,13 +37,13 @@ Available preview surfaces:
 
 | Surface                          | Where it runs                       | Local paths | `model_configs` required |
 |----------------------------------|--------------------------------------|-------------|--------------------------|
-| `sdk.anonymizer.preview(...)`    | Anonymizer plugin service (remote)  | Rejected    | Required                 |
-| `nemo anonymizer preview run`    | Local CLI process                   | Allowed     | Optional                 |
-| `nemo anonymizer preview submit` | Anonymizer plugin service (remote)  | Rejected    | Required                 |
+| `nemo anonymizer preview`        | Anonymizer plugin service (remote)  | Uploaded with `--fileset` | Required |
+| `sdk.anonymizer.preview(...)`    | Anonymizer plugin service (remote)  | No          | Required                 |
+| `POST /apis/anonymizer/v2/workspaces/{workspace}/preview` | Anonymizer plugin service (remote) | No | Required |
 
 ## Step 1: Build a `PreviewRequest`
 
-A preview request bundles the `AnonymizerConfig`, the input spec, and optional `model_configs` / `selected_models`.
+A preview request bundles the `AnonymizerConfig`, the input spec, and `model_configs` / `selected_models`. `model_configs` is optional on the request model for compatibility, but required by plugin-service preview execution.
 
 ```python
 import os
@@ -83,15 +83,69 @@ Field reference:
 | Field             | Type                                  | Notes                                                                                                                  |
 |-------------------|---------------------------------------|------------------------------------------------------------------------------------------------------------------------|
 | `config`          | [`AnonymizerConfig`](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) | The library config. The example uses `Redact`; the plugin also supports `substitute`, `annotate`, `hash`, and `rewrite`. |
-| `data.source`     | string                                | Local path, `http(s)` URL, or fileset reference. See [input source forms](#input-source-forms).                        |
+| `data.source`     | string                                | Local CSV/Parquet path for CLI with `--fileset`, `http(s)` URL, or fileset reference. SDK/API callers should use `http(s)` or fileset. See [input source forms](#input-source-forms). |
 | `data.text_column`| string                                | Column containing text to anonymize. Defaults to `text`.                                                               |
 | `data.id_column`  | string                                | Optional record identifier column.                                                                                     |
 | `data.data_summary`| string                               | Optional short description passed to Anonymizer library prompts.                                                       |
-| `model_configs`   | list                                  | Data Designer `ModelConfig` entries. `provider` must reference an Inference Gateway provider name (or `workspace/provider`). Omit to use Anonymizer library defaults (CLI local execution only). |
+| `model_configs`   | list                                  | Optional on the request model, but required for remote preview execution in the plugin service. Data Designer `ModelConfig` entries; each `provider` must reference an Inference Gateway provider name (or `workspace/provider`). |
 | `selected_models` | object                                | Optional `detection` / `replace` / `rewrite` overrides on top of the bundled defaults. Requires `model_configs`.       |
 | `num_records`     | int (≥ 1)                             | Number of records to preview. Defaults to 10.                                                                          |
 
-## Step 2: Run with the Python SDK
+For CLI usage, the repo includes a ready-to-run shared spec at
+`plugins/nemo-anonymizer/examples/redact.yaml`. It points at the checked-in CSV
+so the CLI can upload it. Use `--num-records` to choose the preview sample size:
+
+```yaml
+# plugins/nemo-anonymizer/examples/redact.yaml
+config:
+  replace:
+    kind: redact
+    format_template: "[REDACTED_{label}]"
+data:
+  source: "plugins/nemo-anonymizer/examples/anonymizer-input.csv"
+  text_column: biography
+  id_column: id
+model_configs:
+  - alias: gliner-pii-detector
+    provider: nvidia-build
+    model: nvidia/gliner-pii
+  - alias: gpt-oss-120b
+    provider: nvidia-build
+    model: openai/gpt-oss-120b
+  - alias: nemotron-30b-thinking
+    provider: nvidia-build
+    model: nvidia/nemotron-3-nano-30b-a3b
+```
+
+## Step 2: Run with the CLI
+
+```bash
+nemo anonymizer preview \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+  --num-records 2 \
+  --workspace "${NMP_WORKSPACE:-default}" \
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs \
+  --output-file preview.ndjson
+```
+
+The command streams non-log frames to stdout by default. With `--output-file`,
+frames are written to that file instead. Log frames are printed to stderr; add
+`--quiet` to suppress them. Add `--output-remote-path previews/redact.ndjson`
+to save the same non-log stream in `--fileset` after the preview succeeds.
+
+Filter the preview dataset from the NDJSON stream:
+
+```bash
+jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' \
+  preview.ndjson
+```
+
+## Step 3: Run with the Python SDK
+
+Use `preview()` for the normal SDK path. It consumes the service stream and
+returns an `AnonymizerPreviewResult` with pandas DataFrames after the preview
+completes:
 
 ```python
 import os
@@ -109,11 +163,24 @@ preview.failed_records     # list[dict] of per-record failures (usually empty)
 preview.display_record(0)  # render record 0 with entity highlights in a notebook
 ```
 
-`AnonymizerResource.preview` calls the plugin service, so the same constraints as `preview submit` apply: use a fileset or `http(s)` source, and include `model_configs`.
+Both SDK preview methods call the plugin service directly. Use a fileset or
+`http(s)` source, and include `model_configs`.
+
+Use `preview_stream()` when you need frame-by-frame handling, such as forwarding
+logs or progress to a UI, or writing custom NDJSON/frame handling:
+
+```python
+for frame in sdk.anonymizer.preview_stream(request):
+    if frame.kind == "log":
+        print(frame.message)
+    elif frame.kind == "preview_dataset":
+        preview_records = frame.records
+```
 
 <Accordion title="Async client">
 
-`AsyncAnonymizerResource.preview` has the same signature and return type:
+`AsyncAnonymizerResource.preview` has the same signature and return type. Use
+`preview_stream` with `async for` when you need frame-by-frame handling:
 
 ```python
 import os
@@ -124,10 +191,14 @@ async_sdk = AsyncNeMoPlatform(
     workspace=WORKSPACE,
 )
 preview = await async_sdk.anonymizer.preview(request)
+
+async for frame in async_sdk.anonymizer.preview_stream(request):
+    ...
 ```
 
 </Accordion>
-## Step 3: Persist Preview Records
+
+## Step 4: Persist Preview Records
 
 `AnonymizerPreviewResult.dataset` and `trace_dataset` are pandas DataFrames, so save them with standard pandas methods:
 
@@ -141,62 +212,56 @@ preview.dataset.to_parquet("anonymized-preview.parquet", index=False)
 `AnonymizerPreviewResult` stores everything in memory; nothing is persisted to disk by default. The `dataset` field is a regular pandas DataFrame and can be saved with `to_csv` or `to_parquet`.
 
 </Accordion>
-## Step 4: Run from the CLI (Alternative)
 
-The CLI accepts the same request shape as a YAML spec file. Use `preview run` for local execution (allows local paths, model configs optional) or `preview submit` for the plugin service path (same as `sdk.anonymizer.preview`).
+## Step 5: Call the HTTP API Directly
 
-Write the spec to YAML:
+The HTTP API accepts the same `PreviewRequest` shape as JSON and streams raw NDJSON frames.
+
+Write the request body to JSON:
 
 ```python
-import yaml
+import json
 from pathlib import Path
 
-spec_path = Path("/tmp/anonymizer-preview.yaml")
-spec_path.write_text(yaml.safe_dump(request.model_dump(mode="json", exclude_none=True)))
+request_path = Path("anonymizer-preview.json")
+request_path.write_text(json.dumps(request.model_dump(mode="json", exclude_none=True)))
 ```
 
-Run preview locally:
+Call the preview endpoint:
 
 ```bash
-nemo anonymizer preview run \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}"
+curl -N -X POST \
+  "${NMP_BASE_URL:-http://localhost:8080}/apis/anonymizer/v2/workspaces/${NMP_WORKSPACE:-default}/preview" \
+  -H "Content-Type: application/json" \
+  --data-binary @anonymizer-preview.json
 ```
 
-Or submit to the plugin service:
+Filter the response with `jq`:
 
 ```bash
-nemo anonymizer preview submit \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}" \
-  --base-url "${NMP_BASE_URL:-http://localhost:8080}"
-```
-
-Both commands stream NDJSON frames to stdout. Filter with `jq`:
-
-```bash
-nemo anonymizer preview run \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}" \
-  > /tmp/anonymizer-preview.ndjson
+curl -N -X POST \
+  "${NMP_BASE_URL:-http://localhost:8080}/apis/anonymizer/v2/workspaces/${NMP_WORKSPACE:-default}/preview" \
+  -H "Content-Type: application/json" \
+  --data-binary @anonymizer-preview.json \
+  > anonymizer-preview.ndjson
 
 jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' \
-  /tmp/anonymizer-preview.ndjson
+  anonymizer-preview.ndjson
 ```
 
-If `preview submit` returns 404 against the gateway, the plugin service isn't mounted. Restart `nemo services run` so the plugin is discovered and remounts `/apis/anonymizer/...`; see [Setup](/documentation/get-started).
+If the preview endpoint returns 404 against the gateway, the plugin service isn't mounted. Restart `nemo services run` so the plugin is discovered and remounts `/apis/anonymizer/...`; see [Setup](/documentation/get-started).
 
 ## Input Source Forms
 
-The plugin accepts three forms for `data.source`:
+The plugin accepts these forms for `data.source`:
 
-| Form                                  | `sdk.anonymizer.preview` / `preview submit` | `preview run` |
-|---------------------------------------|-----------------------------------|---------------|
-| Local path (`/tmp/input.csv`)         | No                                | Yes           |
-| HTTP(S) URL (`https://.../input.csv`) | Yes                               | Yes           |
-| Fileset reference                     | Yes                               | Yes           |
+| Form                                  | CLI preview | SDK/API preview |
+|---------------------------------------|-------------|-----------------|
+| Local path (`./data/input.csv`)       | Yes, with `--fileset` | No |
+| HTTP(S) URL (`https://.../input.csv`) | Yes         | Yes             |
+| Fileset reference                     | Yes         | Yes             |
 
-Fileset references take any of these forms; the workspace and fileset must already exist:
+Fileset references take any of these forms:
 
 ```text
 fileset://<workspace>/<fileset>#<path>
@@ -214,13 +279,13 @@ If you want to validate just the `AnonymizerConfig` (and optionally a `model_con
 from pathlib import Path
 import yaml
 
-Path("/tmp/anonymizer-config.yaml").write_text(yaml.safe_dump({
+Path("./anonymizer-config.yaml").write_text(yaml.safe_dump({
     "replace": {"kind": "redact", "format_template": "[REDACTED_{label}]"},
 }))
 ```
 
 ```bash
-nemo anonymizer validate --config /tmp/anonymizer-config.yaml
+nemo anonymizer validate --config ./anonymizer-config.yaml
 ```
 
 `validate` checks the config against the model selection (for example, that a `Substitute` strategy has a `replacement_generator` model defined) and prints `Config is valid.` on success. It does not accept `data.source`, so input-source validation happens during `preview` or `run`.

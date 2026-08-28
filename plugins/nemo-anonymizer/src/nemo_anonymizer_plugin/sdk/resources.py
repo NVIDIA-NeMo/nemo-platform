@@ -179,19 +179,21 @@ class AnonymizerResource(_BaseAnonymizerResource[NeMoPlatform]):
     ) -> AnonymizerPreviewResult:
         """Run a streaming preview against the Anonymizer service.
 
-        Returns an ``AnonymizerPreviewResult`` once the stream finishes.
+        This convenience method consumes ``preview_stream`` under the hood and
+        returns an ``AnonymizerPreviewResult`` once the stream finishes.
         """
         with _PreviewFrameCollector() as collector:
-            for frame in self._preview(request=request, workspace=workspace):
+            for frame in self.preview_stream(request, workspace=workspace):
                 collector.accept(frame)
             return _build_preview_result(collector)
 
-    def _preview(
+    def preview_stream(
         self,
-        *,
         request: PreviewRequest,
-        workspace: str | None,
+        *,
+        workspace: str | None = None,
     ) -> Iterator[PreviewFrame]:
+        """Stream typed preview frames from the Anonymizer service."""
         with self._client().stream(
             "POST",
             self._url("/preview", workspace),
@@ -255,17 +257,23 @@ class AsyncAnonymizerResource(_BaseAnonymizerResource[AsyncNeMoPlatform]):
         *,
         workspace: str | None = None,
     ) -> AnonymizerPreviewResult:
+        """Run a streaming preview against the Anonymizer service.
+
+        This convenience method consumes ``preview_stream`` under the hood and
+        returns an ``AnonymizerPreviewResult`` once the stream finishes.
+        """
         with _PreviewFrameCollector() as collector:
-            async for frame in self._preview(request=request, workspace=workspace):
+            async for frame in self.preview_stream(request, workspace=workspace):
                 collector.accept(frame)
             return _build_preview_result(collector)
 
-    async def _preview(
+    async def preview_stream(
         self,
-        *,
         request: PreviewRequest,
-        workspace: str | None,
+        *,
+        workspace: str | None = None,
     ) -> AsyncIterator[PreviewFrame]:
+        """Stream typed preview frames from the Anonymizer service."""
         async with self._client().stream(
             "POST",
             self._url("/preview", workspace),

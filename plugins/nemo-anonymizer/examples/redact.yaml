@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Run from the repo root. The CLI uploads the local CSV to --fileset before
+# calling the preview service or submitting the run job.
+#
+#   nemo anonymizer preview \
+#     --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+#     --num-records 2 \
+#     --fileset anonymizer-inputs \
+#     --workspace default \
+#     --output-file preview.ndjson
+#
+#   nemo anonymizer run \
+#     --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+#     --fileset anonymizer-inputs \
+#     --workspace default \
+#     --watch \
+#     --output-dir ./anonymizer-artifacts
+
+config:
+  replace:
+    kind: redact
+    format_template: "[REDACTED_{label}]"
+data:
+  source: "plugins/nemo-anonymizer/examples/anonymizer-input.csv"
+  text_column: biography
+  id_column: id
+model_configs:
+  - alias: gliner-pii-detector
+    provider: nvidia-build
+    model: nvidia/gliner-pii
+  - alias: gpt-oss-120b
+    provider: nvidia-build
+    model: openai/gpt-oss-120b
+  - alias: nemotron-30b-thinking
+    provider: nvidia-build
+    model: nvidia/nemotron-3-nano-30b-a3b

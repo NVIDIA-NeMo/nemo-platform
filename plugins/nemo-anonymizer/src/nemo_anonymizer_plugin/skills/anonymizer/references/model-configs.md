@@ -9,10 +9,8 @@
 
 | Surface                            | Status                  | `model_configs` required?                                                                                  |
 |------------------------------------|-------------------------|------------------------------------------------------------------------------------------------------------|
-| `nemo anonymizer preview run`      | Available (local)       | No — Anonymizer library defaults are used.                                                                 |
-| `nemo anonymizer run run`          | Available (local)       | No — Anonymizer library defaults are used.                                                                 |
-| `nemo anonymizer preview submit`   | Available (plugin svc)  | **Yes** — needed so requests route through the NeMo Platform Inference Gateway instead of build.nvidia.com directly. |
-| `nemo anonymizer run submit`       | Available (Jobs worker) | **Yes** — the job routes through the NeMo Platform Inference Gateway.                                                |
+| `nemo anonymizer preview` / `sdk.anonymizer.preview(...)` / preview HTTP API | Available (plugin svc) | **Yes** — needed so requests route through the NeMo Platform Inference Gateway instead of build.nvidia.com directly. |
+| `nemo anonymizer run`              | Available (Jobs worker) | **Yes** — the job routes through the NeMo Platform Inference Gateway.                                      |
 | Strategy is `Substitute`           | n/a                     | Effectively yes for plugin-service / Jobs execution; provide a `replacement_generator`-capable alias.      |
 | Mode is `rewrite`                  | n/a                     | Effectively yes for plugin-service / Jobs execution; provide aliases for the Anonymizer library rewrite roles. |
 
@@ -33,7 +31,7 @@ The `provider` field is resolved at request time against NeMo Platform. The stri
 
 ## `selected_models` (role bindings)
 
-`selected_models` is a partial mapping that overrides the Anonymizer library's bundled defaults. Each section is optional; omitted sections fall back to defaults. Use Anonymizer library role names exactly.
+`selected_models` is a partial mapping that overrides the Anonymizer library's bundled role-selection defaults. Each section is optional; omitted sections fall back to the library's role aliases, which must be present in the explicit plugin `model_configs`. Use Anonymizer library role names exactly.
 
 ```yaml
 selected_models:
@@ -54,9 +52,7 @@ Only emit a section if you actually want to override its defaults — overrides 
 
 ## Common patterns
 
-**Local default-everything preview** — no `model_configs`, no `selected_models`. Lets the Anonymizer library use its bundled defaults. Works for `preview run` and `run run`.
-
-**Plugin-service default model pool** (`preview submit`, `run submit`) — provide the aliases used by the Anonymizer library defaults:
+**Default role alias pool** (`preview`, `run`) — provide explicit Inference Gateway-backed aliases used by the Anonymizer library defaults:
 
 ```yaml
 model_configs:

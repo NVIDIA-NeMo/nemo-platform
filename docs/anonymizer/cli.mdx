@@ -11,14 +11,18 @@ This reference covers the `nemo anonymizer` commands exposed by the Anonymizer p
 
 ## Command Surface
 
-| Command                          | Source                          | Description                                                  |
-|----------------------------------|---------------------------------|--------------------------------------------------------------|
-| `nemo anonymizer validate`       | Manual Typer command            | Validate an `AnonymizerConfig` (and optional `model_configs`).|
-| `nemo anonymizer preview run`    | Generated from `NemoFunction`   | Local streaming preview.                                     |
-| `nemo anonymizer preview submit` | Generated from `NemoFunction`   | Remote streaming preview against the plugin service.         |
-| `nemo anonymizer run run`        | Generated from `NemoJob`        | Local job execution in the CLI process.                      |
-| `nemo anonymizer run submit`     | Generated from `NemoJob`        | Submit an `anonymizer.run` job to the NeMo Platform Jobs worker. |
-| `nemo anonymizer run explain`    | Generated from `NemoJob`        | Print the job key, submit endpoint, and JSON schemas.        |
+| Command                          | Description                                                  |
+|----------------------------------|--------------------------------------------------------------|
+| `nemo anonymizer preview`        | Stream a small preview through the Anonymizer plugin service. |
+| `nemo anonymizer validate`       | Validate an `AnonymizerConfig` (and optional `model_configs`). |
+| `nemo anonymizer run`            | Submit an `anonymizer.run` job to the NeMo Platform Jobs worker. |
+| `nemo anonymizer run --watch`    | Submit an `anonymizer.run` job and stream status/logs until terminal state. |
+| `nemo anonymizer run --dry-run`  | Print the job schema and resolved submit request without creating a job. |
+
+The example commands below use the checked-in spec under
+`plugins/nemo-anonymizer/examples/`. The spec points at the checked-in
+`plugins/nemo-anonymizer/examples/anonymizer-input.csv`; pass `--fileset anonymizer-inputs`
+and the CLI uploads that local CSV before calling the platform service.
 
 ## `nemo anonymizer validate`
 
@@ -26,8 +30,8 @@ Validate an `AnonymizerConfig` YAML file against the model selection. Useful for
 
 ```bash
 nemo anonymizer validate \
-  --config /tmp/anonymizer-config.yaml \
-  [--model-configs /tmp/anonymizer-model-configs.yaml]
+  --config ./anonymizer-config.yaml \
+  [--model-configs ./anonymizer-model-configs.yaml]
 ```
 
 | Flag              | Required | Description                                                                                       |
@@ -35,84 +39,117 @@ nemo anonymizer validate \
 | `--config`        | yes      | Path to the `AnonymizerConfig` YAML.                                                              |
 | `--model-configs` | no       | Optional path to a model-configs YAML to validate alongside the config (same shape the library expects). |
 
-The command does not accept `data.source`. Input-source validation happens during `preview` or `run`.
+The command does not accept `data.source`. Input-source validation happens during preview API calls or `run`.
 
 ## `nemo anonymizer preview`
 
-Both `preview run` and `preview submit` take a spec file matching `PreviewRequest`.
+Streams a small anonymized sample through the Anonymizer plugin service.
 
 ```bash
-nemo anonymizer preview run \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}"
-
-nemo anonymizer preview submit \
-  --spec-file /tmp/anonymizer-preview.yaml \
+nemo anonymizer preview \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+  --num-records 2 \
   --workspace "${NMP_WORKSPACE:-default}" \
-  --base-url "${NMP_BASE_URL:-http://localhost:8080}"
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs
+
+nemo anonymizer preview \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+  --num-records 2 \
+  --workspace "${NMP_WORKSPACE:-default}" \
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs \
+  --output-file preview.ndjson \
+  --quiet
+
+nemo anonymizer preview \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+  --num-records 2 \
+  --workspace "${NMP_WORKSPACE:-default}" \
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs \
+  --output-remote-path previews/redact.ndjson
 ```
 
-| Flag             | Description                                                                                       |
-|------------------|---------------------------------------------------------------------------------------------------|
-| `--spec-file`    | Path to the `PreviewRequest` YAML.                                                                |
-| `--workspace`    | NeMo Platform workspace. Used to resolve fileset references and Inference Gateway providers.   |
-| `--base-url`     | Override the platform base URL (typically auto-populated from the CLI config).                    |
+| Flag          | Description                                                                 |
+|---------------|-----------------------------------------------------------------------------|
+| `--spec-file` | Path to the `PreviewRequest` YAML or JSON file.                             |
+| `--spec`      | Inline `PreviewRequest` JSON string.                                        |
+| `--num-records` | Override the number of records to preview from the spec.                  |
+| `--workspace` | Workspace used for fileset resolution and Inference Gateway providers.      |
+| `--base-url`  | Override the platform base URL (typically auto-populated from the CLI config). |
+| `--cluster`   | Resolve the platform base URL from a configured cluster name.                |
+| `--request-id`| Set the `X-Request-ID` header.                                              |
+| `--fileset`   | Fileset used to upload local `data.source` files and store `--output-remote-path` output. |
+| `--input-remote-path` | Remote `.csv` or `.parquet` fileset path to use when uploading a local input file. Defaults to the input filename. |
+| `--quiet`     | Suppress preview log frames on stderr.                                      |
+| `--output-file` | Write non-log preview frames to an NDJSON file instead of stdout.         |
+| `--output-remote-path` | Write non-log preview frames to this path in `--fileset` after a successful stream. |
 
-### Preview source kinds
+Preview emits non-log NDJSON frames to stdout or `--output-file`. Log frames are
+printed to stderr unless `--quiet` is set. The stream may include
+`preview_dataset`, `trace_dataset`, `failed_records`, `heartbeat`, `done`, and
+`error` frames. The command exits with status 1 when the service emits an
+`error` frame. If the spec uses a local CSV or Parquet path, pass `--fileset`
+so the CLI can upload the file and rewrite `data.source` to a fileset reference
+before previewing.
 
-| Form                                  | `preview run` | `preview submit` |
-|---------------------------------------|---------------|------------------|
-| Local path (`/tmp/input.csv`)         | yes           | no               |
-| HTTP(S) URL (`https://.../input.csv`) | yes           | yes              |
-| Fileset reference (`fs#path`)         | yes           | yes              |
-
-### Preview output
-
-`preview` streams newline-delimited JSON frames to stdout. Filter with `jq`:
-
-```bash
-nemo anonymizer preview run --spec-file /tmp/anonymizer-preview.yaml > /tmp/preview.ndjson
-
-jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' /tmp/preview.ndjson
-```
-
-Frame kinds: `log`, `preview_dataset`, `trace_dataset`, `failed_records`, `heartbeat`, `done`, `error`. See the [preview tutorial](/documentation/anonymize-data/tutorials/preview-a-config) for details.
+Use the Python SDK (`sdk.anonymizer.preview(...)`) when you want the stream
+collected into an `AnonymizerPreviewResult` with pandas DataFrames. See the
+[preview tutorial](/documentation/anonymize-data/tutorials/preview-a-config)
+for examples.
 
 ## `nemo anonymizer run`
 
 ```bash
-nemo anonymizer run run --spec-file /tmp/anonymizer-run.yaml
-
-nemo anonymizer run submit \
-  --spec-file /tmp/anonymizer-run.yaml \
+nemo anonymizer run \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
   --workspace "${NMP_WORKSPACE:-default}" \
-  --base-url "${NMP_BASE_URL:-http://localhost:8080}"
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs
 
-nemo anonymizer run explain
+nemo anonymizer run \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+  --workspace "${NMP_WORKSPACE:-default}" \
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs \
+  --watch
+
+nemo anonymizer run \
+  --spec-file plugins/nemo-anonymizer/examples/redact.yaml \
+  --workspace "${NMP_WORKSPACE:-default}" \
+  --base-url "${NMP_BASE_URL:-http://localhost:8080}" \
+  --fileset anonymizer-inputs \
+  --watch \
+  --output-dir ./anonymizer-artifacts
 ```
 
 | Flag             | Description                                                                                       |
 |------------------|---------------------------------------------------------------------------------------------------|
 | `--spec-file`    | Path to the `AnonymizerRequest` YAML.                                                             |
 | `--workspace`    | Workspace used for fileset resolution, Inference Gateway providers, and job placement.            |
+| `--base-url`     | Override the platform base URL (typically auto-populated from the CLI config).                    |
+| `--fileset`      | Fileset used to upload local `data.source` files and store run artifacts.                         |
+| `--input-remote-path` | Remote `.csv` or `.parquet` fileset path to use when uploading a local input file. Defaults to the input filename. |
+| `--watch`        | Stream the submitted job status/logs until it reaches a terminal state.                           |
+| `--output-dir`   | Download run artifacts into this local directory after a successful `--watch`.                    |
+| `--timeout`      | Maximum watch time in seconds.                                                                    |
+| `--poll-interval`| Seconds between watch status checks.                                                              |
+| `--dry-run`      | Print the job schema and resolved submit request without creating the job. Cannot be combined with `--watch`. |
 
-### Run source kinds
+### Preview and run source kinds
 
-| Form                                  | `run run` | `run submit` |
-|---------------------------------------|-----------|--------------|
-| Local path (`/tmp/input.csv`)         | yes       | no           |
-| HTTP(S) URL (`https://.../input.csv`) | yes       | yes          |
-| Fileset reference (`fs#path`)         | yes       | yes          |
+| Form                                  | `preview` CLI | `run` CLI | SDK/API |
+|---------------------------------------|---------------|-----------|---------|
+| Local path (`./data/input.csv`)       | yes, with `--fileset` | yes, with `--fileset` | no |
+| HTTP(S) URL (`https://.../input.csv`) | yes           | yes       | yes     |
+| Fileset reference (`fs#path`)         | yes           | yes       | yes     |
 
 ### Run output
 
-`run run` prints `{"exit_code": 0}` on success. The local job results manager logs the artifact directory to stderr:
+`nemo anonymizer run` submits an `anonymizer.run` job to the Jobs service and prints the assigned job record. With `--watch`, it prints the submitted job record and then streams job status/logs until the job reaches a terminal state. If `--output-dir` is set, the CLI downloads the final `artifacts` result after a successful watch.
 
-```text
-Saved result 'artifacts' to file:///.../persistent/results/artifacts
-```
-
-The artifact directory contains:
+The job writes an `artifacts` result containing:
 
 | File                  | Description                                                  |
 |-----------------------|--------------------------------------------------------------|
@@ -121,13 +158,11 @@ The artifact directory contains:
 | `metadata.json`       | Run metadata (includes original text column).                |
 | `failed_records.json` | Per-record failures. Only written when records failed.       |
 
-`run submit` submits an `anonymizer.run` job to the Jobs service and prints the assigned job name and submit endpoint:
-
-```text
-  |-- job name: anonymizer-run-2026-05-12-abc123
-  |-- submit endpoint: /apis/anonymizer/v2/workspaces/default/jobs/run
-{"name": "anonymizer-run-2026-05-12-abc123", ...}
-```
+When `--fileset` is supplied, run artifacts are stored in that fileset under
+the job output path, for example
+`jobs/<job-name>/results/<attempt-id>/artifacts/...`. The CLI also uses the
+same fileset to upload a local `data.source` file before submission. Without
+`--fileset`, Jobs chooses the default output storage for the job.
 
 Track and pull artifacts using either the standard `nemo jobs ...` commands or the Python SDK:
 
@@ -145,31 +180,27 @@ dataset = results.load_dataset()
 
 See [SDK Resources](/documentation/anonymize-data/sdk-resources) for the full `AnonymizerJobResource` / `AnonymizerJobResults` surface.
 
-Compared to `run run`, `run submit` rejects local file paths in `data.source` (use a fileset reference or `http(s)` URL) and requires explicit `model_configs` because the job runs outside the CLI process.
+Full runs require explicit `model_configs` because the job runs outside the CLI process. The CLI can upload local input files when `--fileset` is supplied; SDK/API callers should use a fileset reference or `http(s)` URL in `data.source`.
 
 ## Spec File Reference
 
-Both preview and run specs use the shared `AnonymizerRequest` shape:
+Preview specs use the `PreviewRequest` shape. Run specs use the shared
+`AnonymizerRequest` shape, which is the same request without `num_records`:
 
 | Field             | Type                                            | Required | Notes                                                                  |
 |-------------------|-------------------------------------------------|----------|------------------------------------------------------------------------|
 | `config`          | `AnonymizerConfig`                              | yes      | Library config. See the [library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs). |
-| `data.source`     | string                                          | yes      | Local path, `http(s)` URL, or fileset reference.                       |
+| `data.source`     | string                                          | yes      | Local CSV/Parquet path for CLI with `--fileset`, `http(s)` URL, or fileset reference. SDK/API callers should use `http(s)` or fileset. |
 | `data.text_column`| string                                          | no       | Defaults to `text`.                                                    |
 | `data.id_column`  | string                                          | no       | Optional record identifier column.                                     |
 | `data.data_summary` | string                                        | no       | Optional short description of the data.                                |
-| `model_configs`   | list of Data Designer `ModelConfig`             | depends  | Required for `preview submit` and `run submit`; optional for `preview run` and `run run`. |
+| `model_configs`   | list of Data Designer `ModelConfig`             | yes      | Required so preview/run route model calls through the Inference Gateway. |
 | `selected_models` | object with `detection` / `replace` / `rewrite` | no       | Role overrides on top of bundled defaults. Requires `model_configs`.   |
-
-Preview-only:
-
-| Field         | Type    | Required | Notes                                                                  |
-|---------------|---------|----------|------------------------------------------------------------------------|
-| `num_records` | int ≥ 1 | no       | Defaults to 10. Capped by the service's `preview_num_records.max`.     |
+| `num_records`     | int                                             | preview only | Number of records to preview. Defaults to 10.                      |
 
 ## Fileset Reference Forms
 
-The `data.source` field accepts three fileset forms; the workspace and fileset must already exist:
+The `data.source` field accepts three fileset forms:
 
 ```text
 fileset://<workspace>/<fileset>#<path>

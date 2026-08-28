@@ -66,7 +66,10 @@ def test_make_anonymizer_preserves_root_logging_when_upstream_clobbers_it(monkey
         root.setLevel(logging.INFO)
         monkeypatch.setattr(worker_module, "Anonymizer", ClobberingAnonymizer)
 
-        anonymizer = worker_module._make_anonymizer(model_configs_yaml="", dd_providers=None)
+        anonymizer = worker_module._make_anonymizer(
+            model_configs_yaml="model_configs:\n- alias: detector\n  model: test/model\n  provider: provider\n",
+            dd_providers=None,
+        )
 
         assert isinstance(anonymizer, ClobberingAnonymizer)
         assert root.handlers == [sentinel_handler]

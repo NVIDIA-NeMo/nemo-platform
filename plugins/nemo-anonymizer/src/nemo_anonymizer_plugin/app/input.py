@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-import anyio
 from anonymizer.config.anonymizer_config import AnonymizerInput
+from anyio.to_thread import run_sync as run_sync_in_worker_thread
 from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -35,7 +35,11 @@ class AnonymizerInputSpec(BaseModel):
     is constructed.
     """
 
-    source: str = Field(description="Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.")
+    source: str = Field(
+        description=(
+            "Local CSV/Parquet path for CLI calls with --fileset, or HTTP(S) URL / fileset reference for SDK/API calls."
+        )
+    )
     text_column: str = Field(default="text", min_length=1, description="Column containing text to anonymize.")
     id_column: str | None = Field(default=None, description="Optional column to use as record identifier.")
     data_summary: str | None = Field(default=None, description="Short description of the data.")
@@ -106,7 +110,7 @@ async def prepare_anonymizer_input_async(
         if sdk is None:
             raise AnonymizerInvalidConfigError("Fileset input requires a NeMo Platform SDK.")
         if isinstance(sdk, NeMoPlatform):
-            return await anyio.to_thread.run_sync(
+            return await run_sync_in_worker_thread(
                 partial(
                     prepare_anonymizer_input,
                     data,

@@ -4,13 +4,25 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx
 import pandas as pd
-from nemo_anonymizer_plugin.functions.preview import TraceDatasetFrame
+from anonymizer.config.anonymizer_config import AnonymizerConfig
+from anonymizer.config.replace_strategies import Redact
+from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec
+from nemo_anonymizer_plugin.app.task_config import PreviewRequest
+from nemo_anonymizer_plugin.functions.preview import LogFrame, PreviewDatasetFrame, TraceDatasetFrame
 from nemo_anonymizer_plugin.sdk import display as display_module
 from nemo_anonymizer_plugin.sdk.errors import AnonymizerClientError, AnonymizerConfigValidationError
-from nemo_anonymizer_plugin.sdk.resources import AnonymizerPreviewResult, _get_error, _PreviewFrameCollector
+from nemo_anonymizer_plugin.sdk.resources import (
+    AnonymizerPreviewResult,
+    AnonymizerResource,
+    _get_error,
+    _PreviewFrameCollector,
+)
+from nemo_platform_plugin.functions.frames import Done
 
 
 def _status_error(status_code: int, content: bytes) -> httpx.HTTPStatusError:
@@ -85,3 +97,89 @@ def test_preview_result_display_record_matches_upstream_display_cycle(
     assert captured["record_index"] == 0
     assert captured["resolved_text_column"] == "body"
     assert result._display_cycle_index == 1
+
+
+def test_preview_stream_decodes_typed_frames() -> None:
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def iter_lines(self) -> list[str]:
+            return [
+                '{"kind":"log","level":"info","message":"loading models"}',
+                '{"kind":"preview_dataset","records":[{"text":"[REDACTED_PERSON]"}]}',
+                '{"kind":"done"}',
+            ]
+
+    class Client:
+        def stream(self, method: str, url: str, **kwargs: object) -> Response:
+            calls.append((method, url, kwargs))
+            return Response()
+
+    platform = SimpleNamespace(
+        base_url="https://platform.test",
+        workspace="default",
+        default_headers={"Authorization": "Bearer token"},
+        _client=Client(),
+    )
+    resource = AnonymizerResource(cast(Any, platform))
+    request = PreviewRequest(
+        config=AnonymizerConfig(replace=Redact()),
+        data=AnonymizerInputSpec(source="inputs#records.csv"),
+        num_records=1,
+    )
+
+    frames = list(resource.preview_stream(request, workspace="team/a"))
+
+    assert isinstance(frames[0], LogFrame)
+    assert isinstance(frames[1], PreviewDatasetFrame)
+    assert isinstance(frames[2], Done)
+    assert len(calls) == 1
+    method, url, kwargs = calls[0]
+    assert method == "POST"
+    assert url == "https://platform.test/apis/anonymizer/v2/workspaces/team%2Fa/preview"
+    assert kwargs["headers"] == {"Authorization": "Bearer token"}
+    body = cast(dict[str, Any], kwargs["json"])
+    assert body["config"]["replace"]["kind"] == "redact"
+    assert body["config"]["replace"]["format_template"] == "[REDACTED_{label}]"
+    assert body["data"]["source"] == "inputs#records.csv"
+    assert body["num_records"] == 1
+
+
+def test_preview_collects_frames_from_preview_stream(monkeypatch) -> None:
+    platform = SimpleNamespace(
+        base_url="https://platform.test",
+        workspace="default",
+        default_headers={},
+        _client=object(),
+    )
+    resource = AnonymizerResource(cast(Any, platform))
+    request = PreviewRequest(
+        config=AnonymizerConfig(replace=Redact()),
+        data=AnonymizerInputSpec(source="inputs#records.csv"),
+        num_records=1,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_preview_stream(request: PreviewRequest, *, workspace: str | None = None):
+        captured["request"] = request
+        captured["workspace"] = workspace
+        yield PreviewDatasetFrame(records=[{"text": "[REDACTED_PERSON]"}])
+        yield TraceDatasetFrame(records=[{"text": "Alice"}], original_text_column="text")
+        yield Done()
+
+    monkeypatch.setattr(resource, "preview_stream", fake_preview_stream)
+
+    result = resource.preview(request, workspace="team-a")
+
+    assert captured == {"request": request, "workspace": "team-a"}
+    assert result.dataset.to_dict(orient="records") == [{"text": "[REDACTED_PERSON]"}]
+    assert result.trace_dataset.attrs["original_text_column"] == "text"

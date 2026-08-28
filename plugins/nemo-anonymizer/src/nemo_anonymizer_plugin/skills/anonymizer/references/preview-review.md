@@ -5,11 +5,11 @@
 
 Use this when the user has run a preview and asked you to evaluate plugin results before committing to a full run.
 
-Reference docs: `docs/anonymizer/tutorials/preview.mdx` (frame schema, surfaces, CLI usage). For detection quality, strategy behavior, and rewrite tuning, defer to the [Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) or library skills.
+Reference docs: `docs/anonymizer/tutorials/preview.mdx` (frame schema and CLI/SDK/API usage). For detection quality, strategy behavior, and rewrite tuning, defer to the [Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) or library skills.
 
 ## What you get back
 
-`nemo anonymizer preview run` and `nemo anonymizer preview submit` stream newline-delimited JSON frames with the same logical data:
+`nemo anonymizer preview` streams non-log NDJSON frames to stdout or `--output-file`, and log frames to stderr. `sdk.anonymizer.preview(...)` collects the preview stream into an `AnonymizerPreviewResult`. The direct preview HTTP API streams raw newline-delimited JSON frames with the same logical data:
 
 - `preview_dataset` — public anonymized records.
 - `trace_dataset` — trace records with detection details.
@@ -19,11 +19,9 @@ Reference docs: `docs/anonymizer/tutorials/preview.mdx` (frame schema, surfaces,
 ## Plugin Review Checklist
 
 1. Surface any `failed_records` and the associated reasons.
-2. Confirm the preview used the intended execution surface:
-   - Local paths require `preview run`.
-   - `preview submit` requires HTTP(S) or fileset input and explicit `model_configs`.
+2. Confirm the preview used explicit `model_configs`. If the source was local, confirm the CLI uploaded it via `--fileset`; SDK/API previews should use HTTP(S) or fileset input.
 3. Confirm `model_configs` aliases line up with any `selected_models` overrides. For detection overrides, use Anonymizer library role names such as `entity_detector` and `entity_validator`.
-4. Ask the user to share CLI NDJSON frames for a specific record when you need to inspect exact spans and labels.
+4. Ask the user to share CLI NDJSON, SDK output, or HTTP NDJSON frames for a specific record when you need to inspect exact spans and labels.
 5. If quality needs tuning, refer to the Anonymizer library docs/skills for label selection, thresholds, replacement strategy parameters, and rewrite settings.
 
-When the preview is acceptable, derive the run spec by dropping `num_records`. Run writes artifacts. Use `nemo anonymizer run run` for local execution or `nemo anonymizer run submit` for platform execution.
+When the preview is acceptable, derive the run spec by dropping `num_records`. Full `run` writes artifacts through a NeMo Platform job; use `nemo anonymizer run --watch --output-dir ./anonymizer-artifacts` to submit, stream status/logs, and download artifacts after success.

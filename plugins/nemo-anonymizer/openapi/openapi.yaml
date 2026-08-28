@@ -509,8 +509,8 @@ components:
         source:
           type: string
           title: Source
-          description: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet
-            input file.
+          description: Local CSV/Parquet path for CLI calls with --fileset, or HTTP(S)
+            URL / fileset reference for SDK/API calls.
         text_column:
           type: string
           minLength: 1
@@ -563,11 +563,11 @@ components:
         \ text/id columns.\n  model_configs:    DD ``ModelConfig`` list. ``provider``\
         \ on each entry must\n                    reference a NeMo Platform inference\
         \ provider name (optionally\n                    ``workspace/provider``).\
-        \ When omitted, the upstream\n                    library defaults are used\
-        \ (which point at\n                    ``build.nvidia.com``); supplying this\
-        \ is the recommended\n                    path on NeMo Platform.\n  selected_models:\
-        \  Optional role->alias overrides. Omitted roles fall back\n             \
-        \       to the upstream library YAML defaults."
+        \ Optional on the request model for\n                    compatibility, but\
+        \ required by plugin preview/run execution\n                    so requests\
+        \ route through NeMo Platform Inference Gateway.\n  selected_models:  Optional\
+        \ role->alias overrides. Omitted roles fall back\n                    to the\
+        \ upstream library YAML defaults."
     AnonymizerStepConfig:
       properties:
         request:
