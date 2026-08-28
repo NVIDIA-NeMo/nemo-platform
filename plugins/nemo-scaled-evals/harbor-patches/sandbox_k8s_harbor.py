@@ -1594,7 +1594,10 @@ done
                 raise RuntimeError(f"Failed to decode tar stream from {source_dir}") from exc
             tmp.flush()
 
-            shutil.unpack_archive(tmp.name, target, "tar")
+            # The tar comes back from the sandbox, so it is untrusted here on the host.
+            # 3.12/3.13 still default to the fully-trusted filter, which honours absolute
+            # paths, `..` and symlinks; "data" is the default only from 3.14.
+            shutil.unpack_archive(tmp.name, target, "tar", filter="data")
 
     # -- Harbor optional: is_dir / is_file ----------------------------------
 

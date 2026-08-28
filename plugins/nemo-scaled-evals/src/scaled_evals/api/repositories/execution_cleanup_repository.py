@@ -35,7 +35,10 @@ class ExecutionCleanupRepository:
                 WITH candidate AS (
                     SELECT id
                     FROM evaluation_execution_cleanups
-                    WHERE status IN ('pending', 'delete_failed')
+                    -- 'deleting' is in scope so a worker that died mid-teardown does not
+                    -- strand the row: the claim window below is what keeps a live worker's
+                    -- row from being taken.
+                    WHERE status IN ('pending', 'deleting', 'delete_failed')
                       AND next_attempt_at <= NOW()
                       AND (
                           teardown_claimed_at IS NULL

@@ -11,7 +11,7 @@ import os
 import socket
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 
@@ -30,7 +30,7 @@ ConnFactory = Callable[[], AbstractContextManager[psycopg.Connection]]
 
 
 @contextmanager
-def _default_connect() -> AbstractContextManager[psycopg.Connection]:
+def _default_connect() -> Iterator[psycopg.Connection]:
     conn = psycopg.connect(settings.resolved_database_url(), row_factory=dict_row)
     conn.autocommit = True
     try:
@@ -47,9 +47,7 @@ class TaskBuildWorker:
     heartbeat_interval: float = 15.0
     max_attempts: int = 3
     retry_delay: float = 30.0
-    worker_id: str = field(
-        default_factory=lambda: f"{socket.gethostname()}:{os.getpid()}:{time.time_ns()}"
-    )
+    worker_id: str = field(default_factory=lambda: f"{socket.gethostname()}:{os.getpid()}:{time.time_ns()}")
 
     def claim_next(self) -> TaskBuildJob | None:
         with self.connect() as conn:
@@ -134,9 +132,7 @@ class TaskBuildWorker:
         if job.backend == "buildkit":
             return asyncio.run(build_revision_image(job.task_id, job.revision, job.object_key))
         if job.backend == "cloudbuild":
-            image_ref, builder_digest = build_cloud_revision_image(
-                job.task_id, job.revision, job.object_key
-            )
+            image_ref, builder_digest = build_cloud_revision_image(job.task_id, job.revision, job.object_key)
             resolved = resolve_task_image(image_ref, expected_digest=builder_digest)
             return resolved.runtime_ref, resolved.digest
         if job.backend == "prebuilt":
@@ -153,9 +149,7 @@ class TaskBuildWorker:
         image_ref, builder_digest = resolve_uploaded_revision_image(
             tarball_object_key=job.object_key,
             context_path=str(payload.get("context_path") or "."),
-            builder_source_commit=str(
-                payload.get("builder_source_commit") or settings.image_builder_source_commit
-            ),
+            builder_source_commit=str(payload.get("builder_source_commit") or settings.image_builder_source_commit),
         )
         resolved = resolve_task_image(image_ref, expected_digest=builder_digest)
         return resolved.runtime_ref, resolved.digest

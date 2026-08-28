@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     # accidentally reused by later finalize attempts.
     task_pack_max_size_bytes: int = 20 * 1024 * 1024 * 1024
     task_pack_tenant_storage_quota_bytes: int = 100 * 1024 * 1024 * 1024
+    task_pack_max_extracted_size_bytes: int = 20 * 1024 * 1024 * 1024
+    task_pack_max_members: int = 100_000
     # Guardrails for server-side results.tar.gz creation. These are source
     # object limits; TODO: add tenant/account quotas and compressed-size caps.
     evaluation_archive_max_files: int = 10_000
@@ -95,6 +97,7 @@ class Settings(BaseSettings):
     # makes readiness honest and prevents finalize from wedging revisions.
     buildkit_enabled: bool = True
     buildkit_addr: str = "tcp://localhost:1234"
+    buildkit_timeout_seconds: float = 2100.0
     # External image-builder service. When set, finalize sends the already-uploaded
     # task pack to the service's uploaded-context mode, which returns an approved,
     # signed image instead of building in-cluster with BuildKit. This is the path

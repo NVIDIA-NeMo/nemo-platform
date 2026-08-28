@@ -11,7 +11,7 @@ registry. Enough to take a task from `create` to a built, pushed image.
 
 ```bash
 cd plugins/nemo-scaled-evals/deploy/compose
-cp .env.example .env     # then set CREDENTIALS_ENCRYPTION_KEY (see Configuration)
+cp .env.example .env     # then set CREDENTIALS_ENCRYPTION_KEY and HARBOR_EXTRA_INDEX_URL (see Configuration)
 docker compose up -d     # first run builds the app image (~1 min)
 ./smoke.sh               # create -> upload -> finalize -> ready, then verify the push
 docker compose down -v
@@ -100,9 +100,10 @@ for a clean start, or `createdb` it by hand.
 
 ## Configuration
 
-One variable is required — `CREDENTIALS_ENCRYPTION_KEY` — because a committed
-default would encrypt BYOK credentials under a key published in this
-repository's history. Everything else has a working default:
+Two variables are required.
+
+`CREDENTIALS_ENCRYPTION_KEY`, because a committed default would encrypt BYOK
+credentials under a key published in this repository's history:
 
 ```bash
 cp .env.example .env
@@ -112,13 +113,22 @@ python3 -c 'import base64,os; print("CREDENTIALS_ENCRYPTION_KEY=" + base64.urlsa
 That is a valid Fernet key (32 random bytes, urlsafe base64) and needs only the
 standard library, so it works before any project dependency is installed.
 
-Override anything else by exporting it or adding it to that same `.env`; the
-notable knobs:
+And `HARBOR_EXTRA_INDEX_URL`, for the image build only. The runner venv installs
+`sandbox-k8s[harbor]`, which is not published on PyPI, so the build stage fails
+without an index that serves it:
+
+```bash
+echo 'HARBOR_EXTRA_INDEX_URL=https://<index>/simple' >> .env
+```
+
+Everything else has a working default. Override by exporting it or adding it to
+that same `.env`; the notable knobs:
 
 | Variable | Default | Notes |
 |---|---|---|
 | `API_PORT` | `8080` | |
 | `CREDENTIALS_ENCRYPTION_KEY` | *(required)* | see above; a real deployment sources this from a secret |
+| `HARBOR_EXTRA_INDEX_URL` | *(required to build)* | index serving `sandbox-k8s`; unused once the image exists |
 | `IMAGE_BUILD_PLATFORM` | *(empty)* | empty builds for the host arch. The setting's own default is `linux/amd64`, which sends every build through QEMU on an arm64 laptop; set it when the image must run on amd64 nodes |
 | `IMAGE_REGISTRY` | `registry:5000` | point elsewhere with `REGISTRY_INSECURE=false` plus credentials |
 | `S3_PUBLIC_ENDPOINT` | `http://localhost:9000` | baked into presigned URLs; SigV4 signs the Host header, so this must be the address the *client* calls |

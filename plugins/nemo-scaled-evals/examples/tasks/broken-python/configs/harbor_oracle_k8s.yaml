@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Harbor-on-K8s: OpenThoughts-TBLite broken-python oracle smoke.
-# Comparable to gym_* broken-python smokes (same task, same oracle agent).
+# Exercises the task image and verifier path without making model calls.
 #
 # ${...} are filled by dispatch (envsubst from targets/<target>.env).
 #
@@ -57,13 +57,12 @@ environment:
     # config). Harmless when image: is a public image.
     image_pull_secrets: ${TASK_IMAGE_PULL_SECRET}
     verify_ssl: ${VERIFY_SSL}
-    # Kept for adapter compatibility. Effective egress is provided by
-    # examples/agent-sandbox/k8s/egress-allow-networkpolicy.yaml when a real
-    # agent or per-run Switchyard is used; the oracle path itself does not make
-    # model calls.
+    # Safe default for direct Harbor use. Scaled-evals dispatch replaces this
+    # with its authoritative k8s_network_policy for the requested run policy.
     network_policy:
-      egress:
-        - {}
+      policyTypes:
+        - Egress
+      egress: []
     resources:
       requests:
         cpu: "1"

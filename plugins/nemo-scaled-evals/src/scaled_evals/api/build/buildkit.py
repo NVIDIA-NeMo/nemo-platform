@@ -24,6 +24,7 @@ import os
 import subprocess
 import tarfile
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 from scaled_evals.api import s3
@@ -51,16 +52,11 @@ def check_buildkit() -> None:
         raise TimeoutError("buildctl timed out") from exc
     if proc.returncode == 0:
         return
-    detail = (
-        proc.stderr.decode("utf-8", "replace").strip()
-        or proc.stdout.decode("utf-8", "replace").strip()
-    )
+    detail = proc.stderr.decode("utf-8", "replace").strip() or proc.stdout.decode("utf-8", "replace").strip()
     raise RuntimeError(detail or f"buildctl exited {proc.returncode}")
 
 
-async def build_revision_image(
-    task_id: str, revision: int, tarball_object_key: str
-) -> tuple[str, str]:
+async def build_revision_image(task_id: str, revision: int, tarball_object_key: str) -> tuple[str, str]:
     """Build and push the sandbox image for one task revision.
 
     Downloads the revision tarball, extracts it, and runs `buildctl` against
@@ -97,8 +93,7 @@ def _validate_tarball_size(tarball_object_key: str) -> None:
         raise BuildError("task pack object has no Content-Length; refusing to build")
     if size_bytes > max_size:
         raise BuildError(
-            "task pack object exceeds configured size limit "
-            f"({size_bytes} bytes > {max_size} bytes); refusing to build"
+            f"task pack object exceeds configured size limit ({size_bytes} bytes > {max_size} bytes); refusing to build"
         )
 
 
@@ -110,7 +105,18 @@ def _extract_tarball(tarball_path: Path, dest: Path) -> None:
     """
     try:
         with tarfile.open(tarball_path, "r:gz") as tar:
-            tar.extractall(dest, filter="data")
+            members = tar.getmembers()
+            if len(members) > settings.task_pack_max_members:
+                raise BuildError(
+                    f"task pack exceeds configured member limit ({len(members)} > {settings.task_pack_max_members})"
+                )
+            extracted_size = sum(member.size for member in members)
+            if extracted_size > settings.task_pack_max_extracted_size_bytes:
+                raise BuildError(
+                    "task pack exceeds configured extracted-size limit "
+                    f"({extracted_size} bytes > {settings.task_pack_max_extracted_size_bytes} bytes)"
+                )
+            tar.extractall(dest, members=members, filter="data")
     except (tarfile.TarError, OSError) as exc:
         raise BuildError(f"could not extract tarball: {exc}") from exc
 
@@ -150,9 +156,7 @@ def _buildctl_args(context_dir: Path, image_ref: str, metadata_path: Path) -> li
     return args
 
 
-async def _run_buildctl(
-    context_dir: Path, image_ref: str, metadata_path: Path, work_dir: Path
-) -> None:
+async def _run_buildctl(context_dir: Path, image_ref: str, metadata_path: Path, work_dir: Path) -> None:
     """Invoke `buildctl build` as an async subprocess against BuildKit.
 
     Runs via `asyncio.create_subprocess_exec` so the build never blocks the
@@ -165,7 +169,18 @@ async def _run_buildctl(
         stderr=asyncio.subprocess.STDOUT,
         env=_buildctl_env(work_dir),
     )
-    stdout, _ = await proc.communicate()
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=settings.buildkit_timeout_seconds)
+    except TimeoutError as exc:
+        with suppress(ProcessLookupError):
+            proc.terminate()
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=10)
+        except TimeoutError:
+            with suppress(ProcessLookupError):
+                proc.kill()
+            await proc.communicate()
+        raise BuildError(f"buildctl timed out after {settings.buildkit_timeout_seconds}s building {image_ref}") from exc
     log = stdout.decode("utf-8", "replace")
     if proc.returncode != 0:
         raise BuildError(f"buildctl exited {proc.returncode} building {image_ref}:\n{log}")
@@ -196,14 +211,10 @@ def _write_docker_config(work_dir: Path) -> Path | None:
         if not settings.task_image_registry_auth_file:
             return None
         return _copy_docker_config(work_dir, Path(settings.task_image_registry_auth_file))
-    token = base64.b64encode(
-        f"{settings.registry_username}:{settings.registry_password}".encode()
-    ).decode()
+    token = base64.b64encode(f"{settings.registry_username}:{settings.registry_password}".encode()).decode()
     config_dir = work_dir / "docker"
     config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "config.json").write_text(
-        json.dumps({"auths": {settings.image_registry: {"auth": token}}})
-    )
+    (config_dir / "config.json").write_text(json.dumps({"auths": {settings.image_registry: {"auth": token}}}))
     return config_dir
 
 

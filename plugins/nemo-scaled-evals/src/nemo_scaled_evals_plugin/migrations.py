@@ -153,8 +153,21 @@ def apply_sql(dsn: str, *, schema: str | None = None, wait_seconds: float = 0.0)
         is_fresh = sentinel is None or sentinel[0] is None
         schema_files = _sql_files(root / "schema") if is_fresh else []
 
-        for path in schema_files:
-            _run_file(conn, path)
+        if schema_files:
+            # All or nothing. The sentinel table is created by 04_evaluations.sql, in the
+            # middle of the sequence, so a fresh install that commits part way leaves the
+            # sentinel present and `is_fresh` false on the next boot: the remaining files
+            # are skipped forever, and they use bare CREATE TABLE, so nothing repairs it.
+            conn.autocommit = False
+            try:
+                for path in schema_files:
+                    _run_file(conn, path)
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            finally:
+                conn.autocommit = True
         for path in migration_files:
             _run_file(conn, path)
 

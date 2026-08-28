@@ -66,6 +66,9 @@ def make_client(
     signature. The presigned helpers below each pop it back off for that reason.
     """
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+    # Redirects are not followed (httpx's default), which is what lets download_artifact
+    # strip auth before following one itself. Every status check below therefore tests for
+    # success rather than for >= 400, so an unexpected 3xx body is not read as a result.
     return httpx.Client(
         base_url=f"{base_url.rstrip('/')}/v1",
         headers=headers,
@@ -108,7 +111,7 @@ def request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> dict
         resp = client.request(method, path, **kwargs)
     except httpx.HTTPError as exc:
         raise click.ClickException(f"request to {path} failed: {exc}") from exc
-    if resp.status_code >= 400:
+    if not resp.is_success:
         raise _error(resp)
     return resp.json() if resp.content else {}
 
@@ -143,7 +146,7 @@ def upload_file(client: httpx.Client, upload: dict[str, Any], path: Path) -> Non
             resp = client.send(req)
     except httpx.HTTPError as exc:
         raise click.ClickException(f"upload to {url} failed: {exc}") from exc
-    if resp.status_code >= 400:
+    if not resp.is_success:
         raise _error(resp)
 
 
@@ -164,7 +167,7 @@ def upload_multipart_archive(
             response = client.send(request_, auth=None)
     except httpx.HTTPError as exc:
         raise click.ClickException(f"upload to {upload_url} failed: {exc}") from exc
-    if response.status_code >= 400:
+    if not response.is_success:
         raise _error(response)
     payload = response.json()
     if not isinstance(payload, dict):
@@ -207,7 +210,7 @@ def fetch_artifact(client: httpx.Client, api_path: str) -> bytes:
             resp = client.send(req)
     except httpx.HTTPError as exc:
         raise click.ClickException(f"download of {api_path} failed: {exc}") from exc
-    if resp.status_code >= 400:
+    if not resp.is_success:
         raise _error(resp)
     return resp.content
 
@@ -229,7 +232,7 @@ def download_presigned(client: httpx.Client, download: dict[str, Any], dest: Pat
 
 def _stream_response_to_file(response: httpx.Response, dest: Path) -> None:
     """Atomically stream a response to ``dest`` without retaining it in memory."""
-    if response.status_code >= 400:
+    if not response.is_success:
         response.read()
         error = _error(response)
         response.close()
@@ -285,7 +288,7 @@ def iter_sse(client: httpx.Client, path: str) -> Iterator[tuple[str, str]]:
     """Yield ``(event, data)`` pairs from a text/event-stream endpoint."""
     try:
         with client.stream("GET", path) as resp:
-            if resp.status_code >= 400:
+            if not resp.is_success:
                 resp.read()
                 raise _error(resp)
             event = "message"

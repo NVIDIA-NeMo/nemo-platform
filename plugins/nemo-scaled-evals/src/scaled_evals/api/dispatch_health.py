@@ -30,24 +30,37 @@ def _configured_status(missing: list[str]) -> str:
     return "ok"
 
 
+# Every `GET /v1/readyz` runs these probes, so each client is closed rather than left for
+# the collector: docker.from_env() opens a requests.Session, and the SDK's own client is not
+# a context manager. The timeout is well under the SDK's 60s default so an unresponsive
+# daemon delays readiness briefly instead of holding the request open.
+_DOCKER_PROBE_TIMEOUT_SECONDS = 5
+
+
 def _check_docker_daemon() -> None:
+    from contextlib import closing
+
     from docker.errors import DockerException
 
     import docker
 
     try:
-        docker.from_env().ping()
+        with closing(docker.from_env(timeout=_DOCKER_PROBE_TIMEOUT_SECONDS)) as client:
+            client.ping()
     except DockerException as exc:
         raise DispatchHealthError(str(exc)) from exc
 
 
 def _check_docker_image(image: str) -> None:
+    from contextlib import closing
+
     from docker.errors import DockerException, ImageNotFound
 
     import docker
 
     try:
-        docker.from_env().images.get(image)
+        with closing(docker.from_env(timeout=_DOCKER_PROBE_TIMEOUT_SECONDS)) as client:
+            client.images.get(image)
     except ImageNotFound as exc:
         raise DispatchHealthError(f"image not found: {image}") from exc
     except DockerException as exc:

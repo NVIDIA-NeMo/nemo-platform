@@ -2246,6 +2246,7 @@ jobs:
       - policy-wasm
       - python-unit-test-tools
       - python-unit-test
+      - python-unit-test-scaled-evals
       - fabric-wheel-smoke
       - evaluator-sdk-closure-smoke
       # Enable if you want this required

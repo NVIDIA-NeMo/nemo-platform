@@ -77,6 +77,7 @@ def create_credential(body: CredentialCreate, db: Db, current: Principal) -> Cre
         fingerprint=crypto.fingerprint(body.payload),
         owner_id=current.owner_id,
     )
+    db.commit()
     return CredentialCreateResponse(
         **row,
         links={

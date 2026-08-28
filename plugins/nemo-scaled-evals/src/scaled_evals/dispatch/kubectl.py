@@ -10,6 +10,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+_DEFAULT_TIMEOUT_SECONDS = 120.0
+# Matches the shell convention for a command killed by `timeout`.
+_TIMEOUT_RETURNCODE = 124
+
 
 @dataclass(frozen=True)
 class KubectlResult:
@@ -23,7 +27,10 @@ def execute_kubectl(
     input_text: str | None = None,
     *,
     runner: Callable[..., Any] = subprocess.run,
-    timeout_seconds: float | None = None,
+    # Bounded by default: a hung `kubectl` on an unreachable API server would otherwise
+    # block the calling dispatch worker until it is restarted, so the evaluation it was
+    # tearing down never finalizes. Callers that need longer pass their own value.
+    timeout_seconds: float | None = _DEFAULT_TIMEOUT_SECONDS,
 ) -> KubectlResult:
     """Execute kubectl argv and return raw output for the owning provider."""
     kwargs = {
@@ -34,7 +41,17 @@ def execute_kubectl(
     }
     if timeout_seconds is not None:
         kwargs["timeout"] = timeout_seconds
-    completed = runner(args, **kwargs)
+    try:
+        completed = runner(args, **kwargs)
+    except subprocess.TimeoutExpired:
+        # Reported as a failed command rather than raised. Callers branch on returncode and
+        # the sandbox cleanup path only catches RuntimeError, so a raised TimeoutExpired
+        # would escape and take the worker down instead of failing this one teardown.
+        return KubectlResult(
+            returncode=_TIMEOUT_RETURNCODE,
+            stdout="",
+            stderr=f"kubectl timed out after {timeout_seconds}s",
+        )
     return KubectlResult(
         returncode=completed.returncode,
         stdout=completed.stdout,

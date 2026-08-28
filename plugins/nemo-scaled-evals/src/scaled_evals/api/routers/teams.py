@@ -18,7 +18,8 @@ def team_summary(team_id: str) -> TeamSummaryResponse:
 def team_evaluations(
     team_id: str,
     limit: int = Query(default=20, ge=1, le=100),
-    cursor: str | None = None,
 ) -> ListEnvelope[StubRecord]:
+    # No cursor parameter: this stub always answers with an empty page, and list_envelope
+    # rejects any non-null cursor, so advertising one would only ever return HTTP 400.
     _ = team_id
-    return list_envelope(cursor=cursor, limit=limit)
+    return list_envelope(limit=limit)
