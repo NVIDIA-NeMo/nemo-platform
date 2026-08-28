@@ -10,6 +10,7 @@ import type {
 import {
   getGrpoProgressTiles,
   getGrpoRunConfig,
+  getGrpoRunProgressSummary,
   getGrpoSummaryTiles,
   formatFinetuningType,
   formatTrainingPhase,
@@ -454,6 +455,7 @@ describe('getGrpoSummaryTiles', () => {
     expect(getGrpoSummaryTiles(undefined, true)).toEqual([
       { label: 'Final Mean Reward', value: '—', hint: 'across all sampled rollouts' },
       { label: 'Validation Reward', value: '—', hint: 'held-out prompts' },
+      { label: 'Median Step Time', value: '—', hint: 'wall clock per step' },
       { label: 'Truncation Rate', value: '—', hint: 'hit the length limit' },
     ]);
   });
@@ -494,8 +496,31 @@ describe('getGrpoSummaryTiles', () => {
     });
   });
 
+  it('summarises step time as the median of the run, not the latest step', () => {
+    const [, , stepTime] = getGrpoSummaryTiles(
+      {
+        metrics: {
+          'train_timing/total_step_time': [
+            { step: 1, value: 29.8 },
+            { step: 2, value: 33.6 },
+            { step: 3, value: 34.8 },
+            // A checkpoint save doubles one step; the median is what the run actually costs.
+            { step: 4, value: 71.2 },
+          ],
+        },
+      },
+      true
+    );
+
+    expect(stepTime).toEqual({
+      label: 'Median Step Time',
+      value: '34.2s',
+      hint: 'wall clock per step',
+    });
+  });
+
   it('renders the truncation rate as a percentage', () => {
-    const [, , truncation] = getGrpoSummaryTiles(
+    const [, , , truncation] = getGrpoSummaryTiles(
       { metrics: { train_truncation_rate: [{ step: 500, value: 0.041 }] } },
       true
     );
@@ -509,6 +534,89 @@ describe('getGrpoSummaryTiles', () => {
 
   it('labels the reward tile "Latest" until the job reaches a terminal status', () => {
     expect(getGrpoSummaryTiles(undefined)[0].label).toBe('Latest Mean Reward');
+  });
+});
+
+describe('getGrpoRunProgressSummary', () => {
+  const grpoJob = (
+    statusDetails: CustomizationJobStatusDetails,
+    training: Partial<RlGRPOTraining> = { num_generations_per_prompt: 8, num_prompts_per_step: 8 }
+  ): CustomizationJob => {
+    const job = rlJob({ training: { type: 'grpo', ...training } });
+    return { ...job, status_details: statusDetails } as CustomizationJob;
+  };
+
+  it('reports the in-flight step and the rollouts it implies', () => {
+    const job = grpoJob({ step: 340, max_steps: 500 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 340 of 500 · 21.8k rollouts generated'
+    );
+  });
+
+  it('keeps the "of" total once the job is terminal, so an early stop is visible', () => {
+    const job = grpoJob({ step: 340, max_steps: 500 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), true)).toBe(
+      'step 340 of 500 · 21.8k rollouts generated'
+    );
+  });
+
+  it('reports how many steps ran once the job is terminal with no known target', () => {
+    const job = grpoJob({ step: 500 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), true)).toBe(
+      '500 steps ran · 32k rollouts generated'
+    );
+  });
+
+  it('uses present tense for an in-flight job with no known target yet', () => {
+    const job = grpoJob({ step: 12 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 12 · 768 rollouts generated'
+    );
+  });
+
+  it('omits the rollout count when the spec has no group-size/prompts-per-step to derive it from', () => {
+    const job = grpoJob({ step: 10, max_steps: 100 }, {});
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe('step 10 of 100');
+  });
+
+  it('falls back to batch_size when num_prompts_per_step is omitted, as the service derives it', () => {
+    // The SDK documents num_prompts_per_step as derived from batch_size / num_generations_per_prompt
+    // when unset, so their product is just batch_size — a real job commonly omits it.
+    const job = grpoJob(
+      { step: 10, max_steps: 100 },
+      { num_generations_per_prompt: 8, batch_size: 64 }
+    );
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 10 of 100 · 640 rollouts generated'
+    );
+  });
+
+  it('falls back to batch_size when num_generations_per_prompt is omitted, as the service derives it', () => {
+    // The SDK documents num_generations_per_prompt as derived from batch_size / num_prompts_per_step
+    // when unset, so their product is just batch_size — the mirror image of the case above.
+    const job = grpoJob({ step: 10, max_steps: 100 }, { num_prompts_per_step: 8, batch_size: 64 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 10 of 100 · 640 rollouts generated'
+    );
+  });
+
+  it('is empty for a non-GRPO job', () => {
+    const job = { ...rlJob({ training: { type: 'dpo' } }), status_details: { step: 10 } };
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe('');
+  });
+
+  it('is empty when the job has not reported a step yet', () => {
+    const job = grpoJob({});
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe('');
   });
 });
 
@@ -592,7 +700,7 @@ describe('getGrpoRunConfig', () => {
 });
 
 describe('getGrpoProgressTiles', () => {
-  it('adds the run-state tile to the shared step and epoch progress', () => {
+  it('adds the run-state tile to the epoch progress; step is on the page header instead', () => {
     expect(
       getGrpoProgressTiles(
         { step: 500, maxSteps: 500, epoch: 1, numEpochs: 1 },
@@ -602,7 +710,6 @@ describe('getGrpoProgressTiles', () => {
         }
       )
     ).toEqual([
-      { label: 'Steps Completed', value: '500 / 500' },
       { label: 'Epochs Completed', value: '1 / 1' },
       { label: 'Duration', value: '00:42:11', hint: 'total run time' },
     ]);
@@ -617,7 +724,7 @@ describe('getGrpoProgressTiles', () => {
       }
     );
 
-    expect(tiles[2]).toEqual({ label: 'Phase', value: 'Training', hint: 'current stage' });
+    expect(tiles[1]).toEqual({ label: 'Phase', value: 'Training', hint: 'current stage' });
   });
 });
 
@@ -861,5 +968,11 @@ describe('formatStepCount', () => {
   it('compacts counts long enough to widen the column', () => {
     expect(formatStepCount(1_234_567)).toBe('1.2M');
     expect(formatStepCount(10_000)).toBe('10K');
+  });
+
+  it('lowers the floor and the suffix case when asked, for prose rather than a tile', () => {
+    expect(formatStepCount(210, { floor: 0 })).toBe('210');
+    expect(formatStepCount(174_000, { floor: 0, lowercase: true })).toBe('174k');
+    expect(formatStepCount(9_999, { floor: 0, lowercase: true })).toBe('10k');
   });
 });
