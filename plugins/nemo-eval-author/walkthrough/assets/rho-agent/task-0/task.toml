@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+version = "1.0"
+
+[task]
+name = "rho-agent/task-0"
+authors = [{ name = "eval-author-walkthrough" }]
+keywords = ["write", "sandbox", "baseline"]
+
+[metadata]
+author_name = "eval-author-walkthrough"
+difficulty = "easy"
+category = "programming"
+tags = ["write", "baseline"]
+
+[verifier]
+timeout_sec = 120.0
+
+[agent]
+timeout_sec = 600.0
+network_mode = "allowlist"
+allowed_hosts = ["inference-api.nvidia.com"]
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+gpus = 0

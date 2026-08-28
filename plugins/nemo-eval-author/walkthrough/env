@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Shared walkthrough environment. Source from the nemo-platform checkout:
+#   source plugins/nemo-eval-author/walkthrough/env
+
+export OPENAI_API_KEY="${NVIDIA_API_KEY:-}"
+export OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://inference-api.nvidia.com/v1}"
+
+export PYTHONPATH="tmp/rho-agent-walkthrough"
+
+export RHO_REVISION="04b9cfa1c940e8c3fd6ecdd6888f9fabd0110558"
+export RHO_AGENT_REPO="https://github.com/smith-nathanh/rho-agent.git"
+export RHO_AGENT_ROOT="/rho-agent"
+export RHO_AGENT_CHECKOUT="rho-agent"
+
+export IMAGE_REPOSITORY="nemo-eval-author/rho-agent-harbor"
+
+export DEFAULT_INFERENCE_BASE_URL="https://inference-api.nvidia.com/v1"
+export DEFAULT_INFERENCE_HOSTS="inference-api.nvidia.com"
+export DEFAULT_RHO_AGENT_MODEL="openai/nvidia/qwen/qwen3.5-122b-a10b"
+
+export AGENT_NAME="rho-agent"
+# Relative to the walkthrough workspace (e.g. tmp/rho-agent-walkthrough/).
+export ETHOS_REL_PATH="agents/rho-agent-ethos/ETHOS.md"

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pre-baked rho-agent image for Harbor walkthrough trials.
+# Build on the host (docker build) so trial containers never apt-get or git clone.
+
+FROM ubuntu:24.04
+
+ARG RHO_REVISION=04b9cfa1c940e8c3fd6ecdd6888f9fabd0110558
+ARG RHO_AGENT_REPO=https://github.com/smith-nathanh/rho-agent.git
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl git python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && git clone "${RHO_AGENT_REPO}" /rho-agent \
+    && git -C /rho-agent checkout "${RHO_REVISION}" \
+    && cd /rho-agent && /root/.local/bin/uv sync --frozen --extra evals \
+    && rm -rf /rho-agent/.git
+
+COPY rho_atif_compat.py /rho-agent/rho_atif_compat.py
+
+WORKDIR /app

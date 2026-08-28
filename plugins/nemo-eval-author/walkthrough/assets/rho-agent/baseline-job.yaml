@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+job_name: rho-agent-baseline-task-0-sandbox
+jobs_dir: .eval-author/baseline-jobs
+n_attempts: 1
+timeout_multiplier: 1.0
+orchestrator:
+  type: local
+  n_concurrent_trials: 1
+  quiet: true
+environment:
+  type: docker
+  force_build: false
+  delete: true
+agents:
+  - name: rho-agent
+    import_path: rho_harbor_agent:RhoAgent
+    extra_allowed_hosts:
+      - inference-api.nvidia.com
+tasks:
+  - path: .eval-author/sandbox/task-0

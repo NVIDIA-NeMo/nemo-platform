@@ -672,6 +672,9 @@ exclude = [
   # benchmark's task containers, so its imports are absent from the workspace env.
   "plugins/nemo-experimentalist/examples/",
 
+  # Eval Author walkthrough CLI scripts resolve imports via sys.path, not as a package.
+  "plugins/nemo-eval-author/walkthrough/",
+
   "docs/",
 
   "./sdk/",
@@ -710,3 +713,12 @@ include = [
 [tool.ty.overrides.rules]
 missing-argument = "ignore"
 unknown-argument = "ignore"
+
+[[tool.ty.overrides]]
+include = [
+  "plugins/nemo-eval-author/tests/test_walkthrough_demo.py",
+  "plugins/nemo-eval-author/tests/test_walkthrough_sandbox.py",
+]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
