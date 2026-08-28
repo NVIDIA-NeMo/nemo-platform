@@ -43,6 +43,7 @@ export const ROUTE_PARAMS = {
   evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
   guardrailChecksSubTab: 'guardrailChecksSubTab',
+  virtualModelName: 'virtualModelName',
   pluginName: 'pluginName',
 } as const;
 
@@ -94,6 +95,9 @@ export const ROUTES = {
     filesetDetail: `/workspaces/:${P.workspace}/filesets/:${P.filesetName}/detail`,
     inferenceProviders: `/workspaces/:${P.workspace}/inference-providers`,
     virtualModels: `/workspaces/:${P.workspace}/virtual-models`,
+    virtualModelDetail: `/workspaces/:${P.workspace}/virtual-models/:${P.virtualModelName}`,
+    virtualModelDetails: `/workspaces/:${P.workspace}/virtual-models/:${P.virtualModelName}/details`,
+    virtualModelChat: `/workspaces/:${P.workspace}/virtual-models/:${P.virtualModelName}/chat`,
     deploymentConfigs: `/workspaces/:${P.workspace}/deployment-configs`,
     deployments: `/workspaces/:${P.workspace}/deployments`,
     /** Deployments list with details side panel (deployment name + panel segment, e.g. `details`). */

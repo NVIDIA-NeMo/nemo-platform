@@ -12,10 +12,10 @@ import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfi
 import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { useDeferredUnmount } from '@nemo/common/src/hooks/useDeferredUnmount';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
+  getGetVirtualModelQueryKey,
   getListVirtualModelsQueryKey,
   useDeleteVirtualModel,
   useListVirtualModels,
@@ -27,13 +27,10 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
-import {
-  VirtualModelDetailsSidePanel,
-  type VirtualModelPanelTab,
-} from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
+import { getVirtualModelChatRoute, getVirtualModelDetailsRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 export interface VirtualModelsDataViewProps {
   workspace: string;
@@ -62,34 +59,32 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
 }) => {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const {
-    isOpen: isDetailsPanelOpen,
-    value: vmForDetails,
-    open: openDetailsPanel,
-    close: closeDetailsPanel,
-  } = useDeferredUnmount<VirtualModelWithId>({ delay: 300 });
+  const navigate = useNavigate();
 
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const [modalVirtualModel, setModalVirtualModel] = useState<VirtualModel>();
-  const detailsPanelTab: VirtualModelPanelTab =
-    searchParams.get('tab') === 'chat' ? 'chat' : 'details';
 
-  const openVirtualModelPanel = useCallback(
-    (virtualModel: VirtualModelWithId, tab: VirtualModelPanelTab) => {
+  const openVirtualModel = useCallback(
+    (virtualModel: VirtualModelWithId, tab: 'details' | 'chat') => {
       if (!virtualModel.name) return;
 
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.set('virtualModel', virtualModel.name);
-      nextParams.set('tab', tab);
-      setSearchParams(nextParams);
-      openDetailsPanel(virtualModel);
+      // The row already holds the full virtual model, so prime the detail query — the detail page
+      // then renders immediately instead of showing a skeleton. It still revalidates in background.
+      queryClient.setQueryData(
+        getGetVirtualModelQueryKey(workspace, virtualModel.name),
+        virtualModel
+      );
+
+      navigate(
+        tab === 'chat'
+          ? getVirtualModelChatRoute(workspace, virtualModel.name)
+          : getVirtualModelDetailsRoute(workspace, virtualModel.name)
+      );
     },
-    [openDetailsPanel, searchParams, setSearchParams]
+    [navigate, queryClient, workspace]
   );
 
   const sortState = dataViewState.sorting.state[0];
@@ -164,55 +159,6 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
       })),
     [virtualModels]
   );
-
-  useEffect(() => {
-    const linkedName = searchParams.get('virtualModel');
-    if (!linkedName) {
-      if (isDetailsPanelOpen) closeDetailsPanel();
-      return;
-    }
-
-    const linkedVirtualModel = virtualModelsWithId.find((vm) => vm.name === linkedName);
-    if (!linkedVirtualModel) {
-      if (!isFetching && isDetailsPanelOpen) closeDetailsPanel();
-      return;
-    }
-
-    if (!isDetailsPanelOpen || vmForDetails?.name !== linkedName) {
-      openDetailsPanel(linkedVirtualModel);
-    }
-  }, [
-    closeDetailsPanel,
-    isDetailsPanelOpen,
-    isFetching,
-    openDetailsPanel,
-    searchParams,
-    virtualModelsWithId,
-    vmForDetails?.name,
-  ]);
-
-  const selectVirtualModelPanelTab = useCallback(
-    (tab: VirtualModelPanelTab) => {
-      const selectedName = searchParams.get('virtualModel') ?? vmForDetails?.name;
-      if (!selectedName) return;
-
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.set('virtualModel', selectedName);
-      nextParams.set('tab', tab);
-      setSearchParams(nextParams, { replace: true });
-    },
-    [searchParams, setSearchParams, vmForDetails?.name]
-  );
-
-  const closeVirtualModelPanel = useCallback(() => {
-    if (searchParams.has('virtualModel') || searchParams.has('tab')) {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete('virtualModel');
-      nextParams.delete('tab');
-      setSearchParams(nextParams, { replace: true });
-    }
-    closeDetailsPanel();
-  }, [closeDetailsPanel, searchParams, setSearchParams]);
 
   const handleDeleteVirtualModel = async () => {
     if (!modalVirtualModel?.name) return false;
@@ -305,11 +251,11 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           rowActions: (vm: VirtualModelWithId): DropdownEntry[] => [
             {
               children: 'View',
-              onSelect: () => openVirtualModelPanel(vm, 'details'),
+              onSelect: () => openVirtualModel(vm, 'details'),
             },
             {
               children: 'Chat',
-              onSelect: () => openVirtualModelPanel(vm, 'chat'),
+              onSelect: () => openVirtualModel(vm, 'chat'),
             },
             {
               children: 'Delete',
@@ -319,7 +265,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           ],
         }),
       ],
-      [openVirtualModelPanel, workspace]
+      [openVirtualModel, workspace]
     );
 
   return (
@@ -328,7 +274,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         dataViewState={dataViewState}
         searchField="name"
         makeColumns={makeColumns}
-        onRowClick={(row: VirtualModelWithId) => openVirtualModelPanel(row, 'details')}
+        onRowClick={(row: VirtualModelWithId) => openVirtualModel(row, 'details')}
         attributes={{
           DataViewSearchBar: {
             placeholder: 'Search by name...',
@@ -367,16 +313,6 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           confirmationText={modalVirtualModel.name}
           onClose={handleModalClose}
           description="Deleting this virtual model removes its inference route and middleware pipelines. Are you sure you want to proceed?"
-        />
-      )}
-
-      {vmForDetails != null && (
-        <VirtualModelDetailsSidePanel
-          open={isDetailsPanelOpen}
-          virtualModel={vmForDetails}
-          tab={detailsPanelTab}
-          onTabChange={selectVirtualModelPanelTab}
-          onClose={closeVirtualModelPanel}
         />
       )}
     </Stack>
