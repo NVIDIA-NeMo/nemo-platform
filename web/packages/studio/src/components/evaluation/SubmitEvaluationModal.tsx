@@ -442,7 +442,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     reValidateMode: 'onChange',
   });
   const { control, reset: resetForm, setValue, handleSubmit, clearErrors, formState } = methods;
-  const { errors, touchedFields } = formState;
+  const { errors } = formState;
 
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
@@ -547,7 +547,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     entity: 'experiment',
     preview: experimentPreview,
     status: experimentNameStatus,
-    schemaError: touchedFields.newName ? errors.newName?.message : undefined,
+    schemaError: errors.newName?.message,
     describe: 'Groups multiple evaluation runs together for comparison.',
   });
 
@@ -555,9 +555,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     entity: 'evaluation',
     preview: recordPreview,
     status: recordNameStatus,
-    schemaError: touchedFields.evaluationRecordName
-      ? errors.evaluationRecordName?.message
-      : undefined,
+    schemaError: errors.evaluationRecordName?.message,
     describe: 'Names this run within the experiment. Results publish under it.',
   });
 
@@ -777,7 +775,13 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   const onSubmit: SubmitHandler<SubmitEvaluationFormData> = async (formData) => {
     // The resolver has passed; these are the gates held outside form state.
-    if (mode === MODE_DEFAULT && (!uploads || hasNameConflict)) return;
+    // isJudgeModelsLoading blocks too: invalidModelRefs is empty while the list is in flight, so
+    // submitting inside that window would skip the check entirely.
+    if (
+      mode === MODE_DEFAULT &&
+      (!uploads || hasNameConflict || (isLlmJudge && isJudgeModelsLoading))
+    )
+      return;
     if (
       mode === MODE_EXPERIMENT &&
       (isValidatingEvaluation || !selectedEvaluation || evaluationConfigIssue)
