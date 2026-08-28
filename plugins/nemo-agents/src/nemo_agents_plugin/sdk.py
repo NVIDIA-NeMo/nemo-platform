@@ -68,6 +68,10 @@ _DEFAULT_TIMEOUT = 30
 _DEFAULT_MODEL_PLACEHOLDER = re.compile(r"\$(?:\{NEMO_DEFAULT_MODEL\}|NEMO_DEFAULT_MODEL(?![A-Za-z0-9_]))")
 
 
+def _resolve_workspace(platform: Any, workspace: str | None) -> str:
+    return workspace or getattr(platform, "workspace", None) or _DEFAULT_WORKSPACE
+
+
 def _contains_default_model_placeholder(value: Any) -> bool:
     """Return True when *value* still contains an unresolved default-model placeholder."""
     if isinstance(value, str):
@@ -271,7 +275,7 @@ class AgentsResource:
         return str(base).rstrip("/")
 
     def _workspace(self, workspace: str | None) -> str:
-        return workspace or getattr(self._platform, "workspace", None) or _DEFAULT_WORKSPACE
+        return _resolve_workspace(self._platform, workspace)
 
     def _agents_url(self, path: str) -> str:
         return self._base_url() + "/apis/agents" + path
@@ -548,22 +552,24 @@ class _ExecuteJobsResource:
         spec: Mapping[str, Any],
         name: str | None = None,
         description: str | None = None,
-        workspace: str = _DEFAULT_WORKSPACE,
+        workspace: str | None = None,
     ) -> dict[str, Any]:
         """Submit an execute-agent job. *spec* is an ``ExecuteAgentJobConfig``."""
         return self._platform.post(
-            _execute_jobs_base(workspace),
+            _execute_jobs_base(_resolve_workspace(self._platform, workspace)),
             body=_execute_job_body(spec, name, description),
             cast_to=dict[str, Any],
         )
 
-    def get(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+    def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
         """Get one execute-agent job by name."""
-        return self._platform.get(f"{_execute_jobs_base(workspace)}/{name}", cast_to=dict[str, Any])
+        base = _execute_jobs_base(_resolve_workspace(self._platform, workspace))
+        return self._platform.get(f"{base}/{name}", cast_to=dict[str, Any])
 
-    def list_results(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+    def list_results(self, name: str, workspace: str | None = None) -> dict[str, Any]:
         """List the named results a finished execute-agent job saved."""
-        return self._platform.get(f"{_execute_jobs_base(workspace)}/{name}/results", cast_to=dict[str, Any])
+        base = _execute_jobs_base(_resolve_workspace(self._platform, workspace))
+        return self._platform.get(f"{base}/{name}/results", cast_to=dict[str, Any])
 
 
 class _AsyncExecuteJobsResource:
@@ -578,22 +584,24 @@ class _AsyncExecuteJobsResource:
         spec: Mapping[str, Any],
         name: str | None = None,
         description: str | None = None,
-        workspace: str = _DEFAULT_WORKSPACE,
+        workspace: str | None = None,
     ) -> dict[str, Any]:
         """Submit an execute-agent job. *spec* is an ``ExecuteAgentJobConfig``."""
         return await self._platform.post(
-            _execute_jobs_base(workspace),
+            _execute_jobs_base(_resolve_workspace(self._platform, workspace)),
             body=_execute_job_body(spec, name, description),
             cast_to=dict[str, Any],
         )
 
-    async def get(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+    async def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
         """Get one execute-agent job by name."""
-        return await self._platform.get(f"{_execute_jobs_base(workspace)}/{name}", cast_to=dict[str, Any])
+        base = _execute_jobs_base(_resolve_workspace(self._platform, workspace))
+        return await self._platform.get(f"{base}/{name}", cast_to=dict[str, Any])
 
-    async def list_results(self, name: str, *, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+    async def list_results(self, name: str, workspace: str | None = None) -> dict[str, Any]:
         """List the named results a finished execute-agent job saved."""
-        return await self._platform.get(f"{_execute_jobs_base(workspace)}/{name}/results", cast_to=dict[str, Any])
+        base = _execute_jobs_base(_resolve_workspace(self._platform, workspace))
+        return await self._platform.get(f"{base}/{name}/results", cast_to=dict[str, Any])
 
 
 class _JobsResource:

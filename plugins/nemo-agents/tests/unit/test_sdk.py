@@ -261,9 +261,10 @@ class _RecordingPlatform:
     request shape.
     """
 
-    def __init__(self, response: Any = None) -> None:
+    def __init__(self, response: Any = None, workspace: str | None = None) -> None:
         self.calls: list[dict[str, Any]] = []
         self._response = response if response is not None else {"name": "execute-a1b2"}
+        self.workspace = workspace
 
     def post(self, path: str, *, body: Any = None, cast_to: Any = None) -> Any:
         self.calls.append({"method": "POST", "path": path, "body": body, "cast_to": cast_to})
@@ -322,6 +323,52 @@ def test_execute_job_get_and_list_results_paths() -> None:
         "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2",
         "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2/results",
     ]
+
+
+def test_execute_job_get_accepts_workspace_positionally() -> None:
+    """Mirrors sibling ``get``/``delete`` methods, which take workspace positional-or-keyword."""
+    platform = _RecordingPlatform()
+    jobs = AgentsResource(platform).jobs.execute
+
+    jobs.get("execute-a1b2", "team-a")
+
+    assert platform.calls[0]["path"] == "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2"
+
+
+def test_execute_job_create_uses_client_workspace_by_default() -> None:
+    platform = _RecordingPlatform(workspace="team-a")
+
+    AgentsResource(platform).jobs.execute.create(spec={"agent": "calc", "input": "2+2"})
+
+    assert platform.calls[0]["path"] == "/apis/agents/v2/workspaces/team-a/jobs/execute"
+
+
+def test_execute_job_get_and_list_results_use_client_workspace_by_default() -> None:
+    platform = _RecordingPlatform(workspace="team-a")
+    jobs = AgentsResource(platform).jobs.execute
+
+    jobs.get("execute-a1b2")
+    jobs.list_results("execute-a1b2")
+
+    assert [call["path"] for call in platform.calls] == [
+        "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2",
+        "/apis/agents/v2/workspaces/team-a/jobs/execute/execute-a1b2/results",
+    ]
+
+
+async def test_async_execute_job_create_uses_client_workspace_by_default() -> None:
+    class _AsyncRecordingPlatform(_RecordingPlatform):
+        async def post(self, path: str, *, body: Any = None, cast_to: Any = None) -> Any:
+            return super().post(path, body=body, cast_to=cast_to)
+
+        async def get(self, path: str, *, cast_to: Any = None) -> Any:
+            return super().get(path, cast_to=cast_to)
+
+    platform = _AsyncRecordingPlatform(workspace="team-a")
+
+    await AsyncAgentsResource(platform).jobs.execute.create(spec={"agent": "calc", "input": "2+2"})
+
+    assert platform.calls[0]["path"] == "/apis/agents/v2/workspaces/team-a/jobs/execute"
 
 
 async def test_async_execute_job_create_mirrors_sync_shape() -> None:
