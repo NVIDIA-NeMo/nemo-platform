@@ -105,7 +105,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     rm -rf /opt/venv/lib/python*/site-packages/vllm \
     /opt/venv/lib/python*/site-packages/vllm-*.dist-info && \
+    uv pip uninstall -y mlflow || true && \
     uv pip install \
+    --reinstall-package mlflow-skinny \
+    --reinstall-package sqlparse \
     --reinstall-package wandb \
     "aiohttp>=3.13.3,<4" \
     "black>=26.3.1,<27" \
@@ -124,9 +127,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "cryptography>=50.0.0,<51" \
     "tornado>=6.5.5,<7" \
     "urllib3>=2.7.0,<3" \
-    "mlflow-skinny>=3.13.0,<3.14.0" \
+    "mlflow-skinny>=3.15.0,<3.16.0" \
+    "sqlparse>=0.6.0,<0.7" \
     "grpcio>=1.81.1,<2" \
-    "wandb>=0.28.2"
+    "wandb>=0.29.0"
 
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}

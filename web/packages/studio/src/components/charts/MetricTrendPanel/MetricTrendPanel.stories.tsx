@@ -77,6 +77,16 @@ export const ValueCaption: Story = {
   },
 };
 
+export const SingleDatapoint: Story = {
+  args: {
+    comparisonLabel: undefined,
+    valueLabel: 'Latest result',
+    series: [
+      { id: 'solved', label: 'Solved', value: 78.4, points: [{ label: 'Day 1', value: 78.4 }] },
+    ],
+  },
+};
+
 export const Loading: Story = {
   args: { isPending: true },
 };

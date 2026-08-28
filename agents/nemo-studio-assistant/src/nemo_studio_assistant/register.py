@@ -59,7 +59,7 @@ def _get_client(workspace: str) -> NeMoPlatform:
     if not request_workspace:
         raise ValueError("workspace is required")
     if request_workspace not in _clients:
-        base_url = os.environ.get("NEMO_BASE_URL") or os.environ.get("NMP_BASE_URL")
+        base_url = os.environ.get("NMP_BASE_URL") or os.environ.get("NEMO_BASE_URL")
         kwargs: dict[str, Any] = {"workspace": request_workspace}
         if base_url:
             kwargs["base_url"] = base_url
@@ -775,10 +775,25 @@ def deploy_guardrail(
         )
 
 
+def _parse_nemo_api_params(params: str | dict[str, Any] | None) -> dict[str, Any] | None:
+    if params is None or params == "":
+        return None
+    parsed_params: Any
+    if isinstance(params, str):
+        parsed_params = json.loads(params)
+    elif isinstance(params, dict):
+        parsed_params = dict(params)
+    else:
+        raise ValueError("params must decode to a JSON object")
+    if not isinstance(parsed_params, dict):
+        raise ValueError("params must decode to a JSON object")
+    return parsed_params
+
+
 def nemo_api(
     resource: str,
     action: str,
-    params: str | None = None,
+    params: str | dict[str, Any] | None = None,
     studio_session_id: str | None = None,
     workspace: str | None = None,
 ) -> str:
@@ -789,17 +804,15 @@ def nemo_api(
     ``guardrail.configs``, ``secrets``, ``models`` or ``datasets``. Use
     ``resource='guardrail.configs'`` for guardrail config CRUD and
     ``resource='guardrail', action='check'`` only for standalone checks. ``action`` is the
-    SDK method name. ``params`` is an optional JSON object string containing
-    keyword arguments. Pass the active request workspace for every operation.
+    SDK method name. ``params`` is an optional JSON object or JSON object string
+    containing keyword arguments. Pass the active request workspace for every operation.
     Pass the Studio session id from the user context for create, update, delete,
     submit, upload, cancel, or other mutating actions.
     """
     parsed_params: dict[str, Any] | None = None
     is_guardrail_check = _is_guardrail_check(resource, action)
     try:
-        parsed_params = json.loads(params) if params else None
-        if parsed_params is not None and not isinstance(parsed_params, dict):
-            raise ValueError("params must decode to a JSON object")
+        parsed_params = _parse_nemo_api_params(params)
         workspace = _normalize_workspace(workspace, parsed_params)
         error_key = _api_error_key(workspace or "", studio_session_id)
         if is_guardrail_check and _guardrail_check_failures.get(error_key, 0) >= _GUARDRAIL_CHECK_FAILURE_LIMIT:
@@ -840,9 +853,7 @@ def nemo_api(
             approved_params = approved_input.get("params", params)
             if approved_params != params:
                 params = approved_params
-                parsed_params = json.loads(params) if params else None
-                if parsed_params is not None and not isinstance(parsed_params, dict):
-                    raise ValueError("params must decode to a JSON object")
+                parsed_params = _parse_nemo_api_params(params)
             normalized_action = action.strip().lower()
             is_guardrail_check = _is_guardrail_check(resource, action)
             sdk_resource = _resolve_resource(client, resource)

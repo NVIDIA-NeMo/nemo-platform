@@ -77,6 +77,14 @@ class VirtualModel(BaseModel):
 
     default_model_entity: Optional[str] = None
 
+    guardrail_config_ids: Optional[List[str]] = None
+    """System-managed.
+
+    Guardrail configs applied by this VirtualModel's middleware, as "workspace/name"
+    references. Derived from the middleware pipelines on every write and ignored if
+    supplied on a create or update body. Filter on it with filter[guardrail_config].
+    """
+
     models: Optional[List[VirtualModelInferenceConfig]] = None
 
     name: Optional[str] = None

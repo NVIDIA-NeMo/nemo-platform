@@ -13,18 +13,21 @@ however simple or elaborate, implements the same small protocol.
 ## The protocol
 
 ```python
-from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 class MyMetric:
     @property
     def type(self) -> str:
         """A unique name for this metric within a task (also the summary key prefix)."""
+        return "my_metric"
 
     def output_spec(self) -> list[MetricOutputSpec]:
         """The named values this metric emits, and their types."""
+        return [MetricOutputSpec.continuous_score("score")]
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Score one trial and return its outputs."""
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
 ```
 
 No base class — a metric is any object with these three members (a structural `Metric` protocol).
@@ -69,6 +72,8 @@ A metric may emit **several** outputs — for example an efficiency metric retur
 count:
 
 ```python
+from nemo_evaluator_sdk.metrics.protocol import MetricOutputSpec
+
 def output_spec(self) -> list[MetricOutputSpec]:
     return [
         MetricOutputSpec.boolean("efficient_tool_use"),
@@ -108,21 +113,36 @@ class KeywordMatchMetric:
 ## Reading evidence
 
 `candidate.evidence` (a `CandidateEvidence`) holds named descriptors, each exposed through a typed
-handle. Always guard first — a trial may not carry a given descriptor:
+handle. `trace()` returns an `ATIFTraceHandle | OTLPTraceHandle` union. Always guard for missing
+evidence, then narrow on `handle.format` before using format-specific methods:
 
 ```python
+from nemo_evaluator_sdk.metrics.protocol import MetricInput
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_TRACE
 
-evidence = input.candidate.evidence
-if evidence is not None and evidence.get(EVIDENCE_TRACE) is not None:
-    calls = await (await evidence.trace(EVIDENCE_TRACE)).tool_calls()
+async def read_trace(input: MetricInput) -> None:
+    evidence = input.candidate.evidence
+    if evidence is None or evidence.get(EVIDENCE_TRACE) is None:
+        return
+
+    handle = await evidence.trace(EVIDENCE_TRACE)
+    if handle.format == "otlp":
+        resource_spans = await handle.resource_spans()
+        # extract tool calls based on the OTLP exporter specific logic
+        # calls = await extract_tool_calls(resource_spans)
+    else:
+        calls = await handle.tool_calls()
 ```
 
 | Evidence | Handle | Reads |
 |---|---|---|
-| **trace** (`EVIDENCE_TRACE`) | `await evidence.trace(name)` | `.tool_calls()`, `.steps()`, `.token_usage()` — the [Agent Trajectory Interchange Format (ATIF)](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory |
+| **trace** (`EVIDENCE_TRACE`) | `ATIFTraceHandle` (`format == "atif"`) | `.trace()`, `.tool_calls()`, `.steps()`, `.token_usage()` |
+| **trace** (`EVIDENCE_TRACE`) | `OTLPTraceHandle` (`format == "otlp"`) | `.resource_spans()` |
 | **filesystem** (`EVIDENCE_FINAL_STATE`, `EVIDENCE_INITIAL_STATE`) | `await evidence.filesystem(name)` | `.run_verifier(command)`, `.diff(other)` — run a check or diff two snapshots |
 | **logs** | `await evidence.logs(name)` | `.read_text(file)`, `.tail(file)` |
+
+OTLP exposes the unflattened `resourceSpans` tree; it does not provide a generic `tool_calls()` method.
+It's a responsibility of consumer to parse `resourceSpans` tree specific to OTLP exporter to extract the searched data.
 
 The [Score by Component](/documentation/evaluate-models/agent-eval/score-by-component) guide has a
 complete, runnable trajectory metric; the SDK's `example_metrics.py` (under

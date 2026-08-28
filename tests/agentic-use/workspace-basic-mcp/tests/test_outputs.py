@@ -10,7 +10,7 @@ from the working directory.
 
 import os
 
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 
 
 def test_workspace_created() -> None:
@@ -19,11 +19,11 @@ def test_workspace_created() -> None:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 
     # Create SDK client and list workspaces
-    client = NeMoPlatform(base_url=nmp_base_url)
-    response = client.workspaces.list()
+    client = WorkspacesClient(base_url=nmp_base_url)
+    response = client.list_workspaces()
 
     # Extract workspace names from the SDK response
-    workspace_names = [ws.name for ws in response.data]
+    workspace_names = [ws.name for ws in response.items()]
 
     # Verify that harbor-test-workspace EXISTS
     assert "harbor-test-workspace" in workspace_names, (

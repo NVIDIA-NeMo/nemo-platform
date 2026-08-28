@@ -22,6 +22,7 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
 from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
+    AccessKeyEntityType,
     AccessKeyListResponse,
     AccessKeyRevokeResponse,
     AccessKeyStatus,
@@ -30,9 +31,9 @@ from nemo_platform_plugin.auth.access_keys.types import (
 from nmp.common.config import AuthConfig, get_platform_config
 
 from .jwks import DEFAULT_JWKS_CACHE_LIFESPAN, AsyncJWKSClient, signing_jwk_from_jwks
-from .jwt import TokenClaims, groups_from_claim, scopes_from_claim
 from .models import Principal
 from .signing_keys import RSASigningKey, RSASigningKeyCache
+from .token_claims import TokenClaims, groups_from_claim, scopes_from_claim
 
 ACCESS_KEY_TOKEN_TYPE = "access_key"
 ACCESS_KEY_JWKS_PATH = "/apis/auth/jwks"
@@ -41,6 +42,7 @@ LEGACY_ACCESS_KEY_METADATA_VERSION = 1
 ACCESS_KEY_JTI_PATTERN = r"^ak_[0-9a-f]{32}$"
 _ACCESS_KEY_JTI_RE = re.compile(ACCESS_KEY_JTI_PATTERN)
 _NEWLY_CREATED_STATUS: AccessKeyStatus = "ACTIVE"
+SERVICE_ACCOUNT_PRINCIPAL_PREFIX = "service-account:"
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,7 @@ class _AccessKeyTokenPayload:
     name: str | None
     description: str | None
     principal: str
+    entity_type: AccessKeyEntityType
     issuer: str
     audiences: list[str]
     created_at: datetime
@@ -206,29 +209,54 @@ class AccessKeyIssuerService(AccessKeyIssuer):
         if not self._config.access_keys.enabled:
             raise AccessKeyFeatureDisabledError("Scoped Access Keys are not enabled")
 
-    def create(self, request: AccessKeyCreateRequest) -> AccessKeyCreateResponse:
+    def create(
+        self, request: AccessKeyCreateRequest, *, allow_service_account: bool = False
+    ) -> AccessKeyCreateResponse:
         self._ensure_enabled()
         expires_in_seconds = _resolve_expires_in_seconds(self._config, request)
+        principal, entity_type = self._target_principal(request, allow_service_account=allow_service_account)
         return _create_access_key_token(
             self._config,
-            principal=self._principal,
+            principal=principal,
+            entity_type=entity_type,
             name=request.name,
             description=request.description,
             expires_in_seconds=expires_in_seconds,
             now=self._now(),
         )
 
-    async def create_async(self, request: AccessKeyCreateRequest) -> AccessKeyCreateResponse:
+    async def create_async(
+        self, request: AccessKeyCreateRequest, *, allow_service_account: bool = False
+    ) -> AccessKeyCreateResponse:
         self._ensure_enabled()
         expires_in_seconds = _resolve_expires_in_seconds(self._config, request)
+        principal, entity_type = self._target_principal(request, allow_service_account=allow_service_account)
         return await _create_access_key_token_async(
             self._config,
-            principal=self._principal,
+            principal=principal,
+            entity_type=entity_type,
             name=request.name,
             description=request.description,
             expires_in_seconds=expires_in_seconds,
             now=self._now(),
         )
+
+    def _target_principal(
+        self, request: AccessKeyCreateRequest, *, allow_service_account: bool
+    ) -> tuple[Principal, AccessKeyEntityType]:
+        # A service-account caller can never mint Scoped Access Keys, for itself or for any
+        # other service account: that would let a compromised or over-delegated service
+        # credential renew its own (or another service's) access indefinitely. Only human
+        # PlatformAdmins may create service-bound keys.
+        if self._principal.is_service_identity():
+            if self._principal.is_privileged:
+                raise AccessKeyValidationError("Scoped Access Keys cannot be created for service principals")
+            raise AccessKeyValidationError("Scoped Access Keys cannot be created by service-account principals")
+        if request.service_account_id is None:
+            return self._principal, "USER"
+        if not allow_service_account:
+            raise AccessKeyValidationError("Service-bound Scoped Access Keys require PlatformAdmin")
+        return Principal(id=f"{SERVICE_ACCOUNT_PRINCIPAL_PREFIX}{request.service_account_id}"), "SERVICE_ACCOUNT"
 
     def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:  # noqa: ARG002
         self._ensure_enabled()
@@ -251,6 +279,7 @@ def _create_access_key_token(
     config: AuthConfig,
     *,
     principal: Principal,
+    entity_type: AccessKeyEntityType = "USER",
     name: str | None = None,
     description: str | None = None,
     expires_in_seconds: int | None = None,
@@ -259,6 +288,7 @@ def _create_access_key_token(
     payload = _build_access_key_token_payload(
         config,
         principal=principal,
+        entity_type=entity_type,
         name=name,
         description=description,
         expires_in_seconds=expires_in_seconds,
@@ -271,6 +301,7 @@ async def _create_access_key_token_async(
     config: AuthConfig,
     *,
     principal: Principal,
+    entity_type: AccessKeyEntityType = "USER",
     name: str | None = None,
     description: str | None = None,
     expires_in_seconds: int | None = None,
@@ -279,6 +310,7 @@ async def _create_access_key_token_async(
     payload = _build_access_key_token_payload(
         config,
         principal=principal,
+        entity_type=entity_type,
         name=name,
         description=description,
         expires_in_seconds=expires_in_seconds,
@@ -292,6 +324,7 @@ def _build_access_key_token_payload(
     config: AuthConfig,
     *,
     principal: Principal,
+    entity_type: AccessKeyEntityType = "USER",
     name: str | None,
     description: str | None,
     expires_in_seconds: int | None,
@@ -305,6 +338,8 @@ def _build_access_key_token_payload(
     issued_at = now
     jti = f"ak_{uuid.uuid4().hex}"
     access_key_metadata: dict[str, Any] = {"version": ACCESS_KEY_METADATA_VERSION}
+    if entity_type == "SERVICE_ACCOUNT":
+        access_key_metadata["entity_type"] = entity_type
     if name is not None:
         access_key_metadata["name"] = name
     issuer = access_key_issuer(config)
@@ -337,6 +372,7 @@ def _build_access_key_token_payload(
         name=name,
         description=description,
         principal=principal.id,
+        entity_type=entity_type,
         issuer=issuer,
         audiences=audiences,
         created_at=datetime.fromtimestamp(issued_at, tz=UTC),
@@ -361,6 +397,7 @@ def _access_key_response_from_payload(
         token=token,
         token_type="Bearer",
         principal=payload.principal,
+        entity_type=payload.entity_type,
         status=_NEWLY_CREATED_STATUS,
         issuer=payload.issuer,
         audiences=payload.audiences,
@@ -413,7 +450,18 @@ async def validate_access_key_token(
         claims = jwt.decode(token, signing_key, **decode_kwargs)
 
         subject = claims.get("sub")
+        metadata = claims.get("nmp_access_key")
         if not isinstance(subject, str) or not subject or subject.startswith("service:"):
+            return None
+        if not isinstance(metadata, dict):
+            return None
+        entity_type = metadata.get("entity_type", "USER")
+        is_service_account = subject.startswith(SERVICE_ACCOUNT_PRINCIPAL_PREFIX)
+        if is_service_account and subject == SERVICE_ACCOUNT_PRINCIPAL_PREFIX:
+            return None
+        if (entity_type == "SERVICE_ACCOUNT") != is_service_account:
+            return None
+        if entity_type not in {"USER", "SERVICE_ACCOUNT"}:
             return None
 
         groups = groups_from_claim(claims.get("groups", []))

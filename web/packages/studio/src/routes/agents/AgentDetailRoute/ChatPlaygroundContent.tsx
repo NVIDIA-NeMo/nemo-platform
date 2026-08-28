@@ -18,6 +18,8 @@ interface ChatPlaygroundContentProps {
   chatAreaRef: RefObject<HTMLDivElement | null>;
   onSelectDeployment: (name: string) => void;
   onDeploy: () => void;
+  /** Deploying requires a Platform-managed agent config (Fabric integration). */
+  canDeploy: boolean;
 }
 
 export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
@@ -30,6 +32,7 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
   chatAreaRef,
   onSelectDeployment,
   onDeploy,
+  canDeploy,
 }) => {
   const deploymentSelectItems = healthyDeployments.flatMap((d) =>
     d.name
@@ -60,6 +63,7 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
             agentName={agentName}
             isDeploying={isDeploying}
             onDeploy={onDeploy}
+            canDeploy={canDeploy}
           />
         </Block>
       )}

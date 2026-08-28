@@ -5,14 +5,14 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getGetExperimentQueryKey, useUpdateExperiment } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text } from '@nvidia/foundations-react-core';
-import { MetricSelect } from '@studio/components/charts/ExperimentParetoChart/MetricSelect';
 import { ParetoTooltip } from '@studio/components/charts/ExperimentParetoChart/ParetoTooltip';
-import { useParetoEvaluations } from '@studio/components/charts/ExperimentParetoChart/useParetoEvaluations';
 import {
   buildParetoPoints,
   deriveParetoMetrics,
   metricLabel,
 } from '@studio/components/charts/ExperimentParetoChart/utils';
+import { MetricSelect } from '@studio/components/charts/MetricSelect';
+import { useGroupEvaluations } from '@studio/components/charts/useGroupEvaluations';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
@@ -67,7 +67,7 @@ export const ExperimentParetoChart: FC<ExperimentParetoChartProps> = ({
     rows: fetchedRows,
     isLoading: isFetching,
     isError,
-  } = useParetoEvaluations(workspace, group.id, { enabled: !hasPreloaded && !preloadPending });
+  } = useGroupEvaluations(workspace, group.id, { enabled: !hasPreloaded && !preloadPending });
   const points = hasPreloaded ? preloadedEvaluations : fetchedRows;
   const isLoading = hasPreloaded ? false : preloadPending || isFetching;
   const metrics = useMemo(() => deriveParetoMetrics(points), [points]);

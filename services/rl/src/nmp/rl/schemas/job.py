@@ -11,7 +11,7 @@ from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
 from nmp.customization_common.schemas.values import OutputNameType
 from nmp.customization_common.training.reporting import ProgressReportingConfig
-from nmp.rl.app.jobs.training.schemas import OptimizerType
+from nmp.rl.app.jobs.training.schemas import BatchingStrategy, OptimizerType, PolicyBackend
 from nmp.rl.entities.values import TrainingType
 from pydantic import ConfigDict, Discriminator, Field, model_validator
 
@@ -36,7 +36,8 @@ class ParallelismParams(RlSchema):
     expert_parallel_size: int = Field(
         default=1,
         gt=0,
-        description="Expert parallel size for MoE models. GRPO only; a value above 1 selects the DTensor v2 backend.",
+        description="Expert parallel size for MoE models. GRPO only, and implemented only by "
+        "policy_backend='automodel'.",
     )
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
@@ -146,9 +147,12 @@ class LoRAParams(RlSchema):
         default=None,
         description="Module name patterns to exclude from LoRA.",
     )
-    use_triton: bool = Field(
-        default=True,
-        description="Use Triton LoRA kernels (DTensor v2). Set false when tensor_parallel_size > 1.",
+    use_triton: bool | None = Field(
+        default=None,
+        description="Use Automodel's Triton LoRA kernels: faster, but incompatible with "
+        "tensor_parallel_size > 1 (they take raw tensors, and TP makes the adapter weights "
+        "DTensors). Unset lets the compiler pick -- true at TP 1, false above. Setting it true "
+        "with TP > 1 is rejected, not silently downgraded.",
     )
 
 
@@ -255,6 +259,15 @@ class GRPOTraining(_TrainingBase):
     lora: LoRAParams | None = Field(
         default=None,
         description="LoRA hyperparameters. Defaults applied when finetuning_type is lora.",
+    )
+    policy_backend: PolicyBackend = Field(
+        default=PolicyBackend.AUTOMODEL,
+        description="NeMo-RL policy worker that trains the model. `automodel` (default) builds on "
+        "NeMo Automodel + Transformer Engine; it handles full-weight training and is the only "
+        "backend with LoRA, expert parallelism and automodel_kwargs. `dtensor` uses stock "
+        "HuggingFace modules on PyTorch FSDP2 -- no Transformer Engine, so it is the pre-Hopper "
+        "option, without those three features. Never switched implicitly: asking `dtensor` for an "
+        "`automodel`-only feature is rejected.",
     )
     val_at_start: bool = Field(
         default=False,
@@ -415,18 +428,48 @@ class GRPOTraining(_TrainingBase):
         "0 into a negative reward instead of a merely smaller positive one.",
     )
 
+    # --- Micro-batch construction ---
+    batching_strategy: BatchingStrategy = Field(
+        default=BatchingStrategy.DYNAMIC,
+        description="How rollouts are grouped into training micro-batches. `dynamic` fills each "
+        "micro-batch to a token budget so short rollouts share a batch instead of each paying for a "
+        "full-length pad. `sequence_packing` concatenates rollouts into packed sequences; it is "
+        "rejected for context_parallel_size > 1. `static` is one rollout per slot.",
+    )
+    train_mb_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        description="Token budget per training micro-batch, read by `dynamic` and `sequence_packing`. "
+        "Defaults to max_seq_length * micro_batch_size, the peak `static` already provisions for. "
+        "Lower it if you OOM.",
+    )
+    sequence_length_round: int = Field(
+        default=64,
+        gt=0,
+        description="Round bucketed micro-batch sequence lengths up to a multiple of this. Only read by `dynamic`.",
+    )
+
     # --- Per-architecture backend settings ---
     automodel_kwargs: dict[str, Any] | None = Field(
         default=None,
-        description="Passed to policy.dtensor_cfg.automodel_kwargs; selects the DTensor v2 backend. "
+        description="Passed to policy.dtensor_cfg.automodel_kwargs; requires policy_backend='automodel'. "
         "{'force_hf': true} loads the stock HuggingFace modules; a {'backend': {...}} block picks "
         "the Transformer-Engine / DeepEP MoE implementation. Unset means Automodel auto-detects.",
     )
     router_aux_loss_coef: float | None = Field(
         default=None,
         ge=0.0,
-        description="MoE router auxiliary-loss coefficient, applied as a HuggingFace config override. "
-        "Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own value.",
+        description="MoE router auxiliary-loss coefficient, applied as a top-level HuggingFace config "
+        "override. Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own "
+        "value. Models that nest their config (Qwen3.5 reads it under `text_config`) need "
+        "`hf_config_overrides` instead — a top-level key they do not read is absorbed silently.",
+    )
+    hf_config_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description="Passed to NeMo-RL's `policy.hf_config_overrides` verbatim, which forwards it to "
+        "the training model as HuggingFace config kwargs and to vLLM as `hf_overrides`. Nested keys "
+        "are preserved, so this reaches models that namespace their config, e.g. "
+        '`{"text_config": {"router_aux_loss_coef": 0.0}}` for Qwen3.5.',
     )
     vllm_tensor_parallel_size: int | None = Field(
         default=None,
@@ -448,6 +491,64 @@ class GRPOTraining(_TrainingBase):
             self.lora = LoRAParams()
         if self.finetuning_type == "all_weights" and self.lora is not None:
             raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
+
+    @model_validator(mode="after")
+    def _triton_lora_kernels_require_no_tensor_parallelism(self) -> Self:
+        """Triton LoRA kernels cannot take the DTensors that TP produces.
+
+        ``TritonLinearLoRA.forward`` passes the adapter weights straight to a Triton kernel,
+        and ``lora_kernel.py`` never calls ``.to_local()``. NeMo-RL turns the pairing into a
+        bare assert in ``automodel/setup.py``, which fires inside a Ray worker only after the
+        model loads. Unset means "compiler picks", so only an explicit ``true`` is rejected.
+        """
+        tp = self.parallelism.tensor_parallel_size
+        if self.lora is not None and self.lora.use_triton is True and tp > 1:
+            raise ValueError(
+                f"lora.use_triton=true is incompatible with parallelism.tensor_parallel_size={tp}: "
+                "Automodel's Triton LoRA kernels do not accept the DTensor-sharded adapter weights "
+                "tensor parallelism produces. Leave lora.use_triton unset to let the compiler pick, "
+                "set it false, or drop to tensor_parallel_size=1."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _policy_backend_supports_requested_features(self) -> Self:
+        """Reject capabilities the chosen backend does not implement.
+
+        ``DTensorPolicyWorker`` (V1) asserts ``lora_cfg.enabled is False`` and reads neither
+        ``expert_parallel_size`` nor ``automodel_kwargs`` -- so left to NeMo-RL, LoRA dies in
+        a Ray worker and the other two are silently ignored. All conflicts are reported at
+        once so one fix-up round suffices.
+        """
+        if self.policy_backend is not PolicyBackend.DTENSOR:
+            return self
+        conflicts = []
+        if self.finetuning_type == "lora":
+            conflicts.append("finetuning_type='lora'")
+        if self.parallelism.expert_parallel_size > 1:
+            conflicts.append(f"parallelism.expert_parallel_size={self.parallelism.expert_parallel_size}")
+        if self.automodel_kwargs:
+            conflicts.append("automodel_kwargs")
+        if conflicts:
+            raise ValueError(
+                f"{', '.join(conflicts)} {'is' if len(conflicts) == 1 else 'are'} only supported with "
+                "policy_backend='automodel'. Set policy_backend='automodel' (it also handles "
+                "full-weight training), or drop the unsupported settings to stay on 'dtensor'."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _hf_config_overrides_do_not_collide(self) -> Self:
+        # router_aux_loss_coef writes the same top-level key, and HuggingFace absorbs an
+        # unknown kwarg without complaining -- so a silent loser here means the MoE aux
+        # loss stays on and only shows up as degraded accuracy many steps in.
+        if self.router_aux_loss_coef is not None and "router_aux_loss_coef" in (self.hf_config_overrides or {}):
+            raise ValueError(
+                "router_aux_loss_coef is set both directly and inside hf_config_overrides. "
+                "Keep one: use hf_config_overrides when the model nests it (e.g. Qwen3.5 reads "
+                "it under text_config)."
+            )
         return self
 
     @model_validator(mode="after")

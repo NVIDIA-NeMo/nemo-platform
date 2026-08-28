@@ -42,7 +42,7 @@ One run flows through five pieces:
   agent over HTTP, and container/harness backends; you can supply your own. Scoring never depends on
   which runner produced a trial.
 - **Trial** (`AgentEvalTrial`) — the durable record of one attempt: the agent's final `output`, the
-  `evidence` it produced (an [Agent Trajectory Interchange Format (ATIF)](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trace of steps and tool calls, final filesystem state, logs), a
+  `evidence` it produced (an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trace of steps and tool calls or OTLP resource spans, final filesystem state, logs), a
   `status` (`completed` / `partial` / `failed`), and arbitrary metadata. The trial — not the runner — is what
   gets scored, and it can be re-scored offline later.
 - **Metrics** (`Metric`) — each task's metrics score its trials through

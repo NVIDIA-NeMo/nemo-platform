@@ -150,6 +150,8 @@ navigation:
             path: ../../studio/agents.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
+          - page: Experiments
+            path: ../../studio/experiments.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
@@ -252,6 +254,9 @@ navigation:
               - page: Format Training Dataset
                 path: ../../customizer/tutorials/format-training-dataset.mdx
                 slug: format-training-dataset
+              - page: GRPO Environment Packages
+                path: ../../customizer/tutorials/grpo-environment-packages.mdx
+                slug: grpo-environment-packages
               - page: Import HuggingFace Models
                 path: ../../customizer/tutorials/import-hf-model.mdx
                 slug: import-hugging-face-models

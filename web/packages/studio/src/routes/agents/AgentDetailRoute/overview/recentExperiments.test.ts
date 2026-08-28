@@ -182,7 +182,7 @@ describe('toRecentExperiments', () => {
     expect(recent[0]?.series[0]?.points.map((point) => point.value)).toEqual([0.4, 0.6]);
   });
 
-  it('keeps an experiment shown over time even when a sibling membership is not', () => {
+  it('carries each membership through with its own over-time flag', () => {
     const { recent } = toRecentExperiments([
       {
         ...evaluation('shared', { scores: { solved: 0.4 } }),
@@ -206,15 +206,18 @@ describe('toRecentExperiments', () => {
       },
     ]);
 
-    expect(recent.map((row) => row.id)).toEqual(['exp-shown']);
+    expect(recent.map((row) => [row.id, row.showsOverTime])).toEqual([
+      ['exp-hidden', false],
+      ['exp-shown', true],
+    ]);
   });
 
-  it('caps the number of cards', () => {
-    const rows = ['exp-1', 'exp-2', 'exp-3', 'exp-4'].map((id, index) =>
+  it('caps the number of recent cards', () => {
+    const rows = ['exp-1', 'exp-2', 'exp-3', 'exp-4', 'exp-5', 'exp-6'].map((id, index) =>
       evaluation(id, { experimentId: id, createdAt: `2026-08-0${index + 1}T00:00:00Z` })
     );
 
-    expect(toRecentExperiments(rows).recent).toHaveLength(3);
+    expect(toRecentExperiments(rows).recent).toHaveLength(5);
   });
 
   it('groups favorites separately from the recent experiments', () => {
@@ -231,23 +234,23 @@ describe('toRecentExperiments', () => {
     expect(recent.map((row) => row.id)).toEqual(['exp-1']);
   });
 
-  it('caps each group independently, so favorites never crowd out the recent ones', () => {
-    const rows = ['exp-1', 'exp-2', 'exp-3', 'exp-4'].map((id, index) =>
+  it('leaves favorites uncapped, since the user pinned every one of them', () => {
+    const rows = ['exp-1', 'exp-2', 'exp-3', 'exp-4', 'exp-5', 'exp-6'].map((id, index) =>
       evaluation(id, {
         experimentId: id,
         createdAt: `2026-08-0${index + 1}T00:00:00Z`,
         isFavorite: true,
       })
     );
-    rows.push(evaluation('exp-5', { experimentId: 'exp-5', createdAt: '2026-08-09T00:00:00Z' }));
+    rows.push(evaluation('exp-7', { experimentId: 'exp-7', createdAt: '2026-08-09T00:00:00Z' }));
 
     const { favorites, recent } = toRecentExperiments(rows);
 
-    expect(favorites).toHaveLength(3);
-    expect(recent.map((row) => row.id)).toEqual(['exp-5']);
+    expect(favorites).toHaveLength(6);
+    expect(recent.map((row) => row.id)).toEqual(['exp-7']);
   });
 
-  it('omits experiments that are not marked to show evaluations over time', () => {
+  it('keeps experiments that are not marked to show evaluations over time', () => {
     const { favorites, recent } = toRecentExperiments([
       evaluation('a', { experimentId: 'exp-1', showsEvaluationsOverTime: false }),
       evaluation('b', {
@@ -257,7 +260,7 @@ describe('toRecentExperiments', () => {
       }),
     ]);
 
-    expect(favorites).toEqual([]);
-    expect(recent).toEqual([]);
+    expect(favorites.map((row) => [row.id, row.showsOverTime])).toEqual([['exp-2', false]]);
+    expect(recent.map((row) => [row.id, row.showsOverTime])).toEqual([['exp-1', false]]);
   });
 });

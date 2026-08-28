@@ -296,6 +296,7 @@ class _DeploymentResource:
         name: str | None = None,
         deployment_mode: str = "subprocess",
         image: str | None = None,
+        use_image_entrypoint: bool = False,
         environment: str | dict[str, Any] | None = None,
         workspace: str | None = None,
     ) -> dict[str, Any]:
@@ -311,6 +312,9 @@ class _DeploymentResource:
             image: Container image for ``docker``/``k8s`` modes. Falls back to
                 ``agents.deployments.default_image`` when omitted. Rejected in
                 ``subprocess`` mode.
+            use_image_entrypoint: For ``docker``/``k8s`` modes, preserve the
+                image ENTRYPOINT/CMD instead of injecting the platform-owned
+                agent server command.
             environment: Optional AgentEnvironment to deploy under — a
                 ``"workspace/name"`` ref to a stored AgentEnvironment, or an
                 inline environment dict. Its EnvironmentSpec is merged into the
@@ -323,11 +327,15 @@ class _DeploymentResource:
         """
         if image and deployment_mode == "subprocess":
             raise ValueError("image requires deployment_mode='docker' or 'k8s'.")
+        if use_image_entrypoint and deployment_mode == "subprocess":
+            raise ValueError("use_image_entrypoint requires deployment_mode='docker' or 'k8s'.")
         payload: dict[str, Any] = {"agent": agent, "deployment_mode": deployment_mode}
         if name:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if use_image_entrypoint:
+            payload["use_image_entrypoint"] = True
         if environment is not None:
             payload["environment"] = environment
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments", payload)

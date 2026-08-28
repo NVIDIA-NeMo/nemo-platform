@@ -15,6 +15,7 @@ import {
 import { MetricTrendPanel } from '@studio/components/charts/MetricTrendPanel';
 import { StackedSkeleton } from '@studio/components/StackedSkeleton';
 import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
+import { ExperimentSummaryCard } from '@studio/routes/agents/AgentDetailRoute/overview/ExperimentSummaryCard';
 import {
   DELTA_COMPARISON_LABEL,
   type RecentExperiment,
@@ -43,10 +44,12 @@ const formatDelta = (delta: number): string =>
   `${delta > 0 ? '+' : delta < 0 ? '−' : ''}${Math.abs(delta).toFixed(1)}%`;
 
 /**
- * How the agent is trending against each benchmark it is measured on, one card per experiment.
+ * What the agent is measured against, one card per experiment.
  *
- * Each card's pills are the evaluators that experiment reports, and the trendline is that
- * evaluator's mean across the experiment's published evaluations.
+ * An experiment that tracks its evaluations over time gets a trend card: its pills are the
+ * evaluators it reports, and the trendline is that evaluator's mean across its published
+ * evaluations. One that does not gets {@link ExperimentSummaryCard} instead, since a line through
+ * evaluations that are not successive runs of one measurement would draw a trend that is not there.
  */
 export const RecentExperimentsPanel: FC<RecentExperimentsPanelProps> = ({
   favorites = [],
@@ -55,7 +58,7 @@ export const RecentExperimentsPanel: FC<RecentExperimentsPanelProps> = ({
   onOpenExperiment,
   onRunEvaluation,
 }) => {
-  const card = (experiment: RecentExperiment) => (
+  const trendCard = (experiment: RecentExperiment) => (
     <MetricTrendPanel
       key={experiment.id}
       title={experiment.name ?? 'Unnamed experiment'}
@@ -68,6 +71,17 @@ export const RecentExperimentsPanel: FC<RecentExperimentsPanelProps> = ({
       onViewClick={experiment.name ? () => onOpenExperiment(experiment) : undefined}
     />
   );
+
+  const card = (experiment: RecentExperiment) =>
+    experiment.showsOverTime ? (
+      trendCard(experiment)
+    ) : (
+      <ExperimentSummaryCard
+        key={experiment.id}
+        experiment={experiment}
+        onOpen={experiment.name ? () => onOpenExperiment(experiment) : undefined}
+      />
+    );
 
   if (isPending) {
     return (

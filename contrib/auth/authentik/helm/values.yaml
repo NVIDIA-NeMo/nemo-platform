@@ -273,8 +273,9 @@ nemo-platform:
                 - name: workload-token-tls-ca
                   mount_path: *workloadTokenTlsCaBundleMountPath
                   read_only: true
-            workload_identity_token_audience: "nemo-platform-workload"
-            workload_identity_token_expiration_seconds: 600
+            workload_identity:
+              token_audience: "nemo-platform-workload"
+              token_expiration_seconds: 600
     models:
       controller:
         backends:

@@ -4,6 +4,7 @@
 import { FILESET_NAME_MAX_LENGTH, toValidFilesetName } from '@nemo/common/src/utils/filesetName';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
 export const CREATE_NEW = '__create_new__';
@@ -232,12 +233,56 @@ export const buildDatasetEvalRequestBody = (
   },
 });
 
-/** Parse an eval-config.json. Every task must carry its own ``metrics[]`` —
+/** The serialization an eval config is stored in. Both are accepted on upload and read back
+ *  on reuse; a run keeps whichever the author uploaded. */
+export type EvalConfigFormat = 'json' | 'yaml';
+
+/** Serialize a spec for storage in a fileset, in the format its author uploaded. */
+export const serializeEvalConfig = (spec: EvalSpec, format: EvalConfigFormat): string =>
+  format === 'yaml' ? stringifyYaml(spec) : JSON.stringify(spec, null, 2);
+
+/** Reject metric entries that cannot be read as a metric bundle. Studio does not validate the
+ *  metric body, but it does reach into ``payload.metric`` to decide whether a judge applies —
+ *  so an entry without one would throw at render, past every error boundary this form has. */
+/** The evaluator recomputes an llm-judge's ``output_spec()`` from ``payload.metric.scores`` and
+ *  rejects the job if it disagrees with the declared ``outputs`` — but only after the run's
+ *  fileset already exists, so the mismatch is caught here instead. llm-judge only: other metric
+ *  types derive their outputs by different rules. */
+const assertJudgeOutputsMatchScores = (metric: InlineMetricBundle, where: string): void => {
+  if (metric.metric_type !== 'llm-judge') return;
+  const scores = metric.payload.metric.scores;
+  if (!Array.isArray(scores) || !Array.isArray(metric.outputs)) return;
+
+  const scoreNames = scores
+    .map((score) => (score as { name?: unknown })?.name)
+    .filter((name): name is string => typeof name === 'string');
+  const declared = new Set(
+    metric.outputs
+      .map((output) => (output as { name?: unknown })?.name)
+      .filter((name): name is string => typeof name === 'string')
+  );
+
+  const missing = scoreNames.filter((name) => !declared.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `${where} has an llm-judge metric whose "outputs" do not list its score${missing.length > 1 ? 's' : ''} ${missing.map((name) => `"${name}"`).join(', ')}. Every entry in "scores" needs a matching entry in "outputs".`
+    );
+  }
+};
+
+const assertMetricBundles = (metrics: InlineMetricBundle[], where: string): void => {
+  for (const metric of metrics) {
+    if (!metric?.payload?.metric || typeof metric.payload.metric !== 'object') {
+      throw new Error(`${where} has a metric without a "payload.metric" object`);
+    }
+    assertJudgeOutputsMatchScores(metric, where);
+  }
+};
+
+/** Validate a parsed eval config. Every task must carry its own ``metrics[]`` —
  *  the config is submitted as authored, with only the judge model and the
  *  per-run agent target applied on top. */
-export const parseEvalConfig = (text: string): EvalSpec => {
-  const raw = JSON.parse(text) as Partial<PersistedEvalSpec & DatasetEvalSpec>;
-
+const validateEvalConfig = (raw: Partial<PersistedEvalSpec & DatasetEvalSpec>): EvalSpec => {
   if (raw.dataset !== undefined) {
     if (!Array.isArray(raw.metrics) || raw.metrics.length === 0) {
       throw new Error('a dataset-driven eval-config.json must contain a non-empty "metrics" array');
@@ -245,6 +290,7 @@ export const parseEvalConfig = (text: string): EvalSpec => {
     if (!raw.prompt_template) {
       throw new Error('a dataset-driven eval-config.json must contain a "prompt_template"');
     }
+    assertMetricBundles(raw.metrics, 'a dataset-driven eval-config.json');
     return {
       dataset: raw.dataset,
       metrics: raw.metrics,
@@ -263,13 +309,48 @@ export const parseEvalConfig = (text: string): EvalSpec => {
         `eval-config.json task "${task.id}" must contain a non-empty "metrics" array`
       );
     }
-    for (const metric of task.metrics) {
-      if (!metric?.payload?.metric || typeof metric.payload.metric !== 'object') {
-        throw new Error(
-          `eval-config.json task "${task.id}" has a metric without a "payload.metric" object`
-        );
-      }
-    }
+    assertMetricBundles(task.metrics, `eval-config.json task "${task.id}"`);
   }
   return { tasks: parsed.tasks, max_concurrent_tasks: parsed.max_concurrent_tasks };
+};
+
+/** Parse a stored eval config, in either serialization. */
+export const parseEvalConfig = (text: string): EvalSpec =>
+  validateEvalConfig(parseConfigDocument(text));
+
+/** Read a config as JSON or YAML. JSON is tried first even though YAML 1.2 is a
+ *  superset of it: a JSON document indented with tabs is legal JSON but illegal YAML, and
+ *  a JSON file should fail with a JSON parser's message rather than a YAML one. */
+const parseConfigDocument = (text: string): Partial<PersistedEvalSpec & DatasetEvalSpec> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (jsonErr) {
+    try {
+      parsed = parseYaml(text);
+    } catch {
+      throw jsonErr;
+    }
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('An eval config must be a JSON or YAML object.');
+  }
+  return parsed as Partial<PersistedEvalSpec & DatasetEvalSpec>;
+};
+
+/** Parse a user-uploaded eval config for the "create experiment" flow, which only runs
+ *  dataset-driven configs. The dataset arrives as a separate upload and its ref is written in
+ *  at submit, so a config that omits ``dataset`` entirely is accepted and filled in here —
+ *  otherwise an author would have to hand-write a placeholder that is immediately discarded. */
+export const parseUploadedDatasetConfig = (text: string): DatasetEvalSpec => {
+  const raw = parseConfigDocument(text);
+  const spec = validateEvalConfig(
+    raw.tasks === undefined && raw.dataset === undefined ? { ...raw, dataset: '' } : raw
+  );
+  if (!isDatasetEvalSpec(spec)) {
+    throw new Error(
+      'This eval config is task-driven. Uploading a config requires the dataset-driven form: a "prompt_template" and a non-empty "metrics" array scored over the uploaded dataset.'
+    );
+  }
+  return spec;
 };

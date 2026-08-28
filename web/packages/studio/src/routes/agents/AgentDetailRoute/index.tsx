@@ -126,6 +126,9 @@ export const AgentDetailRoute: FC = () => {
   };
 
   const modelNames = getAgentModelNames(agent?.config);
+  const canDeploy = !!agent?.config;
+
+  const canRunEvaluation = !!agentName && canDeploy && healthyDeployments.length > 0;
 
   const status = healthyDeployments.length > 0 ? 'running' : agentDeployments[0]?.status;
   const statusPillLabel =
@@ -178,7 +181,7 @@ export const AgentDetailRoute: FC = () => {
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}
-                disabled={!agentName}
+                disabled={!canRunEvaluation}
               >
                 <ClipboardCheck className="size-4" aria-hidden />
                 Run evaluation
@@ -187,7 +190,7 @@ export const AgentDetailRoute: FC = () => {
                 <Button
                   color="brand"
                   onClick={() => setCreateDeploymentOpen(true)}
-                  disabled={!agentName || isDeploying}
+                  disabled={!agentName || !canDeploy || isDeploying}
                 >
                   <Rocket className="size-4" aria-hidden />
                   {isDeploying ? 'Deploying...' : 'Deploy'}
@@ -222,7 +225,7 @@ export const AgentDetailRoute: FC = () => {
                 evals={agentEvals}
                 isEvalsPending={isAgentEvalsPending}
                 onRunAgent={() => setSelectedTab('chat')}
-                onRunEvaluation={agentName ? () => setSubmitEvalOpen(true) : undefined}
+                onRunEvaluation={canRunEvaluation ? () => setSubmitEvalOpen(true) : undefined}
               />
             </TabsContent>
           )}
@@ -241,6 +244,7 @@ export const AgentDetailRoute: FC = () => {
               onChat={switchToChat}
               onDelete={setDeleteDeploymentTarget}
               onViewLogs={viewLogs}
+              canDeploy={canDeploy}
             />
           </TabsContent>
 
@@ -265,6 +269,7 @@ export const AgentDetailRoute: FC = () => {
                 chatAreaRef={chatAreaRef}
                 onSelectDeployment={setSelectedDeploymentName}
                 onDeploy={() => setCreateDeploymentOpen(true)}
+                canDeploy={canDeploy}
               />
             </div>
           </TabsContent>

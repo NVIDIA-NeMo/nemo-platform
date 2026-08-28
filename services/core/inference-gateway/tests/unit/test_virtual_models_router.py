@@ -528,6 +528,88 @@ class TestListVirtualModels:
         names = {item["name"] for item in resp.json()["data"]}
         assert names == {"vm-alpha"}
 
+    def _guardrail_call(self, config_id: str) -> dict:
+        """A middleware call applying the stored guardrail config ``config_id``."""
+        return {"name": "nemo-guardrails", "config_type": "guardrail_config", "config_id": config_id}
+
+    def test_list_filters_by_guardrail_config(self, client: TestClient):
+        """filter[guardrail_config] selects VirtualModels that apply that stored config."""
+        _install_registry(client, {"nemo-guardrails": _make_plugin()})
+        _create(client, "vm-guarded", request_middleware=[self._guardrail_call("default/content-safety")])
+        _create(client, "vm-plain", default_model_entity="default/model-a")
+
+        resp = client.get(f"{BASE}?filter[guardrail_config]=default/content-safety")
+        assert resp.status_code == 200, resp.text
+        assert {item["name"] for item in resp.json()["data"]} == {"vm-guarded"}
+
+    def test_list_filters_by_guardrail_config_across_all_phases(self, client: TestClient):
+        """A config attached to any pipeline phase matches; output rails are not request rails."""
+        _install_registry(client, {"nemo-guardrails": _make_plugin()})
+        _create(client, "vm-req", request_middleware=[self._guardrail_call("default/cs")])
+        _create(client, "vm-resp", response_middleware=[self._guardrail_call("default/cs")])
+        _create(client, "vm-post", post_response_middleware=[self._guardrail_call("default/cs")])
+
+        resp = client.get(f"{BASE}?filter[guardrail_config]=default/cs")
+        assert resp.status_code == 200, resp.text
+        assert {item["name"] for item in resp.json()["data"]} == {"vm-req", "vm-resp", "vm-post"}
+
+    def test_list_guardrail_config_filter_does_not_match_other_configs(self, client: TestClient):
+        """A different config reference, and a same-named config of another type, both miss."""
+        _install_registry(client, {"nemo-guardrails": _make_plugin(), "nemo-switchyard": _make_plugin()})
+        _create(client, "vm-other-config", request_middleware=[self._guardrail_call("default/other")])
+        _create(
+            client,
+            "vm-other-type",
+            request_middleware=[
+                {"name": "nemo-switchyard", "config_type": "routellm_config", "config_id": "default/cs"}
+            ],
+        )
+
+        resp = client.get(f"{BASE}?filter[guardrail_config]=default/cs")
+        assert resp.status_code == 200, resp.text
+        # vm-other-type carries the same reference under a different config_type. Both rows have a
+        # denormalized list, so the raw-text legacy arms are gated off and matching is exact.
+        assert {item["name"] for item in resp.json()["data"]} == set()
+
+    def test_guardrail_config_ids_derived_from_pipelines(self, client: TestClient):
+        """The system-managed reference list is derived on create and deduped across phases."""
+        _install_registry(client, {"nemo-guardrails": _make_plugin()})
+        data = _create(
+            client,
+            "vm-derived",
+            request_middleware=[self._guardrail_call("default/cs")],
+            response_middleware=[self._guardrail_call("default/cs")],
+        )
+        assert data["guardrail_config_ids"] == ["default/cs"]
+
+    def test_guardrail_config_ids_refreshed_on_patch(self, client: TestClient):
+        """PATCH re-derives the list even though model_copy bypasses validation."""
+        _install_registry(client, {"nemo-guardrails": _make_plugin()})
+        _create(client, "vm-patched", request_middleware=[self._guardrail_call("default/cs")])
+
+        resp = client.patch(
+            f"{BASE}/vm-patched",
+            json={"request_middleware": [self._guardrail_call("default/stricter")]},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["guardrail_config_ids"] == ["default/stricter"]
+
+        assert {i["name"] for i in client.get(f"{BASE}?filter[guardrail_config]=default/stricter").json()["data"]} == {
+            "vm-patched"
+        }
+
+    def test_guardrail_config_ids_cleared_when_rails_detached(self, client: TestClient):
+        """Clearing the pipeline clears the derived list, so the config stops matching."""
+        _install_registry(client, {"nemo-guardrails": _make_plugin()})
+        _create(client, "vm-detached", request_middleware=[self._guardrail_call("default/cs")])
+
+        resp = client.patch(f"{BASE}/vm-detached", json={"request_middleware": []})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["guardrail_config_ids"] == []
+
+        names = {i["name"] for i in client.get(f"{BASE}?filter[guardrail_config]=default/cs").json()["data"]}
+        assert "vm-detached" not in names
+
     def test_list_includes_autoprovisioned_by_default(self, client: TestClient):
         """Autoprovisioned VirtualModels are returned when the flag is not set."""
         _create(client, "vm-manual-2", default_model_entity="default/model-a")

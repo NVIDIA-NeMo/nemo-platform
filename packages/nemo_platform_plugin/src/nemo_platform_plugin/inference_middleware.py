@@ -72,7 +72,7 @@ from abc import ABC
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Protocol, Self, TypeAlias, Union, runtime_checkable
+from typing import Any, AsyncIterator, Iterator, Protocol, Self, TypeAlias, Union, runtime_checkable
 
 import anthropic.types as anthropic_types
 import anthropic.types.message_create_params as anthropic_params
@@ -80,6 +80,7 @@ import openai.types.chat as openai_chat_types
 import openai.types.chat.completion_create_params as openai_chat_params
 import openai.types.responses.response_create_params as openai_responses_params
 from nemo_platform_plugin.entity import NemoEntity
+from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator, LogicalOperation
 from pydantic import BaseModel, Field, ModelWrapValidatorHandler, TypeAdapter, model_validator
 
 TypedResponse: TypeAlias = Union[openai_chat_types.ChatCompletion, anthropic_types.Message]
@@ -104,6 +105,16 @@ just checks ``isinstance(x, dict)``.
 # ---------------------------------------------------------------------------
 # VirtualModel entity and MiddlewareCall schema
 # ---------------------------------------------------------------------------
+
+
+GUARDRAIL_CONFIG_TYPE = "guardrail_config"
+"""``MiddlewareCall.config_type`` discriminator for a stored NeMo Guardrails config.
+
+Mirrors ``GuardrailConfig.__entity_type__`` in the Guardrails service and
+``GUARDRAILS_PLUGIN_CONFIG_TYPE`` in the guardrails middleware plugin.  Declared here so
+:class:`VirtualModel` can derive :attr:`VirtualModel.guardrail_config_ids` without importing
+either of them.
+"""
 
 
 class MiddlewareCall(BaseModel):
@@ -219,6 +230,63 @@ class VirtualModel(NemoEntity, entity_type="virtual_model"):
     instead of its default ``aiohttp`` proxy. Format: ``"plugin-name.proxy-name"``.
     If unset, IGW performs the proxy itself."""
 
+    guardrail_config_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "System-managed. Guardrail configs applied by this VirtualModel's middleware, as "
+            '"workspace/name" references. Derived from the middleware pipelines on every write and '
+            "ignored if supplied on a create or update body. Filter on it with filter[guardrail_config]."
+        ),
+    )
+    """System-managed. Distinct ``"workspace/name"`` guardrail config references reached by
+    this VirtualModel's middleware pipelines, in first-seen order.
+
+    Derived from the three ``*_middleware`` pipelines and never accepted on a create or update
+    body.  It exists so callers can answer "which VirtualModels use this guardrail config?"
+    with one ``$contains`` predicate against the entity store: the pipelines themselves are
+    arrays of *objects*, and ``$contains`` matches the serialized array as raw text (see
+    ``SQLAlchemyFilterRepository.contains``), so it cannot match a nested field precisely.
+    Flattening the references to an array of scalars is what makes that predicate exact.
+    """
+
+    def middleware_calls(self) -> Iterator[MiddlewareCall]:
+        """Every middleware call across the request, response, and post-response pipelines."""
+        yield from self.request_middleware or []
+        yield from self.response_middleware or []
+        yield from self.post_response_middleware or []
+
+    def references_guardrail_config(self, config_id: str) -> bool:
+        """Whether any middleware call resolves the stored guardrail config ``config_id``.
+
+        Matches on the ``config_type`` discriminator as well as the reference, so a
+        same-named config belonging to another plugin is never mistaken for a guardrail one.
+        """
+        return any(
+            call.config_type == GUARDRAIL_CONFIG_TYPE and call.config_id == config_id
+            for call in self.middleware_calls()
+        )
+
+    def refresh_guardrail_config_ids(self) -> Self:
+        """Recompute :attr:`guardrail_config_ids` from the middleware pipelines, in place."""
+        # dict keys rather than a set: de-duplicates while preserving pipeline order, so the
+        # stored value is stable across writes and diffs cleanly.
+        seen: dict[str, None] = {}
+        for call in self.middleware_calls():
+            if call.config_type == GUARDRAIL_CONFIG_TYPE and call.config_id:
+                seen[call.config_id] = None
+        self.guardrail_config_ids = list(seen)
+        return self
+
+    @model_validator(mode="after")
+    def _sync_guardrail_config_ids(self) -> Self:
+        """Keep the denormalized reference list in step with the pipelines it is derived from.
+
+        Runs on construction and on every entity-store read, so a stored value can never drift
+        from the middleware that produced it.  ``model_copy(update=...)`` is the one path that
+        skips validation — the PATCH handler calls :meth:`refresh_guardrail_config_ids` itself.
+        """
+        return self.refresh_guardrail_config_ids()
+
     @model_validator(mode="wrap")
     @classmethod
     def _hydrate_wire_metadata(
@@ -247,6 +315,67 @@ class VirtualModel(NemoEntity, entity_type="virtual_model"):
         if "parent" in wire_data:
             model._parent = optional_string.validate_python(wire_data["parent"])
         return model
+
+
+GUARDRAIL_CONFIG_IDS_FIELD = "data.guardrail_config_ids"
+"""Entity-store path of :attr:`VirtualModel.guardrail_config_ids`."""
+
+_LEGACY_MIDDLEWARE_FIELDS = (
+    "data.request_middleware",
+    "data.response_middleware",
+    "data.post_response_middleware",
+)
+"""Pipelines that ``guardrail_config_ids`` is derived from, scanned directly for rows written
+before that field existed."""
+
+
+def guardrail_config_membership_filter(config_id: str) -> LogicalOperation:
+    """Entity-store predicate for "this VirtualModel applies guardrail config ``config_id``".
+
+    ``config_id`` is a fully qualified ``"workspace/name"`` reference, so this is safe to run
+    across workspaces — a VirtualModel may apply a guardrail config from another workspace.
+
+    VirtualModels written since :attr:`VirtualModel.guardrail_config_ids` was introduced carry the
+    flattened reference list, which ``$contains`` matches exactly.  Rows that predate it have no
+    such key, so they are matched by scanning the middleware pipelines they *do* have.  The OR
+    keeps un-migrated rows queryable with no migration, mirroring how Intake spans both of its
+    evaluation-membership representations (``_group_membership_filter``).
+
+    Those legacy arms are gated on the denormalized field being absent, so they apply only to rows
+    that have not been rewritten since — every other row is matched exactly.  Where they do apply
+    they are a *superset*: ``$contains`` matches an array of objects as raw serialized text (see
+    the entity store's ``SQLAlchemyFilterRepository.contains``), so a middleware call holding this
+    same string in another field also matches, and the ``config_type`` discriminator is invisible
+    to it.  There are no false negatives, so this is safe to narrow with — callers that must be
+    exact should re-check each returned entity with
+    :meth:`VirtualModel.references_guardrail_config`.
+
+    Those legacy arms are meaningful only against the SQL-backed entity store, whose ``$contains``
+    matches serialized text.  ``InMemoryFilterRepository`` implements ``$contains`` as native list
+    membership, so an array of objects never matches there; only the first arm carries over.
+    """
+    return LogicalOperation(
+        operator=FilterOperator.OR,
+        operations=[
+            ComparisonOperation(operator=FilterOperator.CONTAINS, field=GUARDRAIL_CONFIG_IDS_FIELD, value=config_id),
+            LogicalOperation(
+                operator=FilterOperator.AND,
+                operations=[
+                    # `$eq null` matches an absent key as well as an explicit null, which is exactly
+                    # the set of rows written before guardrail_config_ids existed. Gating the fuzzy
+                    # arms on it keeps them off every row that carries the exact list.
+                    ComparisonOperation(operator=FilterOperator.EQ, field=GUARDRAIL_CONFIG_IDS_FIELD, value=None),
+                    LogicalOperation(
+                        operator=FilterOperator.OR,
+                        operations=[
+                            ComparisonOperation(operator=FilterOperator.CONTAINS, field=field, value=config_id)
+                            for field in _LEGACY_MIDDLEWARE_FIELDS
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------

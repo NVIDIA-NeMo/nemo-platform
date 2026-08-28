@@ -37,11 +37,11 @@ upgrade command.
 The chart creates or reuses these additional local-demo Secrets during Helm
 rendering:
 
-- `shared-postgresql` for the shared PostgreSQL superuser, Authentik, and NeMo
+- `shared-postgresql` for the shared PostgreSQL superuser, Authentik, and NeMo Platform
   database passwords.
 - `shared-postgresql-nemo` for the NeMo Platform external database password.
 - `nemo-platform-envoy-tls` for the demo Envoy TLS certificate and CA.
-- `nemo-workload-token-signing-key` for the NeMo-issued workload access token
+- `nemo-workload-token-signing-key` for the NeMo Platform-issued workload access token
   signing key.
 
 The chart generates `Secret/nemo-platform-envoy-tls` during Helm rendering and
@@ -62,13 +62,14 @@ mounted file.
 Use `--wait --wait-for-jobs` when installing the chart so Helm only returns
 after the blueprint has been applied.
 
-## NeMo Kubernetes Override
+## NeMo Platform Kubernetes Override
 
 The umbrella chart passes the Kubernetes-specific NeMo Platform configuration
 through `nemo-platform.platformConfig` values. It also configures
 `nemo-platform.envoyProxy.configOverride` so the NeMo Platform chart's Envoy
 deployment keeps the Authentik path split and validates both Authentik-issued
-tokens, NeMo workload-exchange tokens, and NeMo Scoped Access Key JWTs.
+tokens, NeMo Platform workload-exchange tokens, and NeMo Platform Scoped
+Access Key JWTs.
 
 Kubernetes projected service account token expiration defaults to `600` seconds
 in the jobs backend. Override it through the NeMo Platform chart values if you
@@ -83,23 +84,36 @@ workload pods and injects:
 NMP_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/secrets/nemo-platform/workload/token
 ```
 
-The SDK reads that file and sends an RFC 8693 token exchange request to the NeMo
-auth service over HTTPS. The chart mounts `ca.crt` from
+The SDK reads that file and sends an RFC 8693 token exchange request to the
+NeMo Platform auth service over HTTPS. The chart mounts `ca.crt` from
 `Secret/nemo-platform-envoy-tls` into Kubernetes workload pods and sets
 `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` so in-pod Python HTTP clients verify
 the demo Envoy certificate. Host-side `nemo` commands should use
 `NMP_CLIENT_SSL_CERT_FILE` instead so unrelated tools keep their normal trust
 store.
 
-The NeMo auth service validates projected service account tokens with the
-TokenReview API and returns a NeMo-signed JWT trusted by the NeMo Platform
-Envoy. The useful end-to-end validation is the workload job in the tutorial:
-the job pod uses the exchanged token to call the NeMo Platform API and read the
-workspace.
+The NeMo Platform auth service validates projected service account tokens with
+the TokenReview API and returns a NeMo Platform-signed JWT trusted by the
+NeMo Platform Envoy. The TokenReview response must include exactly one
+`authentication.kubernetes.io/pod-uid` value. The jobs controller observes the
+created Pod, registers an internal delegation row keyed by that Pod UID,
+service account subject, and audience, and auth later looks up that row from
+the verified TokenReview metadata. The useful end-to-end validation is the
+workload job in the tutorial: the job pod uses the exchanged token to call the
+NeMo Platform API and read the workspace.
+
+Auth only needs RBAC to create TokenReview requests. It does not need to read
+Pods or Jobs for token exchange, and the chart grants no Pod or Job read
+permissions to the auth/API service account for this path. Kubernetes labels,
+annotations, and owner references help the jobs controller reconcile and clean
+up backend resources, but they are not token-exchange authorization inputs.
 
 The workload job request should not include workload auth environment
 variables. The Kubernetes jobs backend owns `NMP_WORKLOAD_IDENTITY_TOKEN_FILE`;
-users must not set `NEMO_WORKLOAD_TOKEN` or `NEMO_WORKLOAD_TOKEN_FILE`.
+users must not set `NMP_PRINCIPAL`, `NEMO_WORKLOAD_TOKEN`, or
+`NEMO_WORKLOAD_TOKEN_FILE`. When workload OBO is enabled, the workload receives
+only the subject token file path and obtains its delegated NeMo Platform access
+token by calling `/apis/auth/token`.
 
 To inspect the projected token mount for a submitted job:
 
@@ -113,8 +127,8 @@ kubectl --context "${KUBE_CONTEXT}" -n "${NAMESPACE}" describe pod \
 
 ## Shared Token Signing Key
 
-Workload identity token exchange requires the NeMo auth service to sign the
-access token it mints from a Kubernetes projected service account subject
+Workload identity token exchange requires the NeMo Platform auth service to
+sign the access token it mints from a Kubernetes projected service account subject
 token. The chart creates `Secret/nemo-workload-token-signing-key` by default,
 mounts `private-key.pem` into the NeMo Platform API pod at
 `/etc/nmp/workload-token/private-key.pem`, and sets
@@ -123,10 +137,14 @@ configuration is used for workload-exchange access tokens and Scoped Access Key
 JWTs. The matching public keys are served from `/apis/auth/jwks`.
 
 The Helm-rendered Envoy config authenticates protected `/apis/` requests by
-calling `/apis/auth/authenticate` on the NeMo API service. It does not use Envoy
-`claim_to_headers` for Scoped Access Keys. This keeps future revocation and
-dynamic-key checks inside the auth service, where access-key records can be
-looked up before Envoy forwards trusted principal headers.
+calling `/apis/auth/ext-authz` on the NeMo Platform API service. That endpoint
+validates the presented bearer token and returns trusted `X-NMP-Principal-*`
+response headers for Envoy to copy upstream. The public
+`/apis/auth/authenticate` endpoint remains a JSON diagnostic/API endpoint for
+direct callers and is not the configured Envoy callout. The gateway does not use
+Envoy `claim_to_headers` for Scoped Access Keys, keeping revocation and dynamic
+key checks inside the auth service before Envoy forwards trusted principal
+headers.
 
 Scoped Access Keys remain disabled in the checked-in chart values by default.
 Runtime tests and local experiments can enable them with

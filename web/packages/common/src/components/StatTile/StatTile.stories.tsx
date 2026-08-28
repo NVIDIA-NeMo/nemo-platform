@@ -92,6 +92,25 @@ export const DiagnosticsRow: Story = {
   ),
 };
 
+export const Metric: Story = {
+  args: {
+    label: 'Sessions',
+    value: '0',
+    trailingLabel: 'avg / week',
+    variant: 'metric',
+  },
+};
+
+export const MetricRow: Story = {
+  render: () => (
+    <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-xl">
+      {METRIC_TILES.map((tile) => (
+        <StatTile key={tile.label} {...tile} variant="metric" />
+      ))}
+    </Grid>
+  ),
+};
+
 export const Borderless: Story = {
   render: () => (
     <Grid cols={2} gap="density-xl" className="max-w-sm">
@@ -112,6 +131,13 @@ export const HintStatuses: Story = {
     </Grid>
   ),
 };
+
+const METRIC_TILES: StatTileProps[] = [
+  { label: 'Sessions', value: '0', trailingLabel: 'avg / week' },
+  { label: 'Latency', value: '0', trailingLabel: 'avg session latency / week' },
+  { label: 'Tokens', value: '0', trailingLabel: 'avg / week' },
+  { label: 'Cost', value: '0', trailingLabel: 'avg / week' },
+];
 
 const SUMMARY_TILES: StatTileProps[] = [
   {

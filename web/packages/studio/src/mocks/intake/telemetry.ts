@@ -13,6 +13,9 @@ import {
   type Span,
   type SpansPage,
   type Trace,
+  type TraceMetricBucketParam,
+  type TraceMetricPointResponse,
+  type TraceMetrics,
   type TracesPage,
 } from '@nemo/sdk/generated/platform/schema';
 
@@ -400,4 +403,35 @@ export const deleteMockAnnotation = (annotationId: string): boolean => {
   const deleted = nextAnnotations.length !== mockAnnotations.length;
   mockAnnotations = nextAnnotations;
   return deleted;
+};
+
+const rollup = (mean: number) => ({ sum: mean * 4, mean });
+
+/**
+ * Trace rollups for the agent overview statistics. Bucket starts are relative to now so the
+ * points always land inside the range the overview asks for.
+ */
+export const mockTraceMetrics = (
+  bucket: TraceMetricBucketParam,
+  timezone: string
+): TraceMetrics => {
+  const point = (bucketStart?: string): TraceMetricPointResponse => ({
+    ...(bucketStart ? { bucket_start: bucketStart } : {}),
+    run_count: 4,
+    failed_run_count: 1,
+    input_tokens: rollup(820),
+    output_tokens: rollup(240),
+    cached_tokens: rollup(0),
+    total_tokens: rollup(1060),
+    cost_usd: rollup(0.0142),
+    latency_ms: { mean: 2410 },
+  });
+
+  if (bucket === 'total') return { bucket, timezone, data: [point()] };
+
+  const day = 24 * 60 * 60 * 1000;
+  const data = [3, 2, 1, 0].map((daysAgo) =>
+    point(new Date(Date.now() - daysAgo * day).toISOString())
+  );
+  return { bucket, timezone, data };
 };

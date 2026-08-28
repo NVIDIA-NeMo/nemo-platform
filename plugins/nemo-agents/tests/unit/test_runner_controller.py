@@ -120,6 +120,31 @@ async def test_start_deployment_writes_runtime_fields_to_entity() -> None:
     assert starting_key in ctrl._starting_since
 
 
+@pytest.mark.asyncio
+async def test_start_deployment_forwards_image_entrypoint_mode() -> None:
+    ctrl, backend = _make_controller()
+    backend.allocate_port = MagicMock(return_value=0)
+    backend.create_deployment = AsyncMock(return_value=DeploymentInfo(name="dep-1", status="starting"))
+    dep = AgentDeployment(
+        name="dep-1",
+        workspace="default",
+        agent="calc",
+        status="pending",
+        deployment_mode="docker",
+        image="hand-built-agent:latest",
+        use_image_entrypoint=True,
+    )
+
+    await ctrl._start_deployment(dep)
+
+    kwargs = backend.create_deployment.await_args.kwargs
+    assert kwargs["image"] == "hand-built-agent:latest"
+    assert kwargs["deployment_mode"] == "docker"
+    assert kwargs["use_image_entrypoint"] is True
+    assert dep.endpoint == ""
+    assert dep.plugin_deployment == "dep-1"
+
+
 # ---------------------------------------------------------------------------
 # _check_health: dead process takes precedence over health probe
 # ---------------------------------------------------------------------------

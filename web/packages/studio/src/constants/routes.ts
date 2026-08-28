@@ -123,6 +123,7 @@ export const ROUTES = {
     guardrailConfig: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/config`,
     guardrailChecks: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/checks`,
     guardrailChecksSubTab: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/checks/:${P.guardrailChecksSubTab}`,
+    guardrailVirtualModels: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/virtual-models`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,

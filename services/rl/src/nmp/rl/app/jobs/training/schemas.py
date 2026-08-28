@@ -25,6 +25,27 @@ class TrainingBackend(str, Enum):
     NEMO_RL = "nemo_rl"
 
 
+class PolicyBackend(str, Enum):
+    """Which NeMo-RL policy worker trains the model.
+
+    Chosen explicitly, never inferred: the value picks the worker class, which picks
+    the Ray actor's venv and kernels. Asking for a capability the backend lacks is a
+    validation error, not a silent upgrade.
+    """
+
+    # _v2: false -> DTensorPolicyWorker. Stock HuggingFace + PyTorch FSDP2, no
+    # Transformer Engine (so pre-Hopper works), no LoRA, no expert parallelism.
+    DTENSOR = "dtensor"
+    # _v2: true -> DTensorPolicyWorkerV2. Automodel rebuilds the model on TE.
+    # Superset of DTENSOR; upstream NeMo-RL's reference configs default to it.
+    AUTOMODEL = "automodel"
+    # megatron_cfg.enabled -> MegatronPolicyWorker. The image builds the `mcore`
+    # extra and prefetches the venv, but the compiler still emits an inert
+    # megatron_cfg (dpo_config._megatron_cfg_disabled). Enabling it needs HF->Megatron
+    # conversion, a shared checkpoint dir, and megatron_cfg.optimizer/scheduler.
+    # MEGATRON = "megatron"
+
+
 class OptimizerType(str, Enum):
     """Optimizer and scheduler combination types."""
 
@@ -32,6 +53,18 @@ class OptimizerType(str, Enum):
     ADAM_WITH_COSINE_ANNEALING = "adam_with_cosine_annealing"
     ADAMW_WITH_FLAT_LR = "adamw_with_flat_lr"
     ADAM_WITH_FLAT_LR = "adam_with_flat_lr"
+
+
+class BatchingStrategy(str, Enum):
+    """How the trainer groups rollouts into micro-batches.
+
+    One enum, not two flags: NeMo-RL asserts the modes are mutually exclusive in
+    ``lm_policy`` and ``BatchedDataDict.shard_by_batch_size``.
+    """
+
+    STATIC = "static"  # one rollout per slot, padded
+    DYNAMIC = "dynamic"  # bucket rollouts up to a token budget
+    SEQUENCE_PACKING = "sequence_packing"  # concatenate into packed sequences
 
 
 class ModelConfig(BaseModel):
@@ -92,9 +125,20 @@ class GRPOConfig(BaseModel):
     batch_multiplier: float = Field(default=1.0, gt=0.0)
     reward_shaping: dict[str, Any] | None = None
     reward_scaling: dict[str, Any] | None = None
+    # Defaults to DYNAMIC: this backend always trains on DTensor, and dynamic batching is the
+    # DTensor/Automodel norm in NeMo-RL's recipes (sequence packing is the Megatron norm).
+    # It is also the only mode with no architecture restrictions on the GRPO + DTensor path --
+    # packing is rejected for VLM, multimodal and context parallel.
+    batching_strategy: BatchingStrategy = BatchingStrategy.DYNAMIC
+    # None derives max_seq_length * micro_batch_size: the peak STATIC already provisions for.
+    train_mb_tokens: int | None = Field(default=None, gt=0)
+    sequence_length_round: int = Field(default=64, gt=0)
     # Per-architecture backend knobs; see GRPOTraining in nmp.rl.schemas.job for what each does.
     automodel_kwargs: dict[str, Any] | None = None
     router_aux_loss_coef: float | None = Field(default=None, ge=0.0)
+    # Passed to NeMo-RL's policy.hf_config_overrides verbatim, so nested keys reach models
+    # that namespace their config (Qwen3.5 reads router_aux_loss_coef under text_config).
+    hf_config_overrides: dict[str, Any] | None = None
     vllm_tensor_parallel_size: int | None = Field(default=None, gt=0)
     vllm_gpu_memory_utilization: float = Field(default=0.5, gt=0.0, le=1.0)
 
@@ -107,7 +151,9 @@ class LoRAConfig(BaseModel):
     dropout: float = Field(default=0.0, ge=0.0, le=1.0)
     target_modules: list[str] | None = None
     exclude_modules: list[str] | None = None
-    use_triton: bool = True
+    # None = compiler picks (true at TP 1, false above). Explicit values pass through;
+    # GRPOTraining rejects true with TP > 1.
+    use_triton: bool | None = None
 
 
 class WandBConfig(BaseModel):
@@ -203,6 +249,9 @@ class TrainingStepConfig(BaseModel):
         expert_parallel_size: int = 1
         sequence_parallel: bool = False
         activation_checkpointing: bool = False
+        # GRPO only; default matches GRPOTraining so a hand-built config compiles the
+        # same YAML. DPO ignores it -- its dtensor_cfg is a literal with no ``_v2``.
+        policy_backend: PolicyBackend = PolicyBackend.AUTOMODEL
 
     class IntegrationsConfig(BaseModel):
         wandb: WandBConfig | None = None
