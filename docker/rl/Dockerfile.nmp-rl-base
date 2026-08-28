@@ -15,8 +15,8 @@
 #   - Workers do not run in the base venv. The `uv sync --extra` calls only warm the uv cache; the
 #     venvs training uses are materialized by the prefetch steps further down.
 #   - The publish stage inherits the builder filesystem rather than COPY-ing the venv onto a fresh
-#     base - cuda-dl-base has no system Python, so the venv's python symlinks to uv's managed
-#     interpreter outside the venv and a bare COPY would break it.
+#     base - cuda-dl-base has no system Python, so the venv's python symlinks to /opt/cpython
+#     outside the venv and a bare COPY would break it.
 
 # Kept in lockstep with the pinned NEMO_RL_REF: RL's own Dockerfile builds on this tag, and its lock
 # overrides nvidia-nccl-cu13 to the version that ships here. Bump both together.
@@ -32,11 +32,15 @@ ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
 # uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on 0.11.x).
-# Keep Python at 3.13.14 until uv publishes managed 3.13.15 builds for Linux; unlike the other
-# images, this base installs Python with `uv python install`. See README.md for scanner paths.
+# Official CPython 3.13.15 is copied from python:3.13.15-slim-trixie. uv's catalog has no
+# cpython-3.13.15-linux-*-gnu download; do not use `uv python install` for this patch.
+# UV_PYTHON must still point at the copied binary so RL's `.python-version` cannot pin 3.13.14.
 ARG UV_VERSION=0.11.33
-ARG PYTHON_VERSION=3.13.14
+ARG PYTHON_VERSION=3.13.15
+ARG CPYTHON_IMAGE=python:3.13.15-slim-trixie
 ARG CMAKE_VERSION=4.0.3
+
+FROM ${CPYTHON_IMAGE} AS cpython
 
 # ---- RL source (+ its submodules, incl. Gym) via BuildKit's git ADD ----
 # RL pins Gym, Automodel and Megatron-Bridge (+ nested Megatron-LM) as git submodules, all over
@@ -79,28 +83,26 @@ RUN ARCH="$(uname -m)" && \
     cp -r "${F}/share/"* /usr/local/share/ && \
     rm -rf "${F}" "${F}.tar.gz"
 
-# uv + python. uv provisions Python 3.13 regardless of the base's (absent) system Python.
-# Install the managed Python under /opt (world-readable), NOT the default /root/.local (mode 700):
-# the runtime image drops to a non-root UID that cannot traverse /root, and the venv's python
-# symlinks to this interpreter — otherwise Python can't read its own stdlib and we get error like
-# "No module named 'encodings'". Copy the uv binary to /usr/local/bin for the same reason (runtime env installs).
+# Official CPython (not uv-managed). libpython is $ORIGIN/../lib relative to the binary.
+COPY --from=cpython /usr/local /opt/cpython
+RUN chmod -R a+rX /opt/cpython
+
+# uv is the installer/sync tool only. CPython lives at /opt/cpython (world-readable) so the
+# runtime UID can follow venv symlinks. Copy the uv binary to /usr/local/bin for node env installs.
 ARG UV_VERSION
-ARG PYTHON_VERSION
-# UV_PYTHON pins the interpreter for every uv call, at build and at runtime (node-built venvs too).
-# Required, not cosmetic: RL ships a `.python-version` that otherwise wins, so bumping PYTHON_VERSION
-# alone leaves every venv on RL's patch release and the requested one unused on disk.
+# UV_PYTHON must be this path. A bare 3.13.15 string would send uv to a catalog that lacks
+# linux-gnu 3.13.15 and would ignore the copied tree. RL's `.python-version` still needs this
+# override or worker venvs silently stay on 3.13.14.
 # Raise uv's HTTP retry budget and cap concurrent downloads for large GitHub-hosted wheels like vLLM,
 # which can hit transient HTTP/2 refused-stream failures under BuildKit.
-ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
-    UV_PYTHON=${PYTHON_VERSION} \
+ENV UV_PYTHON=/opt/cpython/bin/python3.13 \
     UV_HTTP_TIMEOUT=120 \
     UV_HTTP_RETRIES=8 \
     UV_CONCURRENT_DOWNLOADS=4 \
-    PATH="/usr/local/bin:/root/.local/bin:${PATH}"
+    PATH="/opt/cpython/bin:/usr/local/bin:/root/.local/bin:${PATH}"
 RUN umask 022 && \
     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
-    cp /root/.local/bin/uv /usr/local/bin/uv && \
-    uv python install "${PYTHON_VERSION}"
+    cp /root/.local/bin/uv /usr/local/bin/uv
 COPY docker/scripts/collect-apt-sources.sh \
     docker/scripts/collect-python-sdists.py \
     /usr/local/bin/
