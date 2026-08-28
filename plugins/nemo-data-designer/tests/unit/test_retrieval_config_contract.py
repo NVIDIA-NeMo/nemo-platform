@@ -1,0 +1,137 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Contract tests against the real ``data-designer-retrieval-sdg`` schemas.
+
+These deliberately avoid mocking ``GenerationRunConfig`` / ``ConversionRunConfig``
+so upstream field renames or new validators fail here instead of inside a job.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import get_args
+from unittest.mock import patch
+
+import data_designer.config as dd
+import pytest
+from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig
+from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
+from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config
+from nemo_data_designer_plugin.retrieval.profiles import (
+    DEFAULT_QUERY_COUNTS,
+    DEFAULT_REASONING_COUNTS,
+    RetrievalProfile,
+    profile_models,
+)
+from pydantic import ValidationError
+
+
+def _build(job: RetrievalGenerateJobConfig, tmp_path: Path):
+    corpus = tmp_path / "corpus"
+    corpus.mkdir(exist_ok=True)
+    return build_generation_run_config(
+        corpus_dir=corpus,
+        output_dir=tmp_path / "out",
+        artifact_path=tmp_path / "art",
+        dataset_name=job.dataset_name or job.corpus_id,
+        provider_name=job.provider,
+        model_providers=[dd.ModelProvider(name=job.provider, endpoint="http://igw/v1")],
+        profile=job.profile,
+        file_extensions=job.file_extensions,
+        min_text_length=job.min_text_length,
+        sentences_per_chunk=job.sentences_per_chunk,
+        num_sections=job.num_sections,
+        num_files=job.num_files,
+        max_artifacts_per_type=job.max_artifacts_per_type,
+        num_pairs=job.num_pairs,
+        query_counts=job.query_counts,
+        min_hops=job.min_hops,
+        max_hops=job.max_hops,
+        reasoning_counts=job.reasoning_counts,
+        min_complexity=job.min_complexity,
+        similarity_threshold=job.similarity_threshold,
+        buffer_size=job.buffer_size,
+        resume=job.resume,
+        num_records=job.num_records,
+        artifact_extraction_model=job.artifact_extraction_model,
+        qa_generation_model=job.qa_generation_model,
+        quality_judge_model=job.quality_judge_model,
+        embed_model=job.embed_model,
+    )
+
+
+def test_platform_defaults_match_upstream_count_keys() -> None:
+    from data_designer_retrieval_sdg.run_config import DEFAULT_QUERY_COUNTS as UPSTREAM_QUERY
+    from data_designer_retrieval_sdg.run_config import DEFAULT_REASONING_COUNTS as UPSTREAM_REASONING
+
+    assert DEFAULT_QUERY_COUNTS == UPSTREAM_QUERY
+    assert DEFAULT_REASONING_COUNTS == UPSTREAM_REASONING
+
+
+@pytest.mark.parametrize("profile", get_args(RetrievalProfile))
+def test_spec_defaults_build_a_real_generation_run_config(profile: RetrievalProfile, tmp_path: Path) -> None:
+    job = RetrievalGenerateJobConfig(corpus=str(tmp_path), provider="default/nvidia-build", profile=profile)
+    config = _build(job, tmp_path)
+
+    defaults = profile_models(profile)
+    assert [p.name for p in config.model_providers] == ["default/nvidia-build"]
+    assert config.pipeline.qa_generation_provider == "default/nvidia-build"
+    assert config.pipeline.embed_provider == "default/nvidia-build"
+    assert config.pipeline.qa_generation_model == defaults.chat_model
+    assert config.pipeline.embed_model == defaults.embed_model
+    assert type(config.seed_source).__name__ == "DocumentChunkerSeedSource"
+
+
+def test_count_distribution_mismatch_is_rejected_at_spec_time() -> None:
+    with pytest.raises(ValidationError, match="must sum to num_pairs"):
+        RetrievalGenerateJobConfig(corpus="default/docs", provider="default/nvidia-build", num_pairs=9)
+
+    with pytest.raises(ValidationError, match="keys must match"):
+        RetrievalGenerateJobConfig(
+            corpus="default/docs",
+            provider="default/nvidia-build",
+            query_counts={"multi_hop": 7},
+        )
+
+
+def test_custom_counts_that_sum_correctly_build_a_real_config(tmp_path: Path) -> None:
+    job = RetrievalGenerateJobConfig(
+        corpus=str(tmp_path),
+        provider="default/nvidia-build",
+        num_pairs=10,
+        query_counts={"multi_hop": 4, "structural": 3, "contextual": 3},
+        reasoning_counts={
+            "factual": 4,
+            "relational": 1,
+            "inferential": 1,
+            "temporal": 1,
+            "procedural": 1,
+            "causal": 1,
+            "visual": 1,
+        },
+    )
+    config = _build(job, tmp_path)
+    assert config.pipeline.num_pairs == 10
+
+
+def test_conversion_defaults_build_a_real_conversion_run_config(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    src.write_text("{}\n", encoding="utf-8")
+    with patch("data_designer_retrieval_sdg.run_conversion_with_config") as run_conversion:
+        execute_conversion(
+            input_path=src,
+            output_dir=tmp_path / "conv",
+            corpus_id="retrieval_sdg",
+            quality_threshold=7.0,
+            train_ratio=0.8,
+            val_ratio=0.0,
+            seed=42,
+            max_pos_docs=5,
+            use_group_id_in_eval=False,
+            split_strategy="random",
+        )
+    config = run_conversion.call_args[0][0]
+    assert type(config).__name__ == "ConversionRunConfig"
+    assert (config.quality_threshold, config.train_ratio, config.val_ratio, config.seed) == (7.0, 0.8, 0.0, 42)
+    assert config.split_strategy == "random"

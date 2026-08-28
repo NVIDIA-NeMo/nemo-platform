@@ -371,7 +371,13 @@ override-dependencies = [
 
 ]
 
+[[tool.uv.index]]
+name = "data-designer-plugins"
+url = "https://nvidia-nemo.github.io/DataDesignerPlugins/simple/"
+explicit = true
+
 [tool.uv.sources]
+data-designer-retrieval-sdg = { index = "data-designer-plugins" }
 nmp-auth = { workspace = true }
 nemo-anonymizer-plugin = { workspace = true }
 nemo-iron-swarm-plugin = { workspace = true }

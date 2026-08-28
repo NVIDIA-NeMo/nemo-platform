@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Ported from NVIDIA-NeMo/Nemotron recipes/embed/stage1_data_prep/scripts/mining_config.yaml (Apache-2.0).
+
+dist_env:
+  backend: nccl
+  timeout_minutes: 30
+
+mining:
+  load_embeddings_from_cache: false
+  hard_negatives_to_mine: 5
+  hard_neg_margin: 0.95
+  hard_neg_margin_type: perc
+  mining_batch_size: 128
+  query_embedding_batch_size: 16
+  document_embedding_batch_size: 16
+  corpus_chunk_size: 50000
+  query_prefix: "query: "
+  passage_prefix: "passage: "
+  attn_implementation: sdpa
+  trust_remote_code: true
+  query_max_length: 512
+  passage_max_length: 512
+  use_negatives_from_file: false

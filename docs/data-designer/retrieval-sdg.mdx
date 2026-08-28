@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Retrieval SDG on NeMo Platform.
+
+Nemotron embed/rerank Stage 0 (`sdg`) and Stage 1 (`prep`) are exposed as
+dedicated Data Designer jobs. They wrap `data-designer-retrieval-sdg` and do
+**not** go through `nemo data-designer create`.
+
+## Generate (Stage 0, CPU)
+
+Upload a text corpus fileset, then:
+
+```bash
+nemo data-designer retrieval-generate --workspace default --spec '{
+  "corpus": "default/my-docs",
+  "provider": "default/nvidia-build",
+  "profile": "embed"
+}'
+```
+
+`profile` selects Nemotron defaults (`embed` uses Ultra 550B + nemotron-3-embed-1b;
+`rerank` uses Nano 30B + llama-3.2-nv-embedqa-1b-v2). All four model roles call
+Inference Gateway through `provider` (workspace/name). Do not pass raw `NVIDIA_API_KEY`.
+
+Equivalent helper:
+
+```bash
+nemo data-designer retrieval generate --corpus default/my-docs --provider default/nvidia-build --profile embed
+```
+
+Output fileset includes Q&A JSONL and `generation_result.json`.
+
+Preview without a full job:
+
+```bash
+nemo data-designer retrieval-preview --spec '{"generate":{"corpus":"default/my-docs","provider":"default/nvidia-build"},"num_records":1}'
+```
+
+## Prepare (Stage 1)
+
+Conversion (CPU) produces `eval_beir/` and training JSON. GPU mining is off by default
+(`skip_mining: true`). Skip SDG by pointing at `nvidia/Retrieval-Synthetic-NVDocs-v1`
+or an existing `generation_result.json`.
+
+```bash
+nemo data-designer retrieval-prepare --spec '{
+  "sdg_input": "default/stage0-out",
+  "skip_mining": true
+}'
+```
+
+Enable mining (GPU, ~40GB) with `"skip_mining": false`. Mining compiles to
+`nmp-customizer-tasks` so Automodel can load `nvidia/Nemotron-3-Embed-1B-BF16`
+with `trust_remote_code`. Conversion-only prepare stays on `nmp-cpu-tasks`.
+
+## Chain generate then prepare
+
+```bash
+nemo data-designer retrieval-run --spec '{
+  "generate": {"corpus": "default/my-docs", "provider": "default/nvidia-build", "profile": "embed"},
+  "prepare": {"skip_mining": true}
+}'
+```
+
+This is jobs-service multi-step execution (CPU then optional GPU), not Data Designer
+in-config workflow chaining.
+
+## SDK
+
+```python
+from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig
+
+client.data_designer.retrieval_generate(
+    RetrievalGenerateJobConfig(corpus="default/my-docs", provider="default/nvidia-build", profile="embed")
+)
+```

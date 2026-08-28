@@ -35,6 +35,15 @@ nemo data-designer preview product_reviews.py --workspace default
 nemo data-designer create product_reviews.py --workspace default
 ```
 
+## Retrieval SDG
+
+Nemotron retrieval Stage 0/1 use dedicated jobs, not `create`. See [Retrieval SDG](/documentation/design-synthetic-data/retrieval-sdg).
+
+```bash
+nemo data-designer retrieval generate --corpus default/my-docs --provider default/nvidia-build --profile embed
+nemo data-designer retrieval-prepare --spec '{"sdg_input":"default/stage0-out","skip_mining":true}'
+```
+
 ## Personas
 
 The plugin provides commands for Nemotron Personas datasets.

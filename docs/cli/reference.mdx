@@ -7746,7 +7746,18 @@ nemo data-designer [OPTIONS] COMMAND [ARGS]...
 * `create`
 * `preview`
 * `personas`: Manage Nemotron Personas datasets
+* `retrieval`: Nemotron retrieval SDG (Stage 0 generate, Stage 1 prepare).
 * `agent`: Agent-only interface for dynamic Data Designer introspection
+
+*Functions:*
+
+* `retrieval-preview`: Submit retrieval-preview over HTTP.
+
+*Jobs:*
+
+* `retrieval-generate`: Submit to a cluster.
+* `retrieval-prepare`: Submit to a cluster.
+* `retrieval-run`: Submit to a cluster.
 
 #### nemo data-designer validate
 
@@ -7862,6 +7873,90 @@ nemo data-designer personas make-fileset [OPTIONS]
 
 * `--help, -h`: Show this message and exit.
 
+#### nemo data-designer retrieval
+
+Nemotron retrieval SDG (Stage 0 generate, Stage 1 prepare).
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `generate`: Build a retrieval-generate spec.
+* `prepare`: Build a retrieval-prepare spec.
+* `preview`: Build a retrieval-preview spec.
+
+##### nemo data-designer retrieval generate
+
+Build a retrieval-generate spec. Auto CLI: ``nemo data-designer retrieval-generate``.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval generate [OPTIONS]
+```
+
+**Options:**
+
+* `--corpus`: Fileset ref, local path, or hf:// URI.
+* `--provider`: Inference Gateway provider (workspace/name).
+* `--profile <CHOICE>`: embed or rerank model defaults. [possible values: embed, rerank; default: ProfileChoice.embed]
+* `--workspace, -w`: [default: default]
+* `--print-spec`: Print JSON spec instead of submitting.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo data-designer retrieval prepare
+
+Build a retrieval-prepare spec. Auto CLI: ``nemo data-designer retrieval-prepare``.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval prepare [OPTIONS]
+```
+
+**Options:**
+
+* `--sdg-input`: Stage 0 fileset, generation_result.json, or hf:// URI.
+* `--train-input-file`
+* `--skip-mining, --mine`: Skip GPU hard-negative mining (default).
+* `--workspace, -w`: [default: default]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo data-designer retrieval preview
+
+Build a retrieval-preview spec. Auto CLI: ``nemo data-designer retrieval-preview``.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval preview [OPTIONS]
+```
+
+**Options:**
+
+* `--corpus`
+* `--provider`
+* `--profile <CHOICE>`: [possible values: embed, rerank; default: ProfileChoice.embed]
+* `--workspace, -w`: [default: default]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
 #### nemo data-designer agent
 
 Agent-only interface for dynamic Data Designer introspection
@@ -7956,6 +8051,235 @@ nemo data-designer agent types [OPTIONS]
 **Help:**
 
 * `--help, -h`: Show this message and exit.
+
+#### nemo data-designer retrieval-preview
+
+Submit retrieval-preview over HTTP.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-preview [OPTIONS]
+```
+
+**Function Spec:**
+
+* `--generate.corpus`: Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.
+* `--generate.provider`: Inference Gateway provider (name or workspace/name).
+* `--generate.corpus-id`: Override `generate.corpus_id` in the spec.
+* `--generate.dataset-name`: Override `generate.dataset_name` in the spec.
+* `--generate.min-text-length <INTEGER>`: Override `generate.min_text_length` in the spec.
+* `--generate.sentences-per-chunk <INTEGER>`: Override `generate.sentences_per_chunk` in the spec.
+* `--generate.num-sections <INTEGER>`: Override `generate.num_sections` in the spec.
+* `--generate.num-files <INTEGER>`: Override `generate.num_files` in the spec.
+* `--generate.max-artifacts-per-type <INTEGER>`: Override `generate.max_artifacts_per_type` in the spec.
+* `--generate.num-pairs <INTEGER>`: Override `generate.num_pairs` in the spec.
+* `--generate.min-hops <INTEGER>`: Override `generate.min_hops` in the spec.
+* `--generate.max-hops <INTEGER>`: Override `generate.max_hops` in the spec.
+* `--generate.min-complexity <INTEGER>`: Override `generate.min_complexity` in the spec.
+* `--generate.similarity-threshold <FLOAT>`: Override `generate.similarity_threshold` in the spec.
+* `--generate.buffer-size <INTEGER>`: Override `generate.buffer_size` in the spec.
+* `--generate.num-records <INTEGER>`: Override `generate.num_records` in the spec.
+* `--generate.artifact-extraction-model`: Override `generate.artifact_extraction_model` in the spec.
+* `--generate.qa-generation-model`: Override `generate.qa_generation_model` in the spec.
+* `--generate.quality-judge-model`: Override `generate.quality_judge_model` in the spec.
+* `--generate.embed-model`: Override `generate.embed_model` in the spec.
+* `--generate.hf-token-secret`: Override `generate.hf_token_secret` in the spec.
+* `--num-records <INTEGER>`: Override `num_records` in the spec.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace path segment used in the submit URL. [default: default]
+* `--request-id`: Set the X-Request-ID header (echoed back in ctx.request_id).
+
+Function Spec flags are generated from the RetrievalPreviewSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
+
+#### nemo data-designer retrieval-generate
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-generate [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--corpus`: Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.
+* `--provider`: Inference Gateway provider (name or workspace/name).
+* `--corpus-id`: Override `corpus_id` in the spec.
+* `--dataset-name`: Override `dataset_name` in the spec.
+* `--min-text-length <INTEGER>`: Override `min_text_length` in the spec.
+* `--sentences-per-chunk <INTEGER>`: Override `sentences_per_chunk` in the spec.
+* `--num-sections <INTEGER>`: Override `num_sections` in the spec.
+* `--num-files <INTEGER>`: Override `num_files` in the spec.
+* `--max-artifacts-per-type <INTEGER>`: Override `max_artifacts_per_type` in the spec.
+* `--num-pairs <INTEGER>`: Override `num_pairs` in the spec.
+* `--min-hops <INTEGER>`: Override `min_hops` in the spec.
+* `--max-hops <INTEGER>`: Override `max_hops` in the spec.
+* `--min-complexity <INTEGER>`: Override `min_complexity` in the spec.
+* `--similarity-threshold <FLOAT>`: Override `similarity_threshold` in the spec.
+* `--buffer-size <INTEGER>`: Override `buffer_size` in the spec.
+* `--num-records <INTEGER>`: Override `num_records` in the spec.
+* `--artifact-extraction-model`: Override `artifact_extraction_model` in the spec.
+* `--qa-generation-model`: Override `qa_generation_model` in the spec.
+* `--quality-judge-model`: Override `quality_judge_model` in the spec.
+* `--embed-model`: Override `embed_model` in the spec.
+* `--hf-token-secret`: Override `hf_token_secret` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+#### nemo data-designer retrieval-prepare
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-prepare [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--sdg-input`: Fileset, local path, or hf:// URI to Stage 0 output or generation_result.json.
+* `--train-input-file`: Pre-converted wrapped train.json; skips conversion.
+* `--corpus-id`: Override `corpus_id` in the spec.
+* `--quality-threshold <FLOAT>`: Override `quality_threshold` in the spec.
+* `--train-ratio <FLOAT>`: Override `train_ratio` in the spec.
+* `--val-ratio <FLOAT>`: Override `val_ratio` in the spec.
+* `--seed <INTEGER>`: Override `seed` in the spec.
+* `--max-pos-docs <INTEGER>`: Override `max_pos_docs` in the spec.
+* `--use-group-id-in-eval`: Override `use_group_id_in_eval` in the spec.
+* `--skip-mining`: Override `skip_mining` in the spec.
+* `--base-model`: Override `base_model` in the spec.
+* `--trust-remote-code`: Override `trust_remote_code` in the spec.
+* `--hard-negatives-to-mine <INTEGER>`: Override `hard_negatives_to_mine` in the spec.
+* `--hard-neg-margin <FLOAT>`: Override `hard_neg_margin` in the spec.
+* `--mining-batch-size <INTEGER>`: Override `mining_batch_size` in the spec.
+* `--query-prefix`: Override `query_prefix` in the spec.
+* `--passage-prefix`: Override `passage_prefix` in the spec.
+* `--query-max-length <INTEGER>`: Override `query_max_length` in the spec.
+* `--passage-max-length <INTEGER>`: Override `passage_max_length` in the spec.
+* `--hf-token-secret`: Override `hf_token_secret` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+#### nemo data-designer retrieval-run
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--generate.corpus`: Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.
+* `--generate.provider`: Inference Gateway provider (name or workspace/name).
+* `--generate.corpus-id`: Override `generate.corpus_id` in the spec.
+* `--generate.dataset-name`: Override `generate.dataset_name` in the spec.
+* `--generate.min-text-length <INTEGER>`: Override `generate.min_text_length` in the spec.
+* `--generate.sentences-per-chunk <INTEGER>`: Override `generate.sentences_per_chunk` in the spec.
+* `--generate.num-sections <INTEGER>`: Override `generate.num_sections` in the spec.
+* `--generate.num-files <INTEGER>`: Override `generate.num_files` in the spec.
+* `--generate.max-artifacts-per-type <INTEGER>`: Override `generate.max_artifacts_per_type` in the spec.
+* `--generate.num-pairs <INTEGER>`: Override `generate.num_pairs` in the spec.
+* `--generate.min-hops <INTEGER>`: Override `generate.min_hops` in the spec.
+* `--generate.max-hops <INTEGER>`: Override `generate.max_hops` in the spec.
+* `--generate.min-complexity <INTEGER>`: Override `generate.min_complexity` in the spec.
+* `--generate.similarity-threshold <FLOAT>`: Override `generate.similarity_threshold` in the spec.
+* `--generate.buffer-size <INTEGER>`: Override `generate.buffer_size` in the spec.
+* `--generate.num-records <INTEGER>`: Override `generate.num_records` in the spec.
+* `--generate.artifact-extraction-model`: Override `generate.artifact_extraction_model` in the spec.
+* `--generate.qa-generation-model`: Override `generate.qa_generation_model` in the spec.
+* `--generate.quality-judge-model`: Override `generate.quality_judge_model` in the spec.
+* `--generate.embed-model`: Override `generate.embed_model` in the spec.
+* `--generate.hf-token-secret`: Override `generate.hf_token_secret` in the spec.
+* `--prepare.sdg-input`: Fileset, local path, or hf:// URI to Stage 0 output or generation_result.json.
+* `--prepare.train-input-file`: Pre-converted wrapped train.json; skips conversion.
+* `--prepare.corpus-id`: Override `prepare.corpus_id` in the spec.
+* `--prepare.quality-threshold <FLOAT>`: Override `prepare.quality_threshold` in the spec.
+* `--prepare.train-ratio <FLOAT>`: Override `prepare.train_ratio` in the spec.
+* `--prepare.val-ratio <FLOAT>`: Override `prepare.val_ratio` in the spec.
+* `--prepare.seed <INTEGER>`: Override `prepare.seed` in the spec.
+* `--prepare.max-pos-docs <INTEGER>`: Override `prepare.max_pos_docs` in the spec.
+* `--prepare.use-group-id-in-eval`: Override `prepare.use_group_id_in_eval` in the spec.
+* `--prepare.skip-mining`: Override `prepare.skip_mining` in the spec.
+* `--prepare.base-model`: Override `prepare.base_model` in the spec.
+* `--prepare.trust-remote-code`: Override `prepare.trust_remote_code` in the spec.
+* `--prepare.hard-negatives-to-mine <INTEGER>`: Override `prepare.hard_negatives_to_mine` in the spec.
+* `--prepare.hard-neg-margin <FLOAT>`: Override `prepare.hard_neg_margin` in the spec.
+* `--prepare.mining-batch-size <INTEGER>`: Override `prepare.mining_batch_size` in the spec.
+* `--prepare.query-prefix`: Override `prepare.query_prefix` in the spec.
+* `--prepare.passage-prefix`: Override `prepare.passage_prefix` in the spec.
+* `--prepare.query-max-length <INTEGER>`: Override `prepare.query_max_length` in the spec.
+* `--prepare.passage-max-length <INTEGER>`: Override `prepare.passage_max_length` in the spec.
+* `--prepare.hf-token-secret`: Override `prepare.hf_token_secret` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
 
 ### nemo guardrail
 
