@@ -11,7 +11,7 @@ from anonymizer.config.anonymizer_config import AnonymizerConfig
 from anonymizer.interface.anonymizer import Anonymizer
 from anonymizer.interface.errors import InvalidConfigError
 from data_designer_nemo.errors import NDDInvalidConfigError
-from nemo_anonymizer_plugin.app.context import create_anonymizer_context
+from nemo_anonymizer_plugin.app.context import create_anonymizer_context, require_model_configs_for_execution
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
 from nemo_anonymizer_plugin.app.model_configs import (
     build_model_configs_yaml,
@@ -42,6 +42,7 @@ class RunJob(NemoJob):
     name: ClassVar[str] = "run"
     description: ClassVar[str] = "Anonymize a dataset of records"
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
 
     input_spec_schema = AnonymizerRequest
     spec_schema = AnonymizerStepConfig
@@ -56,8 +57,9 @@ class RunJob(NemoJob):
         async_sdk: AsyncNeMoPlatform,
         is_local: bool,
     ) -> BaseModel:  # AnonymizerStepConfig
+        del entity_client, is_local
         input_spec = cast(AnonymizerRequest, input_spec)
-        anon_ctx = create_anonymizer_context(is_local, async_sdk, workspace)
+        anon_ctx = create_anonymizer_context(async_sdk, workspace)
 
         try:
             cls._validate_anonymizer_config(input_spec.config)
@@ -66,18 +68,13 @@ class RunJob(NemoJob):
                 model_configs=input_spec.model_configs,
                 selected_models=input_spec.selected_models,
             )
+            model_configs = require_model_configs_for_execution(input_spec.model_configs)
 
-            dd_providers = await anon_ctx.make_model_providers(
-                input_spec.model_configs,
-                require_model_configs=not is_local,
+            dd_providers = await anon_ctx.make_model_providers(model_configs)
+            yaml_body = build_model_configs_yaml(
+                model_configs=model_configs,
+                selected_models=input_spec.selected_models,
             )
-            if input_spec.model_configs:
-                yaml_body = build_model_configs_yaml(
-                    model_configs=input_spec.model_configs,
-                    selected_models=input_spec.selected_models,
-                )
-            else:
-                yaml_body = ""
         except (AnonymizerInvalidConfigError, NDDInvalidConfigError) as e:
             raise PlatformJobCompilationError(str(e)) from e
 
@@ -135,10 +132,9 @@ class RunJob(NemoJob):
         *,
         ctx: JobContext,
         sdk: NeMoPlatform,
-        is_local: bool = False,
     ) -> dict:
         step_config = AnonymizerStepConfig.model_validate(config)
-        return {"exit_code": run_step_config(step_config, ctx=ctx, sdk=sdk, is_local=is_local)}
+        return {"exit_code": run_step_config(step_config, ctx=ctx, sdk=sdk)}
 
 
 def _make_env_vars() -> list[EnvironmentVariable]:

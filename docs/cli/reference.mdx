@@ -8582,11 +8582,11 @@ nemo anonymizer [OPTIONS] COMMAND [ARGS]...
 
 *Functions:*
 
-* `preview`: Streaming preview of an Anonymizer config.
+* `preview`: Submit preview over HTTP.
 
 *Jobs:*
 
-* `run`: Anonymize a dataset of records
+* `run`: Submit to a cluster.
 
 #### nemo anonymizer validate
 
@@ -8609,72 +8609,12 @@ nemo anonymizer validate [OPTIONS]
 
 #### nemo anonymizer preview
 
-Streaming preview of an Anonymizer config.
-
-**Usage:**
-
-```shell
-nemo anonymizer preview [OPTIONS] [COMMAND] [ARGS]...
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Commands:**
-
-* `run`: Run preview locally, in-process.
-* `submit`: Submit preview over HTTP.
-
-##### nemo anonymizer preview run
-
-Run preview locally, in-process.
-
-**Usage:**
-
-```shell
-nemo anonymizer preview run [OPTIONS]
-```
-
-**Function Spec:**
-
-* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
-* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
-* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
-* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
-* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
-* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
-* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
-* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
-* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
-* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
-* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
-* `--data.text-column`: Column containing text to anonymize.
-* `--data.id-column`: Optional column to use as record identifier.
-* `--data.data-summary`: Short description of the data.
-* `--num-records <INTEGER>`: Override `num_records` in the spec.
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Spec Source:**
-
-* `--spec`: Spec as a JSON string. [default: \{}]
-* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
-* `--workspace`: Workspace identity passed to the function as ctx.workspace. [default: default]
-
-Function Spec flags are generated from the PreviewRequest Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
-​
-
-##### nemo anonymizer preview submit
-
 Submit preview over HTTP.
 
 **Usage:**
 
 ```shell
-nemo anonymizer preview submit [OPTIONS]
+nemo anonymizer preview [OPTIONS]
 ```
 
 **Function Spec:**
@@ -8689,7 +8629,7 @@ nemo anonymizer preview submit [OPTIONS]
 * `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
 * `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
 * `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
-* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.source`: HTTP(S) URL or fileset reference for a CSV/Parquet input file.
 * `--data.text-column`: Column containing text to anonymize.
 * `--data.id-column`: Optional column to use as record identifier.
 * `--data.data-summary`: Short description of the data.
@@ -8716,90 +8656,12 @@ Function Spec flags are generated from the PreviewRequest Pydantic schema. Prece
 
 #### nemo anonymizer run
 
-Anonymize a dataset of records
-
-**Usage:**
-
-```shell
-nemo anonymizer run [OPTIONS] [COMMAND] [ARGS]...
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Job Spec:**
-
-* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
-* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
-* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
-* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
-* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
-* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
-* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
-* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
-* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
-* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
-* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
-* `--data.text-column`: Column containing text to anonymize.
-* `--data.id-column`: Optional column to use as record identifier.
-* `--data.data-summary`: Short description of the data.
-
-**Spec Source:**
-
-* `--spec`: Spec as a JSON string. [default: \{}]
-* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
-
-**Commands:**
-
-* `run`: Run locally, in-process.
-* `submit`: Submit to a cluster.
-* `explain`: Show input/output schemas.
-
-##### nemo anonymizer run run
-
-Run locally, in-process.
-
-**Usage:**
-
-```shell
-nemo anonymizer run run [OPTIONS]
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Job Spec:**
-
-* `--config.detect.gliner-threshold <FLOAT>`: GLiNER detection confidence threshold (0.0-1.0).
-* `--config.detect.validation-max-entities-per-call <INTEGER>`: Maximum number of candidate entities included in a single validator LLM call. When a row has more candidates than this, validation is split into chunks that are dispatched (round-robin) across the validator pool.
-* `--config.detect.validation-excerpt-window-chars <INTEGER>`: Number of characters to include before and after a chunk's entity span when building the text excerpt sent to the validator. Bounds the prompt context the validator sees per chunk; it is NOT the LLM's context window limit.
-* `--config.rewrite.privacy-goal.protect`: What to protect (e.g. direct identifiers, quasi-identifiers).
-* `--config.rewrite.privacy-goal.preserve`: What to preserve (e.g. utility, semantic meaning).
-* `--config.rewrite.instructions`: Additional instructions for the rewrite LLM.
-* `--config.rewrite.risk-tolerance`: Preset controlling repair thresholds and review flagging.
-* `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
-* `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
-* `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
-* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
-* `--data.text-column`: Column containing text to anonymize.
-* `--data.id-column`: Optional column to use as record identifier.
-* `--data.data-summary`: Short description of the data.
-
-**Spec Source:**
-
-* `--spec`: Spec as a JSON string. [default: \{}]
-* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
-
-##### nemo anonymizer run submit
-
 Submit to a cluster.
 
 **Usage:**
 
 ```shell
-nemo anonymizer run submit [OPTIONS]
+nemo anonymizer run [OPTIONS]
 ```
 
 **Help:**
@@ -8818,7 +8680,7 @@ nemo anonymizer run submit [OPTIONS]
 * `--config.rewrite.max-repair-iterations <INTEGER>`: Maximum repair rounds. Set to 0 to disable repair.
 * `--config.rewrite.strict-entity-protection`: If True, requires every entity to receive a protective disposition during sensitivity analysis.
 * `--config.emit-telemetry`: Whether to emit anonymous Anonymizer telemetry events. See the Telemetry section in the README for what is collected and how to opt out at the environment or CLI level.
-* `--data.source`: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.
+* `--data.source`: HTTP(S) URL or fileset reference for a CSV/Parquet input file.
 * `--data.text-column`: Column containing text to anonymize.
 * `--data.id-column`: Optional column to use as record identifier.
 * `--data.data-summary`: Short description of the data.
@@ -8836,25 +8698,6 @@ nemo anonymizer run submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
-
-##### nemo anonymizer run explain
-
-Show input/output schemas.
-
-**Usage:**
-
-```shell
-nemo anonymizer run explain [OPTIONS]
-```
-
-**Options:**
-
-* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
-* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
 
 ### nemo evaluator
 
