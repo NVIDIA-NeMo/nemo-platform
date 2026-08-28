@@ -427,6 +427,13 @@ export const getGuardrailChecksRoute = (workspace: string, guardrailConfigName: 
   });
 };
 
+export const getGuardrailVirtualModelsRoute = (workspace: string, guardrailConfigName: string) => {
+  return generatePath(ROUTES.workspace.guardrailVirtualModels, {
+    workspace,
+    guardrailConfigName,
+  });
+};
+
 export const getGuardrailChecksSubTabRoute = (
   workspace: string,
   guardrailConfigName: string,
