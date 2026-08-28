@@ -13,8 +13,6 @@ no tools and no sub-agents.
 shape when the question changes, find the run in the trace, and score it against
 labeled data.
 
-**Time:** ~5 minutes.
-
 **Prerequisites:**
 
 - NeMo Platform running locally (see [SETUP.md](../../../../../SETUP.md)); `export NMP_BASE_URL=http://localhost:8080`.
@@ -132,7 +130,7 @@ spec["target"] = {
     "response_path": "$.choices[0].message.content",
     "stream": False,
 }
-spec["params"] = {"parallelism": 1, "request_timeout": 300, "max_retries": 5, "ignore_request_failure": False}
+spec["params"] = {"parallelism": 4, "request_timeout": 300, "max_retries": 5, "ignore_request_failure": False}
 print(json.dumps(spec, indent=2))
 EOF
 
@@ -162,8 +160,9 @@ Read the two together. Accuracy with headroom while routing holds means the miss
 are judgement calls; both collapsing together means the agent answered as the wrong
 capability. That is the distinction the routing check exists to make.
 
-`parallelism: 1` above matches what Studio submits, so the two paths produce
-comparable numbers; raise it to shorten the run.
+`parallelism` above matches what Studio submits, so the two paths stay comparable.
+Rows are independent, so changing it moves wall-clock only, never a score. Lower it
+if the agent endpoint returns 502s under concurrent load.
 
 `ignore_request_failure: False` is deliberate. Set it to `True` and a failing agent
 endpoint stops aborting the run — every failed row becomes an empty response, scores

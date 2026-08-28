@@ -23,12 +23,22 @@ export const filesetNameForExperiment = (experimentName: string): string =>
 /** Default parallelism for a submitted eval (Studio default; the config value is a hint). */
 export const DEFAULT_MAX_CONCURRENT_TASKS = 1;
 
-/** ``RunConfigOnline`` for an agent target, shared by both submit paths. Serial by
- *  default: NAT reports workflow failures (including output truncation) as 422,
- *  which is not retried, so one failure would otherwise abort the whole job.
- *  ``ignore_request_failure`` degrades a failed row to NaN instead. */
+/** ``RunConfigOnline`` for an agent target, shared by both submit paths.
+ *
+ *  ``ignore_request_failure`` is what keeps one bad row from aborting the job: NAT
+ *  reports workflow failures (including output truncation) as 422, which is not
+ *  retried, so a failed row degrades to NaN instead of killing the run. That is the
+ *  safety property — it does not depend on running serially.
+ *
+ *  ``parallelism`` is a wall-clock knob only. Rows are independent, so running them
+ *  concurrently changes no score. It matters because an agent row's cost is dominated
+ *  by the model's hidden reasoning tokens, which can dwarf the visible answer, so
+ *  submitting serially leaves the endpoint idle between rows. Raise it further only if
+ *  the agent endpoint keeps up: a single-process deployment starts returning 502s under
+ *  sustained load, and ``ignore_request_failure`` would then quietly degrade those rows
+ *  to NaN rather than failing the job. */
 const AGENT_RUN_PARAMS = {
-  parallelism: 1,
+  parallelism: 4,
   request_timeout: 300,
   max_retries: 3,
   ignore_request_failure: true,
