@@ -13,6 +13,9 @@ import logging
 from typing import Any
 
 from fastmcp import FastMCP
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest, ListWorkspacesQueryParams
 from nmp.common.mcp import format_error_response
 from nmp.common.sdk_factory import get_platform_sdk
 
@@ -37,6 +40,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
 
     # Create NeMo SDK client using shared factory
     nemo_client = get_platform_sdk(base_url=base_url)
+    workspaces_client = client_from_platform(nemo_client, WorkspacesClient)
 
     # === WORKSPACE TOOLS ===
 
@@ -67,15 +71,14 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """
         try:
             # Call the SDK to list workspaces with pagination and filtering
-            response = nemo_client.workspaces.list(
-                page=page,
-                page_size=page_size,
-                filter=search_by_like,
-            )
+            query_params: ListWorkspacesQueryParams = {"page": page, "page_size": page_size}
+            if search_by_like is not None:
+                query_params["filter"] = search_by_like
+            response = workspaces_client.list_workspaces(query_params=query_params)
 
-            # Extract workspace data from response.data
+            # Extract workspace data from the paginated response
             workspaces = []
-            for workspace in response.data:
+            for workspace in response.items():
                 workspaces.append(
                     {
                         "id": workspace.id,
@@ -86,10 +89,8 @@ def create_server(base_url: str | None = None) -> FastMCP:
                 )
 
             # Get total count from pagination if available, otherwise use length
-            total = len(workspaces)
-            if hasattr(response, "pagination") and response.pagination is not None:
-                if hasattr(response.pagination, "total_results"):
-                    total = response.pagination.total_results
+            page_result = response.page()
+            total = page_result.metadata.get("total_results", len(workspaces))
 
             return {
                 "success": True,
@@ -126,10 +127,9 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """
         try:
             # Call the SDK to create the workspace
-            workspace = nemo_client.workspaces.create(
-                name=name,
-                description=description,
-            )
+            workspace = workspaces_client.create_workspace(
+                body=CreateWorkspaceRequest(name=name, description=description)
+            ).data()
 
             return {
                 "success": True,
@@ -164,7 +164,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """
         try:
             # Call the SDK to delete the workspace
-            nemo_client.workspaces.delete(name)
+            workspaces_client.delete_workspace(name=name).data()
 
             return {
                 "success": True,

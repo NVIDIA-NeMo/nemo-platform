@@ -22,6 +22,7 @@ from .compute_resources import ComputeResources
 from .image_pull_secret import ImagePullSecret
 from .kubernetes_object_metadata import KubernetesObjectMetadata
 from .kubernetes_job_storage_config import KubernetesJobStorageConfig
+from .kubernetes_workload_identity_config import KubernetesWorkloadIdentityConfig
 
 __all__ = ["KubernetesJobExecutionProfileConfig"]
 
@@ -108,15 +109,5 @@ class KubernetesJobExecutionProfileConfig(BaseModel):
 
     ttl_seconds_before_active: Optional[int] = None
 
-    workload_identity_token_audience: Optional[str] = None
-    """Audience for the projected service account token.
-
-    Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then
-    'nemo-platform'.
-    """
-
-    workload_identity_token_expiration_seconds: Optional[int] = None
-    """
-    Requested expirationSeconds for the projected service account token used as the
-    workload identity subject token.
-    """
+    workload_identity: Optional[KubernetesWorkloadIdentityConfig] = None
+    """Kubernetes workload identity token projection configuration."""

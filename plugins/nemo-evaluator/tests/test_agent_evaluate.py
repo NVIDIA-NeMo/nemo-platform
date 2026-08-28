@@ -500,12 +500,17 @@ async def test_to_spec_requires_platform_to_resolve_a_metric_reference() -> None
 # --- compile: the submit/service-side path ----------------------------------
 
 
-def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec, *, expected_image: str | None = None) -> None:
+def _assert_agent_eval_step_entrypoint(
+    job_spec: PlatformJobSpec,
+    *,
+    expected_image: str | None = None,
+    expected_entrypoint: Sequence[str] = ("python", "-m"),
+) -> None:
     step = job_spec.steps[0]
     container = cast(Any, step.executor).container
     if expected_image is not None:
         assert container.image == expected_image
-    assert container.entrypoint == ["python", "-m"]
+    assert container.entrypoint == list(expected_entrypoint)
     assert container.command == ["nemo_evaluator.tasks.agent_evaluate"]
 
 
@@ -563,13 +568,14 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
 
 
 @pytest.mark.parametrize(
-    ("target", "expected_kind", "expected_endpoint_name", "expected_image_name"),
+    ("target", "expected_kind", "expected_endpoint_name", "expected_image_name", "expected_entrypoint"),
     [
         (
             FabricRunnerTarget(config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}),
             "fabric",
             None,
             "nmp-cpu-tasks",
+            ("python", "-m"),
         ),
         (
             GymRunnerTarget(
@@ -580,6 +586,7 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
             "gym",
             None,
             "nmp-gym-tasks",
+            ("/app/.venv/bin/python", "-m"),
         ),
         (
             ModelTarget(
@@ -589,8 +596,15 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
             "model",
             "test-model",
             "nmp-cpu-tasks",
+            ("python", "-m"),
         ),
-        (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent", "nmp-cpu-tasks"),
+        (
+            AgentTarget(agent=_agent(), params=RunConfigOnline()),
+            "agent",
+            "test-agent",
+            "nmp-cpu-tasks",
+            ("python", "-m"),
+        ),
     ],
 )
 async def test_compile_produces_cpu_task_step_carrying_each_target(
@@ -599,6 +613,7 @@ async def test_compile_produces_cpu_task_step_carrying_each_target(
     expected_kind: str,
     expected_endpoint_name: str | None,
     expected_image_name: str,
+    expected_entrypoint: Sequence[str],
 ) -> None:
     mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
     mocker.patch(
@@ -615,7 +630,11 @@ async def test_compile_produces_cpu_task_step_carrying_each_target(
     assert len(job_spec.steps) == 1
     step = job_spec.steps[0]
     assert step.name == "agent-evaluate"
-    _assert_agent_eval_step_entrypoint(job_spec, expected_image=f"registry.example/{expected_image_name}:test")
+    _assert_agent_eval_step_entrypoint(
+        job_spec,
+        expected_image=f"registry.example/{expected_image_name}:test",
+        expected_entrypoint=expected_entrypoint,
+    )
     config = cast(dict[str, Any], step.config)
     assert len(config["tasks"]) == 1
     assert config["target"]["kind"] == expected_kind
@@ -642,7 +661,11 @@ async def test_compile_gym_target_honors_configured_image_override(mocker: Mocke
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)
-    _assert_agent_eval_step_entrypoint(job_spec, expected_image=image)
+    _assert_agent_eval_step_entrypoint(
+        job_spec,
+        expected_image=image,
+        expected_entrypoint=("/app/.venv/bin/python", "-m"),
+    )
     qualify.assert_not_called()
 
 

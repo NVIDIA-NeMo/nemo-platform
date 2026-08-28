@@ -61,17 +61,26 @@ def mock_files_client():
 def mock_sdk(mock_files_client):
     sdk = MagicMock()
     sdk.inference.providers.retrieve = AsyncMock()
-    sdk.models.get_provider_route_openai_url = MagicMock(
-        return_value="http://nmp-host/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
-    )
     return sdk
 
 
 @pytest.fixture(autouse=True)
 def _patch_client_from_platform(mock_files_client):
+    from nemo_platform_plugin.models.client import AsyncModelsClient
+
+    models_client = MagicMock()
+    models_client.get_provider_route_openai_url = MagicMock(
+        return_value="http://nmp-host/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
+    )
+
+    def _dispatch(_sdk, client_cls):
+        if client_cls is AsyncModelsClient:
+            return models_client
+        return mock_files_client
+
     with patch(
         "nemo_safe_synthesizer_plugin.jobs.generate.client_from_platform",
-        return_value=mock_files_client,
+        side_effect=_dispatch,
     ):
         yield
 

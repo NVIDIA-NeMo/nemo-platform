@@ -34,6 +34,12 @@ import { useNavigate } from 'react-router';
 
 export interface VirtualModelsDataViewProps {
   workspace: string;
+  /**
+   * Restrict the list to virtual models applying this guardrail config, as a
+   * `"workspace/name"` reference. Fixed scope rather than a user filter: it is applied
+   * outside `dataViewState` so clearing filters cannot widen the view past it.
+   */
+  guardrailConfig?: string;
   attributes?: {
     Stack?: React.ComponentProps<typeof Stack>;
   };
@@ -48,6 +54,7 @@ const middlewareCount = (vm: VirtualModel): number =>
 
 export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
   workspace,
+  guardrailConfig,
   attributes,
 }) => {
   const toast = useToast();
@@ -104,8 +111,14 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         ? { default_model_entity: { $eq: qualifiedDefaultModelEntity } }
         : {}),
       ...(createdAt ? { created_at: createdAt } : {}),
+      ...(guardrailConfig ? { guardrail_config: { $eq: guardrailConfig } } : {}),
     });
-  }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters, workspace]);
+  }, [
+    dataViewState.debouncedSearchBar,
+    dataViewState.debouncedColumnFilters,
+    guardrailConfig,
+    workspace,
+  ]);
 
   const { data, isFetching, error } = useListVirtualModels(
     workspace,

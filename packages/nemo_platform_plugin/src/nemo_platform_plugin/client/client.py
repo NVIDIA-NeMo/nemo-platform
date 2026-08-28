@@ -39,6 +39,7 @@ from nemo_platform_plugin.client.auth import (
     TokenProviderAuth,
     resolve_token_async,
 )
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.errors import (
     NemoResponseValidationError,
     NemoTransportError,
@@ -73,6 +74,60 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 60.0
+_AUTHORIZATION_HEADER = "Authorization"
+_PRINCIPAL_ID_HEADER = "X-NMP-Principal-Id"
+
+
+def _has_header(headers: Mapping[str, str] | None, name: str) -> bool:
+    if not headers:
+        return False
+    normalized = name.lower()
+    return any(header.lower() == normalized for header in headers)
+
+
+@overload
+def _resolve_implicit_workload_auth(
+    *,
+    base_url: str,
+    auth: TokenProvider | str | None,
+    default_headers: Mapping[str, str] | None,
+    allow_env_bootstrap: bool,
+) -> TokenProvider | str | None: ...
+
+
+@overload
+def _resolve_implicit_workload_auth(
+    *,
+    base_url: str,
+    auth: TokenProvider | AsyncTokenProvider | str | None,
+    default_headers: Mapping[str, str] | None,
+    allow_env_bootstrap: bool,
+) -> TokenProvider | AsyncTokenProvider | str | None: ...
+
+
+def _resolve_implicit_workload_auth(
+    *,
+    base_url: str,
+    auth: TokenProvider | AsyncTokenProvider | str | None,
+    default_headers: Mapping[str, str] | None,
+    allow_env_bootstrap: bool,
+) -> TokenProvider | AsyncTokenProvider | str | None:
+    if auth is not None or not allow_env_bootstrap:
+        return auth
+    if _has_header(default_headers, _AUTHORIZATION_HEADER) or _has_header(default_headers, _PRINCIPAL_ID_HEADER):
+        return None
+
+    subject_token_file = os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
+    if not subject_token_file:
+        return None
+
+    from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
+
+    return resolve_workload_exchange_provider(
+        base_url=base_url,
+        subject_token_file=Path(subject_token_file),
+    )
+
 
 # Instance-dict slot holding lazily discovered plugin SDK resources. Each
 # resource is bound to the client that built it, so ``with_options()`` drops
@@ -475,6 +530,17 @@ class BaseNemoClient:
         """Shorthand for ``with_options(retry=...)``."""
         return self.with_options(retry=retry)
 
+    def _resource_client(
+        self,
+        sync_client_type: type[NemoClient],
+        async_client_type: type[AsyncNemoClient],
+    ) -> NemoClient | AsyncNemoClient:
+        if isinstance(self, AsyncNemoClient):
+            return async_client_type.from_client(self)
+        if isinstance(self, NemoClient):
+            return sync_client_type.from_client(self)
+        raise TypeError(f"{type(self).__name__} is not a concrete NeMo client")
+
     # ---------------------------------------------------------------------------
     # Convenience properties — return typed resource clients sharing this
     # client's transport.  Lazy imports avoid circular dependencies (typed
@@ -482,76 +548,76 @@ class BaseNemoClient:
     # ---------------------------------------------------------------------------
 
     @property
-    def files(self) -> NemoClient:
-        from nemo_platform_plugin.files.client import FilesClient
+    def files(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
-        return FilesClient.from_client(self)
-
-    @property
-    def models(self) -> NemoClient:
-        from nemo_platform_plugin.models.client import ModelsClient
-
-        return ModelsClient.from_client(self)
+        return self._resource_client(FilesClient, AsyncFilesClient)
 
     @property
-    def workspaces(self) -> NemoClient:
-        from nemo_platform_plugin.workspaces.client import WorkspacesClient
+    def models(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
 
-        return WorkspacesClient.from_client(self)
-
-    @property
-    def secrets(self) -> NemoClient:
-        from nemo_platform_plugin.secrets.client import SecretsClient
-
-        return SecretsClient.from_client(self)
+        return self._resource_client(ModelsClient, AsyncModelsClient)
 
     @property
-    def jobs(self) -> NemoClient:
-        from nemo_platform_plugin.jobs.client import JobsClient
+    def workspaces(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient, WorkspacesClient
 
-        return JobsClient.from_client(self)
-
-    @property
-    def agents(self) -> NemoClient:
-        from nemo_platform_plugin.agents.client import AgentsClient
-
-        return AgentsClient.from_client(self)
+        return self._resource_client(WorkspacesClient, AsyncWorkspacesClient)
 
     @property
-    def auditor(self) -> NemoClient:
-        from nemo_platform_plugin.auditor.client import AuditorClient
+    def secrets(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.secrets.client import AsyncSecretsClient, SecretsClient
 
-        return AuditorClient.from_client(self)
-
-    @property
-    def guardrail(self) -> NemoClient:
-        from nemo_platform_plugin.guardrail.client import GuardrailClient
-
-        return GuardrailClient.from_client(self)
+        return self._resource_client(SecretsClient, AsyncSecretsClient)
 
     @property
-    def evaluator(self) -> NemoClient:
-        from nemo_platform_plugin.evaluator.client import EvaluatorClient
+    def jobs(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 
-        return EvaluatorClient.from_client(self)
-
-    @property
-    def projects(self) -> NemoClient:
-        from nemo_platform_plugin.projects.client import ProjectsClient
-
-        return ProjectsClient.from_client(self)
+        return self._resource_client(JobsClient, AsyncJobsClient)
 
     @property
-    def data_designer(self) -> NemoClient:
-        from nemo_platform_plugin.data_designer.client import DataDesignerClient
+    def agents(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.agents.client import AgentsClient, AsyncAgentsClient
 
-        return DataDesignerClient.from_client(self)
+        return self._resource_client(AgentsClient, AsyncAgentsClient)
 
     @property
-    def iron_swarm(self) -> NemoClient:
-        from nemo_platform_plugin.iron_swarm.client import IronSwarmClient
+    def auditor(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.auditor.client import AsyncAuditorClient, AuditorClient
 
-        return IronSwarmClient.from_client(self)
+        return self._resource_client(AuditorClient, AsyncAuditorClient)
+
+    @property
+    def guardrail(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.guardrail.client import AsyncGuardrailClient, GuardrailClient
+
+        return self._resource_client(GuardrailClient, AsyncGuardrailClient)
+
+    @property
+    def evaluator(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
+
+        return self._resource_client(EvaluatorClient, AsyncEvaluatorClient)
+
+    @property
+    def projects(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.projects.client import AsyncProjectsClient, ProjectsClient
+
+        return self._resource_client(ProjectsClient, AsyncProjectsClient)
+
+    @property
+    def data_designer(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.data_designer.client import AsyncDataDesignerClient, DataDesignerClient
+
+        return self._resource_client(DataDesignerClient, AsyncDataDesignerClient)
+
+    @property
+    def iron_swarm(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.iron_swarm.client import AsyncIronSwarmClient, IronSwarmClient
+
+        return self._resource_client(IronSwarmClient, AsyncIronSwarmClient)
 
     @property
     def inference(self) -> _InferenceNamespace:
@@ -597,6 +663,12 @@ class NemoClient(BaseNemoClient):
         defers to the transport's timeout, giving one we build ourselves
         :data:`DEFAULT_TIMEOUT`; ``httpx.Timeout(None)`` waits indefinitely.
         """
+        auth = _resolve_implicit_workload_auth(
+            base_url=base_url,
+            auth=auth,
+            default_headers=default_headers,
+            allow_env_bootstrap=http_client is None,
+        )
         super().__init__(
             base_url=base_url,
             workspace=workspace,
@@ -849,6 +921,12 @@ class AsyncNemoClient(BaseNemoClient):
         url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         """Create a client. See :meth:`NemoClient.__init__` for *timeout*."""
+        auth = _resolve_implicit_workload_auth(
+            base_url=base_url,
+            auth=auth,
+            default_headers=default_headers,
+            allow_env_bootstrap=http_client is None,
+        )
         super().__init__(
             base_url=base_url,
             workspace=workspace,
@@ -1078,8 +1156,7 @@ def _client_from_config(
     """Shared implementation for NemoClient.from_config / AsyncNemoClient.from_config."""
     from nemo_platform_plugin.client.config.config import Config
     from nemo_platform_plugin.client.config.models import ConfigParams, OAuthUser
-    from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-    from nemo_platform_plugin.client.oidc_factory import resolve_oidc_provider, resolve_workload_exchange_provider
+    from nemo_platform_plugin.client.oidc_factory import resolve_oidc_provider
 
     resolved_path = Path(config_path) if isinstance(config_path, str) else config_path
     overrides: ConfigParams | None = None
@@ -1095,13 +1172,9 @@ def _client_from_config(
 
     auth: TokenProvider | str | None = None
     workload_identity_token_file = os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
+    use_implicit_workload_auth = bool(workload_identity_token_file and not explicit_access_token)
 
-    if workload_identity_token_file and not explicit_access_token:
-        auth = resolve_workload_exchange_provider(
-            base_url=str(ctx.cluster.base_url),
-            subject_token_file=Path(workload_identity_token_file),
-        )
-    elif isinstance(ctx.user, OAuthUser):
+    if not use_implicit_workload_auth and isinstance(ctx.user, OAuthUser):
         auth = resolve_oidc_provider(
             base_url=str(ctx.cluster.base_url),
             context_name=ctx.context_name,
@@ -1111,7 +1184,7 @@ def _client_from_config(
             config_path=actual_config_path,
             explicit_access_token=explicit_access_token,
         )
-    elif ctx.user:
+    elif not use_implicit_workload_auth and ctx.user:
         client_config = ctx.user.get_client_config()
         raw_headers = client_config.get("default_headers")
         if isinstance(raw_headers, dict):

@@ -82,6 +82,41 @@ def test_deployments_create_uses_client_workspace_by_default() -> None:
     assert captured["body"] == {"agent": "calc", "deployment_mode": "k8s", "image": "repo/calc:1.0"}
 
 
+def test_deployments_create_forwards_image_entrypoint_mode() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "calc-dep"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler):
+        client.deployments.create(
+            agent="calc",
+            deployment_mode="docker",
+            image="repo/calc:1.0",
+            use_image_entrypoint=True,
+        )
+
+    assert captured["body"] == {
+        "agent": "calc",
+        "deployment_mode": "docker",
+        "image": "repo/calc:1.0",
+        "use_image_entrypoint": True,
+    }
+
+
+def test_deployments_create_rejects_image_entrypoint_for_subprocess() -> None:
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("should not POST image entrypoint mode for subprocess")
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler), pytest.raises(ValueError, match="use_image_entrypoint"):
+        client.deployments.create(agent="calc", use_image_entrypoint=True)
+
+
 def test_invoke_sends_session_id_as_header() -> None:
     captured: dict[str, Any] = {}
 

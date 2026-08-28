@@ -14,6 +14,9 @@ from typing import Any
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
@@ -311,9 +314,10 @@ def test_agent_list_pagination_sorting_and_filtering(sdk: NeMoPlatform, workspac
 
 def test_agents_are_isolated_by_workspace(sdk: NeMoPlatform, workspace: str) -> None:
     """Agents with the same name can exist independently in two workspaces."""
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     other_workspace = _unique_name("workspace")
     agent_name = _unique_name("shared")
-    sdk.workspaces.create(name=other_workspace)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=other_workspace)).data()
 
     try:
         sdk.agents.create(
@@ -351,7 +355,7 @@ def test_agents_are_isolated_by_workspace(sdk: NeMoPlatform, workspace: str) -> 
     finally:
         _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
         _delete_agent_if_exists(sdk, workspace=other_workspace, name=agent_name)
-        sdk.workspaces.delete(other_workspace)
+        workspaces.delete_workspace(name=other_workspace).data()
 
 
 def test_agents_sdk_resource_methods_are_available(sdk: NeMoPlatform, workspace: str) -> None:

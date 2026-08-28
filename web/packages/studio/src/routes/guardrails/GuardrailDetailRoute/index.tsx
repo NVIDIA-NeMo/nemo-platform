@@ -17,6 +17,7 @@ import {
   getGuardrailChecksRoute,
   getGuardrailConfigRoute,
   getGuardrailsRoute,
+  getGuardrailVirtualModelsRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { type FC, Suspense } from 'react';
@@ -98,6 +99,11 @@ export const GuardrailDetailRoute: FC = () => {
                 value: 'checks',
                 children: 'Test and Validate',
                 href: getGuardrailChecksRoute(workspace, guardrailConfigName),
+              },
+              {
+                value: 'virtual-models',
+                children: 'Virtual Models',
+                href: getGuardrailVirtualModelsRoute(workspace, guardrailConfigName),
               },
             ]}
             renderLink={(item) => <Link to={item.href!}>{item.children}</Link>}

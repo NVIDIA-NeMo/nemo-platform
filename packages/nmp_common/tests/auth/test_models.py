@@ -203,6 +203,17 @@ class TestPrincipalEffectiveIdentity:
         assert eff.groups == ["human-group"]
         assert eff.on_behalf_of is None
 
+    @pytest.mark.parametrize(
+        ("principal_id", "expected"),
+        [
+            ("user@example.com", False),
+            ("service:auth", True),
+            ("service-account:otel-collector", True),
+        ],
+    )
+    def test_is_service_identity(self, principal_id: str, expected: bool):
+        assert Principal(id=principal_id).is_service_identity() is expected
+
 
 class TestPrincipalEffectiveId:
     """Tests for Principal.effective_id property."""
