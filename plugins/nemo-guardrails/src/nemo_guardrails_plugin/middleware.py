@@ -13,6 +13,7 @@ from nemo_guardrails_plugin.constants import (
     PROCESS_REQUEST_RAIL_TYPES,
     PROCESS_RESPONSE_RAIL_TYPES,
 )
+from nemo_guardrails_plugin.iorails_benchmark import IORailsBenchmarkRuntime, iorails_benchmark_enabled
 from nemo_guardrails_plugin.llm_clients import platform_headers_context, register_header_aware_nim_provider
 from nemo_guardrails_plugin.llmrails_cache import (
     DefaultLLMRailsBuilder,
@@ -168,6 +169,8 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
     _sdk: nemo_platform.AsyncNeMoPlatform | None = None
     # Cache of ``LLMRails`` instances keyed by stabilized content hash.
     _rails_cache: LLMRailsCache | None = None
+    # Deliberately limited IORails path used only for local benchmark collection.
+    _iorails_benchmark_runtime: IORailsBenchmarkRuntime | None = None
     # Memoization of ``PlatformRailsConfig`` → ``StableRailsConfig``
     # transform by entity identity ``(workspace, name, updated_at)``.
     _stable_cache: StabilizedRailsConfigCache | None = None
@@ -185,17 +188,28 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         self._sdk = get_async_platform_sdk(as_service=PLUGIN_NAME, internal=True)
         self._rails_cache = LLMRailsCache(builder=DefaultLLMRailsBuilder())
         self._stable_cache = StabilizedRailsConfigCache()
+        self._iorails_benchmark_runtime = IORailsBenchmarkRuntime() if iorails_benchmark_enabled() else None
+        if self._iorails_benchmark_runtime is not None:
+            logger.warning(
+                "NEMO_GUARDRAILS_IORAILS_ENGINE is enabled: using the benchmark-only "
+                "IORails path for non-streaming checks"
+            )
 
     async def on_shutdown(self) -> None:
         # Detach attributes before awaiting close so a partial close can't
         # leave a half-torn-down cache visible to a later request. The
         # try/finally ensures SDK close runs even if cache close raises.
         cache, self._rails_cache = self._rails_cache, None
+        iorails_runtime, self._iorails_benchmark_runtime = self._iorails_benchmark_runtime, None
         sdk, self._sdk = self._sdk, None
         self._stable_cache = None
         try:
-            if cache is not None:
-                await cache.close()
+            try:
+                if iorails_runtime is not None:
+                    await iorails_runtime.close()
+            finally:
+                if cache is not None:
+                    await cache.close()
         finally:
             if sdk is not None:
                 await sdk.close()
@@ -495,6 +509,11 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
 
         # Streaming: the lease must stay held for the life of the iterator.
         if is_streaming_response_result(response_result):
+            if self._iorails_benchmark_runtime is not None:
+                raise InferenceMiddlewareError(
+                    "The benchmark-only IORails path does not support streaming responses.",
+                    status_code=400,
+                )
             streaming_config = extract_output_rails_streaming_config(source)
             if streaming_config is not None and streaming_config.enabled is False:
                 raise InferenceMiddlewareError(
@@ -712,6 +731,32 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
           propagated so caller-set ``status_code`` survives.
         - Anything else below the lease → 503 with ``error_msg``.
         """
+        iorails_runtime = self._iorails_benchmark_runtime
+        if iorails_runtime is not None:
+            if user_log_options and any(user_log_options.values()):
+                raise InferenceMiddlewareError(
+                    "The benchmark-only IORails path does not support detailed guardrail logs.",
+                    status_code=400,
+                )
+
+            stable_cache = self._stable_cache
+            if stable_cache is None:
+                raise InferenceMiddlewareUnavailableError(
+                    "IORails benchmark runtime is not initialized. Was on_startup() called?"
+                )
+
+            try:
+                stable = stable_cache.get_or_compute(source, self.get_openai_compatible_inference_url_and_model)
+                return await iorails_runtime.check(stable, messages=messages, rail_types=rail_types)
+            except InferenceMiddlewareError:
+                raise
+            except ValueError as exc:
+                raise InferenceMiddlewareError(str(exc), status_code=400) from exc
+            except Exception as exc:
+                if upstream_error := extract_upstream_error(exc):
+                    raise upstream_error from exc
+                raise InferenceMiddlewareUnavailableError(error_msg) from exc
+
         cache, stable, provenance, main_llm, sdk = await self._prepare_lease_with_503(
             source, request_body, request_headers, error_msg
         )
