@@ -132,7 +132,7 @@ env:
   RELEASE_HELM_PATH: k8s/helm
   RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform
   STABLE_IMAGE_REGISTRY: nvcr.io/nvidia/nemo-platform
-  RELEASE_PUBLISH_NIGHTLY_WHEELS: "false"
+  RELEASE_PUBLISH_NIGHTLY_WHEELS: "true"
   RELEASE_NIGHTLY_WHEEL_INDEX: https://pypi.nvidia.com
   RELEASE_STABLE_WHEEL_INDEX: https://pypi.org/simple
   # Nightly GHCR readiness checks authenticate with the repository GITHUB_TOKEN.
