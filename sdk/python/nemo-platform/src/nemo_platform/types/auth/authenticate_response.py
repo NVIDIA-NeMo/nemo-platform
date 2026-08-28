@@ -24,7 +24,7 @@ __all__ = ["AuthenticateResponse"]
 
 
 class AuthenticateResponse(BaseModel):
-    """Successful bearer token authentication response for auth callouts."""
+    """Successful bearer token authentication response for direct callers."""
 
     principal: str
 
@@ -35,5 +35,11 @@ class AuthenticateResponse(BaseModel):
     groups: Optional[List[str]] = None
 
     jti: Optional[str] = None
+
+    on_behalf_of: Optional[str] = None
+
+    on_behalf_of_email: Optional[str] = None
+
+    on_behalf_of_groups: Optional[List[str]] = None
 
     scopes: Optional[List[str]] = None

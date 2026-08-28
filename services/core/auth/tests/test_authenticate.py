@@ -13,7 +13,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nmp.common.auth.jwt import TokenClaims
+from nmp.common.auth.jwt import JWTValidator
+from nmp.common.auth.token_claims import ActorClaims, TokenClaims
 from nmp.common.auth.token_resolver import ResolvedBearerToken
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, OIDCConfig, TokenSigningConfig
@@ -32,6 +33,19 @@ def _private_key_pem() -> bytes:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
+
+
+def _assert_no_principal_response_headers(response) -> None:
+    for header_name in (
+        "X-NMP-Principal-Id",
+        "X-NMP-Principal-Email",
+        "X-NMP-Principal-Groups",
+        "X-NMP-Principal-On-Behalf-Of",
+        "X-NMP-Principal-On-Behalf-Of-Email",
+        "X-NMP-Principal-On-Behalf-Of-Groups",
+        "X-NMP-Scopes",
+    ):
+        assert header_name not in response.headers
 
 
 class AlwaysActiveAccessKeyRegistry:
@@ -68,7 +82,35 @@ def _test_client(
         yield TestClient(app)
 
 
-def test_authenticate_access_key_returns_principal_headers(tmp_path):
+def _auth_config_with_workload_exchange(
+    tmp_path,
+    *,
+    oidc_issuer: str = "https://sso.example.com",
+    additional_issuers: list[str] | None = None,
+    oidc_jwks_uri: str | None = "https://sso.example.com/jwks",
+    token_issuer: str | None = "http://testserver/apis/auth",
+) -> AuthConfig:
+    private_key_file = tmp_path / "private.pem"
+    private_key_file.write_bytes(_private_key_pem())
+    return AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            issuer=token_issuer,
+            key_id="test-workload",
+            private_key_file=str(private_key_file),
+        ),
+        oidc=OIDCConfig(
+            enabled=True,
+            issuer=oidc_issuer,
+            additional_issuers=additional_issuers or [],
+            jwks_uri=oidc_jwks_uri,
+            workload_token_exchange_enabled=True,
+            workload_audience="nemo-platform",
+        ),
+    )
+
+
+def test_authenticate_access_key_returns_principal_json(tmp_path):
     config = AuthConfig(
         enabled=True,
         token_signing=TokenSigningConfig(
@@ -107,11 +149,11 @@ def test_authenticate_access_key_returns_principal_headers(tmp_path):
         "scopes": ["models:read"],
         "jti": "ak_example",
         "token_kind": "access_key",
+        "on_behalf_of": None,
+        "on_behalf_of_email": None,
+        "on_behalf_of_groups": [],
     }
-    assert response.headers["X-NMP-Principal-Id"] == "alice@example.com"
-    assert response.headers["X-NMP-Principal-Email"] == "alice@example.com"
-    assert response.headers["X-NMP-Principal-Groups"] == "team-ml"
-    assert response.headers["X-NMP-Scopes"] == "models:read"
+    _assert_no_principal_response_headers(response)
     resolver_call = resolver.await_args
     assert resolver_call is not None
     assert resolver_call.args[:2] == (config, "signed.jwt.token")
@@ -180,7 +222,7 @@ def test_authenticate_rejects_revoked_access_key(tmp_path):
     assert response.json()["detail"] == "Invalid bearer token"
 
 
-def test_authenticate_callout_accepts_original_request_methods(tmp_path):
+def test_ext_authz_accepts_original_request_methods_and_returns_principal_headers(tmp_path):
     config = AuthConfig(
         enabled=True,
         token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")),
@@ -203,15 +245,61 @@ def test_authenticate_callout_accepts_original_request_methods(tmp_path):
         ) as resolver,
     ):
         response = client.delete(
-            "/authenticate/apis/entities/v2/workspaces/default",
+            "/ext-authz/apis/entities/v2/workspaces/default",
             headers={"Authorization": "Bearer signed.jwt.token"},
         )
 
     assert response.status_code == 200
-    assert response.json()["principal"] == "writer@example.com"
+    assert response.content == b""
     assert response.headers["X-NMP-Principal-Id"] == "writer@example.com"
     assert response.headers["X-NMP-Scopes"] == "models:write"
     resolver.assert_awaited_once()
+
+
+def test_authenticate_oidc_access_token_with_actor_returns_direct_principal_json(tmp_path):
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")),
+        oidc=OIDCConfig(enabled=True, issuer="https://sso.example.com", client_id="nemo-platform-cli"),
+    )
+    (tmp_path / "private.pem").write_bytes(_private_key_pem())
+    claims = TokenClaims(
+        subject="user:alice",
+        email="alice@example.test",
+        groups=["researchers"],
+        scopes=["models.read"],
+        raw_claims={
+            "sub": "user:alice",
+            "email": "alice@example.test",
+            "groups": "researchers",
+            "act": {"sub": "service:jobs", "groups": "system:serviceaccounts"},
+        },
+        actor=ActorClaims(subject="service:jobs", groups=["system:serviceaccounts"]),
+    )
+    resolved = ResolvedBearerToken(claims=claims, token_kind="oidc_access_token")
+
+    with (
+        _test_client(config) as client,
+        patch(
+            "nmp.core.auth.api.v2.authenticate.resolve_bearer_token",
+            new=AsyncMock(return_value=resolved),
+        ),
+    ):
+        response = client.get("/authenticate", headers={"Authorization": "Bearer oidc.token"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "principal": "user:alice",
+        "email": "alice@example.test",
+        "groups": ["researchers"],
+        "scopes": ["models.read"],
+        "jti": None,
+        "token_kind": "oidc_access_token",
+        "on_behalf_of": None,
+        "on_behalf_of_email": None,
+        "on_behalf_of_groups": [],
+    }
+    _assert_no_principal_response_headers(response)
 
 
 def test_authenticate_rejects_unresolved_bearer_token(tmp_path):
@@ -228,7 +316,7 @@ def test_authenticate_rejects_unresolved_bearer_token(tmp_path):
     assert response.json()["detail"] == "Invalid bearer token"
 
 
-def test_authenticate_workload_access_token_returns_principal_headers(tmp_path):
+def test_authenticate_workload_access_token_returns_principal_json(tmp_path):
     private_key_file = tmp_path / "private.pem"
     private_key_file.write_bytes(_private_key_pem())
     config = AuthConfig(
@@ -274,9 +362,122 @@ def test_authenticate_workload_access_token_returns_principal_headers(tmp_path):
         "scopes": ["openid", "email", "groups"],
         "jti": None,
         "token_kind": "workload_access_token",
+        "on_behalf_of": None,
+        "on_behalf_of_email": None,
+        "on_behalf_of_groups": [],
     }
+    _assert_no_principal_response_headers(response)
+
+
+def test_authenticate_delegated_workload_access_token_returns_resolved_principal_json(tmp_path):
+    private_key_file = tmp_path / "private.pem"
+    private_key_file.write_bytes(_private_key_pem())
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            issuer="http://testserver/apis/auth",
+            key_id="test-workload",
+            private_key_file=str(private_key_file),
+        ),
+        oidc=OIDCConfig(
+            workload_token_exchange_enabled=True,
+            workload_audience="nemo-platform",
+        ),
+    )
+    signing_key = WorkloadTokenExchangeService().workload_signing_key(config)
+    now = datetime.now(tz=UTC)
+    token = jwt.encode(
+        {
+            "iss": "http://testserver/apis/auth",
+            "sub": "submitter@example.com",
+            "email": "submitter@example.com",
+            "aud": "nemo-platform",
+            "iat": now,
+            "nbf": now,
+            "exp": now + timedelta(minutes=5),
+            "scope": "openid email groups",
+            "groups": "workspace-editors",
+            "act": {
+                "sub": "system:serviceaccount:nemo:job",
+                "groups": ["system:serviceaccounts", "nemo-jobs"],
+            },
+        },
+        signing_key.private_key,
+        algorithm="RS256",
+        headers={"kid": signing_key.kid},
+    )
+    with _test_client(config) as client:
+        response = client.get(
+            "/authenticate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["token_kind"] == "workload_access_token"
+    assert response.json() == {
+        "principal": "system:serviceaccount:nemo:job",
+        "email": None,
+        "groups": ["system:serviceaccounts", "nemo-jobs"],
+        "scopes": ["openid", "email", "groups"],
+        "jti": None,
+        "token_kind": "workload_access_token",
+        "on_behalf_of": "submitter@example.com",
+        "on_behalf_of_email": "submitter@example.com",
+        "on_behalf_of_groups": ["workspace-editors"],
+    }
+    _assert_no_principal_response_headers(response)
+
+
+def test_ext_authz_delegated_workload_access_token_returns_obo_principal_headers(tmp_path):
+    private_key_file = tmp_path / "private.pem"
+    private_key_file.write_bytes(_private_key_pem())
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            issuer="http://testserver/apis/auth",
+            key_id="test-workload",
+            private_key_file=str(private_key_file),
+        ),
+        oidc=OIDCConfig(
+            workload_token_exchange_enabled=True,
+            workload_audience="nemo-platform",
+        ),
+    )
+    signing_key = WorkloadTokenExchangeService().workload_signing_key(config)
+    now = datetime.now(tz=UTC)
+    token = jwt.encode(
+        {
+            "iss": "http://testserver/apis/auth",
+            "sub": "submitter@example.com",
+            "email": "submitter@example.com",
+            "aud": "nemo-platform",
+            "iat": now,
+            "nbf": now,
+            "exp": now + timedelta(minutes=5),
+            "scope": "openid email groups",
+            "groups": "workspace-editors",
+            "act": {
+                "sub": "system:serviceaccount:nemo:job",
+                "groups": ["system:serviceaccounts", "nemo-jobs"],
+            },
+        },
+        signing_key.private_key,
+        algorithm="RS256",
+        headers={"kid": signing_key.kid},
+    )
+    with _test_client(config) as client:
+        response = client.get(
+            "/ext-authz/apis/entities/v2/workspaces/default",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b""
     assert response.headers["X-NMP-Principal-Id"] == "system:serviceaccount:nemo:job"
-    assert response.headers["X-NMP-Principal-Groups"] == "team-ml,team-ai"
+    assert response.headers["X-NMP-Principal-Groups"] == "system:serviceaccounts,nemo-jobs"
+    assert response.headers["X-NMP-Principal-On-Behalf-Of"] == "submitter@example.com"
+    assert response.headers["X-NMP-Principal-On-Behalf-Of-Email"] == "submitter@example.com"
+    assert response.headers["X-NMP-Principal-On-Behalf-Of-Groups"] == "workspace-editors"
     assert response.headers["X-NMP-Scopes"] == "openid email groups"
 
 
@@ -285,7 +486,6 @@ def test_authenticate_workload_subject_token_uses_resolver_callback(tmp_path):
         enabled=True,
         token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")),
         oidc=OIDCConfig(
-            enabled=True,
             issuer="https://sso.example.com/application/o/nemo-cli/",
             client_id="nemo-platform-cli",
             workload_token_exchange_enabled=True,
@@ -323,10 +523,10 @@ def test_authenticate_workload_subject_token_uses_resolver_callback(tmp_path):
     assert response.status_code == 200
     assert response.json()["principal"] == "svc-nemo"
     assert response.json()["token_kind"] == "workload_subject_token"
-    assert response.headers["X-NMP-Principal-Id"] == "svc-nemo"
-    assert response.headers["X-NMP-Principal-Email"] == "svc-nemo@example.com"
-    assert response.headers["X-NMP-Principal-Groups"] == "nemo-workloads"
-    assert response.headers["X-NMP-Scopes"] == "openid email groups"
+    assert response.json()["on_behalf_of"] is None
+    assert response.json()["on_behalf_of_email"] is None
+    assert response.json()["on_behalf_of_groups"] == []
+    _assert_no_principal_response_headers(response)
 
 
 def test_authenticate_invalid_workload_access_token_returns_401(tmp_path):
@@ -373,12 +573,129 @@ def test_authenticate_workload_access_token_surfaces_signing_key_misconfiguratio
     assert "Failed to load workload access token signing key" in caplog.text
 
 
-def test_authenticate_openapi_documents_error_responses(tmp_path):
+def test_authenticate_fails_closed_when_oidc_issuer_matches_workload_token_issuer(tmp_path):
+    config = _auth_config_with_workload_exchange(
+        tmp_path,
+        oidc_issuer="http://testserver/apis/auth",
+        token_issuer="http://testserver/apis/auth",
+    )
+
+    with _test_client(config) as client:
+        response = client.get("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Authentication token issuers are misconfigured"
+
+
+def test_authenticate_fails_closed_when_additional_oidc_issuer_matches_workload_token_issuer(tmp_path):
+    config = _auth_config_with_workload_exchange(
+        tmp_path,
+        additional_issuers=["http://testserver/apis/auth"],
+        token_issuer="http://testserver/apis/auth",
+    )
+
+    with _test_client(config) as client:
+        response = client.get("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Authentication token issuers are misconfigured"
+
+
+def test_authenticate_fails_closed_when_oidc_jwks_uri_matches_workload_jwks_uri(tmp_path):
+    config = _auth_config_with_workload_exchange(
+        tmp_path,
+        oidc_jwks_uri="http://testserver/apis/auth/jwks",
+    )
+
+    with _test_client(config) as client:
+        response = client.get("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Authentication token issuers are misconfigured"
+
+
+def test_authenticate_fails_closed_when_discovered_oidc_jwks_uri_matches_workload_jwks_uri(tmp_path):
+    config = _auth_config_with_workload_exchange(
+        tmp_path,
+        oidc_jwks_uri=None,
+    )
+
+    with (
+        _test_client(config) as client,
+        patch.object(
+            JWTValidator,
+            "_discover_oidc_config",
+            new=AsyncMock(return_value={"jwks_uri": "http://testserver/apis/auth/jwks"}),
+        ),
+    ):
+        response = client.get("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Authentication token issuers are misconfigured"
+
+
+def test_authenticate_fails_closed_when_oidc_jwks_contains_workload_public_key_material(tmp_path):
+    config = _auth_config_with_workload_exchange(tmp_path)
+    service = WorkloadTokenExchangeService()
+    mirrored_jwk = {**service.public_jwk(config), "kid": "idp-key"}
+
+    with (
+        _test_client(config, workload_token_exchange_service=service) as client,
+        patch.object(JWTValidator, "jwks", new=AsyncMock(return_value={"keys": [mirrored_jwk]})),
+    ):
+        response = client.get("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Authentication token issuers are misconfigured"
+
+
+def test_authenticate_allows_same_kid_when_oidc_jwks_key_material_differs(tmp_path):
+    config = _auth_config_with_workload_exchange(tmp_path)
+    other_private_key_file = tmp_path / "other-private.pem"
+    other_private_key_file.write_bytes(_private_key_pem())
+    other_config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            issuer="https://other.example.test",
+            key_id="test-workload",
+            private_key_file=str(other_private_key_file),
+        ),
+    )
+    service = WorkloadTokenExchangeService()
+    idp_jwk = service.public_jwk(other_config)
+    claims = TokenClaims(
+        subject="user:alice",
+        email="alice@example.test",
+        groups=["researchers"],
+        scopes=[],
+        raw_claims={},
+    )
+    resolved = ResolvedBearerToken(claims=claims, token_kind="oidc_access_token")
+
+    with (
+        _test_client(config, workload_token_exchange_service=service) as client,
+        patch.object(JWTValidator, "jwks", new=AsyncMock(return_value={"keys": [idp_jwk]})),
+        patch(
+            "nmp.core.auth.api.v2.authenticate.resolve_bearer_token",
+            new=AsyncMock(return_value=resolved),
+        ),
+    ):
+        response = client.get("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 200
+    assert response.json()["principal"] == "user:alice"
+    assert response.json()["on_behalf_of"] is None
+    _assert_no_principal_response_headers(response)
+
+
+def test_authenticate_openapi_hides_ext_authz_and_documents_obo_fields(tmp_path):
     config = AuthConfig(enabled=True, token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")))
     (tmp_path / "private.pem").write_bytes(_private_key_pem())
     with _test_client(config) as client:
         openapi = cast(FastAPI, client.app).openapi()
 
+    assert "/ext-authz" not in openapi["paths"]
+    assert "/ext-authz/{original_path}" not in openapi["paths"]
     for method in ("get", "post"):
         responses = openapi["paths"]["/authenticate"][method]["responses"]
         assert responses["200"]["content"]["application/json"]["schema"] == {
@@ -396,6 +713,9 @@ def test_authenticate_openapi_documents_error_responses(tmp_path):
     authenticate_schema = openapi["components"]["schemas"]["AuthenticateResponse"]
     assert authenticate_schema["properties"]["email"]["nullable"] is True
     assert authenticate_schema["properties"]["jti"]["nullable"] is True
+    assert authenticate_schema["properties"]["on_behalf_of"]["nullable"] is True
+    assert authenticate_schema["properties"]["on_behalf_of_email"]["nullable"] is True
+    assert authenticate_schema["properties"]["on_behalf_of_groups"]["items"]["type"] == "string"
     assert authenticate_schema["properties"]["token_kind"]["enum"] == [
         "access_key",
         "oidc_access_token",
@@ -422,6 +742,27 @@ def test_authenticate_rejects_malformed_bearer_token(tmp_path):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid bearer token"
+
+
+def test_authenticate_prefixed_callout_route_is_removed(tmp_path):
+    config = AuthConfig(enabled=True, token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")))
+    (tmp_path / "private.pem").write_bytes(_private_key_pem())
+    with _test_client(config) as client:
+        response = client.get(
+            "/authenticate/apis/entities/v2/workspaces/default",
+            headers={"Authorization": "Bearer token"},
+        )
+
+    assert response.status_code == 404
+
+
+def test_authenticate_non_json_callout_methods_are_removed(tmp_path):
+    config = AuthConfig(enabled=True, token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")))
+    (tmp_path / "private.pem").write_bytes(_private_key_pem())
+    with _test_client(config) as client:
+        response = client.put("/authenticate", headers={"Authorization": "Bearer token"})
+
+    assert response.status_code == 405
 
 
 def test_access_key_specific_authenticate_route_is_removed(tmp_path):

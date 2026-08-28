@@ -17,15 +17,17 @@ import (
 )
 
 const (
-	nmpBaseURLEnv                     = "NMP_BASE_URL"
-	workloadIdentityTokenFileEnv      = "NMP_WORKLOAD_IDENTITY_TOKEN_FILE"
-	tokenExchangeGrantType            = "urn:ietf:params:oauth:grant-type:token-exchange"
-	jwtTokenType                      = "urn:ietf:params:oauth:token-type:jwt"
-	accessTokenType                   = "urn:ietf:params:oauth:token-type:access_token"
-	workloadAuthRequestTimeoutSeconds = 30
-	maxAuthResponseBodyBytes          = 64 * 1024
-	workloadAuthRefreshMarginFraction = 5
-	workloadAuthMaxRefreshMargin      = time.Minute
+	nmpBaseURLEnv                      = "NMP_BASE_URL"
+	workloadIdentityTokenFileEnv       = "NMP_WORKLOAD_IDENTITY_TOKEN_FILE"
+	tokenExchangeGrantType             = "urn:ietf:params:oauth:grant-type:token-exchange"
+	jwtTokenType                       = "urn:ietf:params:oauth:token-type:jwt"
+	accessTokenType                    = "urn:ietf:params:oauth:token-type:access_token"
+	dockerOpaqueWorkloadProofTokenType = "urn:nvidia:nemo:params:oauth:token-type:docker-opaque-workload-proof"
+	dockerOpaqueWorkloadProofPrefix    = "nmp_obo_v1."
+	workloadAuthRequestTimeoutSeconds  = 30
+	maxAuthResponseBodyBytes           = 64 * 1024
+	workloadAuthRefreshMarginFraction  = 5
+	workloadAuthMaxRefreshMargin       = time.Minute
 )
 
 type authDiscoveryResponse struct {
@@ -215,6 +217,13 @@ func readSubjectToken(path string) (string, error) {
 	return token, nil
 }
 
+func subjectTokenTypeForExchange(subjectToken string) string {
+	if strings.HasPrefix(subjectToken, dockerOpaqueWorkloadProofPrefix) {
+		return dockerOpaqueWorkloadProofTokenType
+	}
+	return jwtTokenType
+}
+
 func exchangeWorkloadToken(
 	ctx context.Context,
 	tokenEndpoint string,
@@ -227,7 +236,7 @@ func exchangeWorkloadToken(
 	form.Set("grant_type", tokenExchangeGrantType)
 	form.Set("client_id", clientID)
 	form.Set("subject_token", subjectToken)
-	form.Set("subject_token_type", jwtTokenType)
+	form.Set("subject_token_type", subjectTokenTypeForExchange(subjectToken))
 	form.Set("requested_token_type", accessTokenType)
 	if discovery.WorkloadAudience != "" {
 		form.Set("audience", discovery.WorkloadAudience)

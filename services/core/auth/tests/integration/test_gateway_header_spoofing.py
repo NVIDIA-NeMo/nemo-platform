@@ -14,6 +14,7 @@ REQUIRED_STRIPPED_HEADERS = {
     "x-nmp-principal-on-behalf-of",
     "x-nmp-principal-on-behalf-of-email",
     "x-nmp-principal-on-behalf-of-groups",
+    "x-nmp-scopes",
 }
 
 

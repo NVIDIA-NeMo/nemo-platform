@@ -199,11 +199,6 @@ AUTHENTIK_DOCKER_E2E_CONFIG = pytest.mark.e2e_config(
                                 }
                             ]
                         },
-                        "workload_identity": {
-                            "token_endpoint": "https://nemo-gateway:8080/application/o/token/",
-                            "username": "svc-nemo",
-                            "password_env_var": "AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
-                        },
                     },
                 }
             ]

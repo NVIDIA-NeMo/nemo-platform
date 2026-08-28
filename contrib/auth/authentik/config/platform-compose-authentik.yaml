@@ -64,10 +64,6 @@ jobs:
           additional_volume_mounts:
             - volume_name: "authentik_gateway_tls"
               mount_path: "/etc/nmp/gateway-tls"
-        workload_identity:
-          token_endpoint: "https://nemo-gateway:8080/application/o/token/"
-          username: "svc-nemo"
-          password_env_var: "AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"
   executor_defaults:
     docker:
       cleanup_completed_jobs_immediately: false
