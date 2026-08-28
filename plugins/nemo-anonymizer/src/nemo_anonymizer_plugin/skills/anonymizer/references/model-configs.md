@@ -7,14 +7,13 @@
 
 ## When is `model_configs` required?
 
-| Surface                            | Status                  | `model_configs` required?                                                                                  |
-|------------------------------------|-------------------------|------------------------------------------------------------------------------------------------------------|
-| `nemo anonymizer preview run`      | Available (local)       | No — Anonymizer library defaults are used.                                                                 |
-| `nemo anonymizer run run`          | Available (local)       | No — Anonymizer library defaults are used.                                                                 |
-| `nemo anonymizer preview submit`   | Available (plugin svc)  | **Yes** — needed so requests route through the NeMo Platform Inference Gateway instead of build.nvidia.com directly. |
-| `nemo anonymizer run submit`       | Available (Jobs worker) | **Yes** — the job routes through the NeMo Platform Inference Gateway.                                                |
-| Strategy is `Substitute`           | n/a                     | Effectively yes for plugin-service / Jobs execution; provide a `replacement_generator`-capable alias.      |
-| Mode is `rewrite`                  | n/a                     | Effectively yes for plugin-service / Jobs execution; provide aliases for the Anonymizer library rewrite roles. |
+| Surface                  | Status                  | `model_configs` required?                                                                                  |
+|--------------------------|-------------------------|------------------------------------------------------------------------------------------------------------|
+| `sdk.anonymizer.preview` | Available (SDK/service) | **Yes** — needed so requests route through the NeMo Platform Inference Gateway instead of build.nvidia.com directly. |
+| `nemo anonymizer preview` | Available (plugin svc) | **Yes** — same service path as SDK preview.                                                                |
+| `nemo anonymizer run`    | Available (Jobs worker) | **Yes** — the job routes through the NeMo Platform Inference Gateway.                                      |
+| Strategy is `Substitute` | n/a                     | Provide a `replacement_generator`-capable alias.                                                           |
+| Mode is `rewrite`        | n/a                     | Provide aliases for the Anonymizer library rewrite roles.                                                  |
 
 `selected_models` is **only** legal alongside `model_configs` — passing overrides without a pool raises `selected_models requires model_configs so aliases can be resolved.`
 
@@ -54,9 +53,7 @@ Only emit a section if you actually want to override its defaults — overrides 
 
 ## Common patterns
 
-**Local default-everything preview** — no `model_configs`, no `selected_models`. Lets the Anonymizer library use its bundled defaults. Works for `preview run` and `run run`.
-
-**Plugin-service default model pool** (`preview submit`, `run submit`) — provide the aliases used by the Anonymizer library defaults:
+**Default model pool** (`sdk.anonymizer.preview`, `nemo anonymizer preview`, `nemo anonymizer run`) — provide the aliases used by the Anonymizer library defaults:
 
 ```yaml
 model_configs:

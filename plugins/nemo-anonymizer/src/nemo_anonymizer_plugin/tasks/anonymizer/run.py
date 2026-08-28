@@ -42,7 +42,7 @@ _TASK_LOG_HANDLER_MARKER = "_nemo_anonymizer_task_handler"
 def run(sdk: NeMoPlatform | None = None) -> int:
     try:
         service_sdk = sdk or get_platform_sdk(as_service="anonymizer")
-        return run_step_config(_load_step_config(), ctx=_get_ctx(service_sdk), sdk=service_sdk, is_local=False)
+        return run_step_config(_load_step_config(), ctx=_get_ctx(service_sdk), sdk=service_sdk)
     except Exception:
         logger.exception("Anonymizer task failed")
         return 1
@@ -53,10 +53,9 @@ def run_step_config(
     *,
     ctx: JobContext,
     sdk: NeMoPlatform | None = None,
-    is_local: bool = False,
 ) -> int:
     try:
-        return _run_with_step_config(sdk, step_config, ctx=ctx, is_local=is_local)
+        return _run_with_step_config(sdk, step_config, ctx=ctx)
     except Exception:
         logger.exception("Anonymizer task failed")
         return 1
@@ -67,28 +66,29 @@ def _run_with_step_config(
     step_config: AnonymizerStepConfig,
     *,
     ctx: JobContext,
-    is_local: bool,
 ) -> int:
     _configure_logging()
-    if service_sdk is None and not is_local:
+    if service_sdk is None:
         raise RuntimeError("Remote anonymizer task requires a NeMo Platform SDK.")
 
     storage_path = ctx.storage.persistent
     workspace = ctx.workspace
 
     request = step_config.request
-    dd_providers = _resolve_provider_endpoints(service_sdk, step_config, workspace, is_local=is_local)
+    if not step_config.model_configs_yaml:
+        raise RuntimeError("Remote anonymizer task requires resolved model_configs.")
+    dd_providers = _resolve_provider_endpoints(service_sdk, step_config, workspace)
     prepared_input = prepare_anonymizer_input(
         request.data,
         sdk=service_sdk,
         workspace=workspace,
-        allow_local_paths=is_local,
+        allow_local_paths=False,
     )
 
     try:
         with preserve_root_logging():
             anonymizer = Anonymizer(
-                model_configs=step_config.model_configs_yaml or None,
+                model_configs=step_config.model_configs_yaml,
                 model_providers=dd_providers,
                 artifact_path=storage_path / "anonymizer-artifacts",
             )
@@ -132,11 +132,9 @@ def _run_with_step_config(
 
 
 def _resolve_provider_endpoints(
-    sdk: NeMoPlatform | None,
+    sdk: NeMoPlatform,
     step_config: AnonymizerStepConfig,
     workspace: str,
-    *,
-    is_local: bool,
 ) -> list[DDModelProvider] | None:
     """Re-resolve provider endpoints in the task environment.
 
@@ -145,10 +143,6 @@ def _resolve_provider_endpoints(
     """
     if not step_config.dd_model_providers:
         return None
-    if is_local:
-        return [DDModelProvider.model_validate(raw) for raw in step_config.dd_model_providers]
-    if sdk is None:
-        raise RuntimeError("Remote anonymizer task requires a NeMo Platform SDK.")
     models = client_from_platform(sdk, ModelsClient)
     refreshed: list[DDModelProvider] = []
     for raw in step_config.dd_model_providers:
