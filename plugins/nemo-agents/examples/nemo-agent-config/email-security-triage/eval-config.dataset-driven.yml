@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# eval-config.dataset-driven.yml
+#
+# Dataset-driven eval for the email-security-triage agent: one metric set scores
+# every row of dataset.jsonl. See eval-config.dataset-driven.README.md.
+#
+# Authored in YAML; the sibling eval-config.task-driven.json is JSON. Both formats
+# are accepted everywhere a config is read -- Studio's Run Evaluation upload and the
+# CLI's --spec-file both sniff the content rather than the extension -- so pick
+# whichever reads better for the config you are writing. YAML suits this one: its
+# prompt_template and judge prompt are multi-line prose.
+#
+# `dataset` is a placeholder; `target` and `params` are per-run and absent by
+# design. Studio injects all three at submit time; a CLI run supplies them (README
+# Step 5).
+dataset: <workspace>/<fileset>#dataset.jsonl
+prompt_template: |-
+  Is this legit?
+
+  Subject: {{ item.subject }}
+  From: {{ item.sender }}
+
+  {{ item.body }}
+metrics:
+- bundle_kind: metric-bundle
+  bundle_format_version: v1
+  metric_type: llm-judge
+  metadata:
+    description: Verdict accuracy vs the dataset's label column.
+    labels: {}
+  outputs:
+  - name: accuracy
+    description: null
+    value_json_schema:
+      description: Continuous numeric metric value.
+      title: ContinuousScore
+      type: number
+  secrets: {}
+  payload:
+    kind: inline
+    metric:
+      type: llm-judge
+      model: default/nvidia-nemotron-3-super-120b-a12b
+      prompt_template:
+        messages:
+        - role: user
+          content: |-
+            You are scoring an email security analyst. Ground-truth verdict: "{{ item.label }}". The analyst's answer is on the FIRST LINE of the response; everything after it is supporting explanation and must be ignored, even if it mentions the other verdict.
+
+            Agent response:
+            {{ sample.output_text }}
+
+            Respond with a JSON object {"accuracy": <value>} where accuracy is 1 if the first line matches the expected verdict, else 0.
+      scores:
+      - name: accuracy
+        minimum: 0
+        maximum: 1
+      inference:
+        max_tokens: 1024
+        extra_body:
+          nvext:
+            max_thinking_tokens: 256
+      reasoning:
+        end_token: </think>
+- bundle_kind: metric-bundle
+  bundle_format_version: v1
+  metric_type: string-check
+  metadata:
+    description: 'Routing: every row asks whether the message is legit, so the answer must come from
+      the triage contract -- a bare phishing or benign on line 1.'
+    labels: {}
+  outputs:
+  - name: string-check
+    description: null
+    value_json_schema:
+      description: Continuous numeric metric value.
+      title: ContinuousScore
+      type: number
+  secrets: {}
+  payload:
+    kind: inline
+    metric:
+      type: string-check
+      operation: equals
+      left_template: '{{ ''yes'' if ((sample.output_text or '''').split(''\n'')[0] | trim | lower)
+        in [''phishing'', ''benign''] else ''no'' }}'
+      right_template: 'yes'

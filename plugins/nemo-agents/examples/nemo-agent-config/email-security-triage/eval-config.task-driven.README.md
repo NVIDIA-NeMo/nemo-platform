@@ -1,10 +1,12 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Task-driven evaluation — Email Security Analyst
+# Task-driven evaluation — Email Security Triage
 
-This fileset holds the **task-driven** eval config seeded from the built-in Email Security
-Analyst sample, plus this note. It is yours to edit; nothing regenerates it.
+`eval-config.task-driven.json`, beside this note, scores the
+[email-security-triage](README.md) agent. Studio's Run Evaluation flow seeds it into a
+fileset; the CLI reads it from here (see README Step 5). Either way it is yours to edit —
+nothing regenerates it.
 
 Task-driven means each task carries **its own metrics**, so one suite can grade work of
 different kinds. The sibling dataset-driven config scores the same agent a different way:
@@ -16,7 +18,10 @@ The agent is an analyst-facing assistant inside a mail client. The operator sele
 more messages and optionally types a question. Input arrives as one JSON object:
 
 ```json
-{ "user_message": "is this legit?", "emails": ["Subject: ...\nFrom: ...\n\n<body>"] }
+{
+  "user_message": "is this legit?",
+  "emails": ["Subject: ...\nFrom: ...\n\n<body>"]
+}
 ```
 
 `user_message` is `""` when nothing was typed. `emails` is `[]` when nothing was selected.

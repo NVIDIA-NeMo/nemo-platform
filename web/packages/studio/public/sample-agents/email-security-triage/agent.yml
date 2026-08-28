@@ -1,31 +1,44 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Studio sample agent: Fabric (nemo-agents-spec-v1) Email Security Triage.
-# Served as a static asset and fetched by Studio's Create Example Agent flow.
-# `models.default.model` is overwritten with the user's selected model at create
-# time (parse-then-set), so the value here is only a default.
+# Email Security Triage — a Fabric (nemo-agents-spec-v1) analyst-facing assistant.
 #
-# The capabilities here are the ones from the NAT `email-security-analyst`
-# example (plugins/nemo-agents/examples/email-security-analyst): review, triage,
-# thread tracing, and drafting a staff warning. Same {user_message, emails[]}
-# input, same first-line output contracts. The name stays `email-security-triage`
-# because Studio onboarding detects samples by name prefix.
+# The operator selects one or more messages and optionally types a question; the
+# agent routes that question to the capability that answers it, and answers as
+# that capability. When no question is typed, it falls back to a general review
+# of the selection.
 #
-# This is a SINGLE-TURN ROUTER: the model picks a capability and answers as that
-# capability in one generation, with no tools and no subagents. The previous
-# design (orchestrator + extract_iocs MCP tool + four subagents) cost ~6-10 LLM
-# calls per row and, when a subagent was handed a task with no email in it, spent
-# ~300k tokens hunting the filesystem for one. deepagents has no `return_direct`
-# equivalent, so a fan-out design also runs a second generation over the subagent
-# reply — meaning mis-routing and a mangled relay look identical in the score
-# table. Routing is what this sample demonstrates, so the relay is removed.
+# Input is either a JSON object with two keys:
 #
-# DEVIATION from the NAT agent's `additional_instructions`: its final clause sent
-# any non-JSON input to the general review. The dataset-driven eval renders plain
-# text ("Is this legit?\n\nSubject: ...") and must reach the triage contract, so
-# that clause is rewritten here to answer the question the text carries and fall
-# back to the review only when it carries none.
+#   {"user_message": "is this legit?", "emails": ["Subject: ...\nFrom: ..."]}
+#
+# or plain email text, which is treated as the selected message. `user_message`
+# is "" when nothing was typed; `emails` is [] when nothing was selected.
+# Messages are referred to by 1-based position.
+#
+# SINGLE-TURN ROUTER: one generation, no tools, no subagents. deepagents has no
+# `return_direct` equivalent, so a fan-out design runs a second generation over
+# each subagent reply — which makes a misroute and a mangled relay
+# indistinguishable in a score table. Routing is the thing this sample
+# demonstrates, so the relay is gone.
+#
+# The capability prompts come from the NAT email-security-analyst example
+# (plugins/nemo-agents/examples/email-security-analyst/src/nat_email_security_analyst/prompt.py),
+# with the shared untrusted-data guardrail hoisted to a single paragraph. One
+# deliberate change: that agent routed non-JSON input to the general review;
+# here plain text answers the question it carries, and reaches the review only
+# when it carries none — which is what the dataset-driven eval sends.
+#
+# Studio sample: served as a static asset and fetched by the Create Example Agent
+# flow. `models.default.model` is overwritten with the user's selected model at
+# create time (parse-then-set), so the value here is only a default. The name
+# stays `email-security-triage` because Studio onboarding detects samples by name
+# prefix.
+#
+# NOTE: this is an independent copy of
+# plugins/nemo-agents/examples/nemo-agent-config/email-security-triage/agent.yaml
+# (the source of truth). The two differ only in this paragraph; keep everything
+# below it identical, by hand.
 #
 # The telemetry endpoint below assumes a Platform on 127.0.0.1:8080; ATIF export
 # is best-effort and a mismatch costs traces, not the run.
@@ -139,10 +152,11 @@ skills:
 tools:
   # deepagents grants its whole filesystem tool surface by default. An email
   # triage agent has no business holding it: with these available, a prompt the
-  # model finds ambiguous becomes an unbounded filesystem hunt (~300k tokens
-  # observed). `task` is blocked too — this agent has no subagents, and setting a
-  # non-empty `blocked` list makes the adapter force-insert a gated
-  # `general-purpose` subagent reachable only through `task`.
+  # model finds ambiguous can become an unbounded filesystem hunt. `task` is
+  # blocked too — this agent has no subagents, and setting a non-empty `blocked`
+  # list makes the adapter force-insert a gated `general-purpose` subagent
+  # reachable only through `task`.
+  #
   # Deny-list only: nemo-agents-spec-v1's ToolsConfig exposes `blocked` and
   # nothing else and is extra="forbid", so an allow-list is not expressible here.
   # A future deepagents bump that adds a built-in grants it silently — revisit
@@ -151,8 +165,7 @@ tools:
   # Blocking gates at call time (the tool returns "Tool '<name>' is blocked by the
   # configured tools policy."); it does not remove tools from the schema, and
   # `instructions.system.content` is prepended to deepagents' own base prompt plus
-  # the filesystem/subagent tool instructions. The model still reads those docs, so
-  # per-row tokens do not fall to the single-generation floor.
+  # the filesystem/subagent tool instructions, which the model still reads.
   blocked: [ls, read_file, write_file, edit_file, delete, glob, grep, execute, task]
 
 runtime:
