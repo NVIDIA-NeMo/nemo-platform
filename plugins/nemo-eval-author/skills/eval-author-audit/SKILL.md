@@ -317,5 +317,8 @@ Treat that list as the input for a later task-generation step.
 - When aggregate `uncovered_items` includes actionable tools
   (`reason: not_covered_by_any_input_report`), hand off to
   [`eval-author-task-create`](../eval-author-task-create/SKILL.md) to scaffold
-  and prove one gap at a time. Capability or failure-case items with
+  one gap at a time, then to
+  [`eval-author-task-close`](../eval-author-task-close/SKILL.md) when the user
+  wants to prove the generated draft with Oracle, real-agent ATIF, and closure
+  classification. Capability or failure-case items with
   `reason: not_measured_by_any_method` stay audit findings only in v1.
