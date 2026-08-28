@@ -55,6 +55,36 @@
           }
         }
       }
+    },
+    {
+      "bundle_kind": "metric-bundle",
+      "bundle_format_version": "v1",
+      "metric_type": "string-check",
+      "metadata": {
+        "description": "Routing: every row asks whether the message is legit, so the answer must come from the triage contract -- a bare phishing or benign on line 1.",
+        "labels": {}
+      },
+      "outputs": [
+        {
+          "name": "string-check",
+          "description": null,
+          "value_json_schema": {
+            "description": "Continuous numeric metric value.",
+            "title": "ContinuousScore",
+            "type": "number"
+          }
+        }
+      ],
+      "secrets": {},
+      "payload": {
+        "kind": "inline",
+        "metric": {
+          "type": "string-check",
+          "operation": "equals",
+          "left_template": "{{ 'yes' if ((sample.output_text or '').split('\\n')[0] | trim | lower) in ['phishing', 'benign'] else 'no' }}",
+          "right_template": "yes"
+        }
+      }
     }
   ]
 }

@@ -49,13 +49,23 @@ From: {{ item.sender }}
 ```
 
 That question is what routes the agent to its triage capability, which answers with a bare
-`phishing` or `benign` on the first line and its reasoning after.
+`phishing` or `benign` on the first line and its reasoning after. Note the row arrives as plain
+text, not as the `{user_message, emails[]}` JSON the task-driven suite sends — routing it to
+triage rather than to the general review is part of what this suite exercises.
 
 ## The metric
 
-| Metric      | Output   | Range | Checks                                     |
-| ----------- | -------- | ----- | ------------------------------------------ |
-| `llm-judge` | accuracy | 0–1   | First line of the response matches `label` |
+| Metric         | Output         | Range | Checks                                      |
+| -------------- | -------------- | ----- | ------------------------------------------- |
+| `llm-judge`    | accuracy       | 0–1   | First line of the response matches `label`  |
+| `string-check` | `string-check` | 0/1   | First line is a bare `phishing` or `benign` |
+
+The `string-check` is a **routing** assertion, not an accuracy one: every row asks the same
+legitimacy question, so every row must reach the triage contract. It scores 1 whenever line 1 is
+one of the two verdict words, regardless of which. Read it alongside `accuracy` — accuracy near
+zero while routing holds is a judgement problem; both near zero is a routing problem. Routing is
+asserted from the output contract rather than from tool calls, which a Fabric agent's responses do
+not carry (see the task-driven README).
 
 The judge reads the **first line**, not the last. The agent answers first and explains
 after, so its reasoning routinely names the opposite verdict — a judge told to take the
@@ -70,8 +80,8 @@ social-engineering signals, so it leans cautious. That asymmetry is more interes
 the headline number and is worth checking on your own runs.
 
 A near-zero score means something mechanical, not a collapsed agent: most likely the judge
-reading the wrong line, or the agent's tool missing from the workflow's `return_direct`, so
-a second generation rewrote the answer away from the first-line contract.
+reading the wrong line, or the agent answering as a different capability — the `string-check`
+tells the two apart.
 
 ## Editing this config
 

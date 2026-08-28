@@ -11,17 +11,16 @@ import { z } from 'zod';
 // Eval configs are a SEPARATE registry (EVAL_CONFIG_SAMPLES) on purpose: either
 // paradigm can target any agent, so a config is not owned by an agent.
 //
-// INVARIANT: a sample's deployment depends on something being installed in the
-// deploy venv/image, or it fails at startup. Two shapes:
+// INVARIANT: a sample can depend on something being installed in the deploy
+// venv/image, or it fails at startup:
 //
-// 1. NAT (`nat-workflow-v1`) entries whose agent.yml uses a custom `_type` need
-//    that tool's Python package:
-//      _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
-//      _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
-//
-// 2. Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
-//    console script on PATH, since Fabric spawns it as a stdio MCP child:
-//      email-security-triage-iocs -> plugins/nemo-agents/examples/nemo-agent-config/email-security-triage
+// - NAT (`nat-workflow-v1`) entries whose agent.yml uses a custom `_type` need
+//   that tool's Python package:
+//     _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
+//     _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
+// - Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
+//   console script on PATH, since Fabric spawns it as a stdio MCP child. No
+//   shipped sample declares `mcp:` today, so nothing currently relies on this.
 //
 // Each public/sample-agents/<dir>/agent.yml is an independent copy of the
 // example's config; keep them in sync by hand.
@@ -44,7 +43,7 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
     key: 'email_security_triage',
     displayName: 'Email Security Triage',
     description:
-      'A Fabric DeepAgents orchestrator that delegates the phishing verdict to a sub-agent and calls a deterministic extract_iocs tool, so each step is tunable in config and emits its own trace span.',
+      'A single-turn Fabric router with four analyst capabilities — general review, phishing/benign triage, thread injection-point tracing, and drafting a staff warning — picked from the question the analyst typed, so routing is what the evaluation reads.',
     namePrefix: 'email-security-triage',
     agentConfigPath: 'sample-agents/email-security-triage/agent.yml',
     configFormat: 'nemo-agents-spec-v1',
@@ -66,26 +65,27 @@ export interface EvalConfigSample {
 }
 
 // These target the sample agent's output contract, so they move when the sample agent does. The
-// email-security-analyst configs remain on disk as the reference for that agent's capabilities
-// (thread indexing, default review, draft warning) — capabilities the triage agent does not have,
-// which is why they are not simply repointed.
+// email-security-analyst configs are the live pair: the sample agent was rebuilt as a single-turn
+// router carrying that agent's four capabilities (review, triage, thread indexing, draft warning)
+// and its first-line contracts, so these configs score it directly. The email-security-triage
+// configs stay on disk as the reference for the older YAML-verdict contract.
 export const EVAL_CONFIG_SAMPLES: EvalConfigSample[] = [
   {
     key: 'task_driven',
     displayName: 'Task-Driven',
     description:
       'Inputs are varied tasks, each with its own metrics, so one suite can grade different kinds of work.',
-    configPath: 'sample-agents/email-security-triage/eval-config.task-driven.json',
-    readmePath: 'sample-agents/email-security-triage/eval-config.task-driven.README.md',
+    configPath: 'sample-agents/email-security-analyst/eval-config.task-driven.json',
+    readmePath: 'sample-agents/email-security-analyst/eval-config.task-driven.README.md',
   },
   {
     key: 'dataset_driven',
     displayName: 'Dataset-Driven',
     description:
       'Inputs are rows in a dataset, each with an ideal response, scored by a common metric set.',
-    configPath: 'sample-agents/email-security-triage/eval-config.dataset-driven.json',
-    datasetPath: 'sample-agents/email-security-triage/dataset.jsonl',
-    readmePath: 'sample-agents/email-security-triage/eval-config.dataset-driven.README.md',
+    configPath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.json',
+    datasetPath: 'sample-agents/email-security-analyst/dataset.jsonl',
+    readmePath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.README.md',
   },
 ];
 
