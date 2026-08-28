@@ -82,7 +82,8 @@ Use these `nemo_api` resource and action pairs:
 | List routable models | `inference.gateway.openai.v1.models` | `list` |
 | Verify inference | `inference.gateway.model` | `post` |
 
-The `params` argument is a JSON object string containing SDK keyword arguments.
+The `params` argument is a JSON object (a JSON object string is also accepted for compatibility)
+containing SDK keyword arguments.
 The outer `workspace` tool argument is still required even when `params` also
 contains `workspace`.
 

@@ -277,6 +277,10 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
                 "harnesses:",
                 "  hermes:",
                 "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: nvidia",
+                "    model: ${NEMO_DEFAULT_MODEL}",
                 "",
             ]
         )
@@ -286,6 +290,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         "name": "fabric-agent",
         "default_harness": "hermes",
         "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "models": {"default": {"provider": "nvidia", "model": "user-default-model"}},
         "environment": {"provider": "local"},
     }
     captured: dict[str, Any] = {}
@@ -302,6 +307,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     app = AgentsCLI().get_cli()
     with (
         _install_mock_transport(handler),
+        patch("nemo_agents_plugin.utils.get_default_model", return_value="user-default-model"),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
         patch("nemo_agents_plugin.cli._upload_ethos_fileset") as mock_upload,
     ):
@@ -314,6 +320,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     sent = _json.loads(captured["body"])
     assert captured["base_dir"] == tmp_path
     assert captured["validated_config"]["config_format"] == "nemo-agents-spec-v1"
+    assert captured["validated_config"]["models"]["default"]["model"] == "user-default-model"
     assert sent["config"] == normalized_config
     assert sent["config_format"] == "nemo-agents-spec-v1"
     mock_upload.assert_called_once_with(

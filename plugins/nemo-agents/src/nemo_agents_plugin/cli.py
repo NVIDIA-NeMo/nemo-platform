@@ -812,13 +812,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
-        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
-            for line in _spec_package_warning(name, agent_config):
-                typer.echo(line, err=True)
-        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
-            # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
-            # user context at deploy time.
+        if config_format in {NEMO_AGENTS_SPEC_CONFIG_FORMAT, NAT_WORKFLOW_CONFIG_FORMAT}:
+            # Resolve ${NEMO_DEFAULT_MODEL} client-side — the agents service has
+            # no user context at deploy time.
             config_dict = inject_default_model(config_dict)
             if _contains_default_model_placeholder(config_dict):
                 typer.echo(
@@ -828,7 +824,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     err=True,
                 )
                 raise typer.Exit(code=1)
-        else:
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            for line in _spec_package_warning(name, agent_config):
+                typer.echo(line, err=True)
+        elif config_format != NAT_WORKFLOW_CONFIG_FORMAT:
             typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
             raise typer.Exit(code=1)
         payload = {
