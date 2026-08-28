@@ -260,6 +260,16 @@ class IGWPluginHarness:
     # ------------------------------------------------------------------
 
     @property
+    def virtual_models(self) -> tuple[tuple[str, str], ...]:
+        """``(workspace, name)`` for every VirtualModel this harness created, in creation order.
+
+        Exposed so a test's own teardown can act on them before :meth:`_cleanup` runs — notably
+        to detach a guardrail config from its routes, since the Guardrails service refuses to
+        delete a config a VirtualModel still applies.
+        """
+        return tuple(self._virtual_models)
+
+    @property
     def nim_base_url(self) -> str:
         """OpenAI-compatible base URL (``http://host:port/v1``).
 

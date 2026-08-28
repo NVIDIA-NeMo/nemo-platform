@@ -17,7 +17,12 @@ from nemo_platform.types.inference.middleware_call_param import MiddlewareCallPa
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
-from .utils import GUARDRAILS_PLUGIN_NAME, GuardrailsTestDataNames, make_guardrails_test_data_names
+from .utils import (
+    GUARDRAILS_PLUGIN_NAME,
+    GuardrailsTestDataNames,
+    detach_guardrail_config,
+    make_guardrails_test_data_names,
+)
 
 pytestmark = [pytest.mark.integration]
 
@@ -49,6 +54,9 @@ class TestInjectionDetection:
 
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
+        # The service refuses to delete a config a VirtualModel still applies; harness
+        # cleanup removes those routes, but it runs after this teardown.
+        detach_guardrail_config(harness, config_name)
         try:
             harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:

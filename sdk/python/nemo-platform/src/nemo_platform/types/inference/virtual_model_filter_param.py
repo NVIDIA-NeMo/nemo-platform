@@ -39,6 +39,13 @@ class VirtualModelFilterParam(TypedDict, total=False):
     default_model_entity: DefaultModelEntity
     """Filter by default model entity."""
 
+    guardrail_config: str
+    """Filter by a guardrail config reference in "workspace/name" form.
+
+    Matches VirtualModels whose request, response, or post-response middleware
+    applies that stored guardrail config.
+    """
+
     name: Name
     """Filter by name."""
 

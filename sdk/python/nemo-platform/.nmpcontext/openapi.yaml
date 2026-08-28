@@ -2485,6 +2485,9 @@ paths:
                 $ref: '#/components/schemas/DeleteResponse'
         '404':
           description: Config does not exist.
+        '409':
+          description: Config is applied by one or more VirtualModels and cannot be
+            deleted.
         '422':
           description: Unable to delete config due to validation error while processing
             request.
@@ -3469,7 +3472,7 @@ paths:
         schema:
           $ref: '#/components/schemas/VirtualModelFilter'
         description: Filter virtual models by workspace, project, name, default_model_entity,
-          created_at, and updated_at.
+          guardrail_config, created_at, and updated_at.
       responses:
         '200':
           description: Paginated list of virtual models
@@ -20062,6 +20065,15 @@ components:
         override_proxy:
           title: Override Proxy
           type: string
+        guardrail_config_ids:
+          items:
+            type: string
+          type: array
+          title: Guardrail Config Ids
+          description: System-managed. Guardrail configs applied by this VirtualModel's
+            middleware, as "workspace/name" references. Derived from the middleware
+            pipelines on every write and ignored if supplied on a create or update
+            body. Filter on it with filter[guardrail_config].
         id:
           type: string
           title: Id
@@ -20177,6 +20189,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by update date.
+        guardrail_config:
+          description: Filter by a guardrail config reference in "workspace/name"
+            form. Matches VirtualModels whose request, response, or post-response
+            middleware applies that stored guardrail config.
+          title: Guardrail Config
+          type: string
       title: VirtualModelFilter
       type: object
     VirtualModelInferenceConfig:
