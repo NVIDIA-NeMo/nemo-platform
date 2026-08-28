@@ -405,6 +405,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             expert_parallel_size=p.expert_parallel_size,
             sequence_parallel=p.sequence_parallel,
             activation_checkpointing=t.activation_checkpointing,
+            policy_backend=t.policy_backend,
         ),
         integrations=_build_integrations_config(job_spec.integrations),
         output_model=job_spec.output.name,

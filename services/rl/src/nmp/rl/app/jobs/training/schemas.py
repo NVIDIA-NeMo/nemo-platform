@@ -25,6 +25,27 @@ class TrainingBackend(str, Enum):
     NEMO_RL = "nemo_rl"
 
 
+class PolicyBackend(str, Enum):
+    """Which NeMo-RL policy worker trains the model.
+
+    Chosen explicitly, never inferred: the value picks the worker class, which picks
+    the Ray actor's venv and kernels. Asking for a capability the backend lacks is a
+    validation error, not a silent upgrade.
+    """
+
+    # _v2: false -> DTensorPolicyWorker. Stock HuggingFace + PyTorch FSDP2, no
+    # Transformer Engine (so pre-Hopper works), no LoRA, no expert parallelism.
+    DTENSOR = "dtensor"
+    # _v2: true -> DTensorPolicyWorkerV2. Automodel rebuilds the model on TE.
+    # Superset of DTENSOR; upstream NeMo-RL's reference configs default to it.
+    AUTOMODEL = "automodel"
+    # megatron_cfg.enabled -> MegatronPolicyWorker. The image builds the `mcore`
+    # extra and prefetches the venv, but the compiler still emits an inert
+    # megatron_cfg (dpo_config._megatron_cfg_disabled). Enabling it needs HF->Megatron
+    # conversion, a shared checkpoint dir, and megatron_cfg.optimizer/scheduler.
+    # MEGATRON = "megatron"
+
+
 class OptimizerType(str, Enum):
     """Optimizer and scheduler combination types."""
 
@@ -130,7 +151,9 @@ class LoRAConfig(BaseModel):
     dropout: float = Field(default=0.0, ge=0.0, le=1.0)
     target_modules: list[str] | None = None
     exclude_modules: list[str] | None = None
-    use_triton: bool = True
+    # None = compiler picks (true at TP 1, false above). Explicit values pass through;
+    # GRPOTraining rejects true with TP > 1.
+    use_triton: bool | None = None
 
 
 class WandBConfig(BaseModel):
@@ -226,6 +249,9 @@ class TrainingStepConfig(BaseModel):
         expert_parallel_size: int = 1
         sequence_parallel: bool = False
         activation_checkpointing: bool = False
+        # GRPO only; default matches GRPOTraining so a hand-built config compiles the
+        # same YAML. DPO ignores it -- its dtensor_cfg is a literal with no ``_v2``.
+        policy_backend: PolicyBackend = PolicyBackend.AUTOMODEL
 
     class IntegrationsConfig(BaseModel):
         wandb: WandBConfig | None = None

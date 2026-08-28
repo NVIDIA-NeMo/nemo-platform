@@ -19,7 +19,7 @@ from nmp.customization_common.service.constants import (
 )
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.constants import NMP_JOB_STORAGE_PVC_ENVVAR
-from nmp.rl.app.jobs.training.schemas import BatchingStrategy, GRPOConfig, TrainingStepConfig
+from nmp.rl.app.jobs.training.schemas import BatchingStrategy, GRPOConfig, PolicyBackend, TrainingStepConfig
 from nmp.rl.entities.values import FinetuningType
 from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import (
     _adapt_precision,
@@ -49,9 +49,11 @@ def _build_lora_cfg(customizer_config: TrainingStepConfig) -> dict[str, Any]:
     enabled = customizer_config.training.finetuning_type == FinetuningType.LORA
     lora = customizer_config.training.lora
     tp = customizer_config.parallelism.tensor_parallel_size
-    use_triton = True if lora is None else lora.use_triton
-    if tp > 1:
-        use_triton = False
+    # Triton is the faster LoRA path but only works at TP 1 (its kernel has no DTensor
+    # handling, and NeMo-RL asserts on the pairing). Unset means "pick for me"; explicit
+    # values pass through, with true + TP > 1 already rejected in GRPOTraining.
+    requested_triton = None if lora is None else lora.use_triton
+    use_triton = (tp == 1) if requested_triton is None else requested_triton
     target_modules = list(lora.target_modules) if lora and lora.target_modules else []
     exclude_modules = list(lora.exclude_modules) if lora and lora.exclude_modules else []
     return {
@@ -77,13 +79,14 @@ def _build_dtensor_cfg(
 ) -> dict[str, Any]:
     """Map parallelism and backend settings onto NeMo-RL's policy.dtensor_cfg.
 
-    LoRA, expert parallelism and ``automodel_kwargs`` are implemented only by
-    ``DTensorPolicyWorkerV2``, so requesting any of them sets ``_v2``.
+    ``_v2`` follows ``parallelism.policy_backend`` and nothing else. The V2-only features
+    (LoRA, expert parallelism, ``automodel_kwargs``) are rejected against ``dtensor`` in
+    :class:`GRPOTraining` rather than silently upgraded here.
     """
     parallelism = customizer_config.parallelism
     expert_parallel_size = parallelism.expert_parallel_size
     automodel_kwargs = grpo_hp.automodel_kwargs
-    needs_v2 = lora_cfg["enabled"] or expert_parallel_size > 1 or bool(automodel_kwargs)
+    use_v2 = parallelism.policy_backend is PolicyBackend.AUTOMODEL
 
     dtensor_cfg: dict[str, Any] = {
         "enabled": True,
@@ -113,7 +116,7 @@ def _build_dtensor_cfg(
         dtensor_cfg["automodel_kwargs"] = dict(automodel_kwargs)
     if lora_cfg["enabled"]:
         dtensor_cfg["lora_cfg"] = lora_cfg
-    if needs_v2:
+    if use_v2:
         dtensor_cfg["_v2"] = True
     return dtensor_cfg
 
@@ -155,11 +158,13 @@ def _build_batching_config(
                 f"context_parallel_size ({customizer_config.parallelism.context_parallel_size}) > 1. "
                 "Use 'dynamic' or 'static'."
             )
+        # No sequence_length_round: every reader of it indexes dynamic_batching
+        # (lm_policy, lm_value, worker_mixin), and SequencePackingConfig does not
+        # declare it. Emitting it here would be a dead key.
         return dict(disabled), {
             "enabled": True,
             **budgets,
             "algorithm": "modified_first_fit_decreasing",
-            "sequence_length_round": grpo_hp.sequence_length_round,
         }
 
     return {
