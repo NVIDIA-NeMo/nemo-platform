@@ -150,6 +150,8 @@ navigation:
             path: ../../studio/agents.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
+          - page: Experiments
+            path: ../../studio/experiments.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs

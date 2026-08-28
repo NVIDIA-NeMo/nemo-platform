@@ -162,13 +162,13 @@ Ray-bundled JAXB runtime dependencies
 wandb-core MPL-2.0 Go dependencies
   Scope: Unmodified Go module dependencies linked into the wandb-core
   executable distributed with the wandb Python package in container images.
-  wandb package version: 0.28.2
+  wandb package version: 0.29.0
   wandb source distribution:
-    https://files.pythonhosted.org/packages/fd/41/c2eb0e25e0504287442f0829a5dc380669b683f78068c79220acc626383f/wandb-0.28.2.tar.gz
+    https://files.pythonhosted.org/packages/c8/f2/ae1d136972c93c20b87f0caa8cfcacf922d2c650272d0f5af412847955a9/wandb-0.29.0.tar.gz
   wandb upstream source:
     https://github.com/wandb/wandb
   wandb-core source at reported build commit:
-    https://github.com/wandb/wandb/tree/v0.28.2
+    https://github.com/wandb/wandb/tree/v0.29.0
   License: MPL-2.0
   License text: LICENSES/MPL-2.0.txt
 

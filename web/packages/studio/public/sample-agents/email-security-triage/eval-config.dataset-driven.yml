@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+dataset: <workspace>/<fileset>#dataset.jsonl
+prompt_template: |-
+  From: {{ item.sender }}
+  Subject: {{ item.subject }}
+
+  {{ item.body }}
+metrics:
+  - bundle_kind: metric-bundle
+    bundle_format_version: v1
+    metric_type: string-check
+    metadata:
+      description: Verdict key matches ground truth, without needing a judge model.
+      labels: {}
+    outputs:
+      - name: string-check
+        description: null
+        value_json_schema:
+          description: Continuous numeric metric value.
+          title: ContinuousScore
+          type: number
+    secrets: {}
+    payload:
+      kind: inline
+      metric:
+        type: string-check
+        operation: contains
+        left_template: "{{ (sample.output_text or '') | lower }}"
+        right_template: "is_likely_phishing: {% if item.label == 'phishing' %}true{% else %}false{% endif %}"
+  - bundle_kind: metric-bundle
+    bundle_format_version: v1
+    metric_type: llm-judge
+    metadata:
+      description: attack_type plausibility vs the ground-truth verdict.
+      labels: {}
+    outputs:
+      - name: attack_type_plausible
+        description: null
+        value_json_schema:
+          description: Continuous numeric metric value.
+          title: ContinuousScore
+          type: number
+    secrets: {}
+    payload:
+      kind: inline
+      metric:
+        type: llm-judge
+        model: default/nvidia-nemotron-3-super-120b-a12b
+        prompt_template:
+          messages:
+            - role: user
+              content: |-
+                You are scoring an email security triage agent.
+
+                The agent answers with a YAML block (often wrapped in a ``` fence). Its verdict is the `is_likely_phishing` key: `true` means phishing, `false` means benign. Read that key and nothing else — the `indicators` and `explanation` fields routinely mention the opposite verdict as things the agent considered, and must be ignored. Do not read the first line; it is usually the fence.
+
+                Agent response:
+                {{ sample.output_text }}
+
+                Ground-truth verdict: "{{ item.label }}".
+
+                Return a JSON object with one key:
+                  "attack_type_plausible": 1 if the `attack_type` value is a sensible label for this email (one of bec, credential, malware, spam, benign; `benign` iff the verdict is benign), else 0.
+        scores:
+          - name: attack_type_plausible
+            minimum: 0
+            maximum: 1
+            parser:
+              type: regex
+              method: search
+              pattern: attack_type_plausible"?\s*:\s*([01])
+        inference:
+          max_tokens: 1024
+          extra_body:
+            nvext:
+              max_thinking_tokens: 256
+        reasoning:
+          end_token: </think>

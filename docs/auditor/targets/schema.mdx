@@ -16,7 +16,7 @@ This page lists every field on `AuditTarget`. Defaults match the pydantic defini
 | `name` | `str` | Yes | Unique target name within the workspace. |
 | `workspace` | `str` | Yes | Workspace the target is persisted in. |
 | `type` | `str` | Yes | A fully-qualified [garak generator class](https://reference.garak.ai/en/latest/generators.html), such as `nim.NVOpenAIChat`, `openai.OpenAIGenerator`, `rest.RestGenerator`, or `test.Blank`. |
-| `model` | `str` | Yes | Provider model identifier (for example, `meta/llama-3.1-8b-instruct`). Some generator types (`test.Blank`) ignore this field but the schema still requires it. |
+| `model` | `str` | Yes | Provider model identifier (for example, `nvidia/nemotron-3-nano-30b-a3b`). Some generator types (`test.Blank`) ignore this field but the schema still requires it. |
 | `options` | `dict[str, Any]` | No | Nested generator-specific options. The top-level key matches the generator namespace (`nim`, `openai`, `rest`, ...). Defaults to `{}`. |
 | `description` | `str \\| None` | No | Free-form description shown in listings. Defaults to `None`. |
 

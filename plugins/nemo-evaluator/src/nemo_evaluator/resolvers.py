@@ -11,9 +11,12 @@ from collections.abc import Awaitable
 from typing import Protocol, TypeVar, cast, runtime_checkable
 
 from nemo_evaluator_sdk.values.models import Model, ModelRef
-from nemo_platform import NotFoundError
-from nemo_platform.types.inference import ModelProvider as PlatformModelProvider
-from nemo_platform.types.models import ModelEntity as PlatformModelEntity
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
+from nemo_platform_plugin.models.types import ModelEntity as PlatformModelEntity
+from nemo_platform_plugin.models.types import ModelProvider as PlatformModelProvider
 
 _logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
@@ -90,8 +93,13 @@ async def _resolve_provider_host_url(
         return None
 
     try:
-        provider = await _maybe_await(sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace))
-        return provider.host_url
+        models = (
+            client_from_platform(cast(AsyncNeMoPlatform, sdk), AsyncModelsClient)
+            if isinstance(sdk, AsyncNeMoPlatform)
+            else client_from_platform(cast(NeMoPlatform, sdk), ModelsClient)
+        )
+        provider = await _maybe_await(models.get_provider(name=provider_name, workspace=provider_workspace))
+        return provider.data().host_url
     except NotFoundError:
         _logger.warning("Provider not found during host_url resolution", extra={"provider_ref": provider_ref})
         return None
@@ -114,7 +122,13 @@ class PlatformModelResolver:
         )
 
         try:
-            model_entity = await _maybe_await(self._sdk.models.retrieve(name, workspace=workspace))
+            models = (
+                client_from_platform(cast(AsyncNeMoPlatform, self._sdk), AsyncModelsClient)
+                if isinstance(self._sdk, AsyncNeMoPlatform)
+                else client_from_platform(cast(NeMoPlatform, self._sdk), ModelsClient)
+            )
+            model_entity = await _maybe_await(models.get_model(name=name, workspace=workspace))
+            model_entity = model_entity.data()
         except NotFoundError as exc:
             raise ValueError(
                 f"Model reference '{model_ref.root}' not found. "
@@ -122,7 +136,7 @@ class PlatformModelResolver:
                 "or use an inline model definition instead."
             ) from exc
 
-        endpoint = self._sdk.models.get_model_entity_route_openai_url(model_entity)
+        endpoint = models.get_model_entity_route_openai_url(model_entity)
         host_url = await _resolve_provider_host_url(self._sdk, model_entity)
         return Model(
             url=endpoint,
