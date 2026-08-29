@@ -29,7 +29,6 @@ import { z } from 'zod';
 export interface SampleAgent {
   key: string;
   displayName: string;
-  description: string;
   /** Prefix for generated agent names; drives onboarding detection. */
   namePrefix: string;
   /** Public path to the NAT workflow config (parsed + model-injected at create). */
@@ -44,8 +43,6 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
   {
     key: 'email_security_triage',
     displayName: 'Email Security Triage',
-    description:
-      'A single-turn Fabric router with three analyst capabilities — general review, phishing/benign triage, and drafting a staff warning — picked from the question the analyst typed, so routing is what the evaluation reads.',
     namePrefix: 'email-security-triage',
     agentConfigPath: 'sample-agents/email-security-triage/agent.yml',
     configFormat: 'nemo-agents-spec-v1',

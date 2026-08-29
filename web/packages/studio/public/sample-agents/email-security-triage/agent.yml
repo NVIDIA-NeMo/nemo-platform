@@ -47,9 +47,9 @@ name: email-security-triage
 description: >-
   Email Security Triage: a single-turn Fabric router with three analyst
   capabilities — general review, phishing/benign triage, and drafting a staff
-  warning. It picks one from the analyst's question and answers as that
-  capability, so each capability's first-line output contract is what the
-  evaluation reads.
+  warning. It picks one from the analyst's question, or reviews the whole
+  selection when no question is asked, so each capability's first-line output
+  contract is what the evaluation reads.
 
 instructions:
   system:

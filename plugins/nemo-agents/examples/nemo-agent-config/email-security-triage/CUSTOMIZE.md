@@ -96,13 +96,12 @@ Two behaviours worth knowing:
 `extra="forbid"` — an allow-list is not expressible. `runtime.timeout_seconds` is
 the only other brake: `runtime.max_turns` is ignored by the deepagents adapter.
 
-**Two more knobs that validate but do nothing.** `models.default.settings` is a
+**One knob that validates but does nothing.** `models.default.settings` is a
 free-form dict on `ModelConfig`, and it reaches the adapter — but `build_chat_model`
 forwards only `model`, `api_key`, `base_url` and `temperature`, so nothing in it is
 applied. Set `max_tokens` or `max_thinking_tokens` there and the model will happily
-exceed them. Because the surrounding config is `extra="forbid"`, a _misspelled_ key
-fails loudly while a correctly-spelled `settings` block fails silently — the worse
-of the two. `models.default.extensions` is unread on the same path.
+exceed them. This is the one place the config lets you down quietly: every other
+unknown key is rejected outright, because `ModelConfig` is `extra="forbid"`.
 
 Budget for the harness, too: deepagents prepends its own base prompt plus the
 filesystem and sub-agent tool documentation to `instructions.system.content`, and

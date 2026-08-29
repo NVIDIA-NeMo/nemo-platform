@@ -33,14 +33,18 @@ export const DEFAULT_MAX_CONCURRENT_TASKS = 1;
  *  ``parallelism`` is a wall-clock knob only. Rows are independent, so running them
  *  concurrently changes no score. It matters because an agent row's cost is dominated
  *  by the model's hidden reasoning tokens, which can dwarf the visible answer, so
- *  submitting serially leaves the endpoint idle between rows. Raise it further only if
- *  the agent endpoint keeps up: a single-process deployment starts returning 502s under
- *  sustained load, and ``ignore_request_failure`` would then quietly degrade those rows
- *  to NaN rather than failing the job. */
+ *  submitting serially leaves the endpoint idle between rows.
+ *
+ *  ``max_retries`` is paired with it deliberately. A single-process deployment starts
+ *  returning 502s under sustained load, and 502 is classified transient by the SDK
+ *  (``resilience/classifier.py``), so retries absorb it at the source. Without the extra
+ *  attempts, concurrency would convert overload into NaN rows via
+ *  ``ignore_request_failure`` and the job would still report success. Raise parallelism
+ *  further only alongside retries, and only if the endpoint keeps up. */
 const AGENT_RUN_PARAMS = {
   parallelism: 4,
   request_timeout: 300,
-  max_retries: 3,
+  max_retries: 5,
   ignore_request_failure: true,
 } as const;
 
