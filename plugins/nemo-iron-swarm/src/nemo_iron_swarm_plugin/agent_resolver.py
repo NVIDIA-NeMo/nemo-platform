@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -224,12 +225,50 @@ def build_manifest_dict(
 # --------------------------------------------------------------------------- #
 # Filesystem materialization
 # --------------------------------------------------------------------------- #
-def materialize_agent_package(agent_config: dict[str, Any], project_path: Path) -> Path:
+def shipped_dockerfile(sdk: Any, agent_name: str, workspace: str) -> str | None:
+    """The Dockerfile the author registered beside ``agent.yaml``, if there is one.
+
+    Registration uploads the whole directory holding ``agent.yaml`` into ``{agent}-ethos``
+    (``nemo_agents_plugin.cli._upload_ethos_fileset``), so an author who ships a Dockerfile has
+    already put it on the platform — it is simply never read back.
+
+    Preferring it matters beyond convenience. A rendered Dockerfile pins the packaging machine's own
+    ``nemo-platform`` version and a fixed ``nemo-relay``, so an agent needing a different Relay has
+    no way to ask for one, and a platform installed from a git checkout pins a version no index
+    serves. The author's own file has neither problem, and it is the image they actually ship.
+
+    Returns ``None`` when the agent shipped none, which is the common case; the caller renders then.
+    A failure to *read* an existing fileset is logged as a warning rather than swallowed: silently
+    rendering would quietly ignore the author's file and reintroduce both pins.
+    """
+    from nemo_iron_swarm_plugin.filesets import download_fileset  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="iron-swarm-ethos-") as directory:
+        dest = Path(directory)
+        try:
+            download_fileset(sdk, f"{workspace}/{agent_name}-ethos", dest)
+        except Exception:
+            logger.info("agent %s/%s has no readable ethos fileset; rendering a Dockerfile", workspace, agent_name)
+            return None
+        candidate = dest / DOCKERFILE_FILENAME
+        if not candidate.is_file():
+            return None
+        logger.info("using the Dockerfile shipped with agent %s/%s", workspace, agent_name)
+        return candidate.read_text(encoding="utf-8") or None
+
+
+def materialize_agent_package(
+    agent_config: dict[str, Any],
+    project_path: Path,
+    *,
+    dockerfile_override: str | None = None,
+) -> Path:
     """Write the agent package Iron Swarm runs: the resolved config plus its Dockerfile.
 
-    The Dockerfile is rendered by the platform's own Fabric packaging pipeline with the
-    ``openshell`` sandbox profile applied, so the agent under test is built the same way a deployed
-    one is — rather than by a second, Iron-Swarm-specific recipe that could drift from it.
+    ``dockerfile_override`` is the author's own file when they registered one. Otherwise the
+    Dockerfile is rendered by the platform's own Fabric packaging pipeline with the ``openshell``
+    sandbox profile applied, so the agent under test is built the same way a deployed one is —
+    rather than by a second, Iron-Swarm-specific recipe that could drift from it.
     """
     from nemo_agents_plugin.container.template import render_fabric_dockerfile  # noqa: PLC0415
 
@@ -237,7 +276,7 @@ def materialize_agent_package(agent_config: dict[str, Any], project_path: Path) 
     config_path = project_path / AGENT_CONFIG_FILENAME
     config_path.write_text(yaml.safe_dump(agent_config, sort_keys=False), encoding="utf-8")
 
-    dockerfile = render_fabric_dockerfile(config_path, sandbox_runtime=SANDBOX_RUNTIME)
+    dockerfile = dockerfile_override or render_fabric_dockerfile(config_path, sandbox_runtime=SANDBOX_RUNTIME)
     (project_path / DOCKERFILE_FILENAME).write_text(dockerfile, encoding="utf-8")
     return config_path
 
@@ -354,7 +393,12 @@ def resolve_agent_to_manifest(
         rel_project = str(Path(SCAFFOLD_ROOT) / name)
         project_path = manifest_dir / rel_project
 
-    config_path = materialize_agent_package(injected, project_path)
+    # The author's own Dockerfile wins when they registered one: it is the image they ship, and it
+    # carries neither the rendered file's `nemo-platform==<packaging machine's version>` pin nor its
+    # fixed nemo-relay, so it can be built from a source checkout and can choose its own Relay.
+    config_path = materialize_agent_package(
+        injected, project_path, dockerfile_override=shipped_dockerfile(sdk, name, workspace)
+    )
     secrets = secrets or derive_secret_names(agent_config)
 
     gw_backend = gateway_backend(base_url)
