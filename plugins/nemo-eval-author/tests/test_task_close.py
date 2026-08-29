@@ -27,6 +27,11 @@ def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
 
 def _input_report(*, run_id: str, covered: list[str]) -> dict[str, Any]:
     """Build one aggregate ``input_reports`` entry for task-close tests."""
+    return _input_report_for_task(task_id="cover-read", run_id=run_id, covered=covered)
+
+
+def _input_report_for_task(*, task_id: str, run_id: str, covered: list[str]) -> dict[str, Any]:
+    """Build one aggregate ``input_reports`` entry for a named task."""
     return {
         "path": f".eval-author/task-measurements/run={run_id}/tool_calls/coverage.json",
         "method": "tool_calls",
@@ -34,7 +39,7 @@ def _input_report(*, run_id: str, covered: list[str]) -> dict[str, Any]:
         "subject": {
             "trace": f".eval-author/task-runs/cover-read/{run_id}/agent/trajectory.json",
             "trace_format": "atif",
-            "task_id": "cover-read",
+            "task_id": task_id,
             "run_id": run_id,
         },
         "covered": covered,
@@ -73,6 +78,23 @@ def _write_after_report(path: Path, *, covered: list[str], uncovered: list[str],
         "input_reports": [_input_report(run_id=run_id, covered=covered)],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _report_args(before: Path, first: Path, second: Path, *, target: str = "read") -> list[str]:
+    """Return common closure report CLI arguments for task-close tests."""
+    return [
+        "report",
+        "--before",
+        str(before),
+        "--after",
+        str(first),
+        "--after",
+        str(second),
+        "--target",
+        target,
+        "--task-id",
+        "cover-read",
+    ]
 
 
 def _write_ready_draft(path: Path, *, verifier: str | None = None) -> None:
@@ -176,6 +198,22 @@ def test_inspect_rejects_unconditional_reward_verifier(tmp_path: Path) -> None:
     assert "verifier:not_unconditional_reward" in failed
 
 
+def test_inspect_rejects_scalar_task_toml_table_without_traceback(tmp_path: Path) -> None:
+    """Scalar TOML tables produce inspection failures, not AttributeError tracebacks."""
+    draft = tmp_path / ".eval-author" / "task-drafts" / "cover-read"
+    _write_ready_draft(draft)
+    (draft / "task.toml").write_text('task = "not-a-table"\nmetadata = "not-a-table"\n', encoding="utf-8")
+
+    result = _run("inspect", "--draft", str(draft), "--target", "read")
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "needs_repair"
+    failed = {check["name"] for check in payload["checks"] if not check["passed"]}
+    assert "task_toml:structure" in failed
+
+
 def test_report_accepts_coverage_closure_even_when_agent_failed_reward(tmp_path: Path) -> None:
     """A generated eval can be accepted and still expose a real-agent task failure."""
     before = tmp_path / "before.json"
@@ -186,15 +224,7 @@ def test_report_accepts_coverage_closure_even_when_agent_failed_reward(tmp_path:
     _write_after_report(second, covered=["read"], uncovered=[], run_id="repeat-2")
 
     result = _run(
-        "report",
-        "--before",
-        str(before),
-        "--after",
-        str(first),
-        "--after",
-        str(second),
-        "--target",
-        "read",
+        *_report_args(before, first, second),
         "--oracle-reward",
         "1.0",
         "--agent-reward",
@@ -221,15 +251,7 @@ def test_report_classifies_agent_solved_without_target_tool(tmp_path: Path) -> N
     _write_after_report(second, covered=[], uncovered=["read"], run_id="repeat-2")
 
     result = _run(
-        "report",
-        "--before",
-        str(before),
-        "--after",
-        str(first),
-        "--after",
-        str(second),
-        "--target",
-        "read",
+        *_report_args(before, first, second),
         "--oracle-reward",
         "1.0",
         "--agent-reward",
@@ -256,15 +278,7 @@ def test_report_requires_distinct_after_run_ids(tmp_path: Path) -> None:
     _write_after_report(second, covered=["read"], uncovered=[], run_id="repeat-1")
 
     result = _run(
-        "report",
-        "--before",
-        str(before),
-        "--after",
-        str(first),
-        "--after",
-        str(second),
-        "--target",
-        "read",
+        *_report_args(before, first, second),
         "--oracle-reward",
         "1.0",
     )
@@ -273,6 +287,63 @@ def test_report_requires_distinct_after_run_ids(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["status"] == "trajectory_invalid"
     assert "distinct ATIF subject.run_id" in payload["coverage"]["error"]
+
+
+def test_report_rejects_aggregate_after_report_with_multiple_inputs(tmp_path: Path) -> None:
+    """One aggregate coverage report cannot stand in for repeated task measurements."""
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    _write_before_report(before)
+    first.write_text(
+        json.dumps(
+            {
+                "covered": ["read"],
+                "uncovered": [],
+                "uncovered_items": [],
+                "input_reports": [
+                    _input_report(run_id="repeat-1", covered=["read"]),
+                    _input_report(run_id="repeat-2", covered=["read"]),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_after_report(second, covered=["read"], uncovered=[], run_id="repeat-3")
+
+    result = _run(*_report_args(before, first, second), "--oracle-reward", "1.0")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "trajectory_invalid"
+    assert "exactly one input report" in payload["coverage"]["error"]
+
+
+def test_report_rejects_after_report_for_different_task(tmp_path: Path) -> None:
+    """After-reports from another generated task do not prove this task closed coverage."""
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    _write_before_report(before)
+    first.write_text(
+        json.dumps(
+            {
+                "covered": ["read"],
+                "uncovered": [],
+                "uncovered_items": [],
+                "input_reports": [_input_report_for_task(task_id="other-task", run_id="repeat-1", covered=["read"])],
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_after_report(second, covered=["read"], uncovered=[], run_id="repeat-2")
+
+    result = _run(*_report_args(before, first, second), "--oracle-reward", "1.0")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "trajectory_invalid"
+    assert "subject.task_id must be 'cover-read'" in payload["coverage"]["error"]
 
 
 def test_report_classifies_missing_second_repeat_as_coverage_unproven(tmp_path: Path) -> None:
@@ -290,6 +361,8 @@ def test_report_classifies_missing_second_repeat_as_coverage_unproven(tmp_path: 
         str(first),
         "--target",
         "read",
+        "--task-id",
+        "cover-read",
         "--oracle-reward",
         "1.0",
     )

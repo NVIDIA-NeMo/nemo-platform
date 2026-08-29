@@ -168,6 +168,15 @@ def _load_task_toml(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _optional_mapping(value: Any, *, table: str, path: Path) -> dict[str, Any]:
+    """Return a TOML table mapping or raise ``CloseError`` for scalar values."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise CloseError(f"{path}: [{table}] must be a TOML table when present")
+    return value
+
+
 def _target_is_actionable(before: dict[str, Any], target: str) -> bool:
     """Return whether ``target`` is an actionable uncovered tool in a before report."""
     for item in before.get("uncovered_items") or []:
@@ -212,18 +221,30 @@ def _inspect_draft(draft: Path, *, target: str, before_report: Path | None = Non
         except CloseError as exc:
             checks.append(_check("task_toml:parse", False, str(exc)))
         else:
-            task = task_config.get("task")
-            keywords = task.get("keywords") if isinstance(task, dict) else None
-            if keywords is None:
-                keywords = task_config.get("metadata", {}).get("keywords")
-            checks.append(_check("task_toml:task_name", bool(task and task.get("name")), "task.toml names the task"))
-            checks.append(
-                _check(
-                    "task_toml:keywords",
-                    isinstance(keywords, list) and bool(keywords),
-                    "task.toml carries nonempty keywords or metadata keywords",
+            try:
+                task = _optional_mapping(task_config.get("task"), table="task", path=task_toml)
+                metadata = _optional_mapping(task_config.get("metadata"), table="metadata", path=task_toml)
+            except CloseError as exc:
+                checks.append(_check("task_toml:structure", False, str(exc)))
+            else:
+                keywords = task.get("keywords")
+                if keywords is None:
+                    keywords = metadata.get("keywords")
+                task_name = task.get("name")
+                checks.append(
+                    _check(
+                        "task_toml:task_name",
+                        isinstance(task_name, str) and bool(task_name.strip()),
+                        "task.toml names the task",
+                    )
                 )
-            )
+                checks.append(
+                    _check(
+                        "task_toml:keywords",
+                        isinstance(keywords, list) and bool(keywords),
+                        "task.toml carries nonempty keywords or metadata keywords",
+                    )
+                )
 
     dockerfile = draft / "environment" / "Dockerfile"
     if dockerfile.is_file():
@@ -305,31 +326,41 @@ def _path_has_parts(path: Path, parts: tuple[str, str]) -> bool:
     return any(resolved_parts[index : index + 2] == parts for index in range(len(resolved_parts) - 1))
 
 
-def _run_ids_from_report(report: dict[str, Any], *, report_path: Path) -> list[str]:
-    """Return ATIF ``subject.run_id`` values recorded in one aggregate coverage report."""
+def _run_from_report(report: dict[str, Any], *, report_path: Path, expected_task_id: str) -> dict[str, str]:
+    """Return the single ATIF ``subject`` identity recorded in one coverage report."""
     input_reports = report.get("input_reports")
     if not isinstance(input_reports, list) or not input_reports:
         raise CloseError(f"after report must include input_reports with subject.run_id: {report_path}")
-    run_ids: list[str] = []
-    for index, entry in enumerate(input_reports):
-        if not isinstance(entry, dict):
-            raise CloseError(f"after report input_reports[{index}] must be an object: {report_path}")
-        subject = entry.get("subject")
-        if not isinstance(subject, dict):
-            raise CloseError(f"after report input_reports[{index}] must include subject: {report_path}")
-        run_id = subject.get("run_id")
-        if not isinstance(run_id, str) or not run_id.strip():
-            raise CloseError(
-                f"after report input_reports[{index}].subject.run_id must be a non-empty string: {report_path}"
-            )
-        run_ids.append(run_id)
-    return run_ids
+    if len(input_reports) != 1:
+        raise CloseError(f"after report must contain exactly one input report: {report_path}")
+    entry = input_reports[0]
+    if not isinstance(entry, dict):
+        raise CloseError(f"after report input_reports[0] must be an object: {report_path}")
+    subject = entry.get("subject")
+    if not isinstance(subject, dict):
+        raise CloseError(f"after report input_reports[0] must include subject: {report_path}")
+    task_id = subject.get("task_id")
+    if not isinstance(task_id, str) or not task_id.strip():
+        raise CloseError(f"after report input_reports[0].subject.task_id must be a non-empty string: {report_path}")
+    if task_id != expected_task_id:
+        raise CloseError(
+            f"after report input_reports[0].subject.task_id must be {expected_task_id!r}, got {task_id!r}: "
+            f"{report_path}"
+        )
+    run_id = subject.get("run_id")
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise CloseError(f"after report input_reports[0].subject.run_id must be a non-empty string: {report_path}")
+    return {"task_id": task_id, "run_id": run_id}
 
 
-def _coverage_runs(after_paths: list[Path], target: str) -> tuple[list[dict[str, Any]], bool]:
+def _coverage_runs(
+    after_paths: list[Path], target: str, *, expected_task_id: str | None
+) -> tuple[list[dict[str, Any]], bool]:
     """Return per-repeat coverage verdicts and whether all repeats cover ``target``."""
     if len(after_paths) < _MIN_AFTER_REPORTS:
         raise CloseError(f"at least {_MIN_AFTER_REPORTS} --after reports are required")
+    if expected_task_id is None:
+        raise CloseError("expected task id is required; pass --task-id or --draft")
     resolved_paths = [path.resolve() for path in after_paths]
     if len(set(resolved_paths)) != len(resolved_paths):
         raise CloseError("--after reports must be distinct")
@@ -339,13 +370,21 @@ def _coverage_runs(after_paths: list[Path], target: str) -> tuple[list[dict[str,
     all_covered = True
     for path in after_paths:
         report = _read_json(path)
-        report_run_ids = _run_ids_from_report(report, report_path=path)
-        run_ids.extend(report_run_ids)
+        report_run = _run_from_report(report, report_path=path, expected_task_id=expected_task_id)
+        run_ids.append(report_run["run_id"])
         covered = target in set(report.get("covered") or [])
         still_uncovered = target in set(report.get("uncovered") or [])
         passed = covered and not still_uncovered
         all_covered = all_covered and passed
-        runs.append({"report": str(path), "run_ids": report_run_ids, "covered": covered, "passed": passed})
+        runs.append(
+            {
+                "report": str(path),
+                "task_id": report_run["task_id"],
+                "run_id": report_run["run_id"],
+                "covered": covered,
+                "passed": passed,
+            }
+        )
 
     if len(set(run_ids)) != len(run_ids):
         raise CloseError("--after reports must come from distinct ATIF subject.run_id values")
@@ -368,16 +407,18 @@ def _closure_report(
     agent_rewards: list[float] | None,
     reward_threshold: float,
     draft: Path | None = None,
+    task_id: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Classify one generated task draft from task, reward, and coverage evidence."""
     before = _read_json(before_path)
     target_actionable = _target_is_actionable(before, target)
+    expected_task_id = task_id or (draft.name if draft is not None else None)
     runs: list[dict[str, Any]] = []
     coverage_closed = False
     coverage_error = None
     if target_actionable:
         try:
-            runs, coverage_closed = _coverage_runs(after_paths, target)
+            runs, coverage_closed = _coverage_runs(after_paths, target, expected_task_id=expected_task_id)
         except CloseError as exc:
             coverage_error = str(exc)
 
@@ -422,6 +463,7 @@ def _closure_report(
     payload = {
         "schema": "nemo.eval_author.task_close_report.v1",
         "target_tool": target,
+        "task_id": expected_task_id,
         "before": str(before_path),
         "after": [str(path) for path in after_paths],
         "status": status,
@@ -472,6 +514,7 @@ def _parser() -> argparse.ArgumentParser:
     report.add_argument("--after", type=Path, action="append", required=True)
     report.add_argument("--target", required=True)
     report.add_argument("--draft", type=Path)
+    report.add_argument("--task-id")
     report.add_argument("--oracle-reward", type=float)
     report.add_argument("--agent-reward", type=float, action="append")
     report.add_argument("--reward-threshold", type=float, default=_REWARD_THRESHOLD)
@@ -497,6 +540,7 @@ def main(argv: list[str] | None = None) -> int:
                 agent_rewards=args.agent_reward,
                 reward_threshold=args.reward_threshold,
                 draft=args.draft,
+                task_id=args.task_id,
             )
         if args.out is not None:
             _write_json(args.out, payload)

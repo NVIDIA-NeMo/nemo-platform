@@ -214,6 +214,9 @@ uv run <skill_dir>/scripts/task_close.py report \
   --out .eval-author/task-closures/<task-slug>/closure-report.json
 ```
 
+The classifier uses `--draft` to verify each after-report belongs to
+`<task-slug>`. If you classify without `--draft`, pass `--task-id <task-slug>`.
+
 Report the JSON verdict. Treat these distinctions carefully:
 
 - `closed`: Oracle passed and both measured real-agent repeats covered the target tool.

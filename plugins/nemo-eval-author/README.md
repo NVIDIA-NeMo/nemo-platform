@@ -20,8 +20,8 @@ runs on whatever Python the customer already has. Audit validation needs PyYAML
 to read the marked YAML block and jsonschema to enforce
 `schemas/audit.schema.json`. Trace inspection requires the supported `nemo` CLI,
 an explicit workspace, and read access to a configured local or remote NeMo
-Platform instance. Closing a generated task draft requires Harbor and may
-require Docker plus model provider credentials.
+Platform instance. Closing a generated task draft requires Python 3.11 or
+later, Harbor, and may require Docker plus model provider credentials.
 
 `tests/test_skill_contract.py` holds to the same boundary and imports nothing
 from the platform, so `pytest`, `pyyaml`, and `jsonschema` are enough to run it.

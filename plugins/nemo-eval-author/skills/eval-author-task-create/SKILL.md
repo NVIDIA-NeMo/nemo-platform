@@ -23,9 +23,9 @@ not-for:
   - eval-author-discover (use to prove an existing suite is runnable)
   - nemo-evaluator (use to run an existing benchmark without authoring tasks)
 compatibility: >-
-  Python 3.11 or later and a Harbor CLI compatible with `harbor task init`.
-  Closing the generated draft requires `eval-author-task-close`, Harbor, and
-  often Docker plus provider credentials.
+  Python 3.11 or later for the copied helper scripts and a Harbor CLI compatible
+  with `harbor task init`. Closing the generated draft requires
+  `eval-author-task-close`, Harbor, and often Docker plus provider credentials.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
