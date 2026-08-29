@@ -21,11 +21,11 @@ from typer.testing import CliRunner
 def _mitigations() -> dict:
     guardrails = (
         "version = 1\n"
-        "[[plugins.dynamic]]\n"
-        'manifest = "iron-swarm-guardrails/relay-plugin.toml"\n'
-        "[[plugins.dynamic.config.guardrails]]\n"
+        "[[components]]\n"
+        'kind = "iron_swarm.pre_tool_verifier"\n'
+        "[[components.config.guardrails]]\n"
         'name = "custom_guardrail_1"\n'
-        "[[plugins.dynamic.config.guardrails]]\n"
+        "[[components.config.guardrails]]\n"
         'name = "custom_guardrail_2"\n'
     )
     return {
@@ -81,7 +81,7 @@ def test_sdk_sanity_check_composes_and_builds_validate_only_spec(monkeypatch: py
     assert spec["replay_hitlog_fileset"] == "default/hits"
     # The composed guardrail set keeps only guardrail_1; policy not selected → baseline policy.
     composed = tomllib.loads(spec["defense_guardrails"])
-    rails = [rail["name"] for entry in composed["plugins"]["dynamic"] for rail in entry["config"]["guardrails"]]
+    rails = [rail["name"] for entry in composed["components"] for rail in entry["config"]["guardrails"]]
     assert rails == ["custom_guardrail_1"]
     assert spec["defense_policy"] == "v: 1\n"
 

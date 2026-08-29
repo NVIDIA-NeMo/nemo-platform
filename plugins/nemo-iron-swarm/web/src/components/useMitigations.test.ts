@@ -11,9 +11,10 @@ import {
 const withGuardrail = (name: string, tool: string, instructions: string): string =>
   [
     'version = 1',
-    '[[plugins.dynamic]]',
-    'manifest = "iron-swarm-guardrails/relay-plugin.toml"',
-    '[[plugins.dynamic.config.guardrails]]',
+    '[[components]]',
+    'kind = "iron_swarm.pre_tool_verifier"',
+    'enabled = true',
+    '[[components.config.guardrails]]',
     `name = "${name}"`,
     `target_tool = "${tool}"`,
     `system_instructions = "${instructions}"`,
