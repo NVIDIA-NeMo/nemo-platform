@@ -11,6 +11,7 @@ iron-swarm install is needed.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -21,9 +22,11 @@ from nemo_iron_swarm_plugin.agent_resolver import (
     detect_custom_components,
     gateway_backend,
     inject_gateway_url,
+    materialize_agent_package,
     parse_agent_ref,
     relay_artifacts_dir,
     resolve_agent_to_manifest,
+    shipped_dockerfile,
 )
 
 # `list` is shadowed by the fake's own `list` method inside the class body, so the parameter type
@@ -281,3 +284,53 @@ def test_the_victims_relay_telemetry_is_preserved(tmp_path):
     written = yaml.safe_load(resolved.agent_config_path.read_text(encoding="utf-8"))
     assert written["telemetry"]["provider"] == "relay"
     assert resolved.manifest["agent"]["relay_artifacts"] == "./artifacts/relay"
+
+
+def _fake_ethos(monkeypatch: pytest.MonkeyPatch, contents: dict[str, str] | None) -> list[str]:
+    """Stand in for the fileset download, recording the ref asked for."""
+    asked: list[str] = []
+
+    def fake_download(_sdk: object, ref: str, dest: Path) -> Path:
+        asked.append(ref)
+        if contents is None:
+            raise FileNotFoundError(ref)
+        for name, text in contents.items():
+            (dest / name).write_text(text, encoding="utf-8")
+        return dest
+
+    monkeypatch.setattr("nemo_iron_swarm_plugin.filesets.download_fileset", fake_download)
+    return asked
+
+
+def test_shipped_dockerfile_is_read_from_the_agents_ethos_fileset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Registration uploads the whole agent directory, so an author's Dockerfile is already stored.
+
+    Reading it back is what lets an agent pick its own nemo-relay and build from a source checkout —
+    the rendered Dockerfile pins the packaging machine's nemo-platform version, which no index serves
+    when the platform is installed from git.
+    """
+    asked = _fake_ethos(monkeypatch, {"agent.yaml": "x", "Dockerfile": "FROM python:3.12-slim\n"})
+
+    found = shipped_dockerfile(SimpleNamespace(), "ledger", "default")
+
+    assert found == "FROM python:3.12-slim\n"
+    assert asked == ["default/ledger-ethos"]
+
+
+def test_an_agent_without_a_dockerfile_falls_back_to_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most agents ship only agent.yaml, and that must stay the ordinary path rather than an error."""
+    _fake_ethos(monkeypatch, {"agent.yaml": "x"})
+    assert shipped_dockerfile(SimpleNamespace(), "ledger", "default") is None
+
+
+def test_an_unreadable_ethos_fileset_falls_back_to_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An agent registered before ethos filesets existed has none; that is not an error."""
+    _fake_ethos(monkeypatch, None)
+    assert shipped_dockerfile(SimpleNamespace(), "ledger", "default") is None
+
+
+def test_materialize_prefers_the_shipped_dockerfile(tmp_path: Path) -> None:
+    """The author's file is written verbatim — no re-render, so none of the pins are substituted."""
+    materialize_agent_package({"name": "x"}, tmp_path, dockerfile_override="FROM scratch\n")
+
+    assert (tmp_path / "Dockerfile").read_text(encoding="utf-8") == "FROM scratch\n"
