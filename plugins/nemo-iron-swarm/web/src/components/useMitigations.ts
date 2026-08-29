@@ -81,13 +81,13 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-// Guardrails live under `plugins.dynamic[].config.guardrails[]`. Parsed with a narrow regex rather
+// Guardrails live under `components[].config.guardrails[]`. Parsed with a narrow regex rather
 // than a TOML parser: this is a display path, and adding a dependency to render a diff summary is a
 // poor trade when the file's shape is ours and fixed.
 const guardrailsOf = (tomlText: string): Record<string, Guardrail> => {
   const out: Record<string, Guardrail> = {};
   if (!tomlText) return out;
-  const blocks = tomlText.split(/\[\[plugins\.dynamic\.config\.guardrails\]\]/).slice(1);
+  const blocks = tomlText.split(/\[\[components\.config\.guardrails\]\]/).slice(1);
   for (const block of blocks) {
     const field = (key: string): string | undefined => {
       const match = block.match(new RegExp(`^${key}\\s*=\\s*(?:"""([\\s\\S]*?)"""|"((?:[^"\\\\]|\\\\.)*)")`, 'm'));

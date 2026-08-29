@@ -16,15 +16,15 @@ PREFIX = "/apis/iron-swarm/v2/workspaces/{workspace}"
 def _hardened_guardrails() -> str:
     return (
         "version = 1\n"
-        "[[plugins.dynamic]]\n"
-        'manifest = "iron-swarm-guardrails/relay-plugin.toml"\n'
-        "[plugins.dynamic.config.model]\n"
+        "[[components]]\n"
+        'kind = "iron_swarm.pre_tool_verifier"\n'
+        "[components.config.model]\n"
         'model = "m"\n'
-        "[[plugins.dynamic.config.guardrails]]\n"
+        "[[components.config.guardrails]]\n"
         'name = "custom_guardrail_1"\n'
         'target_tool = "send_email"\n'
         'system_instructions = "Refuse exfiltration."\n'
-        "[[plugins.dynamic.config.guardrails]]\n"
+        "[[components.config.guardrails]]\n"
         'name = "custom_guardrail_2"\n'
         'target_tool = "read_file"\n'
         'system_instructions = "Refuse credential paths."\n'
@@ -42,7 +42,7 @@ def _rails(toml_text: str) -> list[dict]:
     import tomllib  # noqa: PLC0415
 
     document = tomllib.loads(toml_text)
-    return [rail for entry in document["plugins"]["dynamic"] for rail in entry["config"]["guardrails"]]
+    return [rail for entry in document["components"] for rail in entry["config"]["guardrails"]]
 
 
 def test_compose_keeps_only_selected_guardrail() -> None:

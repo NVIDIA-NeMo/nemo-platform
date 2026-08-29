@@ -700,7 +700,7 @@ def test_service_driven_records_manifest_id_on_run(tmp_path: Path, monkeypatch: 
     assert created["manifest_id"] == "clockbot-hardening"
 
 
-GUARDRAILS_TOML = 'version = 1\n[[plugins.dynamic]]\nmanifest = "iron-swarm-guardrails/relay-plugin.toml"\n'
+GUARDRAILS_TOML = 'version = 1\n[[components]]\nkind = "iron_swarm.pre_tool_verifier"\n'
 
 
 def test_seed_validation_manifest_zeros_defenders_and_seeds_baseline(tmp_path: Path) -> None:

@@ -183,12 +183,19 @@ async def apply_mitigation(
 
 
 def _relay_components(guardrails: dict[str, Any]) -> list[dict[str, Any]]:
-    """The Relay plugin components declared in a plugins.toml, in the shape ``relay.components[]`` takes."""
-    dynamic = guardrails.get("plugins", {}).get("dynamic", [])
+    """The Iron Swarm components declared in a plugins.toml, in the shape ``relay.components[]`` takes.
+
+    A near-identity: the war-game delivers guardrails as top-level ``[[components]]`` entries, which
+    is already ``{kind, enabled, config}``. Re-emitted rather than passed through so a hand-edited
+    file cannot carry an unrelated component kind onto the agent entity.
+    """
     return [
         {"kind": _PLUGIN_KIND, "enabled": True, "config": entry["config"]}
-        for entry in dynamic
-        if isinstance(entry, dict) and isinstance(entry.get("config"), dict) and entry["config"].get("guardrails")
+        for entry in guardrails.get("components", [])
+        if isinstance(entry, dict)
+        and entry.get("kind") == _PLUGIN_KIND
+        and isinstance(entry.get("config"), dict)
+        and entry["config"].get("guardrails")
     ]
 
 

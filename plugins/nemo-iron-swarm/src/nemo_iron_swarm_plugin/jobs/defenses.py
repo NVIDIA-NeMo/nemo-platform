@@ -76,7 +76,7 @@ def _compose_guardrails(after_text: str, selected: set[str]) -> str:
         document = tomllib.loads(after_text)
     except tomllib.TOMLDecodeError:
         return after_text
-    for entry in document.get("plugins", {}).get("dynamic", []):
+    for entry in document.get("components", []):
         config = entry.get("config") if isinstance(entry, dict) else None
         if not isinstance(config, dict):
             continue
