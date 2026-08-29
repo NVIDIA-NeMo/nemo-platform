@@ -346,6 +346,68 @@ def test_report_rejects_after_report_for_different_task(tmp_path: Path) -> None:
     assert "subject.task_id must be 'cover-read'" in payload["coverage"]["error"]
 
 
+def test_report_uses_draft_slug_before_task_id_flag(tmp_path: Path) -> None:
+    """When both are supplied, the draft being closed defines the expected task id."""
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    draft = tmp_path / ".eval-author" / "task-drafts" / "cover-read"
+    _write_before_report(before)
+    _write_after_report(first, covered=["read"], uncovered=[], run_id="repeat-1")
+    _write_after_report(second, covered=["read"], uncovered=[], run_id="repeat-2")
+    _write_ready_draft(draft)
+
+    result = _run(
+        "report",
+        "--before",
+        str(before),
+        "--after",
+        str(first),
+        "--after",
+        str(second),
+        "--target",
+        "read",
+        "--task-id",
+        "other-task",
+        "--draft",
+        str(draft),
+        "--oracle-reward",
+        "1.0",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["task_id"] == "cover-read"
+    assert payload["status"] == "closed"
+
+
+def test_report_reads_coverage_from_validated_input_report(tmp_path: Path) -> None:
+    """Outer aggregate coverage cannot make an uncovered selected input report pass."""
+    before = tmp_path / "before.json"
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    _write_before_report(before)
+    first.write_text(
+        json.dumps(
+            {
+                "covered": ["read"],
+                "uncovered": [],
+                "uncovered_items": [],
+                "input_reports": [_input_report(run_id="repeat-1", covered=[])],
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_after_report(second, covered=["read"], uncovered=[], run_id="repeat-2")
+
+    result = _run(*_report_args(before, first, second), "--oracle-reward", "1.0")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "coverage_not_closed"
+    assert payload["coverage"]["runs"][0]["covered"] is False
+
+
 def test_report_classifies_missing_second_repeat_as_coverage_unproven(tmp_path: Path) -> None:
     """A single measured repeat is not enough evidence to accept or reject closure."""
     before = tmp_path / "before.json"

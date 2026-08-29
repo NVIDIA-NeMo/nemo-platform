@@ -326,7 +326,7 @@ def _path_has_parts(path: Path, parts: tuple[str, str]) -> bool:
     return any(resolved_parts[index : index + 2] == parts for index in range(len(resolved_parts) - 1))
 
 
-def _run_from_report(report: dict[str, Any], *, report_path: Path, expected_task_id: str) -> dict[str, str]:
+def _run_from_report(report: dict[str, Any], *, report_path: Path, expected_task_id: str) -> dict[str, Any]:
     """Return the single ATIF ``subject`` identity recorded in one coverage report."""
     input_reports = report.get("input_reports")
     if not isinstance(input_reports, list) or not input_reports:
@@ -350,7 +350,26 @@ def _run_from_report(report: dict[str, Any], *, report_path: Path, expected_task
     run_id = subject.get("run_id")
     if not isinstance(run_id, str) or not run_id.strip():
         raise CloseError(f"after report input_reports[0].subject.run_id must be a non-empty string: {report_path}")
-    return {"task_id": task_id, "run_id": run_id}
+    return {
+        "task_id": task_id,
+        "run_id": run_id,
+        "covered": _strings_from_report_field(entry.get("covered"), field="covered", report_path=report_path),
+        "uncovered": _strings_from_report_field(entry.get("uncovered"), field="uncovered", report_path=report_path),
+    }
+
+
+def _strings_from_report_field(value: Any, *, field: str, report_path: Path) -> set[str]:
+    """Return string members from an optional coverage report field."""
+    if value is None:
+        return set()
+    if not isinstance(value, list):
+        raise CloseError(f"after report input_reports[0].{field} must be a list when present: {report_path}")
+    strings: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            raise CloseError(f"after report input_reports[0].{field}[{index}] must be a string: {report_path}")
+        strings.add(item)
+    return strings
 
 
 def _coverage_runs(
@@ -372,8 +391,8 @@ def _coverage_runs(
         report = _read_json(path)
         report_run = _run_from_report(report, report_path=path, expected_task_id=expected_task_id)
         run_ids.append(report_run["run_id"])
-        covered = target in set(report.get("covered") or [])
-        still_uncovered = target in set(report.get("uncovered") or [])
+        covered = target in report_run["covered"]
+        still_uncovered = target in report_run["uncovered"]
         passed = covered and not still_uncovered
         all_covered = all_covered and passed
         runs.append(
@@ -412,7 +431,9 @@ def _closure_report(
     """Classify one generated task draft from task, reward, and coverage evidence."""
     before = _read_json(before_path)
     target_actionable = _target_is_actionable(before, target)
-    expected_task_id = task_id or (draft.name if draft is not None else None)
+    expected_task_id = draft.name if draft is not None else task_id
+    if expected_task_id is not None and not expected_task_id.strip():
+        expected_task_id = None
     runs: list[dict[str, Any]] = []
     coverage_closed = False
     coverage_error = None
