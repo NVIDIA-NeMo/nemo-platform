@@ -248,11 +248,10 @@ def render_harbor_config(
 
     When ``task_path`` is set (the per-eval task tree dispatch staged from the
     task upload), it is the authoritative Harbor task tree: it
-    supplies/overrides the ``${TASK_PATH}`` / ``${BROKEN_PYTHON_TASK_PATH}``
-    placeholders during substitution and then the rendered ``tasks:`` block's
-    first ``- path:`` is bound to it, so the run uses the uploaded task tree
-    rather than one baked into the runner image. Falsy ``task_path`` leaves the
-    baked/global task path untouched.
+    supplies/overrides the ``${TASK_PATH}`` placeholder during substitution and
+    then the rendered ``tasks:`` block's first ``- path:`` is bound to it, so the
+    run uses the uploaded task tree rather than one baked into the runner image.
+    Falsy ``task_path`` leaves the baked/global task path untouched.
     """
     profile_text, profile_env = _normalize_harbor_profile_config(profile_config or {})
     template = profile_text or config_text
@@ -260,10 +259,9 @@ def render_harbor_config(
     if image_ref:
         sub_env["TASK_IMAGE"] = image_ref
     if task_path:
-        # Resolve the common task-path placeholders to the staged tree so configs
-        # that reference a var (not just a hardcoded path) interpolate cleanly.
+        # Resolve the task-path placeholder to the staged tree so configs that
+        # reference a var (not just a hardcoded path) interpolate cleanly.
         sub_env["TASK_PATH"] = task_path
-        sub_env["BROKEN_PYTHON_TASK_PATH"] = task_path
 
     def _sub(match: re.Match[str]) -> str:
         key = match.group(1)
@@ -970,11 +968,11 @@ def _augment_harbor_env(
     if staged_task_path is not None:
         # A container/host path that need not exist on the worker filesystem, so
         # set it directly rather than guarding on is_dir().
-        env["BROKEN_PYTHON_TASK_PATH"] = staged_task_path
+        env["TASK_PATH"] = staged_task_path
     else:
         task_dir = config_path.resolve().parent.parent / "task"
         if task_dir.is_dir():
-            env["BROKEN_PYTHON_TASK_PATH"] = str(task_dir)
+            env["TASK_PATH"] = str(task_dir)
     env.setdefault("HOME", "/root")
 
 
@@ -1868,9 +1866,11 @@ def make_sandbox_k8s_docker_submitter(
         # the harbor-runner at /work, so the staged tree is addressed there.
         staged_task_path: str | None = None
         staged_task_dir = work / spec.evaluation_id / "task"
-        if _should_stage_uploaded_task_tree(spec) and _stage_task_tree(
-            spec.tarball_object_key,
-            staged_task_dir,
+        tarball_object_key = spec.tarball_object_key
+        if (
+            _should_stage_uploaded_task_tree(spec)
+            and tarball_object_key is not None
+            and _stage_task_tree(tarball_object_key, staged_task_dir)
         ):
             staged_task_path = f"/work/{spec.evaluation_id}/task"
             if spec.extra_skill_object_keys:
@@ -2368,9 +2368,11 @@ def make_sandbox_k8s_submitter(
         # its real filesystem path rather than a /work container path.
         staged_task_dir = work / spec.evaluation_id / "task"
         staged_task_path: str | None = None
-        if _should_stage_uploaded_task_tree(spec) and _stage_task_tree(
-            spec.tarball_object_key,
-            staged_task_dir,
+        tarball_object_key = spec.tarball_object_key
+        if (
+            _should_stage_uploaded_task_tree(spec)
+            and tarball_object_key is not None
+            and _stage_task_tree(tarball_object_key, staged_task_dir)
         ):
             staged_task_path = str(staged_task_dir)
             if spec.extra_skill_object_keys:

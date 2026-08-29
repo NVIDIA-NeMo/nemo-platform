@@ -26,7 +26,7 @@ falling back to chart-wide defaults:
 - `image_ref` / `image_digest` are exposed as `TASK_IMAGE` and
   `SCALED_EVALS_TASK_IMAGE_DIGEST` so the runner uses the requested task image.
 - `tarball_object_key` stages the uploaded task pack into the per-evaluation work
-  directory and points `TASK_PATH` / `BROKEN_PYTHON_TASK_PATH` at that staged tree.
+  directory and points `TASK_PATH` at that staged tree.
 - `extra_skill_object_keys`, `instruction_prefix`, and `instruction_postfix`
   require a staged uploaded task pack with `task.toml` and fail closed if the
   mutation cannot be applied.
@@ -62,10 +62,6 @@ GYM_DAYTONA_DOCKER_VOLUME=scaled-evals-gym-daytona-work
 ```
 
 Host dev (``run.sh`` / ``run_and_collect.sh``) still needs ``GYM_DIR`` on the host.
-OpenThoughts-TBLite **broken-python** is the default comparable smoke across all
-runtimes that use Harbor. In Daytona it belongs to `gym_daytona`; the
-`gym_sandbox_daytona` harness rejects Harbor profiles and is reserved for
-`mini_swe_agent_2` through `nemo_gym.sandbox`.
 
 ## gym_sandbox_daytona (nemo_gym.sandbox)
 
@@ -84,8 +80,6 @@ GYM_SANDBOX_DAYTONA_ENV_FILE=examples/gym-sandbox-daytona/targets/daytona.env
 ```
 
 Requires a policy model endpoint (``openai_model`` config or Hydra overrides).
-The default profile is `mini-swe`; Harbor profiles such as `broken-python` and
-`broken-python-agent` belong to `gym_daytona`.
 
 Dispatch and ``run.sh`` use **``run_and_collect``** (``ng_run`` → ``ng_collect_rollouts`` →
 shutdown). Do not point ``gym_sandbox_daytona`` at ``ng_e2e_collect_rollouts`` for

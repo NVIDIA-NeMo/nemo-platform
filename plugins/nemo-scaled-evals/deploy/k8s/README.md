@@ -144,7 +144,7 @@ Two consequences worth knowing:
 ## The evaluation runtime
 
 `SANDBOX_K8S_ENABLED=true`, and `./eval-smoke.sh` runs a real evaluation:
-Cloud Build produces the `broken-python` task image, Harbor launches a sandbox
+Cloud Build produces the `hello-world` task image, Harbor launches a sandbox
 pod through the agent-sandbox controller, the `oracle` agent applies the task's
 reference solution, and the verifier scores it 1.0. No model credentials are
 involved — the oracle path makes no inference calls.

@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Harbor-on-K8s: OpenThoughts-TBLite broken-python oracle smoke.
+# Harbor-on-K8s hello-world oracle smoke.
 # Exercises the task image and verifier path without making model calls.
 #
 # ${...} are filled by dispatch (envsubst from targets/<target>.env).
 #
-# Requires TASK_IMAGE (built task environment) — sandbox-k8s defaults to UBI
-# python-312-minimal when image is omitted, which is not the broken-python env.
-job_name: broken-python-oracle
+# Requires TASK_IMAGE so this smoke verifies the image produced by finalize.
+job_name: hello-world-oracle
 jobs_dir: jobs/sandbox-k8s
 n_attempts: 1
 n_concurrent_trials: 1
@@ -37,14 +36,7 @@ environment:
     context: ${SANDBOX_CONTEXT}
     # Sandbox readiness only. Harbor trial and command timeouts are separate.
     timeout: 600
-    # FOOTGUN: working_dir is ALSO the mount point of the writable emptyDir
-    # ("workspace") volume the K8s adapter mounts, so it SHADOWS whatever the
-    # image ships at this path. The pod runs readOnlyRootFilesystem,
-    # so this emptyDir is the task's writable scratch dir. /app is correct here
-    # because python:slim's /app is empty and the task needs it writable for
-    # `pip install --user`. Images that ship CONTENT at /app (e.g. a NeMo base
-    # with a venv under /app/.venv) must instead use the adapter default
-    # working_dir: /workspace — otherwise that content vanishes at runtime.
+    # This path is backed by the sandbox's writable workspace volume.
     working_dir: /app
     image: ${TASK_IMAGE}
     image_pull_policy: Always
@@ -75,4 +67,4 @@ agents:
   - name: oracle
 
 tasks:
-  - path: ${BROKEN_PYTHON_TASK_PATH}
+  - path: ${TASK_PATH}

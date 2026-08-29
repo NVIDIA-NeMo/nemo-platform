@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# End-to-end evaluation smoke: build the broken-python task through the control
+# End-to-end evaluation smoke: build the hello-world task through the control
 # plane, then actually run it on the sandbox_k8s runtime and assert the reward.
 #
 # smoke.sh stops at "the image reached GAR". This one goes further and is the
@@ -17,7 +17,7 @@ set -euo pipefail
 NS=nemo-platform-scaled-evals
 PORT="${PORT:-18081}"
 BASE="http://127.0.0.1:$PORT/apis/scaled-evals"
-TASK_SRC="$(cd "$(dirname "$0")/../../examples/tasks/broken-python" && pwd)"
+TASK_SRC="$(cd "$(dirname "$0")/../../examples/tasks/hello-world" && pwd)"
 WORK="$(mktemp -d)"
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
@@ -45,7 +45,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-step "building the broken-python pack"
+step "building the hello-world pack"
 # The pack serves two masters: the Cloud Build context (root Dockerfile) and the
 # per-eval task tree dispatch stages (the dir holding task.toml). Ship both --
 # the task's own environment/Dockerfile is copied to the root for the build.
@@ -55,9 +55,9 @@ cp "$TASK_SRC/task/environment/Dockerfile" "$WORK/pack/Dockerfile"
 tar -czf "$WORK/pack.tar.gz" -C "$WORK/pack" .
 
 step "creating the task"
-NAME="broken-python-$(date +%Y%m%d%H%M%S)-$$"
+NAME="hello-world-$(date +%Y%m%d%H%M%S)-$$"
 curl -sf -X POST "$BASE/v1/tasks" -H 'content-type: application/json' \
-  -d "{\"name\":\"$NAME\",\"description\":\"broken-python oracle eval smoke\"}" \
+  -d "{\"name\":\"$NAME\",\"description\":\"hello-world oracle eval smoke\"}" \
   -o "$WORK/task.json" || fail "task create"
 TASK_ID="$(json "$WORK/task.json" "id")"
 echo "task_id: $TASK_ID"

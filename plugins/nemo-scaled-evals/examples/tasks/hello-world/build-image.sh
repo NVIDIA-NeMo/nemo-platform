@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Build and push the broken-python task environment image for remote K8s sandboxes.
+# Build and push the hello-world task environment image for remote K8s sandboxes.
 #
 # sandbox-k8s does not build Harbor task Dockerfiles on-cluster; without TASK_IMAGE
-# it falls back to ubi9/python-312-minimal (wrong env, reward 0 on read-only root).
+# it falls back to its default image rather than exercising this task image.
 #
 # Usage:
 #   ./build-image.sh <target>      # reads TASK_IMAGE from targets/<target>.env

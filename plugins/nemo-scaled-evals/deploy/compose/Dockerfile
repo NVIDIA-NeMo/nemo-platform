@@ -126,7 +126,7 @@ RUN apt-get update -qq \
     && rm -rf /var/lib/apt/lists/*
 
 # Harbor venv (with the patched adapter) plus the task harness tree that
-# SANDBOX_K8S_CONFIG_PATH and BROKEN_PYTHON_TASK_PATH point into.
+# SANDBOX_K8S_CONFIG_PATH and TASK_PATH point into.
 COPY --from=harbor /opt/harbor /opt/harbor
 COPY plugins/nemo-scaled-evals/examples/tasks /harness/tasks
 # 0777 because the runtime picks the uid; the k8s manifests mount a writable

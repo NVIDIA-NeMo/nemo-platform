@@ -170,7 +170,6 @@ def materialize_gym_launch_env(
             if spec.agent_timeout_floor_sec is not None:
                 metadata["agent_timeout_apply"] = apply_agent_timeout_floor(staged, spec.agent_timeout_floor_sec)
             env["TASK_PATH"] = str(runner_task_path)
-            env["BROKEN_PYTHON_TASK_PATH"] = str(runner_task_path)
             metadata["task_path"] = str(runner_task_path)
             metadata["task_pack_staged"] = True
             metadata["extra_skill_materials"] = materials
