@@ -52,9 +52,14 @@ was all-benign would let a lazy reviewer score well without discriminating.
 
 The rows are deliberately contestable, not textbook. Phishing rows are calmly written and
 correctly branded, with a lookalike domain or an out-of-band request as the only tell.
-Benign rows look alarming on the surface — invoices, password resets, wire transfers — but
-come from consistent senders and ask for nothing. Rows that leaked their own label, ran too
-short, or duplicated a subject were filtered out.
+Benign rows look alarming on the surface — invoices, password resets, enrollment deadlines —
+and most of them _do_ ask the reader to act: review a document, log in to a portal, reset a
+password. What makes them benign is that the sender and the link both belong to the
+organisation they claim to be from. That is the discrimination under test: an agent keying on
+"was I asked to do something urgent?" will call them phishing. Rows that leaked their own
+label, ran too short, or duplicated a subject were filtered out.
+
+Across the 28 rows the 40 emails are 22 phishing / 18 benign.
 
 ## How a row reaches the agent
 
@@ -147,3 +152,9 @@ This config is authored in YAML and its task-driven sibling in JSON, to show tha
 are accepted: Studio's upload and the CLI's `--spec-file` sniff the content, not the
 extension. Converting between them is lossless — ship one format per file rather than
 the same config twice.
+
+## Related
+
+- **The agent these score:** [README.md](README.md) — deploy it, try each capability, run this suite.
+- **Adapting it:** [CUSTOMIZE.md](CUSTOMIZE.md) — what to change, and the couplings that break silently.
+- **The sibling suite:** [eval-config.task-driven.README.md](eval-config.task-driven.README.md) — the same agent scored the other way.

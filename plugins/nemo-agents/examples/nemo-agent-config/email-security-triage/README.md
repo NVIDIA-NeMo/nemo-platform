@@ -117,7 +117,7 @@ nemo files upload plugins/nemo-agents/examples/nemo-agent-config/email-security-
 Then build a run spec from the shipped config, adding the three per-run fields:
 
 ```bash
-python3 - <<'EOF' > /tmp/esec-eval-spec.json
+uv run python - <<'EOF' > /tmp/esec-eval-spec.json
 import json, yaml
 spec = yaml.safe_load(open("plugins/nemo-agents/examples/nemo-agent-config/email-security-triage/eval-config.dataset-driven.yml"))
 agent = "email-security-triage"

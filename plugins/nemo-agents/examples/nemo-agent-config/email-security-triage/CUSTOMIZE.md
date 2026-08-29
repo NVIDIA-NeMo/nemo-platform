@@ -3,11 +3,11 @@
 
 # How to adapt this example for your own agent
 
+**Prerequisites:** you can deploy and invoke the example ([README.md](README.md)).
+
 **Goal:** turn the Email Security Triage example into your own agent — a
 single-turn router that picks one capability from the user's request and answers
 as that capability.
-
-**Prerequisites:** you can deploy and invoke the example ([README.md](README.md)).
 
 The shape you're reusing:
 
@@ -32,9 +32,12 @@ one request ──▶ router prompt (deepagents, one generation, no tools)
 Each capability is a `##` section in the one system prompt. Three rules the
 existing ones follow:
 
-- **Give it a crisp output contract.** Line one is the bare answer — a single
-  lowercase token, a fixed header word, a bare number — with reasoning after. That
-  is what lets a deterministic metric read the result without an LLM.
+- **Give it a crisp output contract**, and let it differ per capability. Where a
+  deterministic metric has to read the answer, line one carries it — a single
+  lowercase token (`triage_message`), a fixed header word (`review_messages`) —
+  with any reasoning or structured detail after. Capabilities whose output has no
+  single correct form need no such token: `draft_warning` emits warning prose only,
+  and is graded by a rubric judge instead.
 - **Make the contracts mutually exclusive.** Routing is measured by output shape:
   if two capabilities can open with the same line, no check can tell them apart, and
   a misroute becomes invisible in your scores.
@@ -179,6 +182,9 @@ the same type — use one metric with several outputs instead.
 2. **Rename** the identifiers (`agent.yaml` `name`, `telemetry.project`).
 3. **Swap the brains:** rewrite `instructions.system` — routing rules plus one section per capability.
 4. **Swap the data** in `dataset.jsonl` and rewrite the judge prompts to your contract.
+5. **Swap the tasks** in `eval-config.task-driven.json` — its 8 tasks and their routing
+   assertions are email-specific. Left alone they score your agent against capabilities it
+   no longer has, which reads as a failing agent rather than a stale suite.
 
 Re-run the [README.md](README.md) tutorial against your agent name to validate.
 

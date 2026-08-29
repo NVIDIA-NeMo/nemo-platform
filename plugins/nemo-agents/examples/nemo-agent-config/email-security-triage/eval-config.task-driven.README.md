@@ -110,3 +110,9 @@ are positional rather than structured. A task may not carry two metrics of the s
 use one metric with several outputs instead. Every judge that reads a verdict must read the
 **first line**, not the last: reasoning follows the answer and often mentions the opposite
 verdict.
+
+## Related
+
+- **The agent these score:** [README.md](README.md) — deploy it, try each capability, run this suite.
+- **Adapting it:** [CUSTOMIZE.md](CUSTOMIZE.md) — what to change, and the couplings that break silently.
+- **The sibling suite:** [eval-config.dataset-driven.README.md](eval-config.dataset-driven.README.md) — the same agent scored the other way.
