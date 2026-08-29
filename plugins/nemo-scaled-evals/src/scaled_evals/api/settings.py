@@ -469,9 +469,8 @@ class Settings(BaseSettings):
 
     def resolved_database_url(self) -> str:
         base = self.database_url or _STANDALONE_DATABASE_URL
-        params = []
+        params = [f"sslmode={self.database_ssl_mode}"]
         if self.database_ssl_root_cert:
-            params.append(f"sslmode={self.database_ssl_mode}")
             params.append(f"sslrootcert={self.database_ssl_root_cert}")
         if self.database_schema:
             # libpq hands this to the backend at connect time, so every pooled

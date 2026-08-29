@@ -829,6 +829,7 @@ def cancel_evaluation(evaluation_id: str, db: Db) -> EvaluationResponse:
     if row is None:
         raise _http_error(404, "not_found", "evaluation not found")
     if cancelled_now:
+        db.commit()
         row = teardown_cancelled_evaluation(db, row)
     return _response(row)
 

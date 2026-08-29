@@ -804,11 +804,19 @@ class Dispatcher:
         if lease is None:
             detail = "Switchyard campaign cannot be deleted without durable managed-resource lease metadata"
             with self.connect() as conn:
-                SwitchyardCampaignRepository(conn).mark_delete_failed(
-                    benchmark_run_id,
-                    worker_id=self.worker_id,
-                    detail=detail,
-                )
+                repo = SwitchyardCampaignRepository(conn)
+                if int(campaign.get("claim_attempt") or 0) >= 5:
+                    repo.mark_delete_unavailable(
+                        benchmark_run_id,
+                        worker_id=self.worker_id,
+                        detail=f"{detail} after 5 attempts",
+                    )
+                else:
+                    repo.mark_delete_failed(
+                        benchmark_run_id,
+                        worker_id=self.worker_id,
+                        detail=detail,
+                    )
             return
         try:
             self.switchyard.delete(lease)

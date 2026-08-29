@@ -613,6 +613,24 @@ class SwitchyardCampaignRepository:
                 (benchmark_run_id, worker_id),
             )
 
+    def mark_delete_unavailable(
+        self,
+        benchmark_run_id: str,
+        *,
+        worker_id: str,
+        detail: str,
+    ) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE benchmark_switchyard_campaigns
+                SET status = 'deleted', deleted_at = NOW(), delete_error = %s,
+                    claim_owner = NULL, claim_expires_at = NULL, updated_at = NOW()
+                WHERE benchmark_run_id = %s AND status = 'deleting' AND claim_owner = %s
+                """,
+                (detail, benchmark_run_id, worker_id),
+            )
+
     def mark_delete_failed(self, benchmark_run_id: str, *, worker_id: str, detail: str) -> None:
         with self.conn.cursor() as cur:
             cur.execute(

@@ -1,17 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Empty placeholder so the API and build worker can mount the volume before the
-# first refresh has run. The CronJob replaces the contents; nothing here is a
-# credential.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: scaled-evals-gar-registry-auth
-type: kubernetes.io/dockerconfigjson
-stringData:
-  .dockerconfigjson: '{"auths":{}}'
----
+
+# apply.sh primes this CronJob before waiting for workloads, and the refresh
+# script creates or updates the Secret without allowing a re-apply to erase it.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

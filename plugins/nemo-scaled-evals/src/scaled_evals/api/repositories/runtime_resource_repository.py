@@ -35,7 +35,7 @@ _CLAIM_SWITCHYARD_TEARDOWN_SQL = (
         WHERE r.kind = 'switchyard'
           AND (
               (
-                  r.status IN ('draining', 'delete_failed')
+                  r.status IN ('draining', 'deleting', 'delete_failed')
                   AND r.drain_until IS NOT NULL
                   AND r.drain_until <= NOW()
               )

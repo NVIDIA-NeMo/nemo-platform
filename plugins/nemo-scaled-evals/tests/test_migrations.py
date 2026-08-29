@@ -139,6 +139,7 @@ def _dsn_for(base_dsn: str, schema: str) -> str:
     env = {
         "SCALED_EVALS_DATABASE_URL": base_dsn,
         "SCALED_EVALS_DATABASE_SCHEMA": schema,
+        "DATABASE_SSL_MODE": "disable",
         "CREDENTIALS_ENCRYPTION_KEY": Fernet.generate_key().decode(),
     }
     with mock.patch.dict(os.environ, env):
@@ -174,6 +175,7 @@ def test_database_url_never_adopts_the_platform_database(
 
 def test_dsn_carries_search_path_and_applier_refuses_a_public_fallback() -> None:
     dsn = _dsn_for(_fixture_dsn("u", "h", "nemo_platform", "p"), "scaled_evals")
+    assert "sslmode=disable" in dsn
     assert f"options={quote('-c search_path=scaled_evals,public', safe='')}" in dsn
 
     class _Conn:

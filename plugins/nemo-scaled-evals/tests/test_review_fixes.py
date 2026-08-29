@@ -11,7 +11,8 @@ import subprocess
 import tarfile
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,8 +22,17 @@ try:
     from nemo_scaled_evals_plugin import migrations
     from scaled_evals.api.build import buildkit
     from scaled_evals.api.build.errors import BuildError
+    from scaled_evals.api.repositories.runtime_resource_repository import (
+        RuntimeResourceRepository,
+    )
+    from scaled_evals.api.repositories.switchyard_campaign_repository import (
+        SwitchyardCampaignRepository,
+    )
+    from scaled_evals.api.routers import evaluations as evaluations_router
     from scaled_evals.cli.client import make_client, request
+    from scaled_evals.dispatch import worker as worker_module
     from scaled_evals.dispatch.kubectl import execute_kubectl
+    from scaled_evals.dispatch.worker import Dispatcher
 except ImportError as exc:
     pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
@@ -111,6 +121,93 @@ def test_external_commands_and_http_redirects_fail_bounded() -> None:
     with make_client("https://api.example.invalid", None, transport=transport) as client:
         with pytest.raises(click.ClickException, match="HTTP 302"):
             request(client, "GET", "/tasks")
+
+
+def test_p1_cleanup_recovery_and_cancellation_are_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cursor = MagicMock()
+    connection = MagicMock()
+    connection.transaction.return_value = nullcontext()
+    connection.cursor.return_value.__enter__.return_value = cursor
+
+    RuntimeResourceRepository(connection).claim_due_switchyard_teardown(
+        claim_timeout=30,
+        worker_id="worker-a",
+    )
+    claim_sql = cursor.execute.call_args.args[0]
+    assert "r.status IN ('draining', 'deleting', 'delete_failed')" in claim_sql
+
+    cursor.reset_mock()
+    SwitchyardCampaignRepository(connection).mark_delete_unavailable(
+        "bmr-missing",
+        worker_id="worker-a",
+        detail="lease missing after 5 attempts",
+    )
+    terminal_sql, terminal_params = cursor.execute.call_args.args
+    assert "SET status = 'deleted'" in terminal_sql
+    assert "resource_name IS NOT NULL" not in terminal_sql
+    assert terminal_params == ("lease missing after 5 attempts", "bmr-missing", "worker-a")
+
+    campaign_events: list[str] = []
+
+    class _CampaignRepository:
+        def __init__(self, _connection: Any) -> None:
+            pass
+
+        def mark_delete_failed(self, *_args: Any, **_kwargs: Any) -> None:
+            campaign_events.append("retry")
+
+        def mark_delete_unavailable(self, *_args: Any, **_kwargs: Any) -> None:
+            campaign_events.append("terminal")
+
+    monkeypatch.setattr(worker_module, "SwitchyardCampaignRepository", _CampaignRepository)
+    dispatcher = Dispatcher(
+        connect=cast(Any, lambda: nullcontext(connection)),
+        switchyard=MagicMock(),
+        worker_id="worker-a",
+    )
+    campaign = {
+        "benchmark_run_id": "bmr-missing",
+        "status": "deleting",
+        "resource_name": None,
+        "metadata": {},
+    }
+    dispatcher.delete_switchyard_campaign({**campaign, "claim_attempt": 4})
+    dispatcher.delete_switchyard_campaign({**campaign, "claim_attempt": 5})
+    assert campaign_events == ["retry", "terminal"]
+
+    request_events: list[str] = []
+    row = {"id": "ev-cancel"}
+
+    class _Evaluations:
+        def cancel(self, _evaluation_id: str) -> tuple[dict[str, str], bool]:
+            return row, True
+
+    class _Database:
+        evaluations = _Evaluations()
+
+        def commit(self) -> None:
+            request_events.append("commit")
+
+    def teardown(_db: Any, cancelled: dict[str, str]) -> dict[str, str]:
+        request_events.append("teardown")
+        return cancelled
+
+    monkeypatch.setattr(evaluations_router, "teardown_cancelled_evaluation", teardown)
+    monkeypatch.setattr(evaluations_router, "_response", lambda value: value)
+    assert evaluations_router.cancel_evaluation("ev-cancel", cast(Any, _Database())) == row
+    assert request_events == ["commit", "teardown"]
+
+
+def test_p1_kubernetes_registry_policy_is_narrow_and_reapply_safe() -> None:
+    plugin_root = Path(__file__).parents[1]
+    registry_auth = (plugin_root / "deploy/k8s/registry-auth.yaml").read_text()
+    settings_env = (plugin_root / "deploy/k8s/settings.env").read_text()
+
+    assert "\nkind: Secret\n" not in registry_auth
+    assert "kind: CronJob" in registry_auth
+    assert "TASK_IMAGE_ALLOWED_REPOSITORIES=${SE_TASK_IMAGE_REGISTRY}/*" in settings_env
 
 
 def test_task_pack_extraction_is_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

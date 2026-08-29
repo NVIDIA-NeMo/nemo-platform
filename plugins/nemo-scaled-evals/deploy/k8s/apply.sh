@@ -92,8 +92,8 @@ fi
 echo "==> applying"
 render | kubectl apply -f -
 
-# The CronJob would otherwise leave the placeholder in place for up to 30
-# minutes, and the build worker cannot resolve a GAR digest without it.
+# Create the auth Secret before waiting for workloads; the recurring CronJob
+# updates it in place without putting an empty credential into the manifests.
 echo "==> priming GAR credentials"
 JOB="gar-auth-$(date +%s)"
 kubectl create job -n "$NS" "$JOB" --from=cronjob/scaled-evals-gar-registry-auth-refresh
