@@ -10,6 +10,7 @@ import pytest
 import respx
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.oidc import NMPOIDCConfig
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.jobs.constants import TASK_CONFIG_ENVVAR
 from nmp.hello_world.tasks.workload_workspace_get.run import run as task_run
@@ -32,6 +33,17 @@ def platform_base_url():
         yield base_url
     finally:
         Configuration.clear_override(PlatformConfig)
+
+
+def _workload_oidc_config() -> NMPOIDCConfig:
+    return NMPOIDCConfig(
+        auth_enabled=True,
+        workload_token_exchange_enabled=True,
+        workload_client_id="workload-client",
+        workload_token_endpoint="https://idp.example.test/oauth2/token",
+        workload_audience="nemo-platform",
+        workload_scope="openid email groups",
+    )
 
 
 class _StubWorkspaces:
@@ -137,3 +149,59 @@ def test_workload_workspace_get_uses_task_sdk_without_workload_token(monkeypatch
 
     assert exit_code == 0
     assert workspace_route.called
+
+
+@respx.mock
+def test_workload_workspace_get_uses_task_sdk_with_workload_token(monkeypatch, tmp_path, platform_base_url):
+    subject_token_file = tmp_path / "workload-token"
+    subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("{}\n", encoding="utf-8")
+    exchange_requests: list[dict] = []
+
+    def token_exchange_grant(**kwargs):
+        exchange_requests.append(kwargs)
+        return {"access_token": "workload-access-token", "expires_in": 300}
+
+    monkeypatch.setenv(TASK_CONFIG_ENVVAR, '{"workspace":"workload-read-target"}')
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("NMP_BASE_URL", platform_base_url)
+    monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+    monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+    monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("NEMO_WORKLOAD_TOKEN", raising=False)
+    monkeypatch.delenv("NEMO_WORKLOAD_TOKEN_FILE", raising=False)
+    monkeypatch.setattr(
+        "nemo_platform_plugin.client.oidc_factory._discover_oidc_client_settings",
+        lambda _base_url: _workload_oidc_config(),
+    )
+    monkeypatch.setattr("nemo_platform_plugin.client.oidc.token_exchange_grant", token_exchange_grant)
+
+    def workspace_response(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("Authorization") != "Bearer workload-access-token":
+            return httpx.Response(401, json={"detail": "Unauthorized"})
+        if request.headers.get("X-NMP-Internal") != "true":
+            return httpx.Response(403, json={"detail": "Forbidden"})
+        if "X-NMP-Principal-Id" in request.headers:
+            return httpx.Response(403, json={"detail": "Trusted principal header was sent"})
+        if "X-NMP-Principal-On-Behalf-Of" in request.headers:
+            return httpx.Response(403, json={"detail": "Trusted on-behalf-of header was sent"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "workspace-id",
+                "name": "workload-read-target",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            },
+        )
+
+    workspace_route = respx.get(f"{platform_base_url}/apis/entities/v2/workspaces/workload-read-target").mock(
+        side_effect=workspace_response
+    )
+
+    exit_code = task_run()
+
+    assert exit_code == 0
+    assert workspace_route.called
+    assert exchange_requests[0]["subject_token"] == "subject-token-from-file"

@@ -11,7 +11,7 @@ from typing import Any, Generic, Optional, TypeVar
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.auth import TokenProviderAuth
+from nemo_platform_plugin.client.auth import TokenProvider
 from nemo_platform_plugin.client.constants import (
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     is_workload_identity_token_file_set,
@@ -96,35 +96,20 @@ def _async_sdk_connection_for_endpoint(
 def with_options_reusing_http_client(base_sdk: PlatformSDKT, **kwargs: Any) -> PlatformSDKT:
     """Return ``base_sdk.with_options(...)`` while reusing its underlying HTTP client."""
     if kwargs.get("http_client") is None:
-        kwargs["http_client"] = base_sdk._client
-    kwargs = _with_custom_auth_extra_kwargs(base_sdk.custom_auth, kwargs)
+        kwargs["http_client"] = base_sdk.http_client
     return base_sdk.with_options(**kwargs)
-
-
-def _with_custom_auth_extra_kwargs(custom_auth: httpx.Auth | None, kwargs: dict[str, Any]) -> dict[str, Any]:
-    if custom_auth is not None:
-        kwargs = dict(kwargs)
-        extra_kwargs = dict(kwargs.get("_extra_kwargs", {}))
-        extra_kwargs.setdefault("custom_auth", custom_auth)
-        kwargs["_extra_kwargs"] = extra_kwargs
-    return kwargs
 
 
 class _ManagedNeMoPlatform(NeMoPlatform):
     def __init__(
         self,
         *,
-        custom_auth: httpx.Auth | None = None,
+        token_provider: TokenProvider | None = None,
         owns_http_client: bool = False,
         **kwargs: Any,
     ) -> None:
-        self._custom_auth = custom_auth
         self._owns_http_client = owns_http_client
-        super().__init__(**kwargs)
-
-    @property
-    def custom_auth(self) -> httpx.Auth | None:
-        return self._custom_auth
+        super().__init__(token_provider=token_provider, **kwargs)
 
     def close(self) -> None:
         if not self._owns_http_client:
@@ -132,38 +117,23 @@ class _ManagedNeMoPlatform(NeMoPlatform):
         self._owns_http_client = False
         super().close()
 
-    def copy(self, **kwargs: Any) -> Any:
-        return super().copy(**_with_custom_auth_extra_kwargs(self._custom_auth, kwargs))
-
-    with_options = copy
-
 
 class _ManagedAsyncNeMoPlatform(AsyncNeMoPlatform):
     def __init__(
         self,
         *,
-        custom_auth: httpx.Auth | None = None,
+        token_provider: TokenProvider | None = None,
         owns_http_client: bool = False,
         **kwargs: Any,
     ) -> None:
-        self._custom_auth = custom_auth
         self._owns_http_client = owns_http_client
-        super().__init__(**kwargs)
-
-    @property
-    def custom_auth(self) -> httpx.Auth | None:
-        return self._custom_auth
+        super().__init__(token_provider=token_provider, **kwargs)
 
     async def close(self) -> None:
         if not self._owns_http_client:
             return
         self._owns_http_client = False
         await super().close()
-
-    def copy(self, **kwargs: Any) -> Any:
-        return super().copy(**_with_custom_auth_extra_kwargs(self._custom_auth, kwargs))
-
-    with_options = copy
 
 
 @dataclass(frozen=True)
@@ -173,7 +143,7 @@ class _ResolvedSDKInitConfig(Generic[_HTTPClientT]):
     default_headers: Mapping[str, str] | None
     http_client: _HTTPClientT
     owns_http_client: bool
-    custom_auth: httpx.Auth | None
+    token_provider: TokenProvider | None
 
 
 def _should_bootstrap_workload_identity() -> bool:
@@ -201,14 +171,13 @@ def _workload_identity_token_file() -> Path:
     return token_file
 
 
-def _workload_identity_auth(base_url: str) -> httpx.Auth:
+def _workload_identity_token_provider(base_url: str) -> TokenProvider:
     from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 
-    provider = resolve_workload_exchange_provider(
+    return resolve_workload_exchange_provider(
         base_url=base_url,
         subject_token_file=_workload_identity_token_file(),
     )
-    return TokenProviderAuth(provider)
 
 
 def _ensure_no_trusted_headers_for_workload_identity(
@@ -235,7 +204,7 @@ def _resolve_sdk_init_config(
             default_headers=headers if headers else None,
             http_client=connection.http_client,
             owns_http_client=connection.owns_http_client,
-            custom_auth=None,
+            token_provider=None,
         )
 
     require_workload_identity_without_principal_env()
@@ -247,7 +216,7 @@ def _resolve_sdk_init_config(
         default_headers=extra_headers or None,
         http_client=connection.http_client,
         owns_http_client=connection.owns_http_client,
-        custom_auth=_workload_identity_auth(connection.base_url),
+        token_provider=_workload_identity_token_provider(connection.base_url),
     )
 
 
@@ -271,7 +240,7 @@ def _sync_sdk_from_init_config(
     strict_response_validation: bool = False,
 ) -> NeMoPlatform:
     return _ManagedNeMoPlatform(
-        custom_auth=sdk_config.custom_auth,
+        token_provider=sdk_config.token_provider,
         owns_http_client=sdk_config.owns_http_client,
         base_url=sdk_config.base_url,
         workspace=sdk_config.workspace,
@@ -291,7 +260,7 @@ def _async_sdk_from_init_config(
     strict_response_validation: bool = False,
 ) -> AsyncNeMoPlatform:
     return _ManagedAsyncNeMoPlatform(
-        custom_auth=sdk_config.custom_auth,
+        token_provider=sdk_config.token_provider,
         owns_http_client=sdk_config.owns_http_client,
         base_url=sdk_config.base_url,
         workspace=sdk_config.workspace,
@@ -567,7 +536,7 @@ def get_service_scoped_sdk(
     If the base SDK is using workload identity, keep bearer-token auth and add
     only workload-safe internal headers instead of trusted principal headers.
     """
-    if base_sdk.custom_auth is not None:
+    if base_sdk.token_provider is not None:
         if on_behalf_of is not None:
             raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} cannot be combined with trusted principal headers")
         headers = _workload_identity_extra_headers(internal=internal)
@@ -603,7 +572,7 @@ def get_request_scoped_sdk(
 
     # Combine OTEL headers (tracing) + auth headers (user identity).
     headers = _non_auth_otel_headers()
-    if base_sdk.custom_auth is None:
+    if base_sdk.token_provider is None:
         headers.update(get_principal_auth_headers())
 
     # If we have headers to add, create a new SDK with them
@@ -650,7 +619,7 @@ def get_sdk_on_behalf_of(
         secret = delegated_sdk.secrets.access("my-secret", workspace="workspace-name")
         ```
     """
-    if base_sdk.custom_auth is not None:
+    if base_sdk.token_provider is not None:
         raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} cannot be combined with trusted principal headers")
 
     # Merge existing headers with the new on-behalf-of header

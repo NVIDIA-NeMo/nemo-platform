@@ -35,7 +35,7 @@ def test_initialize_creates_cached_sdk_from_endpoint() -> None:
     http_client = MagicMock(name="http_client")
     platform_endpoint.async_sdk_http_client.return_value = http_client
     sdk = MagicMock(name="sdk")
-    sdk._client = http_client
+    sdk.http_client = http_client
 
     with (
         patch("nmp.common.service.base.resolve_platform_endpoint", return_value=platform_endpoint) as resolve_endpoint,
@@ -59,7 +59,7 @@ def test_configure_http_client_is_used_for_cached_sdk_client() -> None:
     provider._platform_config = platform_config
     platform_endpoint = MagicMock(name="platform_endpoint")
     platform_endpoint.connect_base_url = "http://platform:8080"
-    sdk._client = http_client
+    sdk.http_client = http_client
 
     provider.configure_http_client(http_client)
 
@@ -82,7 +82,7 @@ def test_configure_platform_endpoint_is_used_during_initialization() -> None:
     http_client = MagicMock(name="http_client")
     platform_endpoint.async_sdk_http_client.return_value = http_client
     sdk = MagicMock(name="sdk")
-    sdk._client = http_client
+    sdk.http_client = http_client
 
     provider.configure_platform_endpoint(platform_endpoint)
 
@@ -100,7 +100,7 @@ def test_configure_http_client_rejects_changes_after_sdk_created() -> None:
     platform_endpoint = MagicMock(name="platform_endpoint")
     platform_endpoint.connect_base_url = "http://platform:8080"
     platform_endpoint.async_sdk_http_client.return_value = http_client
-    sdk._client = http_client
+    sdk.http_client = http_client
 
     with (
         patch("nmp.common.service.base.resolve_platform_endpoint", return_value=platform_endpoint),
@@ -116,10 +116,10 @@ def test_get_sdk_client_caches_request_sdk_and_creates_fresh_service_sdk() -> No
     provider = DependencyProvider()
     request_sdk = MagicMock(name="request_sdk")
     service_sdk = MagicMock(name="service_sdk")
-    request_sdk.custom_auth = None
+    request_sdk.token_provider = None
     request_sdk.with_options.return_value = service_sdk
     http_client = MagicMock(name="http_client")
-    request_sdk._client = http_client
+    request_sdk.http_client = http_client
     platform_endpoint = MagicMock(name="platform_endpoint")
     platform_endpoint.connect_base_url = "http://platform:8080"
     platform_endpoint.async_sdk_http_client.return_value = http_client

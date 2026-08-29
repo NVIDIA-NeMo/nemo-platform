@@ -8,6 +8,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.auth import TokenProviderAuth
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.oidc import NMPOIDCConfig
 from nmp.common.config import Configuration
@@ -35,14 +36,14 @@ def _workload_oidc_config() -> NMPOIDCConfig:
 
 
 def _apply_sync_auth(sdk: NeMoPlatform, request: httpx.Request) -> None:
-    assert sdk.custom_auth is not None
-    auth_flow = sdk.custom_auth.sync_auth_flow(request)
+    assert sdk.token_provider is not None
+    auth_flow = TokenProviderAuth(sdk.token_provider).sync_auth_flow(request)
     assert next(auth_flow) is request
 
 
 async def _apply_async_auth(sdk: AsyncNeMoPlatform, request: httpx.Request) -> None:
-    assert sdk.custom_auth is not None
-    auth_flow = sdk.custom_auth.async_auth_flow(request)
+    assert sdk.token_provider is not None
+    auth_flow = TokenProviderAuth(sdk.token_provider).async_auth_flow(request)
     assert await anext(auth_flow) is request
 
 
@@ -336,10 +337,10 @@ def test_get_service_scoped_sdk_preserves_workload_identity_auth(monkeypatch: py
 
         assert service_sdk is not base_sdk
         assert service_sdk._client is base_sdk._client
-        assert service_sdk.custom_auth is base_sdk.custom_auth
+        assert service_sdk.token_provider is base_sdk.token_provider
         assert service_sdk.default_headers["X-NMP-Internal"] == "true"
         assert "X-NMP-Principal-Id" not in service_sdk.default_headers
-        assert scoped_sdk.custom_auth is base_sdk.custom_auth
+        assert scoped_sdk.token_provider is base_sdk.token_provider
 
 
 def test_get_service_scoped_sdk_rejects_workload_identity_on_behalf_of(

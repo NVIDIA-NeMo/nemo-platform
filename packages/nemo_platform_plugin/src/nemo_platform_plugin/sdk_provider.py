@@ -36,10 +36,10 @@ import json
 import logging
 import os
 from importlib.metadata import entry_points
-from typing import Any, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, Protocol, overload, runtime_checkable
 
 from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient, DefaultHttpxClient, NeMoPlatform
-from nemo_platform_plugin.client.auth import TokenProviderAuth
+from nemo_platform_plugin.client.auth import TokenProvider, TokenProviderAuth
 from nemo_platform_plugin.client.constants import (
     NMP_PRINCIPAL_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
@@ -47,8 +47,6 @@ from nemo_platform_plugin.client.constants import (
     require_workload_identity_without_principal_env,
     workload_identity_token_file_from_env,
 )
-
-_SDKT = TypeVar("_SDKT", NeMoPlatform, AsyncNeMoPlatform)
 
 logger = logging.getLogger(__name__)
 
@@ -168,14 +166,13 @@ def _workload_identity_headers(*, internal: bool) -> dict[str, str]:
     return {_INTERNAL_REQUEST_HEADER: "true"} if internal else {}
 
 
-def _workload_identity_auth(base_url: str) -> TokenProviderAuth:
+def _workload_identity_token_provider(base_url: str) -> TokenProvider:
     from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 
     subject_token_file = workload_identity_token_file_from_env()
     if subject_token_file is None:
         raise RuntimeError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is not set")
-    provider = resolve_workload_exchange_provider(base_url=base_url, subject_token_file=subject_token_file)
-    return TokenProviderAuth(provider)
+    return resolve_workload_exchange_provider(base_url=base_url, subject_token_file=subject_token_file)
 
 
 def _ensure_no_trusted_headers_for_workload_identity(
@@ -243,15 +240,37 @@ class DefaultSDKProvider:
             on_behalf_of_headers=on_behalf_of_headers,
         )
 
+    @overload
     def _make_sdk(
         self,
-        cls: type[_SDKT],
+        cls: type[NeMoPlatform],
         *,
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | None = None,
         on_behalf_of_headers: dict[str, str] | None = None,
-    ) -> _SDKT:
+    ) -> NeMoPlatform: ...
+
+    @overload
+    def _make_sdk(
+        self,
+        cls: type[AsyncNeMoPlatform],
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        on_behalf_of_headers: dict[str, str] | None = None,
+    ) -> AsyncNeMoPlatform: ...
+
+    def _make_sdk(
+        self,
+        cls: type[NeMoPlatform] | type[AsyncNeMoPlatform],
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        on_behalf_of_headers: dict[str, str] | None = None,
+    ) -> NeMoPlatform | AsyncNeMoPlatform:
         if is_workload_identity_token_file_set():
             require_workload_identity_without_principal_env()
             _ensure_no_trusted_headers_for_workload_identity(
@@ -259,39 +278,56 @@ class DefaultSDKProvider:
                 on_behalf_of=on_behalf_of,
                 on_behalf_of_headers=on_behalf_of_headers,
             )
-            return self._make_workload_identity_sdk(cls, internal=internal)
+            if cls is NeMoPlatform:
+                return self._make_workload_identity_sdk(NeMoPlatform, internal=internal)
+            if cls is AsyncNeMoPlatform:
+                return self._make_workload_identity_sdk(AsyncNeMoPlatform, internal=internal)
+            raise TypeError(f"Unsupported SDK class for workload identity: {cls!r}")
 
         headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
         if on_behalf_of_headers:
             headers.update(on_behalf_of_headers)
         return cls(base_url=self._base_url(), default_headers=headers or None)
 
+    @overload
     def _make_workload_identity_sdk(
         self,
-        cls: type[_SDKT],
+        cls: type[NeMoPlatform],
         *,
         internal: bool,
-    ) -> _SDKT:
+    ) -> NeMoPlatform: ...
+
+    @overload
+    def _make_workload_identity_sdk(
+        self,
+        cls: type[AsyncNeMoPlatform],
+        *,
+        internal: bool,
+    ) -> AsyncNeMoPlatform: ...
+
+    def _make_workload_identity_sdk(
+        self,
+        cls: type[NeMoPlatform] | type[AsyncNeMoPlatform],
+        *,
+        internal: bool,
+    ) -> NeMoPlatform | AsyncNeMoPlatform:
         base_url = self._base_url()
         headers = _workload_identity_headers(internal=internal)
-        auth = _workload_identity_auth(base_url)
+        token_provider = _workload_identity_token_provider(base_url)
+        auth = TokenProviderAuth(token_provider)
         if cls is AsyncNeMoPlatform:
-            return cast(
-                _SDKT,
-                AsyncNeMoPlatform(
-                    base_url=base_url,
-                    default_headers=headers or None,
-                    http_client=DefaultAsyncHttpxClient(auth=auth),
-                ),
+            return AsyncNeMoPlatform(
+                base_url=base_url,
+                default_headers=headers or None,
+                http_client=DefaultAsyncHttpxClient(auth=auth),
+                token_provider=token_provider,
             )
         if cls is NeMoPlatform:
-            return cast(
-                _SDKT,
-                NeMoPlatform(
-                    base_url=base_url,
-                    default_headers=headers or None,
-                    http_client=DefaultHttpxClient(auth=auth),
-                ),
+            return NeMoPlatform(
+                base_url=base_url,
+                default_headers=headers or None,
+                http_client=DefaultHttpxClient(auth=auth),
+                token_provider=token_provider,
             )
         raise TypeError(f"Unsupported SDK class for workload identity: {cls!r}")
 
@@ -503,7 +539,8 @@ def get_forwarding_headers(sdk: NeMoPlatform | AsyncNeMoPlatform) -> dict[str, s
             per-request headers, pass a request-scoped SDK built with
             ``sdk.with_options(set_default_headers=...)``.
     """
-    # _custom_headers holds the headers passed at construction time
-    # (service principal, internal marker, on-behalf-of, OTEL, etc.)
-    # — everything the platform SDK factory injects.
-    return dict(sdk._custom_headers)
+    return {
+        name: value
+        for name, value in sdk.default_headers.items()
+        if name.startswith("X-NMP-") and isinstance(value, str)
+    }

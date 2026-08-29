@@ -208,11 +208,14 @@ class TestNemoClientAuth:
 class TestAsyncNemoClientAuth:
     @respx.mock
     def test_async_provider_called(self):
-        """AsyncNemoClient(auth=AsyncProvider()) calls async get_access_token()."""
+        """AsyncNemoClient(auth=AsyncProvider()) calls async get_access_token_async()."""
         route = respx.get("http://localhost:8080/test").mock(return_value=httpx.Response(200, json={"ok": True}))
 
         class AsyncProvider:
-            async def get_access_token(self) -> str:
+            def get_access_token(self) -> str:
+                raise AssertionError("sync token path should not be used")
+
+            async def get_access_token_async(self) -> str:
                 return "async-token"
 
         client = AsyncNemoClient(base_url="http://localhost:8080", auth=AsyncProvider())

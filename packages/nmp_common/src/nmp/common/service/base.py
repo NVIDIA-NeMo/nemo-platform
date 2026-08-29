@@ -114,7 +114,7 @@ class DependencyProvider:
             endpoint,
             http_client=self._configured_http_client,
         )
-        self._service_http_client = self._sdk_client._client
+        self._service_http_client = self._sdk_client.http_client
 
     def _require_initialized(self) -> None:
         if self._service_http_client is None or self._sdk_client is None:

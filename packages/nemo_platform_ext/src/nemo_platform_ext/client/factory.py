@@ -103,13 +103,15 @@ class ClientInitConfig:
 
     For non-OAuth users this just carries base_url/workspace/headers.
     For OAuth users it also includes a custom httpx client with an event
-    hook that injects/refreshes the Bearer token on every request.
+    hook that injects/refreshes the Bearer token on every request, plus the
+    token provider itself for typed client adapters.
     """
 
     base_url: str
     workspace: str | None
     default_headers: Mapping[str, str] | None = None
     http_client: httpx.Client | httpx.AsyncClient | None = None
+    token_provider: _AccessTokenProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -641,6 +643,7 @@ def build_client_init_kwargs(
         workspace=bootstrap.workspace,
         default_headers=headers or None,
         http_client=http_client,
+        token_provider=bootstrap.token_provider,
     )
 
 
@@ -684,6 +687,7 @@ def build_async_client_init_kwargs(
         workspace=bootstrap.workspace,
         default_headers=headers or None,
         http_client=http_client,
+        token_provider=bootstrap.token_provider,
     )
 
 
@@ -721,6 +725,7 @@ def create_client(
         workspace=client_init_kwargs.workspace,
         default_headers=client_init_kwargs.default_headers,
         http_client=http_client,
+        token_provider=client_init_kwargs.token_provider,
         max_retries=max_retries,
         timeout=timeout,
     )
