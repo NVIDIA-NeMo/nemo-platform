@@ -18,6 +18,7 @@ import pytest
 import yaml
 from nemo_iron_swarm_plugin.agent_resolver import (
     AgentResolutionError,
+    build_manifest_dict,
     derive_secret_names,
     detect_custom_components,
     gateway_backend,
@@ -25,6 +26,7 @@ from nemo_iron_swarm_plugin.agent_resolver import (
     materialize_agent_package,
     parse_agent_ref,
     relay_artifacts_dir,
+    require_guardable_harness,
     resolve_agent_to_manifest,
     shipped_dockerfile,
 )
@@ -334,3 +336,27 @@ def test_materialize_prefers_the_shipped_dockerfile(tmp_path: Path) -> None:
     materialize_agent_package({"name": "x"}, tmp_path, dockerfile_override="FROM scratch\n")
 
     assert (tmp_path / "Dockerfile").read_text(encoding="utf-8") == "FROM scratch\n"
+
+
+def test_gateway_harnesses_are_rejected_at_init() -> None:
+    """Claude and Codex run Relay as a compiled gateway that cannot load the guardrail plugin.
+
+    Rejected here because this is the last point where the harness is known — build_manifest_dict
+    emits a plain BYO victim, after which the agent is indistinguishable from a hand-built image.
+    """
+    for harness in ("claude", "codex"):
+        with pytest.raises(AgentResolutionError, match="cannot load Iron Swarm's guardrail plugin"):
+            require_guardable_harness({"default_harness": harness}, "ws/agent")
+
+
+def test_guardable_harnesses_pass_through() -> None:
+    assert require_guardable_harness({"default_harness": "deepagents"}, "ws/a") == "deepagents"
+    assert require_guardable_harness({"default_harness": "hermes"}, "ws/a") == "hermes"
+    assert require_guardable_harness({}, "ws/a") is None  # a BYO-shaped config names no harness
+
+
+def test_the_manifest_carries_the_harness() -> None:
+    """Iron Swarm needs it to stage Hermes' extra wiring — not to choose a victim kind."""
+    manifest = build_manifest_dict(agent_name="a", project_dir=".", port=8000, secrets=[], harness="hermes")
+
+    assert manifest["agent"]["harness"] == "hermes"
