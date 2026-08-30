@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import copy
 import logging
+import shutil
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -263,6 +265,43 @@ def build_manifest_dict(
 # --------------------------------------------------------------------------- #
 # Filesystem materialization
 # --------------------------------------------------------------------------- #
+def download_agent_bundle(sdk: Any, agent_name: str, workspace: str, destination: Path) -> bool:
+    """Copy the whole directory the author registered into *destination*.
+
+    Registration uploads everything beside ``agent.yaml`` — an MCP server, skills, whatever the image
+    COPYs — so taking only the config and the Dockerfile produces a build context that is missing the
+    files the Dockerfile references. That surfaces as a build failure late, from Docker, naming a file
+    the author did register:
+
+        COPY failed: file not found in build context: stat ledger_mcp.py: file does not exist
+
+    ``agent.yaml`` is deliberately not copied: the caller writes the gateway-injected config over it.
+
+    Returns whether a bundle was found; ``False`` is the ordinary case for a config-only agent.
+    """
+    from nemo_iron_swarm_plugin.filesets import download_fileset  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="iron-swarm-ethos-") as directory:
+        source = Path(directory)
+        try:
+            download_fileset(sdk, f"{workspace}/{agent_name}-ethos", source)
+        except Exception:
+            logger.info("agent %s/%s has no readable ethos fileset", workspace, agent_name)
+            return False
+        destination.mkdir(parents=True, exist_ok=True)
+        copied = False
+        for item in source.iterdir():
+            if item.name == AGENT_CONFIG_FILENAME:
+                continue
+            target = destination / item.name
+            if item.is_dir():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+            else:
+                shutil.copyfile(item, target)
+            copied = True
+        return copied
+
+
 def shipped_dockerfile(sdk: Any, agent_name: str, workspace: str) -> str | None:
     """The Dockerfile the author registered beside ``agent.yaml``, if there is one.
 
@@ -300,17 +339,21 @@ def materialize_agent_package(
     project_path: Path,
     *,
     dockerfile_override: str | None = None,
+    bundle: Callable[[Path], bool] | None = None,
 ) -> Path:
-    """Write the agent package Iron Swarm runs: the resolved config plus its Dockerfile.
+    """Write the agent package Iron Swarm runs: the registered bundle, plus the resolved config.
 
-    ``dockerfile_override`` is the author's own file when they registered one. Otherwise the
-    Dockerfile is rendered by the platform's own Fabric packaging pipeline with the ``openshell``
-    sandbox profile applied, so the agent under test is built the same way a deployed one is —
-    rather than by a second, Iron-Swarm-specific recipe that could drift from it.
+    ``bundle`` stages the author's other files (an MCP server, skills) into the build context; a
+    Dockerfile that COPYs them fails without it. ``dockerfile_override`` is the author's own file when
+    they registered one. Otherwise the Dockerfile is rendered by the platform's own Fabric packaging
+    pipeline with the ``openshell`` sandbox profile applied, so the agent under test is built the same
+    way a deployed one is — rather than by a second, Iron-Swarm-specific recipe that could drift.
     """
     from nemo_agents_plugin.container.template import render_fabric_dockerfile  # noqa: PLC0415
 
     project_path.mkdir(parents=True, exist_ok=True)
+    if bundle is not None:
+        bundle(project_path)
     config_path = project_path / AGENT_CONFIG_FILENAME
     config_path.write_text(yaml.safe_dump(agent_config, sort_keys=False), encoding="utf-8")
 
@@ -439,7 +482,10 @@ def resolve_agent_to_manifest(
     # carries neither the rendered file's `nemo-platform==<packaging machine's version>` pin nor its
     # fixed nemo-relay, so it can be built from a source checkout and can choose its own Relay.
     config_path = materialize_agent_package(
-        injected, project_path, dockerfile_override=shipped_dockerfile(sdk, name, workspace)
+        injected,
+        project_path,
+        dockerfile_override=shipped_dockerfile(sdk, name, workspace),
+        bundle=lambda destination: download_agent_bundle(sdk, name, workspace, destination),
     )
     secrets = secrets or derive_secret_names(agent_config)
 
