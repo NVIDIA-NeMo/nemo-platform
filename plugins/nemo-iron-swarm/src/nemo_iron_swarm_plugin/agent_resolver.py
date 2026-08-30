@@ -130,6 +130,40 @@ def strip_gateway_url(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+#: Harnesses whose tool calls a guardrail can actually refuse. Both run Relay as a Python library in
+#: the agent's own process, so the plugin can register into it.
+GUARDABLE_HARNESSES = frozenset({"deepagents", "hermes"})
+
+#: The rest run Relay as the compiled ``nemo-relay`` gateway in a separate process, which has five
+#: built-in kinds and no way to load a Python one. Offering it ours is fatal rather than ignored:
+#: ``plugin activation failed: ... is not registered``, and the gateway never starts.
+_GATEWAY_HARNESSES = frozenset({"claude", "codex"})
+
+
+def agent_harness(agent_config: dict[str, Any]) -> str | None:
+    """The harness this agent runs under, from ``default_harness``."""
+    harness = agent_config.get("default_harness")
+    return str(harness) if harness else None
+
+
+def require_guardable_harness(agent_config: dict[str, Any], ref: str) -> str | None:
+    """Reject an agent Iron Swarm cannot harden, before anything is built.
+
+    Checked here rather than in Iron Swarm because this is the last point where the harness is still
+    known: ``build_manifest_dict`` emits a plain BYO victim, and by then the agent is indistinguishable
+    from a hand-built image. Failing at ``init`` costs a message; failing later costs a docker build
+    and a run that dies at gateway boot.
+    """
+    harness = agent_harness(agent_config)
+    if harness in _GATEWAY_HARNESSES:
+        raise AgentResolutionError(
+            f"agent {ref!r} uses the {harness!r} harness, which runs NeMo Relay as a separate gateway "
+            "process that cannot load Iron Swarm's guardrail plugin — a war-game against it would fail "
+            f"at startup. Supported harnesses: {', '.join(sorted(GUARDABLE_HARNESSES))}."
+        )
+    return harness
+
+
 def detect_custom_components(agent_config: dict[str, Any]) -> list[str]:
     """Local paths the agent's config references, which the packaged image must carry.
 
@@ -195,6 +229,7 @@ def build_manifest_dict(
     egress: list[str] | None = None,
     backends: list[dict[str, Any]] | None = None,
     relay_artifacts: str | None = None,
+    harness: str | None = None,
 ) -> dict[str, Any]:
     """Build the ``iron-swarm.yaml`` mapping (mirrors ``iron_swarm.manifest.build_manifest``).
 
@@ -205,6 +240,9 @@ def build_manifest_dict(
     agent: dict[str, Any] = {
         "name": agent_name,
         "project_dir": project_dir,
+        # Carried so Iron Swarm can stage Hermes' extra wiring and name what it could not enforce.
+        # Not a victim *kind* — the launch shape is identical for every harness.
+        "harness": harness,
         "dockerfile": DOCKERFILE_FILENAME,
         "start_command": (
             f"{IMAGE_VENV}/bin/python -m nemo_agents_plugin.fabric.server "
@@ -339,6 +377,9 @@ def inspect_agent(ref: str, *, sdk: Any, default_workspace: str) -> tuple[str, i
     """
     workspace, name = parse_agent_ref(ref, default_workspace)
     agent_config = _fetch_agent_config(sdk, workspace, name)
+    # Reject here too, not only in resolve_agent_to_manifest: this is what the Studio create form
+    # calls, so an unguardable agent is refused before an operator fills anything in.
+    require_guardable_harness(agent_config, f"{workspace}/{name}")
     port, warnings = _resolve_victim_port(sdk, workspace, name)
     secrets = derive_secret_names(agent_config)
     return f"{workspace}/{name}", port, secrets, warnings
@@ -372,6 +413,7 @@ def resolve_agent_to_manifest(
     """
     workspace, name = parse_agent_ref(ref, default_workspace)
     agent_config = _fetch_agent_config(sdk, workspace, name)
+    harness = require_guardable_harness(agent_config, f"{workspace}/{name}")
     resolved_port, warnings = _resolve_victim_port(sdk, workspace, name)
     port = port or resolved_port
 
@@ -410,6 +452,7 @@ def resolve_agent_to_manifest(
         egress=egress,
         backends=[gw_backend] if gw_backend else [],
         relay_artifacts=relay_artifacts_dir(injected),
+        harness=harness,
     )
 
     return ResolvedManifest(
