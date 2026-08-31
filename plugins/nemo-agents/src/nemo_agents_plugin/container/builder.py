@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -128,6 +129,33 @@ def resolve_image_id(tag: str) -> str:
         return docker.image.inspect(tag).id
     except Exception as exc:
         raise ImageBuildError(f"Unable to resolve the image ID for '{tag}': {exc}") from exc
+
+
+#: Distribution a supplied wheel must be, normalized per PEP 503.
+_WHEEL_DISTRIBUTION = "nemo-platform"
+
+
+def wheel_contract_version(wheel: Path) -> str:
+    """Return the nemo-platform version a wheel would install.
+
+    The image's ``contract-version`` label and its content-addressable
+    ``agent_id`` both describe the runtime inside it. Deriving them from the
+    build host while installing a wheel would let an image advertise one version
+    while running another, and let two genuinely different images share an id.
+
+    Parsed from the filename, which PEP 427 fixes as
+    ``{distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl``.
+    """
+    parts = wheel.stem.split("-")
+    if len(parts) < 5:
+        raise ValueError(f"not a PEP 427 wheel filename: {wheel.name}")
+    distribution, version = parts[0], parts[1]
+    if re.sub(r"[-_.]+", "-", distribution).lower() != _WHEEL_DISTRIBUTION:
+        raise ValueError(
+            f"wheel is {distribution!r}, not {_WHEEL_DISTRIBUTION!r}: {wheel.name}. "
+            "Build it with `uv build --package nemo-platform --wheel`."
+        )
+    return version
 
 
 def build_nat_agent_image(
@@ -307,8 +335,12 @@ def build_fabric_agent_image(
     platforms: list[str] | None = None,
     push: bool = False,
     on_progress: ProgressCallback | None = None,
+    wheel: Path | None = None,
 ) -> str:
     """Build a Fabric-backed NeMo agent image.
+
+    *wheel* installs a local nemo-platform wheel instead of resolving the pinned
+    contract version, which is the only way to package from a source checkout.
 
     This is intentionally separate from ``build_nat_agent_image`` so Fabric
     packaging can grow without inheriting NAT-specific args such as
@@ -343,10 +375,26 @@ def build_fabric_agent_image(
     resolved_uv = resolve_value("uv_version", uv_version)
 
     from nemo_agents_plugin.container.metadata import NEMO_PLATFORM_AGENT_FRAMEWORK, extract_agent_metadata
+    from nemo_agents_plugin.container.template import WHEEL_ENV
+
+    # The env var is the only caller-facing way in, so it reaches the platform
+    # job as well as the CLI.
+    if wheel is None:
+        from_env = os.environ.get(WHEEL_ENV, "").strip()
+        wheel = Path(from_env) if from_env else None
+    if wheel is not None:
+        if not wheel.is_file():
+            raise ValueError(f"wheel not found: {wheel}")
+        if wheel.suffix != ".whl":
+            raise ValueError(f"not a wheel: {wheel}")
+
+    # A wheel is what the image actually installs, so it — not the build host —
+    # decides the version the image advertises and hashes into its id.
+    contract_version = wheel_contract_version(wheel) if wheel is not None else get_contract_version()
 
     build_env_for_id = {
         "agent_framework": NEMO_PLATFORM_AGENT_FRAMEWORK,
-        "contract_version": get_contract_version(),
+        "contract_version": contract_version,
         "nemo_relay_cli_version": PINNED_NEMO_RELAY_CLI_VERSION,
         "base_image_url": resolved_base_url,
         "base_image_tag": resolved_base_tag,
@@ -382,6 +430,18 @@ def build_fabric_agent_image(
             on_progress=on_progress,
         )
 
+    # Docker can only COPY from inside the context, so the wheel is staged there
+    # and removed again on the way out.
+    staged_wheel: Path | None = None
+    wheel_already_in_context = False
+    if wheel is not None:
+        staged_wheel = context_dir / wheel.name
+        if staged_wheel.exists():
+            if not staged_wheel.samefile(wheel):
+                raise ManagedFileConflictError(staged_wheel)
+            # Already the wheel we would copy, so there is nothing to stage.
+            wheel_already_in_context = True
+
     content = render_fabric_dockerfile(
         agent_config,
         pyproject,
@@ -395,6 +455,8 @@ def build_fabric_agent_image(
         agent_author=agent_author,
         template_path=template_path,
         metadata=meta,
+        wheel_filename=staged_wheel.name if staged_wheel else "",
+        contract_version=contract_version,
     )
 
     tmp_dockerfile = context_dir / "Dockerfile.generated"
@@ -404,11 +466,38 @@ def build_fabric_agent_image(
     ignore_file: Path | None = None
     ignore_path = context_dir / ".dockerignore"
     ignore_pre_existed = ignore_path.exists()
+    wheel_was_staged = False
+    scoped_ignore_written = False
     try:
         tmp_dockerfile.write_text(content, encoding="utf-8")
 
+        if staged_wheel is not None and wheel is not None and not wheel_already_in_context:
+            # Create exclusively rather than re-checking existence: the check above
+            # is not atomic with the copy, and losing that race would overwrite
+            # someone's file and then delete it during cleanup.
+            try:
+                dest = open(staged_wheel, "xb")
+            except FileExistsError as exc:
+                raise ManagedFileConflictError(staged_wheel) from exc
+            # Owned from the moment it exists: a failure mid-copy would otherwise
+            # strand a partial wheel that fails every later build as a conflict.
+            wheel_was_staged = True
+            with dest, wheel.open("rb") as src:
+                shutil.copyfileobj(src, dest)
+            emit_progress(on_progress, f"Staged {wheel.name} into the build context")
+
         if generate_ignore:
             ignore_file = render_dockerignore(context_dir)
+
+        if staged_wheel is not None:
+            # BuildKit prefers `<dockerfile>.dockerignore` over `.dockerignore`,
+            # so the user's rules are carried over verbatim with the staged wheel
+            # re-included after them. Guaranteeing the wheel arrives beats
+            # detecting that it would not and reimplementing Docker's matcher.
+            existing = ignore_path.read_text(encoding="utf-8") if ignore_path.exists() else ""
+            scoped_ignore = context_dir / f"{tmp_dockerfile.name}.dockerignore"
+            scoped_ignore.write_text(f"{existing.rstrip()}\n!{staged_wheel.name}\n".lstrip(), encoding="utf-8")
+            scoped_ignore_written = True
 
         return docker_build(
             context_dir=context_dir,
@@ -421,6 +510,10 @@ def build_fabric_agent_image(
         )
     finally:
         tmp_dockerfile.unlink(missing_ok=True)
+        if scoped_ignore_written:
+            (context_dir / f"{tmp_dockerfile.name}.dockerignore").unlink(missing_ok=True)
+        if wheel_was_staged and staged_wheel is not None:
+            staged_wheel.unlink(missing_ok=True)
         if ignore_file is not None and not ignore_pre_existed:
             ignore_file.unlink(missing_ok=True)
 
