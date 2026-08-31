@@ -37,6 +37,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.jobs.client import JobsClient
 
 pytestmark = [
     pytest.mark.timeout(600),
