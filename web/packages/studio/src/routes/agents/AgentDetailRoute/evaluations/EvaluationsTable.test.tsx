@@ -29,22 +29,24 @@ describe('EvaluationsTable Duration column', () => {
   it('formats the recorded run duration from eval_duration_sec metadata', async () => {
     renderTable([makeEval({ name: 'eval-with-duration', metadata: { eval_duration_sec: '12' } })]);
 
+    // StudioDataView renders the header label (column/filter menu) and each cell in more than one
+    // place (a responsive duplicate view), so neither text is unique — assert presence, not count.
     expect(
-      await screen.findByText('Duration', undefined, { timeout: LG_SELECTOR_TIMEOUT })
-    ).toBeInTheDocument();
+      (await screen.findAllByText('Duration', undefined, { timeout: LG_SELECTOR_TIMEOUT })).length
+    ).toBeGreaterThan(0);
     // 12s only comes from eval_duration_sec=12 -> 12000ms -> formatDurationMs -> "12s".
     expect(
-      await screen.findByText('12s', undefined, { timeout: LG_SELECTOR_TIMEOUT })
-    ).toBeInTheDocument();
+      (await screen.findAllByText('12s', undefined, { timeout: LG_SELECTOR_TIMEOUT })).length
+    ).toBeGreaterThan(0);
   });
 
   it('drops sub-second precision once the run reaches a minute', async () => {
     // 612.013s -> 612013ms -> "10m 12s" (the 13ms is dropped past a minute).
     renderTable([makeEval({ name: 'long-eval', metadata: { eval_duration_sec: '612.013' } })]);
 
-    // Exact-match: if the 13ms were not dropped this would render "10m 12s 13ms" and miss.
+    // Exact-match: if the 13ms were not dropped every cell would read "10m 12s 13ms" and match zero.
     expect(
-      await screen.findByText('10m 12s', undefined, { timeout: LG_SELECTOR_TIMEOUT })
-    ).toBeInTheDocument();
+      (await screen.findAllByText('10m 12s', undefined, { timeout: LG_SELECTOR_TIMEOUT })).length
+    ).toBeGreaterThan(0);
   });
 });
