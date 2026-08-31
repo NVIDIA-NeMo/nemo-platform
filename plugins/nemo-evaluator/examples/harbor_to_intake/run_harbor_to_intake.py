@@ -96,12 +96,20 @@ def _harbor_cli() -> str:
 
 
 def _task_id_of(folder: Path) -> str | None:
-    """The task id a downloaded folder declares, or None if it does not declare one."""
-    config = folder / "task.toml"
+    """The task id a downloaded folder declares, or None if it does not declare a usable one.
+
+    Every field is checked rather than trusted: this reads a directory that a previous run left
+    behind, which may be half-written or not a Harbor task at all.
+    """
     try:
-        return tomllib.loads(config.read_text(encoding="utf-8")).get("task", {}).get("name")
+        config = tomllib.loads((folder / "task.toml").read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
         return None
+    task = config.get("task")
+    if not isinstance(task, dict):
+        return None
+    name = task.get("name")
+    return name if isinstance(name, str) and name else None
 
 
 def _ensure_tasks(tasks: list[str], tasks_dir: Path) -> Path:
@@ -119,13 +127,18 @@ def _ensure_tasks(tasks: list[str], tasks_dir: Path) -> Path:
         folder = tasks_dir / task.rsplit("/", 1)[-1]
         if folder.is_dir() and any(folder.iterdir()):
             cached = _task_id_of(folder)
-            if cached is not None and cached != task:
+            if cached == task:
+                print(f"Task already present: {folder.name}")
+                continue
+            if cached is None:
                 raise SystemExit(
-                    f"{folder} already holds {cached}, which shares a name with {task}. "
-                    "Harbor exports both to the same folder; run them with separate --tasks-dir."
+                    f"{folder} exists but does not declare a task id, so it cannot be used or "
+                    f"safely overwritten. Delete it and re-run to fetch {task}."
                 )
-            print(f"Task already present: {folder.name}")
-            continue
+            raise SystemExit(
+                f"{folder} already holds {cached}, which shares a name with {task}. "
+                "Harbor exports both to the same folder; run them with separate --tasks-dir."
+            )
         # flush: the subprocess writes straight to this stdout, so an unflushed line lands after it.
         print(f"Downloading {task} from Harbor Hub...", flush=True)
         result = subprocess.run(
