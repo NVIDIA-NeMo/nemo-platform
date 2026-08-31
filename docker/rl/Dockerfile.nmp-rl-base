@@ -32,11 +32,14 @@ ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
 # uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on 0.11.x).
-# Keep Python at 3.13.14 until uv publishes managed 3.13.15 builds for Linux; unlike the other
-# images, this base installs Python with `uv python install`. See README.md for scanner paths.
+# uv still only publishes managed CPython 3.13.14 for Linux, so install that as the discoverable
+# managed interpreter, then overlay the patched 3.13.15 runtime from the official CPython image.
 ARG UV_VERSION=0.11.33
 ARG PYTHON_VERSION=3.13.14
+ARG PYTHON_PATCH_IMAGE=python:3.13.15-slim-bookworm
 ARG CMAKE_VERSION=4.0.3
+
+FROM ${PYTHON_PATCH_IMAGE} AS cpython-patched
 
 # ---- RL source (+ its submodules, incl. Gym) via BuildKit's git ADD ----
 # RL pins Gym, Automodel and Megatron-Bridge (+ nested Megatron-LM) as git submodules, all over
@@ -63,7 +66,7 @@ RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim ccache gnupg \
         build-essential ca-certificates \
-        libibverbs-dev && \
+        libibverbs-dev libsqlite3-0 && \
     apt-get install -y --only-upgrade openssl libssl3t64 && \
     bash /tmp/remove-listed-apt-packages.sh /tmp/apt-package-removals.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -92,7 +95,6 @@ ARG PYTHON_VERSION
 # Raise uv's HTTP retry budget and cap concurrent downloads for large GitHub-hosted wheels like vLLM,
 # which can hit transient HTTP/2 refused-stream failures under BuildKit.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
-    UV_PYTHON=${PYTHON_VERSION} \
     UV_HTTP_TIMEOUT=120 \
     UV_HTTP_RETRIES=8 \
     UV_CONCURRENT_DOWNLOADS=4 \
@@ -101,6 +103,25 @@ RUN umask 022 && \
     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
     cp /root/.local/bin/uv /usr/local/bin/uv && \
     uv python install "${PYTHON_VERSION}"
+COPY --from=cpython-patched /usr/local/bin/python* /tmp/cpython-patched/bin/
+COPY --from=cpython-patched /usr/local/include/python3.13 /tmp/cpython-patched/include/python3.13
+COPY --from=cpython-patched /usr/local/lib/libpython3.13* /tmp/cpython-patched/lib/
+COPY --from=cpython-patched --exclude=site-packages --exclude=site-packages/** \
+    /usr/local/lib/python3.13 /tmp/cpython-patched/lib/python3.13
+RUN set -eux; \
+    python_root="$(dirname "$(dirname "$(uv python find "${PYTHON_VERSION}")")")"; \
+    rm -rf "${python_root}/bin/python"* \
+        "${python_root}/include/python3.13" \
+        "${python_root}/lib/libpython3.13"* \
+        "${python_root}/lib/python3.13"; \
+    cp -a /tmp/cpython-patched/bin/. "${python_root}/bin/"; \
+    mkdir -p "${python_root}/include" "${python_root}/lib"; \
+    cp -a /tmp/cpython-patched/include/python3.13 "${python_root}/include/python3.13"; \
+    cp -a /tmp/cpython-patched/lib/. "${python_root}/lib/"; \
+    ln -sfn "${python_root}" /opt/uv/python/cpython-3.13; \
+    /opt/uv/python/cpython-3.13/bin/python3.13 --version | grep -F "Python 3.13.15"; \
+    rm -rf /tmp/cpython-patched
+ENV UV_PYTHON=/opt/uv/python/cpython-3.13/bin/python3.13
 COPY docker/scripts/collect-apt-sources.sh \
     docker/scripts/collect-python-sdists.py \
     /usr/local/bin/
@@ -258,9 +279,9 @@ uv sync ${UV_SYNC_MODE} --all-groups      --no-install-project   # build/test/et
 # in this cached compile layer (the editable ROOT install moves below, after the full-source COPY).
 uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenacity>=9.1.4"
 
-# W&B ships a scanner-visible Go binary. Keep it above the fixed go-git/grpc
-# and Go stdlib floors even when NeMo-RL's lock has an older wheel.
-uv pip install --python /opt/nemo_rl_venv/bin/python "wandb>=0.28.2"
+# W&B ships a scanner-visible Go binary. Keep it above the fixed go-git/grpc/x/* and Go stdlib
+# floors even when NeMo-RL's lock has an older wheel.
+uv pip install --python /opt/nemo_rl_venv/bin/python "wandb>=0.29.0"
 
 # NeMo-Gym in the BASE venv, for the DRIVER - not a duplicate of the nemo_gym extra above.
 # Sandboxed (mode B) GRPO imports nemo_rl.environments.sandbox in the driver process:
@@ -434,17 +455,46 @@ if [ -d "${GYM_CACHE}" ]; then
     echo "in-tree Gym cache is ${GYM_CACHE_MB} MB (metadata only) - ok"
 fi
 
-# Some actor/env venvs may contain W&B depending on the selected NeMo-RL extras.
-# Upgrade those in place, then drop any now-unreferenced older W&B cache archive
-# so scanners do not report stale wandb-core binaries under /opt/uv_cache.
-for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
+# CVE remediation for packages baked into one or more prefetched venvs.
+# Keep this after prefetch: uv exact-syncs each extra from RL's lock, so earlier upgrades would be
+# reintroduced by the worker venv materialization step.
+for py in /opt/nemo_rl_venv/bin/python /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
     [ -x "${py}" ] || continue
-    if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("wandb") else 1)'; then
-        uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.28.2"
+    if "${py}" -c 'import importlib.metadata as m; m.version("wandb")' >/dev/null 2>&1; then
+        uv pip install --python "${py}" --no-deps --upgrade-package wandb "wandb>=0.29.0"
     fi
+    if "${py}" -c 'import importlib.metadata as m; m.version("mlflow")' >/dev/null 2>&1; then
+        uv pip install --python "${py}" --no-deps --upgrade-package mlflow "mlflow>=3.15.0,<4"
+    fi
+    if "${py}" -c 'import importlib.metadata as m; m.version("hydra-core")' >/dev/null 2>&1; then
+        uv pip install --python "${py}" --no-deps --upgrade-package hydra-core "hydra-core>=1.3.4,<1.4"
+    fi
+    if "${py}" -c 'import importlib.metadata as m; m.version("sqlparse")' >/dev/null 2>&1; then
+        uv pip install --python "${py}" --no-deps --upgrade-package sqlparse "sqlparse>=0.6.0,<1"
+    fi
+    uv pip uninstall --python "${py}" mooncake-transfer-engine-cuda13 || true
 done
+
+# Mooncake is an optional vLLM KV-transfer connector. The latest CUDA 13 wheel still embeds a
+# vulnerable Go-built libetcd wrapper, so remove the optional package until upstream ships a fixed
+# binary. Standard DPO/GRPO generation paths do not use the MooncakeConnector.
+find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -type d \
+    \( -path '*/site-packages/mooncake' \
+       -o -path '*/site-packages/mooncake_transfer_engine_cuda13-*.dist-info' \
+       -o -path '*/site-packages/mooncake_transfer_engine_cuda13.libs' \) \
+    -prune -exec rm -rf {} + || true
 for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
-    ls "${d}"wandb-*.dist-info >/dev/null 2>&1 || continue
+    if ! compgen -G "${d}wandb-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}mlflow-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}hydra_core-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}sqlparse-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}mooncake_transfer_engine_cuda13-*.dist-info" >/dev/null; then
+        continue
+    fi
+    if compgen -G "${d}mooncake_transfer_engine_cuda13-*.dist-info" >/dev/null; then
+        rm -rf "${d}"
+        continue
+    fi
     find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
     rm -rf "${d}"
 done

@@ -36,7 +36,7 @@ variable "NMP_COLLECT_SOURCES" {
 }
 
 variable "NMP_PYTHON_IMAGE" {
-  default = "python:3.13.14-slim-trixie"
+  default = "python:3.13.15-slim-trixie"
 }
 
 variable "DISTROLESS_BASE_3_13" {

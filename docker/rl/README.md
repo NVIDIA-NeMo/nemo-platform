@@ -419,11 +419,13 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
   which the GRPO policy worker needs, so it is built from source here.
-  `.python-version` pinning an exact patch release, which uv honours over whatever
-  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
-  every venv came up on RL's version while ours sat unused on disk, so the image shipped
-  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
-  and persists into the runtime image, so node-built venvs agree too.
+- **CPython is patched by overlay.** uv 0.11.33 still only publishes managed CPython
+  3.13.14 for Linux, while Python 3.13.15 carries the CVE fixes. The Dockerfile installs
+  uv's 3.13.14 interpreter so uv can discover the managed runtime, overlays the official
+  3.13.15 stdlib/binaries into that tree, then points `UV_PYTHON` at a stable symlink.
+  Bumping `PYTHON_VERSION` alone fixed nothing because RL's `.python-version` pins an
+  exact patch release; `UV_PYTHON` overrides that file and persists into runtime
+  node-built venvs too.
 
 ## Layering for fast CI rebuilds
 
