@@ -96,6 +96,10 @@ class SpecLeafField:
             (wins unconditionally) or from each union arm's
             ``__cli_metavar__`` class attribute (joined with ``" | "``)
             when every arm declares one.
+        partial: ``True`` when *python_type* covers only one arm of a
+            mixed scalar/model union (e.g. ``str | AgentInline`` emits
+            a flag for the ``str`` arm only). The other arm(s) remain
+            reachable solely through ``--spec`` / ``--spec-file``.
     """
 
     path: tuple[str, ...]
@@ -105,6 +109,7 @@ class SpecLeafField:
     description: str
     required: bool
     metavar: str | None = None
+    partial: bool = False
 
     @property
     def flag(self) -> str:
@@ -116,14 +121,19 @@ def walk_spec_leaves(
     model: type[BaseModel] | None,
     *,
     reserved: Iterable[str] = (),
+    unavailable: list[str] | None = None,
 ) -> list[SpecLeafField]:
     """Walk *model* recursively and return one entry per scalar leaf.
 
     Returns an empty list when *model* is ``None``. Skips fields whose
     types aren't currently supported (lists, dicts, multi-type unions
-    that don't share a scalar base, ``Literal``, ``Path``, plain
-    ``BaseModel`` references that aren't nested submodels, ...) — these
-    remain accessible via the JSON ``--spec`` / ``--spec-file`` path.
+    that don't share a scalar base and don't reduce to a single scalar
+    arm, ``Literal``, ``Path``, plain ``BaseModel`` references that
+    aren't nested submodels, ...) — these remain accessible via the
+    JSON ``--spec`` / ``--spec-file`` path. A union that mixes exactly
+    one scalar arm with one or more model/unsupported arms (e.g.
+    ``str | AgentInline``) still emits a flag for the scalar arm; see
+    :attr:`SpecLeafField.partial`.
 
     Args:
         model: A Pydantic v2 ``BaseModel`` subclass, or ``None``.
@@ -131,6 +141,12 @@ def walk_spec_leaves(
             flags) to skip. The set is verb-specific. A field whose
             name matches one of *reserved* falls through to ``--spec`` /
             ``--spec-file`` for value passing.
+        unavailable: When given, appended in place with one dotted
+            path per field (or union arm) not fully representable as a
+            flag — fields skipped entirely, plus the non-scalar arm of
+            each :attr:`SpecLeafField.partial` leaf. Callers use this
+            to build a ``--help`` note pointing at ``--spec`` /
+            ``--spec-file`` for those paths.
 
     Returns:
         Flat list of :class:`SpecLeafField` in declaration order.
@@ -139,7 +155,7 @@ def walk_spec_leaves(
         return []
     reserved_set = frozenset(reserved)
     leaves: list[SpecLeafField] = []
-    _walk(model, prefix=(), out=leaves, used_param_names=set(), reserved=reserved_set)
+    _walk(model, prefix=(), out=leaves, used_param_names=set(), reserved=reserved_set, unavailable=unavailable)
     return leaves
 
 
@@ -150,21 +166,31 @@ def _walk(
     out: list[SpecLeafField],
     used_param_names: set[str],
     reserved: frozenset[str],
+    unavailable: list[str] | None,
 ) -> None:
     for name, info in model.model_fields.items():
         path = (*prefix, name)
         annotation = info.annotation
-        unwrapped = _strip_optional(annotation)
+        unwrapped, is_partial = _strip_optional(annotation)
         if unwrapped is None:
             logger.debug(
                 "Skipping field %s on %s: unsupported union or unannotated.",
                 ".".join(path),
                 model.__name__,
             )
+            if unavailable is not None:
+                unavailable.append(".".join(path))
             continue
 
         if isinstance(unwrapped, type) and issubclass(unwrapped, BaseModel):
-            _walk(unwrapped, prefix=path, out=out, used_param_names=used_param_names, reserved=reserved)
+            _walk(
+                unwrapped,
+                prefix=path,
+                out=out,
+                used_param_names=used_param_names,
+                reserved=reserved,
+                unavailable=unavailable,
+            )
             continue
 
         if not _is_supported_scalar(unwrapped):
@@ -174,6 +200,8 @@ def _walk(
                 model.__name__,
                 unwrapped,
             )
+            if unavailable is not None:
+                unavailable.append(".".join(path))
             continue
 
         param_name = _path_to_param_name(path, used=used_param_names)
@@ -184,8 +212,21 @@ def _walk(
                 ".".join(path),
                 param_name,
             )
+            if unavailable is not None:
+                unavailable.append(".".join(path))
             continue
         used_param_names.add(param_name)
+
+        if is_partial:
+            logger.debug(
+                "Field %s on %s is a mixed scalar/model union: emitting --%s for the "
+                "scalar arm only. Other shapes require --spec / --spec-file.",
+                ".".join(path),
+                model.__name__,
+                param_name,
+            )
+            if unavailable is not None:
+                unavailable.append(f"{'.'.join(path)} (inline form)")
 
         out.append(
             SpecLeafField(
@@ -196,34 +237,59 @@ def _walk(
                 description=info.description or "",
                 required=_is_required(info),
                 metavar=_derive_metavar(annotation, info),
+                partial=is_partial,
             )
         )
 
 
-def _strip_optional(annotation: Any) -> Any | None:
-    """Return the inner CLI-renderable type for *annotation*.
+def _strip_optional(annotation: Any) -> tuple[Any | None, bool]:
+    """Return the inner CLI-renderable type for *annotation*, and whether it's partial.
 
-    Handles three union shapes:
+    Handles four union shapes:
 
-    - ``Optional[X]`` / ``X | None``: returns ``X``, except when ``X``
-      is a strict subclass of a supported scalar
+    - ``Optional[X]`` / ``X | None``: returns ``(X, False)``, except
+      when ``X`` is a strict subclass of a supported scalar
       (``str``/``int``/``float``/``bool``) — in that case returns the
       scalar base so Typer can build a flag from a type it knows how
       to render.  Subclass identity is preserved at parse time by the
       Pydantic validator on the spec model.
     - A union of two or more non-``None`` arms that all subclass the
-      same supported scalar base: returns that base.
-    - Anything else: returns ``None`` to signal "skip this field".
+      same supported scalar base: returns ``(base, False)``.
+    - A union of two or more non-``None`` arms where exactly one arm
+      is scalar-compatible and the rest aren't (e.g.
+      ``str | AgentInline``): returns ``(scalar_base, True)`` — the
+      flag covers only that arm; the others are only reachable via
+      ``--spec`` / ``--spec-file``.
+    - Anything else: returns ``(None, False)`` to signal "skip this
+      field entirely".
     """
     if annotation is None:
-        return None
+        return None, False
     origin = get_origin(annotation)
     if origin is Union or origin is types.UnionType:
         non_none = [a for a in get_args(annotation) if a is not type(None)]
         if len(non_none) == 1:
-            return _scalar_base_or_self(non_none[0])
-        return _common_scalar_base(non_none)
-    return _scalar_base_or_self(annotation)
+            return _scalar_base_or_self(non_none[0]), False
+        base = _common_scalar_base(non_none)
+        if base is not None:
+            return base, False
+        return _partial_scalar_arm(non_none)
+    return _scalar_base_or_self(annotation), False
+
+
+def _partial_scalar_arm(types_: list[Any]) -> tuple[type | None, bool]:
+    """Return the lone scalar arm of a mixed union, marked partial.
+
+    Applies only when exactly one arm collapses to a supported scalar
+    base and at least one other arm doesn't (a model type, another
+    unsupported shape, ...). Two or more differently-based scalar arms
+    (``str | int | AgentInline``) are ambiguous as to which flag type
+    to expose, so those still fall through to "skip this field".
+    """
+    scalar_arms = [t for t in types_ if _is_supported_scalar(_scalar_base_or_self(t))]
+    if len(scalar_arms) != 1:
+        return None, False
+    return _scalar_base_or_self(scalar_arms[0]), True
 
 
 def _scalar_base_or_self(tp: Any) -> Any:
@@ -454,6 +520,14 @@ def _optional_of(tp: object) -> Any:
     return Optional[tp]  # ty: ignore[invalid-type-form]
 
 
+_SCALAR_TYPE_NAMES: dict[type, str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+}
+
+
 def make_field_param(
     leaf: SpecLeafField,
     *,
@@ -471,6 +545,11 @@ def make_field_param(
     """
     annotation: Any = _optional_of(leaf.python_type)
     help_text = leaf.description or f"Override `{'.'.join(leaf.path)}` in the spec."
+    if leaf.partial:
+        scalar_name = _SCALAR_TYPE_NAMES.get(leaf.python_type, leaf.python_type.__name__)
+        help_text = (
+            f"{help_text} This flag accepts the {scalar_name} form only; use --spec or --spec-file for the object form."
+        ).strip()
     if leaf.required and leaf.default is PydanticUndefined:
         help_text = f"[required] {help_text}".strip()
     option_kwargs: dict[str, Any] = {
@@ -540,6 +619,11 @@ _EPILOG_NO_FLAGS = (
     "{kind} has no spec_schema fields the CLI knows how to expose, so "
     "no per-field flags are generated."
 )
+_UNAVAILABLE_NOTE = (
+    "Some spec fields cannot be represented as CLI flags: {fields}. "
+    "Supply them with --spec or --spec-file. Individual flags override "
+    "values from the supplied spec."
+)
 
 
 def build_epilog(
@@ -547,6 +631,7 @@ def build_epilog(
     schema: type[BaseModel] | None,
     leaves: Sequence[SpecLeafField],
     kind: str,
+    unavailable: Sequence[str] = (),
 ) -> str:
     """Compose the multi-line block rendered under all panels in ``--help``.
 
@@ -564,10 +649,19 @@ def build_epilog(
             as "no flags".)
         kind: Capitalised label inserted into both templates — typically
             ``"Function"`` or ``"Job"``.
+        unavailable: Dotted paths (from :func:`walk_spec_leaves`'s
+            ``unavailable`` out-param) not fully representable as
+            flags — fields skipped entirely, and the non-scalar arm of
+            each partial mixed-union leaf. Rendered as an extra
+            paragraph naming them so their absence from --help isn't
+            silent.
     """
     body = (
         _EPILOG_WITH_FLAGS.format(kind=kind, schema=schema.__name__)
         if (leaves and schema is not None)
         else _EPILOG_NO_FLAGS.format(kind=kind)
     )
+    if unavailable:
+        fields = ", ".join(f"`{path}`" for path in unavailable)
+        body = f"{body}\n\n{_UNAVAILABLE_NOTE.format(fields=fields)}"
     return body + "\n\u200b"

@@ -95,6 +95,52 @@ class TestWalkSpecLeaves:
         leaf = walk_spec_leaves(_Custom)[0]
         assert leaf.metavar == "USER_NAME"
 
+    def test_mixed_scalar_model_union_keeps_scalar_arm_flag(self) -> None:
+        # ``str | SomeModel`` used to be dropped entirely (no shared
+        # scalar base across arms). The scalar arm should still surface
+        # a flag; the model arm stays reachable via --spec/--spec-file.
+        class _Inline(BaseModel):
+            value: str
+
+        class _Mixed(BaseModel):
+            agent: str | _Inline
+
+        leaves = {leaf.flag: leaf for leaf in walk_spec_leaves(_Mixed)}
+        assert leaves["--agent"].python_type is str
+        assert leaves["--agent"].partial is True
+
+    def test_mixed_scalar_model_union_reports_unavailable(self) -> None:
+        class _Inline(BaseModel):
+            value: str
+
+        class _Mixed(BaseModel):
+            agent: str | _Inline
+
+        unavailable: list[str] = []
+        walk_spec_leaves(_Mixed, unavailable=unavailable)
+        assert unavailable == ["agent (inline form)"]
+
+    def test_two_scalar_arms_plus_model_arm_is_skipped(self) -> None:
+        # Ambiguous which scalar flag type to expose, so this remains
+        # skipped entirely, same as before.
+        class _Inline(BaseModel):
+            value: str
+
+        class _Ambiguous(BaseModel):
+            field: str | int | _Inline
+
+        leaves = walk_spec_leaves(_Ambiguous)
+        assert leaves == []
+
+    def test_fully_unsupported_field_reports_unavailable(self) -> None:
+        class _WithList(BaseModel):
+            tags: list[str] = []
+            name: str = "x"
+
+        unavailable: list[str] = []
+        walk_spec_leaves(_WithList, unavailable=unavailable)
+        assert unavailable == ["tags"]
+
     def test_nested_path_to_param_name_is_unique(self) -> None:
         # Two leaves at different paths must not collide on the
         # synthetic param name — the walker disambiguates with a
@@ -189,6 +235,17 @@ class TestEpilog:
     def test_falls_back_to_no_flags_message(self) -> None:
         text = build_epilog(schema=_Spec, leaves=[], kind="Function")
         assert "no per-field flags" in text
+
+    def test_unavailable_paths_render_as_extra_note(self) -> None:
+        leaves = walk_spec_leaves(_Spec)
+        text = build_epilog(schema=_Spec, leaves=leaves, kind="Function", unavailable=["agent (inline form)"])
+        assert "agent (inline form)" in text
+        assert "--spec or --spec-file" in text
+
+    def test_no_unavailable_paths_omits_note(self) -> None:
+        leaves = walk_spec_leaves(_Spec)
+        text = build_epilog(schema=_Spec, leaves=leaves, kind="Function")
+        assert "cannot be represented as CLI flags" not in text
 
     @pytest.mark.parametrize("kind", ["Function", "Job"])
     def test_kind_is_capitalised_label(self, kind: str) -> None:
