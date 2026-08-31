@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import time
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
+import nemo_platform_plugin.client.oidc as oidc_module
 import pytest
 import respx
 import yaml
@@ -26,6 +29,7 @@ from nemo_platform_plugin.client.config.models import (
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.oidc import (
     ACCESS_TOKEN_TYPE,
+    DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE,
     JWT_TOKEN_TYPE,
     TOKEN_EXCHANGE_GRANT_TYPE,
     NMPOIDCConfig,
@@ -40,9 +44,29 @@ from nemo_platform_plugin.client.oidc import (
 )
 from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from nemo_platform_plugin.client_provider import (
+    DefaultNemoClientProvider,
     get_async_nemo_client,
     get_nemo_client,
+    set_nemo_client_provider,
 )
+
+
+def _assert_no_nmp_common_import(module_file: str | None) -> None:
+    assert module_file is not None
+    tree = ast.parse(Path(module_file).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            imported = [node.module or ""]
+        else:
+            continue
+        assert not any(name == "nmp.common" or name.startswith("nmp.common.") for name in imported)
+
+
+def test_oidc_module_has_no_nmp_common_dependency():
+    _assert_no_nmp_common_import(oidc_module.__file__)
+
 
 # ---------------------------------------------------------------------------
 # StaticToken
@@ -129,6 +153,52 @@ class TestNemoClientAuth:
         assert route.called
         assert "Authorization" not in route.calls[0].request.headers
 
+    def test_constructor_uses_workload_exchange_provider_from_env(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        provider = object()
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        with patch(
+            "nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider",
+            return_value=provider,
+        ) as resolve_provider:
+            client = NemoClient(base_url="https://nemo.example.com")
+
+        assert client._auth is provider
+        resolve_provider.assert_called_once_with(
+            base_url="https://nemo.example.com",
+            subject_token_file=subject_token_file,
+        )
+
+    def test_constructor_workload_exchange_does_not_override_authorization_header(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        with patch("nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider") as resolve_provider:
+            client = NemoClient(
+                base_url="https://nemo.example.com",
+                default_headers={"Authorization": "Bearer explicit-token"},
+            )
+
+        assert client._auth is None
+        resolve_provider.assert_not_called()
+
+    def test_constructor_workload_exchange_does_not_override_principal_header(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        with patch("nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider") as resolve_provider:
+            client = NemoClient(
+                base_url="https://nemo.example.com",
+                default_headers={"X-NMP-Principal-Id": "service:jobs"},
+            )
+
+        assert client._auth is None
+        resolve_provider.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # AsyncNemoClient auth parameter
@@ -174,6 +244,24 @@ class TestAsyncNemoClientAuth:
 
         assert route.called
         assert route.calls[0].request.headers["Authorization"] == "Bearer sync-token"
+
+    def test_constructor_uses_workload_exchange_provider_from_env(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        provider = object()
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        with patch(
+            "nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider",
+            return_value=provider,
+        ) as resolve_provider:
+            client = AsyncNemoClient(base_url="https://nemo.example.com")
+
+        assert client._auth is provider
+        resolve_provider.assert_called_once_with(
+            base_url="https://nemo.example.com",
+            subject_token_file=subject_token_file,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +422,20 @@ class TestWorkloadTokenExchangeProvider:
             timeout=5.0,
             verify=True,
         )
+
+    def test_token_exchange_grant_uses_docker_opaque_subject_token_type(self, monkeypatch):
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json={"access_token": "exchanged-token", "expires_in": 300})
+
+            token_exchange_grant(
+                token_endpoint="https://idp.example.com/token",
+                client_id="nemo-platform-workload",
+                subject_token="nmp_obo_v1.delegation.secret",
+            )
+
+        assert mock_post.call_args.kwargs["data"]["subject_token_type"] == DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE
 
     def test_token_exchange_grant_uses_nemo_scoped_ca_bundle(self, monkeypatch):
         monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
@@ -770,6 +872,12 @@ class TestFromConfig:
 
 
 class TestGetNemoClient:
+    @pytest.fixture(autouse=True)
+    def _use_default_provider(self):
+        set_nemo_client_provider(DefaultNemoClientProvider())
+        yield
+        set_nemo_client_provider(None)
+
     def test_returns_sync_client(self):
         client = get_nemo_client(as_service="test-svc", internal=True)
         assert isinstance(client, NemoClient)
@@ -777,6 +885,58 @@ class TestGetNemoClient:
     def test_returns_async_client(self):
         client = get_async_nemo_client(as_service="test-svc")
         assert isinstance(client, AsyncNemoClient)
+
+    def test_sync_client_uses_workload_exchange_provider_from_env(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        provider = object()
+        monkeypatch.setenv("NMP_BASE_URL", "https://nemo.example.com")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        with patch(
+            "nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider",
+            return_value=provider,
+        ) as resolve_provider:
+            client = get_nemo_client()
+
+        assert client._auth is provider
+        resolve_provider.assert_called_once_with(
+            base_url="https://nemo.example.com",
+            subject_token_file=subject_token_file,
+        )
+
+    def test_async_client_uses_workload_exchange_provider_from_env(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        provider = object()
+        monkeypatch.setenv("NMP_BASE_URL", "https://nemo.example.com")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        with patch(
+            "nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider",
+            return_value=provider,
+        ) as resolve_provider:
+            client = get_async_nemo_client()
+
+        assert client._auth is provider
+        resolve_provider.assert_called_once_with(
+            base_url="https://nemo.example.com",
+            subject_token_file=subject_token_file,
+        )
+
+    def test_workload_exchange_provider_does_not_override_explicit_service(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        with patch("nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider") as resolve_provider:
+            client = get_nemo_client(as_service="jobs")
+
+        assert client._auth is None
+        resolve_provider.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

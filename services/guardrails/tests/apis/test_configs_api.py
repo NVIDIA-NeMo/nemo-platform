@@ -3,13 +3,29 @@
 
 """Tests for the Guardrails config API endpoints."""
 
-from unittest.mock import AsyncMock
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from nemo_platform_plugin.entities.base import ListResponse, PaginationInfo
+from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nmp.common.entities import EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
+from nmp.core.inference_gateway.api.dependencies import global_middleware_registry
+from nmp.core.inference_gateway.api.middleware_registry import MiddlewareRegistry
+from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.guardrails.entities import GuardrailConfig
+from nmp.guardrails.service import GuardrailsService
+from nmp.testing import create_test_client
+
+
+def _empty_page() -> ListResponse:
+    """An empty single-page list response, for mocked entity-store lookups."""
+    return ListResponse(
+        data=[],
+        pagination=PaginationInfo(page=1, page_size=200, current_page_size=0, total_pages=0, total_results=0),
+    )
 
 
 class TestGuardrailConfigsAPI:
@@ -101,6 +117,8 @@ class TestGuardrailConfigsAPI:
         """Test a config deleted after lookup returns 404."""
         entities_client = AsyncMock()
         entities_client.get.return_value = GuardrailConfig(name="delete-race-config", workspace="default")
+        # Delete first scans for VirtualModels applying this config; nothing references it here.
+        entities_client.list.return_value = _empty_page()
         entities_client.delete.side_effect = EntityNotFoundError("not found")
         dependency_overrides = getattr(client.app, "dependency_overrides")
         dependency_overrides[get_entity_client] = lambda: entities_client
@@ -261,3 +279,119 @@ class TestGuardrailConfigsFilter:
         """Filter validation rejects fields not declared on GuardrailConfigFilter."""
         response = client.get("/apis/guardrails/v2/workspaces/default/configs?filter[unknown_field]=x")
         assert response.status_code == 400
+
+
+CONFIGS = "/apis/guardrails/v2/workspaces/default/configs"
+VMS = "/apis/inference-gateway/v2/workspaces/default/virtual-models"
+
+
+class TestDeleteConfigInUse:
+    """Deleting a guardrail config that a VirtualModel applies is refused.
+
+    Runs Guardrails and the Inference Gateway against one in-process entity store, so the
+    VirtualModels are created through IGW's real endpoint and the in-use scan reads exactly what
+    production would.
+    """
+
+    @pytest.fixture
+    def client(self) -> Iterator[TestClient]:
+        """Guardrails and the Inference Gateway over one in-process entity store."""
+        with create_test_client(
+            GuardrailsService,
+            InferenceGatewayService,
+            client_type=TestClient,
+            # A second workspace, so the cross-workspace reference case is reachable.
+            workspaces=["default", "other"],
+        ) as tc:
+            # The guardrails middleware plugin isn't loaded in tests; stub it so IGW accepts
+            # config_id references without resolving them through the real plugin.
+            plugin = MagicMock(spec=NemoInferenceMiddleware)
+            plugin.get_middleware_config = AsyncMock(return_value={"stored": True})
+            plugin.validate_middleware_config = AsyncMock(side_effect=lambda _type, config: config)
+            tc.app.dependency_overrides[global_middleware_registry] = lambda: MiddlewareRegistry(
+                plugins={"nemo-guardrails": plugin}
+            )
+            yield tc
+
+    @staticmethod
+    def _rail(config_id: str) -> dict:
+        """A middleware call applying the stored guardrail config ``config_id``."""
+        return {"name": "nemo-guardrails", "config_type": "guardrail_config", "config_id": config_id}
+
+    def _create_config(self, client: TestClient, name: str) -> None:
+        """Create a guardrail config, asserting it was stored."""
+        assert client.post(CONFIGS, json={"name": name}).status_code == 201
+
+    def test_delete_refused_while_a_virtual_model_applies_the_config(self, client: TestClient):
+        """A referenced config returns 409, names the VirtualModel, and survives."""
+        self._create_config(client, "cs")
+        assert (
+            client.post(VMS, json={"name": "vm-guarded", "request_middleware": [self._rail("default/cs")]}).status_code
+            == 201
+        )
+
+        resp = client.delete(f"{CONFIGS}/cs")
+        assert resp.status_code == 409, resp.text
+        assert "default/vm-guarded" in resp.json()["detail"]
+        assert client.get(f"{CONFIGS}/cs").status_code == 200
+
+    def test_delete_refused_for_output_rails_too(self, client: TestClient):
+        """The scan covers response and post-response pipelines, not just request."""
+        self._create_config(client, "cs-out")
+        assert (
+            client.post(VMS, json={"name": "vm-out", "response_middleware": [self._rail("default/cs-out")]}).status_code
+            == 201
+        )
+
+        assert client.delete(f"{CONFIGS}/cs-out").status_code == 409
+
+    def test_delete_allowed_when_no_virtual_model_references_it(self, client: TestClient):
+        """An unreferenced config still deletes, even with other guarded VirtualModels around."""
+        self._create_config(client, "unused")
+        self._create_config(client, "used")
+        assert (
+            client.post(VMS, json={"name": "vm-other", "request_middleware": [self._rail("default/used")]}).status_code
+            == 201
+        )
+
+        assert client.delete(f"{CONFIGS}/unused").status_code == 200
+        assert client.get(f"{CONFIGS}/unused").status_code == 404
+
+    def test_delete_allowed_after_rails_are_detached(self, client: TestClient):
+        """Detaching the config releases the config for deletion."""
+        self._create_config(client, "cs-detach")
+        assert (
+            client.post(
+                VMS, json={"name": "vm-detach", "request_middleware": [self._rail("default/cs-detach")]}
+            ).status_code
+            == 201
+        )
+        assert client.delete(f"{CONFIGS}/cs-detach").status_code == 409
+
+        assert client.patch(f"{VMS}/vm-detach", json={"request_middleware": []}).status_code == 200
+        assert client.delete(f"{CONFIGS}/cs-detach").status_code == 200
+
+    def test_delete_not_blocked_by_a_same_named_config_of_another_type(self, client: TestClient):
+        """The in-use check compares config_type, so another plugin's config never blocks."""
+        self._create_config(client, "shared-name")
+        payload = {
+            "name": "vm-switchyard",
+            "request_middleware": [
+                {"name": "nemo-guardrails", "config_type": "routellm_config", "config_id": "default/shared-name"}
+            ],
+        }
+        assert client.post(VMS, json=payload).status_code == 201
+
+        assert client.delete(f"{CONFIGS}/shared-name").status_code == 200
+
+    def test_delete_refused_when_referenced_from_another_workspace(self, client: TestClient):
+        """Config references are fully qualified, so the scan spans workspaces."""
+        self._create_config(client, "cross")
+        payload = {"name": "vm-cross", "request_middleware": [self._rail("default/cross")]}
+        assert (
+            client.post("/apis/inference-gateway/v2/workspaces/other/virtual-models", json=payload).status_code == 201
+        )
+
+        resp = client.delete(f"{CONFIGS}/cross")
+        assert resp.status_code == 409, resp.text
+        assert "other/vm-cross" in resp.json()["detail"]

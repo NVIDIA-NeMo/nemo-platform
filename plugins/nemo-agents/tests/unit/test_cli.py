@@ -277,6 +277,10 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
                 "harnesses:",
                 "  hermes:",
                 "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: nvidia",
+                "    model: ${NEMO_DEFAULT_MODEL}",
                 "",
             ]
         )
@@ -286,6 +290,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         "name": "fabric-agent",
         "default_harness": "hermes",
         "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "models": {"default": {"provider": "nvidia", "model": "user-default-model"}},
         "environment": {"provider": "local"},
     }
     captured: dict[str, Any] = {}
@@ -302,6 +307,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     app = AgentsCLI().get_cli()
     with (
         _install_mock_transport(handler),
+        patch("nemo_agents_plugin.utils.get_default_model", return_value="user-default-model"),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
         patch("nemo_agents_plugin.cli._upload_ethos_fileset") as mock_upload,
     ):
@@ -314,6 +320,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     sent = _json.loads(captured["body"])
     assert captured["base_dir"] == tmp_path
     assert captured["validated_config"]["config_format"] == "nemo-agents-spec-v1"
+    assert captured["validated_config"]["models"]["default"]["model"] == "user-default-model"
     assert sent["config"] == normalized_config
     assert sent["config_format"] == "nemo-agents-spec-v1"
     mock_upload.assert_called_once_with(
@@ -935,6 +942,62 @@ def test_deploy_forwards_environment_ref() -> None:
     body = _j.loads(captured["body"])
     assert body["agent"] == "a1"
     assert body["environment"] == "default/env1"
+
+
+def test_deploy_forwards_image_entrypoint_mode() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "deploy",
+                "--agent",
+                "a1",
+                "--mode",
+                "docker",
+                "--image",
+                "hand-built-agent:latest",
+                "--use-image-entrypoint",
+                "--no-wait",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body["agent"] == "a1"
+    assert body["deployment_mode"] == "docker"
+    assert body["image"] == "hand-built-agent:latest"
+    assert body["use_image_entrypoint"] is True
+
+
+def test_deploy_rejects_image_entrypoint_for_subprocess() -> None:
+    called = False
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["deploy", "--agent", "a1", "--use-image-entrypoint", "--no-wait", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 2
+    assert "--use-image-entrypoint requires --mode docker or k8s." in result.stderr
+    assert not called
 
 
 def test_deploy_rejects_empty_environment() -> None:

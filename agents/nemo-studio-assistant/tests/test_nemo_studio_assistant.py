@@ -12,24 +12,20 @@ from deepagents.middleware.skills import _list_skills_with_errors
 from nemo_agents_plugin.agent_config import load_agent_config
 from nemo_agents_plugin.fabric.translator import translate_agent_config
 from nemo_studio_assistant import register
-from nemo_studio_assistant.fabric_compat import apply_deepagents_skill_path_compatibility, virtualize_skill_sources
+from nemo_studio_assistant.fabric_compat import (
+    apply_deepagents_mcp_env_compatibility,
+    apply_deepagents_skill_path_compatibility,
+    apply_platform_skill_translation_compatibility,
+    virtualize_skill_sources,
+)
 from nemo_studio_assistant.mcp_server import create_server
 
 AGENT_ROOT = Path(__file__).parents[1]
 ETHOS_ROOT = AGENT_ROOT.parent / "nemo-studio-assistant-ethos"
 EVAL_DATA_PATH = AGENT_ROOT / "src/nemo_studio_assistant/nemo-studio-assistant-eval-data.json"
+DOCKERFILE_PATH = AGENT_ROOT / "Dockerfile.fabric-local"
 REAL_PREFLIGHT_GUARDRAIL_MODEL = register._preflight_guardrail_model
-SKILL_PATHS = [
-    "skills/auditor",
-    "skills/benchmark-execution",
-    "skills/entities",
-    "skills/evaluator",
-    "skills/files",
-    "skills/guardrails",
-    "skills/inference",
-    "skills/secrets",
-    "skills/workspace",
-]
+SKILL_PATHS = ["skills"]
 
 pytestmark = pytest.mark.unit
 
@@ -80,15 +76,22 @@ def _reset_api_error_streaks(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_agent_config_translates_to_fabric_deepagents() -> None:
+    apply_platform_skill_translation_compatibility()
     config = load_agent_config(AGENT_ROOT / "agent.yaml")
     translated = translate_agent_config(config)
 
     assert config.default_harness == "deepagents"
-    assert config.models["default"].model == "nvidia-nemotron-3-5-lightning-30b-a3b"
+    assert config.models["default"].model == "${NEMO_DEFAULT_MODEL}"
     assert translated.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
     assert translated.models["default"].provider == "nvidia"
     assert translated.mcp is not None
     assert translated.mcp.servers["nemo_studio"].url == "nemo-studio-assistant-mcp"
+    assert translated.mcp.servers["nemo_studio"].env == {
+        "NMP_BASE_URL": "http://host.docker.internal:8080",
+        "NMP_WORKSPACE": "default",
+    }
+    assert translated.skills is not None
+    assert translated.skills.paths == ["/skills"]
 
 
 def test_canonical_registration_config_translates_to_same_runtime() -> None:
@@ -101,12 +104,40 @@ def test_canonical_registration_config_translates_to_same_runtime() -> None:
     assert registered.mcp == source.mcp
 
 
+def test_agent_telemetry_exports_atif_traces_to_intake() -> None:
+    for config_path in (AGENT_ROOT / "agent.yaml", ETHOS_ROOT / "agent.yaml"):
+        config = load_agent_config(config_path)
+
+        assert config.telemetry.enabled is True
+        assert config.telemetry.provider == "relay"
+        translated = translate_agent_config(config)
+        assert translated.relay is not None
+        assert translated.relay.project == "nemo-studio-assistant"
+        assert translated.relay.observability is not None
+        assert translated.relay.observability.model_dump(exclude_none=True)["atif"] == {
+            "enabled": True,
+            "filename_template": "trajectory-{session_id}.atif.json",
+            "output_directory": "./artifacts/relay",
+            "agent_name": "nemo-studio-assistant",
+            "model_name": "${NEMO_DEFAULT_MODEL}",
+            "storage": [
+                {
+                    "type": "http",
+                    "endpoint": "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                    "headers": {},
+                    "header_env": {},
+                    "timeout_millis": 3000,
+                }
+            ],
+        }
+
+
 def test_every_configured_skill_is_packaged() -> None:
     config = load_agent_config(AGENT_ROOT / "agent.yaml")
 
     assert config.skills is not None
     assert config.skills.paths == SKILL_PATHS
-    skill_files = [AGENT_ROOT / skill_path / "SKILL.md" for skill_path in config.skills.paths]
+    skill_files = sorted((AGENT_ROOT / "skills").glob("*/SKILL.md"))
     assert len(skill_files) == 9
     assert all(skill_file.is_file() for skill_file in skill_files)
     assert all(skill_file.read_text(encoding="utf-8").startswith("---\n") for skill_file in skill_files)
@@ -114,7 +145,7 @@ def test_every_configured_skill_is_packaged() -> None:
     registered = load_agent_config(ETHOS_ROOT / "agent.yaml")
     assert registered.skills is not None
     assert registered.skills.paths == SKILL_PATHS
-    assert all((ETHOS_ROOT / skill_path / "SKILL.md").is_file() for skill_path in registered.skills.paths)
+    assert len(list((ETHOS_ROOT / "skills").glob("*/SKILL.md"))) == 9
     assert config.environment.workspace == "."
     assert registered.environment.workspace == "."
 
@@ -165,13 +196,13 @@ def test_fabric_compatibility_resolves_packaged_skills_in_virtual_mode() -> None
         ),
         artifacts=ArtifactManifest(),
     )
-    config = AgentConfig(skills=AgentSkillConfig(paths=["skills"]))
+    config = AgentConfig(skills=AgentSkillConfig(paths=["/skills"]))
     backend = adapter.resolve_backend(runtime_context, str(AGENT_ROOT))
     skill_sources = adapter.resolve_skills(config)
 
     assert isinstance(backend, FilesystemBackend)
     assert skill_sources is not None
-    assert skill_sources == ["skills"]
+    assert skill_sources == ["/skills"]
     skills, error = _list_skills_with_errors(backend, skill_sources[0])
     assert error is None
     assert {skill["name"] for skill in skills} == {
@@ -192,6 +223,44 @@ def test_fabric_absolute_skill_source_is_virtualized_under_workspace() -> None:
         ["/tmp/nemo/skills", "relative-skills", "/outside/skills"],
         Path("/tmp/nemo"),
     ) == ["/skills", "relative-skills", "/outside/skills"]
+
+
+def test_fabric_stdio_mcp_inherits_platform_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_fabric_adapters.deepagents import adapter
+
+    monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
+    monkeypatch.setenv("NMP_WORKSPACE", "default")
+    apply_deepagents_mcp_env_compatibility()
+
+    connection = adapter._mcp_connection(
+        "nemo_studio",
+        SimpleNamespace(
+            transport="stdio",
+            url="nemo-studio-assistant-mcp",
+            args=[],
+            env={"CUSTOM": "value"},
+        ),
+    )
+
+    assert connection["env"]["NMP_BASE_URL"] == "http://platform:8080"
+    assert connection["env"]["NMP_WORKSPACE"] == "default"
+    assert connection["env"]["CUSTOM"] == "value"
+
+
+def test_fabric_image_loads_startup_compatibility_shims() -> None:
+    dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+    assert "ENV PYTHONPATH=/workspace" in dockerfile
+    assert (AGENT_ROOT / "sitecustomize.py").is_file()
+
+
+def test_platform_translation_virtualizes_packaged_skill_root() -> None:
+    apply_platform_skill_translation_compatibility()
+
+    translated = translate_agent_config(load_agent_config(AGENT_ROOT / "agent.yaml"))
+
+    assert translated.skills is not None
+    assert translated.skills.paths == ["/skills"]
 
 
 def test_guardrails_skill_is_generic_sdk_workflow_and_copies_match() -> None:
@@ -690,6 +759,15 @@ def test_read_only_nemo_api_calls_sdk_without_approval(monkeypatch: pytest.Monke
     assert response == ["namespace(name='default')"]
 
 
+def test_nemo_api_accepts_object_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    resource = SimpleNamespace(retrieve=lambda **kwargs: kwargs)
+    monkeypatch.setattr(register, "_clients", {"default": SimpleNamespace(workspaces=resource)})
+
+    response = json.loads(register.nemo_api("workspaces", "retrieve", params={"name": "default"}, workspace="default"))
+
+    assert response == {"name": "default"}
+
+
 def test_invalid_guardrail_config_action_returns_exact_path_before_approval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1124,6 +1202,23 @@ def test_nemo_api_requires_request_workspace() -> None:
     response = register.nemo_api("models", "list")
 
     assert response == "Clarification required: which workspace should this operation use?"
+
+
+def test_get_client_prefers_platform_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    created_with: dict[str, object] = {}
+
+    def fake_client(**kwargs: object) -> object:
+        created_with.update(kwargs)
+        return object()
+
+    monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://model-gateway:8000")
+    monkeypatch.setattr(register, "NeMoPlatform", fake_client)
+    monkeypatch.setattr(register, "_clients", {})
+
+    register._get_client("default")
+
+    assert created_with == {"workspace": "default", "base_url": "http://platform:8080"}
 
 
 @pytest.mark.parametrize(

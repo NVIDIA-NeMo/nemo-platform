@@ -79,8 +79,8 @@ When using Anonymizer as a NeMo Platform service:
 | Feature        | Difference                                              | Details                                                                                |
 |----------------|---------------------------------------------------------|----------------------------------------------------------------------------------------|
 | **Inference**  | Routes through the Inference Gateway                    | Configure providers once and reference them by name from `model_configs`.              |
-| **Input data** | Filesets and HTTP(S) URLs (local paths only in local CLI execution) | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
-| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in NeMo Platform job storage. |
+| **Input data** | Filesets and HTTP(S) URLs                               | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
+| **Artifacts**  | Platform-managed                                        | `run` stores artifacts in NeMo Platform job storage. |
 
 ## Prerequisites
 
@@ -92,7 +92,7 @@ The root workspace includes the Anonymizer plugin, so `nemo services run` discov
 nemo anonymizer --help
 ```
 
-You should see `validate`, `preview`, and `run` command groups.
+You should see `validate`, `preview`, and `run` commands.
 
 These tutorials route inference through an [Inference Gateway](/documentation/models-and-inference) provider, so a NeMo Platform cluster must be running before you preview or run a job. The examples reference the default NVIDIA Build provider created during setup.
 
@@ -100,7 +100,7 @@ These tutorials route inference through an [Inference Gateway](/documentation/mo
 
 ### Upload an Input Fileset
 
-`sdk.anonymizer.preview`, `preview submit`, and `run submit` reject local file paths, so the tutorials read from a fileset. Create a small CSV containing PII and upload it to a fileset named `anonymizer-inputs`:
+`sdk.anonymizer.preview`, `nemo anonymizer preview`, and `nemo anonymizer run` reject local file paths, so the tutorials read from a fileset. Create a small CSV containing PII and upload it to a fileset named `anonymizer-inputs`:
 
 ```python
 import os
@@ -152,14 +152,14 @@ The tutorials reference this file with `fileset://{WORKSPACE}/anonymizer-inputs#
 
 <Card title="Preview a Config" href="/documentation/anonymize-data/tutorials/preview-a-config">
 
-Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs`. Covers `sdk.anonymizer.preview`, `nemo anonymizer preview run` / `preview submit`, and the NDJSON frame stream.
+Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs` with the SDK or `nemo anonymizer preview`.
 
 <small><span class="md-tag">beginner</span> <span class="md-tag">anonymizer</span></small>
 
 </Card>
 <Card title="Run an Anonymizer Job" href="/documentation/anonymize-data/tutorials/run-an-anonymizer-job">
 
-Run the full pipeline locally with `nemo anonymizer run run` or submit it to the Jobs worker with `nemo anonymizer run submit`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
+Submit the full pipeline to the Jobs worker with `nemo anonymizer run`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
 
 <small><span class="md-tag">intermediate</span> <span class="md-tag">anonymizer</span></small>
 

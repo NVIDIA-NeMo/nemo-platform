@@ -129,10 +129,14 @@ resolve the same interpreter as their parent.
 | GRPO | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
 | GRPO (Gym) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
 
-`dtensor_cfg._v2` defaults to false, so DPO and plain full-weight GRPO both resolve to the
-**V1** DTensor worker and the `fsdp` extra. The GRPO compiler sets `_v2: true` when the job
-asks for something only V2 implements — LoRA, expert parallelism, or `automodel_kwargs` —
-which selects **V2** and therefore the `automodel` extra.
+GRPO picks its worker from `training.policy_backend`, which the compiler maps straight onto
+`dtensor_cfg._v2`: `automodel` (the default) → **V2** and the `automodel` extra, `dtensor` →
+**V1** and the `fsdp` extra. Nothing promotes the backend implicitly — a job that pairs
+`policy_backend: dtensor` with LoRA, expert parallelism or `automodel_kwargs` is rejected in
+`GRPOTraining` before it is scheduled, since those three are V2-only.
+
+DPO does not expose the knob: `dpo_config` writes its `dtensor_cfg` as a literal with no
+`_v2` key, so DPO is always **V1** and the `fsdp` extra.
 
 **LoRA requires V2 or Megatron.** DTensor V1 asserts `lora_cfg.enabled is False`
 (`nemo_rl/models/policy/lm_policy.py`); the DTensor LoRA implementation lives in
@@ -426,11 +430,10 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
   which the GRPO policy worker needs, so it is built from source here.
-  `.python-version` pinning an exact patch release, which uv honours over whatever
-  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
-  every venv came up on RL's version while ours sat unused on disk, so the image shipped
-  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
-  and persists into the runtime image, so node-built venvs agree too.
+  RL uses `.python-version` to pin an exact patch release. CPython 3.13.15 is copied from
+  `python:3.13.15-slim-trixie` into `/opt/cpython` (uv's catalog has no linux-gnu 3.13.15
+  build). `UV_PYTHON=/opt/cpython/bin/python3.13` overrides `.python-version` so worker
+  venvs cannot silently stay on 3.13.14.
 
 ## Layering for fast CI rebuilds
 
@@ -515,8 +518,8 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 - It cannot be a BuildKit `--mount=type=cache` — those never enter the image, so every
   symlink would dangle.
 - It cannot sit at uv's default `~/.cache/uv`, because `/root` is mode `700` and the
-  training image runs as a configured non-root UID (1000 by default, the same reason the
-  managed Python lives under `/opt`).
+  training image runs as a configured non-root UID (1000 by default, the same reason
+  CPython is copied under `/opt/cpython`).
 - **`/opt/uv_cache` must never be deleted** — pruning it breaks every venv that points into
   it. The prune step in the publish stage deliberately leaves it alone.
 

@@ -474,7 +474,7 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         in the step lifecycle AND all active tasks have updated_at older than
         the staleness threshold.
         """
-        staleness_timeout = step.step_spec.lifecycle.staleness_timeout_seconds if step.step_spec.lifecycle else None
+        staleness_timeout = configured_staleness_timeout_seconds(step)
         if not staleness_timeout or staleness_timeout <= 0:
             return False
 
@@ -525,13 +525,30 @@ def staleness_error_message(staleness_timeout: int) -> str:
     return f"Job terminated: no task updates received within {staleness_timeout}s staleness threshold"
 
 
+def configured_staleness_timeout_seconds(step: PlatformJobStepWithContext) -> int | None:
+    if step.step_spec is None or step.step_spec.lifecycle is None:
+        return None
+    return step.step_spec.lifecycle.staleness_timeout_seconds
+
+
+def require_staleness_timeout_seconds(step: PlatformJobStepWithContext) -> int:
+    staleness_timeout = configured_staleness_timeout_seconds(step)
+    if staleness_timeout is None or staleness_timeout <= 0:
+        raise ValueError("stale job step requires a positive staleness_timeout_seconds")
+    return staleness_timeout
+
+
 def extract_provider_profile(step: PlatformJobStepWithContext) -> tuple[str, str]:
+    step_spec = step.step_spec
+    if step_spec is None:
+        raise ValueError("Job step requires a step_spec")
+
     profile = DEFAULT_PROFILE
-    if isinstance(step.step_spec.executor, str):
-        provider = step.step_spec.executor
+    if isinstance(step_spec.executor, str):
+        provider = step_spec.executor
     else:
-        provider = step.step_spec.executor.provider or DEFAULT_PROVIDER
-        profile = step.step_spec.executor.profile or profile
+        provider = step_spec.executor.provider or DEFAULT_PROVIDER
+        profile = step_spec.executor.profile or profile
 
     return provider, profile
 

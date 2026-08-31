@@ -126,6 +126,7 @@ paths:
                   type: string
                   enum:
                   - urn:ietf:params:oauth:token-type:jwt
+                  - urn:nvidia:nemo:params:oauth:token-type:docker-opaque-workload-proof
                   description: Token type identifier for the subject token.
                 requested_token_type:
                   type: string
@@ -136,6 +137,18 @@ paths:
                 audience:
                   type: string
                   description: Requested audience for the issued access token.
+                resource:
+                  not: {}
+                  type: string
+                  description: Unsupported for the jobs workload token exchange profile.
+                actor_token:
+                  not: {}
+                  type: string
+                  description: Unsupported for the jobs workload token exchange profile.
+                actor_token_type:
+                  not: {}
+                  type: string
+                  description: Unsupported for the jobs workload token exchange profile.
                 scope:
                   type: string
                   description: Space-separated scopes requested for the issued access
@@ -2482,6 +2495,9 @@ paths:
                 $ref: '#/components/schemas/DeleteResponse'
         '404':
           description: Config does not exist.
+        '409':
+          description: Config is applied by one or more VirtualModels and cannot be
+            deleted.
         '422':
           description: Unable to delete config due to validation error while processing
             request.
@@ -3466,7 +3482,7 @@ paths:
         schema:
           $ref: '#/components/schemas/VirtualModelFilter'
         description: Filter virtual models by workspace, project, name, default_model_entity,
-          created_at, and updated_at.
+          guardrail_config, created_at, and updated_at.
       responses:
         '200':
           description: Paginated list of virtual models
@@ -9365,12 +9381,25 @@ components:
           - workload_access_token
           - workload_subject_token
           title: Token Kind
+        on_behalf_of:
+          title: On Behalf Of
+          nullable: true
+          type: string
+        on_behalf_of_email:
+          title: On Behalf Of Email
+          nullable: true
+          type: string
+        on_behalf_of_groups:
+          items:
+            type: string
+          type: array
+          title: On Behalf Of Groups
       type: object
       required:
       - principal
       - token_kind
       title: AuthenticateResponse
-      description: Successful bearer token authentication response for auth callouts.
+      description: Successful bearer token authentication response for direct callers.
     AutoAlignOptions:
       properties:
         guardrails_config:
@@ -10965,10 +10994,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/DockerJobNetworkConfig'
           description: Docker networking configuration
-        workload_identity:
-          allOf:
-          - $ref: '#/components/schemas/DockerWorkloadIdentityConfig'
-          description: Docker workload identity subject-token issuer configuration.
       type: object
       title: DockerJobExecutionProfileConfig
       description: Configuration for Docker Job execution profile.
@@ -11038,60 +11063,6 @@ components:
       - volume_name
       - mount_path
       title: DockerVolumeMount
-    DockerWorkloadIdentityConfig:
-      properties:
-        enabled:
-          title: Enabled
-          description: Enable Docker workload identity token-file injection. Defaults
-            to auth.oidc.workload_token_exchange_enabled.
-          type: boolean
-        token_endpoint:
-          title: Token Endpoint
-          description: OAuth token endpoint used by the Docker demo issuer. Defaults
-            to auth.oidc.token_endpoint.
-          type: string
-        client_id:
-          title: Client Id
-          description: OAuth client ID used by the Docker demo issuer. Defaults to
-            auth.oidc.workload_client_id or auth.oidc.client_id.
-          type: string
-        client_secret:
-          format: password
-          title: Client Secret
-          description: OAuth client secret for the Docker demo issuer.
-          writeOnly: true
-          type: string
-        username:
-          title: Username
-          description: Username for the Docker demo issuer password grant.
-          type: string
-        password_env_var:
-          type: string
-          title: Password Env Var
-          description: Controller environment variable that contains the Docker demo
-            issuer password grant shared secret.
-          default: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
-        scope:
-          title: Scope
-          description: OAuth scope for the Docker demo issuer.
-          type: string
-        subject_token_ttl_seconds:
-          type: integer
-          minimum: 1.0
-          title: Subject Token Ttl Seconds
-          description: Fallback subject-token lifetime when the Docker demo issuer
-            response omits expires_in.
-        refresh_margin_seconds:
-          type: integer
-          minimum: 0.0
-          title: Refresh Margin Seconds
-          description: Seconds before subject-token expiry when the Docker refresher
-            issues a replacement token.
-          default: 60
-      additionalProperties: false
-      type: object
-      title: DockerWorkloadIdentityConfig
-      description: Docker-only subject token issuer configuration for workload identity.
     E2EJobExecutionProfile:
       properties:
         provider:
@@ -14087,18 +14058,10 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
-        workload_identity_token_expiration_seconds:
-          type: integer
-          minimum: 600.0
-          title: Workload Identity Token Expiration Seconds
-          description: Requested expirationSeconds for the projected service account
-            token used as the workload identity subject token.
-          default: 600
-        workload_identity_token_audience:
-          title: Workload Identity Token Audience
-          description: Audience for the projected service account token. Defaults
-            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
-          type: string
+        workload_identity:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesWorkloadIdentityConfig'
+          description: Kubernetes workload identity configuration.
       type: object
       title: KubernetesJobExecutionProfileConfig
       description: Configuration for Kubernetes execution environment.
@@ -14281,6 +14244,24 @@ components:
       - mount_path
       title: KubernetesVolumeMount
       description: Kubernetes Volume Mount definition.
+    KubernetesWorkloadIdentityConfig:
+      properties:
+        token_expiration_seconds:
+          type: integer
+          minimum: 600.0
+          title: Token Expiration Seconds
+          description: Requested expirationSeconds for the projected service account
+            token used as the workload identity subject token.
+          default: 600
+        token_audience:
+          title: Token Audience
+          description: Audience for the projected service account token. Defaults
+            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+          type: string
+      additionalProperties: false
+      type: object
+      title: KubernetesWorkloadIdentityConfig
+      description: Kubernetes workload identity token projection configuration.
     LLMCallInfo:
       properties:
         task:
@@ -20059,6 +20040,15 @@ components:
         override_proxy:
           title: Override Proxy
           type: string
+        guardrail_config_ids:
+          items:
+            type: string
+          type: array
+          title: Guardrail Config Ids
+          description: System-managed. Guardrail configs applied by this VirtualModel's
+            middleware, as "workspace/name" references. Derived from the middleware
+            pipelines on every write and ignored if supplied on a create or update
+            body. Filter on it with filter[guardrail_config].
         id:
           type: string
           title: Id
@@ -20174,6 +20164,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by update date.
+        guardrail_config:
+          description: Filter by a guardrail config reference in "workspace/name"
+            form. Matches VirtualModels whose request, response, or post-response
+            middleware applies that stored guardrail config.
+          title: Guardrail Config
+          type: string
       title: VirtualModelFilter
       type: object
     VirtualModelInferenceConfig:
@@ -20351,18 +20347,10 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
-        workload_identity_token_expiration_seconds:
-          type: integer
-          minimum: 600.0
-          title: Workload Identity Token Expiration Seconds
-          description: Requested expirationSeconds for the projected service account
-            token used as the workload identity subject token.
-          default: 600
-        workload_identity_token_audience:
-          title: Workload Identity Token Audience
-          description: Audience for the projected service account token. Defaults
-            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
-          type: string
+        workload_identity:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesWorkloadIdentityConfig'
+          description: Kubernetes workload identity configuration.
         queue:
           type: string
           title: Queue
@@ -20395,7 +20383,7 @@ components:
           type: string
           title: Error
           description: OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client,
-            invalid_request, invalid_grant, invalid_scope, or invalid_target.
+            invalid_request, invalid_scope, or invalid_target.
         error_description:
           title: Error Description
           description: Human-readable ASCII text providing additional information

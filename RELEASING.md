@@ -94,10 +94,9 @@ America/Los_Angeles.
    `-nightly-<UTC timestamp>` appended, falling back to the `Chart.yaml`
    version if no such tag exists. A stable chart uses the stable release version
    unless `helm-version` is set for a stable Helm-only release.
-6. Waits for every selected final artifact that is published publicly to become
-   available before continuing. Nightly wheels are staged but not published, so
-   they are not polled. The polling job times out after four hours and sends
-   a Slack alert after two hours if it is still waiting.
+6. Waits for every selected final artifact to become available at its configured
+   publication destination before continuing. The polling job times out after
+   four hours and sends a Slack alert after two hours if it is still waiting.
 7. For a non-dry-run stable release with `release-scope: all`, creates the
    GitHub release and tag at the selected SHA. GitHub generates the release
    notes from the previous numeric SemVer tag. Subset releases do not create a
@@ -111,7 +110,7 @@ America/Los_Angeles.
 
 | Artifact | Nightly | Stable |
 | --- | --- | --- |
-| Wheels | Staged only | [PyPI](https://pypi.org) |
+| Wheels | [pypi.nvidia.com](https://pypi.nvidia.com) | [PyPI](https://pypi.org) |
 | Containers | `ghcr.io/nvidia-nemo/nemo-platform/<id>:nightly-...` | `nvcr.io/nvidia/nemo-platform/<id>:<version>` and the public NGC catalog |
 | Helm chart | OCI chart at `oci://ghcr.io/nvidia-nemo/nemo-platform` | Initially staged at `0921617854601259/nemo-platform`, then promoted to the public [NGC Helm repository](https://helm.ngc.nvidia.com/nvidia/nemo-platform) |
 

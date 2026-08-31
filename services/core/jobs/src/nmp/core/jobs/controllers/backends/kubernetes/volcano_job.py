@@ -26,7 +26,12 @@ from nmp.core.jobs.app.constants import (
 )
 from nmp.core.jobs.app.providers import DistributedGPUExecutionProvider
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
-from nmp.core.jobs.controllers.backends.base import JobBackend, JobUpdate, staleness_error_message
+from nmp.core.jobs.controllers.backends.base import (
+    JobBackend,
+    JobUpdate,
+    require_staleness_timeout_seconds,
+    staleness_error_message,
+)
 from nmp.core.jobs.controllers.backends.kubernetes.common import (
     BaseKubernetesExecutionProfileConfig,
     build_event_field_selector,
@@ -41,6 +46,11 @@ from nmp.core.jobs.controllers.backends.kubernetes.common import (
     name_for_step,
     update_all_tasks,
 )
+from nmp.core.jobs.controllers.backends.kubernetes.workload_delegations import (
+    KubernetesPodBoundWorkloadDelegationManager,
+    KubernetesPodBoundWorkloadDelegationTarget,
+)
+from nmp.core.jobs.controllers.backends.workload_tokens import create_authenticated_workload_delegation_store
 from pydantic import Field
 
 logger = logging.getLogger(__name__)
@@ -96,11 +106,57 @@ class VolcanoJobBackend(
         self._custom_v1 = client.CustomObjectsApi()
         self._batch_v1 = client.BatchV1Api()
         self.namespace = self._execution_profile_config.namespace or get_namespace_from_environment()
+        self._workload_delegation_store = create_authenticated_workload_delegation_store(self._nmp_sdk)
+        self._workload_delegations = KubernetesPodBoundWorkloadDelegationManager(
+            core_v1=self._core_v1,
+            namespace=self.namespace,
+            ttl_seconds_active=lambda: self._execution_profile_config.ttl_seconds_active,
+            workload_audience=self._workload_delegation_audience,
+            register_workload_delegation=self._workload_delegation_store.register,
+            revoke_workload_delegation=self._workload_delegation_store.revoke,
+        )
 
     def shutdown(self):
         self._core_v1.api_client.close()
         self._custom_v1.api_client.close()
         return
+
+    @staticmethod
+    def _workload_delegation_audience() -> str:
+        try:
+            from nmp.common.config import get_auth_config
+
+            oidc_config = get_auth_config().oidc
+        except Exception:
+            logger.debug("Could not resolve auth config for Volcano workload delegation audience", exc_info=True)
+            return "nemo-platform"
+        return (
+            getattr(oidc_config, "workload_audience", None) or getattr(oidc_config, "audience", None) or "nemo-platform"
+        )
+
+    def _workload_delegation_target_for_volcano_job(
+        self, job: dict
+    ) -> KubernetesPodBoundWorkloadDelegationTarget | None:
+        metadata = job.get("metadata", {}) or {}
+        job_name = metadata.get("name")
+        if not isinstance(job_name, str) or not job_name:
+            logger.warning("Skipping Volcano workload delegation reconciliation for job with missing name")
+            return None
+
+        service_account_name = self._execution_profile_config.service_account_name
+        for task in job.get("spec", {}).get("tasks", []) or []:
+            task_spec = task.get("template", {}).get("spec", {}) or {}
+            task_service_account_name = task_spec.get("serviceAccountName") or task_spec.get("service_account_name")
+            if isinstance(task_service_account_name, str) and task_service_account_name:
+                service_account_name = task_service_account_name
+                break
+
+        return KubernetesPodBoundWorkloadDelegationTarget(
+            namespace=metadata.get("namespace") or self.namespace,
+            name=job_name,
+            labels=metadata.get("labels", {}) or {},
+            service_account_name=service_account_name,
+        )
 
     def get_volcano_job_by_labels(self, labels: dict[str, str]) -> dict | None:
         jobs = self.get_volcano_job_list_by_labels(labels)
@@ -110,7 +166,7 @@ class VolcanoJobBackend(
 
     def get_volcano_job_by_name(self, name: str) -> dict | None:
         try:
-            return self._custom_v1.get_namespaced_custom_object(  # type: ignore
+            return self._custom_v1.get_namespaced_custom_object(
                 group="batch.volcano.sh",
                 version="v1alpha1",
                 namespace=self.namespace,
@@ -252,28 +308,29 @@ class VolcanoJobBackend(
             }
             tasks = [leader_task, worker_task]
 
-        volcano_job = {
+        volcano_job_spec: dict[str, Any] = {
+            "minAvailable": num_nodes,
+            "queue": self._execution_profile_config.queue,
+            "schedulerName": self._execution_profile_config.scheduler_name,
+            "policies": job_policies,
+            "tasks": tasks,
+        }
+        volcano_job: dict[str, Any] = {
             "apiVersion": "batch.volcano.sh/v1alpha1",
             "kind": "Job",
             "metadata": job_metadata.to_dict(),
-            "spec": {
-                "minAvailable": num_nodes,
-                "queue": self._execution_profile_config.queue,
-                "schedulerName": self._execution_profile_config.scheduler_name,
-                "policies": job_policies,
-                "tasks": tasks,
-            },
+            "spec": volcano_job_spec,
         }
 
-        if self._execution_profile_config.plugins:
-            volcano_job["spec"]["plugins"] = self._execution_profile_config.plugins
+        plugins = dict(self._execution_profile_config.plugins)
         # We always want the pytorch plugin in more than one node.
-        if num_nodes > 1 and "pytorch" not in (plugins := volcano_job["spec"].get("plugins", {})):
+        if num_nodes > 1 and "pytorch" not in plugins:
             plugins["pytorch"] = ["--master=leader", "--worker=worker", "--port=23456"]
-            volcano_job["spec"]["plugins"] = plugins
+        if plugins:
+            volcano_job_spec["plugins"] = plugins
 
         if self._execution_profile_config.max_retry is not None:
-            volcano_job["spec"]["maxRetry"] = self._execution_profile_config.max_retry
+            volcano_job_spec["maxRetry"] = self._execution_profile_config.max_retry
 
         try:
             self._custom_v1.create_namespaced_custom_object(
@@ -339,7 +396,7 @@ class VolcanoJobBackend(
             ):
                 return result
             if volcano_job is not None and self.check_step_is_stale(step):
-                message = staleness_error_message(step.step_spec.lifecycle.staleness_timeout_seconds)
+                message = staleness_error_message(require_staleness_timeout_seconds(step))
                 return self.sync_remove_job_with_status(
                     step,
                     PlatformJobStatus.ERROR,
@@ -370,12 +427,12 @@ class VolcanoJobBackend(
         jobs = self.get_volcano_job_list_by_labels(labels=KUBE_JOB_SELECTOR_LABELS)
         for job in jobs:
             # Extract job_id and step_name from labels
-            job_id = job.get("metadata", {}).get("labels", {}).get(JOB_ID_LABEL)  # type: ignore
-            step_name = job.get("metadata", {}).get("labels", {}).get(JOB_STEP_NAME_LABEL)  # type: ignore
-            workspace_id = job.get("metadata", {}).get("labels", {}).get(JOB_WORKSPACE_ID_LABEL)  # type: ignore
+            job_id = job.get("metadata", {}).get("labels", {}).get(JOB_ID_LABEL)
+            step_name = job.get("metadata", {}).get("labels", {}).get(JOB_STEP_NAME_LABEL)
+            workspace_id = job.get("metadata", {}).get("labels", {}).get(JOB_WORKSPACE_ID_LABEL)
 
             # Cleanup jobs have similar labels but are of a different type, and cleanup on their own.
-            job_type = job.get("metadata", {}).get("labels", {}).get(JOB_TYPE_LABEL)  # type: ignore
+            job_type = job.get("metadata", {}).get("labels", {}).get(JOB_TYPE_LABEL)
             if job_type is not None and job_type != JOB_TYPE_JOB:
                 continue
 
@@ -568,6 +625,13 @@ class VolcanoJobBackend(
                 status_details["message"] = "One or more tasks are in error state"
             else:
                 status_details["message"] += "; One or more tasks are in error state"
+        if self._workload_delegations.should_manage_step(step):
+            target = self._workload_delegation_target_for_volcano_job(job)
+            if target is not None:
+                if status in PlatformJobStatus.terminals():
+                    self._workload_delegations.revoke_for_target(target)
+                else:
+                    self._workload_delegations.ensure_for_target(step, target)
         return JobUpdate(status=status, status_details=status_details)
 
     def enforce_sync_ttl(
@@ -597,6 +661,7 @@ class VolcanoJobBackend(
         job_name = name_for_step(step)
         if job is None:
             logger.error("Job not found: %s", job_name)
+            self._workload_delegations.revoke_by_key(namespace=self.namespace, name=job_name)
             # Job was deleted
             return JobUpdate(status=PlatformJobStatus.ERROR, error_details={"message": "Job not found"})
         else:
@@ -632,6 +697,7 @@ class VolcanoJobBackend(
                 status = step.status
             return JobUpdate(status=status, status_details=status_details, error_details=error_details)
         else:
+            self._workload_delegations.revoke_by_key(namespace=self.namespace, name=name_for_step(step))
             # If the job was not found, then it has been successfully stopped and removed
             # Transition into terminal state
             return JobUpdate(status=stop_status)
@@ -646,6 +712,9 @@ class VolcanoJobBackend(
             )
             return
         if job_name := job.get("metadata", {}).get("name"):
+            target = self._workload_delegation_target_for_volcano_job(job)
+            if target is not None:
+                self._workload_delegations.revoke_for_target(target)
             try:
                 self._custom_v1.delete_namespaced_custom_object(
                     group="batch.volcano.sh",
