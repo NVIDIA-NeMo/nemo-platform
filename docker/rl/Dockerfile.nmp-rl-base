@@ -32,12 +32,12 @@ ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
 # uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on 0.11.x).
-# Official CPython 3.13.15 is copied from python:3.13.15-slim-trixie. uv's catalog has no
+# Official CPython 3.13.15 is copied from python:3.13.15-slim-bookworm. uv's catalog has no
 # cpython-3.13.15-linux-*-gnu download; do not use `uv python install` for this patch.
 # UV_PYTHON must still point at the copied binary so RL's `.python-version` cannot pin 3.13.14.
 ARG UV_VERSION=0.11.33
 ARG PYTHON_VERSION=3.13.15
-ARG CPYTHON_IMAGE=python:${PYTHON_VERSION}-slim-trixie
+ARG CPYTHON_IMAGE=python:${PYTHON_VERSION}-slim-bookworm
 ARG CMAKE_VERSION=4.0.3
 
 FROM ${CPYTHON_IMAGE} AS cpython
@@ -86,6 +86,7 @@ RUN ARCH="$(uname -m)" && \
 # Official CPython (not uv-managed). libpython is $ORIGIN/../lib relative to the binary.
 COPY --from=cpython /usr/local /opt/cpython
 RUN chmod -R a+rX /opt/cpython
+RUN /opt/cpython/bin/python3.13 -c "import ssl; print(ssl.OPENSSL_VERSION)"
 
 # uv is the installer/sync tool only. CPython lives at /opt/cpython (world-readable) so the
 # runtime UID can follow venv symlinks. Copy the uv binary to /usr/local/bin for node env installs.
