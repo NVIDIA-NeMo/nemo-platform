@@ -106,6 +106,30 @@ def docker_build(
     return tag
 
 
+def resolve_image_id(tag: str) -> str:
+    """Return the immutable image ID currently bound to *tag*.
+
+    Callers that build then later publish should resolve this right after the
+    build call and push by ID rather than by *tag* — a concurrent job that
+    rebuilds the same (daemon-global) tag name between the two steps cannot
+    silently swap out what gets published.
+
+    Raises:
+        ContainerToolingUnavailableError: When python-on-whales is missing.
+        ImageBuildError: When *tag* cannot be inspected (e.g. the build that
+            produced it never loaded into the local daemon).
+    """
+    try:
+        from python_on_whales import docker
+    except ImportError as exc:
+        raise ContainerToolingUnavailableError("resolving the built image ID") from exc
+
+    try:
+        return docker.image.inspect(tag).id
+    except Exception as exc:
+        raise ImageBuildError(f"Unable to resolve the image ID for '{tag}': {exc}") from exc
+
+
 def build_nat_agent_image(
     agent_config: Path,
     pyproject: Path | None = None,
