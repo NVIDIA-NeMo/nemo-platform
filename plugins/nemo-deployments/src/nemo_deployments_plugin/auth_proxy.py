@@ -38,6 +38,7 @@ _AUTH_PROXY_PRINCIPAL_ENVVAR = "NMP_AUTH_PROXY_PRINCIPAL"
 _AUTH_PROXY_ON_BEHALF_OF_ENVVAR = "NMP_AUTH_PROXY_ON_BEHALF_OF"
 _AUTH_PROXY_HOST_ENVVAR = "NMP_AUTH_PROXY_HOST"
 _AUTH_PROXY_PORT_ENVVAR = "NMP_AUTH_PROXY_PORT"
+_AUTH_PROXY_COMMAND = ["nemo", "services", "run", "--sidecars", "auth-proxy"]
 
 
 def auth_proxy_port() -> int:
@@ -101,7 +102,7 @@ def build_auth_proxy_container(config: DeploymentConfig, *, docker: bool = False
     return Container(
         name=AUTH_PROXY_CONTAINER_NAME,
         image=image,
-        command=["nemo", "services", "run", "--sidecars", "auth-proxy"],
+        command=list(_AUTH_PROXY_COMMAND),
         env=env,
     ).model_copy(
         update={
@@ -115,4 +116,14 @@ def build_auth_proxy_container(config: DeploymentConfig, *, docker: bool = False
                 failureThreshold=12,
             ),
         }
+    )
+
+
+def is_auth_proxy_container(container: Container) -> bool:
+    """Return whether a compiled container is the platform auth-proxy sidecar."""
+    env_names = {env.name for env in container.env}
+    return (
+        container.name == AUTH_PROXY_CONTAINER_NAME
+        and container.command == _AUTH_PROXY_COMMAND
+        and _AUTH_PROXY_PRINCIPAL_ENVVAR in env_names
     )

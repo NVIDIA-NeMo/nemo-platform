@@ -4010,6 +4010,11 @@ components:
           title: Db Version
           description: Database version of the entity for optimistic locking.
           readOnly: true
+        auth_context:
+          allOf:
+          - $ref: '#/components/schemas/AuthContext'
+          readOnly: true
+          nullable: true
       type: object
       required:
       - workspace
@@ -4021,6 +4026,7 @@ components:
       - entity_id
       - parent
       - db_version
+      - auth_context
       title: AgentDeployment
       description: "A running (or pending) deployment of an Agent.\n\nEntity type:\
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
@@ -4644,6 +4650,41 @@ components:
       - updated_at
       - -updated_at
       title: AnalyzeJobsSortField
+    AuthContext:
+      properties:
+        principal_id:
+          type: string
+          title: Principal Id
+          description: The principal's unique identifier
+        principal_email:
+          title: Principal Email
+          description: The principal's email address
+          type: string
+        principal_groups:
+          items:
+            type: string
+          type: array
+          title: Principal Groups
+          description: Groups the principal belongs to
+        principal_on_behalf_of:
+          title: Principal On Behalf Of
+          description: If acting on behalf of another principal, their principal ID
+          type: string
+        principal_on_behalf_of_groups:
+          title: Principal On Behalf Of Groups
+          description: Groups the on-behalf-of principal belongs to
+          items:
+            type: string
+          type: array
+        principal_on_behalf_of_email:
+          title: Principal On Behalf Of Email
+          description: The on-behalf-of principal's email address
+          type: string
+      type: object
+      required:
+      - principal_id
+      title: AuthContext
+      description: Auth context captured at resource creation for delegated access.
     ComputeResources:
       properties:
         limits:

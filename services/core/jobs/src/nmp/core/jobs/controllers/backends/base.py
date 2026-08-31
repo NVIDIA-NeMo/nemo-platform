@@ -12,14 +12,15 @@ from enum import Enum
 from typing import Generic, Literal, Optional, TypeVar
 from urllib.parse import SplitResult, quote, urlsplit
 
+import nmp.common.auth.workload_identity as _workload_identity
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.jobs import execution_profiles as _execution_profiles
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
+from nmp.common.auth import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
@@ -48,6 +49,12 @@ from pydantic import BaseModel, model_validator
 
 logger = logging.getLogger(__name__)
 
+WORKLOAD_IDENTITY_TOKEN_FILE_PATH = _workload_identity.WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+WORKLOAD_IDENTITY_VOLUME_NAME = _workload_identity.WORKLOAD_IDENTITY_VOLUME_NAME
+WORKLOAD_IDENTITY_VOLUME_PATH = _workload_identity.WORKLOAD_IDENTITY_VOLUME_PATH
+get_workload_identity_token_audience = _workload_identity.get_workload_identity_token_audience
+is_workload_identity_token_exchange_enabled = _workload_identity.is_workload_identity_token_exchange_enabled
+
 ExecutionProviderConfigT = TypeVar("ExecutionProviderConfigT")
 ExecutionProfileConfigT = TypeVar("ExecutionProfileConfigT")
 
@@ -58,9 +65,6 @@ DEFAULT_PROVIDER = "cpu"
 # (imported above) so that both the server and the typed HTTP client agree on
 # the wire shape.
 
-WORKLOAD_IDENTITY_TOKEN_FILE_PATH = "/var/run/secrets/nemo-platform/workload/token"
-WORKLOAD_IDENTITY_VOLUME_PATH = "/var/run/secrets/nemo-platform/workload"
-WORKLOAD_IDENTITY_VOLUME_NAME = "nmp-workload-identity"
 JOB_LOGS_ENDPOINT_ENVVAR = _execution_profiles.JOB_LOGS_ENDPOINT_ENVVAR
 
 RESERVED_MANAGED_JOB_AUTH_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
@@ -132,29 +136,6 @@ def validate_no_reserved_managed_job_environment_variable_names(env_names: Itera
     conflicting = find_reserved_managed_job_environment_variable_names(env_names)
     if conflicting:
         raise ValueError(f"{source} must not use platform-reserved managed environment keys: {conflicting}")
-
-
-def is_workload_identity_token_exchange_enabled() -> bool:
-    """Return whether managed jobs should inject workload identity token-file config."""
-    try:
-        from nmp.common.config import get_auth_config
-
-        return bool(get_auth_config().oidc.workload_token_exchange_enabled)
-    except Exception:
-        logger.debug("Could not resolve auth config for workload identity token exchange", exc_info=True)
-        return False
-
-
-def get_workload_identity_token_audience() -> str:
-    """Return the Kubernetes projected service-account token audience for workload identity."""
-    try:
-        from nmp.common.config import get_auth_config
-
-        oidc = get_auth_config().oidc
-        return oidc.workload_client_id or oidc.client_id or "nemo-platform"
-    except Exception:
-        logger.debug("Could not resolve auth config for workload identity audience", exc_info=True)
-        return "nemo-platform"
 
 
 NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"

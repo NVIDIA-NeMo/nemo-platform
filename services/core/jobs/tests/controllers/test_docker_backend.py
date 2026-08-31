@@ -925,6 +925,11 @@ def test_docker_job_injects_workload_identity_volume_when_token_exchange_enabled
     assert delegation.workload_subject == expected_delegation_name
     assert delegation.workload_audience == "nemo-platform"
     assert delegation.workload_workspace == test_job_step_with_auth_context.workspace
+    assert delegation.workload_kind == "job"
+    assert delegation.workload_id == test_job_step_with_auth_context.job
+    assert delegation.workload_generation == (
+        f"{test_job_step_with_auth_context.attempt_id}/{test_job_step_with_auth_context.id}"
+    )
     assert delegation.job_id == test_job_step_with_auth_context.job
     assert delegation.attempt_id == test_job_step_with_auth_context.attempt_id
     assert delegation.step_id == test_job_step_with_auth_context.id
@@ -997,9 +1002,8 @@ def test_docker_schedule_cleans_task_volumes_when_workload_identity_proof_token_
 ):
     with (
         patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
-        patch.object(
-            docker_job,
-            "_provision_docker_workload_proof_token",
+        patch(
+            "nmp.core.jobs.controllers.backends.docker.build_docker_opaque_workload_delegation",
             side_effect=JobStorageError("proof failed"),
         ),
         pytest.raises(JobStorageError, match="proof failed"),

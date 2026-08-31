@@ -6,6 +6,9 @@ from json import JSONDecodeError
 from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
 import httpx
+from nemo_platform_ext.client.tls import HttpxTLSConfig
+
+from tests.auth_idp.runtime_contract import JsonObject
 
 DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
 AUTHENTIK_DEFAULT_AUTHENTICATION_FLOW_SLUG = "default-authentication-flow"
@@ -51,7 +54,7 @@ def next_authentik_challenge(
     *,
     gateway_base_url: str,
     response: httpx.Response,
-) -> tuple[dict[str, object], str]:
+) -> tuple[JsonObject, str]:
     while response.status_code in {301, 302, 303, 307, 308}:
         location = response.headers.get("location")
         assert location
@@ -79,9 +82,9 @@ def solve_authentik_device_flow(
     user_code: str,
     username: str,
     password: str,
-    verify: str | bool,
+    tls_config: HttpxTLSConfig,
 ) -> None:
-    with httpx.Client(verify=verify, follow_redirects=False) as client:
+    with httpx.Client(follow_redirects=False, **tls_config) as client:
         response = client.get(verification_uri_complete, timeout=30.0)
         challenge, flow_url = next_authentik_challenge(
             client,
@@ -138,8 +141,8 @@ def poll_device_token(
     client_id: str,
     device_code: str,
     scope: str,
-    verify: str | bool,
-) -> dict[str, object]:
+    tls_config: HttpxTLSConfig,
+) -> JsonObject:
     last_response: httpx.Response | None = None
     for _ in range(DEVICE_TOKEN_POLL_ATTEMPTS):
         response = httpx.post(
@@ -151,7 +154,7 @@ def poll_device_token(
                 "scope": scope,
             },
             timeout=30.0,
-            verify=verify,
+            **tls_config,
         )
         if response.status_code == 200:
             token_response = response.json()
@@ -180,8 +183,8 @@ def authenticate_authentik_device_flow(
     scope: str,
     username: str,
     password: str,
-    verify: str | bool,
-) -> dict[str, object]:
+    tls_config: HttpxTLSConfig,
+) -> JsonObject:
     device_response = httpx.post(
         device_authorization_endpoint,
         data={
@@ -189,7 +192,7 @@ def authenticate_authentik_device_flow(
             "scope": scope,
         },
         timeout=30.0,
-        verify=verify,
+        **tls_config,
     )
     device_response.raise_for_status()
     device_body = device_response.json()
@@ -200,7 +203,7 @@ def authenticate_authentik_device_flow(
         user_code=device_body["user_code"],
         username=username,
         password=password,
-        verify=verify,
+        tls_config=tls_config,
     )
 
     return poll_device_token(
@@ -208,5 +211,5 @@ def authenticate_authentik_device_flow(
         client_id=client_id,
         device_code=device_body["device_code"],
         scope=scope,
-        verify=verify,
+        tls_config=tls_config,
     )

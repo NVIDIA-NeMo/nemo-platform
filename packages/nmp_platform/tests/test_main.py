@@ -3,12 +3,16 @@
 
 """Tests for platform main module."""
 
+import os
 from typing import List
 
 import pytest
 from fastapi import APIRouter
+from nmp.common.jobs.config import get_task_config
+from nmp.common.jobs.constants import TASK_CONFIG_ENVVAR
 from nmp.common.service import RouterConfig, Service
-from nmp.platform.main import load_service
+from nmp.platform import main as platform_main
+from nmp.platform.main import load_service, run_task
 
 
 class MockService(Service):
@@ -51,6 +55,37 @@ class TestLoadService:
 
         assert isinstance(service, Service)
         assert service.name == "hello-world"
+
+
+class TestRunTask:
+    """Tests for the task compatibility runner."""
+
+    def test_run_task_config_is_available_to_task_config_loader(self, monkeypatch):
+        """``--config`` should populate the env var read by ``get_task_config``."""
+        captured_config = {}
+
+        def fake_run_module(module_name: str, run_name: str):
+            captured_config.update(get_task_config())
+            return {}
+
+        monkeypatch.delenv(TASK_CONFIG_ENVVAR, raising=False)
+        monkeypatch.delenv("NEMO_JOB_STEP_CONFIG", raising=False)
+        monkeypatch.setattr(platform_main.runpy, "run_module", fake_run_module)
+
+        try:
+            result = run_task(
+                "nmp.fake.tasks.verify_config",
+                [],
+                '{"workspace":"auth-idp-ws-test"}',
+            )
+
+            assert result == 0
+            assert captured_config == {"workspace": "auth-idp-ws-test"}
+            assert os.environ[TASK_CONFIG_ENVVAR] == '{"workspace":"auth-idp-ws-test"}'
+            assert os.environ["NEMO_JOB_STEP_CONFIG"] == '{"workspace":"auth-idp-ws-test"}'
+        finally:
+            os.environ.pop(TASK_CONFIG_ENVVAR, None)
+            os.environ.pop("NEMO_JOB_STEP_CONFIG", None)
 
 
 class TestStartupFailureExitCode:

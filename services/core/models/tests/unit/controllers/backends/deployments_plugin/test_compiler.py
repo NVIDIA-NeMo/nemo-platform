@@ -9,6 +9,7 @@ import pytest
 import yaml
 from nemo_deployments_plugin.entities import SecretRef
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
+from nemo_platform_plugin.auth import AuthContext
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
@@ -21,7 +22,7 @@ from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
 
 def _resolved(engine: str, *, lora: bool = False, runtime: Runtime = Runtime.KUBERNETES) -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(name="my-dep", workspace="default", entity_version=1, auth_context=None),
         config=SimpleNamespace(engine=engine),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=lora),
@@ -549,3 +550,30 @@ def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
         docker_bridge = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
     bridge_env = {item.name: item.value for item in docker_bridge.server_config.containers[1].env}
     assert bridge_env["NMP_BASE_URL"] == "http://172.16.83.1:8080"
+
+
+def test_compile_model_deployment_adds_workload_identity_when_auth_context_present() -> None:
+    resolved = _resolved("vllm")
+    resolved.deployment.auth_context = AuthContext(principal_id="user:alice", principal_groups=["research"])
+    resolved.deployment.entity_version = 3
+
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.is_workload_identity_token_exchange_enabled",
+            return_value=True,
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_workload_identity_token_audience",
+            return_value="model-audience",
+        ),
+    ):
+        compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+
+    assert compiled.puller_config is not None
+    assert compiled.puller_config.workload_identity is not None
+    assert compiled.server_config.workload_identity is not None
+    assert compiled.puller_config.workload_identity.workload_kind == "model_deployment"
+    assert compiled.puller_config.workload_identity.workload_id == "my-dep/v3"
+    assert compiled.puller_config.workload_identity.token_audience == "model-audience"
+    assert compiled.server_config.workload_identity.workload_id == "my-dep/v3"
+    assert compiled.server_config.workload_identity.token_audience == "model-audience"

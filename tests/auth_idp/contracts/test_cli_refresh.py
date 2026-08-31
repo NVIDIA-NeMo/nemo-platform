@@ -9,12 +9,13 @@ import pytest
 import yaml
 from nemo_platform_ext.auth.helpers import decode_jwt_claims, discover_nmp_config, generate_unsigned_jwt
 from nemo_platform_ext.cli.app import app
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, client_verify_from_env
+from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from typer.testing import CliRunner
 
-from tests.auth_idp.common import require_capability
+from tests.auth_idp.common import require_capability, runtime_tls_config
 from tests.auth_idp.device_flow import authenticate_authentik_device_flow, with_url_origin
+from tests.auth_idp.runtime_contract import JsonObject
 
 pytestmark = [
     pytest.mark.auth_idp,
@@ -67,7 +68,7 @@ def _write_cli_config(
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
 
-def _read_config_user(config_path: Path) -> dict[str, object]:
+def _read_config_user(config_path: Path) -> JsonObject:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     assert isinstance(config, dict)
     users = config["users"]
@@ -92,7 +93,7 @@ def test_cli_api_command_auto_refreshes_expired_device_flow_token(
     assert oidc.token_endpoint
     assert "offline_access" in oidc.default_scopes.split()
 
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    tls_config = runtime_tls_config(auth_idp_runtime)
     runtime_device_authorization_endpoint = with_url_origin(
         oidc.device_authorization_endpoint,
         auth_idp_runtime.gateway_base_url,
@@ -106,7 +107,7 @@ def test_cli_api_command_auto_refreshes_expired_device_flow_token(
         scope=oidc.default_scopes,
         username=auth_idp_case.provider.interactive_user_username,
         password=auth_idp_case.provider.interactive_user_password,
-        verify=verify,
+        tls_config=tls_config,
     )
     refresh_token = token_response.get("refresh_token")
     assert isinstance(refresh_token, str)
@@ -142,8 +143,8 @@ def test_cli_api_command_auto_refreshes_expired_device_flow_token(
     )
 
     cli_env = {"NMP_CONFIG_FILE": str(config_path)}
-    if isinstance(verify, str):
-        cli_env[NMP_CLIENT_SSL_CERT_FILE_ENVVAR] = verify
+    if "verify" in tls_config:
+        cli_env[NMP_CLIENT_SSL_CERT_FILE_ENVVAR] = tls_config["verify"]
 
     result = CliRunner().invoke(
         app,

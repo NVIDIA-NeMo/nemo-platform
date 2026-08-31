@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from nemo_deployments_plugin.constants import (
     ENTITY_TYPE_DEPLOYMENT,
@@ -22,8 +22,12 @@ from nemo_deployments_plugin.types import (
     RestartPolicy,
     VolumeStatus,
 )
+from nemo_platform_plugin.auth import AuthContext
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, computed_field, model_validator
+
+WORKLOAD_IDENTITY_TOKEN_MAX_EXPIRATION_SECONDS = 86400
 
 
 class SecretRef(BaseModel):
@@ -156,6 +160,25 @@ class Affinity(BaseModel):
     node_affinity: dict[str, Any] | None = Field(default=None, alias="nodeAffinity")
     pod_affinity: dict[str, Any] | None = Field(default=None, alias="podAffinity")
     pod_anti_affinity: dict[str, Any] | None = Field(default=None, alias="podAntiAffinity")
+
+    model_config = {"populate_by_name": True}
+
+
+class WorkloadIdentitySpec(BaseModel):
+    """Workload token-exchange settings for deployment backends."""
+
+    enabled: bool = False
+    workload_kind: str | None = Field(default=None, alias="workloadKind")
+    workload_id: str | None = Field(default=None, alias="workloadId")
+    token_audience: str | None = Field(default=None, alias="tokenAudience")
+    service_account_name: str | None = Field(default=None, alias="serviceAccountName")
+    token_expiration_seconds: int = Field(
+        default=3600,
+        ge=600,
+        le=WORKLOAD_IDENTITY_TOKEN_MAX_EXPIRATION_SECONDS,
+        alias="tokenExpirationSeconds",
+        description="Requested subject-token lifetime in seconds, capped at 24 hours.",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -322,6 +345,7 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
             "Only meaningful when auth_proxy_sidecar is True."
         ),
     )
+    workload_identity: WorkloadIdentitySpec | None = Field(default=None, alias="workloadIdentity")
 
     model_config = {"populate_by_name": True}
 
@@ -331,9 +355,21 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
             raise ValueError("auth_proxy_sidecar_identity is required when auth_proxy_sidecar is True")
         return self
 
+    @model_validator(mode="after")
+    def _validate_workload_identity_env(self) -> DeploymentConfig:
+        if self.workload_identity is None or not self.workload_identity.enabled:
+            return self
+        for container in [*self.init_containers, *self.containers]:
+            for env_var in container.env:
+                if env_var.name == WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR:
+                    raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is managed by workload_identity")
+        return self
+
 
 class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
     """Desired and observed deployment state."""
+
+    _auth_context: AuthContext | None = PrivateAttr(default=None)
 
     deployment_config: str = Field(description="Name of the DeploymentConfig entity.")
     desired_state: DesiredState = Field(default="READY")
@@ -350,7 +386,16 @@ class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
     status_history: list[StatusEvent] = Field(default_factory=list)
 
     # Reconciler (758) enforces restart_policy vs terminal status on DeploymentConfig:
-    # Never → SUCCEEDED terminal; Always/OnFailure → READY while running.
+    # Never -> SUCCEEDED terminal; Always/OnFailure -> READY while running.
+
+    @computed_field(json_schema_extra={"nullable": True})
+    @property
+    def auth_context(self) -> AuthContext | None:
+        return self._auth_context
+
+    def with_auth_context(self, auth_context: AuthContext | None) -> Self:
+        self._auth_context = auth_context
+        return self
 
 
 def _default_volume_access_modes() -> list[AccessMode]:

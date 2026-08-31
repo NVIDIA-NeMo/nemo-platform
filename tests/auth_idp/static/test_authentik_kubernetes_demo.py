@@ -393,8 +393,22 @@ def test_authentik_umbrella_values_define_one_shared_postgresql_instance() -> No
         "existingSecret": "shared-postgresql",
         "existingSecretPasswordKey": "nemo-password",
     }
-    assert values["nemo-platform"]["api"]["serviceGroup"] == "core"
-    assert values["nemo-platform"]["core"]["controller"]["controllerGroup"] == "core"
+    assert values["nemo-platform"]["api"]["services"] == [
+        "auth",
+        "models",
+        "files",
+        "inference-gateway",
+        "jobs",
+        "secrets",
+        "entities",
+        "deployments",
+    ]
+    assert values["nemo-platform"]["core"]["controller"]["controllers"] == [
+        "jobs",
+        "models",
+        "entities",
+        "deployments",
+    ]
     assert "extraArgs" not in values["nemo-platform"]["api"]
     assert nemo_database == {
         "host": "shared-postgresql",
@@ -1008,6 +1022,34 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
     }
 
 
+def test_kubernetes_deployment_workload_runtime_config_targets_in_cluster_envoy(tmp_path) -> None:
+    from tests.auth_idp import runtime_kubernetes as live_test
+
+    ca_bundle = tmp_path / "ca.crt"
+    ca_bundle.write_text("test-ca-bundle\n", encoding="utf-8")
+    runtime = live_test.KubernetesAuthIdpRuntime.__new__(live_test.KubernetesAuthIdpRuntime)
+    runtime.ca_bundle = ca_bundle
+
+    config = runtime.deployment_workload_runtime_config()
+
+    assert config.env == (
+        {
+            "name": "NMP_BASE_URL",
+            "value": f"https://nemo-platform-envoy.{live_test.NAMESPACE}.svc.cluster.local:8080",
+        },
+        {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": "/etc/nmp/workload-token-ca/ca.crt"},
+        {"name": "SSL_CERT_FILE", "value": "/etc/nmp/workload-token-ca/ca.crt"},
+        {"name": "REQUESTS_CA_BUNDLE", "value": "/etc/nmp/workload-token-ca/ca.crt"},
+    )
+    assert config.config_files == (
+        {
+            "path": "/etc/nmp/workload-token-ca/ca.crt",
+            "content": "test-ca-bundle\n",
+            "mode": 0o644,
+        },
+    )
+
+
 def test_nemo_platform_chart_does_not_use_volcano_disable_config() -> None:
     values_template = Path("k8s/helm/values.yaml").read_text(encoding="utf-8")
 
@@ -1607,6 +1649,33 @@ def test_authentik_compose_e2e_config_uses_global_docker_workload_identity_switc
     )
 
     assert "workload_identity" not in workload_executor["config"]
+
+
+def test_authentik_compose_e2e_config_sets_deployments_workload_network() -> None:
+    from tests.auth_idp.authentik_live import AUTHENTIK_DOCKER_E2E_CONFIG
+
+    config_overlay = AUTHENTIK_DOCKER_E2E_CONFIG.mark.args[3]
+    deployment_executor = config_overlay["deployments"]["executors"][0]
+
+    assert config_overlay["deployments"]["default_executor"] == "auth-idp-docker"
+    assert deployment_executor == {
+        "name": "auth-idp-docker",
+        "backend": "docker",
+        "config": {
+            "pull_images": False,
+            "network": "authentik-e2e-${gateway_port}-workload",
+            "endpoint_mode": "network",
+            "docker_timeout": 600,
+            "oneshot_observe_timeout_seconds": 30,
+            "additional_volume_mounts": [
+                {
+                    "volume_name": "authentik-e2e-${gateway_port}-gateway-tls",
+                    "mount_path": "/etc/nmp/gateway-tls",
+                    "read_only": True,
+                }
+            ],
+        },
+    }
 
 
 def test_authentik_umbrella_values_configure_workload_token_tls() -> None:
