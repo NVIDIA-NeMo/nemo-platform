@@ -419,11 +419,11 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
   which the GRPO policy worker needs, so it is built from source here.
-  `.python-version` pinning an exact patch release, which uv honours over whatever
-  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
-  every venv came up on RL's version while ours sat unused on disk, so the image shipped
-  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
-  and persists into the runtime image, so node-built venvs agree too.
+  RL uses `.python-version` to pin an exact patch release. CPython 3.13.15 is copied from
+  `python:3.13.15-slim-bookworm` into `/opt/cpython` (uv's catalog has no linux-gnu 3.13.15
+  build; bookworm's OpenSSL 3.0 matches Ubuntu 24.04 on cuda-dl-base — trixie _ssl
+  needs OPENSSL_3.3.0 and does not import). `UV_PYTHON=/opt/cpython/bin/python3.13`
+  overrides `.python-version` so worker venvs cannot silently stay on 3.13.14.
 
 ## Layering for fast CI rebuilds
 
@@ -508,8 +508,8 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 - It cannot be a BuildKit `--mount=type=cache` — those never enter the image, so every
   symlink would dangle.
 - It cannot sit at uv's default `~/.cache/uv`, because `/root` is mode `700` and the
-  training image runs as a configured non-root UID (1000 by default, the same reason the
-  managed Python lives under `/opt`).
+  training image runs as a configured non-root UID (1000 by default, the same reason
+  CPython is copied under `/opt/cpython`).
 - **`/opt/uv_cache` must never be deleted** — pruning it breaks every venv that points into
   it. The prune step in the publish stage deliberately leaves it alone.
 
