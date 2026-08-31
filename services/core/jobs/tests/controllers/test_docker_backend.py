@@ -1655,6 +1655,46 @@ def test_gpu_pool_released_when_cancel_scheduling_sees_terminal_step(
     executor._jobs.update_job_step_status.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "refreshed_status,expected_update_status",
+    [
+        (PlatformJobStatus.CANCELLED, None),
+        (PlatformJobStatus.PAUSED, None),
+        (PlatformJobStatus.CANCELLING, PlatformJobStatus.CANCELLED),
+        (PlatformJobStatus.PAUSING, PlatformJobStatus.PAUSED),
+    ],
+)
+def test_gpu_pool_released_when_cancel_scheduling_removes_created_container_before_release(
+    mock_nmp_client, docker_client_mock, refreshed_status, expected_update_status
+):
+    step = _gpu_step(step_id=f"{refreshed_status.value}-created-container-step-id")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    container_mock = _gpu_container(step, status="created", task_id="task-pre-start-stop")
+    refreshed_step = MagicMock()
+    refreshed_step.status = refreshed_status
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    def assert_remove_before_release(*, force: bool) -> None:
+        assert force is True
+        assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    container_mock.remove.side_effect = assert_remove_before_release
+    executor.get_step_safe = MagicMock(return_value=refreshed_step)
+
+    assert executor.cancel_scheduling(step, created_container=container_mock) is True
+
+    container_mock.remove.assert_called_once_with(force=True)
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    assert executor.gpu_pool.allocate_gpu("next-step-id") == [0]
+    if expected_update_status is None:
+        executor._jobs.update_job_step_status.assert_not_called()
+    else:
+        executor._jobs.update_job_step_status.assert_called_once()
+        assert executor._jobs.update_job_step_status.call_args.kwargs["body"].status == expected_update_status
+
+
 def test_gpu_pool_released_when_cancel_scheduling_status_update_loses_step(mock_nmp_client, docker_client_mock):
     step = _gpu_step(step_id="cancelling-lost-step-id")
     executor = _gpu_backend(mock_nmp_client, docker_client_mock)

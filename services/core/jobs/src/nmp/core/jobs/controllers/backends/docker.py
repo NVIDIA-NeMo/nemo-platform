@@ -1171,7 +1171,23 @@ chmod -R 777 {job_vol}/{storage_subpath}
         container_args["network"] = self._execution_profile_config.networking.job_container_network
         return self.configure_container(container_args, executor_config)
 
-    def cancel_scheduling(self, step: PlatformJobStepWithContext) -> bool:
+    def _release_step_resources_after_scheduling_stop(
+        self,
+        step: PlatformJobStepWithContext,
+        *,
+        reason: str,
+        created_container: Container | None = None,
+    ) -> None:
+        """Release step resources once any already-created container is gone."""
+        if created_container is not None and not self._remove_container_before_resource_release(
+            step, created_container, reason=reason
+        ):
+            return
+        self._release_step_resources(step, reason=reason)
+
+    def cancel_scheduling(
+        self, step: PlatformJobStepWithContext, *, created_container: Container | None = None
+    ) -> bool:
         """Check if the job step is cancelling or pausing, and update status accordingly."""
         updated_step = self.get_step_safe(step_name=step.name, job=step.job, workspace=step.workspace)
         if updated_step is None:
@@ -1179,7 +1195,9 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 "Job step disappeared before Docker container start; cancelling scheduling",
                 extra={"workspace": step.workspace, "job": step.job, "step": step.name},
             )
-            self._release_step_resources(step, reason="step_missing_before_start")
+            self._release_step_resources_after_scheduling_stop(
+                step, reason="step_missing_before_start", created_container=created_container
+            )
             return True
 
         is_cancelling_or_pausing = updated_step.status in (
@@ -1197,7 +1215,9 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 logger.info(
                     "Job step is already in terminal state, no update required", extra={"status": updated_step.status}
                 )
-                self._release_step_resources(step, reason="step_terminal_before_start")
+                self._release_step_resources_after_scheduling_stop(
+                    step, reason="step_terminal_before_start", created_container=created_container
+                )
                 return True  # Already in terminal state, no step updates needed
 
             status_details = {}
@@ -1220,7 +1240,9 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     "Job step disappeared while Docker scheduling was stopping",
                     extra={"workspace": step.workspace, "job": step.job, "step": step.name},
                 )
-            self._release_step_resources(step, reason="step_stopped_before_start")
+            self._release_step_resources_after_scheduling_stop(
+                step, reason="step_stopped_before_start", created_container=created_container
+            )
         return is_cancelling_or_pausing
 
     def get_jobs_launcher_binary(self) -> io.BytesIO | None:
@@ -1277,14 +1299,13 @@ chmod -R 777 {job_vol}/{storage_subpath}
             finally:
                 self._container_start_admission.release()
 
-    def _remove_container_after_failed_schedule(self, step: PlatformJobStepWithContext, *, reason: str) -> bool:
-        container = self.get_container(step)
-        if container is None:
-            return True
-
+    def _remove_container_before_resource_release(
+        self, step: PlatformJobStepWithContext, container: Container, *, reason: str
+    ) -> bool:
+        """Remove an owned created container before releasing resources tied to it."""
         if not self._is_container_owned_by_this_controller(container):
             logger.warning(
-                "Skipping Docker scheduling-error cleanup for unowned container",
+                "Skipping Docker resource-release cleanup for unowned container",
                 extra={
                     "job": step.job,
                     "step": step.name,
@@ -1296,7 +1317,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             return False
 
         logger.info(
-            "Removing Docker container after scheduling failure",
+            "Removing Docker container before releasing scheduling resources",
             extra={
                 "job": step.job,
                 "step": step.name,
@@ -1309,12 +1330,12 @@ chmod -R 777 {job_vol}/{storage_subpath}
             container.remove(force=True)
         except NotFound:
             logger.info(
-                "Container disappeared during Docker scheduling-error cleanup",
+                "Container disappeared during Docker resource-release cleanup",
                 extra={"job": step.job, "step": step.name, "container_name": container.name, "reason": reason},
             )
         except Exception:
             logger.exception(
-                "Failed to remove container after Docker scheduling error",
+                "Failed to remove container before Docker resource release",
                 extra={"job": step.job, "step": step.name, "container_name": container.name, "reason": reason},
             )
             return False
@@ -1327,10 +1348,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
             self.cleanup_task_storage_volumes(workspace, job, task)
         else:
             logger.debug(
-                "Skipping task storage cleanup after Docker scheduling error because labels are incomplete",
+                "Skipping task storage cleanup before Docker resource release because labels are incomplete",
                 extra={"job": step.job, "step": step.name, "container_name": container.name, "reason": reason},
             )
         return True
+
+    def _remove_container_after_failed_schedule(self, step: PlatformJobStepWithContext, *, reason: str) -> bool:
+        container = self.get_container(step)
+        if container is None:
+            return True
+        return self._remove_container_before_resource_release(step, container, reason=reason)
 
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
@@ -1518,7 +1545,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
         # cancel scheduling the container
         logger.debug("Checking for cancellation or pausing before starting container")
         pre_start_cancel_check_started_at = time.monotonic()
-        if self.cancel_scheduling(step):
+        if self.cancel_scheduling(step, created_container=container):
             logger.debug(
                 "Docker pre-start cancellation check stopped scheduling",
                 extra={
