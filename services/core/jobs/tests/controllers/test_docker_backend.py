@@ -1528,6 +1528,113 @@ def test_gpu_cleanup_on_job_error(mock_nmp_client, docker_client_mock):
     assert executor.gpu_pool.gpu_to_workload_id[0] is None
 
 
+def test_gpu_pool_released_when_deleted_step_stops_scheduling(mock_nmp_client, docker_client_mock):
+    """A deleted step before container start must not leave its GPU allocation orphaned."""
+    gpu_executor_config = GPUExecutionProvider.model_validate(
+        {
+            "provider": "gpu",
+            "profile": "default",
+            "container": {
+                "image": "test-gpu-image:latest",
+            },
+            "resources": {
+                "num_gpus": 1,
+            },
+            "config": {},
+        }
+    )
+    step = PlatformJobStepWithContext.model_validate(
+        {
+            "id": "deleted-step-id",
+            "job": "job-deleted-before-start",
+            "attempt_id": "test-job-attempt-id",
+            "name": "gpu-deleted-step",
+            "fileset": "test-logs-fileset",
+            "workspace": "default",
+            "step_spec": {
+                "name": "gpu-deleted-step",
+                "executor": gpu_executor_config.model_dump(),
+                "config": {},
+                "environment": [],
+            },
+            "status": "created",
+        }
+    )
+
+    with patch("nmp.core.jobs.controllers.backends.docker.SharedResourceManager") as mock_srm:
+        mock_pool = DockerGPUPool(reserved_gpu_device_ids=[0])
+        mock_srm.get_instance.return_value.get_gpu_pool.return_value = mock_pool
+
+        executor = GPUDockerJobBackend(
+            nmp_sdk=mock_nmp_client,
+            execution_profile_config=DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        executor._client = docker_client_mock
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    executor.get_step_safe = MagicMock(return_value=None)
+
+    assert executor.cancel_scheduling(step) is True
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    executor._jobs.update_job_step_status.assert_not_called()
+
+
+def test_gpu_cleanup_releases_deleted_step_container_without_terminal_sync(mock_nmp_client, docker_client_mock):
+    """Cleanup after job deletion releases GPUs even when terminal sync never saw the step."""
+    step_id = "deleted-terminal-step-id"
+
+    with patch("nmp.core.jobs.controllers.backends.docker.SharedResourceManager") as mock_srm:
+        mock_pool = DockerGPUPool(reserved_gpu_device_ids=[0])
+        mock_srm.get_instance.return_value.get_gpu_pool.return_value = mock_pool
+
+        executor = GPUDockerJobBackend(
+            nmp_sdk=mock_nmp_client,
+            execution_profile_config=DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        executor._client = docker_client_mock
+
+    executor.gpu_pool.allocate_gpu(step_id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step_id
+    executor._execution_profile_config.cleanup_completed_jobs_immediately = True
+
+    container_mock = MagicMock()
+    container_mock.name = "job-deleted-before-sync-gpu-step"
+    container_mock.id = "deleted-terminal-container-id"
+    container_mock.status = "exited"
+    container_mock.attrs = {
+        "State": {"ExitCode": 0, "FinishedAt": datetime.datetime.now(datetime.UTC).isoformat()},
+        "NetworkSettings": {"Networks": {"host": {}}},
+    }
+    container_mock.labels = {
+        JOB_WORKSPACE_ID_LABEL: "default",
+        JOB_ID_LABEL: "job-deleted-before-sync",
+        JOB_STEP_NAME_LABEL: "gpu-step",
+        JOB_STEP_ID_LABEL: step_id,
+        JOB_TASK_ID_LABEL: "task-deleted-step",
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+        JOB_EXECUTION_BACKEND_LABEL: "docker",
+        JOB_EXECUTION_PROFILE_LABEL: "default",
+        JOB_TYPE_LABEL: JOB_TYPE_JOB,
+    }
+
+    docker_client_mock.containers.list.return_value = [container_mock]
+    executor.check_step_is_terminal = MagicMock(return_value=True)
+
+    executor.cleanup_steps()
+
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    container_mock.remove.assert_called_once_with(force=True)
+
+
 def test_ensure_volume_creates_when_test_missing(docker_job: CPUDockerJobBackend, docker_client_mock, test_job_step):
     """Test that _ensure_job_storage creates a volume when one doesn't exist."""
 

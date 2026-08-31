@@ -21,6 +21,7 @@ from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
 from nemo_platform_plugin.capabilities import CapabilityUnavailableError, probe_docker
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.jobs.execution_profiles import (
     DockerJobExecutionProfile as PluginDockerJobExecutionProfile,
 )
@@ -554,6 +555,14 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
             ]
         }
 
+    def _release_step_resources(self, step: PlatformJobStepWithContext, *, reason: str) -> None:
+        del step, reason
+        return
+
+    def _release_container_resources(self, container: Container, *, reason: str) -> None:
+        del container, reason
+        return
+
     def job_storage_subpath(self, workspace: str, job: str) -> str:
         return f"jobs/{workspace}/{job}"
 
@@ -1035,6 +1044,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             submitted_to_threadpool_at = time.monotonic()
             self._container_run_threadpool.submit(self.run_container, step, container_args, submitted_to_threadpool_at)
         except Exception:
+            self._release_step_resources(step, reason="schedule_failed_before_start")
             self._container_start_admission.release()
             raise
         logger.debug(
@@ -1161,7 +1171,15 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
     def cancel_scheduling(self, step: PlatformJobStepWithContext) -> bool:
         """Check if the job step is cancelling or pausing, and update status accordingly."""
-        updated_step = self.get_step(step_name=step.name, job=step.job, workspace=step.workspace)
+        updated_step = self.get_step_safe(step_name=step.name, job=step.job, workspace=step.workspace)
+        if updated_step is None:
+            logger.info(
+                "Job step disappeared before Docker container start; cancelling scheduling",
+                extra={"workspace": step.workspace, "job": step.job, "step": step.name},
+            )
+            self._release_step_resources(step, reason="step_missing_before_start")
+            return True
+
         is_cancelling_or_pausing = updated_step.status in (
             PlatformJobStatus.CANCELLING,
             PlatformJobStatus.CANCELLED,
@@ -1177,6 +1195,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 logger.info(
                     "Job step is already in terminal state, no update required", extra={"status": updated_step.status}
                 )
+                self._release_step_resources(step, reason="step_terminal_before_start")
                 return True  # Already in terminal state, no step updates needed
 
             status_details = {}
@@ -1187,12 +1206,19 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 status = PlatformJobStatus.CANCELLED
                 status_details["message"] = "Job is cancelled, not creating container"
             logger.info("Job step is not scheduling container", extra={"status": updated_step.status})
-            self._jobs.update_job_step_status(
-                name=step.name,
-                workspace=step.workspace,
-                job=step.job,
-                body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
-            )
+            try:
+                self._jobs.update_job_step_status(
+                    name=step.name,
+                    workspace=step.workspace,
+                    job=step.job,
+                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
+                )
+            except ClientNotFoundError:
+                logger.info(
+                    "Job step disappeared while Docker scheduling was stopping",
+                    extra={"workspace": step.workspace, "job": step.job, "step": step.name},
+                )
+            self._release_step_resources(step, reason="step_stopped_before_start")
         return is_cancelling_or_pausing
 
     def get_jobs_launcher_binary(self) -> io.BytesIO | None:
@@ -1240,8 +1266,10 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     )
                 except Exception:
                     logger.exception("Failed to persist scheduling error for job step")
+                self._release_step_resources(step, reason="scheduling_error")
             except Exception:
                 logger.exception("Unexpected error while scheduling container for job step")
+                self._release_step_resources(step, reason="unexpected_scheduling_error")
             finally:
                 self._container_start_admission.release()
 
@@ -2069,6 +2097,9 @@ chmod -R 777 {job_vol}/{storage_subpath}
         self.cleanup_task_storage_volumes(workspace, job, task)
         logger.debug("Cleaned up task storage volume", extra={"workspace": workspace, "job": job, "task": task})
 
+        if self._is_container_owned_by_this_controller(container):
+            self._release_container_resources(container, reason="container_cleanup")
+
         # Clean up persistent storage for successful jobs that used it
         # Only clean up if the job itself is in a terminal state to prevent premature cleanup
         if JOB_USES_PERSISTENT_STORAGE_LABEL in container.labels:
@@ -2162,8 +2193,28 @@ class GPUDockerJobBackend(DockerJobBackend[GPUExecutionProvider]):
             job_update.status.value if isinstance(job_update.status, PlatformJobStatus) else job_update.status
         )
         if self.gpu_pool is not None and status_value in terminal_states:
-            self.gpu_pool.release_gpu(step.id)
+            self._release_gpu_for_step_id(step.id, reason="terminal_sync")
         return job_update
+
+    def _release_gpu_for_step_id(self, step_id: str, *, reason: str) -> list[int]:
+        if self.gpu_pool is None:
+            return []
+        released = self.gpu_pool.release_gpu(step_id)
+        if released:
+            logger.info(
+                "Released Docker GPU allocation for job step",
+                extra={"step_id": step_id, "gpu_ids": released, "reason": reason},
+            )
+        return released
+
+    def _release_step_resources(self, step: PlatformJobStepWithContext, *, reason: str) -> None:
+        self._release_gpu_for_step_id(step.id, reason=reason)
+
+    def _release_container_resources(self, container: Container, *, reason: str) -> None:
+        labels = getattr(container, "labels", None) or {}
+        step_id = labels.get(JOB_STEP_ID_LABEL)
+        if step_id:
+            self._release_gpu_for_step_id(step_id, reason=reason)
 
     def configure_container(self, container_args: dict, executor_config: GPUExecutionProvider) -> dict:
         """Customize container arguments for GPU execution."""
