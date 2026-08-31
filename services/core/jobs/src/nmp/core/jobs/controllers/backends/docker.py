@@ -556,10 +556,12 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         }
 
     def _release_step_resources(self, step: PlatformJobStepWithContext, *, reason: str) -> None:
+        """No-op resource hook for Docker backends without per-step resources."""
         del step, reason
         return
 
     def _release_container_resources(self, container: Container, *, reason: str) -> None:
+        """No-op resource hook for Docker backends without per-container resources."""
         del container, reason
         return
 
@@ -1266,12 +1268,69 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     )
                 except Exception:
                     logger.exception("Failed to persist scheduling error for job step")
-                self._release_step_resources(step, reason="scheduling_error")
+                if self._remove_container_after_failed_schedule(step, reason="scheduling_error"):
+                    self._release_step_resources(step, reason="scheduling_error")
             except Exception:
                 logger.exception("Unexpected error while scheduling container for job step")
-                self._release_step_resources(step, reason="unexpected_scheduling_error")
+                if self._remove_container_after_failed_schedule(step, reason="unexpected_scheduling_error"):
+                    self._release_step_resources(step, reason="unexpected_scheduling_error")
             finally:
                 self._container_start_admission.release()
+
+    def _remove_container_after_failed_schedule(self, step: PlatformJobStepWithContext, *, reason: str) -> bool:
+        container = self.get_container(step)
+        if container is None:
+            return True
+
+        if not self._is_container_owned_by_this_controller(container):
+            logger.warning(
+                "Skipping Docker scheduling-error cleanup for unowned container",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "container_name": getattr(container, "name", None),
+                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                    "reason": reason,
+                },
+            )
+            return False
+
+        logger.info(
+            "Removing Docker container after scheduling failure",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "container_name": container.name,
+                "reason": reason,
+            },
+        )
+        self._stop_workload_identity_refresher(container.name)
+        try:
+            container.remove(force=True)
+        except NotFound:
+            logger.info(
+                "Container disappeared during Docker scheduling-error cleanup",
+                extra={"job": step.job, "step": step.name, "container_name": container.name, "reason": reason},
+            )
+        except Exception:
+            logger.exception(
+                "Failed to remove container after Docker scheduling error",
+                extra={"job": step.job, "step": step.name, "container_name": container.name, "reason": reason},
+            )
+            return False
+
+        labels = getattr(container, "labels", None) or {}
+        workspace = labels.get(JOB_WORKSPACE_ID_LABEL)
+        job = labels.get(JOB_ID_LABEL)
+        task = labels.get(JOB_TASK_ID_LABEL)
+        if workspace and job and task:
+            self.cleanup_task_storage_volumes(workspace, job, task)
+        else:
+            logger.debug(
+                "Skipping task storage cleanup after Docker scheduling error because labels are incomplete",
+                extra={"job": step.job, "step": step.name, "container_name": container.name, "reason": reason},
+            )
+        return True
 
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
@@ -2026,6 +2085,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
                             extra=cleanup_log_extra,
                         )
                         continue
+
+                    self._release_container_resources(container, reason="terminal_container_cleanup")
 
                     # Always disconnect the container from its network first if not already done.
                     # We do this to avoid dangling containers being connected to user-defined networks.
