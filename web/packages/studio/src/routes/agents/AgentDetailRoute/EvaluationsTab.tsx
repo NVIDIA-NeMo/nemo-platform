@@ -21,6 +21,8 @@ const VIEW_ITEMS = [
 
 interface EvaluationsTabProps {
   workspace: string;
+  /** The agent whose evaluations these are, seeded into a re-run started from a row. */
+  agentName?: string;
   evals: AgentEvaluationRow[];
   jobs: EvalJobRow[];
 }
@@ -29,7 +31,12 @@ interface EvaluationsTabProps {
  *  the jobs still running pinned above them. Active jobs answer a different question ("what is
  *  running right now") that Intake cannot answer until a run publishes, so they get their own
  *  always-visible section instead of a segmented-control tab. */
-export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, jobs }) => {
+export const EvaluationsTab: FC<EvaluationsTabProps> = ({
+  workspace,
+  agentName,
+  evals,
+  jobs,
+}) => {
   const [view, setView] = useState<string>(VIEW_EVALUATIONS);
   const experiments = useMemo(() => groupByExperiment(evals), [evals]);
   const activeJobs = useMemo(
@@ -57,7 +64,12 @@ export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, jobs
         <ExperimentsTable workspace={workspace} experiments={experiments} />
       )}
       {view === VIEW_EVALUATIONS && (
-        <EvaluationsTable workspace={workspace} evaluations={evals} jobs={jobs} />
+        <EvaluationsTable
+          workspace={workspace}
+          agentName={agentName}
+          evaluations={evals}
+          jobs={jobs}
+        />
       )}
     </Stack>
   );

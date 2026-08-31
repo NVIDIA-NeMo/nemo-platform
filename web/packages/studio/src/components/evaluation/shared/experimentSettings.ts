@@ -21,12 +21,15 @@ export interface ExperimentSettingsValues {
 
 /** Zod fields for the settings, spread into whatever schema the host form builds. Names match
  *  `ExperimentSettingsValues`, so a host that spreads this can pass `EXPERIMENT_SETTINGS_NAMES`
- *  straight through to the fields component. */
+ *  straight through to the fields component.
+ *
+ *  Every field defaults, so a form that reuses the schema without rendering these fields — the
+ *  compact "create a group and add to it" form, say — still validates on the name alone. */
 export const experimentSettingsSchemaShape = {
-  description: z.string(),
-  defaultSort: z.string(),
-  isFavorite: z.boolean(),
-  showEvaluationsOverTime: z.boolean(),
+  description: z.string().default(''),
+  defaultSort: z.string().default(DEFAULT_SORT),
+  isFavorite: z.boolean().default(false),
+  showEvaluationsOverTime: z.boolean().default(false),
 };
 
 export const EXPERIMENT_SETTINGS_DEFAULTS: ExperimentSettingsValues = {

@@ -36,11 +36,13 @@ import {
 } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentDataView/useSortErrorRecovery';
 import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentDataView/util';
+import { evaluationFilesetName } from '@studio/components/evaluation/experimentEvalConfig';
+import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { Columns3, FolderMinus, FolderPlus, Pin } from 'lucide-react';
+import { Columns3, FolderMinus, FolderPlus, Pin, Repeat2 } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -171,6 +173,11 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
     evaluations: EvaluationRow[];
     clearSelection: () => void;
   } | null>(null);
+
+  // The evaluation a "New evaluation from this configuration" click is re-running, or null when
+  // the form is closed. Re-running is reachable from here as well as from the agent page, because
+  // this leaderboard is where you notice a run worth varying.
+  const [rerunSource, setRerunSource] = useState<EvaluationRow | null>(null);
 
   // Persist column order to localStorage, keyed by experiment group ID.
   const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
@@ -546,6 +553,17 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
         cell: ({ row }) => (
           <QuickActionsMenuRoot
             actions={[
+              // Only offered for a row that carries a reusable eval config; without one the form
+              // would open on an evaluation it has to reject.
+              ...(evaluationFilesetName(row.original)
+                ? [
+                    {
+                      label: 'New evaluation from this configuration',
+                      icon: <Repeat2 className="fill-none" size={16} />,
+                      onSelect: () => setRerunSource(row.original),
+                    },
+                  ]
+                : []),
               {
                 // `fill-none` overrides the menu's cloned `fill: 'solid'`, which would otherwise paint
                 // the folder body over the "+"/"-" (they're drawn before the folder shape).
@@ -679,6 +697,17 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
           onSuccess={() => addToGroupState.clearSelection()}
           workspace={workspace}
           evaluations={addToGroupState.evaluations}
+        />
+      )}
+      {rerunSource && (
+        <SubmitEvaluationModal
+          open
+          onClose={() => setRerunSource(null)}
+          workspace={workspace}
+          // Agents are discovered from the run's own telemetry; the form still lets the user pick
+          // when the row was never tagged with one.
+          agent={rerunSource.agent_names?.[0]}
+          sourceEvaluation={rerunSource.name}
         />
       )}
     </>
